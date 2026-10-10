@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "d749a193f",
-  "last_completed_batch": "TANDA-02-01",
+  "last_completed_commit": "3a03d9348",
+  "last_completed_batch": "TANDA-02-02",
   "last_completed_case": "TL-LEX-110",
   "current_wave": 2,
   "current_component": "Host.AST",
   "next_contract": "CA-AST-001",
-  "next_action": "Validate the committed Host.Lexer target and controller gate, then integrate Host.AST executable cases while keeping all infrastructure limitations visible.",
+  "next_action": "Integrate the executable Host.AST cases, record its special-infrastructure limitations, and validate its consolidated component gate.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -82,7 +82,20 @@
     "CL-LANG-014",
     "CL-LANG-015",
     "CL-LANG-018",
-    "CL-LANG-021"
+    "CL-LANG-021",
+    "CL-LEX-001",
+    "CL-LEX-002",
+    "CL-LEX-003",
+    "CL-LEX-004",
+    "CL-LEX-005",
+    "CL-LEX-006",
+    "CL-LEX-007",
+    "CL-LEX-008",
+    "CL-LEX-009",
+    "CL-LEX-011",
+    "CL-LEX-012",
+    "CL-LEX-013",
+    "CL-LEX-014"
   ],
   "independent_partial_contracts": {
     "CS-SRC-002": {
@@ -159,6 +172,13 @@
       "known_failure_cases": [
         "TL-LANG-262"
       ]
+    },
+    "CL-LEX-010": {
+      "implemented_cases": 8,
+      "verified_cases": 7,
+      "known_failure_cases": [
+        "TL-LEX-075"
+      ]
     }
   },
   "wave_status": {
@@ -183,9 +203,9 @@
       "status": "EN CURSO",
       "product_cases_expected": 1197,
       "product_cases_implemented": 110,
-      "product_cases_verified": 0,
+      "product_cases_verified": 109,
       "known_failure_cases_implemented": 1,
-      "validation_pending_cases": 110,
+      "validation_pending_cases": 0,
       "current_component": "Host.AST",
       "current_component_cases_expected": 230
     }
@@ -201,7 +221,15 @@
     "release_ctest_passed": 83,
     "release_ctest_total": 83,
     "debug_dynamic_crt_imports": 0,
-    "release_dynamic_crt_imports": 0
+    "release_dynamic_crt_imports": 0,
+    "release_lexer_ordinary_passed": 109,
+    "release_lexer_ordinary_total": 109,
+    "release_lexer_controller_gate_passed": 1,
+    "release_lexer_controller_gate_total": 1,
+    "debug_lexer_ordinary_passed": 109,
+    "debug_lexer_ordinary_total": 109,
+    "debug_lexer_controller_gate_passed": 1,
+    "debug_lexer_controller_gate_total": 1
   },
   "protected_files": {
     "docs/compiler-optimization/test-infrastructure/test-execution-parity.csv": "96c6e1564f973b36f4ab8cdd2b5df515e5128ee1345dd622024d15e9799f606d",
