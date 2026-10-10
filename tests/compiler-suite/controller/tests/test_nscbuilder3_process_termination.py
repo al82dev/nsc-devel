@@ -67,9 +67,10 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self, popen: object, _monotonic: object
     ) -> None:
         emitted: list[str] = []
+        activity: list[tuple[float, str]] = []
         process = RunningProcess()
         popen.return_value = process
-        controller = builder.ProcessController(emitted.append)
+        controller = builder.ProcessController(emitted.append, lambda *value: activity.append(value))
 
         def terminate(owned: RunningProcess) -> None:
             owned.returncode = 130
@@ -83,6 +84,7 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self.assertIn("timed out", captured)
         self.assertTrue(any("timed out" in line for line in emitted))
         self.assertEqual(controller.last_termination_reason, "timeout")
+        self.assertEqual(activity, [(2.0, "")])
 
     @patch.object(builder.os, "name", "nt")
     @patch.object(builder.subprocess, "run")

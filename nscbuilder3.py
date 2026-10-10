@@ -1061,6 +1061,32 @@ def active_retry_variants(
     return tuple(variant for variant in failed if variant.key not in disabled)
 
 
+def row_progress_text(status: str) -> str:
+    """Project one execution state into a compact per-row progress value."""
+    if status == "LISTO":
+        return "0%"
+    if status in {"RUNNING", "COMPILING"}:
+        return "EN CURSO"
+    if status in RESULT_STATUSES or status == "DESACTIVADA":
+        return "100%"
+    if status == "PENDIENTE":
+        return "NO EJECUTABLE"
+    if status == "FILTRADO":
+        return "FUERA"
+    return ""
+
+
+def row_action_text(status: str, executable: bool) -> str:
+    """Describe the exact-row action without implying a broader selection."""
+    if not executable:
+        return ""
+    if status in {"RUNNING", "COMPILING"}:
+        return "En ejecución"
+    if status in RESULT_STATUSES:
+        return "Volver a correr"
+    return "Ejecutar"
+
+
 def condensed_error_report(
     outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
 ) -> str:
@@ -1306,8 +1332,13 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
 class ProcessController:
     """Run one child process with streamed output and scoped tree cancellation."""
 
-    def __init__(self, output: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        output: Callable[[str], None],
+        activity: Callable[[float, str], None] | None = None,
+    ) -> None:
         self.output = output
+        self.activity = activity
         self.cancelled = threading.Event()
         self.last_termination_reason: str | None = None
         self._lock = threading.Lock()
@@ -1344,6 +1375,8 @@ class ProcessController:
         output: list[str] = []
         pending: queue.Queue[str | None] = queue.Queue()
         started = time.monotonic()
+        last_activity = started
+        last_line = ""
         assert process.stdout is not None
 
         def read_output() -> None:
@@ -1363,11 +1396,16 @@ class ProcessController:
                 else:
                     output.append(line)
                     self.output(line)
+                    last_line = line.strip() or last_line
             except queue.Empty:
                 pass
+            now = time.monotonic()
+            if self.activity is not None and now - last_activity >= 0.25:
+                self.activity(now - started, last_line)
+                last_activity = now
             if process.poll() is not None and stream_closed and pending.empty():
                 break
-            if timeout is not None and time.monotonic() - started > timeout:
+            if timeout is not None and now - started > timeout:
                 self.last_termination_reason = "timeout"
                 self._terminate_tree(process)
                 message = f"process timed out after {timeout:.1f} seconds\n"
@@ -1426,6 +1464,8 @@ class ProcessController:
         pending: queue.Queue[tuple[str, str | None]] = queue.Queue()
         captured = {"stdout": [], "stderr": []}
         started = time.monotonic()
+        last_activity = started
+        last_line = ""
         assert process.stdout is not None
         assert process.stderr is not None
 
@@ -1460,11 +1500,16 @@ class ProcessController:
                 else:
                     captured[channel].append(line)
                     self.output(line)
+                    last_line = line.strip() or last_line
             except queue.Empty:
                 pass
+            now = time.monotonic()
+            if self.activity is not None and now - last_activity >= 0.25:
+                self.activity(now - started, last_line)
+                last_activity = now
             if process.poll() is not None and len(closed) == 2 and pending.empty():
                 break
-            if timeout is not None and time.monotonic() - started > timeout:
+            if timeout is not None and now - started > timeout:
                 self.last_termination_reason = "timeout"
                 self._terminate_tree(process)
                 message = f"process timed out after {timeout:.1f} seconds\n"
@@ -2008,10 +2053,13 @@ class ExecutionEngine:
         self.output = output
         self.status = status
         self.progress = progress
-        self.process = ProcessController(self._emit_output)
+        self.process = ProcessController(self._emit_output, self._emit_activity)
         self.fixture_cache: dict[tuple[str, str, str], Path] = {}
         self.fixture_failures: dict[tuple[str, str, str], tuple[str, str]] = {}
         self.module_cache: dict[str, Any] = {}
+        self.active_key = ""
+        self.active_phase = ""
+        self.active_detail = ""
 
     def run(self, variants: Sequence[RunVariant]) -> tuple[list[CaseOutcome], bool]:
         """Run every planned variant in deterministic dependency-oriented order."""
@@ -2032,7 +2080,7 @@ class ExecutionEngine:
             if self.process.cancelled.is_set():
                 outcomes.extend(self._cancelled_outcomes(ordered[index - 1 :]))
                 break
-            self.status(variant.key, "RUNNING", "", 0.0, "")
+            self._set_active_phase(variant, "RUNNING", "iniciando variante")
             self.store.event("CASE_STARTED", self._variant_payload(variant))
             outcome = self._run_variant(variant)
             outcomes.append(outcome)
@@ -2045,6 +2093,9 @@ class ExecutionEngine:
             )
             self.store.event("CASE_FINISHED", asdict(outcome))
             self.progress(index, total)
+            self.active_key = ""
+            self.active_phase = ""
+            self.active_detail = ""
         return outcomes, self.process.cancelled.is_set()
 
     def cancel(self) -> None:
@@ -2101,6 +2152,11 @@ class ExecutionEngine:
         if not executable.is_file():
             return "INFRASTRUCTURE_ERROR", f"host executable does not exist: {executable}", ""
         case_root = self._case_root(variant)
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"ejecutando nsc_component_tests --case {variant.case.case_id}",
+        )
         code, captured = self.process.run(
             [str(executable), "--case", variant.case.case_id],
             case_root,
@@ -2167,6 +2223,11 @@ class ExecutionEngine:
             expected_tools.append(
                 ("build-id-header", str(header), sha256_file(header))
             )
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"ejecutando controlador de identidad {variant.case.case_id}",
+        )
         code, captured = self.process.run(command, SOURCE_ROOT, timeout=180.0)
         log_path = case_root / "controller.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
@@ -2221,6 +2282,11 @@ class ExecutionEngine:
         if use_sandbox:
             command.append(str(case_root))
         environment = self._nsc_environment()
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"ejecutando fixture {Path(project_relative).name}: {case_argument}",
+        )
         code, captured = self.process.run(
             command,
             case_root,
@@ -2266,7 +2332,12 @@ class ExecutionEngine:
             "-o",
             str(executable),
         ]
-        self.status(variant.key, "COMPILING", project.name, 0.0, str(fixture_root))
+        self._set_active_phase(
+            variant,
+            "COMPILING",
+            f"compilando fixture {project.name}",
+            str(fixture_root),
+        )
         write_json(fixture_root / "compile.command.json", command)
         code, captured = self.process.run(command, fixture_root, self._nsc_environment(), 900.0)
         (fixture_root / "compile.log").write_text(captured, encoding="utf-8", newline="\n")
@@ -2283,6 +2354,11 @@ class ExecutionEngine:
 
     def _run_buildsystem(self, variant: RunVariant) -> tuple[str, str, str]:
         """Execute one BuildSystem row through its existing case-level oracle."""
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"ejecutando gate BuildSystem {variant.case.case_id}",
+        )
         module = self._load_gate("run_buildsystem_gate.py")
         tools = discover_build_tools(self.config.llvm_dir)
         cmake = Path(tools["cmake"]).resolve()
@@ -2313,6 +2389,11 @@ class ExecutionEngine:
 
     def _run_packaging(self, variant: RunVariant) -> tuple[str, str, str]:
         """Execute one Packaging row through its existing case-level oracle."""
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"ejecutando gate Packaging {variant.case.case_id}",
+        )
         archive = Path(self.config.archive_executable).resolve()
         if not archive.is_file():
             return "INFRASTRUCTURE_ERROR", "Packaging requires an archive executable", ""
@@ -2475,6 +2556,32 @@ class ExecutionEngine:
         self.store.log(line)
         self.output(line)
 
+    def _set_active_phase(
+        self,
+        variant: RunVariant,
+        phase: str,
+        detail: str,
+        evidence: str = "",
+    ) -> None:
+        """Publish the active row and retain its phase for process heartbeats."""
+        self.active_key = variant.key
+        self.active_phase = phase
+        self.active_detail = detail
+        self.status(variant.key, phase, detail, 0.0, evidence)
+
+    def _emit_activity(self, elapsed: float, detail: str) -> None:
+        """Refresh elapsed time and last child output for the active exact row."""
+        if not self.active_key:
+            return
+        visible_detail = detail[-300:] if detail else self.active_detail
+        self.status(
+            self.active_key,
+            self.active_phase,
+            visible_detail,
+            elapsed,
+            "",
+        )
+
 
 def make_run_id() -> str:
     """Create a sortable collision-resistant local run identifier."""
@@ -2547,6 +2654,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             QLabel,
             QLineEdit,
             QMainWindow,
+            QMenu,
             QMessageBox,
             QProgressBar,
             QPushButton,
@@ -2708,10 +2816,18 @@ def launch_gui(smoke_only: bool = False) -> int:
             "Opt",
             "Perfil",
             "Ejecutor",
+            "Progreso",
             "Estado",
+            "Acción",
             "Duración",
             "Detalle / evidencia",
         )
+        CASE_COLUMN = 3
+        PROGRESS_COLUMN = 8
+        STATUS_COLUMN = 9
+        ACTION_COLUMN = 10
+        DURATION_COLUMN = 11
+        DETAIL_COLUMN = 12
 
         def __init__(self) -> None:
             super().__init__()
@@ -2722,7 +2838,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.failure_variants_by_key: dict[str, RunVariant] = {}
             self.disabled_failure_keys: set[str] = set()
             self.visible_variants: tuple[RunVariant, ...] = ()
+            self.variant_by_key: dict[str, RunVariant] = {}
             self.status_item_by_key: dict[str, QTableWidgetItem] = {}
+            self.live_status_by_key: dict[str, str] = {}
+            self.live_status_counts: Counter[str] = Counter()
+            self.variant_position_by_key: dict[str, int] = {}
             self.path_edits: dict[str, QLineEdit] = {}
             self.active_operation = ""
             self.active_modes: tuple[str, ...] = ()
@@ -2744,7 +2864,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             outer.addWidget(self.summary_label)
             self.tabs = QTabWidget()
             self.tabs.addTab(self._build_infrastructure_tab(), "Construcción")
-            self.tabs.addTab(self._build_execution_tab(), "Ejecución Fase 2")
+            self.tabs.addTab(self._build_execution_tab(), "Pruebas")
             self.tabs.addTab(self._build_results_tab(), "Resultados")
             outer.addWidget(self.tabs, 1)
             self.setCentralWidget(central)
@@ -2808,17 +2928,12 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.detect_button = QPushButton("Autodetectar rutas")
             self.configure_button = QPushButton("Configurar pruebas")
             self.build_button = QPushButton("Construir infraestructura")
-            self.infrastructure_run_button = QPushButton("Ejecutar pruebas")
-            self.infrastructure_run_button.setToolTip(
-                "Ejecuta la selección visible de la pestaña Ejecución Fase 2"
-            )
             self.receipt_button = QPushButton("Validar compilador externo")
             controls.addWidget(self.save_button)
             controls.addWidget(self.detect_button)
             controls.addWidget(self.receipt_button)
             controls.addWidget(self.configure_button)
             controls.addWidget(self.build_button)
-            controls.addWidget(self.infrastructure_run_button)
             controls.addStretch(1)
             layout.addWidget(tests_group)
             self.infrastructure_stage = QLabel("Sin operación activa")
@@ -2850,9 +2965,6 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.build_button.clicked.connect(
                 lambda: self._start_infrastructure("tests-build")
             )
-            self.infrastructure_run_button.clicked.connect(
-                self._start_suite_from_construction
-            )
             return page
 
         def _build_execution_tab(self) -> QWidget:
@@ -2881,7 +2993,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             grid.addWidget(QLabel("Optimización NativeSharp"), 1, 2)
             grid.addWidget(self.optimization_combo, 1, 3)
             self.preview_button = QPushButton("Previsualizar")
-            self.run_button = QPushButton("Ejecutar selección")
+            self.run_button = QPushButton("Ejecutar pruebas")
             self.cancel_button = QPushButton("Cancelar árbol")
             self.retry_button = QPushButton("Reejecutar fallos")
             self.cancel_button.setEnabled(False)
@@ -2893,23 +3005,45 @@ def launch_gui(smoke_only: bool = False) -> int:
             layout.addWidget(filters)
             self.plan_label = QLabel()
             layout.addWidget(self.plan_label)
+            self.execution_activity = QLabel("Sin ejecución activa")
+            self.execution_activity.setWordWrap(True)
+            layout.addWidget(self.execution_activity)
+            self.execution_counts = QLabel("Sin resultados")
+            self.execution_counts.setWordWrap(True)
+            layout.addWidget(self.execution_counts)
             self.progress = QProgressBar()
             self.progress.setRange(0, 1)
             self.progress.setValue(0)
+            self.progress.setFormat("0/0 pruebas")
             layout.addWidget(self.progress)
             self.case_table = QTableWidget(0, len(self.TABLE_HEADERS))
             self.case_table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
             self.case_table.setAlternatingRowColors(True)
             self.case_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            self.case_table.setSelectionMode(
+                QAbstractItemView.SelectionMode.SingleSelection
+            )
             self.case_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            self.case_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-            self.case_table.horizontalHeader().setStretchLastSection(True)
+            self.case_table.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu
+            )
+            case_header = self.case_table.horizontalHeader()
+            case_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            for column, width in enumerate(
+                (55, 190, 170, 180, 75, 55, 75, 180, 100, 125, 125, 90)
+            ):
+                case_header.resizeSection(column, width)
+            case_header.setStretchLastSection(True)
             layout.addWidget(self.case_table, 1)
             self.scope_combo.currentTextChanged.connect(self._refresh_scope_values)
             self.preview_button.clicked.connect(self._preview_plan)
             self.run_button.clicked.connect(self._start_suite)
             self.cancel_button.clicked.connect(self._cancel_active)
             self.retry_button.clicked.connect(self._retry_failures)
+            self.case_table.cellClicked.connect(self._handle_case_table_click)
+            self.case_table.customContextMenuRequested.connect(
+                self._show_case_context_menu
+            )
             return page
 
         def _build_results_tab(self) -> QWidget:
@@ -2955,10 +3089,19 @@ def launch_gui(smoke_only: bool = False) -> int:
                 QAbstractItemView.SelectionMode.ExtendedSelection
             )
             self.failure_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.failure_table.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu
+            )
             self.failure_table.horizontalHeader().setSectionResizeMode(
                 QHeaderView.ResizeMode.ResizeToContents
             )
             self.failure_table.horizontalHeader().setStretchLastSection(True)
+            self.failure_table.cellClicked.connect(
+                self._handle_failure_table_click
+            )
+            self.failure_table.customContextMenuRequested.connect(
+                self._show_failure_context_menu
+            )
             failure_layout.addWidget(self.failure_table, 1)
             history_page = QWidget()
             history_layout = QVBoxLayout(history_page)
@@ -3318,9 +3461,19 @@ def launch_gui(smoke_only: bool = False) -> int:
                 for case in filtered
             )
             self.case_table.setSortingEnabled(False)
+            self.case_table.setUpdatesEnabled(False)
             self.case_table.clearContents()
             self.case_table.setRowCount(len(rows))
             self.status_item_by_key.clear()
+            self.variant_by_key = {variant.key: variant for variant in variants}
+            self.live_status_by_key = {
+                variant.key: "LISTO" for variant in variants
+            }
+            self.live_status_counts = Counter(self.live_status_by_key.values())
+            self.variant_position_by_key = {
+                variant.key: index
+                for index, variant in enumerate(variants, start=1)
+            }
             for row_index, (case, mode, opt, key, status, detail) in enumerate(rows):
                 values = (
                     str(case.wave),
@@ -3331,16 +3484,24 @@ def launch_gui(smoke_only: bool = False) -> int:
                     opt,
                     case.profile,
                     case.executor,
+                    row_progress_text(status),
                     status,
+                    row_action_text(status, key in self.variant_by_key),
                     "",
                     detail,
                 )
                 for column, value in enumerate(values):
                     item = QTableWidgetItem(value)
-                    if column == 8:
+                    if column == self.CASE_COLUMN:
+                        item.setData(Qt.ItemDataRole.UserRole, key)
+                    if column == self.STATUS_COLUMN:
                         self._color_status(item, status)
                         self.status_item_by_key[key] = item
+                    if column == self.ACTION_COLUMN and value:
+                        item.setForeground(QColor("#70a7ff"))
+                        item.setToolTip("Ejecutar solamente esta variante exacta")
                     self.case_table.setItem(row_index, column, item)
+            self.case_table.setUpdatesEnabled(True)
             self.case_table.setSortingEnabled(True)
             self.plan_label.setText(
                 f"Selección: {len(cases):,} casos canónicos · {len(variants):,} variantes "
@@ -3348,6 +3509,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             )
             self.progress.setRange(0, max(1, len(variants)))
             self.progress.setValue(0)
+            self.progress.setFormat(f"0/{len(variants):,} pruebas (0%)")
+            self.execution_activity.setText("Preparada; ninguna prueba ha iniciado")
+            self._refresh_live_counts()
 
         def _start_suite(self) -> None:
             if self.worker is not None:
@@ -3368,14 +3532,89 @@ def launch_gui(smoke_only: bool = False) -> int:
             except Exception as error:
                 self._show_error("No se pudo iniciar la ejecución", error)
 
-        def _start_suite_from_construction(self) -> None:
-            """Start the current granular selection from the construction workflow."""
+        def _case_key_at(self, table: QTableWidget, row: int) -> str | None:
+            """Read the exact immutable variant key carried by one visible row."""
+            item = table.item(row, self.CASE_COLUMN)
+            if item is None:
+                return None
+            key = item.data(Qt.ItemDataRole.UserRole)
+            return key if isinstance(key, str) and key else None
+
+        def _start_exact_variant(self, variant: RunVariant) -> None:
+            """Run one exact case/build/optimization variant without widening scope."""
             if self.worker is not None:
                 return
-            self.execution_mode.setCurrentText(self.infrastructure_mode.currentText())
-            self.tabs.setCurrentIndex(1)
-            self._preview_plan()
-            self._start_suite()
+            try:
+                config = self._config_from_ui().validated(require_tools=True)
+                config.save()
+                self._update_case(
+                    variant.key,
+                    "LISTO",
+                    "ejecución individual preparada",
+                    0.0,
+                    "",
+                )
+                self._run_variants(config, (variant,), "single-exact-variant")
+            except Exception as error:
+                self._show_error("No se pudo ejecutar la prueba seleccionada", error)
+
+        def _start_exact_key(self, key: str, *, failed: bool = False) -> None:
+            """Resolve and start one exact key from the main or failure projection."""
+            variants = self.failure_variants_by_key if failed else self.variant_by_key
+            variant = variants.get(key)
+            if variant is not None:
+                self._start_exact_variant(variant)
+
+        def _handle_case_table_click(self, row: int, column: int) -> None:
+            if column != self.ACTION_COLUMN or self.worker is not None:
+                return
+            key = self._case_key_at(self.case_table, row)
+            if key is not None and key in self.variant_by_key:
+                self._start_exact_key(key)
+
+        def _show_case_context_menu(self, position: Any) -> None:
+            row = self.case_table.rowAt(position.y())
+            if row < 0:
+                return
+            key = self._case_key_at(self.case_table, row)
+            variant = self.variant_by_key.get(key or "")
+            if variant is None:
+                return
+            self.case_table.selectRow(row)
+            status = self.live_status_by_key.get(variant.key, "LISTO")
+            label = (
+                "Volver a correr solamente esta prueba"
+                if status in RESULT_STATUSES
+                else "Ejecutar solamente esta prueba"
+            )
+            menu = QMenu(self.case_table)
+            action = menu.addAction(label)
+            action.setEnabled(self.worker is None)
+            action.triggered.connect(lambda: self._start_exact_key(variant.key))
+            menu.exec(self.case_table.viewport().mapToGlobal(position))
+
+        def _handle_failure_table_click(self, row: int, column: int) -> None:
+            if column != self.ACTION_COLUMN or self.worker is not None:
+                return
+            key = self._case_key_at(self.failure_table, row)
+            if key is not None and key in self.failure_variants_by_key:
+                self._start_exact_key(key, failed=True)
+
+        def _show_failure_context_menu(self, position: Any) -> None:
+            row = self.failure_table.rowAt(position.y())
+            if row < 0:
+                return
+            key = self._case_key_at(self.failure_table, row)
+            if key is None or key not in self.failure_variants_by_key:
+                return
+            self.failure_table.selectRow(row)
+            menu = QMenu(self.failure_table)
+            action = menu.addAction("Volver a correr solamente esta prueba")
+            action.setEnabled(self.worker is None)
+            action.triggered.connect(
+                lambda: self._start_exact_key(key, failed=True)
+            )
+            menu.exec(self.failure_table.viewport().mapToGlobal(position))
 
         def _run_variants(
             self,
@@ -3384,6 +3623,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             origin: str,
         ) -> None:
             self.visible_variants = tuple(variants)
+            self.variant_position_by_key = {
+                variant.key: index
+                for index, variant in enumerate(variants, start=1)
+            }
             run_id = make_run_id()
             metadata = {
                 "schema": 1,
@@ -3405,6 +3648,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.full_log.clear()
             self.error_report.clear()
             self.tabs.setCurrentIndex(1)
+            self.case_table.setSortingEnabled(False)
+            self.execution_activity.setText(
+                f"Iniciando 1/{len(variants):,}: {variants[0].case.case_id}"
+            )
             self._set_busy(True)
             worker = SuiteWorker(run_id, config, variants, metadata)
             self.worker = worker
@@ -3482,16 +3729,21 @@ def launch_gui(smoke_only: bool = False) -> int:
                     variant.optimization,
                     variant.case.profile,
                     variant.case.executor,
+                    row_progress_text(outcome.status),
                     status,
+                    "Volver a correr",
                     f"{outcome.duration_seconds:.3f} s",
                     detail,
                 )
                 for column, value in enumerate(values):
                     item = QTableWidgetItem(value)
-                    if column == 3:
+                    if column == self.CASE_COLUMN:
                         item.setData(Qt.ItemDataRole.UserRole, variant.key)
-                    if column == 8:
+                    if column == self.STATUS_COLUMN:
                         self._color_status(item, status)
+                    if column == self.ACTION_COLUMN:
+                        item.setForeground(QColor("#70a7ff"))
+                        item.setToolTip("Volver a correr solamente esta variante exacta")
                     self.failure_table.setItem(row, column, item)
             self.failure_table.setSortingEnabled(True)
             active = len(variants) - len(self.disabled_failure_keys)
@@ -3537,21 +3789,72 @@ def launch_gui(smoke_only: bool = False) -> int:
             if prior_status is None:
                 return
             row = prior_status.row()
+            prior = self.live_status_by_key.get(key)
+            if prior is not None and prior != status:
+                self.live_status_counts[prior] -= 1
+                if self.live_status_counts[prior] <= 0:
+                    del self.live_status_counts[prior]
+                self.live_status_counts[status] += 1
+                self.live_status_by_key[key] = status
+            self.case_table.setItem(
+                row,
+                self.PROGRESS_COLUMN,
+                QTableWidgetItem(row_progress_text(status)),
+            )
             status_item = QTableWidgetItem(status)
             self._color_status(status_item, status)
-            self.case_table.setItem(row, 8, status_item)
+            self.case_table.setItem(row, self.STATUS_COLUMN, status_item)
             self.status_item_by_key[key] = status_item
-            self.case_table.setItem(row, 9, QTableWidgetItem(f"{duration:.3f} s" if duration else ""))
+            action_item = QTableWidgetItem(row_action_text(status, key in self.variant_by_key))
+            if action_item.text():
+                action_item.setForeground(QColor("#70a7ff"))
+                action_item.setToolTip("Ejecutar solamente esta variante exacta")
+            self.case_table.setItem(row, self.ACTION_COLUMN, action_item)
+            self.case_table.setItem(
+                row,
+                self.DURATION_COLUMN,
+                QTableWidgetItem(f"{duration:.1f} s" if duration else ""),
+            )
             merged = detail
             if evidence:
                 merged = f"{detail} | {evidence}" if detail else evidence
-            self.case_table.setItem(row, 10, QTableWidgetItem(merged))
+            self.case_table.setItem(
+                row, self.DETAIL_COLUMN, QTableWidgetItem(merged)
+            )
+            position = self.variant_position_by_key.get(key, 0)
+            prefix = f"{position:,}/{len(self.visible_variants):,}" if position else "Actual"
+            self.execution_activity.setText(
+                f"{prefix} · {status}: {key} — {merged or 'sin salida todavía'}"
+            )
+            self._refresh_live_counts()
             self.case_table.scrollToItem(status_item)
 
         def _update_progress(self, done: int, total: int) -> None:
             self.progress.setRange(0, max(1, total))
             self.progress.setValue(done)
+            self.progress.setFormat(f"{done:,}/{total:,} pruebas (%p%)")
             self.statusBar().showMessage(f"Ejecutando {done:,}/{total:,}")
+
+        def _refresh_live_counts(self) -> None:
+            """Render exact live state totals without rescanning the complete table."""
+            order = (
+                "LISTO",
+                "COMPILING",
+                "RUNNING",
+                "PASS",
+                "FAIL",
+                "KNOWN_FAILURE",
+                "BLOCKED",
+                "INFRASTRUCTURE_ERROR",
+                "UNEXPECTED_PASS",
+                "CANCELLED",
+            )
+            parts = [
+                f"{name}: {self.live_status_counts[name]:,}"
+                for name in order
+                if self.live_status_counts[name]
+            ]
+            self.execution_counts.setText(" · ".join(parts) if parts else "Sin resultados")
 
         def _suite_finished(self, outcomes: object, cancelled: bool, evidence: str) -> None:
             typed = list(outcomes) if isinstance(outcomes, list) else []
@@ -3576,6 +3879,15 @@ def launch_gui(smoke_only: bool = False) -> int:
             )
             self._populate_failure_table()
             self._render_error_report(typed, cancelled, evidence)
+            completed = len(typed)
+            total = len(self.visible_variants)
+            self.progress.setRange(0, max(1, total))
+            self.progress.setValue(min(completed, total))
+            self.progress.setFormat(f"{completed:,}/{total:,} pruebas — TERMINADO (%p%)")
+            self.execution_activity.setText(
+                "Ejecución cancelada" if cancelled else "Ejecución terminada"
+            )
+            self.case_table.setSortingEnabled(True)
             self.worker = None
             self._set_busy(False)
             self._refresh_history()
@@ -3599,7 +3911,6 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_build_button.setEnabled(not busy)
             self.configure_button.setEnabled(not busy)
             self.build_button.setEnabled(not busy)
-            self.infrastructure_run_button.setEnabled(not busy)
             self.run_button.setEnabled(not busy)
             self.preview_button.setEnabled(not busy)
             self.save_button.setEnabled(not busy)
@@ -3679,7 +3990,7 @@ def launch_gui(smoke_only: bool = False) -> int:
     window = MainWindow()
     if smoke_only:
         expected_buttons = {
-            "infrastructure_run_button": "Ejecutar pruebas",
+            "run_button": "Ejecutar pruebas",
             "failure_retry_button": "Reejecutar fallos activos",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
             "failure_enable_button": "Reactivar seleccionados",
@@ -3692,6 +4003,23 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
         if window.result_tabs.tabText(window.failure_tab_index) != "Fallos exactos (0)":
             raise RuntimeError("GUI smoke missing the exact-failure result tab")
+        if window.tabs.tabText(1) != "Pruebas":
+            raise RuntimeError("GUI smoke missing the primary test-progress tab")
+        headers = [
+            window.case_table.horizontalHeaderItem(index).text()
+            for index in range(window.case_table.columnCount())
+        ]
+        if (
+            "Progreso" not in headers
+            or "Estado" not in headers
+            or "Acción" not in headers
+            or "Duración" not in headers
+        ):
+            raise RuntimeError("GUI smoke missing per-row progress columns")
+        if window.case_table.contextMenuPolicy() != Qt.ContextMenuPolicy.CustomContextMenu:
+            raise RuntimeError("GUI smoke missing exact-row context actions")
+        if window.execution_activity is None or window.execution_counts is None:
+            raise RuntimeError("GUI smoke missing live execution summaries")
         window.close()
         return 0
     window.show()

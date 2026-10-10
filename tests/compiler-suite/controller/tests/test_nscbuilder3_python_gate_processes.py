@@ -72,7 +72,11 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
     def test_separate_capture_honours_active_timeout(
         self, popen: object, _monotonic: object
     ) -> None:
-        controller = builder.ProcessController(lambda _line: None)
+        activity: list[tuple[float, str]] = []
+        controller = builder.ProcessController(
+            lambda _line: None,
+            lambda *value: activity.append(value),
+        )
         process = RunningDualProcess()
         popen.return_value = process
 
@@ -87,6 +91,7 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 130)
         self.assertIn("timed out", completed.stderr)
         self.assertEqual(controller.last_termination_reason, "timeout")
+        self.assertEqual(activity, [(2.0, "")])
 
     @patch.object(builder.subprocess, "Popen")
     def test_separate_capture_honours_active_cancellation(self, popen: object) -> None:

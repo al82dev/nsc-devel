@@ -1246,3 +1246,12 @@ El contrato estatico pasa `3/3`, `git diff --check` pasa y los seis archivos
 protegidos conservan sus hashes. La compilacion y corrida funcional quedan
 pendientes del usuario. La tarea permanece activa; no se compilo ni ejecuto
 producto, no se ejecuto baseline y no se toco `C:`.
+
+Validacion 139 concentra la operacion en `Pruebas` y hace observable cada
+variante exacta, incluidos los casos unitarios: progreso, estado, duracion,
+ultima actividad y accion por fila. `Ejecutar` o `Volver a correr`, tanto en la
+columna visible como en el menu contextual, lanza solamente
+`caso|build|optimizacion`; los pendientes y filtrados no ofrecen ejecucion. Los
+contratos dirigidos pasan `24/24`, el smoke de GUI pasa y `git diff --check`
+pasa. La validacion funcional queda pendiente del usuario; no se compilo ni
+ejecuto producto, no se ejecuto baseline y no se toco `C:`.

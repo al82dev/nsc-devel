@@ -98,6 +98,30 @@ class Builder3RetryTests(unittest.TestCase):
                 (self.visible[1], self.visible[1]), set()
             )
 
+    def test_row_progress_identifies_ready_active_and_terminal_states(self) -> None:
+        self.assertEqual(builder.row_progress_text("LISTO"), "0%")
+        self.assertEqual(builder.row_progress_text("RUNNING"), "EN CURSO")
+        self.assertEqual(builder.row_progress_text("COMPILING"), "EN CURSO")
+        self.assertEqual(builder.row_progress_text("PASS"), "100%")
+        self.assertEqual(builder.row_progress_text("FAIL"), "100%")
+
+    def test_row_progress_keeps_nonexecuted_rows_explicit(self) -> None:
+        self.assertEqual(builder.row_progress_text("PENDIENTE"), "NO EJECUTABLE")
+        self.assertEqual(builder.row_progress_text("FILTRADO"), "FUERA")
+
+    def test_row_progress_does_not_invent_unknown_state(self) -> None:
+        self.assertEqual(builder.row_progress_text("UNKNOWN"), "")
+
+    def test_row_action_exposes_only_exact_executable_variants(self) -> None:
+        self.assertEqual(builder.row_action_text("LISTO", True), "Ejecutar")
+        self.assertEqual(builder.row_action_text("PASS", True), "Volver a correr")
+        self.assertEqual(builder.row_action_text("FAIL", True), "Volver a correr")
+        self.assertEqual(builder.row_action_text("PENDIENTE", False), "")
+
+    def test_row_action_marks_active_variant_without_offering_a_second_run(self) -> None:
+        self.assertEqual(builder.row_action_text("RUNNING", True), "En ejecución")
+        self.assertEqual(builder.row_action_text("COMPILING", True), "En ejecución")
+
 
 if __name__ == "__main__":
     unittest.main()

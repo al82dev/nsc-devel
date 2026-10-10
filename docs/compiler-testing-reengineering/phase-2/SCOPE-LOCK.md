@@ -2130,6 +2130,44 @@ corrida funcional quedan para la compilacion solicitada por el usuario. Los
 seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
 despliega y no se toca la unidad `C:`.
 
+### Enmienda: progreso visible por fila en Builder 3
+
+La tabla de ejecucion ya contiene las variantes seleccionadas, pero la
+actividad observable sigue siendo insuficiente: una operacion larga puede
+parecer una caja negra mientras CMake, NSC o el ejecutable de caso trabajan en
+segundo plano. El usuario requiere ver todo el conjunto junto y el avance de
+cada variante directamente en la GUI, no inferirlo desde la consola.
+
+El presupuesto queda limitado a `nscbuilder3.py`, sus pruebas de contrato de
+GUI/progreso y la evidencia de esta tanda. La tabla se convierte en la vista
+principal de pruebas y conserva una fila por variante exacta; cada fila muestra
+progreso, fase, duracion viva y ultima actividad. La cabecera muestra variante
+actual, conteos por estado y avance global. La salida completa sigue disponible
+como evidencia, pero deja de ser el unico indicador de actividad. La pestaña de
+fallos continúa siendo un filtro del mismo modelo exacto y su reejecucion no
+amplia el conjunto.
+
+La accion `Ejecutar pruebas` vive exclusivamente en la pestaña `Pruebas`.
+`Construccion` termina al producir la infraestructura y no cambia de flujo por
+medio de un acceso duplicado. Los casos unitarios del ejecutable consolidado se
+proyectan individualmente en la misma tabla; no se representan como una sola
+fila opaca del ejecutable host.
+
+Cada variante ejecutable conserva ademas una accion explicita junto a su estado:
+`Ejecutar` antes del primer resultado y `Volver a correr` despues de obtenerlo.
+La misma accion queda disponible mediante el menu contextual de la fila. Ambos
+caminos resuelven exclusivamente la identidad exacta
+`caso|build|optimizacion`; no ejecutan el componente, contrato, ola ni seleccion
+completa. Las filas pendientes o filtradas permanecen visibles pero no ofrecen
+una accion ejecutable.
+
+No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
+controladores funcionales, timeouts, CMake ni bateria historica. No se
+configura, compila o ejecuta producto; la validacion local se limita a sintaxis,
+contratos Python y smoke de construccion de GUI. Los seis archivos protegidos
+permanecen intactos. No se ejecuta baseline, no se despliega y no se toca la
+unidad `C:`.
+
 ### Enmienda: identidad canonica de Sema 087 a 099
 
 La conciliacion exhaustiva posterior a Validacion 132 comparo las `8,054`
