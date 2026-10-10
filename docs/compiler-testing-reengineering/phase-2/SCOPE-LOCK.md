@@ -862,3 +862,20 @@ El presupuesto queda limitado a un parser puro, `BuilderConfig.load`, pruebas
 Python con un archivo sintético bajo `_nscbuilder3` y la evidencia de Validación
 52. No se lee o modifica la configuración real, no se cambia autodetección,
 defaults, guardado, comandos o GUI y no se ejecuta producto.
+
+### Enmienda: una sola autoridad para el manifiesto ejecutable
+
+Builder 3 no debe interpretar por segunda vez `cases.jsonl` con conversiones
+silenciosas. Antes de proyectar el catálogo gráfico debe someter el manifiesto,
+los componentes y los contratos al cargador canónico estricto de
+`tests/compiler-suite/controller/nsc_suite/manifest.py`; un tipo, enumeración,
+propietario, dependencia o esquema inválido debe bloquear la carga con el mismo
+diagnóstico causal que usa el controlador de consola. Tras esa validación se
+prohíbe convertir `case_id`, `executor`, `expected_outcome` u optimizaciones con
+`str(...)`.
+
+El presupuesto queda limitado a un adaptador puro hacia el cargador canónico,
+`CanonicalCatalog.load`, pruebas Python sintéticas y la evidencia de Validación
+53. No se reescribe el validador, no se modifican manifiestos, inventarios,
+selección, comandos, producto ni batería histórica y no se configura, compila o
+ejecuta producto.

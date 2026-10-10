@@ -44,7 +44,8 @@ ALLOCATION_PATH = INVENTORY_ROOT / "suite-case-allocation.csv"
 WAVES_PATH = INVENTORY_ROOT / "implementation-waves.csv"
 COMPONENTS_PATH = INVENTORY_ROOT / "components.csv"
 CONTRACTS_PATH = INVENTORY_ROOT / "contracts.csv"
-RUN_SUITE_PATH = SUITE_ROOT / "controller" / "run_suite.py"
+CONTROLLER_ROOT = SUITE_ROOT / "controller"
+RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TIMEOUT_SECONDS = {
@@ -108,6 +109,31 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"{path}:{number}: expected a JSON object")
             rows.append(value)
     return rows
+
+
+def validate_executable_manifest(
+    manifest_path: Path = MANIFEST_PATH,
+    components_path: Path = COMPONENTS_PATH,
+    contracts_path: Path = CONTRACTS_PATH,
+) -> tuple[Any, ...]:
+    """Validate the GUI catalogue with the controller's canonical schema.
+
+    Builder 3 intentionally delegates this contract instead of maintaining a
+    second permissive parser.  The controller directory is exposed only while
+    importing its public package; no repository or process state is changed.
+    """
+    controller_path = str(CONTROLLER_ROOT)
+    inserted = controller_path not in sys.path
+    if inserted:
+        sys.path.insert(0, controller_path)
+    try:
+        from nsc_suite.manifest import InventoryIndex, load_manifest
+
+        inventory = InventoryIndex.from_csv(components_path, contracts_path)
+        return load_manifest(manifest_path, inventory)
+    finally:
+        if inserted:
+            sys.path.remove(controller_path)
 
 
 def parse_builder_config_payload(value: Any) -> dict[str, Any]:
@@ -436,6 +462,7 @@ class CanonicalCatalog:
     @classmethod
     def load(cls) -> "CanonicalCatalog":
         """Load and validate the complete compiler-only denominator."""
+        validate_executable_manifest()
         waves = read_csv(WAVES_PATH)
         wave_by_component = {row["component"]: int(row["wave"]) for row in waves}
         purpose_by_component = {row["component"]: row["purpose"] for row in waves}
@@ -460,7 +487,7 @@ class CanonicalCatalog:
             disposition = dispositions.get(case_id, "Executable" if executable else "InfrastructurePending")
             expected = ""
             if executable is not None:
-                expected = str(executable.get("expected_outcome", "PASS"))
+                expected = executable.get("expected_outcome", "PASS")
                 if expected == "KNOWN_FAILURE":
                     disposition = "KnownProductDefect"
             cases.append(
@@ -474,7 +501,7 @@ class CanonicalCatalog:
                     profile=assigned["default_profile"],
                     build_modes=split_semicolon(assigned["supported_build_modes"]),
                     optimizations=cls._optimizations(assigned, executable),
-                    executor=str(executable.get("executor", assigned["planned_executor"]))
+                    executor=executable.get("executor", assigned["planned_executor"])
                     if executable is not None
                     else assigned["planned_executor"],
                     disposition=disposition,
@@ -491,7 +518,7 @@ class CanonicalCatalog:
     ) -> tuple[str, ...]:
         """Prefer executable manifest optimizations and normalize N/A to NA."""
         if manifest is not None:
-            values = tuple(str(value) for value in manifest.get("optimizations", []))
+            values = tuple(manifest.get("optimizations", []))
         else:
             values = split_semicolon(allocation["supported_optimizations"])
         normalized = tuple("NA" if value in {"N/A", ""} else value for value in values)
@@ -508,7 +535,7 @@ class CanonicalCatalog:
         wave_components = [row["component"] for row in waves]
         design_ids = [row["case_id"] for row in design]
         allocation_ids = [row["case_id"] for row in allocation]
-        manifest_ids = [str(row["case_id"]) for row in manifest]
+        manifest_ids = [row["case_id"] for row in manifest]
         if not wave_components:
             raise ValueError("implementation waves do not contain compiler components")
         if len(wave_components) != len(set(wave_components)):

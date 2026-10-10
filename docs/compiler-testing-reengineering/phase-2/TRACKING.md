@@ -705,3 +705,9 @@ desconocidos y tipos incorrectos ya no se ignoran ni alcanzan la GUI o los
 comandos; los campos omitidos conservan defaults y la autodetección posterior.
 Las pruebas dirigidas pasan `4/4` y la suite Python completa `165/165` sin leer
 la configuración real.
+
+Validación 53 unificó la autoridad del manifiesto ejecutable. Builder 3 somete
+ahora `cases.jsonl` al mismo cargador estricto que el controlador antes de
+proyectarlo y ya no convierte silenciosamente identificadores, ejecutores,
+resultados esperados u optimizaciones. Las pruebas dirigidas pasan `3/3` y la
+suite Python completa `168/168` sin modificar inventarios ni ejecutar producto.
