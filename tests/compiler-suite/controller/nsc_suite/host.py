@@ -96,8 +96,13 @@ class HostExecutor:
             )
         status_text = payload.get("status")
         failures = payload.get("failures")
-        if status_text not in {"PASS", "FAIL"} or not isinstance(failures, list) or any(
-            not isinstance(item, str) or not item for item in failures
+        duration_us = payload.get("duration_us")
+        if (
+            status_text not in {"PASS", "FAIL"}
+            or type(duration_us) is not int
+            or duration_us < 0
+            or not isinstance(failures, list)
+            or any(not isinstance(item, str) or not item for item in failures)
         ):
             return _infrastructure_error(case.case_id, "host result schema is invalid", duration)
         expected_exit = 0 if status_text == "PASS" else 1

@@ -1471,3 +1471,14 @@ El presupuesto queda limitado al parseo del adaptador host, un constructor
 local no recursivo, una prueba Python sintetica y la evidencia de Validacion
 100. No se cambia el productor, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: duracion valida en el adaptador host canonico
+
+`HostExecutor` debe validar el `duration_us` que forma parte de cada resultado
+emitido por `nsc_component_tests`. Ausencia, coercion booleana, tipo no entero
+o valor negativo no pueden atravesar la frontera como resultado terminal.
+
+El presupuesto queda limitado al esquema del adaptador host, sus fixtures
+Python sinteticos y la evidencia de Validacion 101. La duracion efectiva de
+`CaseResult` sigue midiendose en el proceso controlador. No se cambia ni
+ejecuta productor, producto o bateria historica.

@@ -86,6 +86,7 @@ class HostExecutorTests(unittest.TestCase):
             "case_id": "TB-BAS-001",
             "contract_id": "CB-BAS-001",
             "component": "Host.Basic",
+            "duration_us": 42,
             "status": status,
             "failures": failures,
         }
@@ -170,6 +171,19 @@ class HostExecutorTests(unittest.TestCase):
         result, _ = self.execute(self.valid_payload("FAIL", [""]), exit_code=1)
         self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
         self.assertIn("schema", result.failures[0])
+
+    def test_rejects_missing_coerced_or_negative_host_duration(self) -> None:
+        invalid_values = (None, True, -1, 1.5, "42")
+        for invalid_value in invalid_values:
+            with self.subTest(duration_us=invalid_value):
+                payload = self.valid_payload("PASS", [])
+                if invalid_value is None:
+                    del payload["duration_us"]
+                else:
+                    payload["duration_us"] = invalid_value
+                result, _ = self.execute(payload)
+                self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+                self.assertIn("schema", result.failures[0])
 
     def test_rejects_duplicate_json_keys_without_last_wins(self) -> None:
         result, _ = self.execute_raw(

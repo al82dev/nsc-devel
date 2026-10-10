@@ -978,3 +978,9 @@ Validacion 100 cerro las claves JSON duplicadas del adaptador host canonico.
 Identidad, estado y evidencia exigen definiciones unicas antes de validar el
 resultado terminal. Las pruebas dirigidas pasan `11/11` y la suite Python
 `234/234`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 101 cerro la duracion ignorada del adaptador host canonico.
+`duration_us` exige ahora entero exacto no negativo; ausencia y coerciones no
+pueden acreditar un resultado terminal. Las pruebas dirigidas pasan `12/12` y
+la suite Python `235/235`, sin ejecutar producto. La tarea funcional permanece
+activa.
