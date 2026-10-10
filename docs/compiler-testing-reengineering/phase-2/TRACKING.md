@@ -1072,3 +1072,9 @@ componentes pendientes pasan ahora por el parser canonico. Las pruebas
 dirigidas pasan `17/17`, la suite Python `252/252`, los componentes concretos
 proyectan `294` filas y no queda lectura directa fuera de la frontera comun,
 sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 116 elimino las coerciones de identidad del inventario compartido
+self-host. Manifiestos y clasificaciones exigen ahora cadenas JSON no vacias
+antes de comparar linaje o disposicion. Las pruebas dirigidas pasan `7/7`, la
+suite Python `256/256` y los cuatro catalogos vivos validan sus `32` filas, sin
+ejecutar producto. La tarea funcional permanece activa.

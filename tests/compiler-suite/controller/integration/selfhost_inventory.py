@@ -55,6 +55,16 @@ def required_oracle_exit_code(row: dict[str, object], component: str) -> int:
     return exit_code
 
 
+def required_string_field(
+    row: dict[str, object], field: str, context: str
+) -> str:
+    """Return one exact non-empty JSON string without implicit conversion."""
+    value = row.get(field)
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"{context} {field} must be a non-empty string")
+    return value
+
+
 def json_values_equal_exact(expected: object, actual: object) -> bool:
     """Compare JSON-compatible values by exact type and value without recursion."""
     pending: list[tuple[object, object]] = [(expected, actual)]
@@ -255,9 +265,10 @@ def validate_manifest_cases(
 ) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
     for row in rows:
-        case_id = str(row.get("case_id", ""))
-        if not case_id or case_id in result:
-            raise RuntimeError(f"{inventory.component} manifest has a missing or duplicate case ID")
+        context = f"{inventory.component} manifest"
+        case_id = required_string_field(row, "case_id", context)
+        if case_id in result:
+            raise RuntimeError(f"{inventory.component} manifest has a duplicate case ID")
         required_string_array(
             row, "tags", f"{inventory.component} manifest case {case_id}"
         )
@@ -267,11 +278,14 @@ def validate_manifest_cases(
         allocation_row = inventory.allocation_by_id[case_id]
         if row.get("component") != inventory.component:
             raise RuntimeError(f"{inventory.component} manifest changes the component of {case_id}")
-        if str(row.get("contract_id", "")) != design_row["contract_id"]:
+        contract_id = required_string_field(row, "contract_id", context)
+        layer = required_string_field(row, "layer", context)
+        profile = required_string_field(row, "profile", context)
+        if contract_id != design_row["contract_id"]:
             raise RuntimeError(f"{inventory.component} manifest changes the contract of {case_id}")
-        if str(row.get("layer", "")) != design_row["layer"]:
+        if layer != design_row["layer"]:
             raise RuntimeError(f"{inventory.component} manifest changes the layer of {case_id}")
-        if str(row.get("profile", "")) != allocation_row["default_profile"]:
+        if profile != allocation_row["default_profile"]:
             raise RuntimeError(f"{inventory.component} manifest changes the profile of {case_id}")
         result[case_id] = row
     return result
@@ -284,22 +298,30 @@ def classification_sets(
     result: dict[str, set[str]] = {}
     seen: set[str] = set()
     for row in read_jsonl(path):
-        case_id = str(row.get("case_id", ""))
-        disposition = str(row.get("disposition", ""))
-        if not case_id or not disposition or case_id in seen:
+        context = f"{inventory.component} classification"
+        case_id = required_string_field(row, "case_id", context)
+        disposition = required_string_field(row, "disposition", context)
+        contract_id = required_string_field(row, "contract_id", context)
+        if case_id in seen:
             raise RuntimeError(
-                f"{inventory.component} classifications have a missing or duplicate identity"
+                f"{inventory.component} classifications have a duplicate identity"
             )
         design_row = inventory.design_by_id.get(case_id)
         if design_row is None:
             raise RuntimeError(
                 f"{inventory.component} classifications contain foreign case {case_id}"
             )
-        if str(row.get("contract_id", "")) != design_row["contract_id"]:
+        if contract_id != design_row["contract_id"]:
             raise RuntimeError(
                 f"{inventory.component} classification changes the contract of {case_id}"
             )
         component = row.get("component")
+        if component is not None and (
+            not isinstance(component, str) or not component
+        ):
+            raise RuntimeError(
+                f"{inventory.component} classification component must be a non-empty string"
+            )
         if component is not None and component != inventory.component:
             raise RuntimeError(
                 f"{inventory.component} classification changes the component of {case_id}"

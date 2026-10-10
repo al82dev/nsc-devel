@@ -1644,3 +1644,15 @@ El presupuesto queda limitado a esas tres sustituciones, ampliar el guard de
 cableado, validar todos los componentes afectados y documentar la rectificacion
 en Validacion 115. No se cambian manifiesto, inventarios, casos, oraculos,
 producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: identidades exactas en inventarios self-host
+
+`validate_manifest_cases` y `classification_sets` no pueden convertir con
+`str(...)` identidades, contrato, capa, perfil ni disposicion. Deben rechazar
+tipos JSON distintos de cadena y cadenas vacias en la frontera comun, antes de
+comparar linaje o particiones.
+
+El presupuesto queda limitado a un validador textual compartido, sustituir las
+coerciones de esas dos funciones, pruebas sinteticas y la evidencia de
+Validacion 116. No se cambian manifiestos, clasificaciones, inventarios, casos,
+producto ni bateria historica y no se ejecuta producto.
