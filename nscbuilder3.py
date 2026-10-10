@@ -1598,6 +1598,30 @@ def parse_selfhost_oracle(value: Any) -> tuple[int, dict[str, Any] | None]:
     return exit_code, expected_json
 
 
+def equal_json_exact(expected: Any, actual: Any) -> bool:
+    """Compare JSON values iteratively without Python scalar coercions."""
+    pending: list[tuple[Any, Any]] = [(expected, actual)]
+    while pending:
+        expected_value, actual_value = pending.pop()
+        if type(expected_value) is not type(actual_value):
+            return False
+        if isinstance(expected_value, dict):
+            if expected_value.keys() != actual_value.keys():
+                return False
+            pending.extend(
+                (expected_value[key], actual_value[key]) for key in expected_value
+            )
+            continue
+        if isinstance(expected_value, list):
+            if len(expected_value) != len(actual_value):
+                return False
+            pending.extend(zip(expected_value, actual_value, strict=True))
+            continue
+        if expected_value != actual_value:
+            return False
+    return True
+
+
 def parse_selfhost_inputs(value: Any, suite_root: Path) -> tuple[str, str, bool]:
     """Validate the closed producer and invocation contract of self-host cases."""
     if not isinstance(value, dict):
@@ -2004,7 +2028,10 @@ class ExecutionEngine:
         detail = "" if passed else f"exit code {code}; expected {expected}"
         if passed and expected_json is not None:
             try:
-                passed = json.loads(captured.strip()) == expected_json
+                passed = equal_json_exact(
+                    expected_json,
+                    json.loads(captured.strip()),
+                )
             except json.JSONDecodeError as error:
                 passed = False
                 detail = f"invalid JSON output: {error.msg}"

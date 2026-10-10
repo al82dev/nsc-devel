@@ -1279,3 +1279,15 @@ mientras publica estados contradictorios.
 El presupuesto queda limitado al gate de infraestructura, su prueba Python y
 la evidencia de Validacion 82. No se cambia la emision de eventos, el runner,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: JSON self-host exacto en Builder 3
+
+La ruta monolitica `_run_selfhost` debe comparar el JSON observado por
+estructura, tipo y valor mediante una lista de trabajo iterativa. La igualdad
+permisiva de Python no puede hacer que `true` acredite `1` ni que un entero
+acredite un flotante.
+
+El presupuesto queda limitado a un comparador local no recursivo, su uso en
+`_run_selfhost`, pruebas Python sinteticas y la evidencia de Validacion 83. No
+se cambian oraculos, fixtures, producto ni bateria historica y no se configura,
+compila o ejecuta producto.

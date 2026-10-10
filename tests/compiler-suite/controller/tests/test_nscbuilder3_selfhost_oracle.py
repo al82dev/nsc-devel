@@ -59,6 +59,31 @@ class Builder3SelfHostOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown fields"):
             builder.parse_selfhost_oracle({"exit_code": 0, "fallback": True})
 
+    def test_json_comparison_is_iterative_and_type_exact(self) -> None:
+        self.assertTrue(
+            builder.equal_json_exact(
+                {"values": [True, 1, 1.0, {"status": "ok"}]},
+                {"values": [True, 1, 1.0, {"status": "ok"}]},
+            )
+        )
+        self.assertFalse(builder.equal_json_exact({"value": True}, {"value": 1}))
+        self.assertFalse(builder.equal_json_exact({"value": 1}, {"value": 1.0}))
+
+        expected: list[object] = []
+        actual: list[object] = []
+        expected_cursor = expected
+        actual_cursor = actual
+        for _ in range(5000):
+            expected_next: list[object] = []
+            actual_next: list[object] = []
+            expected_cursor.append(expected_next)
+            actual_cursor.append(actual_next)
+            expected_cursor = expected_next
+            actual_cursor = actual_next
+        expected_cursor.append("end")
+        actual_cursor.append("changed")
+        self.assertFalse(builder.equal_json_exact(expected, actual))
+
 
 if __name__ == "__main__":
     unittest.main()
