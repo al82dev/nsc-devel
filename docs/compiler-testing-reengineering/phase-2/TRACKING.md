@@ -643,3 +643,9 @@ cancelación previa, cancelación activa y timeout pasan ahora por el callback q
 alimenta `full.log`, además de conservarse en el resultado de `run`. Las pruebas
 dirigidas pasan `6/6` y la suite Python completa `125/125`, usando únicamente
 dobles.
+
+Validación 43 demostró el aislamiento de artefactos por modo sin cambio
+funcional. Debug y Release usan árboles distintos tanto para NSC como para
+`nsc_component_tests`; la ausencia del host conserva una ruta de preflight en
+el modo pedido y no activa fallback cruzado. Las pruebas dirigidas pasan `4/4`
+y la suite Python completa `129/129` sin ejecutar binarios.

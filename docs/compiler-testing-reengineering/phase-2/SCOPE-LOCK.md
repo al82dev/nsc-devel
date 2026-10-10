@@ -725,3 +725,17 @@ El presupuesto queda limitado a `ProcessController.run`, pruebas Python con un
 doble de `Popen` y la evidencia de Validación 42. No se cambia la terminación,
 los códigos, comandos, estados, casos, producto o GUI; no se crea ningún proceso
 real ni se configura, compila o ejecuta producto.
+
+### Enmienda: aislamiento de artefactos host por modo
+
+La ejecución consolidada debe resolver `nsc_component_tests.exe` exclusivamente
+dentro del árbol correspondiente al modo solicitado. Debug no puede consumir un
+artefacto Release ni Release uno Debug. Si no existe ninguna disposición CMake
+soportada en ese árbol, la ruta esperada se conserva para el error de preflight,
+sin fallback a otro modo.
+
+El presupuesto queda limitado a pruebas Python de `effective_build_dir`,
+`host_executable` y `compiler_build_dir`, más la evidencia de Validación 43.
+`nscbuilder3.py` sólo podrá modificarse si el cotejo demuestra una discrepancia.
+Los artefactos sintéticos se crean bajo `A:\nsc-devel\_nscbuilder3`; no se abre
+la GUI ni se configura, compila o ejecuta producto.
