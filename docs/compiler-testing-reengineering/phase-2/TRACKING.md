@@ -814,3 +814,9 @@ con cadenas vacias se clasifica ahora como `INFRASTRUCTURE_ERROR` antes de
 construir `CaseResult`, sin propagar excepciones. Las pruebas dirigidas pasan
 `9/9` y la suite Python completa `211/211`, sin ejecutar NativeSharp. La tarea
 funcional permanece activa.
+
+Validacion 71 cerro el tipo de retorno del executor. `None`, cadenas u otros
+objetos se materializan ahora como `INFRASTRUCTURE_ERROR`; el ledger y los
+eventos llegan a cierre terminal en vez de truncarse por `AttributeError`. Las
+pruebas dirigidas pasan `6/6` y la suite Python completa `212/212`, sin ejecutar
+producto. La tarea funcional permanece activa.

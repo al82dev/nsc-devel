@@ -1129,3 +1129,15 @@ El presupuesto queda limitado a la validacion de `failures` en `HostExecutor`,
 una prueba Python sintetica y la evidencia de Validacion 70. No se cambian
 binarios host, comandos, estados, producto ni bateria historica y no se
 configura o compila producto.
+
+### Enmienda: retorno de executor con tipo causal
+
+`SuiteRunner._execute` debe verificar que el executor retorne un `CaseResult`
+antes de leer su identidad. `None`, cadenas u otros objetos deben materializar
+un `INFRASTRUCTURE_ERROR` para el caso y permitir que el ledger y el flujo de
+eventos cierren; no pueden escapar como `AttributeError` y truncar la corrida.
+
+El presupuesto queda limitado a la frontera de retorno en `_execute`, una
+prueba Python sintetica y la evidencia de Validacion 71. No se cambian
+executors, orden, dependencias, estados, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

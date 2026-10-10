@@ -100,6 +100,14 @@ class SuiteRunner:
                 CaseStatus.INFRASTRUCTURE_ERROR,
                 failures=(f"executor raised {type(error).__name__}: {error}",),
             )
+        if not isinstance(result, CaseResult):
+            return CaseResult(
+                case.case_id,
+                CaseStatus.INFRASTRUCTURE_ERROR,
+                failures=(
+                    f"executor returned {type(result).__name__}; expected CaseResult",
+                ),
+            )
         if result.case_id != case.case_id:
             return CaseResult(
                 case.case_id,

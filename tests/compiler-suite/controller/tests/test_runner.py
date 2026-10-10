@@ -113,6 +113,16 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(results[0].status, CaseStatus.INFRASTRUCTURE_ERROR)
         self.assertIn("synthetic crash", results[0].failures[0])
 
+    def test_invalid_executor_return_is_materialized_without_truncating_run(self) -> None:
+        def executor(item, workspace):
+            return None
+
+        results, events = self.run_cases((case("TB-BAS-001"),), executor)
+        self.assertEqual(results[0].status, CaseStatus.INFRASTRUCTURE_ERROR)
+        self.assertIn("expected CaseResult", results[0].failures[0])
+        self.assertEqual(events[-1]["kind"], "RUN_FINISHED")
+        self.assertEqual(events[-1]["payload"]["completed"], 1)
+
     def test_cancellation_finishes_every_selected_case(self) -> None:
         token = CancellationToken()
 
