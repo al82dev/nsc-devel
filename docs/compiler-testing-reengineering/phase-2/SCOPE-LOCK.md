@@ -1656,3 +1656,15 @@ El presupuesto queda limitado a un validador textual compartido, sustituir las
 coerciones de esas dos funciones, pruebas sinteticas y la evidencia de
 Validacion 116. No se cambian manifiestos, clasificaciones, inventarios, casos,
 producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: campos exactos en catalogos de sistema
+
+BuildSystem y Packaging no pueden convertir con `str(...)` rangos, arreglos de
+casos, disposiciones, contratos ni claves de contradiccion provenientes de
+JSON. Los campos consumidos deben validarse como cadenas no vacias o arreglos
+de cadenas antes de derivar particiones y conteos.
+
+El presupuesto queda limitado a un validador textual comun, sustituir las
+coerciones JSON de ambos gates, pruebas sinteticas contra sus validadores y la
+evidencia de Validacion 117. No se cambian catalogos, manifiestos, inventarios,
+casos, producto ni bateria historica y no se ejecuta producto.

@@ -18,6 +18,7 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    required_string_field,
     required_string_array,
     unique_string_index,
 )
@@ -243,6 +244,21 @@ class ComponentGateSupportTests(unittest.TestCase):
                 required_string_array({"tags": value}, "tags", "Synthetic")
         with self.assertRaisesRegex(RuntimeError, "omits tags"):
             required_string_array({}, "tags", "Synthetic")
+
+    def test_string_field_rejects_implicit_coercions(self) -> None:
+        self.assertEqual(
+            required_string_field(
+                {"disposition": "Executable"}, "disposition", "Synthetic"
+            ),
+            "Executable",
+        )
+        for value in (1, True, 1.0, None, ""):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                RuntimeError, "must be a non-empty string"
+            ):
+                required_string_field(
+                    {"disposition": value}, "disposition", "Synthetic"
+                )
 
 
 if __name__ == "__main__":

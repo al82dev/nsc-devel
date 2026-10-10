@@ -15,6 +15,7 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    required_string_field,
     required_string_array,
     unique_string_index,
 )
@@ -94,12 +95,12 @@ def validate_lineage(
     profile_mismatches: set[str] = set()
     for case_id, design_row in design_by_id.items():
         allocation_row = allocation_by_id[case_id]
-        contract_id = str(design_row["contract_id"])
+        contract_id = design_row["contract_id"]
         if contract_id not in contracts_by_id:
             raise RuntimeError(f"Packaging case {case_id} references unknown contract {contract_id}")
-        if str(allocation_row["contract_id"]) != contract_id:
+        if allocation_row["contract_id"] != contract_id:
             raise RuntimeError(f"Packaging allocation changes the contract of {case_id}")
-        if str(design_row.get("frequency", "")) != str(allocation_row.get("default_profile", "")):
+        if design_row.get("frequency", "") != allocation_row.get("default_profile", ""):
             profile_mismatches.add(case_id)
     for case_id, manifest_row in manifest_by_id.items():
         required_string_array(
@@ -107,7 +108,10 @@ def validate_lineage(
         )
         if case_id not in design_by_id:
             raise RuntimeError(f"Packaging manifest contains foreign case {case_id}")
-        if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):
+        manifest_contract = required_string_field(
+            manifest_row, "contract_id", f"Packaging manifest case {case_id}"
+        )
+        if manifest_contract != design_by_id[case_id]["contract_id"]:
             raise RuntimeError(f"Packaging manifest changes the contract of {case_id}")
     return design_by_id, contracts_by_id, frozenset(profile_mismatches)
 
@@ -134,21 +138,25 @@ def validate_classifications(
     catalog_cases: set[str] = set()
     executable_catalog_cases: set[str] = set()
     infrastructure_catalog_cases: set[str] = set()
+    catalog_case_ids: dict[str, tuple[str, ...]] = {}
     for contract_id, row in catalog_by_id.items():
-        raw_case_ids = row.get("case_ids")
-        if not isinstance(raw_case_ids, list) or not raw_case_ids:
+        contract_cases_ordered = required_string_array(
+            row, "case_ids", f"Packaging contract {contract_id}"
+        )
+        if not contract_cases_ordered:
             raise RuntimeError(f"Packaging catalogue contract {contract_id} has no case IDs")
-        contract_cases = {str(case_id) for case_id in raw_case_ids}
-        if len(contract_cases) != len(raw_case_ids):
-            raise RuntimeError(f"Packaging catalogue contract {contract_id} repeats case IDs")
+        catalog_case_ids[contract_id] = contract_cases_ordered
+        contract_cases = set(contract_cases_ordered)
         if catalog_cases & contract_cases:
             raise RuntimeError(f"Packaging catalogue overlaps at contract {contract_id}")
         for case_id in contract_cases:
             design_row = design_by_id.get(case_id)
-            if design_row is None or str(design_row["contract_id"]) != contract_id:
+            if design_row is None or design_row["contract_id"] != contract_id:
                 raise RuntimeError(f"Packaging catalogue misclassifies {case_id}")
         catalog_cases.update(contract_cases)
-        disposition = str(row.get("disposition", ""))
+        disposition = required_string_field(
+            row, "disposition", f"Packaging contract {contract_id}"
+        )
         if disposition == "Executable":
             executable_catalog_cases.update(contract_cases)
         elif disposition == "InfrastructurePending":
@@ -161,15 +169,21 @@ def validate_classifications(
         design_row = design_by_id.get(case_id)
         if design_row is None:
             raise RuntimeError(f"Packaging classifications contain foreign case {case_id}")
-        if str(row.get("contract_id", "")) != str(design_row["contract_id"]):
+        contract_id = required_string_field(
+            row, "contract_id", f"Packaging classification {case_id}"
+        )
+        required_string_field(
+            row, "disposition", f"Packaging classification {case_id}"
+        )
+        if contract_id != design_row["contract_id"]:
             raise RuntimeError(f"Packaging classification changes the contract of {case_id}")
     infrastructure = {
-        str(row["case_id"])
+        row["case_id"]
         for row in classified
         if row["disposition"] == "InfrastructurePending"
     }
     defects = {
-        str(row["case_id"])
+        row["case_id"]
         for row in classified
         if row["disposition"] == "KnownProductDefect"
     }
@@ -177,15 +191,18 @@ def validate_classifications(
         raise RuntimeError("Packaging infrastructure classifications differ from the contract catalogue")
     contradiction_keys: set[tuple[str, str]] = set()
     for row in contradictions:
-        key = (str(row.get("scope", "")), str(row.get("field", "")))
-        if not all(key) or key in contradiction_keys:
+        key = (
+            required_string_field(row, "scope", "Packaging contradiction"),
+            required_string_field(row, "field", "Packaging contradiction"),
+        )
+        if key in contradiction_keys:
             raise RuntimeError("Packaging contradictions contain an invalid or duplicate key")
         if key != ("Packaging", "default_profile"):
             raise RuntimeError(f"unsupported Packaging contradiction {key!r}")
         contradiction_keys.add(key)
     if bool(profile_mismatches) != bool(contradictions):
         raise RuntimeError("Packaging profile contradiction does not match the live inventories")
-    executable = {str(row["case_id"]) for row in cases}
+    executable = {row["case_id"] for row in cases}
     if executable != executable_catalog_cases:
         raise RuntimeError("Packaging manifest differs from the executable contract catalogue")
     if executable | infrastructure != set(design_by_id) or executable & infrastructure:
@@ -195,7 +212,7 @@ def validate_classifications(
     if set(classified_by_id) != infrastructure | defects:
         raise RuntimeError("Packaging classifications contain an unsupported disposition")
     for contract_id, row in catalog_by_id.items():
-        contract_cases = {str(case_id) for case_id in row["case_ids"]}
+        contract_cases = set(catalog_case_ids[contract_id])
         contract_defects = len(contract_cases & defects)
         contract_infrastructure = len(contract_cases & infrastructure)
         contract_required = len(contract_cases & executable) - contract_defects
@@ -212,7 +229,7 @@ def validate_classifications(
         if declared_counts != derived_counts:
             raise RuntimeError(f"Packaging catalogue summary differs at {contract_id}")
     tagged = {
-        str(row["case_id"])
+        row["case_id"]
         for row in cases
         if "known-product-defect" in row.get("tags", [])
     }

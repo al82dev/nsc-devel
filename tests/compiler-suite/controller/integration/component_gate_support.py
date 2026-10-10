@@ -128,6 +128,16 @@ def required_nonnegative_integer(
     return value
 
 
+def required_string_field(
+    payload: dict[str, object], field: str, source: str
+) -> str:
+    """Read one exact non-empty JSON string without implicit conversion."""
+    value = payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"{source} field {field} must be a non-empty string")
+    return value
+
+
 def required_string_array(
     payload: dict[str, object], field: str, source: str
 ) -> tuple[str, ...]:

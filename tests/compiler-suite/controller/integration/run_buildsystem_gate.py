@@ -14,6 +14,7 @@ from component_gate_support import (
     read_csv,
     read_jsonl,
     required_manifest_integer,
+    required_string_field,
     required_string_array,
     unique_string_index,
 )
@@ -42,7 +43,9 @@ def write_text(path: Path, value: str) -> None:
 
 
 def expand_case_range(value: object) -> tuple[str, ...]:
-    text = str(value)
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("BuildSystem case range must be a non-empty string")
+    text = value
     parts = text.split("..")
     if len(parts) != 2:
         raise RuntimeError(f"invalid BuildSystem case range {text!r}")
@@ -113,10 +116,10 @@ def validate_lineage(
         raise RuntimeError("BuildSystem design and allocation case IDs differ")
     for case_id, design_row in design_by_id.items():
         allocation_row = allocation_by_id[case_id]
-        contract_id = str(design_row["contract_id"])
+        contract_id = design_row["contract_id"]
         if contract_id not in contracts_by_id:
             raise RuntimeError(f"BuildSystem case {case_id} references unknown contract {contract_id}")
-        if str(allocation_row["contract_id"]) != contract_id:
+        if allocation_row["contract_id"] != contract_id:
             raise RuntimeError(f"BuildSystem allocation changes the contract of {case_id}")
     for case_id, manifest_row in manifest_by_id.items():
         required_string_array(
@@ -124,7 +127,10 @@ def validate_lineage(
         )
         if case_id not in design_by_id:
             raise RuntimeError(f"BuildSystem manifest contains foreign case {case_id}")
-        if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):
+        manifest_contract = required_string_field(
+            manifest_row, "contract_id", f"BuildSystem manifest case {case_id}"
+        )
+        if manifest_contract != design_by_id[case_id]["contract_id"]:
             raise RuntimeError(f"BuildSystem manifest changes the contract of {case_id}")
     return design_by_id, contracts_by_id
 
@@ -155,10 +161,12 @@ def validate_classifications(
             raise RuntimeError(f"BuildSystem catalogue overlaps at contract {contract_id}")
         for case_id in contract_cases:
             design_row = design_by_id.get(case_id)
-            if design_row is None or str(design_row["contract_id"]) != contract_id:
+            if design_row is None or design_row["contract_id"] != contract_id:
                 raise RuntimeError(f"BuildSystem catalogue misclassifies {case_id}")
         catalog_cases.update(contract_cases)
-        disposition = str(row.get("disposition", ""))
+        disposition = required_string_field(
+            row, "disposition", f"BuildSystem contract {contract_id}"
+        )
         if disposition == "Executable":
             executable_catalog_cases.update(contract_cases)
         elif disposition == "HistoricalDelegated":
@@ -171,17 +179,23 @@ def validate_classifications(
         design_row = design_by_id.get(case_id)
         if design_row is None:
             raise RuntimeError(f"BuildSystem classifications contain foreign case {case_id}")
-        if str(row.get("contract_id", "")) != str(design_row["contract_id"]):
+        contract_id = required_string_field(
+            row, "contract_id", f"BuildSystem classification {case_id}"
+        )
+        required_string_field(
+            row, "disposition", f"BuildSystem classification {case_id}"
+        )
+        if contract_id != design_row["contract_id"]:
             raise RuntimeError(f"BuildSystem classification changes the contract of {case_id}")
     delegated = {
-        str(r["case_id"]) for r in classified if r["disposition"] == "HistoricalDelegated"
+        r["case_id"] for r in classified if r["disposition"] == "HistoricalDelegated"
     }
     defects = {
-        str(r["case_id"]) for r in classified if r["disposition"] == "KnownProductDefect"
+        r["case_id"] for r in classified if r["disposition"] == "KnownProductDefect"
     }
     if delegated != delegated_catalog_cases:
         raise RuntimeError("BuildSystem delegated classifications differ from the contract catalogue")
-    executable = {str(r["case_id"]) for r in cases}
+    executable = {r["case_id"] for r in cases}
     if executable != executable_catalog_cases:
         raise RuntimeError("BuildSystem manifest differs from the executable contract catalogue")
     if executable | delegated != set(design_by_id) or executable & delegated:
@@ -191,7 +205,7 @@ def validate_classifications(
     if set(classified_by_id) != delegated | defects:
         raise RuntimeError("BuildSystem classifications contain an unsupported disposition")
     tagged = {
-        str(r["case_id"]) for r in cases if "known-product-defect" in r.get("tags", [])
+        r["case_id"] for r in cases if "known-product-defect" in r.get("tags", [])
     }
     if tagged != defects:
         raise RuntimeError("BuildSystem executable KPD tags changed")

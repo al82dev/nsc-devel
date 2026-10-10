@@ -1078,3 +1078,9 @@ self-host. Manifiestos y clasificaciones exigen ahora cadenas JSON no vacias
 antes de comparar linaje o disposicion. Las pruebas dirigidas pasan `7/7`, la
 suite Python `256/256` y los cuatro catalogos vivos validan sus `32` filas, sin
 ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 117 elimino las coerciones JSON de los catalogos BuildSystem y
+Packaging. Rangos, arreglos de casos, disposiciones, contratos y claves de
+contradiccion exigen ahora tipos exactos. Las pruebas dirigidas pasan `17/17`,
+la suite Python `260/260` y los cinco catalogos vivos validan sus `512` filas,
+sin ejecutar producto. La tarea funcional permanece activa.
