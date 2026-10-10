@@ -1413,3 +1413,10 @@ Dominance marcados explicitamente como `FAIL` contractuales, nunca como error
 de infraestructura ni como PASS. No se cambio producto ni se redujo cobertura.
 Evidencia:
 `TANDA-VALIDACION-156-CIERRE-RESIDUOS-CORRIDA-INTEGRAL.md`.
+
+Validacion 157 corrige las dos causas de control detectadas al ejecutar los
+`314` casos del controlador despues del commit de la validacion 156: registro
+temprano de modulos cargados por ruta para permitir introspeccion de
+`dataclasses`, y lectura segura del manifiesto opcional en dobles sinteticos.
+No modifica producto ni expectativas. Evidencia:
+`TANDA-VALIDACION-157-CIERRE-CONTROLADOR.md`.

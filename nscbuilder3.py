@@ -2434,7 +2434,7 @@ class ExecutionEngine:
             status = "CANCELLED"
             detail = "cancelled by user"
         elif self.process.last_termination_reason == "timeout":
-            oracle = (variant.case.manifest or {}).get("oracle")
+            oracle = (getattr(variant.case, "manifest", None) or {}).get("oracle")
             contractual_timeout = (
                 variant.case.executor == "nsc_component_tests"
                 and isinstance(oracle, dict)
@@ -2823,11 +2823,21 @@ class ExecutionEngine:
         integration_root = str(path.parent)
         if integration_root not in sys.path:
             sys.path.insert(0, integration_root)
-        spec = importlib.util.spec_from_file_location(f"nscbuilder3_{path.stem}", path)
+        module_name = f"nscbuilder3_{path.stem}"
+        spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
             raise RuntimeError(f"cannot load gate: {path}")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        # ``dataclasses`` and other runtime introspection resolve annotations
+        # through ``sys.modules`` while the module body is executing.  A module
+        # loaded directly from a file therefore must be published before
+        # ``exec_module`` and removed again if initialization fails.
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
         self.module_cache[name] = module
         return module
 
