@@ -1208,3 +1208,15 @@ El presupuesto queda limitado a los `__post_init__` de ambas dataclasses,
 pruebas Python sinteticas y la evidencia de Validacion 76. No se cambian hashes,
 rutas, contenido de reportes, producto ni bateria historica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: protocolo minimo de identidad obligatorio
+
+`CompilerIdentityExecutor` debe validar que toda respuesta `NSCOMPILER 1`
+contenga valores no vacios para `compiler_version`, `compiler_release`,
+`language`, `stage` y `build` antes de evaluar cualquier operacion. La prueba
+de identidades distintas no puede acreditar como diferencia la ausencia de un
+campo en uno de los compiladores.
+
+El presupuesto queda limitado a la frontera `_identity`, una prueba Python
+sintetica y la evidencia de Validacion 77. No se cambian comandos, oraculos,
+producto ni bateria historica y no se configura, compila o ejecuta producto.

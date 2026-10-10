@@ -21,6 +21,13 @@ SEMVER = re.compile(
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
 )
+IDENTITY_FIELDS = (
+    "compiler_version",
+    "compiler_release",
+    "language",
+    "stage",
+    "build",
+)
 
 
 class ProductContractError(RuntimeError):
@@ -176,7 +183,7 @@ class CompilerIdentityExecutor:
         stem: str,
         case: CaseManifest,
     ) -> dict[str, str]:
-        return self._key_values(
+        values = self._key_values(
             self._invoke(
                 command,
                 ("--print-compiler-identity",),
@@ -186,6 +193,16 @@ class CompilerIdentityExecutor:
             ),
             "NSCOMPILER 1",
         )
+        missing = tuple(
+            field
+            for field in IDENTITY_FIELDS
+            if field not in values or not values[field].strip()
+        )
+        if missing:
+            raise ProductContractError(
+                "compiler identity lacks non-empty fields: " + ", ".join(missing)
+            )
+        return values
 
     def _invoke(
         self,

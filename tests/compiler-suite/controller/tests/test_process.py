@@ -151,6 +151,18 @@ class CompilerIdentityExecutorTests(unittest.TestCase):
         self.assertIs(result.status, CaseStatus.FAIL)
         self.assertIn("protocol header", result.failures[0])
 
+    def test_distinct_identities_reject_missing_primary_fields(self) -> None:
+        self.primary.write_text(
+            "print('NSCOMPILER 1')\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        result, _ = self.execute("distinct-build-identities", 33)
+        self.assertIs(result.status, CaseStatus.FAIL)
+        self.assertIn("compiler identity lacks non-empty fields", result.failures[0])
+        self.assertIn("compiler_version", result.failures[0])
+        self.assertIn("build", result.failures[0])
+
     def test_router_never_falls_back_to_another_executor(self) -> None:
         test_case = case("semantic-version", "TB-BAS-032")
         workspace = WorkspaceManager(self.root).prepare("run-032", test_case.case_id)
