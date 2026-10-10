@@ -5,9 +5,9 @@
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
 | 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 1,191 | 333 |
-| 3 | IR y optimización | EN CURSO | 1,784 | 776 | 0 |
+| 3 | IR y optimización | EN CURSO | 1,784 | 1,784 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
-| 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
+| 5 | Backend, ABI, runtime y enlace | EN CURSO | 1,600 | 0 | 0 |
 | 6 | Producto, driver y servicio | PENDIENTE | 1,112 | 0 | 0 |
 | 7 | Compilador self-host | PENDIENTE | 1,027 | 0 | 0 |
 | 8 | Infraestructura y oráculos self-host | PENDIENTE | 726 | 0 | 0 |
@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Corte de implementación — Sema, HIR, CFG y SSA materializados | 1,967 impl.; 333 verif. en olas 2–3 | integrar ola 3; materializar Dominance, MIR y Passes |
+| Corte de implementación — Ola 3 materializada íntegramente | 2,975 impl.; 333 verif. en olas 2–3 | materializar Compilation, Frontend y LLVM; integrar olas 3–5 |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
@@ -70,13 +70,32 @@ Estado actual de `Host.CFG`: `208/208` casos están materializados para los
 `26/26` contratos `CF-CFG-001..026` en cinco archivos nuevos. Su integración
 central y validación permanecen pendientes.
 
+Estado actual de `Host.Dominance`: `256/256` casos están materializados para
+los `32/32` contratos `CF-DOM-001..032` en cinco archivos nuevos. Los casos de
+defecto real o infraestructura especial permanecen visibles en los registros;
+la integración central y la validación permanecen pendientes.
+
+Estado actual de `Host.MIR`: `304/304` casos están materializados para los
+`38/38` contratos `CF-MIR-001..038` en cinco archivos nuevos. Los `38` casos
+`NIGHTLY` conservan su perfil canónico; la integración central y la validación
+permanecen pendientes.
+
+Estado actual de `Host.Passes`: `448/448` casos están materializados para los
+`56/56` contratos `CF-PAS-001..056` en ocho archivos nuevos. Conserva `392`
+casos `PR`, `56` casos `NIGHTLY` y seis limitaciones explícitas que requieren
+instrumentación de lifetime o expansión exacta de corpus. La integración
+central y la validación permanecen pendientes.
+
 Trabajo activo en paralelo, exclusivamente de implementación:
 
 | Componente | Rango | Estado de materialización |
 |---|---|---|
-| Host.Dominance | `TF-DOM-001..256` | EN CURSO |
-| Host.MIR | `TF-MIR-001..304` | EN CURSO |
-| Host.Passes | `TF-PASS-001..448` | EN CURSO |
+| Host.Dominance | `TF-DOM-001..256` | MATERIALIZADO 256/256; integración pendiente |
+| Host.MIR | `TF-MIR-001..304` | MATERIALIZADO 304/304; integración pendiente |
+| Host.Passes | `TF-PAS-001..448` | MATERIALIZADO 448/448; integración pendiente |
+| Host.Compilation | `TF-COMP-001..416` | EN CURSO |
+| Host.Frontend | `TF-FRONT-001..504` | EN CURSO |
+| Host.LLVM | `TF-LLVM-001..512` | EN CURSO |
 
 Secuencia vigente desde el 9 de octubre de 2026: primero se implementa toda la
 infraestructura y todos los casos de la Fase 2; después se ejecuta la validación
