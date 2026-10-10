@@ -740,6 +740,7 @@
   "validation": {
     "debug_link_native_symbols_missing": 26,
     "debug_link_identity_symbols_closed_statically": 2,
+    "build_id_inferred_cache_persistence": false,
     "debug_link_builder_closure_symbols_pending": 0,
     "debug_link_builder_closure_symbols_closed_statically": 24,
     "debug_link_builder_closure_product_units": 11,

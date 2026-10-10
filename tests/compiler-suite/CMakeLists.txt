@@ -27,8 +27,10 @@ if(NSC_COMPILER_SUITE_BUILD_ID_HEADER)
             "NSC_COMPILER_SUITE_BUILD_ID_HEADER does not exist: "
             "${NSC_COMPILER_SUITE_BUILD_ID_HEADER}")
     endif()
+    set(_nsc_suite_effective_build_id_header
+        "${NSC_COMPILER_SUITE_BUILD_ID_HEADER}")
     get_filename_component(_nsc_suite_build_id_basic_dir
-        "${NSC_COMPILER_SUITE_BUILD_ID_HEADER}" DIRECTORY)
+        "${_nsc_suite_effective_build_id_header}" DIRECTORY)
     get_filename_component(_nsc_suite_build_id_namespace_dir
         "${_nsc_suite_build_id_basic_dir}" DIRECTORY)
     get_filename_component(_nsc_suite_generated_include_root
@@ -46,8 +48,10 @@ elseif(NSC_COMPILER_SUITE_NSC_EXECUTABLE)
             "NSC_COMPILER_SUITE_BUILD_ID_HEADER explicitly. Expected: "
             "${_nsc_suite_inferred_build_id}")
     endif()
-    set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "${_nsc_suite_inferred_build_id}"
-        CACHE FILEPATH "Generated BuildId.h owned by the selected NSC" FORCE)
+    # Keep inference local to this configure pass. Persisting it in the cache
+    # would retain the previous compiler identity after selecting another NSC.
+    set(_nsc_suite_effective_build_id_header
+        "${_nsc_suite_inferred_build_id}")
     set(_nsc_suite_generated_include_root
         "${_nsc_suite_selected_nsc_build}/generated")
 else()

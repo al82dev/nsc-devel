@@ -21,12 +21,16 @@ dos fuentes deterministas:
 
 La configuración falla con un diagnóstico preciso si el header no existe. No
 se crea una identidad de prueba ni se copia un valor desde el ejecutable.
+La ruta inferida permanece local a la configuración: no se almacena en el cache
+y por ello seleccionar después otro `nsc.exe` vuelve a resolver su propio
+`BuildId.h`, en lugar de conservar la identidad de la selección anterior.
 
 ## Evidencia estática
 
 - Símbolos faltantes de esta causa: `2/2` inventariados.
 - Consumidores: `2/2` inventariados.
 - Productor canónico: `1/1` incorporado.
+- Selecciones de NSC retenidas por una inferencia cacheada: `0`.
 - Cabecera generada local existente:
   `A:/nsc-devel/build-clang/generated/nativesharp/Basic/BuildId.h`.
 - Compilación y enlace: pendientes de la siguiente corrida externa.
