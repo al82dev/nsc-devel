@@ -1193,3 +1193,12 @@ conserva orden, busqueda, duplicados y filtros. La reconstruccion termino
 `9,631 ms`, dentro del limite de 60 segundos. El gate ya alcanza su comparacion
 y revela una diferencia independiente de membresia, que queda como Validacion
 133. La tarea permanece activa y no se ejecuto baseline ni se toco `C:`.
+
+Validacion 133 corrigio la identidad de los trece casos Sema 087--099. El
+productor emitia `TS-SEMA-87..99` donde el inventario canónico declara
+`TS-SEMA-087..099`; la reconstruccion incremental termino `2/2`, `--list`
+conserva `8,054` filas y la conciliacion queda en `0` inesperados y `0`
+cambios de contrato/componente. El gate dirigido alcanza la comparacion en
+`9.17 s` y falla ahora exclusivamente por `1,062` IDs canónicos restantes,
+agrupados en diez componentes para la siguiente tanda. La tarea permanece
+activa y no se ejecuto baseline ni se toco `C:`.

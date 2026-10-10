@@ -224,7 +224,8 @@ void registerSemaAnalyzerLifecycleModule(TestRegistry& registry)
     for (std::size_t index = 0; index < tests.size(); ++index)
     {
         const std::size_t ordinal = index + 87;
-        const std::string id = "TS-SEMA-" + std::to_string(ordinal);
+        const std::string id = "TS-SEMA-" + std::string(ordinal < 100 ? "0" : "") +
+            std::to_string(ordinal);
         const std::string contract = ordinal <= 94 ? "CS-SEMA-011" : "CS-SEMA-012";
         const TestDisposition disposition = ordinal == 94 || ordinal == 101
             ? TestDisposition::InfrastructurePending : TestDisposition::Required;

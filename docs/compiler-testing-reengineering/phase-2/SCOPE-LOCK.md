@@ -2009,3 +2009,27 @@ el gate de inventario. No se cambian main, controladores, timeouts, casos,
 metadatos, CMake, producto, manifiestos, oraculos ni bateria historica. Los seis
 archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
 ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
+### Enmienda: identidad canonica de Sema 087 a 099
+
+La conciliacion exhaustiva posterior a Validacion 132 comparo las `8,054`
+filas vivas del registro con las `9,113` filas Host/SelfHost del inventario de
+diseno. Los trece IDs inesperados son exactamente `TS-SEMA-87` a
+`TS-SEMA-99`, mientras el inventario declara `TS-SEMA-087` a
+`TS-SEMA-099`. Contrato, componente y cuerpos coinciden; el productor
+`registerSemaAnalyzerLifecycleModule` omite el cero inicial solamente para ese
+intervalo.
+
+La entrada exacta es registrar los ordinales 87 a 99 del modulo de ciclo de
+vida de Sema. La operacion defectuosa es concatenar `std::to_string(ordinal)`
+sin conservar el ancho canonico de tres digitos. La invariante violada es que
+la identidad materializada sea identica a la identidad estable del inventario.
+
+El presupuesto de Validacion 133 queda limitado a
+`tests/compiler-suite/host/modules/SemaAnalyzerLifecycleModule.cpp`: completar
+el cero inicial para ordinales menores que 100, reconstruir el productor,
+demostrar que desaparecen los trece pares missing/unexpected y actualizar
+evidencia, tracking y cursor. No se cambian cuerpos, contratos, disposiciones,
+casos pendientes, gate, inventario, CMake, producto ni bateria historica. Los
+seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
+No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
