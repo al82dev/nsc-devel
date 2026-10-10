@@ -826,3 +826,9 @@ reportes comparten una raiz validada; segmentos vacios, ocultos, anidados o con
 traversal fallan sin crear estado. Las pruebas dirigidas pasan `5/5` y la suite
 Python completa `213/213`, sin ejecutar producto. La tarea funcional permanece
 activa.
+
+Validacion 73 cerro el tipo de la razon de cancelacion. Vacio, espacios,
+enteros, booleanos y `None` fallan antes de activar el token; la primera razon
+textual valida conserva autoridad. Las pruebas dirigidas pasan `11/11` y la
+suite Python completa `213/213`, sin ejecutar producto. La tarea funcional
+permanece activa.

@@ -69,8 +69,14 @@ class EventTests(unittest.TestCase):
         self.assertFalse(token.request("later timeout"))
         self.assertTrue(token.requested)
         self.assertEqual(token.reason, "user request")
-        with self.assertRaisesRegex(ValueError, "cannot be empty"):
-            CancellationToken().request("")
+        for reason in ("", "   ", 7, True, None):
+            invalid = CancellationToken()
+            with self.subTest(reason=reason), self.assertRaisesRegex(
+                ValueError, "non-empty string"
+            ):
+                invalid.request(reason)
+            self.assertFalse(invalid.requested)
+            self.assertIsNone(invalid.reason)
 
 
 if __name__ == "__main__":

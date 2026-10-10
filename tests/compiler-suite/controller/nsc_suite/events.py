@@ -97,8 +97,8 @@ class CancellationToken:
             return self._reason
 
     def request(self, reason: str) -> bool:
-        if not reason:
-            raise ValueError("cancellation reason cannot be empty")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("cancellation reason must be a non-empty string")
         with self._lock:
             if self._event.is_set():
                 return False

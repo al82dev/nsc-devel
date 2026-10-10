@@ -1154,3 +1154,16 @@ El presupuesto queda limitado a `WorkspaceManager.run_root`, su uso por
 `prepare` y `run_suite.run`, pruebas Python sinteticas y la evidencia de
 Validacion 72. No se cambian layouts validos, seleccion, ejecucion, producto ni
 bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: razon de cancelacion tipada
+
+`CancellationToken.request` debe aceptar solamente una cadena con contenido
+no blanco. Numeros, booleanos, `None`, vacio o espacios deben fallar antes de
+activar el evento y sin reemplazar la autoridad de la primera razon valida.
+Esto evita que una razon no textual alcance `CaseResult.failures` y rompa el
+cierre causal de casos pendientes.
+
+El presupuesto queda limitado a `CancellationToken.request`, pruebas Python
+sinteticas y la evidencia de Validacion 73. No se cambia la semantica de
+cancelacion, runner, procesos, producto ni bateria historica y no se configura,
+compila o ejecuta producto.
