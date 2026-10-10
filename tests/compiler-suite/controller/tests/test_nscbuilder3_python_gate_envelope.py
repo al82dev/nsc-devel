@@ -44,6 +44,10 @@ class Builder3PythonGateEnvelopeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     builder.parse_python_gate_result(value)
 
+    def test_failed_gate_requires_causal_detail(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non-empty detail"):
+            builder.parse_python_gate_result((False, ""))
+
     def test_gate_exception_retains_case_evidence_as_infrastructure_error(self) -> None:
         engine = builder.ExecutionEngine(
             builder.BuilderConfig(),

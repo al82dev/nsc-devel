@@ -1340,3 +1340,13 @@ El presupuesto queda limitado al parser enfocado, la construccion local del
 recibo esperado en `_run_identity`, pruebas Python sinteticas y la evidencia de
 Validacion 87. No se cambian herramientas, comandos, producto ni bateria
 historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: detalle obligatorio en gates Python fallidos
+
+`parse_python_gate_result` debe rechazar `(False, "")`. Todos los productores
+reales publican una causa cuando el gate no se satisface; una falla sin detalle
+no puede convertirse en `FAIL` o `KNOWN_FAILURE` sin evidencia causal.
+
+El presupuesto queda limitado al parser del resultado Python, una prueba
+sintetica y la evidencia de Validacion 88. No se cambian gates, estados,
+producto ni bateria historica y no se configura, compila o ejecuta producto.

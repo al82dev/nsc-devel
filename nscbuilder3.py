@@ -1600,6 +1600,8 @@ def parse_python_gate_result(value: Any) -> tuple[bool, str]:
         raise ValueError("Python gate satisfaction must be a boolean")
     if not isinstance(detail, str):
         raise ValueError("Python gate detail must be a string")
+    if not satisfied and not detail:
+        raise ValueError("failed Python gate must provide non-empty detail")
     return satisfied, detail
 
 

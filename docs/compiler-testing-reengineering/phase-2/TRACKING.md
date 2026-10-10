@@ -913,3 +913,8 @@ enfocado. Nombre, ruta resuelta y SHA-256 de NSC y de los auxiliares
 seleccionados se cotejan ahora exactamente. Las pruebas dirigidas pasan `6/6`
 y la suite Python completa `225/225`, sin ejecutar producto. La tarea funcional
 permanece activa.
+
+Validacion 88 cerro las fallas de gates Python sin causa. Una respuesta falsa
+exige ahora detalle no vacio antes de proyectarse a un estado terminal. Las
+pruebas dirigidas pasan `6/6` y la suite Python completa `226/226`, sin ejecutar
+producto. La tarea funcional permanece activa.
