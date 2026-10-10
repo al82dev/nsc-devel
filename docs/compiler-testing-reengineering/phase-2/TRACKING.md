@@ -759,3 +759,9 @@ cancelación, exit code no cero y ausencia de ejecutable ya no colapsan al mismo
 mensaje; los consumidores reciben `BLOQUEADO_POR` con la causa exacta. Las
 pruebas dirigidas pasan `5/5` y la suite Python completa `199/199` usando sólo
 dobles.
+
+Validación 62 cerró la auditoría estática de Builder 3 sin promoverla a éxito
+funcional. Catálogo `9587/9587`, matriz `12542/12542`, GUI smoke y `199/199`
+pruebas Python pasan; no quedan defectos estáticos demostrados en las fronteras
+auditadas. La corrida funcional externa sigue pendiente y la tarea permanece
+activa hasta cerrar sus errores en cero.

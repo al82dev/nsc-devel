@@ -1004,3 +1004,17 @@ El presupuesto queda limitado a `_prepare_selfhost_fixture`, el cache causal de
 `_run_selfhost`, pruebas Python con dobles y la evidencia de Validación 61. No se
 modifican fixtures, comandos, timeout, oráculos, producto ni batería histórica y
 no se crea o ejecuta ningún proceso real.
+
+### Enmienda: cierre estático sin promoverlo a validación funcional
+
+El cierre de esta auditoría debe inventariar mecánicamente propietarios de
+procesos, conversiones de entrada, productores de estado, escrituras durables y
+autoridades de catálogo. Sólo puede declarar cero defectos estáticos residuales
+en esas fronteras si el catálogo no mutante, la matriz relacional, la GUI smoke
+y toda la batería Python pasan. Eso no demuestra que NSC, NSLink ni los `12542`
+variantes ejecutables funcionen: dicha afirmación queda reservada a la corrida
+funcional externa solicitada por el usuario.
+
+El presupuesto queda limitado a auditoría y evidencia Markdown de Validación
+62. No se modifica código, no se configura o compila producto, no se ejecutan
+casos NativeSharp, no hay baseline, despliegue ni escritura en `C:`.
