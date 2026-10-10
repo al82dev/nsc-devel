@@ -154,7 +154,7 @@ void macroOracle(TestContext& context, std::size_t variant)
 {
     const std::size_t limit = variant == 4 ? 0 : 64;
     MacroExpansionEngine engine(limit);
-    const std::string source = "macro add($x, $y) { $x + $y } int value = add!(2, 3);";
+    const std::string source = "#macro add(x, y) { $x + $y } int value = #expand add(2, 3);";
     const MacroExpansionResult first = engine.expand(source);
     const MacroExpansionResult second = engine.expand(source);
     if (variant == 4)
