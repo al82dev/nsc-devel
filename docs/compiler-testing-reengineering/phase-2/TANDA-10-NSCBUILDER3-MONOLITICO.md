@@ -1,0 +1,141 @@
+# Tanda 10 — NSC Builder 3 monolítico
+
+## SCOPE LOCK
+
+### Objetivo exacto autorizado
+
+Crear una interfaz gráfica nueva para preparar y ejecutar la suite de la Fase 2 con granularidad de ola,
+componente, contrato y caso. La interfaz debe mostrar el inventario completo, el progreso de compilación de la
+infraestructura, la ejecución individual y los resultados sin ocultar limitaciones ni defectos conocidos.
+
+Toda la implementación nueva vivirá en un único archivo `nscbuilder3.py`. El carácter monolítico de este
+orquestador fue autorizado expresamente por el usuario y prevalece para esta tanda sobre la preferencia general de
+dividir módulos.
+
+### Naturaleza del cambio
+
+Infraestructura y experiencia de usuario. No cambia el compilador, el lenguaje, los contratos de la suite ni los
+oráculos existentes.
+
+### Comportamiento que debe permanecer idéntico
+
+- Las 684 pruebas históricas y su infraestructura permanecen intactas.
+- Los 9,587 casos canónicos, sus identificadores, contratos, disposiciones y oráculos permanecen intactos.
+- `nscbuilder.py` y `nscbuilder2.py` permanecen intactos.
+- Los seis archivos preexistentes protegidos permanecen intactos.
+- Los gates, manifiestos e inventarios de Fase 2 se consumen como fuentes; no se reescriben en esta tanda.
+
+### Revisión conocida y rango
+
+- Base de implementación estática: `ccdb17541`.
+- La tanda comienza sobre la rama local `development`.
+- No se publican commits ni ramas en remotos.
+
+### Presupuesto de cambio
+
+| Dimensión | Autorizado |
+|---|---|
+| Repositorio | `A:\nsc-devel` |
+| Componente | Orquestador gráfico NSC Builder 3 |
+| Código | `nscbuilder3.py` únicamente; `.gitignore` sólo excluye su evidencia local |
+| Documentación | Este documento, `phase-2/SCOPE-LOCK.md` y `phase-2/TRACKING.md` |
+| Configuraciones | Infraestructura de pruebas `Debug` y `Release` |
+| Optimizaciones | `O0`, `O1`, `O2`, `O3`, `All` y `NA` cuando el caso lo declara |
+| Selección | Total, ola, componente, contrato y caso individual |
+| Evidencia | `_nscbuilder3/history` y `_nscbuilder3/work`, creados en ejecución por el usuario |
+
+### Archivos protegidos
+
+- Todo el código de producto bajo `include/` y `src/`.
+- Todo `tests/compiler-suite/**`.
+- Todo `tests/harness/**`.
+- `CMakeLists.txt` y todos los archivos CMake.
+- `nscbuilder.py`, `nscbuilder2.py` y `_nscbuilder2/**`.
+- `docs/compiler-optimization/test-infrastructure/test-execution-parity.csv`.
+- `docs/compiler-optimization/test-infrastructure/test-execution-parity.json`.
+- `docs/compiler-optimization/test-infrastructure/test-execution-parity.md`.
+- `tests/harness/nsc_test/suites.py`.
+- `tests/harness/run_nsc_tests.py`.
+- `tests/harness/tests/test_suite_adapter.py`.
+
+### Acciones prohibidas
+
+- No ejecutar durante esta tanda la compilación que la GUI ofrece al usuario.
+- No desplegar ni escribir en `C:`.
+- No ejecutar baseline, pruebas históricas ni la batería de Fase 2 durante esta tanda.
+- No modificar pruebas, oráculos, manifiestos, gates, producto o CMake.
+- No crear paquetes, módulos, archivos `.pyw` ni scripts auxiliares para Builder 3.
+- No usar fallbacks ni artefactos antiguos cuando falle un productor.
+- No hacer `push` ni modificar remotos.
+
+### Contrato funcional del único script
+
+`nscbuilder3.py` debe contener:
+
+1. carga determinista de olas, diseños, asignación, manifiesto y disposiciones;
+2. configuración y construcción explícitas de NSC con Clang/LLVM/LLD;
+3. validación y selección del `nsc.exe` construido y de `nslink.exe`;
+4. configuración separada de la infraestructura de pruebas;
+5. compilación separada del target `nsc_component_tests` en `Debug` o `Release`;
+6. selección por total, ola, componente, contrato o caso;
+7. selección independiente de `O0`, `O1`, `O2`, `O3` o todas;
+8. tabla visible de todos los casos y estados en vivo;
+9. ejecución granular de casos soportados y clasificación visible de los no ejecutables;
+10. cancelación del árbol de procesos activo;
+11. reejecución de fallidos;
+12. consola completa, errores condensados e historial;
+13. evidencia progresiva y recuperable bajo `_nscbuilder3`.
+
+### Criterio de terminación de la tanda
+
+- Existe un solo archivo nuevo de implementación: `nscbuilder3.py`.
+- La GUI separa claramente construcción/selección de NSC, infraestructura y ejecución.
+- El catálogo descubre exactamente el conjunto canónico vigente sin omisiones silenciosas.
+- `Debug`/`Release` y `O0`/`O1`/`O2`/`O3`/`All` son dimensiones independientes.
+- La tabla permite ver y seleccionar total, ola, componente, contrato y caso.
+- Ninguna disposición no ejecutable se presenta como `PASS`.
+- La comprobación sintáctica de Python y el modo de auditoría del catálogo pasan.
+- La compilación C++ y la ejecución funcional quedan pendientes del usuario, sin presentarse como verificadas.
+
+## Estado
+
+`IMPLEMENTACIÓN LISTA; VALIDACIÓN FUNCIONAL DIFERIDA AL USUARIO`.
+
+## Resultado implementado
+
+- Un solo archivo de código nuevo: `nscbuilder3.py`.
+- Catálogo completo con `9,587` casos, `1,208` contratos y `44` componentes.
+- `5,695` casos ejecutables y `3,892` disposiciones no ejecutables visibles.
+- Configuración y construcción explícitas de NSC en `Debug`, `Release` o ambas,
+  con enlace host estático o dinámico y optimización host seleccionable.
+- Autodescubrimiento de Clang/LLVM/LLD en `C:\clang-llvm`, CMake/Ninja desde
+  `PATH`, fuentes desde el repositorio y NSLink junto al NSC o en su salida
+  Release conocida.
+- Los botones de construcción ejecutan primero su configuración con las rutas
+  actuales; no requieren una configuración manual previa ni reutilizan
+  silenciosamente una caché con otros parámetros.
+- Configuración y construcción separadas del target `nsc_component_tests` en
+  `Debug`, `Release` o ambas; construir las pruebas no reconstruye NSC.
+- Selección de ejecución por total, ola, componente, contrato o caso.
+- Selección independiente de `O0`, `O1`, `O2`, `O3` o todas; los casos sin
+  optimización usan `NA`.
+- Estados en vivo, cancelación del árbol activo, reejecución de fallos, log
+  completo, reporte condensado e historial persistente.
+- Recibo SHA-256 del `nsc.exe` y `nslink.exe` externos seleccionados.
+
+## Evidencia ejecutada
+
+- `python -m py_compile nscbuilder3.py`: correcto.
+- `python nscbuilder3.py --audit-catalog`: correcto; `unclassified = 0`.
+- `python nscbuilder3.py --gui-smoke` con plataforma Qt fuera de pantalla:
+  correcto.
+- auditoría estática del comando CMake: todos los valores `-D` usan rutas con
+  `/`, el árbol Release es `A:/nsc-devel/build-clang` y no queda el escape
+  inválido `\c` de CMake.
+- comprobación de líneas mayores de 120 caracteres: ninguna.
+- `git diff --check` sobre los archivos de la tanda: sin errores de formato.
+
+No se compiló C++, no se construyó NSC y no se ejecutó ninguna prueba del
+compilador. Esas comprobaciones permanecen explícitamente diferidas y no se
+presentan como aprobadas.
+

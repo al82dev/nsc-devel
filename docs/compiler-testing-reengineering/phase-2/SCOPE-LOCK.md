@@ -45,6 +45,18 @@ y los componentes de otros repositorios no se implementan, registran ni ejecutan
 en esta infraestructura. Sus inventarios de Fase 1 conservan valor documental,
 pero cualquier suite futura les pertenece a sus repositorios respectivos.
 
+## Enmienda: NSC Builder 3 monolítico
+
+El usuario autorizó una interfaz nueva para operar la suite de Fase 2 y ordenó que toda su implementación viva en
+un único archivo Python. Por tanto `nscbuilder3.py` contiene GUI, catálogo, selección, procesos, estados, historial y
+reportes. No se crean paquetes `_nscbuilder3`, módulos auxiliares, archivos `.pyw` ni scripts nuevos para repartir
+esa funcionalidad. Esta excepción monolítica se limita al orquestador y no modifica la suite ni el producto.
+
+Builder 3 permite configurar y construir NSC de forma explícita con Clang/LLVM/LLD, y selecciona el binario
+resultante para las pruebas. La construcción del compilador y la infraestructura de pruebas son operaciones
+separadas: la segunda sólo construye `nsc_component_tests` y nunca reconstruye NSC implícitamente. Builder 3 no
+ejecuta baseline, no escribe ni despliega en `C:`; sólo ejecuta la toolchain instalada allí.
+
 Cada cambio incluye implementación, pruebas nuevas enfocadas, evidencia Markdown y un commit pequeño.
 El mismo commit que cierra una tanda actualiza `TRACKING.md` y `CURSOR.json`; queda prohibido diferir el estado
 persistente a una tanda posterior.

@@ -15,6 +15,23 @@
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
 
+## Orquestador NSC Builder 3
+
+| Entrega | Estado | Implementación | Validación ejecutada | Validación diferida |
+|---|---|---|---|---|
+| Builder 3 monolítico | LISTA | `nscbuilder3.py` | Sintaxis Python, auditoría canónica y construcción GUI sin ejecución | Build C++, pruebas funcionales y batería Fase 2 |
+
+Builder 3 puede configurar y construir NSC con Clang/LLVM/LLD, seleccionar el
+binario producido y, en una operación independiente, construir únicamente la
+infraestructura nueva de pruebas. Descubre los `9,587` casos canónicos y presenta sus `5,695` filas
+ejecutables junto con `3,892` disposiciones no ejecutables, sin convertir estas
+últimas en `PASS`. La GUI separa la construcción/selección de NSC, la
+configuración/compilación de `nsc_component_tests` y la ejecución por
+total, ola, componente, contrato o caso. `Debug`/`Release` y
+`O0`/`O1`/`O2`/`O3` son dimensiones independientes. La implementación completa
+del orquestador vive únicamente en `nscbuilder3.py`; no se creó un paquete
+auxiliar ni se modificó la infraestructura histórica.
+
 Los conteos separan implementación de verificación: un caso rojo por defecto
 conocido cuenta como implementado, se reporta `KNOWN_FAILURE` y no aumenta la
 columna `Verificados`. No se elimina ni se convierte en `PASS`; tampoco bloquea el
