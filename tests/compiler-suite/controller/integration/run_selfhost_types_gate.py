@@ -12,6 +12,7 @@ from selfhost_inventory import (
     ComponentInventory,
     load_component_inventory,
     read_jsonl,
+    required_oracle_exit_code,
     validate_classified_manifest,
 )
 
@@ -64,10 +65,7 @@ def validate_inventory(
 def evaluate_case(
     row: dict[str, object], completed: subprocess.CompletedProcess[str]
 ) -> tuple[bool, str]:
-    oracle = row.get("oracle")
-    if not isinstance(oracle, dict):
-        return False, "manifest oracle is not an object"
-    expected = int(oracle["exit_code"])
+    expected = required_oracle_exit_code(row, "SelfHost.Types")
     if completed.returncode != expected:
         return False, f"exit code {completed.returncode}; expected {expected}"
     return True, ""

@@ -30,6 +30,19 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
     return rows
 
 
+def required_oracle_exit_code(row: dict[str, object], component: str) -> int:
+    """Return an exact exit-code oracle without accepting Python coercions."""
+    oracle = row.get("oracle")
+    if not isinstance(oracle, dict):
+        raise RuntimeError(f"{component} manifest oracle is not an object")
+    if "exit_code" not in oracle:
+        raise RuntimeError(f"{component} manifest oracle omits exit_code")
+    exit_code = oracle["exit_code"]
+    if type(exit_code) is not int:
+        raise RuntimeError(f"{component} oracle exit_code must be an exact integer")
+    return exit_code
+
+
 def unique_index(
     rows: list[dict[str, str]], key: str, source: str
 ) -> dict[str, dict[str, str]]:

@@ -11,6 +11,7 @@ from pathlib import Path
 from selfhost_inventory import (
     load_component_inventory,
     read_jsonl,
+    required_oracle_exit_code,
     validate_manifest_cases,
 )
 
@@ -60,10 +61,9 @@ def validate_lineage(root: Path, cases: list[dict[str, object]]) -> frozenset[st
 def oracle_satisfied(
     row: dict[str, object], completed: subprocess.CompletedProcess[str]
 ) -> tuple[bool, str]:
+    expected_exit_code = required_oracle_exit_code(row, "SelfHost.Diagnostics")
     oracle = row["oracle"]
-    if not isinstance(oracle, dict):
-        return False, "manifest oracle is not an object"
-    if completed.returncode != int(oracle["exit_code"]):
+    if completed.returncode != expected_exit_code:
         return False, f"exit code {completed.returncode}"
     expected_json = oracle.get("json")
     if expected_json is None:

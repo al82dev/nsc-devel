@@ -12,6 +12,7 @@ from selfhost_inventory import (
     classification_sets,
     load_component_inventory,
     read_jsonl,
+    required_oracle_exit_code,
     validate_manifest_cases,
     validate_manifest_partition,
 )
@@ -119,7 +120,9 @@ def main() -> int:
         case_root = work_root / "cases" / case_id
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
-        passed = completed.returncode == int(row["oracle"]["exit_code"])
+        passed = completed.returncode == required_oracle_exit_code(
+            row, "SelfHost.Basic"
+        )
         if not passed:
             failed += 1
         results.append(

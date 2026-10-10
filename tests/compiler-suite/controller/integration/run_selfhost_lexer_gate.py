@@ -11,6 +11,7 @@ from pathlib import Path
 from selfhost_inventory import (
     load_component_inventory,
     read_jsonl,
+    required_oracle_exit_code,
     validate_manifest_cases,
 )
 
@@ -88,7 +89,9 @@ def main() -> int:
         case_root = work_root / "cases" / case_id
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
-        passed = completed.returncode == int(row["oracle"]["exit_code"])
+        passed = completed.returncode == required_oracle_exit_code(
+            row, "SelfHost.Lexer"
+        )
         if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if passed else "KNOWN_PRODUCT_DEFECT"
             failures += 1

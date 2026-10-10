@@ -784,3 +784,9 @@ identidades, payloads y cardinalidades terminales exigen ahora tipos exactos;
 booleanos y flotantes ya no pueden acreditar numeros enteros. Las pruebas
 dirigidas pasan `4/4` y la suite Python completa `204/204`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 66 cerro el exit code esperado de los cinco gates self-host
+ejecutables. Basic, Diagnostics, Lexer, Source y Types comparten ahora una
+autoridad que exige un entero exacto y rechaza cadenas, flotantes y booleanos.
+Las pruebas dirigidas pasan `3/3` y la suite Python completa `207/207`, sin
+ejecutar producto. La tarea funcional permanece activa.

@@ -1062,3 +1062,17 @@ El presupuesto queda limitado a `run_infrastructure_gate.validate_events`,
 pruebas Python con eventos sinteticos y la evidencia de Validacion 65. No se
 cambia el productor de eventos, manifiestos, seleccion, producto ni bateria
 historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: exit code self-host sin coercion
+
+Los cinco gates self-host ejecutables no pueden convertir `oracle.exit_code`
+mediante `int(...)`. El oraculo debe existir como objeto y su exit code debe ser
+un entero exacto; cadenas, flotantes y booleanos son corrupcion de
+infraestructura, no resultados del producto. La validacion debe vivir en la
+autoridad compartida de inventario y ser consumida por Basic, Diagnostics,
+Lexer, Source y Types.
+
+El presupuesto queda limitado a `selfhost_inventory.required_oracle_exit_code`,
+sus cinco consumidores, pruebas Python sinteticas y la evidencia de Validacion
+66. No se cambian valores de oraculo, fixtures, comandos, producto ni bateria
+historica y no se configura, compila o ejecuta producto.
