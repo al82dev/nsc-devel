@@ -1383,3 +1383,12 @@ trabajo ni toca el producto; un agotamiento de 180 segundos seguira siendo
 error de infraestructura. Una prueba dirigida fija los once IDs y su perfil.
 La ejecucion queda diferida hasta la corrida integral final. Evidencia:
 `TANDA-VALIDACION-153-PRESUPUESTO-NIGHTLY-DOMINANCE.md`.
+
+Validacion 154 codifica la terminacion anormal exacta de `TL-LANG-099` y
+`TL-LANG-250`, dos defectos de enum externo ya inventariados. El manifiesto
+exige `KNOWN_FAILURE`, etiquetas de defecto/frontera, codigo no cero y la
+asercion exacta de indice. Builder 3 no acepta crashes arbitrarios, codigo cero,
+texto distinto ni timeouts. Los casos siguen visibles como defecto conocido,
+nunca como PASS. La ejecucion queda diferida hasta la corrida integral final.
+Evidencia:
+`TANDA-VALIDACION-154-AISLAMIENTO-DEFECTOS-CONOCIDOS-ENUM.md`.

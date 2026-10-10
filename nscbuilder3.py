@@ -1855,6 +1855,49 @@ def host_executable(config: BuilderConfig, mode: str) -> Path:
     return candidates[0]
 
 
+def expected_abnormal_termination_detail(
+    case: CaseRecord, exit_code: int, captured: str
+) -> str | None:
+    """Recognize only a manifest-authorized known process termination."""
+    manifest = case.manifest or {}
+    oracle = manifest.get("oracle")
+    if not isinstance(oracle, dict):
+        return None
+    abnormal = oracle.get("abnormal_termination")
+    if abnormal is None:
+        return None
+    if case.expected_outcome != "KNOWN_FAILURE" or case.disposition != "KnownProductDefect":
+        raise ValueError("abnormal termination contract belongs to a non-defect case")
+    tags = manifest.get("tags")
+    if not isinstance(tags, list) or not {"known-defect", "unsafe-boundary"} <= set(tags):
+        raise ValueError("abnormal termination contract lacks required defect tags")
+    if not isinstance(abnormal, dict) or set(abnormal) != {
+        "exit_code",
+        "output_contains",
+    }:
+        raise ValueError("invalid abnormal termination contract")
+    if abnormal.get("exit_code") != "nonzero" or exit_code == 0:
+        raise ValueError(
+            f"abnormal termination exit code {exit_code} contradicts nonzero contract"
+        )
+    fragments = abnormal.get("output_contains")
+    if (
+        not isinstance(fragments, list)
+        or not fragments
+        or not all(isinstance(value, str) and value for value in fragments)
+    ):
+        raise ValueError("invalid abnormal termination output contract")
+    missing = [value for value in fragments if value not in captured]
+    if missing:
+        raise ValueError(
+            "abnormal termination output omits: " + ", ".join(repr(value) for value in missing)
+        )
+    return (
+        f"known product defect terminated the isolated host process with exit code {exit_code}; "
+        + "; ".join(f"observed {value!r}" for value in fragments)
+    )
+
+
 def parse_host_envelope(
     *,
     captured: str,
@@ -2406,9 +2449,23 @@ class ExecutionEngine:
                 component=variant.case.component,
             )
         except (json.JSONDecodeError, ValueError) as error:
+            try:
+                abnormal_detail = expected_abnormal_termination_detail(
+                    variant.case, code, captured
+                )
+            except ValueError as contract_error:
+                return (
+                    "INFRASTRUCTURE_ERROR",
+                    f"{error}; {contract_error}",
+                    str(log_path),
+                )
+            if abnormal_detail is not None:
+                return self._expected_status(
+                    variant.case, False, abnormal_detail, str(log_path)
+                )
             return (
                 "INFRASTRUCTURE_ERROR",
-                str(error),
+                f"{error}; host exit code {code}",
                 str(log_path),
             )
         return self._expected_status(variant.case, passed, detail, str(log_path))

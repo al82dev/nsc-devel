@@ -26,6 +26,69 @@ def envelope(**overrides: object) -> str:
 
 
 class Builder3HostEnvelopeTests(unittest.TestCase):
+    def abnormal_case(self) -> builder.CaseRecord:
+        return builder.CaseRecord(
+            case_id="TL-LANG-099",
+            contract_id="CL-LANG-008",
+            component="Host.Language",
+            wave=1,
+            purpose="synthetic abnormal termination contract",
+            layer="unit",
+            profile="NIGHTLY",
+            build_modes=("Debug",),
+            optimizations=("NA",),
+            executor="nsc_component_tests",
+            disposition="KnownProductDefect",
+            objective="characterize the current unsafe enum boundary",
+            expected_outcome="KNOWN_FAILURE",
+            manifest={
+                "oracle": {
+                    "abnormal_termination": {
+                        "exit_code": "nonzero",
+                        "output_contains": [
+                            "Assertion failed: array subscript out of range"
+                        ],
+                    }
+                },
+                "tags": ["known-defect", "unsafe-boundary"],
+            },
+        )
+
+    def test_exact_known_abnormal_termination_is_recognized(self) -> None:
+        detail = builder.expected_abnormal_termination_detail(
+            self.abnormal_case(),
+            3,
+            "array(534) : Assertion failed: array subscript out of range\n",
+        )
+        self.assertIn("known product defect", detail or "")
+        self.assertIn("exit code 3", detail or "")
+
+    def test_abnormal_termination_rejects_zero_or_different_output(self) -> None:
+        for exit_code, output in (
+            (0, "Assertion failed: array subscript out of range"),
+            (3, "unrelated crash"),
+        ):
+            with self.subTest(exit_code=exit_code, output=output):
+                with self.assertRaises(ValueError):
+                    builder.expected_abnormal_termination_detail(
+                        self.abnormal_case(), exit_code, output
+                    )
+
+    def test_ordinary_case_never_accepts_an_unstructured_crash(self) -> None:
+        ordinary = builder.CaseRecord(
+            **{
+                **self.abnormal_case().__dict__,
+                "disposition": "Executable",
+                "expected_outcome": "PASS",
+                "manifest": {"oracle": {}, "tags": []},
+            }
+        )
+        self.assertIsNone(
+            builder.expected_abnormal_termination_detail(
+                ordinary, 3, "Assertion failed: array subscript out of range"
+            )
+        )
+
     def parse(self, captured: str, exit_code: int = 0) -> tuple[bool, str]:
         return builder.parse_host_envelope(
             captured=captured,

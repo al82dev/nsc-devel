@@ -226,6 +226,41 @@ def _parse_case(
     expected_outcome = payload.get("expected_outcome", "PASS")
     if not isinstance(expected_outcome, str) or expected_outcome not in EXPECTED_OUTCOMES:
         raise ManifestError(f"invalid expected_outcome at {location}: {expected_outcome}")
+    abnormal = oracle.get("abnormal_termination")
+    if abnormal is not None:
+        if executor != "nsc_component_tests":
+            raise ManifestError(
+                f"abnormal termination oracle requires a host case at {location}"
+            )
+        if expected_outcome != "KNOWN_FAILURE":
+            raise ManifestError(
+                f"abnormal termination oracle requires KNOWN_FAILURE at {location}"
+            )
+        if not {"known-defect", "unsafe-boundary"} <= set(tags):
+            raise ManifestError(
+                f"abnormal termination oracle requires known-defect and unsafe-boundary tags at {location}"
+            )
+        if not isinstance(abnormal, dict) or set(abnormal) != {
+            "exit_code",
+            "output_contains",
+        }:
+            raise ManifestError(
+                f"invalid abnormal termination oracle at {location}"
+            )
+        if abnormal["exit_code"] != "nonzero":
+            raise ManifestError(
+                f"abnormal termination exit_code must be nonzero at {location}"
+            )
+        output_contains = abnormal["output_contains"]
+        if (
+            not isinstance(output_contains, list)
+            or not output_contains
+            or not all(isinstance(value, str) and value for value in output_contains)
+            or len(output_contains) != len(set(output_contains))
+        ):
+            raise ManifestError(
+                f"invalid abnormal termination output_contains at {location}"
+            )
 
     if executor == "nsc_component_tests":
         if isolation not in HOST_ISOLATIONS:

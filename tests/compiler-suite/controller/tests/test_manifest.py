@@ -84,6 +84,41 @@ class ManifestTests(unittest.TestCase):
         invalid["expected_outcome"] = "SKIP"
         self.assert_manifest_error([invalid], "invalid expected_outcome")
 
+    def test_abnormal_termination_requires_an_exact_known_defect_contract(self) -> None:
+        known = valid_case()
+        known["expected_outcome"] = "KNOWN_FAILURE"
+        known["tags"] = ["known-defect", "unsafe-boundary"]
+        known["oracle"] = {
+            "abnormal_termination": {
+                "exit_code": "nonzero",
+                "output_contains": ["Assertion failed: array subscript out of range"],
+            }
+        }
+        loaded = load_manifest(self.write_manifest([known]), self.inventory)
+        self.assertEqual(
+            loaded[0].oracle["abnormal_termination"]["exit_code"], "nonzero"
+        )
+
+        for mutation, message in (
+            ({"expected_outcome": "PASS"}, "requires KNOWN_FAILURE"),
+            ({"tags": ["known-defect"]}, "requires known-defect and unsafe-boundary"),
+            (
+                {
+                    "oracle": {
+                        "abnormal_termination": {
+                            "exit_code": 3,
+                            "output_contains": ["assertion"],
+                        }
+                    }
+                },
+                "exit_code must be nonzero",
+            ),
+        ):
+            with self.subTest(mutation=mutation):
+                invalid = dict(known)
+                invalid.update(mutation)
+                self.assert_manifest_error([invalid], message)
+
     def test_rejects_unknown_and_missing_fields(self) -> None:
         unknown = valid_case()
         unknown["surprise"] = True

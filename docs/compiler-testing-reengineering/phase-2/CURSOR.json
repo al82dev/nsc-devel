@@ -4,14 +4,14 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "THIS_COMMIT",
-  "last_completed_batch": "TANDA-VALIDACION-153-PRESUPUESTO-NIGHTLY-DOMINANCE",
+  "last_completed_batch": "TANDA-VALIDACION-154-AISLAMIENTO-DEFECTOS-CONOCIDOS-ENUM",
   "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "VALIDACION-154-AISLAMIENTO-DEFECTOS-CONOCIDOS-ENUM",
-  "next_action": "Encode and classify the two explicitly known unsafe-enum process terminations without accepting arbitrary crashes, then continue to evidence hardening without an intermediate suite run.",
+  "current_batch": "VALIDACION-155-EVIDENCIA-ORACULOS-Y-AUDITORIA",
+  "next_action": "Preserve project-load errors and rendered diagnostics in host failure evidence, audit every residual test-side cause from the saved run, correct proven oracle defects, then execute the single full Debug/O0/Todos validation.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
