@@ -1428,3 +1428,14 @@ El presupuesto queda limitado al parseo JSON del reporte enfocado, una prueba
 Python sintetica y la evidencia de Validacion 96. No se cambia el productor,
 esquema, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: claves JSON unicas en la salida self-host
+
+La salida JSON de un fixture self-host debe rechazarse si cualquier objeto
+contiene claves duplicadas. La comparacion exacta con el oraculo no puede
+recibir primero un objeto ya normalizado por la politica last-wins.
+
+El presupuesto queda limitado a un parser local de salida self-host, su uso en
+`_run_selfhost`, una prueba Python sintetica y la evidencia de Validacion 97.
+No se cambian oraculos, fixtures, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

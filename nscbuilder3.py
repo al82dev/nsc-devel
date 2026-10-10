@@ -1664,6 +1664,11 @@ def equal_json_exact(expected: Any, actual: Any) -> bool:
     return True
 
 
+def parse_selfhost_json_output(content: str) -> Any:
+    """Parse fixture JSON without allowing duplicate object definitions."""
+    return json.loads(content, object_pairs_hook=unique_json_object)
+
+
 def parse_selfhost_inputs(
     value: Any, suite_root: Path, expected_case_id: str
 ) -> tuple[str, str, bool]:
@@ -2087,7 +2092,7 @@ class ExecutionEngine:
             try:
                 passed = equal_json_exact(
                     expected_json,
-                    json.loads(captured.strip()),
+                    parse_selfhost_json_output(captured.strip()),
                 )
             except json.JSONDecodeError as error:
                 passed = False

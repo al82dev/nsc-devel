@@ -84,6 +84,16 @@ class Builder3SelfHostOracleTests(unittest.TestCase):
         actual_cursor.append("changed")
         self.assertFalse(builder.equal_json_exact(expected, actual))
 
+    def test_fixture_json_output_rejects_duplicate_keys(self) -> None:
+        self.assertEqual(
+            builder.parse_selfhost_json_output('{"status":"ok"}'),
+            {"status": "ok"},
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate JSON object key: status"):
+            builder.parse_selfhost_json_output(
+                '{"status":"ok","status":"changed"}'
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

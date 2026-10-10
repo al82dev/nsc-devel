@@ -958,3 +958,8 @@ Validacion 96 cerro las claves JSON duplicadas del reporte enfocado. Metadata,
 recibos, conteos y resultados exigen ahora definiciones unicas. Las pruebas
 dirigidas pasan `7/7` y la suite Python `230/230`, sin ejecutar producto. La
 tarea funcional permanece activa.
+
+Validacion 97 cerro las claves JSON duplicadas en la salida de fixtures
+self-host. La unicidad se comprueba antes de comparar contra el oraculo. Las
+pruebas dirigidas pasan `7/7` y la suite Python `231/231`, sin ejecutar producto.
+La tarea funcional permanece activa.
