@@ -11,15 +11,6 @@ import time
 from pathlib import Path
 
 
-ACTIVE_CONTRACTS = (1, 2, 3, 4, 5, 76)
-ALL_IDS = tuple(f"T12B-{ordinal:05d}" for ordinal in range(1, 457))
-EXECUTABLE_IDS = tuple(
-    f"T12B-{ordinal:05d}"
-    for contract in ACTIVE_CONTRACTS
-    for ordinal in range((contract - 1) * 6 + 1, contract * 6 + 1)
-)
-HISTORICAL_DELEGATED = frozenset(f"T12B-{ordinal:05d}" for ordinal in range(31, 451))
-KNOWN_PRODUCT_DEFECTS = frozenset({"T12B-00021", "T12B-00022"})
 ZLIB_SOURCES = (
     "adler32.c", "compress.c", "crc32.c", "deflate.c", "infback.c", "inffast.c",
     "inflate.c", "inftrees.c", "trees.c", "uncompr.c", "zutil.c",
@@ -63,6 +54,42 @@ def write_text(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8", newline="\n")
 
 
+def unique_map(
+    rows: list[dict[str, object]] | list[dict[str, str]],
+    key: str,
+    source: str,
+) -> dict[str, dict[str, object] | dict[str, str]]:
+    result: dict[str, dict[str, object] | dict[str, str]] = {}
+    for row in rows:
+        value = str(row.get(key, ""))
+        if not value:
+            raise RuntimeError(f"{source} contains a row without {key}")
+        if value in result:
+            raise RuntimeError(f"{source} contains duplicate {key} {value}")
+        result[value] = row
+    return result
+
+
+def expand_case_range(value: object) -> tuple[str, ...]:
+    text = str(value)
+    parts = text.split("..")
+    if len(parts) != 2:
+        raise RuntimeError(f"invalid BuildSystem case range {text!r}")
+    start_text, end_text = parts
+    start_prefix, separator, start_ordinal = start_text.rpartition("-")
+    end_prefix, end_separator, end_ordinal = end_text.rpartition("-")
+    if not separator or not end_separator or start_prefix != end_prefix:
+        raise RuntimeError(f"invalid BuildSystem case range {text!r}")
+    if not start_ordinal.isdigit() or not end_ordinal.isdigit():
+        raise RuntimeError(f"invalid BuildSystem case range {text!r}")
+    first = int(start_ordinal)
+    last = int(end_ordinal)
+    if first > last or len(start_ordinal) != len(end_ordinal):
+        raise RuntimeError(f"invalid BuildSystem case range {text!r}")
+    width = len(start_ordinal)
+    return tuple(f"{start_prefix}-{ordinal:0{width}d}" for ordinal in range(first, last + 1))
+
+
 def run_process(
     command: list[str], cwd: Path, environment: dict[str, str], timeout: float = 900.0
 ) -> subprocess.CompletedProcess[str]:
@@ -72,51 +99,100 @@ def run_process(
     )
 
 
-def validate_lineage(repository_root: Path, cases: list[dict[str, object]]) -> None:
+def validate_lineage(
+    repository_root: Path,
+    cases: list[dict[str, object]],
+) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
     inventory = repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
     design = [r for r in read_csv(inventory / "test-case-design.csv") if r["component"] == "BuildSystem"]
     allocation = [r for r in read_csv(inventory / "suite-case-allocation.csv") if r["component"] == "BuildSystem"]
     contracts = [r for r in read_csv(inventory / "contracts.csv") if r["component"] == "BuildSystem"]
-    if tuple(r["case_id"] for r in design) != ALL_IDS:
-        raise RuntimeError("BuildSystem design is not the canonical T12B-00001..T12B-00456 range")
-    if tuple(r["case_id"] for r in allocation) != ALL_IDS:
-        raise RuntimeError("BuildSystem allocation is not the canonical T12B-00001..T12B-00456 range")
-    if len(contracts) != 76:
-        raise RuntimeError("BuildSystem contract inventory no longer contains 76 contracts")
-    if sum(r["default_profile"] == "NIGHTLY" for r in allocation) != 36:
-        raise RuntimeError("BuildSystem allocation no longer contains 36 NIGHTLY cases")
-    if sum(r["default_profile"] == "WEEKLY" for r in allocation) != 420:
-        raise RuntimeError("BuildSystem allocation no longer contains 420 WEEKLY cases")
-    if tuple(str(r["case_id"]) for r in cases) != EXECUTABLE_IDS:
-        raise RuntimeError("fragment does not contain the exact 36-case executable partition")
+    if not design or not allocation or not contracts:
+        raise RuntimeError("BuildSystem canonical inventory is empty")
+    design_by_id = unique_map(design, "case_id", "BuildSystem design")
+    allocation_by_id = unique_map(allocation, "case_id", "BuildSystem allocation")
+    contracts_by_id = unique_map(contracts, "contract_id", "BuildSystem contracts")
+    manifest_by_id = unique_map(cases, "case_id", "BuildSystem manifest")
+    if design_by_id.keys() != allocation_by_id.keys():
+        raise RuntimeError("BuildSystem design and allocation case IDs differ")
+    for case_id, design_row in design_by_id.items():
+        allocation_row = allocation_by_id[case_id]
+        contract_id = str(design_row["contract_id"])
+        if contract_id not in contracts_by_id:
+            raise RuntimeError(f"BuildSystem case {case_id} references unknown contract {contract_id}")
+        if str(allocation_row["contract_id"]) != contract_id:
+            raise RuntimeError(f"BuildSystem allocation changes the contract of {case_id}")
+    for case_id, manifest_row in manifest_by_id.items():
+        if case_id not in design_by_id:
+            raise RuntimeError(f"BuildSystem manifest contains foreign case {case_id}")
+        if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):
+            raise RuntimeError(f"BuildSystem manifest changes the contract of {case_id}")
+    return design_by_id, contracts_by_id
 
 
-def validate_classifications(repository_root: Path, cases: list[dict[str, object]]) -> None:
+def validate_classifications(
+    repository_root: Path,
+    cases: list[dict[str, object]],
+    design_by_id: dict[str, dict[str, str]],
+    contracts_by_id: dict[str, dict[str, str]],
+) -> tuple[frozenset[str], frozenset[str]]:
     component_root = repository_root / "tests" / "compiler-suite" / "buildsystem"
     catalog = read_jsonl(component_root / "BuildSystemContractCatalog.jsonl")
     classified = read_jsonl(component_root / "BuildSystemCaseClassifications.jsonl")
-    if len(catalog) != 76 or {str(r["contract_id"]) for r in catalog} != {
-        f"C12B-BLD-{index:03d}" for index in range(1, 77)
-    }:
-        raise RuntimeError("BuildSystem contract catalogue is incomplete")
+    catalog_by_id = unique_map(catalog, "contract_id", "BuildSystem contract catalogue")
+    classified_by_id = unique_map(classified, "case_id", "BuildSystem classifications")
+    if catalog_by_id.keys() != contracts_by_id.keys():
+        raise RuntimeError("BuildSystem contract catalogue differs from the canonical inventory")
+    catalog_cases: set[str] = set()
+    executable_catalog_cases: set[str] = set()
+    delegated_catalog_cases: set[str] = set()
+    for contract_id, row in catalog_by_id.items():
+        contract_cases = set(expand_case_range(row.get("case_range")))
+        if catalog_cases & contract_cases:
+            raise RuntimeError(f"BuildSystem catalogue overlaps at contract {contract_id}")
+        for case_id in contract_cases:
+            design_row = design_by_id.get(case_id)
+            if design_row is None or str(design_row["contract_id"]) != contract_id:
+                raise RuntimeError(f"BuildSystem catalogue misclassifies {case_id}")
+        catalog_cases.update(contract_cases)
+        disposition = str(row.get("disposition", ""))
+        if disposition == "Executable":
+            executable_catalog_cases.update(contract_cases)
+        elif disposition == "HistoricalDelegated":
+            delegated_catalog_cases.update(contract_cases)
+        else:
+            raise RuntimeError(f"unsupported BuildSystem contract disposition {disposition!r}")
+    if catalog_cases != set(design_by_id):
+        raise RuntimeError("BuildSystem contract catalogue does not cover the canonical denominator")
+    for case_id, row in classified_by_id.items():
+        design_row = design_by_id.get(case_id)
+        if design_row is None:
+            raise RuntimeError(f"BuildSystem classifications contain foreign case {case_id}")
+        if str(row.get("contract_id", "")) != str(design_row["contract_id"]):
+            raise RuntimeError(f"BuildSystem classification changes the contract of {case_id}")
     delegated = {
         str(r["case_id"]) for r in classified if r["disposition"] == "HistoricalDelegated"
     }
     defects = {
         str(r["case_id"]) for r in classified if r["disposition"] == "KnownProductDefect"
     }
-    if delegated != HISTORICAL_DELEGATED:
-        raise RuntimeError("BuildSystem historical delegation is not the exact 420-case allocation")
-    if defects != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("BuildSystem KPD catalogue changed")
+    if delegated != delegated_catalog_cases:
+        raise RuntimeError("BuildSystem delegated classifications differ from the contract catalogue")
     executable = {str(r["case_id"]) for r in cases}
-    if executable | delegated != set(ALL_IDS) or executable & delegated:
+    if executable != executable_catalog_cases:
+        raise RuntimeError("BuildSystem manifest differs from the executable contract catalogue")
+    if executable | delegated != set(design_by_id) or executable & delegated:
         raise RuntimeError("BuildSystem denominator is incomplete or overlapping")
+    if not defects <= executable:
+        raise RuntimeError("BuildSystem product defects must belong to executable cases")
+    if set(classified_by_id) != delegated | defects:
+        raise RuntimeError("BuildSystem classifications contain an unsupported disposition")
     tagged = {
         str(r["case_id"]) for r in cases if "known-product-defect" in r.get("tags", [])
     }
-    if tagged != KNOWN_PRODUCT_DEFECTS:
+    if tagged != defects:
         raise RuntimeError("BuildSystem executable KPD tags changed")
+    return frozenset(delegated), frozenset(defects)
 
 
 def log_process(case_root: Path, stem: str, completed: subprocess.CompletedProcess[str]) -> None:
@@ -402,8 +478,13 @@ def main() -> int:
         raise RuntimeError("BuildSystem requires an explicit sandbox-copyable installation root")
     manifest = read_jsonl(options.source_root / "manifest" / "cases.jsonl")
     cases = [row for row in manifest if row.get("component") == "BuildSystem"]
-    validate_lineage(options.repository_root, cases)
-    validate_classifications(options.repository_root, cases)
+    design_by_id, contracts_by_id = validate_lineage(options.repository_root, cases)
+    historical_delegated, known_product_defects = validate_classifications(
+        options.repository_root,
+        cases,
+        design_by_id,
+        contracts_by_id,
+    )
     work_root = options.work_parent.resolve() / f"buildsystem-{options.build_mode.lower()}"
     work_root.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
@@ -416,7 +497,7 @@ def main() -> int:
         started = time.monotonic()
         satisfied, detail = run_case(row, options, case_root, environment)
         duration = time.monotonic() - started
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if satisfied else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -425,10 +506,10 @@ def main() -> int:
         results.append({"case_id": case_id, "contract_id": row["contract_id"], "status": status, "detail": detail, "duration_seconds": duration})
     payload = {
         "component": "BuildSystem", "build_mode": options.build_mode,
-        "canonical_denominator": len(ALL_IDS), "new_suite_executable": len(cases),
-        "required": len(cases) - len(KNOWN_PRODUCT_DEFECTS),
-        "known_product_defects": len(KNOWN_PRODUCT_DEFECTS),
-        "historical_delegated": len(HISTORICAL_DELEGATED), "failures": failures,
+        "canonical_denominator": len(design_by_id), "new_suite_executable": len(cases),
+        "required": len(cases) - len(known_product_defects),
+        "known_product_defects": len(known_product_defects),
+        "historical_delegated": len(historical_delegated), "failures": failures,
         "results": results,
     }
     write_text(work_root / "results.json", json.dumps(payload, indent=2) + "\n")

@@ -106,6 +106,15 @@ fuentes no vacías, IDs únicos, componentes cubiertos, paridad exacta de casos 
 cero ejecutables ajenos. Los conteos de esta tabla permanecen como evidencia de
 la revisión actual, no como condición para ejecutar una revisión posterior.
 
+Los controladores de BuildSystem y Packaging tampoco dependen ya de sus
+totales, rangos o listas de IDs de esta revisión. Ambos descubren su denominador
+desde diseño, asignación y contratos; después exigen paridad relacional con el
+catálogo, las clasificaciones y el manifiesto. Packaging conserva su
+contradicción de perfiles sólo mientras la diferencia exista en los inventarios
+vivos. Los oráculos de comportamiento permanecen intactos. Los validadores de
+inventario pasaron con el corte actual (`456/36/420/2` para BuildSystem y
+`18/12/6/4` para Packaging); la ejecución funcional sigue diferida.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

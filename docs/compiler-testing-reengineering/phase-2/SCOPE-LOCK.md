@@ -266,3 +266,21 @@ entre diseño y asignación y ausencia de casos ejecutables ajenos al catálogo.
 Permanecen intactos casos, contratos, oráculos, disposiciones, manifiestos,
 compilador, suite histórica, archivos protegidos y totales documentales de la
 revisión actual. No se compila ni ejecuta localmente.
+
+### Enmienda: denominadores vivos de BuildSystem y Packaging
+
+Los controladores de BuildSystem y Packaging deben validar el conjunto vigente
+de contratos y casos por relaciones entre las fuentes canónicas. Queda
+prohibido rechazar una revisión porque cambió un total, un rango ordinal, una
+partición de perfiles o una lista de IDs escrita en el controlador.
+
+El presupuesto queda limitado a
+`run_buildsystem_gate.py`, `run_packaging_gate.py` y la evidencia de Validación
+10. Los controladores deben exigir IDs únicos, referencias válidas, paridad de
+contrato por caso, cobertura completa del catálogo, particiones sin traslape y
+correspondencia exacta entre catálogo, clasificaciones y manifiesto. Las
+contradicciones de perfil se derivan de los inventarios vivos. Permanecen
+intactos los casos, contratos, oráculos, disposiciones, manifiestos, producto,
+suite histórica y archivos protegidos. Los oráculos de cardinalidad funcional,
+como producir exactamente un archivo de paquete, no forman parte de esta
+enmienda y se conservan.

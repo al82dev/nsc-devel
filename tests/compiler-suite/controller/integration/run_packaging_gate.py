@@ -11,20 +11,6 @@ import time
 from pathlib import Path
 
 
-ALL_IDS = (
-    *(f"T12B-{ordinal:05d}" for ordinal in range(457, 469)),
-    *(f"T12B-{ordinal:05d}" for ordinal in range(1069, 1075)),
-)
-DEPLOY_BATCH_IDS = tuple(f"T12B-{ordinal:05d}" for ordinal in range(457, 463))
-DEPLOY_GUI_IDS = tuple(f"T12B-{ordinal:05d}" for ordinal in range(463, 469))
-PACKAGE_IDS = tuple(f"T12B-{ordinal:05d}" for ordinal in range(1069, 1075))
-EXECUTABLE_IDS = DEPLOY_BATCH_IDS + PACKAGE_IDS
-INFRASTRUCTURE_PENDING = frozenset(DEPLOY_GUI_IDS)
-KNOWN_PRODUCT_DEFECTS = frozenset(
-    {"T12B-00457", "T12B-00458", "T12B-00460", "T12B-00461"}
-)
-
-
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for line_number, raw_line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
@@ -51,6 +37,22 @@ def write_text(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8", newline="\n")
 
 
+def unique_map(
+    rows: list[dict[str, object]] | list[dict[str, str]],
+    key: str,
+    source: str,
+) -> dict[str, dict[str, object] | dict[str, str]]:
+    result: dict[str, dict[str, object] | dict[str, str]] = {}
+    for row in rows:
+        value = str(row.get(key, ""))
+        if not value:
+            raise RuntimeError(f"{source} contains a row without {key}")
+        if value in result:
+            raise RuntimeError(f"{source} contains duplicate {key} {value}")
+        result[value] = row
+    return result
+
+
 def run_process(
     command: list[str], cwd: Path, environment: dict[str, str], timeout: float = 900.0
 ) -> subprocess.CompletedProcess[str]:
@@ -72,7 +74,14 @@ def log_process(case_root: Path, stem: str, completed: subprocess.CompletedProce
     write_text(case_root / f"{stem}.stderr.log", completed.stderr)
 
 
-def validate_lineage(repository_root: Path, cases: list[dict[str, object]]) -> None:
+def validate_lineage(
+    repository_root: Path,
+    cases: list[dict[str, object]],
+) -> tuple[
+    dict[str, dict[str, str]],
+    dict[str, dict[str, str]],
+    frozenset[str],
+]:
     inventory = repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
     design = [row for row in read_csv(inventory / "test-case-design.csv") if row["component"] == "Packaging"]
     allocation = [
@@ -80,27 +89,79 @@ def validate_lineage(repository_root: Path, cases: list[dict[str, object]]) -> N
         if row["component"] == "Packaging"
     ]
     contracts = [row for row in read_csv(inventory / "contracts.csv") if row["component"] == "Packaging"]
-    if tuple(row["case_id"] for row in design) != ALL_IDS:
-        raise RuntimeError("Packaging design no longer contains the exact canonical 18 cases")
-    if tuple(row["case_id"] for row in allocation) != ALL_IDS:
-        raise RuntimeError("Packaging allocation no longer contains the exact canonical 18 cases")
-    if len(contracts) != 3:
-        raise RuntimeError("Packaging contract inventory no longer contains three contracts")
-    if {row["default_profile"] for row in allocation} != {"NIGHTLY"}:
-        raise RuntimeError("Packaging allocation no longer assigns every case to NIGHTLY")
-    if tuple(str(row["case_id"]) for row in cases) != EXECUTABLE_IDS:
-        raise RuntimeError("manifest does not contain the exact 12-case executable partition")
+    if not design or not allocation or not contracts:
+        raise RuntimeError("Packaging canonical inventory is empty")
+    design_by_id = unique_map(design, "case_id", "Packaging design")
+    allocation_by_id = unique_map(allocation, "case_id", "Packaging allocation")
+    contracts_by_id = unique_map(contracts, "contract_id", "Packaging contracts")
+    manifest_by_id = unique_map(cases, "case_id", "Packaging manifest")
+    if design_by_id.keys() != allocation_by_id.keys():
+        raise RuntimeError("Packaging design and allocation case IDs differ")
+    profile_mismatches: set[str] = set()
+    for case_id, design_row in design_by_id.items():
+        allocation_row = allocation_by_id[case_id]
+        contract_id = str(design_row["contract_id"])
+        if contract_id not in contracts_by_id:
+            raise RuntimeError(f"Packaging case {case_id} references unknown contract {contract_id}")
+        if str(allocation_row["contract_id"]) != contract_id:
+            raise RuntimeError(f"Packaging allocation changes the contract of {case_id}")
+        if str(design_row.get("frequency", "")) != str(allocation_row.get("default_profile", "")):
+            profile_mismatches.add(case_id)
+    for case_id, manifest_row in manifest_by_id.items():
+        if case_id not in design_by_id:
+            raise RuntimeError(f"Packaging manifest contains foreign case {case_id}")
+        if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):
+            raise RuntimeError(f"Packaging manifest changes the contract of {case_id}")
+    return design_by_id, contracts_by_id, frozenset(profile_mismatches)
 
 
-def validate_classifications(repository_root: Path, cases: list[dict[str, object]]) -> None:
+def validate_classifications(
+    repository_root: Path,
+    cases: list[dict[str, object]],
+    design_by_id: dict[str, dict[str, str]],
+    contracts_by_id: dict[str, dict[str, str]],
+    profile_mismatches: frozenset[str],
+) -> tuple[frozenset[str], frozenset[str]]:
     component_root = repository_root / "tests" / "compiler-suite" / "packaging"
     catalog = read_jsonl(component_root / "PackagingContractCatalog.jsonl")
     classified = read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
     contradictions = read_jsonl(component_root / "PackagingPlanContradictions.jsonl")
-    if {str(row["contract_id"]) for row in catalog} != {
-        "C12B-PKG-001", "C12B-PKG-002", "C12B-PKG-003"
-    }:
-        raise RuntimeError("Packaging contract catalogue is incomplete")
+    catalog_by_id = unique_map(catalog, "contract_id", "Packaging contract catalogue")
+    classified_by_id = unique_map(classified, "case_id", "Packaging classifications")
+    if catalog_by_id.keys() != contracts_by_id.keys():
+        raise RuntimeError("Packaging contract catalogue differs from the canonical inventory")
+    catalog_cases: set[str] = set()
+    executable_catalog_cases: set[str] = set()
+    infrastructure_catalog_cases: set[str] = set()
+    for contract_id, row in catalog_by_id.items():
+        raw_case_ids = row.get("case_ids")
+        if not isinstance(raw_case_ids, list) or not raw_case_ids:
+            raise RuntimeError(f"Packaging catalogue contract {contract_id} has no case IDs")
+        contract_cases = {str(case_id) for case_id in raw_case_ids}
+        if len(contract_cases) != len(raw_case_ids):
+            raise RuntimeError(f"Packaging catalogue contract {contract_id} repeats case IDs")
+        if catalog_cases & contract_cases:
+            raise RuntimeError(f"Packaging catalogue overlaps at contract {contract_id}")
+        for case_id in contract_cases:
+            design_row = design_by_id.get(case_id)
+            if design_row is None or str(design_row["contract_id"]) != contract_id:
+                raise RuntimeError(f"Packaging catalogue misclassifies {case_id}")
+        catalog_cases.update(contract_cases)
+        disposition = str(row.get("disposition", ""))
+        if disposition == "Executable":
+            executable_catalog_cases.update(contract_cases)
+        elif disposition == "InfrastructurePending":
+            infrastructure_catalog_cases.update(contract_cases)
+        else:
+            raise RuntimeError(f"unsupported Packaging contract disposition {disposition!r}")
+    if catalog_cases != set(design_by_id):
+        raise RuntimeError("Packaging contract catalogue does not cover the canonical denominator")
+    for case_id, row in classified_by_id.items():
+        design_row = design_by_id.get(case_id)
+        if design_row is None:
+            raise RuntimeError(f"Packaging classifications contain foreign case {case_id}")
+        if str(row.get("contract_id", "")) != str(design_row["contract_id"]):
+            raise RuntimeError(f"Packaging classification changes the contract of {case_id}")
     infrastructure = {
         str(row["case_id"])
         for row in classified
@@ -111,22 +172,48 @@ def validate_classifications(repository_root: Path, cases: list[dict[str, object
         for row in classified
         if row["disposition"] == "KnownProductDefect"
     }
-    if infrastructure != INFRASTRUCTURE_PENDING:
-        raise RuntimeError("Packaging infrastructure-pending partition changed")
-    if defects != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Packaging known-product-defect partition changed")
-    if len(contradictions) != 1:
-        raise RuntimeError("Packaging profile contradiction is not preserved")
+    if infrastructure != infrastructure_catalog_cases:
+        raise RuntimeError("Packaging infrastructure classifications differ from the contract catalogue")
+    contradiction_keys: set[tuple[str, str]] = set()
+    for row in contradictions:
+        key = (str(row.get("scope", "")), str(row.get("field", "")))
+        if not all(key) or key in contradiction_keys:
+            raise RuntimeError("Packaging contradictions contain an invalid or duplicate key")
+        if key != ("Packaging", "default_profile"):
+            raise RuntimeError(f"unsupported Packaging contradiction {key!r}")
+        contradiction_keys.add(key)
+    if bool(profile_mismatches) != bool(contradictions):
+        raise RuntimeError("Packaging profile contradiction does not match the live inventories")
     executable = {str(row["case_id"]) for row in cases}
-    if executable | infrastructure != set(ALL_IDS) or executable & infrastructure:
+    if executable != executable_catalog_cases:
+        raise RuntimeError("Packaging manifest differs from the executable contract catalogue")
+    if executable | infrastructure != set(design_by_id) or executable & infrastructure:
         raise RuntimeError("Packaging denominator is incomplete or overlapping")
+    if not defects <= executable:
+        raise RuntimeError("Packaging product defects must belong to executable cases")
+    if set(classified_by_id) != infrastructure | defects:
+        raise RuntimeError("Packaging classifications contain an unsupported disposition")
+    for contract_id, row in catalog_by_id.items():
+        contract_cases = {str(case_id) for case_id in row["case_ids"]}
+        contract_defects = len(contract_cases & defects)
+        contract_infrastructure = len(contract_cases & infrastructure)
+        contract_required = len(contract_cases & executable) - contract_defects
+        declared_counts = (
+            int(row.get("required", -1)),
+            int(row.get("known_product_defect", -1)),
+            int(row.get("infrastructure_pending", -1)),
+        )
+        derived_counts = (contract_required, contract_defects, contract_infrastructure)
+        if declared_counts != derived_counts:
+            raise RuntimeError(f"Packaging catalogue summary differs at {contract_id}")
     tagged = {
         str(row["case_id"])
         for row in cases
         if "known-product-defect" in row.get("tags", [])
     }
-    if tagged != KNOWN_PRODUCT_DEFECTS:
+    if tagged != defects:
         raise RuntimeError("Packaging executable KPD tags changed")
+    return frozenset(infrastructure), frozenset(defects)
 
 
 def cmake_shim(case_root: Path) -> tuple[Path, Path]:
@@ -351,8 +438,17 @@ def main() -> int:
 
     manifest = read_jsonl(options.source_root / "manifest" / "cases.jsonl")
     cases = [row for row in manifest if row.get("component") == "Packaging"]
-    validate_lineage(options.repository_root, cases)
-    validate_classifications(options.repository_root, cases)
+    design_by_id, contracts_by_id, profile_mismatches = validate_lineage(
+        options.repository_root,
+        cases,
+    )
+    infrastructure_pending, known_product_defects = validate_classifications(
+        options.repository_root,
+        cases,
+        design_by_id,
+        contracts_by_id,
+        profile_mismatches,
+    )
     work_root = options.work_parent.resolve() / f"packaging-{options.build_mode.lower()}"
     work_root.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
@@ -367,7 +463,7 @@ def main() -> int:
         started = time.monotonic()
         satisfied, detail = run_case(row, options, case_root, environment)
         duration = time.monotonic() - started
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if satisfied else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -385,11 +481,11 @@ def main() -> int:
     payload = {
         "component": "Packaging",
         "build_mode": options.build_mode,
-        "canonical_denominator": len(ALL_IDS),
+        "canonical_denominator": len(design_by_id),
         "new_suite_executable": len(cases),
-        "required": len(cases) - len(KNOWN_PRODUCT_DEFECTS),
-        "known_product_defects": len(KNOWN_PRODUCT_DEFECTS),
-        "infrastructure_pending": len(INFRASTRUCTURE_PENDING),
+        "required": len(cases) - len(known_product_defects),
+        "known_product_defects": len(known_product_defects),
+        "infrastructure_pending": len(infrastructure_pending),
         "failures": failures,
         "results": results,
     }
