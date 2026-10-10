@@ -4,14 +4,14 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "THIS_COMMIT",
-  "last_completed_batch": "TANDA-VALIDACION-11-INVENTARIO-SELFHOST-GRUPO-1",
+  "last_completed_batch": "TANDA-VALIDACION-12-INVENTARIO-SELFHOST-RANGOS",
   "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "AUDITORIA-CONTADORES-RIGIDOS-SELFHOST-GRUPO-2",
-  "next_action": "Migrate the remaining zero-executable self-host range controllers to the shared live inventory validator.",
+  "current_batch": "AUDITORIA-CONTADORES-RIGIDOS-SELFHOST-EJECUTABLES",
+  "next_action": "Migrate executable and mixed-disposition self-host controllers to live relational inventories without changing their oracles.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -764,13 +764,21 @@
       "Packaging"
     ],
     "dynamic_inventory_controller_validation": "PASS_STATIC_AND_DIRECTED",
-    "dynamic_selfhost_inventory_controllers": 4,
+    "dynamic_selfhost_inventory_controllers": 11,
     "dynamic_selfhost_inventory_components": [
       "SelfHost.Bootstrap",
       "SelfHost.CodeGen",
       "SelfHost.Documentation",
-      "SelfHost.Project"
+      "SelfHost.Project",
+      "SelfHost.Driver",
+      "SelfHost.IR",
+      "SelfHost.Parser",
+      "SelfHost.Projects",
+      "SelfHost.Sema",
+      "SelfHost.Symbols",
+      "SelfHost.Syntax"
     ],
+    "selfhost_descriptor_parser_omissions_pending": 0,
     "debug_link_builder_closure_symbols_pending": 0,
     "debug_link_builder_closure_symbols_closed_statically": 24,
     "debug_link_builder_closure_product_units": 11,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,6 +126,27 @@ def case_ordinal(case_id: str) -> int:
     if not separator or not ordinal.isdigit():
         raise RuntimeError(f"case ID has no numeric ordinal: {case_id}")
     return int(ordinal)
+
+
+def expected_nightly_ordinals(inventory: ComponentInventory) -> frozenset[int]:
+    return frozenset(
+        case_ordinal(case_id)
+        for case_id, row in inventory.allocation_by_id.items()
+        if row.get("default_profile") == "NIGHTLY"
+    )
+
+
+def materialized_nightly_ordinals(path: Path) -> frozenset[int]:
+    text = path.read_text(encoding="utf-8")
+    ordinals: set[int] = set()
+    arrays = re.findall(r"nightlies\s*\{([^}]*)\}", text, flags=re.DOTALL)
+    for body in arrays:
+        ordinals.update(int(value) for value in re.findall(r"\d+", body))
+    ordinals.update(
+        int(value)
+        for value in re.findall(r'ordinal\s*==\s*(\d+)\s*\?\s*"NIGHTLY"', text)
+    )
+    return frozenset(ordinals)
 
 
 def expected_ranges(

@@ -298,3 +298,16 @@ y validación relacional y la evidencia de Validación 11. Se conservan los
 módulos C++, disposiciones, contradicciones, casos, oráculos, manifiestos y
 producto. Los conflictos de perfil se mantienen sólo cuando se derivan de una
 diferencia viva entre diseño y asignación. No se compila ni se ejecuta producto.
+
+### Enmienda: inventario self-host común, controladores por rango
+
+Los gates de `SelfHost.Driver`, `SelfHost.IR`, `SelfHost.Parser`,
+`SelfHost.Projects`, `SelfHost.Sema`, `SelfHost.Symbols` y `SelfHost.Syntax`
+deben derivar rangos, capas y perfiles desde el inventario común. Se permite
+corregir únicamente el parser de descriptores cuando omita una fila realmente
+materializada por diferencias de espacio o salto de línea.
+
+El presupuesto queda limitado a esos siete gates, las funciones compartidas
+de perfil/rango y la evidencia de Validación 12. Módulos, headers de soporte,
+casos, contratos, oráculos, disposiciones, manifiestos y producto permanecen
+intactos. No se configura ni compila producto.

@@ -123,6 +123,13 @@ vivo. Sus cuatro gates estáticos pasan. Las contradicciones de Documentation y
 Project se conservan por diferencias de perfil observadas, no por exigir un
 número fijo de registros. No se compiló ni ejecutó producto.
 
+Siete controladores self-host adicionales (`Driver`, `IR`, `Parser`,
+`Projects`, `Sema`, `Symbols` y `Syntax`) derivan ahora sus rangos, capas y
+perfiles NIGHTLY desde el inventario vivo. Los siete gates pasan. La auditoría
+detectó además que el parser de Projects omitía `CSH-PRJ-005` cuando el oráculo
+estaba en la línea siguiente; el patrón ahora admite espacio multilínea y el
+contrato se coteja correctamente, sin modificar la prueba materializada.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
