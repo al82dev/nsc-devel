@@ -12,8 +12,7 @@
 
 namespace nsc::suite
 {
-// Registers the bounded ownership cases for SourceFile. The UINT32_MAX saturation case remains excluded because
-// the current product API must own and scan more than 4 GiB to reach that branch.
+// Registers the bounded ownership cases and preserves the UINT32_MAX saturation case as infrastructure-pending.
 void registerSourceFileOwnershipModule(TestRegistry& registry)
 {
     registry.add(TestCase{
@@ -122,6 +121,21 @@ void registerSourceFileOwnershipModule(TestRegistry& registry)
             context.expect(firstDisplay == path.string(), "display-path view must preserve owned bytes");
             context.expect(firstBuffer == bytes, "buffer view must preserve owned bytes");
         },
+    });
+    registry.add(TestCase{
+        "TS-SRC-008",
+        "CS-SRC-002",
+        "Host.Source",
+        "unit",
+        "WEEKLY",
+        {"source", "file", "size", "infrastructure-pending", "large-memory"},
+        [](TestContext& context) {
+            context.expect(
+                false,
+                "TS-SRC-008 requires a bounded fixture above UINT32_MAX; the current SourceFile API "
+                "must own and scan the complete buffer and exposes no virtual-size seam");
+        },
+        TestDisposition::InfrastructurePending,
     });
 }
 }

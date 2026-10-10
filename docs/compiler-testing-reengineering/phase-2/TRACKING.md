@@ -3,7 +3,7 @@
 | Ola | Alcance | Estado | Previstos | Materializados | Integrados | No materializados | Mat. sin integrar | Pendientes totales | Validados |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 3 sintéticos | 3 | 3 | 0 | 0 | 0 | 3 |
-| 1 | Fundaciones host | EN CURSO | 747 | 743 | 743 | 4 | 0 | 4 | 736 |
+| 1 | Fundaciones host | EN CURSO | 747 | 747 | 747 | 0 | 0 | 0 | 736 |
 | 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 1,197 | 1,197 | 0 | 0 | 0 | 333 |
 | 3 | IR y optimización | EN CURSO | 1,784 | 1,784 | 1,784 | 0 | 0 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | EN CURSO | 920 | 920 | 920 | 0 | 0 | 0 | 0 |
@@ -11,7 +11,7 @@
 | 6 | Producto, driver y servicio | EN CURSO | 1,112 | 1,112 | 1,112 | 0 | 0 | 0 | 0 |
 | 7 | Compilador self-host | EN CURSO | 1,027 | 1,027 | 1,027 | 0 | 0 | 0 | 0 |
 | 8 | Infraestructura y oráculos self-host | EN CURSO | 726 | 726 | 726 | 0 | 0 | 0 | 0 |
-| 9 | Build, instalación y paquete de NSC | EN CURSO | 474 | 456 | 456 | 18 | 0 | 18 | 0 |
+| 9 | Build, instalación y paquete de NSC | EN CURSO | 474 | 474 | 474 | 0 | 0 | 0 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
 
@@ -25,6 +25,7 @@ la columna `Validados`.
 
 | Corte principal | Previstos | Materializados | Integrados | No materializados | Mat. sin integrar | Pendientes totales | Validados |
 |---|---:|---:|---:|---:|---:|---:|---:|
+| **Total global, olas 1–9** | **9,587** | **9,587** | **9,587** | **0** | **0** | **0** | **333** |
 | Ola 2 | 1,197 | 1,197 | 1,197 | 0 | 0 | 0 | 333 |
 | Ola 3 | 1,784 | 1,784 | 1,784 | 0 | 0 | 0 | 0 |
 | Host.Compilation | 416 | 416 | 416 | 0 | 0 | 0 | 0 |
@@ -117,8 +118,11 @@ módulos, gate y evidencia están conectados; la validación permanece diferida.
 `80` unitarios bloqueados por seams privados y `80` de proceso bloqueados por
 el ejecutor NSC general ausente. No agrega filas al manifiesto ordinario; sus
 dos módulos, gate de clasificación y evidencia están conectados sin ejecutar.
-`Host.LanguageService` tiene sus `336/336` casos materializados: `255`
-ejecutables, `80` `InfrastructurePending` y `1` `KnownProductDefect`. Su
+`Host.LanguageService` tiene sus `336/336` casos materializados e integrados:
+`255` `Required`, `1` `KnownProductDefect` ejecutable y `80`
+`InfrastructurePending`. `TF-LANGUAGE-SERVICE-304` conserva el oráculo de
+rechazo atómico de un nombre reservado, está en el manifiesto como
+`KNOWN_FAILURE` y permanece rojo hasta corregir el producto. Su
 integración central está materializada; su validación permanece diferida y no
 aumenta `Validados`.
 
@@ -166,13 +170,22 @@ la matriz de asignación gobierna la ejecución. Ningún caso de la Ola 9 aument
 `Validados` en este corte.
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
-de forma individual, y `4` casos pendientes de infraestructura especial. Los
-siete defectos permanecen rojos sin interferir con el flujo ordinario.
+de forma individual, y `4` casos materializados como `InfrastructurePending`.
+Los siete defectos permanecen rojos sin interferir con el flujo ordinario.
 
 La ola 1 conserva cuatro limitaciones de infraestructura (`TS-SRC-008`,
-`TS-SRC-040`, `TS-SRC-041`, `TS-SRC-049`). Permanecen en el denominador y en el
-registro de pendientes, pero no bloquean la implementación independiente de la
-ola 2. La ola 1 no se declara `LISTA`.
+`TS-SRC-040`, `TS-SRC-041`, `TS-SRC-049`). Ya existen en el registro central
+con disposición `InfrastructurePending`, permanecen fuera del manifiesto
+ejecutable y no aumentan `Validados`. La ola 1 no se declara `LISTA` porque la
+validación de esos cuatro oráculos sigue requiriendo memoria extrema,
+coordinación determinista de E/S o ASan con aislamiento de proceso.
+
+La auditoría estática global contra los inventarios canónicos cerró `44/44`
+componentes, `1,208/1,208` contratos y `9,587/9,587` casos materializados e
+integrados. El manifiesto ordinario conserva únicamente casos ejecutables; las
+disposiciones no ejecutables permanecen en registros o catálogos explícitos.
+Este cierre es de implementación: no ejecutó builds, pruebas ni gates y por eso
+el total conservador de `Validados` permanece en `333`.
 
 Desglose certificado de `Host.Lexer`: `110/110` casos implementados, `109 PASS`
 y `1 KNOWN_FAILURE` (`TL-LEX-075`) en Debug y Release. El target consolidado y

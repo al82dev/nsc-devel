@@ -86,14 +86,35 @@ void registerValidLookupCase(TestRegistry& registry)
         },
     });
 }
+
+// Preserves the invalidated-reference contract for a future versioned ASan subprocess profile.
+void registerInvalidatedReferenceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TS-SRC-049",
+        "CS-SRC-007",
+        "Host.Source",
+        "component",
+        "NIGHTLY",
+        {"source", "manager", "lifetime", "asan", "infrastructure-pending"},
+        [](TestContext& context) {
+            context.expect(
+                false,
+                "TS-SRC-049 intentionally probes a pointer after vector reallocation; the undefined-access "
+                "oracle requires a versioned ASan build and subprocess isolation");
+        },
+        TestDisposition::InfrastructurePending,
+    });
+}
 }
 
-// Registers the bounded CS-SRC-007 cases whose oracles do not require dereferencing an invalidated pointer.
+// Registers the bounded CS-SRC-007 cases and its explicit sanitizer-only lifetime contract.
 void registerSourceManagerRegistryModule(TestRegistry& registry)
 {
     registerConsecutiveIdentityCase(registry);
     registerDuplicatePathCase(registry);
     registerInvalidIdentityCase(registry);
     registerValidLookupCase(registry);
+    registerInvalidatedReferenceCase(registry);
 }
 }

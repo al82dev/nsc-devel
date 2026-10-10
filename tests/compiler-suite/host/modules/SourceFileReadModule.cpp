@@ -256,9 +256,44 @@ void registerSuccessfulLoadCase(TestRegistry& registry)
         },
     });
 }
+
+// Preserves the two valid race contracts until SourceManager exposes deterministic coordination points.
+void registerCoordinatedMutationCases(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TS-SRC-040",
+        "CS-SRC-006",
+        "Host.Source",
+        "component",
+        "NIGHTLY",
+        {"source", "read", "race", "truncate", "infrastructure-pending"},
+        [](TestContext& context) {
+            context.expect(
+                false,
+                "TS-SRC-040 requires deterministic truncation after file_size and before read; "
+                "SourceManager currently exposes no coordination seam");
+        },
+        TestDisposition::InfrastructurePending,
+    });
+    registry.add(TestCase{
+        "TS-SRC-041",
+        "CS-SRC-006",
+        "Host.Source",
+        "component",
+        "NIGHTLY",
+        {"source", "read", "race", "growth", "infrastructure-pending"},
+        [](TestContext& context) {
+            context.expect(
+                false,
+                "TS-SRC-041 requires deterministic growth after file_size and before the final peek; "
+                "SourceManager currently exposes no coordination seam");
+        },
+        TestDisposition::InfrastructurePending,
+    });
+}
 }
 
-// Registers the deterministic CS-SRC-006 cases that do not require a product-side race coordination seam.
+// Registers the deterministic CS-SRC-006 cases and its two explicit race-infrastructure contracts.
 void registerSourceFileReadModule(TestRegistry& registry)
 {
     registerEmptyReadCase(registry);
@@ -267,6 +302,7 @@ void registerSourceFileReadModule(TestRegistry& registry)
     registerExceededLimitCase(registry);
     registerMissingFileCase(registry);
     registerUnknownSizeCase(registry);
+    registerCoordinatedMutationCases(registry);
     registerPreservedErrorCase(registry);
     registerFailedLoadCase(registry);
     registerSuccessfulLoadCase(registry);

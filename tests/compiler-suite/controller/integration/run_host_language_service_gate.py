@@ -18,8 +18,8 @@ FULL_EXECUTABLE_CONTRACTS = (
     *range(30, 38),
     *range(39, 43),
 )
-EXPECTED_PROFILES = {"PR": 224, "NIGHTLY": 31}
-EXPECTED_LAYERS = {"unit": 231, "component": 24}
+EXPECTED_PROFILES = {"PR": 224, "NIGHTLY": 32}
+EXPECTED_LAYERS = {"unit": 232, "component": 24}
 
 
 def executable_ids() -> list[str]:
@@ -31,7 +31,7 @@ def executable_ids() -> list[str]:
             for ordinal in range(first, first + 8)
         )
     identifiers.extend(
-        f"TF-LANGUAGE-SERVICE-{ordinal:03d}" for ordinal in range(297, 304)
+        f"TF-LANGUAGE-SERVICE-{ordinal:03d}" for ordinal in range(297, 305)
     )
     return sorted(identifiers)
 
@@ -54,6 +54,7 @@ def main() -> int:
     all_manifests = [
         json.loads(line)
         for line in manifest_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
     ]
     manifests = [
         case
@@ -63,7 +64,7 @@ def main() -> int:
     expected_ids = executable_ids()
     if [case["case_id"] for case in manifests] != expected_ids:
         raise RuntimeError(
-            "central manifest does not contain the canonical 255 executable "
+            "central manifest does not contain the canonical 256 executable "
             "Host.LanguageService cases"
         )
     if Counter(case["profile"] for case in manifests) != EXPECTED_PROFILES:
@@ -119,9 +120,15 @@ def main() -> int:
             )
         counts = payload["counts"]
         unexpected = any(
-            count != 0 for status, count in counts.items() if status != "PASS"
+            count != 0
+            for status, count in counts.items()
+            if status not in {"PASS", "KNOWN_FAILURE"}
         )
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        if (
+            counts["PASS"] != len(expected_ids) - 1
+            or counts["KNOWN_FAILURE"] != 1
+            or unexpected
+        ):
             raise RuntimeError(
                 f"unexpected Host.LanguageService result counts: {counts}"
             )

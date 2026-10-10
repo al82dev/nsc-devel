@@ -3,15 +3,24 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "ba90b5899",
-  "last_completed_batch": "TANDA-09-02-PACKAGING",
-  "last_completed_case": "T12B-01074",
+  "last_completed_commit": "ae574871c",
+  "last_completed_batch": "AUDITORIA-ESTATICA-COMPLETITUD-FASE-2",
+  "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
   "next_action": "Begin the deferred offline validation only when explicitly authorized; implementation through Wave 9 is integrated.",
   "implementation_materialization": {
+    "Host.Source": {
+      "expected": 58,
+      "materialized": 58,
+      "executable": 54,
+      "infrastructure_pending": 4,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 54
+    },
     "Host.AST": {
       "expected": 230,
       "materialized": 230,
@@ -126,7 +135,8 @@
     "Host.LanguageService": {
       "expected": 336,
       "materialized": 336,
-      "executable": 255,
+      "executable": 256,
+      "required": 255,
       "infrastructure_pending": 80,
       "known_product_defect": 1,
       "integrated": true,
@@ -428,23 +438,29 @@
   ],
   "independent_partial_contracts": {
     "CS-SRC-002": {
-      "implemented_cases": 5,
+      "materialized_cases": 6,
+      "executable_cases": 5,
       "verified_cases": 5,
+      "infrastructure_pending_cases": 1,
       "blocked_cases": [
         "TS-SRC-008"
       ]
     },
     "CS-SRC-006": {
-      "implemented_cases": 9,
+      "materialized_cases": 11,
+      "executable_cases": 9,
       "verified_cases": 9,
+      "infrastructure_pending_cases": 2,
       "blocked_cases": [
         "TS-SRC-040",
         "TS-SRC-041"
       ]
     },
     "CS-SRC-007": {
-      "implemented_cases": 4,
+      "materialized_cases": 5,
+      "executable_cases": 4,
       "verified_cases": 4,
+      "infrastructure_pending_cases": 1,
       "blocked_cases": [
         "TS-SRC-049"
       ]
@@ -550,7 +566,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 743,
+      "product_cases_implemented": 747,
+      "product_cases_integrated": 747,
       "product_cases_verified": 736,
       "known_failure_cases_implemented": 7,
       "defect_tests_pending_implementation": 0,
@@ -689,6 +706,19 @@
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }
+  },
+  "static_completeness_audit": {
+    "components_expected": 44,
+    "components_integrated": 44,
+    "contracts_expected": 1208,
+    "contracts_integrated": 1208,
+    "cases_expected": 9587,
+    "cases_materialized": 9587,
+    "cases_integrated": 9587,
+    "manifest_executable_rows": 5695,
+    "implementation_gaps": 0,
+    "validated_cases": 333,
+    "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
   },
   "validation": {
     "python_controller_tests": 56,
