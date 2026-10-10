@@ -280,7 +280,11 @@ void blockTopologyOracle(TestContext& context, std::size_t variant)
     };
     auto compilation = compileVariant(context, "mir-topology", programs, variant);
     const MirFunction* function = findFunction(compilation->mirModule(), "Main");
-    context.expect(function != nullptr && !function->blocks().empty(), "CFG lowering must publish ordered blocks");
+    if (function == nullptr || function->blocks().empty())
+    {
+        context.expect(false, "CFG lowering must publish ordered blocks");
+        return;
+    }
     for (const MirBlock* block : function->blocks())
     {
         context.expect(block != nullptr && block->terminated(), "every emitted MIR block must terminate explicitly");

@@ -22,16 +22,6 @@ using nativesharp::hir::HirNodeKind;
 using nativesharp::lexer::TokenKind;
 using nativesharp::sema::TypeKind;
 
-template <std::size_t Size>
-const HirNode* lowerCase(TestContext& context, std::string_view label,
-    const std::array<std::string_view, Size>& sources, std::size_t variant, HirNodeKind expected)
-{
-    auto compilation = compileHir(context, label, std::string(sources[variant]));
-    const HirNode* node = findFirst(compilation->hirRoot(), expected);
-    context.expect(node != nullptr, std::string(label) + " must lower the contract node kind");
-    return node;
-}
-
 void rootOracle(TestContext& context, std::size_t variant)
 {
     constexpr std::array<std::string_view, 8> sources{"", "int F();", "int value;",
@@ -103,8 +93,12 @@ void functionOracle(TestContext& context, std::size_t variant)
         "int F(int x){return x;}", "long F(int a,byte b,long c){return c;}", "extern C int F(int x);",
         "int F(int a,int b,int c,int d){return a+b+c+d;}",
         "int F(int a,int b,int c,int d,int e,int f,int g,int h){return a;}"};
-    const HirNode* function = lowerCase(context, "CF-HIR-011", sources, variant,
-        HirNodeKind::FunctionDeclaration);
+    // Keep the compilation alive while inspecting its arena-owned HIR nodes.
+    // Returning this pointer from a helper destroyed the owner first and made
+    // every CF-HIR-011 case dereference released storage.
+    auto compilation = compileHir(context, "CF-HIR-011", std::string(sources[variant]));
+    const HirNode* function = findFirst(compilation->hirRoot(), HirNodeKind::FunctionDeclaration);
+    context.expect(function != nullptr, "CF-HIR-011 must lower the contract node kind");
     context.expect(function != nullptr && function->symbol() != nullptr && function->type() != nullptr,
         "CF-HIR-011 function must retain symbol and interned signature type");
     context.expect(function != nullptr && countKind(function, HirNodeKind::ParameterDeclaration) ==

@@ -159,7 +159,11 @@ void namespaceOracle(TestContext& context, std::size_t variant)
     std::unordered_map<std::string, std::string> aliases{{"Alias", "A.B.C"}};
     QualifiedNameSite site{lexical, enclosing, &aliases, imports};
     const std::vector<QualifiedNameRung> ladder = qualifiedNameLadder(site, variant == 2 ? "" : "Thing");
-    context.expect(!ladder.empty(), "qualified name ladder must publish an ordered fallback sequence");
+    if (ladder.empty())
+    {
+        context.expect(false, "qualified name ladder must publish an ordered fallback sequence");
+        return;
+    }
     context.expect(ladder.front().tier == QualifiedNameTier::EnclosingType,
         "enclosing type must be the highest-priority name lookup tier");
 }

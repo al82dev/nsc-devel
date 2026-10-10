@@ -80,17 +80,17 @@ La corrida no demuestra `555` defectos independientes.
 - **No demostrado:** el log no distingue si el costo excesivo está en el producto, en el oráculo independiente
   cuadrático o en ambos. Hace falta perfilado dirigido; aumentar el timeout sin medir no sería diagnóstico.
 
-### INFRA-04 — oráculos C++ continúan después de una precondición fallida
+### INFRA-04 — oráculos C++ pierden sus precondiciones o la vida útil del modelo
 
 - **Afecta:** `18` casos.
 - **Frontend (`8`):** `TF-FRONT-043`, `409..412`, `414..416`.
 - **HIR/MIR (`10`):** `TF-HIR-081..088`, `TF-MIR-186`, `TF-MIR-187`.
-- **Causa confirmada:** `TestContext::expect()` sólo acumula texto; no aborta el caso. Los oráculos acceden después
-  a `front()`, `children()` o `blocks()` aunque el contenedor/puntero previo no haya satisfecho la precondición.
+- **Causa confirmada:** `TestContext::expect()` sólo acumula texto; no aborta el caso. Los oráculos Frontend y MIR
+  acceden después a `front()` o `blocks()` aunque el contenedor/puntero previo no haya satisfecho la precondición.
+  En HIR, `lowerCase()` devuelve un nodo propiedad de un `FrontendCompilation` local que ya fue destruido.
 - **Evidencia concreta:** `TF-FRONT-043` llama `ladder.front()` después de comprobar `!ladder.empty()` sin retorno;
-  los casos macro llaman `expansions.front()` en la misma situación; `functionOracle` HIR usa
-  `function->children()` tras un `expect(function != nullptr...)`; MIR itera `function->blocks()` sin proteger el
-  puntero.
+  los casos macro llaman `expansions.front()` en la misma situación; `functionOracle` HIR desreferencia el nodo
+  después de que el helper destruye su arena propietaria; MIR itera `function->blocks()` sin proteger el puntero.
 - **Clasificación:** defecto confirmado del oráculo. Puede estar ocultando además un fallo real del producto, pero
   el aborto impide conocerlo.
 

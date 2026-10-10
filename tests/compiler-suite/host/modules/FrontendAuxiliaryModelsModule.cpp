@@ -163,8 +163,11 @@ void macroOracle(TestContext& context, std::size_t variant)
             "zero expansion limit must reject an invocation explicitly");
         return;
     }
-    context.expect(first.success && first.expansions.size() == 1,
-        "one macro invocation must publish one expansion record");
+    if (!first.success || first.expansions.size() != 1)
+    {
+        context.expect(false, "one macro invocation must publish one expansion record");
+        return;
+    }
     context.expect(first.source == second.source && first.expansions.front().macroName == "add",
         "macro expansion text and source identity must be deterministic");
 }

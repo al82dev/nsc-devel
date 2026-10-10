@@ -1348,3 +1348,12 @@ acepta como resultado ejecutable ni con cardinalidad positiva. Las `15` pruebas
 unitarias dirigidas pasan. Quedan pendientes de una proxima corrida funcional
 los `36` casos BuildSystem y los `4` casos de identidad afectados. Evidencia:
 `TANDA-VALIDACION-149-CIERRE-BUILDER3-GATES-IDENTIDAD.md`.
+
+Validacion 150 elimina los `18` abortos confirmados de oraculos C++ sin cambiar
+expectativas ni producto. Frontend deja de usar `front()` tras una precondicion
+fallida; HIR conserva vivo el `FrontendCompilation` propietario de sus nodos; y
+MIR no itera bloques si falta la funcion o su secuencia. La construccion
+dirigida de `nsc_component_tests` termina `6/6`; los `18/18` casos publican JSON,
+con `8 PASS`, `10 FAIL` contractuales, `0 INFRASTRUCTURE_ERROR` y `0` abortos.
+No se ejecuto la bateria completa ni se toco `C:`. Evidencia:
+`TANDA-VALIDACION-150-CIERRE-ABORTOS-ORACULOS-CPP.md`.
