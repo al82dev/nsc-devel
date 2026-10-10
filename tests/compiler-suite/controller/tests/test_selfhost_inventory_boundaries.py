@@ -5,6 +5,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType
+from unittest import mock
 
 
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
@@ -14,11 +16,15 @@ SOURCE_ROOT = REPOSITORY_ROOT / "tests" / "compiler-suite"
 sys.path.insert(0, str(CONTROLLER_ROOT))
 sys.path.insert(0, str(INTEGRATION_ROOT))
 
+import run_selfhost_bootstrap_gate as bootstrap_gate
+import run_selfhost_codegen_gate as codegen_gate
+import run_selfhost_documentation_gate as documentation_gate
 from selfhost_inventory import (
     classification_sets,
     load_component_inventory,
     read_jsonl,
     validate_manifest_cases,
+    validate_unique_materialized_ids,
 )
 
 
@@ -50,6 +56,14 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
             path = Path(temporary) / "classification.jsonl"
             path.write_text(json.dumps(row) + "\n", encoding="utf-8", newline="\n")
             return classification_sets(self.types, path)
+
+    def run_gate(self, module: ModuleType) -> int:
+        with mock.patch.object(
+            sys,
+            "argv",
+            [module.__file__ or module.__name__, "--repository-root", str(REPOSITORY_ROOT)],
+        ):
+            return module.main()
 
     def test_manifest_identity_fields_reject_string_coercions(self) -> None:
         for field in ("case_id", "contract_id", "layer", "profile"):
@@ -118,6 +132,20 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
             with self.subTest(component=component):
                 inventory = load_component_inventory(REPOSITORY_ROOT, component)
                 classification_sets(inventory, path)
+
+    def test_materialized_case_identity_rejects_string_coercions(self) -> None:
+        for invalid in (7, True, "", None):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(RuntimeError, "invalid case identity"):
+                    validate_unique_materialized_ids(
+                        "SelfHost.Synthetic",
+                        [(invalid, "CSH-SYN-001")],
+                    )
+
+    def test_live_materialized_module_identities_satisfy_the_boundary(self) -> None:
+        for module in (bootstrap_gate, codegen_gate, documentation_gate):
+            with self.subTest(module=module.__name__):
+                self.assertEqual(self.run_gate(module), 0)
 
 
 if __name__ == "__main__":

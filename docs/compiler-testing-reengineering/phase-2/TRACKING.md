@@ -1090,3 +1090,9 @@ en los gates Project, Bootstrap Infrastructure, Contracts y Documentation.
 Diecinueve mutaciones quedan rechazadas, las pruebas dirigidas pasan `24/24`,
 la suite Python `266/266` y los cinco documentos vivos validan sus `52` filas,
 sin compilar ni ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 119 cerro la coercion de identidades en modulos self-host
+materializados. `int`, `bool`, vacio y `None` ya no adquieren identidad por
+representacion; los tres gates vivos conservan `171` casos. Las pruebas
+dirigidas pasan `6/6` y la suite Python `268/268`, sin compilar ni ejecutar
+producto. La tarea funcional permanece activa.

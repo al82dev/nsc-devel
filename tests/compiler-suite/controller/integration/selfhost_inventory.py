@@ -252,7 +252,11 @@ def validate_unique_materialized_ids(
 ) -> dict[str, tuple[object, ...]]:
     result: dict[str, tuple[object, ...]] = {}
     for row in rows:
-        case_id = str(row[0])
+        case_id = row[0]
+        if not isinstance(case_id, str) or not case_id:
+            raise RuntimeError(
+                f"{component} modules contain an invalid case identity"
+            )
         if case_id in result:
             raise RuntimeError(f"{component} modules repeat case {case_id}")
         result[case_id] = row

@@ -1692,3 +1692,26 @@ evidencia. Permanecen protegidos los catalogos vivos, manifiestos, inventarios,
 casos, reglas de disposicion, producto, bateria historica y los seis archivos
 del usuario registrados en `CURSOR.json`. No se configura, compila o ejecuta
 producto; no se ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: identidad exacta en modulos self-host materializados
+
+`validate_unique_materialized_ids` no puede convertir con `str(...)` la
+primera columna de una fila materializada antes de detectar vacios o
+duplicados. `SelfHost.Bootstrap`, `SelfHost.CodeGen` y
+`SelfHost.Documentation` producen identidades textuales; un numero, booleano
+u objeto no debe adquirir una identidad valida por representacion.
+
+La entrada exacta es una fila materializada cuyo primer elemento no es una
+cadena no vacia. La operacion defectuosa es su conversion previa al indice. La
+invariante violada es que el identificador del caso conserva tipo textual
+exacto. El simbolo responsable y unico autorizado es
+`validate_unique_materialized_ids`; sus tres consumidores deben conservar el
+mismo denominador y linaje.
+
+El presupuesto de Validacion 119 queda limitado a eliminar esa conversion,
+agregar pruebas sinteticas del helper y ejecutar los tres gates estaticos
+contra sus productores vivos. No se cambian parsers, modulos C++, catalogos,
+manifiestos, inventarios, casos, producto ni bateria historica. Los seis
+archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
+configura, compila o ejecuta producto; no se ejecuta baseline y no se toca la
+unidad `C:`.
