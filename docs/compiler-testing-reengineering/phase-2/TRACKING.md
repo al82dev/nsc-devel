@@ -1262,3 +1262,12 @@ contador de filas visibles. Filtrar no cambia el plan ni el denominador de la
 corrida. Los contratos dirigidos pasan `25/25`, el smoke de GUI pasa y
 `git diff --check` pasa. No se compilo ni ejecuto producto, no se ejecuto
 baseline y no se toco `C:`.
+
+Validacion 141 incorpora carga de ejecuciones terminales anteriores en
+`Pruebas` y en `Resultados > Historial`. La GUI reconstruye tabla, estados,
+duraciones, log y fallos exactos reejecutables sin modificar la evidencia
+original; todo reintento crea un `run_id` nuevo. Las ejecuciones incompletas,
+malformadas, ajenas a la suite o incompatibles se rechazan. Los contratos
+dirigidos pasan `33/33`, el smoke de GUI pasa y `git diff --check` pasa. No se
+compilo ni ejecuto producto, no se interfirio con la corrida activa, no se
+ejecuto baseline y no se toco `C:`.

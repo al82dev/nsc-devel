@@ -693,6 +693,18 @@ class CaseOutcome:
     evidence: str = ""
 
 
+@dataclass(frozen=True)
+class HistoricalExecution:
+    """Validated read-only projection of one completed Phase 2 suite run."""
+
+    root: Path
+    metadata: dict[str, Any]
+    status: str
+    variants: tuple[RunVariant, ...]
+    outcomes: tuple[CaseOutcome, ...]
+    full_log: str
+
+
 class CanonicalCatalog:
     """Join Phase 2 inventories without hiding non-executable dispositions."""
 
@@ -1340,6 +1352,133 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
     except (OSError, json.JSONDecodeError, ValueError, TypeError):
         return (run_id, kind, "MALFORMED", "", str(root))
     return (run_id, kind, str(status), finished_at, str(root))
+
+
+def load_history_execution(
+    root: Path, catalog: CanonicalCatalog
+) -> HistoricalExecution:
+    """Load one completed suite run without mutating or replacing its evidence."""
+    record = history_record(root)
+    if record[1] != "phase-2-suite":
+        raise ValueError("the selected history row is not a Phase 2 suite execution")
+    if record[2] in {"INCOMPLETE", "MALFORMED"}:
+        raise ValueError(f"the selected execution is {record[2].lower()}")
+    metadata = json.loads(
+        (root / "metadata.json").read_text(encoding="utf-8"),
+        object_pairs_hook=unique_json_object,
+    )
+    payload = json.loads(
+        (root / "results.json").read_text(encoding="utf-8"),
+        object_pairs_hook=unique_json_object,
+    )
+    if not isinstance(metadata, dict) or not isinstance(payload, dict):
+        raise ValueError("historical execution envelopes must be objects")
+    rows = payload.get("results")
+    if not isinstance(rows, list):
+        raise ValueError("historical execution has no terminal result rows")
+    variants: list[RunVariant] = []
+    outcomes: list[CaseOutcome] = []
+    for index, raw in enumerate(rows, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"historical result {index} must be an object")
+        expected_fields = {
+            "key",
+            "case_id",
+            "contract_id",
+            "component",
+            "wave",
+            "build_mode",
+            "optimization",
+            "status",
+            "duration_seconds",
+            "detail",
+            "evidence",
+        }
+        if set(raw) != expected_fields:
+            raise ValueError(f"historical result {index} has an invalid schema")
+        text_fields = (
+            "key",
+            "case_id",
+            "contract_id",
+            "component",
+            "build_mode",
+            "optimization",
+            "status",
+            "detail",
+            "evidence",
+        )
+        if any(not isinstance(raw[field], str) for field in text_fields):
+            raise ValueError(f"historical result {index} has a non-text field")
+        if any(
+            not raw[field]
+            for field in (
+                "key",
+                "case_id",
+                "contract_id",
+                "component",
+                "build_mode",
+                "optimization",
+                "status",
+            )
+        ):
+            raise ValueError(f"historical result {index} has a blank identity field")
+        wave = raw["wave"]
+        duration = raw["duration_seconds"]
+        if isinstance(wave, bool) or not isinstance(wave, int) or wave < 0:
+            raise ValueError(f"historical result {index} has an invalid wave")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration < 0
+        ):
+            raise ValueError(f"historical result {index} has an invalid duration")
+        if raw["status"] not in RESULT_STATUSES:
+            raise ValueError(f"historical result {index} has an invalid status")
+        case = catalog.by_id.get(raw["case_id"])
+        if case is None:
+            raise ValueError(
+                f"historical case is absent from the current catalogue: {raw['case_id']}"
+            )
+        if (
+            case.contract_id != raw["contract_id"]
+            or case.component != raw["component"]
+            or case.wave != wave
+        ):
+            raise ValueError(
+                f"historical case identity changed in the current catalogue: {case.case_id}"
+            )
+        variant = RunVariant(case, raw["build_mode"], raw["optimization"])
+        if not case.executable or variant.build_mode not in case.build_modes:
+            raise ValueError(f"historical variant is no longer executable: {variant.key}")
+        if variant.optimization not in case.optimizations or variant.key != raw["key"]:
+            raise ValueError(f"historical variant identity is incompatible: {raw['key']}")
+        variants.append(variant)
+        outcomes.append(
+            CaseOutcome(
+                key=raw["key"],
+                case_id=raw["case_id"],
+                contract_id=raw["contract_id"],
+                component=raw["component"],
+                wave=wave,
+                build_mode=raw["build_mode"],
+                optimization=raw["optimization"],
+                status=raw["status"],
+                duration_seconds=float(duration),
+                detail=raw["detail"],
+                evidence=raw["evidence"],
+            )
+        )
+    log_path = root / "full.log"
+    full_log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
+    return HistoricalExecution(
+        root=root.resolve(),
+        metadata=metadata,
+        status=record[2],
+        variants=tuple(variants),
+        outcomes=tuple(outcomes),
+        full_log=full_log,
+    )
 
 
 class ProcessController:
@@ -3046,6 +3185,16 @@ def launch_gui(smoke_only: bool = False) -> int:
             status_filter_bar.addWidget(self.status_filter_summary)
             status_filter_bar.addStretch(1)
             layout.addLayout(status_filter_bar)
+            history_bar = QHBoxLayout()
+            history_bar.addWidget(QLabel("Ejecución guardada"))
+            self.history_combo = QComboBox()
+            self.history_combo.setMinimumWidth(520)
+            self.load_history_button = QPushButton("Cargar ejecución")
+            self.refresh_history_button = QPushButton("Actualizar historial")
+            history_bar.addWidget(self.history_combo, 1)
+            history_bar.addWidget(self.load_history_button)
+            history_bar.addWidget(self.refresh_history_button)
+            layout.addLayout(history_bar)
             self.execution_activity = QLabel("Sin ejecución activa")
             self.execution_activity.setWordWrap(True)
             layout.addWidget(self.execution_activity)
@@ -3084,6 +3233,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.status_filter_combo.currentIndexChanged.connect(
                 self._apply_status_filter
             )
+            self.load_history_button.clicked.connect(
+                self._load_history_from_combo
+            )
+            self.refresh_history_button.clicked.connect(self._refresh_history)
             self.case_table.cellClicked.connect(self._handle_case_table_click)
             self.case_table.customContextMenuRequested.connect(
                 self._show_case_context_menu
@@ -3152,14 +3305,19 @@ def launch_gui(smoke_only: bool = False) -> int:
             history_controls = QHBoxLayout()
             refresh = QPushButton("Actualizar historial")
             open_button = QPushButton("Abrir evidencia seleccionada")
+            self.history_load_button = QPushButton("Cargar ejecución seleccionada")
             history_controls.addWidget(refresh)
             history_controls.addWidget(open_button)
+            history_controls.addWidget(self.history_load_button)
             history_controls.addStretch(1)
             history_layout.addLayout(history_controls)
             history_layout.addWidget(self.history_table)
             refresh.clicked.connect(self._refresh_history)
             open_button.clicked.connect(self._open_history)
-            self.history_table.cellDoubleClicked.connect(lambda _row, _column: self._open_history())
+            self.history_load_button.clicked.connect(self._load_history_from_table)
+            self.history_table.cellDoubleClicked.connect(
+                lambda _row, _column: self._load_history_from_table()
+            )
             self.result_tabs.addTab(self.full_log, "Log completo")
             self.result_tabs.addTab(self.error_report, "Errores condensados")
             self.failure_tab_index = self.result_tabs.addTab(
@@ -3999,6 +4157,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.save_button.setEnabled(not busy)
             self.detect_button.setEnabled(not busy)
             self.receipt_button.setEnabled(not busy)
+            self.load_history_button.setEnabled(not busy and self.history_combo.count() > 0)
+            self.refresh_history_button.setEnabled(not busy)
+            self.history_load_button.setEnabled(not busy)
             infrastructure_busy = busy and bool(self.active_operation)
             self.infrastructure_cancel_button.setEnabled(infrastructure_busy)
             self.cancel_button.setEnabled(busy and not infrastructure_busy)
@@ -4014,6 +4175,8 @@ def launch_gui(smoke_only: bool = False) -> int:
         def _refresh_history(self) -> None:
             if not HISTORY_ROOT.is_dir():
                 self.history_table.setRowCount(0)
+                self.history_combo.clear()
+                self.load_history_button.setEnabled(False)
                 return
             records: list[tuple[str, str, str, str, str]] = []
             for root in sorted(HISTORY_ROOT.iterdir(), reverse=True):
@@ -4024,6 +4187,98 @@ def launch_gui(smoke_only: bool = False) -> int:
             for row, record in enumerate(records):
                 for column, value in enumerate(record):
                     self.history_table.setItem(row, column, QTableWidgetItem(value))
+            selected_path = self.history_combo.currentData()
+            self.history_combo.blockSignals(True)
+            self.history_combo.clear()
+            for run_id, kind, status, finished_at, path in records:
+                if (
+                    kind != "phase-2-suite"
+                    or status in {"INCOMPLETE", "MALFORMED"}
+                    or not finished_at
+                ):
+                    continue
+                self.history_combo.addItem(
+                    f"{run_id} — {status} — {finished_at}", path
+                )
+            if isinstance(selected_path, str):
+                index = self.history_combo.findData(selected_path)
+                if index >= 0:
+                    self.history_combo.setCurrentIndex(index)
+            self.history_combo.blockSignals(False)
+            self.load_history_button.setEnabled(
+                self.worker is None and self.history_combo.count() > 0
+            )
+
+        def _load_history_from_combo(self) -> None:
+            path = self.history_combo.currentData()
+            if isinstance(path, str) and path:
+                self._load_history_path(Path(path))
+
+        def _load_history_from_table(self) -> None:
+            row = self.history_table.currentRow()
+            if row < 0:
+                return
+            item = self.history_table.item(row, 4)
+            if item is not None:
+                self._load_history_path(Path(item.text()))
+
+        def _load_history_path(self, root: Path) -> None:
+            """Restore one historical exact plan without mutating its evidence."""
+            if self.worker is not None:
+                return
+            try:
+                loaded = load_history_execution(root, self.catalog)
+                cases: list[CaseRecord] = []
+                seen_cases: set[str] = set()
+                for variant in loaded.variants:
+                    if variant.case.case_id in seen_cases:
+                        continue
+                    seen_cases.add(variant.case.case_id)
+                    cases.append(variant.case)
+                self.visible_variants = loaded.variants
+                self._populate_plan(cases, loaded.variants)
+                for outcome in loaded.outcomes:
+                    self._update_case(
+                        outcome.key,
+                        outcome.status,
+                        outcome.detail,
+                        outcome.duration_seconds,
+                        outcome.evidence,
+                    )
+                self.failure_variants_by_key.clear()
+                self.failure_outcomes_by_key.clear()
+                self.disabled_failure_keys.clear()
+                outcome_by_key = {item.key: item for item in loaded.outcomes}
+                for variant in retry_variants(loaded.variants, loaded.outcomes):
+                    self.failure_variants_by_key[variant.key] = variant
+                    self.failure_outcomes_by_key[variant.key] = outcome_by_key[
+                        variant.key
+                    ]
+                self.last_failed_variants = tuple(
+                    self.failure_variants_by_key[key]
+                    for key in sorted(self.failure_variants_by_key)
+                )
+                self._populate_failure_table()
+                self.full_log.setPlainText(loaded.full_log)
+                cancelled = loaded.status == "CANCELLED"
+                self._render_error_report(
+                    loaded.outcomes, cancelled, str(loaded.root)
+                )
+                total = len(loaded.variants)
+                self.progress.setRange(0, max(1, total))
+                self.progress.setValue(total)
+                self.progress.setFormat(
+                    f"{total:,}/{total:,} pruebas — CARGADA (%p%)"
+                )
+                self.execution_activity.setText(
+                    f"Ejecución anterior cargada: {loaded.root.name} — {loaded.status}"
+                )
+                self.tabs.setCurrentIndex(1)
+                self.statusBar().showMessage(
+                    f"Ejecución cargada: {loaded.root.name}"
+                )
+            except Exception as error:
+                self._show_error("No se pudo cargar la ejecución", error)
 
         def _open_history(self) -> None:
             row = self.history_table.currentRow()
@@ -4074,6 +4329,8 @@ def launch_gui(smoke_only: bool = False) -> int:
     if smoke_only:
         expected_buttons = {
             "run_button": "Ejecutar pruebas",
+            "load_history_button": "Cargar ejecución",
+            "history_load_button": "Cargar ejecución seleccionada",
             "failure_retry_button": "Reejecutar fallos activos",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
             "failure_enable_button": "Reactivar seleccionados",

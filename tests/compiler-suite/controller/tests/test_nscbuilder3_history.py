@@ -75,6 +75,30 @@ class Builder3HistoryTests(unittest.TestCase):
         (self.root / "events.jsonl").write_text(
             "".join(json.dumps(item) + "\n" for item in events), encoding="utf-8"
         )
+        (self.root / "full.log").write_text("historical output\n", encoding="utf-8")
+
+    @staticmethod
+    def _catalog() -> builder.CanonicalCatalog:
+        return builder.CanonicalCatalog(
+            (
+                builder.CaseRecord(
+                    case_id="CASE",
+                    contract_id="CONTRACT",
+                    component="Host.Basic",
+                    wave=1,
+                    purpose="history test",
+                    layer="unit",
+                    profile="PR",
+                    build_modes=("Debug",),
+                    optimizations=("O0",),
+                    executor="nsc_component_tests",
+                    disposition="Executable",
+                    objective="restore one prior result",
+                    expected_outcome="PASS",
+                    manifest={"timeout_class": "tiny"},
+                ),
+            )
+        )
 
     def test_complete_consistent_run_keeps_terminal_status(self) -> None:
         self._write_valid_terminal_run()
@@ -121,6 +145,35 @@ class Builder3HistoryTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(builder.history_record(self.root)[2], "MALFORMED")
+
+    def test_completed_suite_can_be_loaded_without_rewriting_evidence(self) -> None:
+        self._write_valid_terminal_run()
+        before = (self.root / "results.json").read_bytes()
+
+        loaded = builder.load_history_execution(self.root, self._catalog())
+
+        self.assertEqual(loaded.status, "PASSED")
+        self.assertEqual([item.key for item in loaded.variants], ["CASE|Debug|O0"])
+        self.assertEqual([item.status for item in loaded.outcomes], ["PASS"])
+        self.assertEqual(loaded.full_log, "historical output\n")
+        self.assertEqual((self.root / "results.json").read_bytes(), before)
+
+    def test_loading_rejects_case_absent_from_current_catalog(self) -> None:
+        self._write_valid_terminal_run()
+
+        with self.assertRaisesRegex(ValueError, "absent from the current catalogue"):
+            builder.load_history_execution(
+                self.root, builder.CanonicalCatalog(())
+            )
+
+    def test_loading_rejects_non_suite_history(self) -> None:
+        self._write_valid_terminal_run()
+        metadata = self._metadata()
+        metadata["kind"] = "infrastructure"
+        self._write_json("metadata.json", metadata)
+
+        with self.assertRaisesRegex(ValueError, "not a Phase 2 suite"):
+            builder.load_history_execution(self.root, self._catalog())
 
         self._write_valid_terminal_run()
         results = (self.root / "results.json").read_text(encoding="utf-8")

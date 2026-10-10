@@ -2168,6 +2168,14 @@ modifica el plan, no reduce el denominador de `Ejecutar pruebas` y no altera la
 evidencia persistida. La propia pestaña muestra cuantas filas del plan quedan
 visibles bajo el filtro vigente.
 
+Las ejecuciones terminales de tipo `phase-2-suite` pueden volver a cargarse
+desde el historial en la pestaña `Pruebas`. La carga reconstruye el plan exacto,
+los estados, duraciones, detalles, log completo y conjunto de fallos
+reejecutables, pero no modifica la carpeta historica. Toda reejecucion posterior
+crea un nuevo `run_id` y nueva evidencia; nunca reemplaza el log cargado. Las
+ejecuciones incompletas, malformadas, de infraestructura o incompatibles con el
+catalogo vigente se rechazan de forma explicita.
+
 No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
 controladores funcionales, timeouts, CMake ni bateria historica. No se
 configura, compila o ejecuta producto; la validacion local se limita a sintaxis,
