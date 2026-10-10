@@ -30,7 +30,9 @@ namespace Suite
         {
             int total = 0;
             for (int index = 0; index < count; index = index + 1)
+            {
                 total = total + Read();
+            }
             return total;
         }
     }
