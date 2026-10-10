@@ -767,7 +767,9 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             f"-DCMAKE_LINKER={Path(tools['lld_link']).as_posix()}",
             f"-DCMAKE_MT={Path(tools['llvm_mt']).as_posix()}",
             f"-DCMAKE_RC_COMPILER={Path(tools['llvm_rc']).as_posix()}",
-            "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
+            # CMAKE_LINKER already selects lld-link. Clear a stale cache value
+            # because -fuse-ld=lld is a compiler-driver option, not an lld-link option.
+            "-DCMAKE_EXE_LINKER_FLAGS=",
             f"-DNSC_COMPILER_SUITE_NSC_EXECUTABLE="
             f"{Path(config.nsc_executable).resolve().as_posix()}",
             f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",

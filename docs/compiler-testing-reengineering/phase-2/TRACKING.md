@@ -69,6 +69,11 @@ productores canónicos. La suite usa el `LLVM-C` del `LLVM_DIR` seleccionado y
 copia su runtime al árbol de pruebas en `A:`; no usa Visual Studio ni modifica
 producto. La validación externa permanece pendiente.
 
+Builder 3 dejó de enviar `-fuse-ld=lld` directamente a `lld-link` al configurar
+la suite. Envía el valor de flags vacío para limpiar también caches existentes;
+`CMAKE_LINKER` continúa seleccionando el mismo ejecutable. Con esto quedan
+tratadas las tres causas del último log y se espera la siguiente corrida externa.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
