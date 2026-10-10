@@ -142,6 +142,19 @@ void syntaxUnitOracle(TestContext& context, std::size_t variant)
 void namespaceOracle(TestContext& context, std::size_t variant)
 {
     GlobalNamespace namespaces;
+    if (variant == 2)
+    {
+        const std::array<std::string, 0> emptySegments = {};
+        NamespaceSymbol& root = namespaces.ensureNamespace(emptySegments);
+        context.expect(&root == &namespaces.root() && root.children().empty(),
+            "empty namespace input must construct a model without namespace symbols");
+
+        const QualifiedNameSite emptySite{};
+        context.expect(qualifiedNameLadder(emptySite, "").empty(),
+            "empty qualified name input must publish no fallback candidates");
+        return;
+    }
+
     const std::array<std::string, 3> segments = {"A", "B", "C"};
     NamespaceSymbol& leaf = namespaces.ensureNamespace(segments);
     leaf.addTypeOrdinal(variant);
@@ -158,7 +171,7 @@ void namespaceOracle(TestContext& context, std::size_t variant)
     const std::array<std::string, 1> imports = {"Imported"};
     std::unordered_map<std::string, std::string> aliases{{"Alias", "A.B.C"}};
     QualifiedNameSite site{lexical, enclosing, &aliases, imports};
-    const std::vector<QualifiedNameRung> ladder = qualifiedNameLadder(site, variant == 2 ? "" : "Thing");
+    const std::vector<QualifiedNameRung> ladder = qualifiedNameLadder(site, "Thing");
     if (ladder.empty())
     {
         context.expect(false, "qualified name ladder must publish an ordered fallback sequence");
