@@ -1383,3 +1383,15 @@ El presupuesto queda limitado al parser de entradas self-host, su llamada en
 `_run_selfhost`, pruebas Python sinteticas y la evidencia de Validacion 91. No
 se cambian manifiestos, fixtures, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: claves JSON unicas en el manifiesto canonico
+
+`load_manifest` debe rechazar claves duplicadas en cualquier objeto de una
+linea JSONL, incluidas estructuras anidadas de `inputs` y `oracle`. La politica
+last-wins de `json.loads` no puede decidir silenciosamente cual definicion
+forma parte del contrato ejecutable.
+
+El presupuesto queda limitado al cargador canonico de manifiestos, una prueba
+Python sintetica y la evidencia de Validacion 93. No se cambian filas vivas,
+oraculos, producto ni bateria historica y no se configura, compila o ejecuta
+producto.

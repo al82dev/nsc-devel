@@ -95,6 +95,20 @@ class ManifestTests(unittest.TestCase):
     def test_rejects_duplicate_case_ids(self) -> None:
         self.assert_manifest_error([valid_case(), valid_case()], "duplicate case id")
 
+    def test_rejects_duplicate_json_keys_at_any_depth(self) -> None:
+        path = self.root / "duplicate-keys.jsonl"
+        serialized = json.dumps(valid_case(), sort_keys=True)
+        path.write_text(
+            serialized.replace(
+                '"inputs": {"value": 1}',
+                '"inputs": {"value": 1, "value": 2}',
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ManifestError, "duplicate JSON object key: value"):
+            load_manifest(path, self.inventory)
+
     def test_rejects_unknown_contract_and_owner_mismatch(self) -> None:
         unknown = valid_case()
         unknown["contract_id"] = "CB-BAS-999"

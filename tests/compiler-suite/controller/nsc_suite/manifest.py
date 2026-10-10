@@ -155,9 +155,11 @@ def load_manifest(
             if not line or line.startswith("#"):
                 continue
             try:
-                payload = json.loads(line)
+                payload = json.loads(line, object_pairs_hook=_unique_json_object)
             except json.JSONDecodeError as error:
                 raise ManifestError(f"invalid JSON at {path}:{line_number}: {error.msg}") from error
+            except ManifestError as error:
+                raise ManifestError(f"{error} at {path}:{line_number}") from error
             case = _parse_case(payload, inventory, path, line_number)
             if case.case_id in seen:
                 raise ManifestError(f"duplicate case id: {case.case_id}")
@@ -168,6 +170,16 @@ def load_manifest(
         raise ManifestError(f"manifest contains no cases: {path}")
     _validate_dependency_graph(cases)
     return tuple(sorted(cases, key=lambda case: case.case_id))
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one JSON object only when every key has a single definition."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ManifestError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def _parse_case(

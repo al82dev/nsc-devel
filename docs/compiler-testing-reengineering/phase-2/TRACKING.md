@@ -938,3 +938,8 @@ Validacion 92 revalido la infraestructura estatica completa: `226/226` pruebas
 Python, `9,587` casos, `1,208` contratos, `44` componentes, `5,695` filas
 ejecutables, `0` sin clasificar y GUI smoke PASS. No se ejecuto producto; la
 corrida funcional integral permanece pendiente y la tarea sigue activa.
+
+Validacion 93 cerro las claves JSON duplicadas del manifiesto canonico. La
+unicidad se exige en todos los objetos, incluidos `inputs` y `oracle`. Las
+pruebas dirigidas pasan `15/15`, la suite Python `227/227` y el catalogo vivo
+conserva `9,587` casos y `0` sin clasificar. La tarea funcional permanece activa.
