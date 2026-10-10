@@ -91,6 +91,15 @@ class SelfHostOracleContractTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("JSON mismatch", detail)
 
+    def test_json_oracle_rejects_duplicate_keys_without_last_wins(self) -> None:
+        row = {"oracle": {"exit_code": 0, "json": {"version": 2}}}
+        passed, detail = diagnostics_gate.oracle_satisfied(
+            row,
+            completed(0, '{"version":1,"version":2}'),
+        )
+        self.assertFalse(passed)
+        self.assertIn("duplicate JSON object key: version", detail)
+
 
 if __name__ == "__main__":
     unittest.main()

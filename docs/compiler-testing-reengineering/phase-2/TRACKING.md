@@ -1006,3 +1006,8 @@ Validacion 105 cerro las claves JSON duplicadas del catalogo
 `SelfHost.Bootstrap.Infrastructure`. Archivo, linea y clave causal se conservan
 antes de validar linaje. La prueba dirigida pasa `1/1` y la suite Python
 `239/239`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 106 cerro las claves JSON duplicadas en la salida evaluada por
+`SelfHost.Diagnostics`. Una salida contradictoria ya no puede coincidir por
+last-wins con el oraculo exacto. Las pruebas dirigidas pasan `6/6` y la suite
+Python `240/240`, sin ejecutar producto. La tarea funcional permanece activa.

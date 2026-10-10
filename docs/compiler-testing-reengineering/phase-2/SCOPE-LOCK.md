@@ -1527,3 +1527,13 @@ El presupuesto queda limitado al parser de una fila del catalogo, un
 constructor iterativo, una prueba Python sintetica y la evidencia de Validacion
 105. No se cambia el catalogo vivo, inventario, producto ni bateria historica
 y no se ejecuta producto.
+
+### Enmienda: claves JSON unicas en salida diagnostics
+
+El oraculo JSON de `SelfHost.Diagnostics` debe rechazar objetos con claves
+duplicadas antes de la comparacion exacta. La politica last-wins no puede
+convertir una salida contradictoria del fixture en coincidencia valida.
+
+El presupuesto queda limitado al parser JSON exacto compartido, el evaluador
+Diagnostics, una prueba Python sintetica y la evidencia de Validacion 106. No
+se cambia ni ejecuta fixture, producto o bateria historica.

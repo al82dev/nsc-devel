@@ -79,6 +79,11 @@ def json_values_equal_exact(expected: object, actual: object) -> bool:
     return True
 
 
+def parse_json_value(raw: str) -> object:
+    """Parse one JSON value without accepting duplicate object keys."""
+    return json.loads(raw, object_pairs_hook=_unique_json_object)
+
+
 def unique_index(
     rows: list[dict[str, str]], key: str, source: str
 ) -> dict[str, dict[str, str]]:
