@@ -4,7 +4,7 @@
 |---:|---|---|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
-| 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 334 | 109 |
+| 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 334 | 333 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
 | 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Tanda 02.04 — capa `robustness` habilitada | 334 impl.; 109 verif. | validar Host.AST |
+| Tanda 02.05 — Host.AST validado | 334 impl.; 333 verif. | integrar Host.Parser |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
@@ -38,6 +38,7 @@ Desglose certificado de `Host.Lexer`: `110/110` casos implementados, `109 PASS`
 y `1 KNOWN_FAILURE` (`TL-LEX-075`) en Debug y Release. El target consolidado y
 el gate controlador pasaron en ambos modos; no se ejecutó la suite histórica.
 
-Desglose de implementación de `Host.AST`: `224/230` casos materializados. Los
-seis restantes requieren infraestructura especial y permanecen en el denominador.
-La validación integrada de los 224 casos se ejecuta después del commit de esta tanda.
+Desglose certificado de `Host.AST`: `224/230` casos materializados y `224 PASS`
+en Debug y Release. Los seis restantes requieren infraestructura especial y
+permanecen en el denominador. El target consolidado y el gate controlador
+pasaron en ambos modos; no se ejecutó la suite histórica.

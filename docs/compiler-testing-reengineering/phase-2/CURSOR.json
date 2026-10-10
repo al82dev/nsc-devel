@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "3644ba798",
-  "last_completed_batch": "TANDA-02-04",
+  "last_completed_commit": "c15136e8c",
+  "last_completed_batch": "TANDA-02-05",
   "last_completed_case": "TA-AST-230",
   "current_wave": 2,
-  "current_component": "Host.AST",
-  "next_contract": "CA-AST-001..020 validation",
-  "next_action": "Commit the robustness-layer compatibility fix, validate all 224 executable Host.AST cases in Release and Debug, then advance the cursor to Host.Parser.",
+  "current_component": "Host.Parser",
+  "next_contract": "CP-PAR-001..042",
+  "next_action": "Integrate Host.Parser by ranges; preserve defects, contradictions, and infrastructure pending.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -244,16 +244,16 @@
       "status": "EN CURSO",
       "product_cases_expected": 1197,
       "product_cases_implemented": 334,
-      "product_cases_verified": 109,
+      "product_cases_verified": 333,
       "known_failure_cases_implemented": 1,
-      "validation_pending_cases": 224,
+      "validation_pending_cases": 0,
       "special_infrastructure_pending": 6,
-      "current_component": "Host.AST",
-      "current_component_cases_expected": 230
+      "current_component": "Host.Parser",
+      "current_component_cases_expected": 536
     }
   },
   "validation": {
-    "python_controller_tests": 55,
+    "python_controller_tests": 56,
     "release_host_ordinary_passed": 735,
     "release_host_ordinary_total": 735,
     "release_known_failure_gates_passed": 7,
@@ -271,7 +271,15 @@
     "debug_lexer_ordinary_passed": 109,
     "debug_lexer_ordinary_total": 109,
     "debug_lexer_controller_gate_passed": 1,
-    "debug_lexer_controller_gate_total": 1
+    "debug_lexer_controller_gate_total": 1,
+    "release_ast_ordinary_passed": 224,
+    "release_ast_ordinary_total": 224,
+    "release_ast_controller_gate_passed": 1,
+    "release_ast_controller_gate_total": 1,
+    "debug_ast_ordinary_passed": 224,
+    "debug_ast_ordinary_total": 224,
+    "debug_ast_controller_gate_passed": 1,
+    "debug_ast_controller_gate_total": 1
   },
   "protected_files": {
     "docs/compiler-optimization/test-infrastructure/test-execution-parity.csv": "96c6e1564f973b36f4ab8cdd2b5df515e5128ee1345dd622024d15e9799f606d",
