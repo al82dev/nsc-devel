@@ -69,7 +69,9 @@ productores canónicos. La suite usa el `LLVM-C` del `LLVM_DIR` seleccionado y
 copia su runtime al árbol de pruebas en `A:`; no usa Visual Studio ni modifica
 producto. La auditoría predictiva de la tabla completa del enlace quedó en
 `0` símbolos NativeSharp y `0` símbolos LLVM-C sin productor. La validación
-externa permanece pendiente.
+externa permanece pendiente. La auditoría adicional tampoco encontró una
+implementación de producto duplicada ni dependencias dinámicas de Visual
+Studio en `LLVM-C.dll`; los controladores conservan el runtime adyacente.
 
 Builder 3 dejó de enviar `-fuse-ld=lld` directamente a `lld-link` al configurar
 la suite. Envía el valor de flags vacío para limpiar también caches existentes;

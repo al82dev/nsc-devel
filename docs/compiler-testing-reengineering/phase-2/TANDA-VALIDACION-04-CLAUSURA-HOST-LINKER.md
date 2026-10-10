@@ -47,4 +47,12 @@ Visual Studio, no se despliega y no se escribe en `C:`.
 - Auditoría predictiva del enlace real más los productores nuevos:
   `181,968` definiciones, `2,334` referencias externas, `0` símbolos
   NativeSharp sin productor y `0` símbolos LLVM-C sin productor.
+- Intersección de definiciones: `144` emisiones ODR/COMDAT esperadas; `137`
+  corresponden a templates y literales, y `7` a destructores u operadores
+  implícitos definidos en headers. No apareció una segunda implementación de
+  una función de producto.
+- `LLVM-C.dll` importa únicamente `ADVAPI32`, `KERNEL32`, `ntdll`, `ole32` y
+  `SHELL32`; no introduce `VCRUNTIME` ni `MSVCP` dinámicos.
+- Los controladores ejecutan la ruta original de `nsc_component_tests.exe` y
+  no la copian fuera de su directorio, por lo que conservan la DLL adyacente.
 - Configuración, compilación, enlace y ejecución: pendientes de corrida externa.
