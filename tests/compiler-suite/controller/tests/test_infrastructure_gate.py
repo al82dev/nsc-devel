@@ -4,6 +4,7 @@ import sys
 import unittest
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +91,36 @@ class InfrastructureGateTests(unittest.TestCase):
         counts[status] = str(counts[status])
         with self.assertRaisesRegex(RuntimeError, "invalid result count"):
             validate_results(self.cases, {"results": results, "counts": counts})
+
+    def test_event_validation_rejects_coercible_protocol_scalars(self) -> None:
+        cases = (SimpleNamespace(case_id="7"),)
+        events = [
+            {"sequence": 0, "kind": "RUN_STARTED", "case_id": None, "payload": {"selected": 1}},
+            {"sequence": 1, "kind": "CASE_STARTED", "case_id": "7", "payload": {}},
+            {"sequence": 2, "kind": "CASE_FINISHED", "case_id": "7", "payload": {}},
+            {
+                "sequence": 3,
+                "kind": "RUN_FINISHED",
+                "case_id": None,
+                "payload": {"selected": 1, "completed": 1, "cancelled": False},
+            },
+        ]
+        bad_sequence = [dict(event) for event in events]
+        bad_sequence[0]["sequence"] = False
+        bad_sequence[1]["sequence"] = True
+        with self.assertRaisesRegex(RuntimeError, "exact integers"):
+            validate_events(cases, bad_sequence)
+
+        bad_identity = [dict(event) for event in events]
+        bad_identity[1]["case_id"] = 7
+        bad_identity[2]["case_id"] = 7
+        with self.assertRaisesRegex(RuntimeError, "invalid case identity"):
+            validate_events(cases, bad_identity)
+
+        bad_count = [dict(event) for event in events]
+        bad_count[0] = dict(events[0], payload={"selected": 1.0})
+        with self.assertRaisesRegex(RuntimeError, "selected count"):
+            validate_events(cases, bad_count)
 
 
 if __name__ == "__main__":

@@ -1048,3 +1048,17 @@ El presupuesto queda limitado a `assert_component_results`, la delegacion de
 evidencia de Validacion 64. No se cambian resultados validos, seleccion,
 ejecucion, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: protocolo de eventos con tipos exactos
+
+El gate sintetico de infraestructura no puede aceptar booleanos como numeros
+de secuencia, flotantes como cardinalidades ni convertir identidades de caso
+con `str(...)`. Cada evento debe ser objeto, cada secuencia un entero exacto,
+cada identidad de caso una cadena exacta y los payloads terminales objetos con
+conteos enteros exactos. La cardinalidad, orden y cobertura existentes se
+conservan.
+
+El presupuesto queda limitado a `run_infrastructure_gate.validate_events`,
+pruebas Python con eventos sinteticos y la evidencia de Validacion 65. No se
+cambia el productor de eventos, manifiestos, seleccion, producto ni bateria
+historica y no se configura, compila o ejecuta producto.

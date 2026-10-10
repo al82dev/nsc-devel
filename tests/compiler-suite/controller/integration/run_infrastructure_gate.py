@@ -42,31 +42,47 @@ def validate_events(
     expected_ids = sorted(case.case_id for case in cases)
     if len(events) != 2 + (2 * len(cases)):
         raise RuntimeError("controller event stream has invalid protocol cardinality")
-    if [event.get("sequence") for event in events] != list(range(len(events))):
+    if any(not isinstance(event, dict) for event in events):
+        raise RuntimeError("controller event stream contains a non-object event")
+    sequences = [event.get("sequence") for event in events]
+    if any(type(sequence) is not int for sequence in sequences):
+        raise RuntimeError("controller event sequence must contain exact integers")
+    if sequences != list(range(len(events))):
         raise RuntimeError("controller event sequence is not contiguous")
     if events[0].get("kind") != "RUN_STARTED":
         raise RuntimeError("controller event stream does not start with RUN_STARTED")
     if events[-1].get("kind") != "RUN_FINISHED":
         raise RuntimeError("controller event stream does not end with RUN_FINISHED")
-    started = sorted(
-        str(event.get("case_id", ""))
+    started_ids = [
+        event.get("case_id")
         for event in events
         if event.get("kind") == "CASE_STARTED"
-    )
-    finished = sorted(
-        str(event.get("case_id", ""))
+    ]
+    finished_ids = [
+        event.get("case_id")
         for event in events
         if event.get("kind") == "CASE_FINISHED"
-    )
+    ]
+    if any(not isinstance(case_id, str) or not case_id for case_id in started_ids + finished_ids):
+        raise RuntimeError("controller event stream contains an invalid case identity")
+    started = sorted(started_ids)
+    finished = sorted(finished_ids)
     if started != expected_ids or finished != expected_ids:
         raise RuntimeError("controller events do not cover the live fixture selection")
     start_payload = events[0].get("payload", {})
     finish_payload = events[-1].get("payload", {})
-    if start_payload.get("selected") != len(cases):
+    if not isinstance(start_payload, dict) or not isinstance(finish_payload, dict):
+        raise RuntimeError("controller terminal event payload is not an object")
+    selected = start_payload.get("selected")
+    if type(selected) is not int or selected != len(cases):
         raise RuntimeError("RUN_STARTED selected count differs from the fixture")
+    finish_selected = finish_payload.get("selected")
+    completed = finish_payload.get("completed")
     if (
-        finish_payload.get("selected") != len(cases)
-        or finish_payload.get("completed") != len(cases)
+        type(finish_selected) is not int
+        or finish_selected != len(cases)
+        or type(completed) is not int
+        or completed != len(cases)
         or finish_payload.get("cancelled") is not False
     ):
         raise RuntimeError("RUN_FINISHED payload does not close the fixture run")

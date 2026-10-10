@@ -778,3 +778,9 @@ host y el gate de infraestructura comparten ahora una autoridad que exige
 `case_id` y estados de cadena exactos, ademas de conteos enteros exactos no
 negativos. Las pruebas dirigidas pasan `9/9` y la suite Python completa
 `203/203`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 65 cerro el protocolo sintetico de eventos. Secuencias,
+identidades, payloads y cardinalidades terminales exigen ahora tipos exactos;
+booleanos y flotantes ya no pueden acreditar numeros enteros. Las pruebas
+dirigidas pasan `4/4` y la suite Python completa `204/204`, sin ejecutar
+producto. La tarea funcional permanece activa.
