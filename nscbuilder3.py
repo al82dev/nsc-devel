@@ -49,7 +49,9 @@ RUN_SUITE_PATH = SUITE_ROOT / "controller" / "run_suite.py"
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TIMEOUT_SECONDS = {
     "tiny": 5.0,
+    "short": 15.0,
     "normal": 30.0,
+    "medium": 60.0,
     "extended": 180.0,
     "self-host": 900.0,
     "packaging": 900.0,
@@ -1303,8 +1305,10 @@ class ExecutionEngine:
     @staticmethod
     def _timeout_class(case: CaseRecord) -> str:
         """Read a validated timeout class from the executable manifest."""
-        value = str((case.manifest or {}).get("timeout_class", "normal"))
-        return value if value in TIMEOUT_SECONDS else "normal"
+        value = (case.manifest or {}).get("timeout_class")
+        if not isinstance(value, str) or value not in TIMEOUT_SECONDS:
+            raise ValueError(f"unsupported timeout class: {value}")
+        return value
 
     @staticmethod
     def _variant_payload(variant: RunVariant) -> dict[str, Any]:

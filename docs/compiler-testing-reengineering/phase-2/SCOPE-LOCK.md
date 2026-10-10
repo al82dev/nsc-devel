@@ -385,6 +385,18 @@ registro completos del componente. No se modifican producto, casos, oráculos,
 resultados esperados, selector, runner, reporte ni batería histórica. No se
 configura, compila ni ejecuta producto.
 
+### Enmienda: contrato exacto de timeouts en NSC Builder 3
+
+Builder 3 debe reconocer exactamente las clases y duraciones publicadas por el
+esquema central del manifiesto. Queda prohibido degradar una clase conocida o
+inválida a `normal`: una clase ajena al contrato debe fallar antes de iniciar
+el proceso.
+
+El presupuesto queda limitado a `TIMEOUT_SECONDS`,
+`ExecutionEngine._timeout_class`, una prueba Python y la evidencia de
+Validación 32. No se modifican manifiestos, clases declaradas, casos, oráculos,
+producto ni batería histórica; no se configura, compila ni ejecuta producto.
+
 ### Enmienda: cierre central de gates Host.Language por contrato
 
 Los veintiún gates dirigidos de Host.Language que ejecutan un contrato mediante

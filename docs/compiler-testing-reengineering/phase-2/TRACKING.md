@@ -570,3 +570,10 @@ implementados termina como `INFRASTRUCTURE_ERROR` sin invocar otra ruta. Las
 `5,695` filas ejecutables vivas alcanzan exactamente uno de los cinco
 controladores previstos. Las pruebas dirigidas pasan `2/2` y la suite Python
 completa `88/88`.
+
+Validación 32 alineó los timeouts de Builder 3 con el esquema central. Antes,
+`49` casos `short` y `398` casos `medium` se degradaban silenciosamente a
+`normal`, alterando `15 -> 30 s` y `60 -> 30 s`. Builder 3 reconoce ahora las
+siete clases con sus duraciones exactas y rechaza cualquier clase desconocida
+antes de crear un proceso. Las pruebas dirigidas pasan `3/3` y la suite Python
+completa `91/91`.
