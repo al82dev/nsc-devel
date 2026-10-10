@@ -1475,3 +1475,18 @@ Validacion 164 corrige exclusivamente el desfase de indice del oraculo
 en `20261010-164845-5ee9450d`. No se modifico el lexer ni producto, y esta
 prueba dirigida no promueve otros casos. Evidencia:
 `TANDA-VALIDACION-164-ORACULO-LEXER-PUNTUACION.md`.
+
+Validacion 166 cierra la Tanda 1 con la accion historica `Reejecutar fallos`
+sobre la autoridad `20261010-142113-a514d35c`. La corrida terminal
+`20261010-170051-1caf1c2f`, fijada en
+`ca1ef7f04f6bd924405ea40f0fc37b4efb19c5fc`, ejecuto exactamente `439/439`
+claves en `Debug/O0`: `212 PASS`, `6 KNOWN_FAILURE`, `221 FAIL`,
+`0 BLOCKED` y `0 INFRASTRUCTURE_ERROR`. Las transiciones fueron
+`221 FAIL -> FAIL`, `53 FAIL -> PASS`, `4 INFRASTRUCTURE_ERROR -> PASS`,
+`155 BLOCKED -> PASS` y `6 BLOCKED -> KNOWN_FAILURE`; no hubo claves faltantes,
+sobrantes ni duplicadas. Los cuatro productores self-host pasaron y ya no
+existe bloqueo productor. La misma revisión incorpora dos grupos tempranos de
+Tanda 2: ocho macros de `CF-FRONT-052` y cuarenta fixtures `for` de
+`CF-FRONT-056..063`, todos confirmados en `PASS`. No se ejecuto la bateria
+integral de `5,695`. Evidencia:
+`TANDA-VALIDACION-166-CIERRE-TANDA-1-REEJECUCION-439.md`.
