@@ -1985,6 +1985,30 @@ oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: particion exacta del inventario global
+
+Validacion 134 demostro que las `9,116` identidades canónicas se reparten en
+tres superficies disjuntas: `8,054` filas del registro ordinario, `841`
+descriptores `InfrastructurePending` publicados por `--list-pending` y `221`
+casos producidos por `nsc_suite_controller+nsc`. Estos ultimos comprenden `196`
+casos del manifiesto ejecutable y `25` clasificaciones no ejecutables de los
+mismos componentes NativeSharp.
+
+La causa del fallo vigente es el supuesto de Validacion 26 que equiparo todo el
+denominador Host/SelfHost con `TestRegistry`. La correccion debe conservar el
+denominador completo y exigir igualdad exacta de la union de las tres
+particiones, no relajarla a una comparacion por subconjunto.
+
+El presupuesto de Validacion 135 queda limitado a
+`run_registry_inventory_gate.py` y su prueba: cargar los productores externos
+desde el manifiesto y sus clasificaciones estrictas, invocar `--list` y
+`--list-pending`, rechazar solapamientos, duplicados, omisiones, inesperados y
+cambios de contrato/componente, y ejecutar el gate dirigido. No se hardcodean
+IDs, rangos ni conteos como criterio de aceptación. No se cambian módulos,
+casos, disposiciones, manifiestos, inventarios canónicos, CMake, producto ni
+bateria historica. Los seis archivos protegidos permanecen intactos. No se
+ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
 ### Enmienda: inventario observable de casos pendientes fuera del registro
 
 La clasificacion completa de los `1,062` IDs restantes demostro dos fronteras

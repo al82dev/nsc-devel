@@ -1211,3 +1211,12 @@ componente canónicos, no contienen duplicados y no se solapan con las 8,054
 filas ordinarias. La siguiente tanda corregirá el gate para exigir la
 partición completa, incluidos los 221 productores externos restantes. La tarea
 permanece activa y no se ejecutó baseline ni se tocó `C:`.
+
+Validacion 135 corrigio la frontera del gate global sin reducir el denominador.
+Las 9,116 identidades canónicas quedan cubiertas exactamente por 8,054 filas
+ordinarias, 841 pendientes no ejecutables y 221 productores externos. La unión
+tiene 0 solapamientos, 0 omisiones, 0 inesperados y 0 cambios de contrato o
+componente. Las pruebas dirigidas pasan `4/4` y
+`nsc.compiler-suite.registry-inventory` pasa `1/1` en `18.62 s`. La tarea
+permanece activa y continúa con el barrido de los 116 gates Debug; no se
+ejecutó baseline ni se tocó `C:`.
