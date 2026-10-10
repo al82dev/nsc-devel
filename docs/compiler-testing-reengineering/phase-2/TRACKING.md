@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Tanda 02.06 — Host.Parser materializado; integración en curso | 870 impl.; 333 verif. | integrar, auditar y validar Host.Parser |
+| Tanda 02.06 — Host.Parser materializado e integrado | 870 impl.; 333 verif. | implementar Host.Sema `TS-SEMA-001..321` |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
@@ -45,11 +45,11 @@ pasaron en ambos modos; no se ejecutó la suite histórica.
 
 Estado actual de `Host.Parser`: `536/536` casos están materializados en módulos
 nuevos y conservan visibles los defectos conocidos y las limitaciones de
-infraestructura. El registro central, el manifiesto, el gate controlador y la
-validación Debug/Release siguen en curso; por eso estos casos aumentan
-`Implementados`, pero todavía no aumentan `Verificados`. La auditoría
-independiente y la ejecución de los `536` IDs quedan diferidas al cierre
-offline, después de completar toda la implementación de la Fase 2.
+infraestructura. El registro central, el manifiesto y el gate controlador ya
+están integrados; por eso estos casos aumentan `Implementados`, pero todavía no
+aumentan `Verificados`. La auditoría independiente, el build y la ejecución de
+los `536` IDs quedan diferidos al cierre offline, después de completar toda la
+implementación de la Fase 2.
 
 Secuencia vigente desde el 9 de octubre de 2026: primero se implementa toda la
 infraestructura y todos los casos de la Fase 2; después se ejecuta la validación

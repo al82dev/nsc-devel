@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "c15136e8c",
-  "last_completed_batch": "TANDA-02-05",
-  "last_completed_case": "TA-AST-230",
+  "last_completed_commit": "91aed6dce",
+  "last_completed_batch": "TANDA-02-06",
+  "last_completed_case": "TP-PAR-536",
   "current_wave": 2,
-  "current_component": "Host.Parser",
-  "next_contract": "CP-PAR-001..042",
-  "next_action": "Finish materializing and integrating every Phase 2 case before starting offline validation.",
+  "current_component": "Host.Sema",
+  "next_contract": "CS-SEMA-001..030",
+  "next_action": "Materialize and integrate TS-SEMA-001..321 without running validation; then continue to the next implementation wave.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -248,10 +248,11 @@
       "known_failure_cases_implemented": 1,
       "validation_pending_cases": 0,
       "special_infrastructure_pending": 6,
-      "current_component": "Host.Parser",
-      "current_component_cases_expected": 536,
-      "current_component_cases_materialized": 536,
-      "current_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+      "current_component": "Host.Sema",
+      "current_component_cases_expected": 321,
+      "previous_component": "Host.Parser",
+      "previous_component_cases_materialized": 536,
+      "previous_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }
   },
   "validation": {
