@@ -1452,11 +1452,17 @@ def parse_host_envelope(
     if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
         raise ValueError("host duration_us must be a non-negative integer")
     failures = payload.get("failures")
-    if not isinstance(failures, list) or any(not isinstance(item, str) for item in failures):
+    if not isinstance(failures, list) or any(
+        not isinstance(item, str) or not item for item in failures
+    ):
         raise ValueError("host failures must be a list of strings")
     status = payload.get("status")
     if status not in {"PASS", "FAIL"}:
         raise ValueError(f"host status is invalid: {status!r}")
+    if status == "PASS" and failures:
+        raise ValueError("host PASS result cannot contain failures")
+    if status == "FAIL" and not failures:
+        raise ValueError("host FAIL result requires failure evidence")
     expected_exit = 0 if status == "PASS" else 1
     if exit_code != expected_exit:
         raise ValueError(

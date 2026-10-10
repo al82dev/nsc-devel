@@ -1315,3 +1315,15 @@ El presupuesto queda limitado a la seleccion de lineas de stdout, una prueba
 Python sintetica y la evidencia de Validacion 85. No se cambia el productor,
 esquema, estados, producto ni bateria historica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: coherencia de evidencia host
+
+`parse_host_envelope` debe exigir el mismo contrato de evidencia que el
+adaptador canonico: `PASS` no contiene fallas, `FAIL` contiene al menos una
+falla y cada mensaje es una cadena no vacia. El codigo de salida coherente no
+basta para acreditar una combinacion contradictoria.
+
+El presupuesto queda limitado a la validacion local de `failures`, pruebas
+Python sinteticas y la evidencia de Validacion 86. No se cambian estados,
+codigos de salida, producto ni bateria historica y no se configura, compila o
+ejecuta producto.

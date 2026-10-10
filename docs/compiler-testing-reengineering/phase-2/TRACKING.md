@@ -902,3 +902,8 @@ ahora exactamente una linea no vacia, igual que el productor y el adaptador
 canonico; un diagnostico adicional ya no se descarta para fabricar un sobre
 valido. Las pruebas dirigidas pasan `5/5` y la suite Python completa `223/223`,
 sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 86 cerro la contradiccion entre estado y evidencia del host. `PASS`
+no admite fallas, `FAIL` exige evidencia y cada mensaje debe ser no vacio. Las
+pruebas dirigidas pasan `6/6` y la suite Python completa `224/224`, sin ejecutar
+producto. La tarea funcional permanece activa.

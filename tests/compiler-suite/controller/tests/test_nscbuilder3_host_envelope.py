@@ -59,6 +59,14 @@ class Builder3HostEnvelopeTests(unittest.TestCase):
             self.parse(envelope(failures="not-a-list"))
         with self.assertRaisesRegex(ValueError, "failures"):
             self.parse(envelope(failures=[1]))
+        with self.assertRaisesRegex(ValueError, "failures"):
+            self.parse(envelope(failures=[""]))
+
+    def test_status_and_failure_evidence_must_be_coherent(self) -> None:
+        with self.assertRaisesRegex(ValueError, "PASS result"):
+            self.parse(envelope(failures=["contradiction"]))
+        with self.assertRaisesRegex(ValueError, "requires failure evidence"):
+            self.parse(envelope(status="FAIL"), exit_code=1)
 
     def test_exit_code_must_match_host_status(self) -> None:
         with self.assertRaisesRegex(ValueError, "exit code"):
