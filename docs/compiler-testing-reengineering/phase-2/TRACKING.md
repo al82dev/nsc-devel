@@ -808,3 +808,9 @@ duracion, evidencia y bloqueadores exigen ahora tipos e invariantes completos;
 no entran al ledger estados textuales, booleanos numericos, NaN ni colecciones
 ambiguas. Las pruebas dirigidas pasan `7/7` y la suite Python completa
 `210/210`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 70 cerro la evidencia vacia del adaptador host. Una lista de fallos
+con cadenas vacias se clasifica ahora como `INFRASTRUCTURE_ERROR` antes de
+construir `CaseResult`, sin propagar excepciones. Las pruebas dirigidas pasan
+`9/9` y la suite Python completa `211/211`, sin ejecutar NativeSharp. La tarea
+funcional permanece activa.

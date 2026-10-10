@@ -151,6 +151,11 @@ class HostExecutorTests(unittest.TestCase):
         self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
         self.assertIn("contradicts", result.failures[0])
 
+    def test_rejects_empty_failure_evidence_without_escaping(self) -> None:
+        result, _ = self.execute(self.valid_payload("FAIL", [""]), exit_code=1)
+        self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+        self.assertIn("schema", result.failures[0])
+
     def test_rejects_an_executor_owned_by_another_adapter(self) -> None:
         workspace = WorkspaceManager(self.root).prepare("run-other", "TB-BAS-001")
         result = HostExecutor((sys.executable, "unused"))(

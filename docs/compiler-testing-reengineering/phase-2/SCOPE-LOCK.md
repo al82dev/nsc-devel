@@ -1116,3 +1116,16 @@ El presupuesto queda limitado a `CaseResult.__post_init__`, pruebas Python
 sinteticas y la evidencia de Validacion 69. No se cambian productores, ledger,
 reportes, estados permitidos, producto ni bateria historica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: evidencia host no vacia
+
+`HostExecutor` debe rechazar una lista `failures` que contenga cadenas vacias
+antes de construir `CaseResult`. Un payload host mal formado debe producir
+`INFRASTRUCTURE_ERROR` con diagnostico, no propagar la excepcion de la
+invariante central. La forma valida y las relaciones status/exit code no
+cambian.
+
+El presupuesto queda limitado a la validacion de `failures` en `HostExecutor`,
+una prueba Python sintetica y la evidencia de Validacion 70. No se cambian
+binarios host, comandos, estados, producto ni bateria historica y no se
+configura o compila producto.
