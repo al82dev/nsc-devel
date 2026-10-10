@@ -510,3 +510,11 @@ resultados y `8` eventos. El gate carga y selecciona el fixture con la API
 productiva, compara identidades y estados con los casos vivos, y valida el
 protocolo completo de eventos con cardinalidad derivada. Sus `2/2` pruebas
 Python pasan; no se ejecutó el host compilado.
+
+Validación 24 completó el barrido estático de los `118` controladores de
+integración. No quedan listas ni conteos privados de casos dependientes de una
+revisión fuera de los helpers dinámicos. Se conservaron los valores que sí son
+oráculos del producto: forma de registros, variantes de contratos, continuidad
+de inventarios y un archivo de paquete por publicación. La nueva prueba del
+manifiesto vivo cerró `176` selecciones causales y la suite Python completa
+pasó `71/71`; no se compiló ni ejecutó producto.

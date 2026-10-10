@@ -466,3 +466,18 @@ El presupuesto queda limitado a `run_infrastructure_gate.py`, una prueba Python
 de sus validadores puros y la evidencia de Validación 23. No se modifican el
 fixture, manifiesto central, casos, oráculos, resultados esperados, producto ni
 batería histórica. No se configura, compila ni ejecuta producto.
+
+### Enmienda: auditoría residual y cierre causal del manifiesto vivo
+
+Los 118 controladores de integración se auditan por listas de IDs, conteos de
+casos/resultados/eventos, hashes, versiones y cadenas exactas. Sólo se retiran
+expectativas que dupliquen el inventario de pruebas; se conservan cardinalidades
+y valores que constituyen oráculos observables del producto. Una prueba estática
+permanente debe cargar el manifiesto real y demostrar que cada selección no
+vacía por componente, perfil y build mode puede alcanzar cierre causal.
+
+El presupuesto queda limitado a esa prueba de cierre vivo y la evidencia de
+Validación 24. No se modifican controladores adicionales mientras el barrido no
+demuestre una duplicación dependiente de revisión. No se modifican casos,
+oráculos, resultados esperados, producto ni batería histórica. No se configura,
+compila ni ejecuta producto.
