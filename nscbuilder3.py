@@ -1145,6 +1145,25 @@ def parse_python_gate_result(value: Any) -> tuple[bool, str]:
     return satisfied, detail
 
 
+def parse_selfhost_oracle(value: Any) -> tuple[int, dict[str, Any] | None]:
+    """Validate the closed oracle schema used by executable self-host cases."""
+    if not isinstance(value, dict):
+        raise ValueError("self-host oracle must be a JSON object")
+    unknown = sorted(set(value) - {"exit_code", "description", "json"})
+    if unknown:
+        raise ValueError("self-host oracle contains unknown fields: " + ", ".join(unknown))
+    exit_code = value.get("exit_code")
+    if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+        raise ValueError("self-host oracle exit_code must be an integer")
+    description = value.get("description")
+    if description is not None and not isinstance(description, str):
+        raise ValueError("self-host oracle description must be a string")
+    expected_json = value.get("json")
+    if "json" in value and not isinstance(expected_json, dict):
+        raise ValueError("self-host oracle json must be an object")
+    return exit_code, expected_json
+
+
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
@@ -1471,6 +1490,10 @@ class ExecutionEngine:
         """Compile a real NativeSharp fixture once, then run one selected case."""
         manifest = variant.case.manifest or {}
         inputs = manifest.get("inputs", {})
+        try:
+            expected, expected_json = parse_selfhost_oracle(manifest.get("oracle"))
+        except ValueError as error:
+            return "INFRASTRUCTURE_ERROR", str(error), ""
         project_relative = inputs.get("fixture_project")
         if not isinstance(project_relative, str):
             return "INFRASTRUCTURE_ERROR", "self-host case lacks fixture_project", ""
@@ -1505,11 +1528,8 @@ class ExecutionEngine:
         )
         log_path = case_root / "fixture.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
-        oracle = manifest.get("oracle", {})
-        expected = int(oracle.get("exit_code", 0))
         passed = code == expected
         detail = "" if passed else f"exit code {code}; expected {expected}"
-        expected_json = oracle.get("json")
         if passed and expected_json is not None:
             try:
                 passed = json.loads(captured.strip()) == expected_json

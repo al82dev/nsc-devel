@@ -781,3 +781,16 @@ El presupuesto queda limitado a un parser puro,
 evidencia de Validación 46. No se modifican los gates importados, sus rutas,
 casos, oráculos, manifiestos, producto ni batería histórica; no se ejecuta
 ningún gate real ni se configura, compila o ejecuta producto.
+
+### Enmienda: oráculo self-host cerrado antes de ejecutar
+
+Los `192` casos self-host declaran un exit code entero, una descripción textual
+opcional y, en siete casos, un objeto JSON esperado. Builder 3 debe validar esa
+forma antes de preparar o ejecutar el fixture; queda prohibido convertir
+cadenas o booleanos mediante `int(...)` o aceptar un oráculo JSON de otro tipo.
+
+El presupuesto queda limitado a un parser puro, la lectura del oráculo en
+`ExecutionEngine._run_selfhost`, pruebas Python sintéticas y la evidencia de
+Validación 47. No se modifican manifiestos, fixtures, compilación, comparación
+JSON, estados esperados, producto ni batería histórica; no se prepara o ejecuta
+ningún fixture ni se configura, compila o ejecuta producto.

@@ -669,3 +669,9 @@ de producto; ya no se coercionan cadenas, números o contenedores. Una forma
 inválida o una excepción conserva el directorio del caso y termina como error de
 infraestructura. Las pruebas dirigidas pasan `5/5` y la suite Python completa
 `144/144` sin ejecutar gates reales.
+
+Validación 47 cerró el oráculo self-host antes de preparar cualquier fixture.
+Los `192` casos vivos conservan su esquema; exit code, descripción y JSON se
+validan sin conversiones ni defaults, y se rechazan campos desconocidos. Las
+pruebas dirigidas pasan `5/5` y la suite Python completa `149/149` sin preparar
+o ejecutar fixtures.
