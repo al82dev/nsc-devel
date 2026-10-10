@@ -315,6 +315,10 @@ add_executable(
     selfhost/modules/SelfHostSyntaxNodesModule.cpp
     selfhost/modules/SelfHostSyntaxTreeModule.cpp
     selfhost/modules/SelfHostSyntaxDumpModule.cpp
+    selfhost/modules/SelfHostContractsToolchainModule.cpp
+    selfhost/modules/SelfHostContractsIrRuntimeModule.cpp
+    selfhost/modules/SelfHostContractsDistributionModule.cpp
+    selfhost/modules/SelfHostContractsSourceModule.cpp
     host/modules/RuntimeAbiIdentityModule.cpp
     host/modules/RuntimeAbiVerificationModule.cpp
     host/modules/RuntimeCapabilityModule.cpp
@@ -1510,6 +1514,11 @@ add_test(
     NAME nsc.compiler-suite.selfhost-syntax-structure
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_syntax_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-contracts-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_contracts_gate.py"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_test(
     NAME nsc.compiler-suite.host-runtime-controller

@@ -385,6 +385,10 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerSelfHostSyntaxNodesModule(registry);
         nsc::suite::registerSelfHostSyntaxTreeModule(registry);
         nsc::suite::registerSelfHostSyntaxDumpModule(registry);
+        nsc::suite::registerSelfHostContractsToolchainModule(registry);
+        nsc::suite::registerSelfHostContractsIrRuntimeModule(registry);
+        nsc::suite::registerSelfHostContractsDistributionModule(registry);
+        nsc::suite::registerSelfHostContractsSourceModule(registry);
         nsc::suite::registerRuntimeAbiIdentityModule(registry);
         nsc::suite::registerRuntimeAbiVerificationModule(registry);
         nsc::suite::registerRuntimeCapabilityModule(registry);
