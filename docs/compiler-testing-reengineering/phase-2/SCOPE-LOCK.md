@@ -509,3 +509,17 @@ pruebas Python y la evidencia de Validación 26. No se modifican módulos, casos
 oráculos, disposiciones, producto ni batería histórica. La implementación se
 valida estáticamente; la ejecución contra el host actualizado queda en el cierre
 offline del usuario. No se configura ni compila producto.
+
+### Enmienda: contrato de argumentos entre CTest y controladores
+
+Cada bloque CTest que invoca un `run_*.py` debe proporcionar todas las opciones
+que el parser del script declara `required=True` y no puede pasar opciones que
+el parser desconoce. La comprobación deriva opciones mediante el AST Python y
+extrae bloques `add_test` mediante un lector iterativo de paréntesis CMake; no
+se mantiene una tabla manual de scripts u opciones.
+
+El presupuesto queda limitado a la prueba estática de wiring y la evidencia de
+Validación 27. Una discrepancia demostrada podrá corregirse únicamente en el
+bloque CTest o parser causal correspondiente. No se modifican casos, oráculos,
+resultados esperados, producto ni batería histórica. No se configura, compila
+ni ejecuta producto.

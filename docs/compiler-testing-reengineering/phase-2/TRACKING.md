@@ -532,3 +532,9 @@ de los inventarios y fixture sin listas privadas. El gate rechaza formato,
 duplicados, desorden, omisiones, inesperados y cambios de contrato/componente.
 Sus pruebas Python y la conexión CTest pasan estáticamente; la ejecución contra
 el host actualizado corresponde a la siguiente construcción offline.
+
+Validación 27 agregó un cotejo AST/CMake para los `116` controladores. Cada
+bloque CTest proporciona todas las opciones `required=True` de su parser, no
+pasa opciones desconocidas y referencia exactamente un script; todos los
+scripts quedan conectados. La suite Python completa pasa `76/76` sin ejecutar
+ni compilar producto.
