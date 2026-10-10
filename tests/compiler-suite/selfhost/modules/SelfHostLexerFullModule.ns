@@ -21,7 +21,7 @@ namespace NativeSharp.CompilerSuite.SelfHost.Lexer
         {
             raii TokenStream t = SelfHostLexerTestSupport.Lex("(){}[];,?:... -> => ++ -- == != << >>= ?? ??= ?. ..");
             return t.Count() == 24 && t.KindAt(0) == TokenKind.LeftParen &&
-                t.KindAt(9) == TokenKind.Question && t.KindAt(10) == TokenKind.Ellipsis &&
+                t.KindAt(8) == TokenKind.Question && t.KindAt(10) == TokenKind.Ellipsis &&
                 t.KindAt(18) == TokenKind.GreaterGreaterEqual &&
                 t.KindAt(19) == TokenKind.QuestionQuestion &&
                 t.KindAt(20) == TokenKind.QuestionQuestionEqual &&
