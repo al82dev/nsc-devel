@@ -1544,11 +1544,13 @@ def parse_identity_envelope(
     ):
         raise ValueError("identity result duration_seconds must be non-negative")
     failures = result.get("failures")
-    if not isinstance(failures, list) or any(not isinstance(item, str) for item in failures):
+    if not isinstance(failures, list) or any(
+        not isinstance(item, str) or not item for item in failures
+    ):
         raise ValueError("identity result failures must be a list of strings")
     blocked_by = result.get("blocked_by")
     if not isinstance(blocked_by, list) or any(
-        not isinstance(item, str) for item in blocked_by
+        not isinstance(item, str) or not item for item in blocked_by
     ):
         raise ValueError("identity result blocked_by must be a list of strings")
 

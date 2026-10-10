@@ -918,3 +918,8 @@ Validacion 88 cerro las fallas de gates Python sin causa. Una respuesta falsa
 exige ahora detalle no vacio antes de proyectarse a un estado terminal. Las
 pruebas dirigidas pasan `6/6` y la suite Python completa `226/226`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 89 cerro la evidencia vacia del reporte enfocado. Las entradas de
+`failures` y `blocked_by` deben ser cadenas no vacias, igual que en
+`CaseResult`. Las pruebas dirigidas pasan `6/6` y la suite Python completa
+`226/226`, sin ejecutar producto. La tarea funcional permanece activa.

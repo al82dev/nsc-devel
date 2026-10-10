@@ -114,6 +114,14 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
             payload = json.loads(envelope())
             payload["results"][0]["failures"] = "broken"
             self.parse(json.dumps(payload))
+        with self.assertRaisesRegex(ValueError, "failures"):
+            payload = json.loads(envelope())
+            payload["results"][0]["failures"] = [""]
+            self.parse(json.dumps(payload))
+        with self.assertRaisesRegex(ValueError, "blocked_by"):
+            payload = json.loads(envelope())
+            payload["results"][0]["blocked_by"] = [""]
+            self.parse(json.dumps(payload))
 
     def test_status_structure_and_counts_must_be_coherent(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown status"):

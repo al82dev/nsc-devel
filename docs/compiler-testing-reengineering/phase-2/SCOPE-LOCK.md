@@ -1350,3 +1350,15 @@ no puede convertirse en `FAIL` o `KNOWN_FAILURE` sin evidencia causal.
 El presupuesto queda limitado al parser del resultado Python, una prueba
 sintetica y la evidencia de Validacion 88. No se cambian gates, estados,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: evidencia no vacia del reporte enfocado
+
+`parse_identity_envelope` debe rechazar cadenas vacias tanto en `failures`
+como en `blocked_by`. El productor canonico no puede construir un `CaseResult`
+con evidencia vacia; el consumidor tampoco debe aceptar ese estado si el
+reporte fue alterado o truncado.
+
+El presupuesto queda limitado a los dos predicados de evidencia, pruebas
+Python sinteticas y la evidencia de Validacion 89. No se cambian estados,
+productores, producto ni bateria historica y no se configura, compila o
+ejecuta producto.
