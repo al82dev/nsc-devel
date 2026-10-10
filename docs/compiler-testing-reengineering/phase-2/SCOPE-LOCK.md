@@ -2085,6 +2085,31 @@ metadatos, CMake, producto, manifiestos, oraculos ni bateria historica. Los seis
 archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
 ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: ejecucion visible y reintento exacto de fallos en Builder 3
+
+La construccion completa de `nsc_component_tests` termino `315/315`, pero la
+pestana Construccion muestra la infraestructura construida sin ofrecer ahi
+mismo una accion para iniciar las pruebas. La pestana Resultados conserva un
+reporte textual y el motor retiene las variantes fallidas, pero no existe una
+tabla visible con cada combinacion exacta `(caso, build, optimizacion)` ni una
+forma de excluir temporalmente filas de una reejecucion dirigida.
+
+El presupuesto de esta correccion queda limitado a `nscbuilder3.py`, la prueba
+unitaria de proyeccion de reintentos y su evidencia. Se agrega `Ejecutar
+pruebas` junto a `Construir infraestructura`; esa accion reutiliza el selector
+existente y abre la pestana de ejecucion. Resultados obtiene una pestana
+`Fallos exactos` con las variantes terminales, controles para desactivar o
+reactivar filas solamente dentro del reintento y una accion que reejecuta las
+variantes activas, no su componente ni su subconjunto padre. Una corrida total
+continua incluyendo el denominador completo: desactivar una fila nunca reduce
+silenciosamente la seleccion normal.
+
+No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
+controladores, timeouts, CMake ni bateria historica. No se configura, compila o
+ejecuta producto; la validacion se limita a contratos Python y smoke de
+construccion de GUI. Los seis archivos protegidos permanecen intactos. No se
+ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
 ### Enmienda: identidad canonica de Sema 087 a 099
 
 La conciliacion exhaustiva posterior a Validacion 132 comparo las `8,054`

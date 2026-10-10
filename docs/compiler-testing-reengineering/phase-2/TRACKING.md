@@ -1228,3 +1228,12 @@ reconstruccion Debug termino `315/315`, `INFRA-REGISTRY-001` pasa y el arranque
 `nsc.compiler-suite.host-source-position-controller` pasa `1/1` en `1.05 s`,
 por debajo del limite `tiny` de 5 segundos. La tarea permanece activa y sigue
 con el barrido de los 116 gates Debug; no se ejecuto baseline ni se toco `C:`.
+
+Validacion 137 completo la superficie operativa de Builder 3 sin ejecutar
+producto. Construccion ofrece ahora `Ejecutar pruebas`; Resultados incorpora
+`Fallos exactos` con una fila por variante `caso|build|optimizacion`, permite
+desactivar o reactivar filas solo para el reintento y reejecuta exclusivamente
+los fallos activos. La sintaxis Python pasa, las pruebas dirigidas pasan `7/7`
+y el smoke valida botones y pestana. La corrida normal conserva siempre el
+denominador completo. La tarea permanece activa; no se compilo ni ejecuto NSC,
+no se ejecuto baseline y no se toco `C:`.

@@ -79,6 +79,25 @@ class Builder3RetryTests(unittest.TestCase):
                 (result(self.visible[0], "FAIL"),),
             )
 
+    def test_active_retry_excludes_only_exact_disabled_variants(self) -> None:
+        failed = (self.visible[1], self.visible[3], self.visible[4])
+
+        active = builder.active_retry_variants(failed, {self.visible[3].key})
+
+        self.assertEqual(active, (self.visible[1], self.visible[4]))
+
+    def test_disabled_variant_outside_failed_plan_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "outside the failed plan"):
+            builder.active_retry_variants(
+                (self.visible[1],), {self.visible[2].key}
+            )
+
+    def test_active_retry_rejects_duplicate_failed_keys(self) -> None:
+        with self.assertRaisesRegex(ValueError, "duplicate variant keys"):
+            builder.active_retry_variants(
+                (self.visible[1], self.visible[1]), set()
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

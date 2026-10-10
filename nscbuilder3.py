@@ -1047,6 +1047,20 @@ def retry_variants(
     return tuple(variant for variant in visible if variant.key in terminal_keys)
 
 
+def active_retry_variants(
+    failed: Sequence[RunVariant], disabled_keys: Iterable[str]
+) -> tuple[RunVariant, ...]:
+    """Return exact failed variants not temporarily disabled by the operator."""
+    by_key = {variant.key: variant for variant in failed}
+    if len(by_key) != len(failed):
+        raise ValueError("failed retry plan contains duplicate variant keys")
+    disabled = set(disabled_keys)
+    unknown = sorted(disabled - set(by_key))
+    if unknown:
+        raise ValueError("disabled retry variants are outside the failed plan: " + ", ".join(unknown))
+    return tuple(variant for variant in failed if variant.key not in disabled)
+
+
 def condensed_error_report(
     outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
 ) -> str:
@@ -2518,9 +2532,10 @@ def catalog_audit() -> dict[str, Any]:
 def launch_gui(smoke_only: bool = False) -> int:
     """Launch the complete single-file PySide6 application."""
     try:
-        from PySide6.QtCore import QThread, QUrl, Signal
+        from PySide6.QtCore import Qt, QThread, QUrl, Signal
         from PySide6.QtGui import QColor, QDesktopServices
         from PySide6.QtWidgets import (
+            QAbstractItemView,
             QApplication,
             QComboBox,
             QFileDialog,
@@ -2703,6 +2718,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.catalog = CanonicalCatalog.load()
             self.worker: CommandWorker | SuiteWorker | None = None
             self.last_failed_variants: tuple[RunVariant, ...] = ()
+            self.failure_outcomes_by_key: dict[str, CaseOutcome] = {}
+            self.failure_variants_by_key: dict[str, RunVariant] = {}
+            self.disabled_failure_keys: set[str] = set()
             self.visible_variants: tuple[RunVariant, ...] = ()
             self.status_item_by_key: dict[str, QTableWidgetItem] = {}
             self.path_edits: dict[str, QLineEdit] = {}
@@ -2790,12 +2808,17 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.detect_button = QPushButton("Autodetectar rutas")
             self.configure_button = QPushButton("Configurar pruebas")
             self.build_button = QPushButton("Construir infraestructura")
+            self.infrastructure_run_button = QPushButton("Ejecutar pruebas")
+            self.infrastructure_run_button.setToolTip(
+                "Ejecuta la selección visible de la pestaña Ejecución Fase 2"
+            )
             self.receipt_button = QPushButton("Validar compilador externo")
             controls.addWidget(self.save_button)
             controls.addWidget(self.detect_button)
             controls.addWidget(self.receipt_button)
             controls.addWidget(self.configure_button)
             controls.addWidget(self.build_button)
+            controls.addWidget(self.infrastructure_run_button)
             controls.addStretch(1)
             layout.addWidget(tests_group)
             self.infrastructure_stage = QLabel("Sin operación activa")
@@ -2826,6 +2849,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             )
             self.build_button.clicked.connect(
                 lambda: self._start_infrastructure("tests-build")
+            )
+            self.infrastructure_run_button.clicked.connect(
+                self._start_suite_from_construction
             )
             return page
 
@@ -2904,6 +2930,36 @@ def launch_gui(smoke_only: bool = False) -> int:
                 QHeaderView.ResizeMode.ResizeToContents
             )
             self.history_table.horizontalHeader().setStretchLastSection(True)
+            failure_page = QWidget()
+            failure_layout = QVBoxLayout(failure_page)
+            self.failure_summary = QLabel("No hay fallos terminales registrados")
+            failure_layout.addWidget(self.failure_summary)
+            failure_controls = QHBoxLayout()
+            self.failure_retry_button = QPushButton("Reejecutar fallos activos")
+            self.failure_disable_button = QPushButton(
+                "Desactivar seleccionados para reejecución"
+            )
+            self.failure_enable_button = QPushButton("Reactivar seleccionados")
+            failure_controls.addWidget(self.failure_retry_button)
+            failure_controls.addWidget(self.failure_disable_button)
+            failure_controls.addWidget(self.failure_enable_button)
+            failure_controls.addStretch(1)
+            failure_layout.addLayout(failure_controls)
+            self.failure_table = QTableWidget(0, len(self.TABLE_HEADERS))
+            self.failure_table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+            self.failure_table.setAlternatingRowColors(True)
+            self.failure_table.setSelectionBehavior(
+                QTableWidget.SelectionBehavior.SelectRows
+            )
+            self.failure_table.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection
+            )
+            self.failure_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.failure_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.ResizeToContents
+            )
+            self.failure_table.horizontalHeader().setStretchLastSection(True)
+            failure_layout.addWidget(self.failure_table, 1)
             history_page = QWidget()
             history_layout = QVBoxLayout(history_page)
             history_controls = QHBoxLayout()
@@ -2919,7 +2975,18 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.history_table.cellDoubleClicked.connect(lambda _row, _column: self._open_history())
             self.result_tabs.addTab(self.full_log, "Log completo")
             self.result_tabs.addTab(self.error_report, "Errores condensados")
+            self.failure_tab_index = self.result_tabs.addTab(
+                failure_page, "Fallos exactos (0)"
+            )
             self.result_tabs.addTab(history_page, "Historial")
+            self.failure_retry_button.clicked.connect(self._retry_failures)
+            self.failure_disable_button.clicked.connect(
+                lambda: self._set_selected_failures_enabled(False)
+            )
+            self.failure_enable_button.clicked.connect(
+                lambda: self._set_selected_failures_enabled(True)
+            )
+            self._refresh_failure_controls()
             layout.addWidget(self.result_tabs)
             return page
 
@@ -3301,6 +3368,15 @@ def launch_gui(smoke_only: bool = False) -> int:
             except Exception as error:
                 self._show_error("No se pudo iniciar la ejecución", error)
 
+        def _start_suite_from_construction(self) -> None:
+            """Start the current granular selection from the construction workflow."""
+            if self.worker is not None:
+                return
+            self.execution_mode.setCurrentText(self.infrastructure_mode.currentText())
+            self.tabs.setCurrentIndex(1)
+            self._preview_plan()
+            self._start_suite()
+
         def _run_variants(
             self,
             config: BuilderConfig,
@@ -3343,13 +3419,104 @@ def launch_gui(smoke_only: bool = False) -> int:
                 return
             try:
                 config = self._config_from_ui().validated(require_tools=True)
-                self._populate_plan(
-                    tuple(variant.case for variant in self.last_failed_variants),
-                    self.last_failed_variants,
+                variants = active_retry_variants(
+                    self.last_failed_variants, self.disabled_failure_keys
                 )
-                self._run_variants(config, self.last_failed_variants, "rerun-failures")
+                if not variants:
+                    raise ValueError(
+                        "todos los fallos están desactivados para esta reejecución"
+                    )
+                self._populate_plan(
+                    tuple(variant.case for variant in variants),
+                    variants,
+                )
+                self._run_variants(config, variants, "rerun-failures")
             except Exception as error:
                 self._show_error("No se pudieron reejecutar los fallos", error)
+
+        def _set_selected_failures_enabled(self, enabled: bool) -> None:
+            """Toggle only selected exact variants in the directed retry plan."""
+            rows = {
+                index.row()
+                for index in self.failure_table.selectionModel().selectedRows()
+            }
+            for row in rows:
+                case_item = self.failure_table.item(row, 3)
+                if case_item is None:
+                    continue
+                key = case_item.data(Qt.ItemDataRole.UserRole)
+                if not isinstance(key, str) or key not in self.failure_variants_by_key:
+                    continue
+                if enabled:
+                    self.disabled_failure_keys.discard(key)
+                else:
+                    self.disabled_failure_keys.add(key)
+            self._populate_failure_table()
+
+        def _populate_failure_table(self) -> None:
+            """Render one row per exact terminal variant retained for retry."""
+            variants = tuple(
+                self.failure_variants_by_key[key]
+                for key in sorted(self.failure_variants_by_key)
+            )
+            self.failure_table.setSortingEnabled(False)
+            self.failure_table.clearContents()
+            self.failure_table.setRowCount(len(variants))
+            for row, variant in enumerate(variants):
+                outcome = self.failure_outcomes_by_key[variant.key]
+                disabled = variant.key in self.disabled_failure_keys
+                status = "DESACTIVADA" if disabled else outcome.status
+                detail = outcome.detail
+                if outcome.evidence:
+                    detail = (
+                        f"{detail} | {outcome.evidence}"
+                        if detail
+                        else outcome.evidence
+                    )
+                values = (
+                    str(variant.case.wave),
+                    variant.case.component,
+                    variant.case.contract_id,
+                    variant.case.case_id,
+                    variant.build_mode,
+                    variant.optimization,
+                    variant.case.profile,
+                    variant.case.executor,
+                    status,
+                    f"{outcome.duration_seconds:.3f} s",
+                    detail,
+                )
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if column == 3:
+                        item.setData(Qt.ItemDataRole.UserRole, variant.key)
+                    if column == 8:
+                        self._color_status(item, status)
+                    self.failure_table.setItem(row, column, item)
+            self.failure_table.setSortingEnabled(True)
+            active = len(variants) - len(self.disabled_failure_keys)
+            disabled = len(self.disabled_failure_keys)
+            self.failure_summary.setText(
+                f"Fallos exactos: {len(variants):,} · activos para reejecución: "
+                f"{active:,} · desactivados temporalmente: {disabled:,}"
+            )
+            self.result_tabs.setTabText(
+                self.failure_tab_index, f"Fallos exactos ({len(variants):,})"
+            )
+            self._refresh_failure_controls()
+
+        def _refresh_failure_controls(self) -> None:
+            """Keep retry controls consistent with active and disabled failures."""
+            idle = self.worker is None
+            active = len(self.failure_variants_by_key) - len(self.disabled_failure_keys)
+            self.retry_button.setEnabled(idle and active > 0)
+            self.failure_retry_button.setEnabled(idle and active > 0)
+            self.failure_disable_button.setEnabled(
+                idle and bool(self.failure_variants_by_key)
+            )
+            self.failure_enable_button.setEnabled(
+                idle and bool(self.disabled_failure_keys)
+            )
 
         def _append_full_output(self, text: str) -> None:
             cursor = self.full_log.textCursor()
@@ -3392,14 +3559,28 @@ def launch_gui(smoke_only: bool = False) -> int:
                 item.key for item in typed if item.status in TERMINAL_FAILURES
             }
             failed = bool(failed_keys) or evidence.startswith("ERROR:")
-            self.last_failed_variants = retry_variants(self.visible_variants, typed)
-            self.retry_button.setEnabled(bool(self.last_failed_variants))
+            current_failures = retry_variants(self.visible_variants, typed)
+            current_keys = {variant.key for variant in self.visible_variants}
+            outcome_by_key = {item.key: item for item in typed}
+            for key in current_keys:
+                self.failure_variants_by_key.pop(key, None)
+                self.failure_outcomes_by_key.pop(key, None)
+                self.disabled_failure_keys.discard(key)
+            for variant in current_failures:
+                self.failure_variants_by_key[variant.key] = variant
+                self.failure_outcomes_by_key[variant.key] = outcome_by_key[variant.key]
+            self.disabled_failure_keys.intersection_update(self.failure_variants_by_key)
+            self.last_failed_variants = tuple(
+                self.failure_variants_by_key[key]
+                for key in sorted(self.failure_variants_by_key)
+            )
+            self._populate_failure_table()
             self._render_error_report(typed, cancelled, evidence)
             self.worker = None
             self._set_busy(False)
             self._refresh_history()
             self.tabs.setCurrentIndex(2)
-            self.result_tabs.setCurrentIndex(1 if failed else 0)
+            self.result_tabs.setCurrentIndex(self.failure_tab_index if failed else 0)
 
         def _render_error_report(
             self, outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
@@ -3418,6 +3599,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_build_button.setEnabled(not busy)
             self.configure_button.setEnabled(not busy)
             self.build_button.setEnabled(not busy)
+            self.infrastructure_run_button.setEnabled(not busy)
             self.run_button.setEnabled(not busy)
             self.preview_button.setEnabled(not busy)
             self.save_button.setEnabled(not busy)
@@ -3428,6 +3610,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.cancel_button.setEnabled(busy and not infrastructure_busy)
             if busy:
                 self.retry_button.setEnabled(False)
+                self.failure_retry_button.setEnabled(False)
+                self.failure_disable_button.setEnabled(False)
+                self.failure_enable_button.setEnabled(False)
+            else:
+                self._refresh_failure_controls()
             self.statusBar().showMessage("Operación activa" if busy else "Listo")
 
         def _refresh_history(self) -> None:
@@ -3466,6 +3653,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "CANCELLED": QColor("#b7b7b7"),
                 "PENDIENTE": QColor("#d9b85f"),
                 "LISTO": QColor("#8cb4ff"),
+                "DESACTIVADA": QColor("#b7b7b7"),
             }
             color = colors.get(status)
             if color is not None:
@@ -3490,6 +3678,20 @@ def launch_gui(smoke_only: bool = False) -> int:
     application.setStyle("Fusion")
     window = MainWindow()
     if smoke_only:
+        expected_buttons = {
+            "infrastructure_run_button": "Ejecutar pruebas",
+            "failure_retry_button": "Reejecutar fallos activos",
+            "failure_disable_button": "Desactivar seleccionados para reejecución",
+            "failure_enable_button": "Reactivar seleccionados",
+        }
+        for attribute, expected_text in expected_buttons.items():
+            button = getattr(window, attribute, None)
+            if button is None or button.text() != expected_text:
+                raise RuntimeError(
+                    f"GUI smoke missing {attribute} with text {expected_text!r}"
+                )
+        if window.result_tabs.tabText(window.failure_tab_index) != "Fallos exactos (0)":
+            raise RuntimeError("GUI smoke missing the exact-failure result tab")
         window.close()
         return 0
     window.show()
