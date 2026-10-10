@@ -66,7 +66,7 @@ void lifetimeEscapeContract(TestContext& context, std::size_t variant)
         "callback lifetime change must alter source fingerprint");
 }
 
-void sourceSurfaceContract(TestContext& context, std::size_t variant)
+void sourceSurfaceContract(TestContext& context, std::size_t)
 {
     auto metadata = minimalMetadata();
     metadata.types.push_back(publicStruct("type:Visible", "Test.Visible"));

@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "HOST-SEMA-DEBUG-BUILD-CLOSURE",
-  "next_action": "Consume the next user-run Debug build result after restoring the Host.Sema support contract; if it advances, diagnose the complete next compiler output without rerunning prior work.",
+  "current_batch": "CPP-SYNTAX-CLOSURE-523",
+  "next_action": "Consume the next user-run Debug link and execution result; C++ syntax closure is 523/523 with zero failures and must not be repeated unless the source inventory changes.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -738,6 +738,8 @@
     }
   },
   "validation": {
+    "debug_cpp_syntax_units": 523,
+    "debug_cpp_syntax_failures": 0,
     "python_controller_tests": 56,
     "release_host_ordinary_passed": 735,
     "release_host_ordinary_total": 735,

@@ -139,7 +139,7 @@ void topologicalOrderContract(TestContext& context, std::size_t variant)
         "CF-COMPILATION-017 dependencies precede consumers and root is final");
 }
 
-void sourceOwnershipContract(TestContext& context, std::size_t variant)
+void sourceOwnershipContract(TestContext& context, std::size_t)
 {
     TemporaryTree tree("source_ownership");
     const auto shared = tree.write("Shared.ns", "fixture");

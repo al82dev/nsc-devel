@@ -147,7 +147,7 @@ void dispatchContract(TestContext& context, std::size_t variant)
                 "dispatch rejection must be deterministic at scale");
 }
 
-void pureEffectsContract(TestContext& context, std::size_t variant)
+void pureEffectsContract(TestContext& context, std::size_t)
 {
     FoldFixture fixture;
     const std::vector<mir::MirOpcode> pure = {mir::MirOpcode::Undef, mir::MirOpcode::Phi,
@@ -164,7 +164,7 @@ void pureEffectsContract(TestContext& context, std::size_t variant)
         "null instruction must classify conservatively as structural");
 }
 
-void observableEffectsContract(TestContext& context, std::size_t variant)
+void observableEffectsContract(TestContext& context, std::size_t)
 {
     FoldFixture fixture;
     auto* divide = fixture.arena.makeInstruction(mir::MirOpcode::Divide, {});
@@ -178,7 +178,7 @@ void observableEffectsContract(TestContext& context, std::size_t variant)
     context.expect(passes::MirEffectClassifier::classify(call).hasSideEffects, "call must remain observable");
 }
 
-void removabilityContract(TestContext& context, std::size_t variant)
+void removabilityContract(TestContext& context, std::size_t)
 {
     FoldFixture fixture;
     auto* value = fixture.arena.makeValue(fixture.types.builtin(sema::TypeKind::Int));

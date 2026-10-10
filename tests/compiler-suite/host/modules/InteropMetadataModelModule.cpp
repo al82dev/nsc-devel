@@ -6,7 +6,7 @@ namespace
 {
 using namespace interop_support;
 
-void enumMappingContract(TestContext& context, std::size_t variant)
+void enumMappingContract(TestContext& context, std::size_t)
 {
     context.expect(static_cast<std::uint8_t>(interop::LibraryMetadataTypeKind::Class) == 0 &&
         static_cast<std::uint8_t>(interop::LibraryMetadataTypeKind::Delegate) == 4,
@@ -45,7 +45,7 @@ void defaultValueContract(TestContext& context, std::size_t variant)
         "literal default payload must not alter binary ABI identity");
 }
 
-void flagsSignatureContract(TestContext& context, std::size_t variant)
+void flagsSignatureContract(TestContext& context, std::size_t)
 {
     context.expect((interop::kMetadataMemberInliningMask >> interop::kMetadataMemberInliningShift) == 3U,
         "inlining policy must occupy exactly two public bits");
@@ -57,7 +57,7 @@ void flagsSignatureContract(TestContext& context, std::size_t variant)
         "generic constraint mask must cover the eight declared capabilities");
 }
 
-void genericCanonicalizationContract(TestContext& context, std::size_t variant)
+void genericCanonicalizationContract(TestContext& context, std::size_t)
 {
     auto left = minimalMetadata();
     interop::LibraryMetadataGenericTemplate generic;

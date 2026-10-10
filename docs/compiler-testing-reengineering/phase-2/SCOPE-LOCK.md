@@ -146,3 +146,18 @@ de la Tanda 02.07. Se restauran los contratos ya consumidos y se desambiguan las
 dos inicializaciones con llaves. El compilador, CMake, manifiestos, oráculos,
 IDs, disposiciones y demás módulos permanecen protegidos. La nueva construcción
 queda en manos del usuario.
+
+### Cambio cerrado: auditoría estática integral de `nsc_component_tests`
+
+La solicitud vigente exige revisar el conjunto completo y no avanzar mediante
+un error por corrida. El inventario canónico del target contiene `523` unidades
+de traducción C++ entre la suite y las fuentes de producto enlazadas por ella.
+Se auditan con las mismas opciones estrictas del build Debug, pero en modo de
+sólo sintaxis: no se enlaza, no se genera el compilador, no se ejecutan casos y
+no se modifican artefactos de producto.
+
+Cada defecto demostrado se corrige en la fuente de prueba mínima. Permanecen
+protegidos NSC, CMake, manifiestos, oráculos, IDs, disposiciones, la suite
+histórica, los seis archivos preexistentes, `C:`, despliegues y remotos. El gate
+termina cuando todas las unidades C++ del target aceptan la revisión de sintaxis
+con `/W4 /WX` o quedan bloqueadas con evidencia explícita.

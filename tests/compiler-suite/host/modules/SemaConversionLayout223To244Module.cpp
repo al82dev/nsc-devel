@@ -162,7 +162,7 @@ void testSizeofSupportedKinds(TestContext& context)
 {
     SemaFixture fixture;
     bool exact = true;
-    for (const auto [kind, layoutKind] : std::array{
+    for (const auto& [kind, layoutKind] : std::array{
              std::pair{TypeKind::Bool, BuiltinLayoutKind::Bool},
              std::pair{TypeKind::Byte, BuiltinLayoutKind::Byte},
              std::pair{TypeKind::Char, BuiltinLayoutKind::Char},
@@ -191,7 +191,7 @@ void testAlignofSupportedKinds(TestContext& context)
 {
     SemaFixture fixture;
     bool exact = true;
-    for (const auto [kind, layoutKind] : std::array{
+    for (const auto& [kind, layoutKind] : std::array{
              std::pair{TypeKind::Bool, BuiltinLayoutKind::Bool},
              std::pair{TypeKind::Byte, BuiltinLayoutKind::Byte},
              std::pair{TypeKind::Short, BuiltinLayoutKind::Short},

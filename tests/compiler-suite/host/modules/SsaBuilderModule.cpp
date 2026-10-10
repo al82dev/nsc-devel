@@ -2,6 +2,7 @@
 
 #include "nativesharp/CFG/CfgModule.h"
 #include "nativesharp/Dominance/DominanceModule.h"
+#include "nativesharp/MIR/MirGlobal.h"
 #include "nativesharp/MIR/MirModule.h"
 #include "nativesharp/MIR/MirValue.h"
 #include "nativesharp/SSA/SsaArena.h"
@@ -89,9 +90,9 @@ void prototypesOracle(TestContext& context, std::size_t variant)
     {
         const MirFunction* source = module->sourceModule()->functions()[index];
         const MirFunction* output = module->module()->functions()[index];
-        context.expect(source->symbol() == output->symbol() && source->isDefined() == output->isDefined(),
+        context.expect(source->symbol() == output->symbol() && source->defined() == output->defined(),
             "CF-SSA-011 prototype clone must preserve symbol and defined flag");
-        if (!source->isDefined())
+        if (!source->defined())
         {
             context.expect(module->findFunction(source) == nullptr,
                 "CF-SSA-011 prototypes must not receive SsaFunction metadata");

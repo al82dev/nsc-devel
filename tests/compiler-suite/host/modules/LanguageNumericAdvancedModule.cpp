@@ -228,7 +228,7 @@ void registerAllocationCase(TestRegistry& registry)
         context.expect(first && second && first->allocation == 1 && second->allocation == 2 &&
                 first->offset == 0 && second->offset == 0 && error.empty(),
             "TL-LANG-211 valid allocations must receive monotonic provenance and zero offset");
-        for (const auto [size, alignment] : {std::pair{0U, 1U}, std::pair{1U, 0U},
+        for (const auto& [size, alignment] : {std::pair{0U, 1U}, std::pair{1U, 0U},
                 std::pair{1U, 3U}})
             context.expect(!memory.allocate(size, alignment, error) &&
                     error == "constant allocation requires nonzero size and power-of-two alignment",

@@ -349,7 +349,7 @@ void graphPrecompiledContract(TestContext& context, std::size_t variant)
         "CF-COMPILATION-013 metadata-backed project is inserted before the root with exact identity");
 }
 
-void graphDumpContract(TestContext& context, std::size_t variant)
+void graphDumpContract(TestContext& context, std::size_t)
 {
     TemporaryTree tree("graph_dump");
     const auto corePath = tree.root() / "Core.nsproj";

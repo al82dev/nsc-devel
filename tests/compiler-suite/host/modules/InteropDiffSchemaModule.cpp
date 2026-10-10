@@ -24,7 +24,7 @@ void surfaceImpactContract(TestContext& context, std::size_t variant)
     context.expect(!report.changes.empty(), "changed surfaces must report at least one classified change");
 }
 
-void classificationContract(TestContext& context, std::size_t variant)
+void classificationContract(TestContext& context, std::size_t)
 {
     interop::LibraryApiDiffReport report;
     context.expect(interop::LibraryApiDiffer::classification(report) == "compatible",
@@ -54,7 +54,7 @@ void schemaContract(TestContext& context, std::size_t variant)
             "record marker and derive mask must occupy disjoint bits");
 }
 
-void stableIdentityContract(TestContext& context, std::size_t variant)
+void stableIdentityContract(TestContext& context, std::size_t)
 {
     auto left = minimalMetadata();
     interop::LibraryMetadataGenericSpecialization first;

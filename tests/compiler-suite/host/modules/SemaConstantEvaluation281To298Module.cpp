@@ -58,7 +58,7 @@ void testSignedBitsRoundTrip(TestContext& context)
 {
     SemaFixture fixture;
     bool exact = true;
-    for (const auto [kind, minimum, maximum] : std::array{
+    for (const auto& [kind, minimum, maximum] : std::array{
              std::tuple{TypeKind::Byte, std::int64_t{0}, std::int64_t{255}},
              std::tuple{TypeKind::Short, std::int64_t{-32768}, std::int64_t{32767}},
              std::tuple{TypeKind::Int, std::int64_t{-2147483647} - 1, std::int64_t{2147483647}},
@@ -235,7 +235,7 @@ void testSignedComparisons(TestContext& context)
     const ExpressionInfo minus = signedConstant(integer, -2);
     const ExpressionInfo plus = signedConstant(integer, 3);
     bool exact = true;
-    for (const auto [operation, expected] : std::array{
+    for (const auto& [operation, expected] : std::array{
              std::pair{TokenKind::EqualEqual, false}, std::pair{TokenKind::BangEqual, true},
              std::pair{TokenKind::Less, true}, std::pair{TokenKind::LessEqual, true},
              std::pair{TokenKind::Greater, false}, std::pair{TokenKind::GreaterEqual, false}})
@@ -254,7 +254,7 @@ void testUnsignedComparisons(TestContext& context)
     const ExpressionInfo low = unsignedConstant(integer, 1);
     const ExpressionInfo high = unsignedConstant(integer, 0xffffffffULL);
     bool exact = true;
-    for (const auto [operation, expected] : std::array{
+    for (const auto& [operation, expected] : std::array{
              std::pair{TokenKind::EqualEqual, false}, std::pair{TokenKind::BangEqual, true},
              std::pair{TokenKind::Less, true}, std::pair{TokenKind::LessEqual, true},
              std::pair{TokenKind::Greater, false}, std::pair{TokenKind::GreaterEqual, false}})

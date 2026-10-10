@@ -95,7 +95,7 @@ void registerSuspendingAsyncPlanCase(TestRegistry& registry)
                 "i32", {}, duplicate, FrameStorage::CallerStack, false, error).has_value() &&
                 error == "async await states must be contiguous and start at one",
             "TL-LANG-053 a duplicate await state must use the exact contiguity error");
-        for (const auto [outlives, stable] : std::array{
+        for (const auto& [outlives, stable] : std::array{
                  std::pair{false, false}, std::pair{false, true}, std::pair{true, false}})
         {
             const std::array invalid{AwaitSuspension{1, 0, true, outlives, stable}};
@@ -120,7 +120,7 @@ void registerAsyncPlanBoundaryCase(TestRegistry& registry)
             std::pair{FrameStorage::CallerStack, GeneratorStorage::Stack},
             std::pair{FrameStorage::CallerArena, GeneratorStorage::Arena},
             std::pair{FrameStorage::ExplicitHeap, GeneratorStorage::ExplicitHeap}};
-        for (const auto [storage, expected] : mappings)
+        for (const auto& [storage, expected] : mappings)
         {
             const auto plan = buildAsyncFunctionPlan("R", {}, oneAwait, storage, true, error);
             context.expect(plan.has_value() && error.empty() && plan->storage == storage &&

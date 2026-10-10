@@ -270,7 +270,7 @@ void plannedPhiOracle(TestContext& context, std::size_t variant)
     MirInstruction* phi = findInstruction(function, MirOpcode::Phi);
     bool accepted = variant == 0;
     if (variant == 1 && phi != nullptr) phi->setSymbol(nullptr);
-    else if (variant == 2 && phi != nullptr) phi->resetTo(MirOpcode::Binary);
+    else if (variant == 2 && phi != nullptr) phi->resetTo(MirOpcode::Add);
     else if (variant == 3 && phi != nullptr) phi->clearPhiIncoming();
     else if (variant == 4 && phi != nullptr) phi->setResult(nullptr);
     else if (variant == 5 && phi != nullptr) phi->setSymbol(function->promotedSymbols().back());

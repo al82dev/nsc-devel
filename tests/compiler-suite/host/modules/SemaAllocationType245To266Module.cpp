@@ -206,7 +206,7 @@ void testResolveBuiltinKeywords(TestContext& context)
         std::pair{TokenKind::KwNInt, TypeKind::NInt}, std::pair{TokenKind::KwNUInt, TypeKind::NUInt},
         std::pair{TokenKind::KwFloat, TypeKind::Float}, std::pair{TokenKind::KwDouble, TypeKind::Double}};
     bool exact = true;
-    for (const auto [token, kind] : mappings)
+    for (const auto& [token, kind] : mappings)
     {
         TypeSyntax* syntax = fixture.typeSyntax(token, std::string(nativesharp::lexer::tokenKindName(token)));
         exact = exact && fixture.analyzer.resolveBaseType(syntax) == fixture.types.builtin(kind);

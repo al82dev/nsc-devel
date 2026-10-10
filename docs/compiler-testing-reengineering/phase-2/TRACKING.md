@@ -46,6 +46,11 @@ Cuando una operación termina correctamente, el indicador de construcción ya no
 queda visualmente en el último paso de Ninja: alcanza `total/total`, muestra
 `TERMINADO (100%)` y sustituye la descripción activa por un cierre explícito.
 
+La auditoría estática integral del target Debug recorrió `523/523` unidades C++
+con `/Zs /W4 /WX`. La primera pasada encontró nueve archivos fallidos; después
+de corregir el conjunto completo, la segunda terminó con `0` fallos. El enlace
+y la ejecución funcional permanecen pendientes de la corrida del usuario.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

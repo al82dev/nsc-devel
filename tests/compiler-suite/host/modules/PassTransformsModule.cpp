@@ -101,7 +101,7 @@ void countingContract(TestContext& context, std::size_t variant)
         "null module counters must be zero");
 }
 
-void phiIdenticalContract(TestContext& context, std::size_t variant)
+void phiIdenticalContract(TestContext& context, std::size_t)
 {
     MutableFixture fixture;
     auto* value = fixture.value();
@@ -137,7 +137,7 @@ void phiConstantContract(TestContext& context, std::size_t variant)
         "equal constant PHI must materialize an exact Constant");
 }
 
-void phiLayoutContract(TestContext& context, std::size_t variant)
+void phiLayoutContract(TestContext& context, std::size_t)
 {
     MutableFixture fixture;
     auto* body = fixture.constant(1);
@@ -181,7 +181,7 @@ void copyRemovalContract(TestContext& context, std::size_t variant)
     copyResolutionContract(context, variant);
 }
 
-void constantFixedPointContract(TestContext& context, std::size_t variant)
+void constantFixedPointContract(TestContext& context, std::size_t)
 {
     MutableFixture fixture;
     auto* left = fixture.constant(2);
@@ -203,7 +203,7 @@ void constantFixedPointContract(TestContext& context, std::size_t variant)
         "fixed-point constants must materialize in the graph");
 }
 
-void constantExclusionContract(TestContext& context, std::size_t variant)
+void constantExclusionContract(TestContext& context, std::size_t)
 {
     MutableFixture fixture;
     auto* source = fixture.constant(4);
@@ -218,7 +218,7 @@ void constantExclusionContract(TestContext& context, std::size_t variant)
     context.expect(copy->opcode() == mir::MirOpcode::Copy, "Copy must remain assigned to copy propagation");
 }
 
-void dceContract(TestContext& context, std::size_t variant)
+void dceContract(TestContext& context, std::size_t)
 {
     MutableFixture fixture;
     auto* left = fixture.constant(1);
@@ -236,7 +236,7 @@ void dceContract(TestContext& context, std::size_t variant)
         fixture.block()->instructions().end(), "removed instruction must leave the block sequence");
 }
 
-void branchContract(TestContext& context, std::size_t variant)
+void branchContract(TestContext& context, std::size_t)
 {
     auto fixture = makeFixture(context, 2);
     passes::SimplifyControlFlowPass pass;
