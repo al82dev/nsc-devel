@@ -1438,6 +1438,6 @@ se modifica producto ni oraculos. Evidencia:
 Validacion 160 corrige la dependencia declarativa ausente del productor
 `SelfHost.Types`: `TypeSystem.ns` usa `List<T>`, por lo que su proyecto de
 fixture debe referenciar `NativeSharp.Core.Collections.Generic`. No se modifica
-producto ni oraculos. La revalidacion queda limitada exclusivamente a
-`TSH-00981`. Evidencia:
+producto ni oraculos. La revalidacion se limito exclusivamente a `TSH-00981` y
+termino `1/1 PASS` en `20261010-142944-tsh00981`. Evidencia:
 `TANDA-VALIDACION-160-DEPENDENCIA-COLLECTIONS-TYPES.md`.

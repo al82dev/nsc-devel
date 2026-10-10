@@ -20,5 +20,10 @@ oráculo ni la expectativa de `TSH-00981`.
 
 ## Revalidación
 
-Pendiente después del commit. Se ejecutará únicamente `TSH-00981`; no se
-repetirá la batería completa ni los otros seis casos ya cerrados.
+Se ejecutó únicamente `TSH-00981` después del commit, sin repetir la batería
+completa ni los otros seis casos ya cerrados:
+
+- corrida: `20261010-142944-tsh00981`;
+- configuración: `Debug/O0`;
+- resultado: `1/1 PASS`;
+- evidencia: `_nscbuilder3/history/20261010-142944-tsh00981/results.json`.
