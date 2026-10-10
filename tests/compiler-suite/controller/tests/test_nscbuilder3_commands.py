@@ -86,6 +86,30 @@ class Builder3CommandTests(unittest.TestCase):
             cmake_source,
         )
 
+    def test_suite_cmake_recomputes_llvm_c_artifacts_from_llvm_dir(self) -> None:
+        cmake_source = (builder.SUITE_ROOT / "CMakeLists.txt").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "find_library(NSC_COMPILER_SUITE_LLVM_C_IMPORT_LIBRARY\n"
+            "    NAMES LLVM-C\n"
+            "    HINTS \"${_nsc_suite_llvm_library_dir}\"\n"
+            "    NO_DEFAULT_PATH\n"
+            "    NO_CACHE\n"
+            "    REQUIRED)",
+            cmake_source,
+        )
+        self.assertIn(
+            "find_file(NSC_COMPILER_SUITE_LLVM_C_RUNTIME\n"
+            "    NAMES LLVM-C.dll\n"
+            "    HINTS \"${_nsc_suite_llvm_root}/bin\"\n"
+            "    NO_DEFAULT_PATH\n"
+            "    NO_CACHE\n"
+            "    REQUIRED)",
+            cmake_source,
+        )
+
     @patch.object(builder, "discover_build_tools", return_value=TOOLS)
     def test_test_infrastructure_build_targets_only_consolidated_host(
         self, _discover: object

@@ -1121,3 +1121,9 @@ CMake es ahora `CACHE FILEPATH` sin `FORCE`, por lo que conserva la autoridad
 explicita emitida por Builder 3. La prueba dirigida pasa `5/5` y la suite
 Python `271/271`, sin configurar, compilar o ejecutar producto. La corrida
 funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 124 elimino la cache obsoleta de los dos artefactos LLVM C
+derivados. `LLVM-C.lib` y `LLVM-C.dll` se recalculan ahora exclusivamente desde
+el `LLVM_DIR` vigente en cada configuracion. La prueba dirigida pasa `6/6` y
+la suite Python `272/272`, sin configurar, compilar o ejecutar producto. La
+corrida funcional externa sigue pendiente y la tarea permanece activa.

@@ -1801,3 +1801,25 @@ cambian otras variables CMake, el compilador, NSLink, deploy, manifiestos,
 casos, oraculos, producto ni bateria historica. Los seis archivos del usuario
 registrados en `CURSOR.json` permanecen protegidos. No se configura, compila o
 ejecuta producto; no se ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: LLVM C derivada sin cache obsoleta
+
+`NSC_COMPILER_SUITE_LLVM_C_IMPORT_LIBRARY` y
+`NSC_COMPILER_SUITE_LLVM_C_RUNTIME` se derivan de `LLVM_DIR`, pero las llamadas
+`find_library` y `find_file` las almacenan en el cache CMake por omision. Al
+reutilizar el arbol con otro `LLVM_DIR`, ambas pueden conservar rutas de la
+toolchain anterior y romper la identidad del enlace o la copia del runtime.
+
+La entrada exacta es una reconfiguracion del mismo arbol con una autoridad
+`LLVM_DIR` distinta. La operacion defectuosa es omitir una nueva busqueda
+porque la variable derivada ya existe en cache. La invariante violada es que
+todos los artefactos LLVM de una configuracion proceden de la autoridad LLVM
+seleccionada en esa misma configuracion.
+
+El presupuesto de Validacion 124 queda limitado a marcar esas dos busquedas
+como `NO_CACHE`, agregar una comprobacion estatica de ambas fronteras y
+actualizar evidencia, tracking y cursor. No se cambian rutas, nombres de
+biblioteca, toolchain, comandos, producto, casos, manifiestos, oraculos ni
+bateria historica. Los seis archivos del usuario registrados en `CURSOR.json`
+permanecen protegidos. No se configura, compila o ejecuta producto; no se
+ejecuta baseline y no se toca la unidad `C:`.

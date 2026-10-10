@@ -78,11 +78,13 @@ find_library(NSC_COMPILER_SUITE_LLVM_C_IMPORT_LIBRARY
     NAMES LLVM-C
     HINTS "${_nsc_suite_llvm_library_dir}"
     NO_DEFAULT_PATH
+    NO_CACHE
     REQUIRED)
 find_file(NSC_COMPILER_SUITE_LLVM_C_RUNTIME
     NAMES LLVM-C.dll
     HINTS "${_nsc_suite_llvm_root}/bin"
     NO_DEFAULT_PATH
+    NO_CACHE
     REQUIRED)
 
 add_executable(
