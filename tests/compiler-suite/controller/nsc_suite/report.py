@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -21,6 +22,16 @@ class ToolIdentity:
     path: str
     sha256: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ReportError("tool identity requires a non-empty name")
+        if not isinstance(self.path, str) or not self.path.strip():
+            raise ReportError("tool identity requires a non-empty path")
+        if not isinstance(self.sha256, str) or re.fullmatch(
+            r"[0-9a-f]{64}", self.sha256
+        ) is None:
+            raise ReportError("tool identity requires a lowercase SHA-256")
+
 
 @dataclass(frozen=True)
 class RunMetadata:
@@ -32,6 +43,39 @@ class RunMetadata:
     scope: str
     selected_case_ids: tuple[str, ...]
     tools: tuple[ToolIdentity, ...] = ()
+
+    def __post_init__(self) -> None:
+        for field, value in (
+            ("run_id", self.run_id),
+            ("revision", self.revision),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ReportError(f"run metadata requires a non-empty {field}")
+        domains = (
+            ("build_mode", self.build_mode, {"Debug", "Release"}),
+            ("optimization", self.optimization, {"NA", "O0", "O1", "O2", "O3"}),
+            ("profile", self.profile, {"PR", "NIGHTLY", "WEEKLY", "explicit"}),
+            ("scope", self.scope, {"all", "focused"}),
+        )
+        for field, value, allowed in domains:
+            if not isinstance(value, str) or value not in allowed:
+                raise ReportError(f"run metadata has invalid {field}: {value!r}")
+        if not isinstance(self.selected_case_ids, tuple) or not self.selected_case_ids:
+            raise ReportError("run metadata requires selected case IDs")
+        if any(
+            not isinstance(case_id, str) or not case_id
+            for case_id in self.selected_case_ids
+        ):
+            raise ReportError("run metadata contains an invalid selected case ID")
+        if len(self.selected_case_ids) != len(set(self.selected_case_ids)):
+            raise ReportError("selected case IDs contain duplicates")
+        if not isinstance(self.tools, tuple) or any(
+            not isinstance(tool, ToolIdentity) for tool in self.tools
+        ):
+            raise ReportError("run metadata tools must be ToolIdentity values")
+        tool_names = tuple(tool.name for tool in self.tools)
+        if len(tool_names) != len(set(tool_names)):
+            raise ReportError("run metadata contains duplicate tool names")
 
 
 class ReportWriter:

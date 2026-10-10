@@ -23,7 +23,7 @@ def metadata(*case_ids: str) -> RunMetadata:
         profile="PR",
         scope="focused",
         selected_case_ids=case_ids,
-        tools=(ToolIdentity("nsc", "A:/build/bin/nsc.exe", "abc123"),),
+        tools=(ToolIdentity("nsc", "A:/build/bin/nsc.exe", "a" * 64),),
     )
 
 
@@ -105,6 +105,42 @@ class ReportTests(unittest.TestCase):
     def test_rejects_non_a_drive_root(self) -> None:
         with self.assertRaisesRegex(ReportError, "must be on A"):
             ReportWriter(Path("C:/not-authorized"))
+
+    def test_rejects_invalid_metadata_and_tool_identity_at_construction(self) -> None:
+        with self.assertRaisesRegex(ReportError, "lowercase SHA-256"):
+            ToolIdentity("nsc", "A:/nsc.exe", "abc123")
+        with self.assertRaisesRegex(ReportError, "invalid build_mode"):
+            RunMetadata(
+                run_id="run-001",
+                revision="revision",
+                build_mode="Profile",
+                optimization="O0",
+                profile="PR",
+                scope="focused",
+                selected_case_ids=("TB-BAS-001",),
+            )
+        with self.assertRaisesRegex(ReportError, "selected case IDs contain duplicates"):
+            RunMetadata(
+                run_id="run-001",
+                revision="revision",
+                build_mode="Debug",
+                optimization="O0",
+                profile="PR",
+                scope="focused",
+                selected_case_ids=("TB-BAS-001", "TB-BAS-001"),
+            )
+        tool = ToolIdentity("nsc", "A:/nsc.exe", "a" * 64)
+        with self.assertRaisesRegex(ReportError, "duplicate tool names"):
+            RunMetadata(
+                run_id="run-001",
+                revision="revision",
+                build_mode="Debug",
+                optimization="O0",
+                profile="PR",
+                scope="focused",
+                selected_case_ids=("TB-BAS-001",),
+                tools=(tool, tool),
+            )
 
 
 if __name__ == "__main__":

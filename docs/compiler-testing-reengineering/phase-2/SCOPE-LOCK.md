@@ -1194,3 +1194,17 @@ reordenacion de metadata/reporte en `run_suite.run`, pruebas Python sinteticas
 y la evidencia de Validacion 75. No se cambia contenido de reportes, ejecucion
 de casos, estados, producto ni bateria historica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: identidad terminal validada al construir
+
+`ToolIdentity` y `RunMetadata` deben rechazar forma invalida al construirse,
+antes de que el controlador abra eventos. Nombre y ruta de herramienta deben
+ser cadenas no vacias, SHA-256 debe ser hexadecimal minusculo de 64 caracteres,
+los dominios de modo/optimizacion/perfil/alcance deben ser canonicos y la
+seleccion debe ser una tupla no vacia de IDs unicos. Herramientas repetidas o
+objetos ajenos no pueden serializarse.
+
+El presupuesto queda limitado a los `__post_init__` de ambas dataclasses,
+pruebas Python sinteticas y la evidencia de Validacion 76. No se cambian hashes,
+rutas, contenido de reportes, producto ni bateria historica y no se configura,
+compila o ejecuta producto.

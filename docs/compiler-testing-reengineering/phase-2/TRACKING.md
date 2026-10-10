@@ -844,3 +844,8 @@ antes de `RUN_FINISHED`; si la publicacion falla, el stream progresivo se
 conserva pero no aparece un cierre falso. Las pruebas dirigidas pasan `11/11` y
 la suite Python completa `215/215`, sin ejecutar producto. La tarea funcional
 permanece activa.
+
+Validacion 76 cerro la identidad terminal. Metadata y herramientas validan
+tipos, dominios, unicidad y SHA-256 completo antes de abrir evidencia. Las
+pruebas dirigidas pasan `5/5` y la suite Python completa `216/216`, sin ejecutar
+producto. La tarea funcional permanece activa.
