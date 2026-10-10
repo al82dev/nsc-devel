@@ -137,6 +137,14 @@ clasificaciones no ejecutables forman una partición exacta y los defectos
 conocidos deben coincidir con sus etiquetas ejecutables. La validación estática
 cerró `217` casos canónicos y `192` ejecutables sin compilar fixtures.
 
+Los dos controladores de infraestructura self-host
+(`Bootstrap.Infrastructure` y `Contracts`) derivan ya también contratos, casos,
+rangos, fuentes y contradicciones desde el inventario vivo. Los catálogos deben
+cubrir exactamente los contratos y casos canónicos, sin duplicados ni fuentes
+ausentes; los módulos materializados deben representar la misma partición. Sus
+gates estáticos pasan sobre `726` casos canónicos, todos conservados como
+`InfrastructurePending`. No se compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

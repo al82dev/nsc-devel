@@ -324,3 +324,16 @@ El presupuesto queda limitado a esos cinco gates, validadores compartidos de
 manifiesto/clasificación y la evidencia de Validación 13. No se ejecutan los
 fixtures porque requieren la corrida externa autorizada; sólo se valida su
 grafo estático completo.
+
+### Enmienda: inventario de infraestructura self-host
+
+Los gates de `SelfHost.Bootstrap.Infrastructure` y `SelfHost.Contracts` deben
+derivar contratos, casos, rangos, fuentes y contradicciones de perfil desde los
+inventarios y catálogos vivos. Queda prohibido condicionar una revisión a
+cantidades, extremos ordinales o listas de rangos copiadas en los controladores.
+
+El presupuesto queda limitado a ambos gates, el cargador del catálogo de
+Bootstrap Infrastructure, validadores compartidos ya existentes y la evidencia
+de Validación 14. Los módulos C++, contratos de producto, disposiciones,
+oráculos, casos, manifiestos y producto permanecen intactos. No se configura ni
+compila producto.
