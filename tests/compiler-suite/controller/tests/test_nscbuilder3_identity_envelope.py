@@ -49,7 +49,12 @@ def envelope(
 
 
 class Builder3IdentityEnvelopeTests(unittest.TestCase):
-    def parse(self, content: str, exit_code: int = 0) -> tuple[str, str]:
+    def parse(
+        self,
+        content: str,
+        exit_code: int = 0,
+        expected_tools: tuple[tuple[str, str, str], ...] = (),
+    ) -> tuple[str, str]:
         return builder.parse_identity_envelope(
             content=content,
             exit_code=exit_code,
@@ -58,6 +63,7 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
             build_mode="Debug",
             optimization="NA",
             case_id="TB-BAS-020",
+            expected_tools=expected_tools,
         )
 
     def test_pass_and_known_failure_preserve_terminal_evidence(self) -> None:
@@ -138,6 +144,29 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
             self.parse(envelope(), exit_code=1)
         with self.assertRaisesRegex(ValueError, "exit code"):
             self.parse(envelope(status="FAIL", failures=["broken"]), exit_code=0)
+
+    def test_tool_receipts_must_match_selected_files_exactly(self) -> None:
+        expected = (("nsc", r"A:\\compiler\\nsc.exe", "a" * 64),)
+        payload = json.loads(envelope())
+        payload["run"]["tools"] = [
+            {"name": name, "path": path, "sha256": sha256}
+            for name, path, sha256 in expected
+        ]
+        self.assertEqual(
+            self.parse(json.dumps(payload), expected_tools=expected),
+            ("PASS", ""),
+        )
+        for tools in (
+            [],
+            [{"name": "nsc", "path": expected[0][1], "sha256": "b" * 64}],
+            [payload["run"]["tools"][0], payload["run"]["tools"][0]],
+            [{"name": "nsc", "path": expected[0][1], "sha256": "a" * 64, "extra": 1}],
+        ):
+            with self.subTest(tools=tools):
+                changed = json.loads(json.dumps(payload))
+                changed["run"]["tools"] = tools
+                with self.assertRaisesRegex(ValueError, "tool"):
+                    self.parse(json.dumps(changed), expected_tools=expected)
 
 
 if __name__ == "__main__":

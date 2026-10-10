@@ -907,3 +907,9 @@ Validacion 86 cerro la contradiccion entre estado y evidencia del host. `PASS`
 no admite fallas, `FAIL` exige evidencia y cada mensaje debe ser no vacio. Las
 pruebas dirigidas pasan `6/6` y la suite Python completa `224/224`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 87 cerro la omision de recibos de herramientas en el reporte
+enfocado. Nombre, ruta resuelta y SHA-256 de NSC y de los auxiliares
+seleccionados se cotejan ahora exactamente. Las pruebas dirigidas pasan `6/6`
+y la suite Python completa `225/225`, sin ejecutar producto. La tarea funcional
+permanece activa.

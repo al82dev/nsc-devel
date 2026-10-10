@@ -1327,3 +1327,16 @@ El presupuesto queda limitado a la validacion local de `failures`, pruebas
 Python sinteticas y la evidencia de Validacion 86. No se cambian estados,
 codigos de salida, producto ni bateria historica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: recibos exactos de herramientas del reporte enfocado
+
+`parse_identity_envelope` debe cotejar la lista `run.tools` producida por el
+controlador contra las herramientas que Builder 3 selecciono para esa corrida:
+nombre, ruta resuelta y SHA-256. Un resultado no puede acreditarse si omite,
+sustituye, duplica o altera el recibo de NSC, el comparador o el encabezado de
+identidad configurados.
+
+El presupuesto queda limitado al parser enfocado, la construccion local del
+recibo esperado en `_run_identity`, pruebas Python sinteticas y la evidencia de
+Validacion 87. No se cambian herramientas, comandos, producto ni bateria
+historica y no se configura, compila o ejecuta producto.

@@ -1480,6 +1480,7 @@ def parse_identity_envelope(
     build_mode: str,
     optimization: str,
     case_id: str,
+    expected_tools: Sequence[tuple[str, str, str]],
 ) -> tuple[str, str]:
     """Validate one canonical focused report produced by ``run_suite.py``."""
     payload = json.loads(content)
@@ -1506,6 +1507,21 @@ def parse_identity_envelope(
         or run.get("selected") != 1
     ):
         raise ValueError("identity report is not a focused single-case run")
+    tools = run.get("tools")
+    if not isinstance(tools, list):
+        raise ValueError("identity report tools must be a list")
+    actual_tools: list[tuple[str, str, str]] = []
+    for tool in tools:
+        if not isinstance(tool, dict) or set(tool) != {"name", "path", "sha256"}:
+            raise ValueError("identity report tool receipt schema is invalid")
+        identity = (tool.get("name"), tool.get("path"), tool.get("sha256"))
+        if any(not isinstance(value, str) or not value for value in identity):
+            raise ValueError("identity report tool receipt fields must be non-empty strings")
+        actual_tools.append(identity)
+    if len(actual_tools) != len(set(actual_tools)):
+        raise ValueError("identity report contains duplicate tool receipts")
+    if sorted(actual_tools) != sorted(expected_tools):
+        raise ValueError("identity report tool receipts do not match selected tools")
 
     results = payload.get("results")
     if not isinstance(results, list) or len(results) != 1:
@@ -1943,6 +1959,8 @@ class ExecutionEngine:
         case_root = self._case_root(variant)
         run_id = variant.key.replace("|", "-")
         revision = current_revision()
+        nsc = Path(self.config.nsc_executable).resolve()
+        expected_tools = [("nsc", str(nsc), sha256_file(nsc))]
         command = [
             sys.executable,
             str(RUN_SUITE_PATH),
@@ -1953,7 +1971,7 @@ class ExecutionEngine:
             "--contracts",
             str(CONTRACTS_PATH),
             "--nsc-executable",
-            str(Path(self.config.nsc_executable).resolve()),
+            str(nsc),
             "--work-root",
             str(case_root),
             "--run-id",
@@ -1968,9 +1986,17 @@ class ExecutionEngine:
             variant.case.case_id,
         ]
         if self.config.comparison_nsc:
-            command.extend(["--comparison-nsc-executable", self.config.comparison_nsc])
+            comparison = Path(self.config.comparison_nsc).resolve()
+            command.extend(["--comparison-nsc-executable", str(comparison)])
+            expected_tools.append(
+                ("comparison-nsc", str(comparison), sha256_file(comparison))
+            )
         if self.config.build_id_header:
-            command.extend(["--build-id-header", self.config.build_id_header])
+            header = Path(self.config.build_id_header).resolve()
+            command.extend(["--build-id-header", str(header)])
+            expected_tools.append(
+                ("build-id-header", str(header), sha256_file(header))
+            )
         code, captured = self.process.run(command, SOURCE_ROOT, timeout=180.0)
         log_path = case_root / "controller.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
@@ -1986,6 +2012,7 @@ class ExecutionEngine:
                 build_mode=variant.build_mode,
                 optimization=variant.optimization,
                 case_id=variant.case.case_id,
+                expected_tools=expected_tools,
             )
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
             return "INFRASTRUCTURE_ERROR", str(error), str(result_path)
