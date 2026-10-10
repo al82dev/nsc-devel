@@ -861,3 +861,9 @@ componente y capa se validan completos contra el universo antes de filtrar; una
 identidad inexistente ya no desaparece cuando comparte solicitud con otra
 valida. Las pruebas dirigidas pasan `10/10` y la suite Python completa
 `218/218`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 79 preservo la evidencia parcial de timeouts host. Las salidas en
+bytes de `TimeoutExpired` se normalizan antes de escribir logs; el diagnostico
+causal ya no puede degradarse a un `TypeError`. Las pruebas dirigidas pasan
+`10/10` y la suite Python completa `219/219`, sin ejecutar producto. La tarea
+funcional permanece activa.

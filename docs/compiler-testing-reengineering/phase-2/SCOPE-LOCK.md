@@ -1232,3 +1232,15 @@ El presupuesto queda limitado a la validacion previa de los cuatro filtros de
 union, una prueba Python parametrizada y la evidencia de Validacion 78. No se
 cambian semantica de interseccion, cierre de dependencias, producto ni bateria
 historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: evidencia parcial de timeout preservada
+
+`HostExecutor` debe normalizar `stdout` y `stderr` parciales de
+`TimeoutExpired`, que Python puede entregar como bytes aun con `text=True`,
+antes de escribir los logs. El timeout debe conservar su diagnostico causal y
+no degradarse a un `TypeError` del adaptador.
+
+El presupuesto queda limitado a la normalizacion UTF-8 con reemplazo de la
+salida parcial, una prueba Python sintetica y la evidencia de Validacion 79. No
+se cambia el tiempo limite, estado terminal, producto ni bateria historica y no
+se configura, compila o ejecuta producto.
