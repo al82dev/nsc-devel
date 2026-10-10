@@ -767,3 +767,17 @@ pruebas Python sintéticas y la evidencia de Validación 45. No se modifica
 `run_suite.py`, el controlador canónico, sus casos, oráculos, manifiestos,
 producto ni batería histórica; no se ejecuta ningún binario ni se configura,
 compila o ejecuta producto.
+
+### Enmienda: envolvente cerrada de gates Python
+
+Los gates importados de BuildSystem y Packaging deben devolver exactamente una
+tupla `(bool, str)`. Builder 3 no puede convertir por veracidad cadenas,
+números, contenedores ni objetos a un resultado de producto. Una forma de
+retorno inválida o una excepción del gate es un error de infraestructura y debe
+conservar el directorio del caso y sus logs como evidencia.
+
+El presupuesto queda limitado a un parser puro,
+`ExecutionEngine._run_python_gate_case`, pruebas Python con dobles y la
+evidencia de Validación 46. No se modifican los gates importados, sus rutas,
+casos, oráculos, manifiestos, producto ni batería histórica; no se ejecuta
+ningún gate real ni se configura, compila o ejecuta producto.

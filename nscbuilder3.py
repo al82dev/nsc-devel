@@ -1133,6 +1133,18 @@ def parse_identity_envelope(
     return status, "; ".join(failures)
 
 
+def parse_python_gate_result(value: Any) -> tuple[bool, str]:
+    """Accept only the exact result protocol declared by imported Python gates."""
+    if type(value) is not tuple or len(value) != 2:
+        raise ValueError("Python gate must return a two-item tuple")
+    satisfied, detail = value
+    if type(satisfied) is not bool:
+        raise ValueError("Python gate satisfaction must be a boolean")
+    if not isinstance(detail, str):
+        raise ValueError("Python gate detail must be a string")
+    return satisfied, detail
+
+
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
@@ -1592,10 +1604,22 @@ class ExecutionEngine:
         """Run one already-defined Python oracle while retaining per-case evidence."""
         case_root = self._case_root(variant)
         manifest = variant.case.manifest or {}
-        satisfied, detail = module.run_case(manifest, options, case_root, dict(os.environ))
+        try:
+            raw_result = module.run_case(manifest, options, case_root, dict(os.environ))
+        except Exception as error:
+            self._emit_case_logs(case_root)
+            return (
+                "INFRASTRUCTURE_ERROR",
+                f"{type(error).__name__}: {error}",
+                str(case_root),
+            )
         self._emit_case_logs(case_root)
         evidence = str(case_root)
-        return self._expected_status(variant.case, bool(satisfied), str(detail), evidence)
+        try:
+            satisfied, detail = parse_python_gate_result(raw_result)
+        except ValueError as error:
+            return "INFRASTRUCTURE_ERROR", str(error), evidence
+        return self._expected_status(variant.case, satisfied, detail, evidence)
 
     def _emit_case_logs(self, case_root: Path) -> None:
         """Expose logs captured by imported gates in the unified progressive console."""

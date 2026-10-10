@@ -662,3 +662,10 @@ y conteos tipados, y concordancia entre estado y exit code. Un reporte ajeno,
 truncado o contradictorio queda como error de infraestructura con su archivo
 como evidencia. Las pruebas dirigidas pasan `5/5` y la suite Python completa
 `139/139` sin ejecutar el controlador ni producto.
+
+Validación 46 cerró la envolvente de los gates Python de BuildSystem y
+Packaging. Sólo una tupla exacta `(bool, str)` puede convertirse en resultado
+de producto; ya no se coercionan cadenas, números o contenedores. Una forma
+inválida o una excepción conserva el directorio del caso y termina como error de
+infraestructura. Las pruebas dirigidas pasan `5/5` y la suite Python completa
+`144/144` sin ejecutar gates reales.
