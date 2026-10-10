@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Tanda 02.03 — Host.AST implementado | 334 impl.; 109 verif. | validar Host.AST |
+| Tanda 02.04 — capa `robustness` habilitada | 334 impl.; 109 verif. | validar Host.AST |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los

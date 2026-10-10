@@ -108,6 +108,12 @@ class ManifestTests(unittest.TestCase):
         wrong_optimization["optimizations"] = ["O0"]
         self.assert_manifest_error([wrong_optimization], "requires optimizations")
 
+    def test_accepts_host_robustness_layer(self) -> None:
+        robustness = valid_case()
+        robustness["layer"] = "robustness"
+        loaded = load_manifest(self.write_manifest([robustness]), self.inventory)
+        self.assertEqual(loaded[0].layer, "robustness")
+
     def test_accepts_non_compilation_nsc_build_contract(self) -> None:
         build_contract = valid_case()
         build_contract.update(

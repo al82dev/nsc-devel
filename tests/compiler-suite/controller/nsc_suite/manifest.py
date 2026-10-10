@@ -42,6 +42,7 @@ LAYERS = frozenset(
     {
         "unit",
         "component",
+        "robustness",
         "integration",
         "process",
         "self-host",
@@ -197,7 +198,7 @@ def _parse_case(
             raise ManifestError(f"host case requires in-process-reset at {location}")
         if optimizations != ("NA",):
             raise ManifestError(f"host case requires optimizations=['NA'] at {location}")
-        if layer not in {"unit", "component"}:
+        if layer not in {"unit", "component", "robustness"}:
             raise ManifestError(f"host case has invalid layer at {location}: {layer}")
     elif executor == "nsc_suite_controller+nsc":
         if isolation != "temporary-directory":

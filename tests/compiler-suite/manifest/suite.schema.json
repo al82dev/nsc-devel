@@ -32,7 +32,7 @@
       "enum": ["nsc_component_tests", "nsc_suite_controller+nsc", "historical-weekly"]
     },
     "layer": {
-      "enum": ["unit", "component", "integration", "process", "self-host", "build", "packaging", "historical"]
+      "enum": ["unit", "component", "robustness", "integration", "process", "self-host", "build", "packaging", "historical"]
     },
     "inputs": { "type": "object" },
     "oracle": { "type": "object", "minProperties": 1 },
