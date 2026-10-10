@@ -1716,6 +1716,21 @@ archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
 configura, compila o ejecuta producto; no se ejecuta baseline y no se toca la
 unidad `C:`.
 
+### Enmienda: checkpoint estatico y conciliacion de reportes externos
+
+Despues de las Validaciones 118 a 120 se debe ejecutar el diagnostico no
+mutante del catalogo y conciliar los cinco reportes externos mas recientes con
+el codigo y los commits actuales. La conciliacion no puede presentar una
+correccion estatica como corrida funcional posterior.
+
+El presupuesto de Validacion 121 queda limitado a documentar hashes,
+diagnosticos, commits causales, productores presentes, resultado de
+`--audit-catalog`, limite de evidencia y siguiente validacion externa. No se
+cambia codigo, CMake, pruebas, catalogos, manifiestos, producto ni bateria
+historica. Los seis archivos del usuario registrados en `CURSOR.json`
+permanecen protegidos. No se configura, compila o ejecuta producto; no se
+ejecuta baseline y no se toca la unidad `C:`.
+
 ### Enmienda: productores self-host contenidos en el repositorio
 
 Los catalogos `SelfHost.Contracts` y `SelfHost.Bootstrap.Infrastructure` no

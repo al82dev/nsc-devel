@@ -1102,3 +1102,9 @@ acrediten productores fuera del checkout mediante rutas absolutas o `..`.
 Cuatro escapes quedan rechazados, los `121` contratos vivos conservan `726`
 casos, las pruebas dirigidas pasan `13/13` y la suite Python `270/270`, sin
 compilar ni ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 121 concilio los cinco reportes externos recientes: cuatro hashes
+unicos y un duplicado exacto. Cada causa posee correccion estatica en el arbol
+actual; la auditoria Builder 3 conserva `9,587` casos, `1,208` contratos, `44`
+componentes y `0` sin clasificar. No se afirma recompilacion posterior: la
+corrida funcional externa sigue pendiente y la tarea permanece activa.
