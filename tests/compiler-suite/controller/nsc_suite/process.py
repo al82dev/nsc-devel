@@ -9,19 +9,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .manifest import CaseManifest
+from .manifest import CaseManifest, TIMEOUT_SECONDS
 from .oracle import compare_structured
 from .result import CaseResult, CaseStatus
 from .workspace import CaseWorkspace
 
 
-TIMEOUT_SECONDS = {
-    "tiny": 5.0,
-    "normal": 30.0,
-    "extended": 180.0,
-    "self-host": 900.0,
-    "packaging": 900.0,
-}
 BUILD_ID = re.compile(r"^[0-9a-f]{16}$")
 SEMVER = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"

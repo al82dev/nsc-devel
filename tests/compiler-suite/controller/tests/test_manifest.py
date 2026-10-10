@@ -10,7 +10,13 @@ from pathlib import Path
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
-from nsc_suite.manifest import InventoryIndex, ManifestError, load_manifest
+from nsc_suite.manifest import (
+    CASE_CLASSES,
+    TIMEOUT_CLASSES,
+    InventoryIndex,
+    ManifestError,
+    load_manifest,
+)
 
 
 def valid_case(case_id: str = "TB-BAS-001", dependencies: list[str] | None = None) -> dict:
@@ -102,17 +108,61 @@ class ManifestTests(unittest.TestCase):
 
     def test_rejects_executor_specific_invalid_combinations(self) -> None:
         wrong_isolation = valid_case()
-        wrong_isolation["isolation"] = "temporary-directory"
-        self.assert_manifest_error([wrong_isolation], "requires in-process-reset")
+        wrong_isolation.update(
+            {
+                "executor": "nsc_suite_controller+nsc",
+                "layer": "build-contract",
+                "isolation": "in-process-reset",
+            }
+        )
+        self.assert_manifest_error([wrong_isolation], "requires temporary-directory")
         wrong_optimization = valid_case()
         wrong_optimization["optimizations"] = ["O0"]
         self.assert_manifest_error([wrong_optimization], "requires optimizations")
 
-    def test_accepts_host_robustness_layer(self) -> None:
-        robustness = valid_case()
-        robustness["layer"] = "robustness"
-        loaded = load_manifest(self.write_manifest([robustness]), self.inventory)
-        self.assertEqual(loaded[0].layer, "robustness")
+    def test_accepts_host_execution_layers(self) -> None:
+        for layer in ("unit", "component", "robustness", "integration"):
+            with self.subTest(layer=layer):
+                case = valid_case()
+                case["layer"] = layer
+                loaded = load_manifest(self.write_manifest([case]), self.inventory)
+                self.assertEqual(loaded[0].layer, layer)
+
+    def test_accepts_host_isolation_contracts(self) -> None:
+        for isolation in (
+            "in-process-reset",
+            "temporary-directory",
+            "filesystem-temp",
+        ):
+            with self.subTest(isolation=isolation):
+                case = valid_case()
+                case["isolation"] = isolation
+                loaded = load_manifest(self.write_manifest([case]), self.inventory)
+                self.assertEqual(loaded[0].isolation, isolation)
+
+    def test_accepts_every_executor_timeout_class(self) -> None:
+        for timeout_class in sorted(TIMEOUT_CLASSES):
+            with self.subTest(timeout_class=timeout_class):
+                case = valid_case()
+                case["timeout_class"] = timeout_class
+                loaded = load_manifest(self.write_manifest([case]), self.inventory)
+                self.assertEqual(loaded[0].timeout_class, timeout_class)
+
+        invalid = valid_case()
+        invalid["timeout_class"] = "revision-specific"
+        self.assert_manifest_error([invalid], "invalid timeout_class")
+
+    def test_accepts_every_canonical_case_class(self) -> None:
+        for case_class in sorted(CASE_CLASSES):
+            with self.subTest(case_class=case_class):
+                case = valid_case()
+                case["class"] = case_class
+                loaded = load_manifest(self.write_manifest([case]), self.inventory)
+                self.assertEqual(loaded[0].case_class, case_class)
+
+        invalid = valid_case()
+        invalid["class"] = "revision-specific"
+        self.assert_manifest_error([invalid], "invalid class")
 
     def test_accepts_non_compilation_nsc_build_contract(self) -> None:
         build_contract = valid_case()
@@ -138,6 +188,14 @@ class ManifestTests(unittest.TestCase):
         first = valid_case("TB-BAS-001", ["TB-BAS-002"])
         second = valid_case("TB-BAS-002", ["TB-BAS-001"])
         self.assert_manifest_error([first, second], "dependency cycle")
+
+    def test_preserves_external_producer_dependencies_outside_case_graph(self) -> None:
+        case = valid_case(dependencies=["LLVM 23", "NSLink", "SelfHost.Basic"])
+        loaded = load_manifest(self.write_manifest([case]), self.inventory)
+        self.assertEqual(
+            loaded[0].dependencies,
+            ("LLVM 23", "NSLink", "SelfHost.Basic"),
+        )
 
     def test_empty_manifest_is_explicitly_configurable(self) -> None:
         path = self.write_manifest([])

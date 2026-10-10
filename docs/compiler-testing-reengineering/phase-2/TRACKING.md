@@ -145,6 +145,13 @@ ausentes; los módulos materializados deben representar la misma partición. Sus
 gates estáticos pasan sobre `726` casos canónicos, todos conservados como
 `InfrastructurePending`. No se compiló ni ejecutó producto.
 
+El esquema ejecutable carga ya las `5,695` filas reales del manifiesto central.
+Se unificaron las clases de timeout entre esquema y ejecutores, se reconocieron
+las capas, clases y aislamientos ya usados por los casos canónicos y se separó
+el grafo de dependencias entre IDs de caso y productores externos. Las `14`
+pruebas unitarias dirigidas del esquema pasan. No se alteró ningún caso ni
+oráculo.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

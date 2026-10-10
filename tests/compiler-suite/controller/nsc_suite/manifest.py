@@ -33,7 +33,22 @@ REQUIRED_FIELDS = frozenset(
 )
 OPTIONAL_FIELDS = frozenset({"expected_outcome"})
 CASE_CLASSES = frozenset(
-    {"nominal", "valid-variant", "invalid", "boundary", "recovery", "determinism"}
+    {
+        "adversarial",
+        "boundary",
+        "determinism",
+        "invalid",
+        "invalid-precondition",
+        "invalid-structure",
+        "nominal",
+        "recovery",
+        "scale",
+        "transaction-state",
+        "valid-minimal",
+        "valid-representative",
+        "valid-variant",
+        "variant-matrix",
+    }
 )
 EXECUTORS = frozenset(
     {"nsc_component_tests", "nsc_suite_controller+nsc", "historical-weekly"}
@@ -55,8 +70,20 @@ LAYERS = frozenset(
 PROFILES = frozenset({"PR", "NIGHTLY", "WEEKLY"})
 BUILD_MODES = frozenset({"Debug", "Release"})
 OPTIMIZATIONS = frozenset({"NA", "O0", "O1", "O2", "O3"})
-ISOLATIONS = frozenset({"in-process-reset", "temporary-directory"})
-TIMEOUT_CLASSES = frozenset({"tiny", "normal", "extended", "self-host", "packaging"})
+HOST_ISOLATIONS = frozenset(
+    {"in-process-reset", "temporary-directory", "filesystem-temp"}
+)
+ISOLATIONS = HOST_ISOLATIONS
+TIMEOUT_SECONDS = {
+    "tiny": 5.0,
+    "short": 15.0,
+    "normal": 30.0,
+    "medium": 60.0,
+    "extended": 180.0,
+    "self-host": 900.0,
+    "packaging": 900.0,
+}
+TIMEOUT_CLASSES = frozenset(TIMEOUT_SECONDS)
 EXPECTED_OUTCOMES = frozenset({"PASS", "KNOWN_FAILURE"})
 
 
@@ -194,11 +221,11 @@ def _parse_case(
         raise ManifestError(f"invalid expected_outcome at {location}: {expected_outcome}")
 
     if executor == "nsc_component_tests":
-        if isolation != "in-process-reset":
-            raise ManifestError(f"host case requires in-process-reset at {location}")
+        if isolation not in HOST_ISOLATIONS:
+            raise ManifestError(f"host case has invalid isolation at {location}")
         if optimizations != ("NA",):
             raise ManifestError(f"host case requires optimizations=['NA'] at {location}")
-        if layer not in {"unit", "component", "robustness"}:
+        if layer not in {"unit", "component", "robustness", "integration"}:
             raise ManifestError(f"host case has invalid layer at {location}: {layer}")
     elif executor == "nsc_suite_controller+nsc":
         if isolation != "temporary-directory":
@@ -232,15 +259,20 @@ def _validate_dependency_graph(cases: Iterable[CaseManifest]) -> None:
     dependents: dict[str, list[str]] = {case_id: [] for case_id in case_ids}
     remaining: dict[str, int] = {}
     for case in ordered:
-        unknown = sorted(set(case.dependencies) - case_ids)
+        case_dependencies = tuple(
+            dependency
+            for dependency in case.dependencies
+            if CASE_ID.fullmatch(dependency) is not None
+        )
+        unknown = sorted(set(case_dependencies) - case_ids)
         if unknown:
             raise ManifestError(
                 f"case {case.case_id} has unknown dependencies: {', '.join(unknown)}"
             )
-        if case.case_id in case.dependencies:
+        if case.case_id in case_dependencies:
             raise ManifestError(f"case {case.case_id} depends on itself")
-        remaining[case.case_id] = len(case.dependencies)
-        for dependency in case.dependencies:
+        remaining[case.case_id] = len(case_dependencies)
+        for dependency in case_dependencies:
             dependents[dependency].append(case.case_id)
 
     ready = sorted(case_id for case_id, count in remaining.items() if count == 0)

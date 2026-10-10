@@ -337,3 +337,17 @@ Bootstrap Infrastructure, validadores compartidos ya existentes y la evidencia
 de Validación 14. Los módulos C++, contratos de producto, disposiciones,
 oráculos, casos, manifiestos y producto permanecen intactos. No se configura ni
 compila producto.
+
+### Enmienda: clausura del esquema ejecutable de Fase 2
+
+El cargador debe aceptar todos los valores canónicos que ya existen en el
+manifiesto central y que pertenecen al vocabulario de Fase 2. Los timeouts deben
+tener una única tabla compartida por esquema y ejecutores. Las dependencias de
+caso participan en el grafo sólo cuando tienen forma de ID de caso; los nombres
+de productores externos se preservan como requisitos, no como aristas falsas.
+
+El presupuesto queda limitado al esquema, las tablas de timeout de ambos
+ejecutores y sus pruebas unitarias, más la evidencia de Validación 15. Se
+prohíbe cambiar casos, oráculos, resultados esperados, producto o batería
+histórica. La validación carga el manifiesto y ejecuta sólo pruebas Python del
+esquema; no compila ni ejecuta producto.

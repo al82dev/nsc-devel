@@ -7,18 +7,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from .manifest import CaseManifest
+from .manifest import CaseManifest, TIMEOUT_SECONDS
 from .result import CaseResult, CaseStatus
 from .workspace import CaseWorkspace
-
-
-TIMEOUT_SECONDS = {
-    "tiny": 5.0,
-    "normal": 30.0,
-    "extended": 180.0,
-    "self-host": 900.0,
-    "packaging": 900.0,
-}
 
 
 class HostExecutor:
