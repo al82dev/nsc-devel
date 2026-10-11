@@ -28,5 +28,6 @@ requiere retorno normal con rechazo.
 - Aislamiento: runner `HostExecutor` existente, sin soporte nuevo.
 - Contrato: `CS-SEMA-025`.
 - Validacion ejecutada: ninguna, por prohibicion expresa.
-- Integracion pendiente: fila del manifiesto; el caso conserva
-  `InfrastructurePending` y la etiqueta `process-isolation`.
+- Integracion posterior: la validacion 253 anadio la fila `PR` al manifiesto y
+  clasifico el caso como `KnownProductDefect`, conservando
+  `process-isolation`.

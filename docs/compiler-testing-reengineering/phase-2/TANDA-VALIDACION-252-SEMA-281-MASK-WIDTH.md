@@ -31,5 +31,5 @@ El oraculo exacto es:
 - Seam: `SemaInfrastructureTestSupport.h` y `SemaProductTestShim.cpp`.
 - Contrato: `CS-SEMA-027`.
 - Validacion ejecutada: ninguna, por prohibicion expresa.
-- Integracion pendiente: fila del manifiesto; el caso conserva
-  `InfrastructurePending`.
+- Integracion posterior: la validacion 253 anadio la fila `PR` al manifiesto y
+  promovio el caso a `Required`.

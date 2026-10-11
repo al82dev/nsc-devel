@@ -29,5 +29,5 @@ severidad `Note` y texto `previous declaration is here`.
 - Seam: `SemaInfrastructureTestSupport.h` y `SemaProductTestShim.cpp`.
 - Contrato: `CS-SEMA-012`.
 - Validación ejecutada: ninguna, por prohibición expresa.
-- Integración pendiente: fila del manifiesto; el caso conserva
-  `InfrastructurePending`.
+- Integración posterior: la validación 253 añadió la fila `PR` al manifiesto y
+  promovió el caso a `Required`.

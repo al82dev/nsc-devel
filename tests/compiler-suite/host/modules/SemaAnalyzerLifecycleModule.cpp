@@ -235,10 +235,10 @@ void registerSemaAnalyzerLifecycleModule(TestRegistry& registry)
         const std::string id = "TS-SEMA-" + std::string(ordinal < 100 ? "0" : "") +
             std::to_string(ordinal);
         const std::string contract = ordinal <= 94 ? "CS-SEMA-011" : "CS-SEMA-012";
-        const TestDisposition disposition = ordinal == 94 || ordinal == 101
+        const TestDisposition disposition = ordinal == 94
             ? TestDisposition::InfrastructurePending : TestDisposition::Required;
         std::vector<std::string> tags;
-        if (ordinal == 94 || ordinal == 101) tags = {"infrastructure-special"};
+        if (ordinal == 94) tags = {"infrastructure-special"};
         addSemaCase(registry, id, contract, "component", tests[index],
             ordinal == 94 ? "NIGHTLY" : "PR", disposition, std::move(tags));
     }
