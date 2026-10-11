@@ -416,8 +416,6 @@ def classification_sets(
         case_id = required_string_field(row, "case_id", context)
         disposition = required_string_field(row, "disposition", context)
         contract_id = required_string_field(row, "contract_id", context)
-        if disposition == "InfrastructurePending":
-            continue
         if case_id in seen:
             raise RuntimeError(
                 f"{inventory.component} classifications have a duplicate identity"
@@ -445,6 +443,63 @@ def classification_sets(
         seen.add(case_id)
         result.setdefault(disposition, set()).add(case_id)
     return {key: frozenset(value) for key, value in result.items()}
+
+
+def validate_executable_manifest(
+    inventory: ComponentInventory,
+    cases: list[dict[str, object]],
+    classification_path: Path | None = None,
+) -> tuple[dict[str, dict[str, object]], frozenset[str]]:
+    """Validate that the active component universe is exactly executable.
+
+    Classification files may remain as historical source material.  Rows that
+    are absent from the active design are therefore outside this gate, while
+    every active classified row must be an executable known-product defect.
+    """
+    manifest_by_id = validate_manifest_cases(inventory, cases)
+    if set(manifest_by_id) != set(inventory.case_ids):
+        raise RuntimeError(
+            f"{inventory.component} active inventory differs from its executable manifest"
+        )
+
+    defects: set[str] = set()
+    if classification_path is not None:
+        seen: set[str] = set()
+        for row in read_jsonl(classification_path):
+            context = f"{inventory.component} classification"
+            case_id = required_string_field(row, "case_id", context)
+            if case_id in seen:
+                raise RuntimeError(
+                    f"{inventory.component} classifications have a duplicate identity"
+                )
+            seen.add(case_id)
+            if case_id not in inventory.design_by_id:
+                if case_id in manifest_by_id:
+                    raise RuntimeError(
+                        f"{inventory.component} historical classification entered the manifest"
+                    )
+                continue
+            contract_id = required_string_field(row, "contract_id", context)
+            if contract_id != inventory.design_by_id[case_id]["contract_id"]:
+                raise RuntimeError(
+                    f"{inventory.component} classification changes the contract of {case_id}"
+                )
+            if required_string_field(row, "disposition", context) != "KnownProductDefect":
+                raise RuntimeError(
+                    f"{inventory.component} active classifications must be executable defects"
+                )
+            defects.add(case_id)
+
+    tagged = {
+        case_id
+        for case_id, row in manifest_by_id.items()
+        if "known-product-defect" in row.get("tags", [])
+    }
+    if tagged != defects:
+        raise RuntimeError(
+            f"{inventory.component} defect tags differ from active classifications"
+        )
+    return manifest_by_id, frozenset(defects)
 
 
 def validate_manifest_partition(
@@ -493,11 +548,21 @@ def validate_classified_manifest(
     return manifest_by_id, classified
 
 
-def validate_pending_manifest(
+def validate_empty_component_universe(
     repository_root: Path,
     component: str,
     fragment_name: str,
 ) -> None:
+    inventory_root = (
+        repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
+    )
+    for filename, required in (
+        ("test-case-design.csv", ("case_id", "component")),
+        ("suite-case-allocation.csv", ("case_id", "component")),
+    ):
+        rows = read_csv(inventory_root / filename, required)
+        if any(row.get("component") == component for row in rows):
+            raise RuntimeError(f"retired {component} re-entered active inventory")
     fragment = (
         repository_root
         / "tests"
@@ -507,11 +572,11 @@ def validate_pending_manifest(
         / fragment_name
     )
     if fragment.exists():
-        raise RuntimeError(f"zero-executable {component} must not retain a fragment")
+        raise RuntimeError(f"retired {component} must not retain a manifest fragment")
     source_root = repository_root / "tests" / "compiler-suite"
     if component_manifest_rows(
         source_root, repository_root, component
     ):
         raise RuntimeError(
-            f"pending {component} cases entered the executable manifest"
+            f"retired {component} cases entered the executable manifest"
         )

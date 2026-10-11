@@ -19,11 +19,13 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 import run_selfhost_bootstrap_gate as bootstrap_gate
 import run_selfhost_codegen_gate as codegen_gate
 import run_selfhost_documentation_gate as documentation_gate
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     classification_sets,
     load_component_inventory,
     read_jsonl,
     validate_manifest_cases,
+    validate_executable_manifest,
     validate_unique_materialized_ids,
 )
 
@@ -46,7 +48,7 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
             "case_id": design["case_id"],
             "contract_id": design["contract_id"],
             "component": "SelfHost.Types",
-            "disposition": "PlanContradiction",
+            "disposition": "KnownProductDefect",
         }
 
     def classification_from(self, row: dict[str, object]) -> dict[str, frozenset[str]]:
@@ -97,7 +99,7 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
                 ):
                     self.classification_from(row)
 
-    def test_live_classification_catalogs_satisfy_the_boundary(self) -> None:
+    def test_live_components_match_their_executable_manifests(self) -> None:
         scenarios = (
             (
                 "Host.Source",
@@ -105,13 +107,6 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
                 / "host"
                 / "modules"
                 / "HostSourceCaseClassifications.jsonl",
-            ),
-            (
-                "SelfHost.Basic",
-                SOURCE_ROOT
-                / "selfhost"
-                / "modules"
-                / "SelfHostBasicPlanContradictions.jsonl",
             ),
             (
                 "SelfHost.Source",
@@ -131,7 +126,16 @@ class SelfHostInventoryBoundaryTests(unittest.TestCase):
         for component, path in scenarios:
             with self.subTest(component=component):
                 inventory = load_component_inventory(REPOSITORY_ROOT, component)
-                classification_sets(inventory, path)
+                cases = component_manifest_rows(
+                    SOURCE_ROOT, REPOSITORY_ROOT, component
+                )
+                validate_executable_manifest(inventory, cases, path)
+
+        basic = load_component_inventory(REPOSITORY_ROOT, "SelfHost.Basic")
+        basic_cases = component_manifest_rows(
+            SOURCE_ROOT, REPOSITORY_ROOT, "SelfHost.Basic"
+        )
+        validate_executable_manifest(basic, basic_cases)
 
     def test_materialized_case_identity_rejects_string_coercions(self) -> None:
         for invalid in (7, True, "", None):

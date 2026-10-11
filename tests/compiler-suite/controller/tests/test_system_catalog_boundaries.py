@@ -33,9 +33,11 @@ class SystemCatalogBoundaryTests(unittest.TestCase):
         cls.build_catalog = read_jsonl(
             build_root / "BuildSystemContractCatalog.jsonl"
         )
-        cls.build_classified = read_jsonl(
-            build_root / "BuildSystemCaseClassifications.jsonl"
-        )
+        cls.build_classified = [
+            row
+            for row in read_jsonl(build_root / "BuildSystemCaseClassifications.jsonl")
+            if row.get("case_id") in cls.build_design
+        ]
 
         cls.packaging_cases = component_manifest_rows(
             SOURCE_ROOT, REPOSITORY_ROOT, "Packaging"
@@ -43,18 +45,16 @@ class SystemCatalogBoundaryTests(unittest.TestCase):
         (
             cls.packaging_design,
             cls.packaging_contracts,
-            cls.profile_mismatches,
         ) = packaging_gate.validate_lineage(REPOSITORY_ROOT, cls.packaging_cases)
         packaging_root = SOURCE_ROOT / "packaging"
         cls.packaging_catalog = read_jsonl(
             packaging_root / "PackagingContractCatalog.jsonl"
         )
-        cls.packaging_classified = read_jsonl(
-            packaging_root / "PackagingCaseClassifications.jsonl"
-        )
-        cls.packaging_contradictions = read_jsonl(
-            packaging_root / "PackagingPlanContradictions.jsonl"
-        )
+        cls.packaging_classified = [
+            row
+            for row in read_jsonl(packaging_root / "PackagingCaseClassifications.jsonl")
+            if row.get("case_id") in cls.packaging_design
+        ]
 
     def validate_buildsystem(
         self,
@@ -77,19 +77,17 @@ class SystemCatalogBoundaryTests(unittest.TestCase):
         self,
         catalog: list[dict[str, object]],
         classified: list[dict[str, object]],
-        contradictions: list[dict[str, object]],
     ) -> None:
         with mock.patch.object(
             packaging_gate,
             "read_jsonl",
-            side_effect=(catalog, classified, contradictions),
+            side_effect=(catalog, classified),
         ):
             packaging_gate.validate_classifications(
                 REPOSITORY_ROOT,
                 self.packaging_cases,
                 self.packaging_design,
                 self.packaging_contracts,
-                self.profile_mismatches,
             )
 
     def test_live_system_catalogs_satisfy_exact_boundaries(self) -> None:
@@ -100,7 +98,6 @@ class SystemCatalogBoundaryTests(unittest.TestCase):
         self.validate_packaging(
             copy.deepcopy(self.packaging_catalog),
             copy.deepcopy(self.packaging_classified),
-            copy.deepcopy(self.packaging_contradictions),
         )
 
     def test_buildsystem_catalogs_reject_string_coercions(self) -> None:
@@ -126,23 +123,18 @@ class SystemCatalogBoundaryTests(unittest.TestCase):
             ("catalog", "disposition", 7, "must be a non-empty string"),
             ("classified", "contract_id", 7, "must be a non-empty string"),
             ("classified", "disposition", 7, "must be a non-empty string"),
-            ("contradiction", "scope", 7, "must be a non-empty string"),
-            ("contradiction", "field", 7, "must be a non-empty string"),
         )
         for target, field, invalid, message in scenarios:
             with self.subTest(target=target, field=field):
                 catalog = copy.deepcopy(self.packaging_catalog)
                 classified = copy.deepcopy(self.packaging_classified)
-                contradictions = copy.deepcopy(self.packaging_contradictions)
                 if target == "catalog":
                     rows = catalog
-                elif target == "classified":
-                    rows = classified
                 else:
-                    rows = contradictions
+                    rows = classified
                 rows[0][field] = invalid
                 with self.assertRaisesRegex(RuntimeError, message):
-                    self.validate_packaging(catalog, classified, contradictions)
+                    self.validate_packaging(catalog, classified)
 
 
 if __name__ == "__main__":

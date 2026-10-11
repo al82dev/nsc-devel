@@ -52,7 +52,6 @@ def validate_lineage(
 ) -> tuple[
     dict[str, dict[str, str]],
     dict[str, dict[str, str]],
-    frozenset[str],
 ]:
     inventory = repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
     design = [
@@ -91,7 +90,6 @@ def validate_lineage(
     manifest_by_id = unique_string_index(cases, "case_id", "Packaging manifest")
     if design_by_id.keys() != allocation_by_id.keys():
         raise RuntimeError("Packaging design and allocation case IDs differ")
-    profile_mismatches: set[str] = set()
     for case_id, design_row in design_by_id.items():
         allocation_row = allocation_by_id[case_id]
         contract_id = design_row["contract_id"]
@@ -99,8 +97,6 @@ def validate_lineage(
             raise RuntimeError(f"Packaging case {case_id} references unknown contract {contract_id}")
         if allocation_row["contract_id"] != contract_id:
             raise RuntimeError(f"Packaging allocation changes the contract of {case_id}")
-        if design_row.get("frequency", "") != allocation_row.get("default_profile", ""):
-            profile_mismatches.add(case_id)
     for case_id, manifest_row in manifest_by_id.items():
         required_string_array(
             manifest_row, "tags", f"Packaging manifest case {case_id}"
@@ -112,7 +108,11 @@ def validate_lineage(
         )
         if manifest_contract != design_by_id[case_id]["contract_id"]:
             raise RuntimeError(f"Packaging manifest changes the contract of {case_id}")
-    return design_by_id, contracts_by_id, frozenset(profile_mismatches)
+        if manifest_row.get("layer") != design_by_id[case_id]["layer"]:
+            raise RuntimeError(f"Packaging manifest changes the layer of {case_id}")
+        if manifest_row.get("profile") != allocation_by_id[case_id]["default_profile"]:
+            raise RuntimeError(f"Packaging manifest changes the profile of {case_id}")
+    return design_by_id, contracts_by_id
 
 
 def validate_classifications(
@@ -120,7 +120,6 @@ def validate_classifications(
     cases: list[dict[str, object]],
     design_by_id: dict[str, dict[str, str]],
     contracts_by_id: dict[str, dict[str, str]],
-    profile_mismatches: frozenset[str],
 ) -> frozenset[str]:
     component_root = repository_root / "tests" / "compiler-suite" / "packaging"
     live_contract_ids = {row["contract_id"] for row in design_by_id.values()}
@@ -134,12 +133,10 @@ def validate_classifications(
         for row in read_jsonl(component_root / "PackagingContractCatalog.jsonl")
         if row.get("contract_id") in live_contract_ids
     ]
+    all_classified = read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
     classified = [
-        row
-        for row in read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
-        if row.get("disposition") != "InfrastructurePending"
+        row for row in all_classified if row.get("case_id") in design_by_id
     ]
-    contradictions = read_jsonl(component_root / "PackagingPlanContradictions.jsonl")
     catalog_by_id = unique_string_index(
         catalog, "contract_id", "Packaging contract catalogue"
     )
@@ -192,19 +189,6 @@ def validate_classifications(
         for row in classified
         if row["disposition"] == "KnownProductDefect"
     }
-    contradiction_keys: set[tuple[str, str]] = set()
-    for row in contradictions:
-        key = (
-            required_string_field(row, "scope", "Packaging contradiction"),
-            required_string_field(row, "field", "Packaging contradiction"),
-        )
-        if key in contradiction_keys:
-            raise RuntimeError("Packaging contradictions contain an invalid or duplicate key")
-        if key != ("Packaging", "default_profile"):
-            raise RuntimeError(f"unsupported Packaging contradiction {key!r}")
-        contradiction_keys.add(key)
-    if bool(profile_mismatches) != bool(contradictions):
-        raise RuntimeError("Packaging profile contradiction does not match the live inventories")
     executable = {row["case_id"] for row in cases}
     if executable != executable_catalog_cases:
         raise RuntimeError("Packaging manifest differs from the executable contract catalogue")
@@ -460,7 +444,7 @@ def main() -> int:
     cases = component_manifest_rows(
         options.source_root, options.repository_root, "Packaging"
     )
-    design_by_id, contracts_by_id, profile_mismatches = validate_lineage(
+    design_by_id, contracts_by_id = validate_lineage(
         options.repository_root,
         cases,
     )
@@ -469,7 +453,6 @@ def main() -> int:
         cases,
         design_by_id,
         contracts_by_id,
-        profile_mismatches,
     )
     work_root = options.work_parent.resolve() / f"packaging-{options.build_mode.lower()}"
     work_root.mkdir(parents=True, exist_ok=True)

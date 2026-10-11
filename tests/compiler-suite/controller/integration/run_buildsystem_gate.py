@@ -111,6 +111,12 @@ def validate_lineage(
     contracts_by_id = unique_string_index(
         contracts, "contract_id", "BuildSystem contracts"
     )
+    live_contract_ids = {row["contract_id"] for row in design_by_id.values()}
+    contracts_by_id = {
+        contract_id: row
+        for contract_id, row in contracts_by_id.items()
+        if contract_id in live_contract_ids
+    }
     manifest_by_id = unique_string_index(cases, "case_id", "BuildSystem manifest")
     if design_by_id.keys() != allocation_by_id.keys():
         raise RuntimeError("BuildSystem design and allocation case IDs differ")
@@ -140,21 +146,32 @@ def validate_classifications(
     cases: list[dict[str, object]],
     design_by_id: dict[str, dict[str, str]],
     contracts_by_id: dict[str, dict[str, str]],
-) -> tuple[frozenset[str], frozenset[str]]:
+) -> frozenset[str]:
     component_root = repository_root / "tests" / "compiler-suite" / "buildsystem"
-    catalog = read_jsonl(component_root / "BuildSystemContractCatalog.jsonl")
-    classified = read_jsonl(component_root / "BuildSystemCaseClassifications.jsonl")
-    catalog_by_id = unique_string_index(
-        catalog, "contract_id", "BuildSystem contract catalogue"
+    all_catalog_by_id = unique_string_index(
+        read_jsonl(component_root / "BuildSystemContractCatalog.jsonl"),
+        "contract_id",
+        "BuildSystem contract catalogue",
     )
-    classified_by_id = unique_string_index(
-        classified, "case_id", "BuildSystem classifications"
+    all_classified_by_id = unique_string_index(
+        read_jsonl(component_root / "BuildSystemCaseClassifications.jsonl"),
+        "case_id",
+        "BuildSystem classifications",
     )
+    catalog_by_id = {
+        contract_id: row
+        for contract_id, row in all_catalog_by_id.items()
+        if contract_id in contracts_by_id
+    }
+    classified_by_id = {
+        case_id: row
+        for case_id, row in all_classified_by_id.items()
+        if case_id in design_by_id
+    }
     if catalog_by_id.keys() != contracts_by_id.keys():
         raise RuntimeError("BuildSystem contract catalogue differs from the canonical inventory")
     catalog_cases: set[str] = set()
     executable_catalog_cases: set[str] = set()
-    delegated_catalog_cases: set[str] = set()
     for contract_id, row in catalog_by_id.items():
         contract_cases = set(expand_case_range(row.get("case_range")))
         if catalog_cases & contract_cases:
@@ -167,12 +184,9 @@ def validate_classifications(
         disposition = required_string_field(
             row, "disposition", f"BuildSystem contract {contract_id}"
         )
-        if disposition == "Executable":
-            executable_catalog_cases.update(contract_cases)
-        elif disposition == "HistoricalDelegated":
-            delegated_catalog_cases.update(contract_cases)
-        else:
+        if disposition != "Executable":
             raise RuntimeError(f"unsupported BuildSystem contract disposition {disposition!r}")
+        executable_catalog_cases.update(contract_cases)
     if catalog_cases != set(design_by_id):
         raise RuntimeError("BuildSystem contract catalogue does not cover the canonical denominator")
     for case_id, row in classified_by_id.items():
@@ -187,29 +201,26 @@ def validate_classifications(
         )
         if contract_id != design_row["contract_id"]:
             raise RuntimeError(f"BuildSystem classification changes the contract of {case_id}")
-    delegated = {
-        r["case_id"] for r in classified if r["disposition"] == "HistoricalDelegated"
-    }
     defects = {
-        r["case_id"] for r in classified if r["disposition"] == "KnownProductDefect"
+        case_id
+        for case_id, row in classified_by_id.items()
+        if row["disposition"] == "KnownProductDefect"
     }
-    if delegated != delegated_catalog_cases:
-        raise RuntimeError("BuildSystem delegated classifications differ from the contract catalogue")
     executable = {r["case_id"] for r in cases}
     if executable != executable_catalog_cases:
         raise RuntimeError("BuildSystem manifest differs from the executable contract catalogue")
-    if executable | delegated != set(design_by_id) or executable & delegated:
-        raise RuntimeError("BuildSystem denominator is incomplete or overlapping")
+    if executable != set(design_by_id):
+        raise RuntimeError("BuildSystem executable denominator is incomplete")
     if not defects <= executable:
         raise RuntimeError("BuildSystem product defects must belong to executable cases")
-    if set(classified_by_id) != delegated | defects:
+    if set(classified_by_id) != defects:
         raise RuntimeError("BuildSystem classifications contain an unsupported disposition")
     tagged = {
         r["case_id"] for r in cases if "known-product-defect" in r.get("tags", [])
     }
     if tagged != defects:
         raise RuntimeError("BuildSystem executable KPD tags changed")
-    return frozenset(delegated), frozenset(defects)
+    return frozenset(defects)
 
 
 def log_process(case_root: Path, stem: str, completed: subprocess.CompletedProcess[str]) -> None:
@@ -497,7 +508,7 @@ def main() -> int:
         options.source_root, options.repository_root, "BuildSystem"
     )
     design_by_id, contracts_by_id = validate_lineage(options.repository_root, cases)
-    historical_delegated, known_product_defects = validate_classifications(
+    known_product_defects = validate_classifications(
         options.repository_root,
         cases,
         design_by_id,
@@ -527,7 +538,7 @@ def main() -> int:
         "canonical_denominator": len(design_by_id), "new_suite_executable": len(cases),
         "required": len(cases) - len(known_product_defects),
         "known_product_defects": len(known_product_defects),
-        "historical_delegated": len(historical_delegated), "failures": failures,
+        "failures": failures,
         "results": results,
     }
     write_text(work_root / "results.json", json.dumps(payload, indent=2) + "\n")

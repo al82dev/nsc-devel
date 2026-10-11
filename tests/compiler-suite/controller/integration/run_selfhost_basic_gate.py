@@ -10,12 +10,10 @@ from pathlib import Path
 
 from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
-    classification_sets,
     load_component_inventory,
     materialize_contained_project,
     required_oracle_exit_code,
-    validate_manifest_cases,
-    validate_manifest_partition,
+    validate_executable_manifest,
 )
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
@@ -63,19 +61,7 @@ def main() -> int:
     cases = component_manifest_rows(
         source_root, repository_root, "SelfHost.Basic"
     )
-    manifest_by_id = validate_manifest_cases(inventory, cases)
-
-    contradiction_path = (
-        source_root
-        / "selfhost"
-        / "modules"
-        / "SelfHostBasicPlanContradictions.jsonl"
-    )
-    classified = classification_sets(inventory, contradiction_path)
-    if set(classified) != {"PlanContradiction"}:
-        raise RuntimeError("SelfHost.Basic contains an unsupported classification")
-    plan_contradictions = classified["PlanContradiction"]
-    validate_manifest_partition(inventory, manifest_by_id, plan_contradictions)
+    validate_executable_manifest(inventory, cases)
 
     selected = [
         row
@@ -146,7 +132,6 @@ def main() -> int:
         "selected": len(selected),
         "passed": len(selected) - failed,
         "failed": failed,
-        "plan_contradictions": sorted(plan_contradictions),
         "results": results,
     }
     write_text(work_root / "results.json", json.dumps(payload, indent=2) + "\n")

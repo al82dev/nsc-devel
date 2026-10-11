@@ -112,22 +112,6 @@ class Builder3HistoryTests(unittest.TestCase):
                         "tags": ["history", "detail"],
                     },
                 ),
-                builder.CaseRecord(
-                    case_id="PENDING",
-                    contract_id="PENDING-CONTRACT",
-                    component="Host.Basic",
-                    wave=1,
-                    purpose="history pending test",
-                    layer="unit",
-                    profile="PR",
-                    build_modes=("Debug",),
-                    optimizations=("O0",),
-                    executor="nsc_component_tests",
-                    disposition="InfrastructurePending",
-                    objective="restore one pending row",
-                    expected_outcome="",
-                    manifest=None,
-                ),
             )
         )
 
@@ -184,9 +168,7 @@ class Builder3HistoryTests(unittest.TestCase):
         loaded = builder.load_history_execution(self.root, self._catalog())
 
         self.assertEqual(loaded.status, "PASSED")
-        self.assertEqual(
-            [item.case_id for item in loaded.cases], ["CASE", "PENDING"]
-        )
+        self.assertEqual([item.case_id for item in loaded.cases], ["CASE"])
         self.assertEqual([item.key for item in loaded.variants], ["CASE|Debug|O0"])
         self.assertEqual([item.status for item in loaded.outcomes], ["PASS"])
         self.assertEqual(loaded.full_log, "historical output\n")
@@ -227,13 +209,13 @@ class Builder3HistoryTests(unittest.TestCase):
         self.assertIn("compiler diagnostic", output)
         self.assertIn(str(evidence), output)
 
-    def test_loading_reconstructs_non_executable_rows_from_selection(self) -> None:
+    def test_loading_reconstructs_only_executable_rows_from_selection(self) -> None:
         self._write_valid_terminal_run()
 
         loaded = builder.load_history_execution(self.root, self._catalog())
 
-        self.assertEqual(len(loaded.cases), 2)
-        self.assertFalse(loaded.cases[1].executable)
+        self.assertEqual(len(loaded.cases), 1)
+        self.assertTrue(loaded.cases[0].executable)
         self.assertEqual(len(loaded.variants), 1)
         self.assertEqual(len(loaded.outcomes), 1)
 

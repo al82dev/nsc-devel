@@ -14,7 +14,7 @@ from selfhost_inventory import (
     load_component_inventory,
     materialize_contained_project,
     required_oracle_exit_code,
-    validate_classified_manifest,
+    validate_executable_manifest,
 )
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
@@ -43,7 +43,7 @@ def run_process(
 def validate_inventory(
     root: Path,
     cases: list[dict[str, object]],
-) -> tuple[ComponentInventory, dict[str, frozenset[str]]]:
+) -> tuple[ComponentInventory, frozenset[str]]:
     inventory = load_component_inventory(root, "SelfHost.Source")
     path = (
         root
@@ -53,13 +53,12 @@ def validate_inventory(
         / "modules"
         / "SelfHostSourceCaseClassifications.jsonl"
     )
-    _manifest, classifications = validate_classified_manifest(
+    _manifest, defects = validate_executable_manifest(
         inventory,
         cases,
         path,
-        frozenset({"PlanContradiction"}),
     )
-    return inventory, classifications
+    return inventory, defects
 
 
 def prepare_case_files(case_root: Path) -> None:
@@ -108,9 +107,7 @@ def main() -> int:
     cases = component_manifest_rows(
         source_root, repository_root, "SelfHost.Source"
     )
-    inventory, classifications = validate_inventory(repository_root, cases)
-    known_product_defects = classifications.get("KnownProductDefect", frozenset())
-    plan_contradictions = classifications.get("PlanContradiction", frozenset())
+    inventory, known_product_defects = validate_inventory(repository_root, cases)
     selected = [
         row
         for row in cases
@@ -188,7 +185,6 @@ def main() -> int:
         "selected_executable": len(selected),
         "required": len(cases) - len(known_product_defects),
         "known_product_defects": len(known_product_defects),
-        "plan_contradictions": len(plan_contradictions),
         "failures": failures,
         "results": results,
     }

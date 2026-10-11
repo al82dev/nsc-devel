@@ -14,7 +14,7 @@ from run_suite import run
 from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     load_component_inventory,
-    validate_classified_manifest,
+    validate_executable_manifest,
 )
 
 
@@ -69,17 +69,15 @@ def main() -> int:
         / "modules"
         / "HostSourceCaseClassifications.jsonl"
     )
-    validate_classified_manifest(
+    validate_executable_manifest(
         component_inventory,
         manifests,
         classification_path,
-        frozenset({"InfrastructurePending"}),
     )
     if read_registered_source_ids(
         (
             (options.host_executable, "--list"),
             (options.source_extended_host_executable, "--list"),
-            (options.host_executable, "--list-pending"),
         )
     ) != sorted(
         component_inventory.case_ids

@@ -85,11 +85,15 @@ class Builder3MatrixTests(unittest.TestCase):
             {case.case_id for case in self.catalog.cases if case.executable},
         )
 
-    def test_non_executable_dispositions_never_expand(self) -> None:
-        non_executable = tuple(case for case in self.catalog.cases if not case.executable)
-
-        self.assertTrue(non_executable)
-        self.assertEqual(builder.expand_variants(non_executable, "Todos", "Todas"), ())
+    def test_active_catalog_contains_only_executable_cases(self) -> None:
+        self.assertTrue(self.catalog.cases)
+        self.assertTrue(all(case.executable for case in self.catalog.cases))
+        self.assertEqual(
+            {variant.case.case_id for variant in builder.expand_variants(
+                self.catalog.cases, "Todos", "Todas"
+            )},
+            {case.case_id for case in self.catalog.cases},
+        )
 
 
 if __name__ == "__main__":
