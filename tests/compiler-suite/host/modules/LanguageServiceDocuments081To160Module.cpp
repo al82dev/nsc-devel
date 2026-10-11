@@ -176,13 +176,33 @@ void formattingEditContract(TestContext& context, std::size_t variant)
         context.expect(!service.formatDocument(path).has_value(), "closed documents produce no formatting edit");
         return;
     }
-    const std::string source = variant == 4U ? "void Run()\n" : "void Run(){return;}\n";
+    std::string source;
+    std::string expected;
+    TextPosition expectedEnd{};
+    if (variant == 4U) source = "void Run()\n";
+    else if (variant == 5U) source.clear();
+    else if (variant == 6U) { source = "// \xF0\x9F\x98\x80   "; expected = "// \xF0\x9F\x98\x80"; expectedEnd = {0U, 8U}; }
+    else if (variant == 8U) {
+        constexpr std::size_t blockCount = 256U;
+        for (std::size_t ordinal = 0; ordinal < blockCount; ++ordinal) {
+            const std::string name = "Run" + std::to_string(ordinal);
+            source += "void " + name + "() {\nreturn;\n}\n";
+            expected += "void " + name + "() {\n  return;\n}\n";
+        }
+        expectedEnd = {static_cast<std::uint32_t>(blockCount * 3U), 0U};
+    } else {
+        const std::string newline = variant == 2U ? "\r\n" : "\n";
+        source = "void Run() {" + newline + "return;" + newline + "}" + newline;
+        expected = "void Run() {" + newline + "  return;" + newline + "}" + newline;
+        expectedEnd = {3U, 0U};
+    }
     service.openDocument(path, source, 1, error);
     const auto edit = service.formatDocument(path, {2U, true});
-    context.expect(variant == 4U ? !edit.has_value() : edit.has_value() &&
-            edit->location.range.start == TextPosition{0U, 0U} &&
-            edit->location.range.end == TextPosition{1U, 0U} && !edit->newText.empty(),
-        "formatting emits one exact whole-document edit only when text changes");
+    if (variant == 4U || variant == 5U) { context.expect(!edit.has_value(), "formatting emits no edit for unchanged or empty documents"); return; }
+    const bool exactEdit = edit.has_value() && edit->location.range.start == TextPosition{0U, 0U} && edit->location.range.end == expectedEnd && edit->newText == expected;
+    const auto repeated = variant == 7U ? service.formatDocument(path, {2U, true}) : std::optional<LanguageTextEdit>{};
+    const bool deterministic = variant != 7U || (edit.has_value() && repeated.has_value() && repeated->location.range == edit->location.range && repeated->newText == edit->newText);
+    context.expect(exactEdit && deterministic, "formatting emits one exact whole-document edit only when text changes");
 }
 
 void codeActionContract(TestContext& context, std::size_t variant)
