@@ -118,8 +118,15 @@ void executableGuideContract(TestContext& context, std::size_t variant)
             "guide validation rejects a chapter without stable identity");
         return;
     }
-    context.expect(valid && error.empty() && contains(rendered, "NSMIGRATION-GUIDE"),
-        "executable guide construction, validation, and rendering agree");
+    const bool canonicalSections = contains(rendered, "# NativeSharp 2.x") &&
+        contains(rendered, "## Incremental strategy") &&
+        contains(rendered, "## Manual-decision inventory");
+    const bool variantStructure = variant == 3U ?
+        guide.chapters.size() == 1U && guide.chapters.front().identity == "VERIFY" &&
+            contains(rendered, "## 1. VERIFY") :
+        !guide.chapters.empty() && contains(rendered, "Before:") && contains(rendered, "After:");
+    context.expect(valid && error.empty() && canonicalSections && variantStructure,
+        "executable guide construction, validation, and canonical rendering agree");
 }
 
 void baselineContract(TestContext& context, std::size_t variant)

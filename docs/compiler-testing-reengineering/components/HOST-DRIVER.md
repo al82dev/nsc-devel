@@ -217,6 +217,11 @@ El analizador de migración tokeniza comentarios/strings, procesa suppressions y
 ownership, moves, using, narrowing y orden de cleanup. Los fixes sólo se aplican cuando están marcados seguros, con
 prueba de equivalencia y rangos no solapados.
 
+La guía ejecutable se valida mediante su estructura pública: encabezado NativeSharp 2.x, estrategia incremental,
+inventario de decisiones manuales y capítulos estables. Una entrada sin hallazgos conserva un único capítulo
+`VERIFY`; una entrada con transformaciones publica pares `Before:` y `After:`. Ningún sentinel privado forma parte
+del contrato observable.
+
 Baseline, guide, compatibility matrix, release freeze, final baseline, promotion act, numeric contract y toolchain
 contract poseen render canónico, escritura transaccional y verificación. Son formatos operativos distintos; una
 prueba no debe aceptar uno por parecerse textualmente a otro.
