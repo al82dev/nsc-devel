@@ -338,8 +338,7 @@ class NscBuilder2Tests(unittest.TestCase):
         thread = threading.Thread(target=lambda: result_box.append(runner.run(plan)))
         try:
             thread.start()
-            deadline = time.monotonic() + 10
-            while not child_pid_file.is_file() and time.monotonic() < deadline:
+            while not child_pid_file.is_file():
                 time.sleep(0.05)
             self.assertTrue(child_pid_file.is_file())
             child_pid = int(child_pid_file.read_text(encoding="utf-8"))

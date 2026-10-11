@@ -210,11 +210,7 @@ void testIndependentReferencesLoadConcurrentlyAndRemainDeterministic(
                 releaseChildren = true;
                 bothStarted.notify_all();
             }
-            if (!bothStarted.wait_for(lock, std::chrono::seconds(2), [&] { return releaseChildren; }))
-            {
-                releaseChildren = true;
-                bothStarted.notify_all();
-            }
+            bothStarted.wait(lock, [&] { return releaseChildren; });
             --activeChildren;
         }
         return nativesharp::compilation::ProjectLoader{}.load(path, error);

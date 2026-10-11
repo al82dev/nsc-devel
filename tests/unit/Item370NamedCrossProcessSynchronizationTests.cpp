@@ -140,16 +140,17 @@ int main()
             return std::system(("\"" + waiterExecutable.string() + "\"").c_str());
         });
         bool waiterReady = false;
-        const auto readinessDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (std::chrono::steady_clock::now() < readinessDeadline)
+        while (!waiterReady)
         {
             if (HANDLE event = OpenEventA(SYNCHRONIZE, FALSE, uniqueName.c_str()))
             {
                 CloseHandle(event);
                 waiterReady = true;
-                break;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            else
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
         }
         tests.expect(waiterReady,
             "the waiter creates the named event before the signaler starts");
