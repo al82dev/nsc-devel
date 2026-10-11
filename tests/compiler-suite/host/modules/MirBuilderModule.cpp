@@ -122,7 +122,7 @@ void ifOracle(TestContext& context, std::size_t variant)
 void loopOracle(TestContext& context, std::size_t variant)
 {
     constexpr std::array<std::string_view, 8> programs = {
-        "int Main() { int i = 0; while (i < 1) i++; return i; }",
+        "int Main() { int i = 0; while (i < 1) { i++; } return i; }",
         "int Main() { int i = 0; for (i = 0; i < 2; i++) {} return i; }",
         "int Main() { int i = 0; while (true) { break; } return i; }",
         "int Main() { int i = 0; while (i < 2) { i++; continue; } return i; }",
