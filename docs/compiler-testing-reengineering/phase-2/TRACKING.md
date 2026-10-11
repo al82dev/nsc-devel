@@ -1528,3 +1528,16 @@ en `Debug/NA`, con `0` faltantes, extras o duplicados. Con este cierre, Tanda 2
 queda lista para su gate correctivo; el gate y la corrida integral aun no se
 han ejecutado. Evidencia:
 `TANDA-VALIDACION-171-INFERENCIA-GENERICA-FRONTEND.md`.
+
+El primer gate correctivo de Tanda 2,
+`20261010-181736-433daee9`, reejecuto exactamente los `221` FAIL del corte
+anterior: `65 PASS`, `156 FAIL`, cero faltantes, extras o duplicados. El unico
+residuo Frontend fue `TF-FRONT-192|Debug|NA`.
+
+Validacion 172 corrigio la identidad de tupla inventada por el oraculo de
+escala `CF-FRONT-024` en el commit `022e3aaab`. El build exclusivo de
+`nsc_component_tests` Debug fue correcto y la corrida dirigida
+`20261010-tanda172-tf-front-192-022e3aaab` termino `1/1 PASS` en `Debug/NA`,
+con cero faltantes, extras o duplicados. Tanda 2 queda nuevamente lista para
+su gate correctivo; la corrida integral sigue pendiente. Evidencia:
+`TANDA-VALIDACION-172-TF-FRONT-192.md`.
