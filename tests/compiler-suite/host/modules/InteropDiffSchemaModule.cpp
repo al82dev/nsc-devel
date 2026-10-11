@@ -27,14 +27,28 @@ void surfaceImpactContract(TestContext& context, std::size_t variant)
 void classificationContract(TestContext& context, std::size_t)
 {
     interop::LibraryApiDiffReport report;
-    context.expect(interop::LibraryApiDiffer::classification(report) == "compatible",
-        "fully compatible report classification must be exact");
+    context.expect(interop::LibraryApiDiffer::classification(report) == "identical",
+        "empty diff classification must be exact");
+
+    // Compatibility flags classify an observed change set. Seed a real change before exercising
+    // them because an empty change set is canonically identical regardless of those flags.
+    report.changes.push_back({
+        interop::LibraryApiChangeImpact::Additive, "source", "type:Added", "added"});
+    context.expect(interop::LibraryApiDiffer::classification(report) == "additive",
+        "compatible non-empty diff classification must be exact");
+
     report.sourceCompatible = false;
     context.expect(interop::LibraryApiDiffer::classification(report) == "source-breaking",
         "source-only break classification must be exact");
+
+    report.sourceCompatible = true;
     report.abiCompatible = false;
     context.expect(interop::LibraryApiDiffer::classification(report) == "abi-breaking",
-        "ABI break classification must dominate source classification");
+        "ABI-only break classification must be exact");
+
+    report.sourceCompatible = false;
+    context.expect(interop::LibraryApiDiffer::classification(report) == "source-and-abi-breaking",
+        "combined source and ABI break classification must be exact");
     context.expect(std::string(interop::LibraryApiDiffer::impactName(interop::LibraryApiChangeImpact::Additive)) ==
         "additive", "additive impact name must be exact");
 }
