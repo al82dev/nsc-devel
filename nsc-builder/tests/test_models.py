@@ -8,8 +8,16 @@ from pathlib import Path
 MODULAR_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODULAR_ROOT))
 
-from nsc_builder._runtime import legacy
-from nsc_builder.models import Run, TestCase, TestExecution, TestVariant
+from nsc_builder.models import (
+    CaseOutcome,
+    CaseRecord,
+    HistoricalExecution,
+    Run,
+    RunVariant,
+    TestCase,
+    TestExecution,
+    TestVariant,
+)
 
 
 def test_case() -> TestCase:
@@ -32,13 +40,11 @@ def test_case() -> TestCase:
 
 
 class CanonicalModelTests(unittest.TestCase):
-    def test_runtime_uses_the_canonical_model_classes(self) -> None:
-        runtime = legacy()
-
-        self.assertIs(runtime.CaseRecord, TestCase)
-        self.assertIs(runtime.RunVariant, TestVariant)
-        self.assertIs(runtime.CaseOutcome, TestExecution)
-        self.assertIs(runtime.HistoricalExecution, Run)
+    def test_compatibility_names_are_the_canonical_model_classes(self) -> None:
+        self.assertIs(CaseRecord, TestCase)
+        self.assertIs(RunVariant, TestVariant)
+        self.assertIs(CaseOutcome, TestExecution)
+        self.assertIs(HistoricalExecution, Run)
 
     def test_variant_and_execution_share_one_identity(self) -> None:
         case = test_case()

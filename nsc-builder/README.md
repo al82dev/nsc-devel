@@ -1,14 +1,21 @@
 # NSC Builder 3 modular
 
-This directory contains the modular entry point for NSC Builder 3. The current
-`../nscbuilder3.py` remains untouched and is loaded once as the compatibility
-runtime so the extracted package preserves the established CLI, GUI, paths,
-commands, evidence formats, cancellation rules, and timeout behavior.
+This directory contains the autonomous modular entry point for NSC Builder 3.
+The current `../nscbuilder3.py` remains available as the previous
+implementation, but this package does not import, execute, or load it.
 
 The package owns the canonical `TestCase`, `TestVariant`, `TestExecution`, and
-`Run` records. They are installed into the compatibility runtime before any
-catalogue or GUI object is created, so catalogues, execution, history, reports,
-and widgets project the same objects instead of maintaining parallel models.
+`Run` records. Catalogues, execution, history, reports, and widgets project
+those same objects instead of maintaining parallel dictionaries or records.
+
+The dependency direction is explicit: constants and paths; canonical models;
+configuration and the LLVM 23 toolchain; catalogue and history; reporting,
+process control, build, and execution; then GUI and CLI. Focused tests assert
+that this import graph is acyclic and that every mechanically extracted
+definition still has the same AST as the established Builder implementation.
+
+`tools/extract_current.py` records the ownership map used for the initial
+extraction. It is a development aid only and is never imported at runtime.
 
 Run the modular application from the repository root:
 
@@ -19,4 +26,4 @@ python nsc-builder/nscbuilder3.py --gui-smoke
 ```
 
 The package does not configure or build NSC unless the operator explicitly
-uses those existing GUI actions.
+uses those GUI actions.

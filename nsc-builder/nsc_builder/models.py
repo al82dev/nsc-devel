@@ -110,14 +110,6 @@ class TestTreeCleanupResult:
     failures: tuple[str, ...]
 
 
-def bind_runtime_models(runtime: Any) -> None:
-    """Keep the compatibility bridge coherent during staged extraction commits."""
-    runtime.CaseRecord = TestCase
-    runtime.RunVariant = TestVariant
-    runtime.CaseOutcome = TestExecution
-    runtime.HistoricalExecution = Run
-
-
 # Compatibility names make the extraction transparent to existing callers.
 CaseRecord = TestCase
 RunVariant = TestVariant
@@ -135,5 +127,4 @@ __all__ = (
     "TestTreeCleanupResult",
     "TestVariant",
     "VariantTimeoutBudget",
-    "bind_runtime_models",
 )

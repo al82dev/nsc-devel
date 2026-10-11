@@ -22,6 +22,8 @@ from nsc_builder import paths
 from nsc_builder import process_control
 from nsc_builder import reporting
 from nsc_builder import runtime_support
+from nsc_builder import toolchain
+from nsc_builder import utils
 from nsc_builder.inventory import EXPECTED_TOP_LEVEL, MODULE_OWNERSHIP
 
 
@@ -38,6 +40,8 @@ MODULES = {
     "process_control": process_control,
     "reporting": reporting,
     "runtime_support": runtime_support,
+    "toolchain": toolchain,
+    "utils": utils,
 }
 
 
@@ -52,22 +56,29 @@ class ModularInventoryTests(unittest.TestCase):
         }
 
         self.assertEqual(actual, EXPECTED_TOP_LEVEL)
-        self.assertEqual(len(actual), 85)
+        self.assertEqual(len(actual), 91)
 
     def test_every_inventory_owner_exposes_its_symbols(self) -> None:
         for owner, names in MODULE_OWNERSHIP.items():
-            if owner == "states":
-                continue
             module = MODULES[owner]
             for name in names:
                 with self.subTest(owner=owner, name=name):
                     self.assertTrue(hasattr(module, name))
+                    self.assertEqual(getattr(module, name).__module__, module.__name__)
 
     def test_old_script_is_outside_the_modular_tree(self) -> None:
         self.assertEqual(paths.SOURCE_ROOT, REPOSITORY_ROOT)
         self.assertFalse(
             (REPOSITORY_ROOT / "nscbuilder3.py").is_relative_to(MODULAR_ROOT)
         )
+
+    def test_package_has_no_runtime_import_of_the_old_script(self) -> None:
+        package_root = MODULAR_ROOT / "nsc_builder"
+        for path in package_root.glob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertNotIn("._runtime", source)
+                self.assertNotIn("nscbuilder3.py", source)
 
 
 if __name__ == "__main__":
