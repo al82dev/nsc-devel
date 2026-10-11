@@ -22,6 +22,13 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
 
+Scenario badMany(std::string label, std::string source, std::initializer_list<DiagnosticId> ids)
+{
+    Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
+    for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
+    return scenario;
+}
+
 // The grammar has no forward `struct S;` declaration. Install an incomplete nominal directly
 // and keep the observable under test at SemanticAnalyzer::analyzeIndex.
 void testInvalidPointerIndexBases(TestContext& context)
@@ -105,8 +112,8 @@ void registerSemaIndexMemberModule(TestRegistry& registry)
     });
     addCase(registry, "TS-SEMA-220", "CS-SEMA-021", {
         ok("mutable", "struct S{int X;}int F(){S s;s.X=1;return s.X;}"),
-        bad("const", "struct S{int X;}int F(){const S s;s.X=1;return s.X;}",
-            DiagnosticId::InvalidAssignmentTarget),
+        badMany("const", "struct S{int X;}int F(){const S s;s.X=1;return s.X;}",
+            {DiagnosticId::ConstRequiresConstant, DiagnosticId::InvalidAssignmentTarget}),
     });
     addCase(registry, "TS-SEMA-221", "CS-SEMA-021", {
         ok("binding", "struct S{int X;}int F(){S s;return s.X;}"),

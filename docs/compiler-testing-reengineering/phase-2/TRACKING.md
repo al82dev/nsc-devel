@@ -1681,3 +1681,9 @@ parser usan ahora el seam dirigido del analizador, y el literal malformado se
 clasifica en la frontera lexica sin AST. No se modifico producto ni se
 ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-239-SEMA-FRONTERAS-DIRIGIDAS.md`.
+
+Validacion 240 completa las secuencias diagnosticas de `TS-SEMA-173`, `204` y
+`220`: los oraculos conservan ahora todos los diagnosticos producidos al
+continuar el analisis del inicializador, argumento excedente y asignacion
+const. No se modifico producto ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-240-SEMA-DIAGNOSTICOS-EXACTOS.md`.

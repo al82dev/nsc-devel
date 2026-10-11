@@ -18,6 +18,13 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
 
+Scenario badMany(std::string label, std::string source, std::initializer_list<DiagnosticId> ids)
+{
+    Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
+    for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
+    return scenario;
+}
+
 Scenario lexicalError(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}, false};
@@ -29,7 +36,8 @@ void registerSemaOperatorModule(TestRegistry& registry)
 {
     addCase(registry, "TS-SEMA-173", "CS-SEMA-019", {
         ok("mutable", "int F(){int x=1;int* p=&x;return *p;}"),
-        ok("const", "int F(){const int x=1;const int* p=&x;return *p;}"),
+        badMany("const", "int F(){const int x=1;const int* p=&x;return *p;}",
+            {DiagnosticId::InvalidAddressOf, DiagnosticId::InvalidConversion}),
         bad("rvalue", "int F(){int* p=&(1+2);return 0;}", DiagnosticId::InvalidAddressOf),
     });
     addCase(registry, "TS-SEMA-174", "CS-SEMA-019", {

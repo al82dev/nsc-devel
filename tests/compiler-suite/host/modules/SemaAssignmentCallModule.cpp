@@ -17,6 +17,13 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
+
+Scenario badMany(std::string label, std::string source, std::initializer_list<DiagnosticId> ids)
+{
+    Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
+    for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
+    return scenario;
+}
 }
 
 // Registers CS-SEMA-020 assignment, compound operation, and call contracts.
@@ -57,7 +64,8 @@ void registerSemaAssignmentCallModule(TestRegistry& registry)
     });
     addCase(registry, "TS-SEMA-204", "CS-SEMA-020", {
         bad("few", "int A(int x){return x;}int F(){return A();}", DiagnosticId::InvalidArgumentCount),
-        bad("many", "int A(){return 0;}int F(){return A(unknown);}", DiagnosticId::InvalidArgumentCount),
+        badMany("many", "int A(){return 0;}int F(){return A(unknown);}",
+            {DiagnosticId::InvalidArgumentCount, DiagnosticId::UnknownIdentifier}),
     });
     addCase(registry, "TS-SEMA-205", "CS-SEMA-020", {
         bad("first", "int A(int x,float y){return x;}int F(){return A(\"x\",1.0f);}",
