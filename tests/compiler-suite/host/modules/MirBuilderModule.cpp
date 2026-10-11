@@ -149,7 +149,7 @@ void statementOracle(TestContext& context, std::size_t variant)
         "int Main() { int x = 0; if (true) x = 1; return x; }",
         "int Main() { int x; return 0; }",
         "int Main() { int x = 1; x++; x--; return x; }",
-        "int Main() { int x = 1; while (x < 2) x++; return x; }",
+        "int Main() { int x = 1; while (x < 2) { x++; } return x; }",
         "int Main() { int x = 0; for (x = 0; x < 3; x++) {} return x; }",
     };
     auto compilation = compileVariant(context, "mir-statement", programs, variant);
