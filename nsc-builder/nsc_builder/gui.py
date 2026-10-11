@@ -169,7 +169,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         case_ready = Signal(str, str, str, float, str)
         progress_ready = Signal(int, int)
         preparation_ready = Signal(str, int, int, str)
-        completed = Signal(object, bool, str)
+        completed = Signal(object, bool, str, object)
 
         def __init__(
             self,
@@ -208,12 +208,17 @@ def launch_gui(smoke_only: bool = False) -> int:
                     self.preparation_ready.emit,
                 )
                 outcomes, cancelled = self.engine.run(self.variants)
-                self.store.finish(outcomes, cancelled)
-                self.completed.emit(outcomes, cancelled, str(self.store.root))
+                preparation = self.engine.preparation_failure
+                self.store.finish(outcomes, cancelled, preparation)
+                self.completed.emit(
+                    outcomes, cancelled, str(self.store.root), preparation
+                )
             except Exception as error:
                 if self.store is not None:
                     self.store.close()
-                self.completed.emit([], False, f"ERROR: {type(error).__name__}: {error}")
+                self.completed.emit(
+                    [], False, f"ERROR: {type(error).__name__}: {error}", None
+                )
 
         def cancel(self) -> None:
             if self.engine is not None:
@@ -264,6 +269,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.catalog = CanonicalCatalog.load()
             self.worker: CommandWorker | SuiteWorker | None = None
             self.last_failed_variants: tuple[RunVariant, ...] = ()
+            self.last_preparation_variants: tuple[RunVariant, ...] = ()
             self.failure_outcomes_by_key: dict[str, CaseOutcome] = {}
             self.failure_variants_by_key: dict[str, RunVariant] = {}
             self.current_outcomes_by_key: dict[str, CaseOutcome] = {}
@@ -452,12 +458,17 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.run_button = QPushButton("Ejecutar pruebas")
             self.cancel_button = QPushButton("Cancelar corrida/árbol")
             self.retry_button = QPushButton("Reejecutar fallos")
+            self.preparation_retry_button = QPushButton(
+                "Reintentar preparación/corrida"
+            )
             self.cancel_button.setEnabled(False)
             self.retry_button.setEnabled(False)
+            self.preparation_retry_button.setEnabled(False)
             grid.addWidget(self.preview_button, 1, 4)
             grid.addWidget(self.run_button, 1, 5)
             grid.addWidget(self.cancel_button, 2, 4)
             grid.addWidget(self.retry_button, 2, 5)
+            grid.addWidget(self.preparation_retry_button, 3, 5)
             layout.addWidget(filters)
             self.plan_label = QLabel()
             layout.addWidget(self.plan_label)
@@ -529,6 +540,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.run_button.clicked.connect(self._start_suite)
             self.cancel_button.clicked.connect(self._cancel_active)
             self.retry_button.clicked.connect(self._retry_failures)
+            self.preparation_retry_button.clicked.connect(
+                self._retry_preparation
+            )
             self.status_filter_combo.currentIndexChanged.connect(
                 self._apply_status_filter
             )
@@ -1418,7 +1432,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=True)
+                config = self._config_from_ui().validated(require_tools=False)
                 config.save()
                 cases = self._selected_cases()
                 variants = expand_variants(
@@ -1446,7 +1460,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=True)
+                config = self._config_from_ui().validated(require_tools=False)
                 config.save()
                 self._update_case(
                     variant.key,
@@ -1730,7 +1744,6 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "revision": current_revision(),
                 "variant_count": len(variants),
                 "case_count": len({variant.case.case_id for variant in variants}),
-                "compiler_receipt": compiler_receipt(config),
                 "selection": {
                     "scope": self.scope_combo.currentText(),
                     "value": self.scope_value.currentText(),
@@ -1758,7 +1771,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None or not self.last_failed_variants:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=True)
+                config = self._config_from_ui().validated(require_tools=False)
                 variants = active_retry_variants(
                     self.last_failed_variants, self.disabled_failure_keys
                 )
@@ -1773,6 +1786,21 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self._run_variants(config, variants, "rerun-failures")
             except Exception as error:
                 self._show_error("No se pudieron reejecutar los fallos", error)
+
+        def _retry_preparation(self) -> None:
+            """Retry the complete immutable selection after preparation failed."""
+            if self.worker is not None or not self.last_preparation_variants:
+                return
+            try:
+                config = self._config_from_ui().validated(require_tools=False)
+                config.save()
+                variants = self.last_preparation_variants
+                self._populate_plan(
+                    tuple(variant.case for variant in variants), variants
+                )
+                self._run_variants(config, variants, "retry-preparation")
+            except Exception as error:
+                self._show_error("No se pudo reintentar la preparación", error)
 
         def _set_selected_failures_enabled(self, enabled: bool) -> None:
             """Toggle only selected exact variants in the directed retry plan."""
@@ -1992,12 +2020,28 @@ def launch_gui(smoke_only: bool = False) -> int:
             ]
             self.execution_counts.setText(" · ".join(parts) if parts else "Sin resultados")
 
-        def _suite_finished(self, outcomes: object, cancelled: bool, evidence: str) -> None:
+        def _suite_finished(
+            self,
+            outcomes: object,
+            cancelled: bool,
+            evidence: str,
+            preparation: object,
+        ) -> None:
             typed = list(outcomes) if isinstance(outcomes, list) else []
+            prepared_failure = (
+                preparation if isinstance(preparation, PreparationFailure) else None
+            )
             failed_keys = {
                 item.key for item in typed if item.status in TERMINAL_FAILURES
             }
-            failed = bool(failed_keys) or evidence.startswith("ERROR:")
+            failed = (
+                bool(failed_keys)
+                or evidence.startswith("ERROR:")
+                or prepared_failure is not None
+            )
+            self.last_preparation_variants = (
+                self.visible_variants if prepared_failure is not None else ()
+            )
             current_failures = retry_variants(self.visible_variants, typed)
             current_keys = {variant.key for variant in self.visible_variants}
             outcome_by_key = {item.key: item for item in typed}
@@ -2015,27 +2059,52 @@ def launch_gui(smoke_only: bool = False) -> int:
                 for key in sorted(self.failure_variants_by_key)
             )
             self._populate_failure_table()
-            self._render_error_report(typed, cancelled, evidence)
+            self._render_error_report(
+                typed, cancelled, evidence, prepared_failure
+            )
             completed = len(typed)
             total = len(self.visible_variants)
             self.progress.setRange(0, max(1, total))
             self.progress.setValue(min(completed, total))
-            self.progress.setFormat(f"{completed:,}/{total:,} pruebas — TERMINADO (%p%)")
-            self.execution_activity.setText(
-                "Ejecución cancelada" if cancelled else "Ejecución terminada"
-            )
+            if prepared_failure is not None:
+                label = (
+                    "PREPARACIÓN CANCELADA"
+                    if prepared_failure.status == "CANCELLED"
+                    else "PREPARACIÓN FALLIDA"
+                )
+                self.progress.setValue(0)
+                self.progress.setFormat(f"0/{total:,} pruebas — {label} (0%)")
+                self.execution_activity.setText(
+                    f"{label}: {prepared_failure.stage} — {prepared_failure.detail}"
+                )
+            else:
+                self.progress.setFormat(
+                    f"{completed:,}/{total:,} pruebas — TERMINADO (%p%)"
+                )
+                self.execution_activity.setText(
+                    "Ejecución cancelada" if cancelled else "Ejecución terminada"
+                )
             self.case_table.setSortingEnabled(True)
             self.worker = None
             self._set_busy(False)
             self._refresh_history()
             self.tabs.setCurrentIndex(2)
-            self.result_tabs.setCurrentIndex(self.failure_tab_index if failed else 0)
+            if prepared_failure is not None or evidence.startswith("ERROR:"):
+                self.result_tabs.setCurrentIndex(1)
+            else:
+                self.result_tabs.setCurrentIndex(
+                    self.failure_tab_index if failed else 0
+                )
 
         def _render_error_report(
-            self, outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
+            self,
+            outcomes: Sequence[CaseOutcome],
+            cancelled: bool,
+            evidence: str,
+            preparation: PreparationFailure | None = None,
         ) -> None:
             self.error_report.setPlainText(
-                condensed_error_report(outcomes, cancelled, evidence)
+                condensed_error_report(outcomes, cancelled, evidence, preparation)
             )
 
         def _cancel_active(self) -> None:
@@ -2084,11 +2153,15 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.cancel_button.setEnabled(busy and not infrastructure_busy)
             if busy:
                 self.retry_button.setEnabled(False)
+                self.preparation_retry_button.setEnabled(False)
                 self.failure_retry_button.setEnabled(False)
                 self.failure_disable_button.setEnabled(False)
                 self.failure_enable_button.setEnabled(False)
             else:
                 self._refresh_failure_controls()
+                self.preparation_retry_button.setEnabled(
+                    bool(self.last_preparation_variants)
+                )
                 self._preview_history_selection()
             self.statusBar().showMessage("Operación activa" if busy else "Listo")
 
@@ -2101,6 +2174,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.current_outcomes_by_key.clear()
             self.disabled_failure_keys.clear()
             self.last_failed_variants = ()
+            self.last_preparation_variants = ()
+            self.preparation_retry_button.setEnabled(False)
             self.full_log.clear()
             self.error_report.clear()
             for index in range(self.result_tabs.count() - 1, 2, -1):
@@ -2863,6 +2938,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     loaded.outcomes,
                     loaded.status == "CANCELLED",
                     str(loaded.root),
+                    loaded.preparation,
                 ),
             )
             add_text_tab("Log completo", loaded.full_log)
@@ -2924,7 +3000,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.optimization_combo.setCurrentText(
                     str(selection["optimization"])
                 )
-                config = self._config_from_ui().validated(require_tools=True)
+                config = self._config_from_ui().validated(require_tools=False)
                 config.save()
                 if not loaded.variants:
                     raise ValueError(
@@ -2961,7 +3037,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.optimization_combo.setCurrentText(
                     str(selection["optimization"])
                 )
-                config = self._config_from_ui().validated(require_tools=True)
+                config = self._config_from_ui().validated(require_tools=False)
                 config.save()
                 self._populate_plan(
                     tuple(variant.case for variant in variants), variants
@@ -2999,6 +3075,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "DESACTIVADA": QColor("#b7b7b7"),
                 "PASSED": QColor("#73d673"),
                 "FAILED": QColor("#ff7777"),
+                "PREPARATION_FAILED": QColor("#ff7777"),
                 "COMPLETED_WITH_KNOWN_DEFECTS": QColor("#f0a35e"),
                 "INCOMPLETE": QColor("#b7b7b7"),
                 "MALFORMED": QColor("#ff7777"),
@@ -3033,6 +3110,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             "clean_compiler_button": "Limpiar compilador",
             "history_load_button": "Abrir corrida completa en un tab",
             "failure_retry_button": "Reejecutar fallos activos",
+            "preparation_retry_button": "Reintentar preparación/corrida",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
             "failure_enable_button": "Reactivar seleccionados",
         }

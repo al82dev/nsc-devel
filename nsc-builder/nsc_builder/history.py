@@ -31,6 +31,41 @@ from .utils import *
 from .catalog import *
 
 
+def preparation_failure_from_payload(raw: Any) -> PreparationFailure | None:
+    """Validate and restore the optional run-level preparation closure."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != {
+        "status",
+        "stage",
+        "detail",
+        "evidence",
+        "command",
+        "producer_key",
+    }:
+        raise ValueError("preparation failure has an invalid schema")
+    if raw["status"] not in {"PREPARATION_FAILED", "CANCELLED"}:
+        raise ValueError("preparation failure has an invalid status")
+    for field_name in ("stage", "detail", "evidence", "producer_key"):
+        if not isinstance(raw[field_name], str):
+            raise ValueError(f"preparation failure {field_name} must be text")
+    if not raw["stage"] or not raw["detail"]:
+        raise ValueError("preparation failure requires a stage and detail")
+    command = raw["command"]
+    if not isinstance(command, list) or any(
+        not isinstance(argument, str) for argument in command
+    ):
+        raise ValueError("preparation failure command must be a text list")
+    return PreparationFailure(
+        status=raw["status"],
+        stage=raw["stage"],
+        detail=raw["detail"],
+        evidence=raw["evidence"],
+        command=tuple(command),
+        producer_key=raw["producer_key"],
+    )
+
+
 def variant_history_key(variant: RunVariant) -> tuple[str, str, str, str]:
     """Include the manifest profile in addition to the concrete variant identity."""
     return (
@@ -165,23 +200,36 @@ class EvidenceStore:
             self._log_stream.write("\n")
         self._log_stream.flush()
 
-    def finish(self, outcomes: Sequence[CaseOutcome], cancelled: bool) -> None:
+    def finish(
+        self,
+        outcomes: Sequence[CaseOutcome],
+        cancelled: bool,
+        preparation: PreparationFailure | None = None,
+    ) -> None:
         """Publish final results and a concise Markdown report."""
         keys = [outcome.key for outcome in outcomes]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate terminal result keys")
+        if preparation is not None:
+            if outcomes:
+                raise ValueError("preparation failure cannot contain case results")
+            if cancelled != (preparation.status == "CANCELLED"):
+                raise ValueError("preparation cancellation does not match run cancellation")
         expected = self.expected_variant_count
         if expected is not None:
             if isinstance(expected, bool) or not isinstance(expected, int) or expected < 1:
                 raise ValueError(f"invalid metadata variant_count: {expected!r}")
-            if len(outcomes) != expected:
+            if preparation is None and len(outcomes) != expected:
                 raise ValueError(
                     f"terminal result cardinality {len(outcomes)} does not match "
                     f"variant_count {expected}"
                 )
         counts = Counter(outcome.status for outcome in outcomes)
-        overall = self._overall_status(counts)
-        status = "CANCELLED" if cancelled else overall
+        if preparation is None:
+            overall = self._overall_status(counts)
+            status = "CANCELLED" if cancelled else overall
+        else:
+            status = preparation.status
         payload = {
             "run_id": self.run_id,
             "status": status,
@@ -189,6 +237,8 @@ class EvidenceStore:
             "counts": dict(sorted(counts.items())),
             "results": [asdict(outcome) for outcome in outcomes],
         }
+        if preparation is not None:
+            payload["preparation"] = asdict(preparation)
         write_json_atomic(self.root / "results.json", payload)
         lines = [
             f"# NSC Builder 3 — {self.run_id}",
@@ -201,7 +251,14 @@ class EvidenceStore:
         lines.extend(f"| `{name}` | {count} |" for name, count in sorted(counts.items()))
         failures = [item for item in outcomes if item.status in TERMINAL_FAILURES]
         lines.extend(["", "## Fallos", ""])
-        if failures:
+        if preparation is not None:
+            lines.extend(
+                (
+                    f"- Preparación `{preparation.stage}`: {preparation.detail}",
+                    f"- Evidencia: `{preparation.evidence or 'no disponible'}`",
+                )
+            )
+        elif failures:
             lines.extend(
                 f"- `{item.key}`: {item.detail or item.status}" for item in failures
             )
@@ -273,8 +330,13 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
         if not isinstance(finished_at, str) or not finished_at:
             raise ValueError("finished_at is missing")
         results = payload.get("results")
-        if not isinstance(results, list) or not results:
-            raise ValueError("terminal results must be a non-empty list")
+        if not isinstance(results, list):
+            raise ValueError("terminal results must be a list")
+        preparation = preparation_failure_from_payload(payload.get("preparation"))
+        if not results and preparation is None:
+            raise ValueError("terminal results must be non-empty without a preparation failure")
+        if results and preparation is not None:
+            raise ValueError("preparation failure cannot coexist with terminal case rows")
         if any(not isinstance(item, dict) for item in results):
             raise ValueError("each terminal result must be an object")
         keys = [item.get("key") for item in results]
@@ -307,16 +369,20 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
                 isinstance(expected_count, bool)
                 or not isinstance(expected_count, int)
                 or expected_count < 1
-                or expected_count != len(results)
+                or (preparation is None and expected_count != len(results))
             ):
                 raise ValueError("metadata variant_count does not match terminal rows")
         status = payload.get("status")
-        expected_status = EvidenceStore._overall_status(counts)
-        if status == "CANCELLED":
-            if counts["CANCELLED"] <= 0:
-                raise ValueError("cancelled run has no cancelled result")
-        elif status != expected_status:
-            raise ValueError("overall status does not match terminal rows")
+        if preparation is not None:
+            if status != preparation.status:
+                raise ValueError("overall status does not match preparation failure")
+        else:
+            expected_status = EvidenceStore._overall_status(counts)
+            if status == "CANCELLED":
+                if counts["CANCELLED"] <= 0:
+                    raise ValueError("cancelled run has no cancelled result")
+            elif status != expected_status:
+                raise ValueError("overall status does not match terminal rows")
         events = read_jsonl(events_path)
         if not events:
             raise ValueError("event stream is empty")
@@ -326,6 +392,24 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
             raise ValueError("event stream lacks a final RUN_FINISHED event")
         if final_payload.get("status") != status or Counter(final_payload.get("counts", {})) != counts:
             raise ValueError("final event does not match results")
+        if preparation is not None and any(
+            event.get("kind") == "CASE_STARTED" for event in events
+        ):
+            raise ValueError("preparation-failed run dispatched a case")
+        if preparation is not None:
+            cause_events = [
+                event
+                for event in events
+                if event.get("kind")
+                in {"PREPARATION_FAILED", "PREPARATION_CANCELLED"}
+            ]
+            if len(cause_events) != 1:
+                raise ValueError("preparation-failed run lacks one causal event")
+            restored_cause = preparation_failure_from_payload(
+                cause_events[0].get("payload")
+            )
+            if restored_cause != preparation:
+                raise ValueError("preparation causal event does not match results")
     except (OSError, json.JSONDecodeError, ValueError, TypeError):
         return (run_id, kind, "MALFORMED", "", str(root))
     return (run_id, kind, str(status), finished_at, str(root))
@@ -411,6 +495,7 @@ def load_history_execution(
         raise ValueError("historical execution has no terminal result rows")
     variants: list[RunVariant] = []
     outcomes: list[CaseOutcome] = []
+    preparation = preparation_failure_from_payload(payload.get("preparation"))
     for index, raw in enumerate(rows, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"historical result {index} must be an object")
@@ -548,7 +633,7 @@ def load_history_execution(
         )
     expected_keys = tuple(variant.key for variant in selected_variants)
     actual_keys = tuple(outcome.key for outcome in outcomes)
-    if Counter(actual_keys) != Counter(expected_keys):
+    if preparation is None and Counter(actual_keys) != Counter(expected_keys):
         raise ValueError(
             "historical terminal rows do not reproduce the original selection"
         )
@@ -562,4 +647,5 @@ def load_history_execution(
         variants=selected_variants,
         outcomes=tuple(outcomes),
         full_log=full_log,
+        preparation=preparation,
     )

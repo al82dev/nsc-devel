@@ -81,6 +81,29 @@ class ProducerPreparation:
     evidence: str = ""
 
 
+@dataclass(frozen=True)
+class PreparationCommand:
+    """One deterministic command in the global run-preparation barrier."""
+
+    stage: str
+    label: str
+    command: tuple[str, ...]
+    cwd: Path
+    producer_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PreparationFailure:
+    """Single causal closure for a run that never dispatched a test case."""
+
+    status: str
+    stage: str
+    detail: str
+    evidence: str = ""
+    command: tuple[str, ...] = ()
+    producer_key: str = ""
+
+
 @dataclass
 class TestExecution:
     """Canonical terminal or live projection for one exact test variant."""
@@ -122,6 +145,7 @@ class Run:
     variants: tuple[TestVariant, ...]
     outcomes: tuple[TestExecution, ...]
     full_log: str
+    preparation: PreparationFailure | None = None
 
     @property
     def tests(self) -> tuple[TestCase, ...]:
@@ -155,6 +179,8 @@ __all__ = (
     "CaseOutcome",
     "CaseRecord",
     "HistoricalExecution",
+    "PreparationCommand",
+    "PreparationFailure",
     "ProducerPlan",
     "ProducerPreparation",
     "Run",

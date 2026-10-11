@@ -217,7 +217,10 @@ def status_filter_matches(filter_name: str, status: str) -> bool:
 
 
 def condensed_error_report(
-    outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
+    outcomes: Sequence[CaseOutcome],
+    cancelled: bool,
+    evidence: str,
+    preparation: PreparationFailure | None = None,
 ) -> str:
     """Render one causal report shared by infrastructure and suite closures."""
     failures = [item for item in outcomes if item.status in TERMINAL_FAILURES]
@@ -233,7 +236,20 @@ def condensed_error_report(
         + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())),
         "",
     ]
-    if failures:
+    if preparation is not None:
+        lines.extend(
+            [
+                "CAUSAS TERMINALES ÚNICAS: 1",
+                "-" * 88,
+                f"PREPARACIÓN {preparation.status} · etapa {preparation.stage}",
+                preparation.detail,
+                f"Productor: {preparation.producer_key or 'no aplica'}",
+                f"Evidencia: {preparation.evidence or evidence}",
+            ]
+        )
+        if preparation.command:
+            lines.append("Comando: " + " ".join(preparation.command))
+    elif failures:
         grouped: dict[str, list[CaseOutcome]] = defaultdict(list)
         for item in failures:
             grouped[item.detail or item.status].append(item)

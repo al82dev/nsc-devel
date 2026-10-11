@@ -18,7 +18,12 @@ AUTHORIZED_MODULAR_DIVERGENCES = {
     ("catalog", "CanonicalCatalog"),
     ("build", "clean_test_build_trees"),
     ("execution", "ExecutionEngine"),
+    ("execution", "parse_identity_envelope"),
     ("gui", "launch_gui"),
+    ("history", "EvidenceStore"),
+    ("history", "history_record"),
+    ("history", "load_history_execution"),
+    ("reporting", "condensed_error_report"),
 }
 
 

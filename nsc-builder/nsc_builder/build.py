@@ -338,41 +338,50 @@ def test_build_tree_is_configured(config: BuilderConfig, mode: str) -> bool:
 
 def producer_preparation_commands(
     config: BuilderConfig, plans: Sequence[ProducerPlan]
-) -> list[tuple[str, list[str], Path, tuple[str, ...]]]:
-    """Create one configure/build sequence per mode for the exact producer plan."""
+) -> list[PreparationCommand]:
+    """Create a deterministic configure/build barrier for every required producer."""
     if not plans:
         return []
     by_mode: dict[str, list[ProducerPlan]] = defaultdict(list)
     for plan in plans:
         by_mode[plan.build_mode].append(plan)
-    commands: list[tuple[str, list[str], Path, tuple[str, ...]]] = []
+    commands: list[PreparationCommand] = []
     tools = discover_build_tools(str(config.llvm_root_path()))
     for mode in sorted(by_mode):
         mode_plans = sorted(by_mode[mode], key=lambda item: item.producer.target)
         producer_keys = tuple(plan.key for plan in mode_plans)
         if not test_build_tree_is_configured(config, mode):
             label, command, cwd = configure_commands(config, (mode,))[0]
-            commands.append((label, command, cwd, producer_keys))
-        targets = [plan.producer.target for plan in mode_plans]
-        build = effective_build_dir(config, mode)
-        commands.append(
-            (
-                f"Preparar pruebas {mode}: {', '.join(targets)}",
-                [
-                    tools["cmake"],
-                    "--build",
-                    build.as_posix(),
-                    "--config",
-                    mode,
-                    "--target",
-                    *targets,
-                    "--parallel",
-                    str(config.jobs),
-                ],
-                SOURCE_ROOT,
-                producer_keys,
+            commands.append(
+                PreparationCommand(
+                    stage="configure-tests",
+                    label=label,
+                    command=tuple(command),
+                    cwd=cwd,
+                    producer_keys=producer_keys,
+                )
             )
-        )
+        build = effective_build_dir(config, mode)
+        for plan in mode_plans:
+            commands.append(
+                PreparationCommand(
+                    stage="build-producer",
+                    label=f"Preparar pruebas {mode}: {plan.producer.target}",
+                    command=(
+                        tools["cmake"],
+                        "--build",
+                        build.as_posix(),
+                        "--config",
+                        mode,
+                        "--target",
+                        plan.producer.target,
+                        "--parallel",
+                        str(config.jobs),
+                    ),
+                    cwd=SOURCE_ROOT,
+                    producer_keys=(plan.key,),
+                )
+            )
     return commands
 
 

@@ -34,6 +34,7 @@ from .history import *
 from .reporting import *
 from .process_control import *
 from .build import *
+from .runtime_support import compiler_receipt
 
 
 MISSING_LLVM_PACKAGE_DIAGNOSTIC = (
@@ -587,6 +588,7 @@ class ExecutionEngine:
         self.active_key = ""
         self.active_phase = ""
         self.active_detail = ""
+        self.preparation_failure: PreparationFailure | None = None
 
     def run(self, variants: Sequence[RunVariant]) -> tuple[list[CaseOutcome], bool]:
         """Run every planned variant in deterministic dependency-oriented order."""
@@ -603,23 +605,18 @@ class ExecutionEngine:
         )
         outcomes: list[CaseOutcome] = []
         total = len(ordered)
-        preparations = self._prepare_producers(ordered)
-        blocked_by_key = {
-            consumer: result
-            for result in preparations
-            if result.status != "PASS"
-            for consumer in result.consumer_keys
-        }
+        preparations, failure = self._prepare_producers(ordered)
+        if failure is not None:
+            self.preparation_failure = failure
+            return [], failure.status == "CANCELLED"
+        if any(item.status != "PASS" for item in preparations):
+            raise RuntimeError("producer barrier returned a non-PASS result without a cause")
         for index, variant in enumerate(ordered, start=1):
             if self.process.cancelled.is_set():
                 outcomes.extend(self._cancelled_outcomes(ordered[index - 1 :]))
                 break
-            preparation = blocked_by_key.get(variant.key)
-            if preparation is not None:
-                outcome = self._producer_blocked_outcome(variant, preparation)
-            else:
-                self.store.event("CASE_STARTED", self._variant_payload(variant))
-                outcome = self._run_controlled_variant(variant)
+            self.store.event("CASE_STARTED", self._variant_payload(variant))
+            outcome = self._run_controlled_variant(variant)
             outcomes.append(outcome)
             self.status(
                 variant.key,
@@ -637,80 +634,149 @@ class ExecutionEngine:
 
     def _prepare_producers(
         self, variants: Sequence[RunVariant]
-    ) -> tuple[ProducerPreparation, ...]:
-        """Build each selected producer once and validate its concrete artifact."""
-        plans = plan_test_producers(self.config, variants)
-        if not plans:
-            return ()
-        total = len(plans)
-        self.preparation(
-            "Preparar pruebas",
-            0,
-            total,
-            ", ".join(plan.key for plan in plans),
-        )
-        failures: dict[str, tuple[str, str]] = {}
-        try:
-            commands = producer_preparation_commands(self.config, plans)
-        except Exception as error:
-            detail = f"{type(error).__name__}: {error}"
-            commands = []
-            for plan in plans:
-                failures[plan.key] = (detail, "")
+    ) -> tuple[tuple[ProducerPreparation, ...], PreparationFailure | None]:
+        """Complete every prerequisite before allowing the first case dispatch."""
         preparation_root = self.store.root / "preparation"
         preparation_root.mkdir(parents=True, exist_ok=True)
-        for command_index, (label, command, cwd, producer_keys) in enumerate(
-            commands, start=1
-        ):
-            if all(key in failures for key in producer_keys):
-                continue
+        self.preparation("Precondición del compilador", 0, 1, "validando herramientas")
+        self.store.event(
+            "PREPARATION_STAGE_STARTED",
+            {"stage": "compiler-precondition", "detail": "validating compiler receipt"},
+        )
+        try:
+            receipt = compiler_receipt(self.config)
+            receipt_path = preparation_root / "compiler-receipt.json"
+            write_json_atomic(receipt_path, receipt)
+        except Exception as error:
+            return (), self._preparation_failed(
+                stage="compiler-precondition",
+                detail=f"{type(error).__name__}: {error}",
+            )
+        self.store.event(
+            "PREPARATION_STAGE_FINISHED",
+            {
+                "stage": "compiler-precondition",
+                "status": "PASS",
+                "evidence": str(receipt_path),
+            },
+        )
+        if self.process.cancelled.is_set():
+            return (), self._preparation_failed(
+                stage="compiler-precondition",
+                detail="preparación cancelada por el usuario",
+                status="CANCELLED",
+                evidence=str(receipt_path),
+            )
+        try:
+            plans = plan_test_producers(self.config, variants)
+            commands = producer_preparation_commands(self.config, plans)
+        except Exception as error:
+            return (), self._preparation_failed(
+                stage="plan-producers",
+                detail=f"{type(error).__name__}: {error}",
+            )
+        total = 1 + len(commands) + len(plans)
+        self.preparation(
+            "Preparar pruebas",
+            1,
+            total,
+            ", ".join(plan.key for plan in plans) or "sin productores C++",
+        )
+        for command_index, item in enumerate(commands, start=1):
             if self.process.cancelled.is_set():
-                break
-            self.preparation("Preparar pruebas", 0, total, label)
+                return (), self._preparation_failed(
+                    stage=item.stage,
+                    detail="preparación cancelada por el usuario",
+                    status="CANCELLED",
+                    command=item.command,
+                    producer_key=item.producer_keys[0] if len(item.producer_keys) == 1 else "",
+                )
+            self.preparation("Preparar pruebas", command_index, total, item.label)
             self.store.event(
                 "PRODUCER_COMMAND_STARTED",
-                {"label": label, "producer_keys": list(producer_keys), "command": command},
+                {
+                    "stage": item.stage,
+                    "label": item.label,
+                    "producer_keys": list(item.producer_keys),
+                    "command": list(item.command),
+                },
             )
-            code, captured = self.process.run(command, cwd)
+            try:
+                code, captured = self.process.run(list(item.command), item.cwd)
+            except Exception as error:
+                return (), self._preparation_failed(
+                    stage=item.stage,
+                    detail=f"{type(error).__name__}: {error}",
+                    command=item.command,
+                    producer_key=(
+                        item.producer_keys[0]
+                        if len(item.producer_keys) == 1
+                        else ""
+                    ),
+                )
             log_path = preparation_root / f"command-{command_index:02d}.log"
             write_text_atomic(log_path, captured)
             self.store.event(
                 "PRODUCER_COMMAND_FINISHED",
                 {
-                    "label": label,
-                    "producer_keys": list(producer_keys),
+                    "stage": item.stage,
+                    "label": item.label,
+                    "producer_keys": list(item.producer_keys),
                     "exit_code": code,
                     "evidence": str(log_path),
                 },
             )
+            if self.process.cancelled.is_set():
+                return (), self._preparation_failed(
+                    stage=item.stage,
+                    detail="preparación cancelada por el usuario",
+                    status="CANCELLED",
+                    evidence=str(log_path),
+                    command=item.command,
+                    producer_key=item.producer_keys[0] if len(item.producer_keys) == 1 else "",
+                )
             if code != 0:
-                detail = infrastructure_failure_detail(code, captured)
-                for key in producer_keys:
-                    failures.setdefault(key, (detail, str(log_path)))
+                return (), self._preparation_failed(
+                    stage=item.stage,
+                    detail=infrastructure_failure_detail(code, captured),
+                    evidence=str(log_path),
+                    command=item.command,
+                    producer_key=item.producer_keys[0] if len(item.producer_keys) == 1 else "",
+                )
         results: list[ProducerPreparation] = []
         for index, plan in enumerate(plans, start=1):
-            executable = component_test_executable(
-                self.config, plan.build_mode, plan.producer.target
-            )
             if self.process.cancelled.is_set():
-                detail = "preparación cancelada por el usuario"
-                status = "CANCELLED"
-                evidence = ""
-            elif plan.key in failures:
-                detail, evidence = failures[plan.key]
-                status = "FAIL"
-            elif not executable.is_file() or executable.stat().st_size <= 0:
-                detail = f"el productor terminó sin ejecutable válido: {executable}"
-                evidence = ""
-                status = "FAIL"
-            else:
-                stat = executable.stat()
-                detail = (
-                    "grafo incremental verificado; "
-                    f"ejecutable {stat.st_size} bytes, mtime_ns={stat.st_mtime_ns}"
+                return (), self._preparation_failed(
+                    stage="validate-artifacts",
+                    detail="preparación cancelada por el usuario",
+                    status="CANCELLED",
+                    producer_key=plan.key,
                 )
-                evidence = str(executable)
-                status = "PASS"
+            try:
+                executable = component_test_executable(
+                    self.config, plan.build_mode, plan.producer.target
+                )
+                stat = executable.stat() if executable.is_file() else None
+                valid_artifact = stat is not None and stat.st_size > 0
+            except OSError as error:
+                return (), self._preparation_failed(
+                    stage="validate-artifacts",
+                    detail=f"{type(error).__name__}: {error}",
+                    producer_key=plan.key,
+                )
+            if not valid_artifact:
+                return (), self._preparation_failed(
+                    stage="validate-artifacts",
+                    detail=f"el productor terminó sin ejecutable válido: {executable}",
+                    producer_key=plan.key,
+                )
+            assert stat is not None
+            detail = (
+                "grafo incremental verificado; "
+                f"ejecutable {stat.st_size} bytes, mtime_ns={stat.st_mtime_ns}"
+            )
+            evidence = str(executable)
+            status = "PASS"
             receipt_path = preparation_root / f"{plan.producer.key}-{plan.build_mode}.json"
             payload = {
                 "schema": 1,
@@ -734,27 +800,48 @@ class ExecutionEngine:
             )
             results.append(result)
             self.store.event("PRODUCER_FINISHED", payload | {"evidence": str(receipt_path)})
-            self.preparation("Preparar pruebas", index, total, f"{plan.key}: {status}")
-        return tuple(results)
-
-    @staticmethod
-    def _producer_blocked_outcome(
-        variant: RunVariant, preparation: ProducerPreparation
-    ) -> CaseOutcome:
-        """Close one consumer without dispatch after its producer failed."""
-        return CaseOutcome(
-            key=variant.key,
-            case_id=variant.case.case_id,
-            contract_id=variant.case.contract_id,
-            component=variant.case.component,
-            wave=variant.case.wave,
-            build_mode=variant.build_mode,
-            optimization=variant.optimization,
-            status="NOT_RUN",
-            detail=f"BLOQUEADO_POR productor {preparation.key}: {preparation.detail}",
-            evidence=preparation.evidence,
-            profile=variant.case.profile,
+            self.preparation(
+                "Preparar pruebas",
+                1 + len(commands) + index,
+                total,
+                f"{plan.key}: {status}",
+            )
+        self.store.event(
+            "PREPARATION_FINISHED",
+            {"status": "PASS", "producer_count": len(results)},
         )
+        return tuple(results), None
+
+    def _preparation_failed(
+        self,
+        *,
+        stage: str,
+        detail: str,
+        status: str = "PREPARATION_FAILED",
+        evidence: str = "",
+        command: Sequence[str] = (),
+        producer_key: str = "",
+    ) -> PreparationFailure:
+        """Persist the one run-level cause that prevented all case dispatch."""
+        path = self.store.root / "preparation" / "failure.json"
+        failure = PreparationFailure(
+            status=status,
+            stage=stage,
+            detail=detail,
+            evidence=evidence or str(path),
+            command=tuple(command),
+            producer_key=producer_key,
+        )
+        write_json_atomic(path, {"schema": 1, **asdict(failure)})
+        event_kind = (
+            "PREPARATION_CANCELLED"
+            if failure.status == "CANCELLED"
+            else "PREPARATION_FAILED"
+        )
+        self.store.event(event_kind, asdict(failure))
+        self.store.log(f"[{failure.status}] {stage}: {detail}\n")
+        self.preparation("Preparar pruebas", 0, 1, f"{stage}: {detail}")
+        return failure
 
     def cancel(self) -> None:
         """Request cancellation of the active child and all remaining variants."""
