@@ -1,3 +1,4 @@
+#include "SemaInfrastructureTestSupport.h"
 #include "SemaTestSupport.h"
 
 #include "nativesharp/AST/AstNode.h"
@@ -18,6 +19,8 @@ using sema_support::diagnosticCount;
 using nativesharp::ast::AstNode;
 using nativesharp::ast::AstNodeKind;
 using nativesharp::diagnostics::DiagnosticId;
+using nativesharp::diagnostics::DiagnosticSeverity;
+using sema_infrastructure_support::reportPreviousDeclarationForTesting;
 
 Symbol* findGlobal(SemanticAnalyzer& analyzer, std::string_view name)
 {
@@ -199,23 +202,26 @@ void c100(TestContext& c)
 
 void c101(TestContext& c)
 {
-    AnalyzerFixture withPrevious("int value; int value;");
-    withPrevious.analyze();
     TypeContext types;
     nativesharp::diagnostics::DiagnosticEngine diagnostics;
     const auto layout = nativesharp::target::TargetDataLayout::WindowsX64();
     SemanticAnalyzer analyzer(types, layout, diagnostics);
-    AstNode root(AstNodeKind::CompilationUnit, {});
-    AstNode first(AstNodeKind::GlobalVariableDeclaration, {});
-    AstNode second(AstNodeKind::GlobalVariableDeclaration, {});
-    first.setText("value"); second.setText("value");
-    root.addChild(&first); root.addChild(&second);
-    analyzer.analyze(&root);
-    c.expect(diagnosticCount(withPrevious.diagnostics(), DiagnosticId::PreviousDeclaration) == 1 &&
-            diagnosticCount(diagnostics, DiagnosticId::PreviousDeclaration) == 1,
-        "TS-SEMA-101 previous-declaration notes are emitted only when a declaration exists");
-    c.expect(false,
-        "TS-SEMA-101 TEST-INFRASTRUCTURE: the null-declaration branch of private reportPreviousDeclaration needs a product test seam");
+    Type* integer = types.builtin(TypeKind::Int);
+    AstNode declaration(AstNodeKind::GlobalVariableDeclaration, {});
+    Symbol withoutDeclaration(SymbolKind::GlobalVariable, "missing", integer, nullptr);
+    Symbol withDeclaration(SymbolKind::GlobalVariable, "present", integer, &declaration);
+
+    reportPreviousDeclarationForTesting(analyzer, nullptr);
+    reportPreviousDeclarationForTesting(analyzer, &withoutDeclaration);
+    c.expect(diagnostics.diagnostics().empty(),
+        "TS-SEMA-101 null symbols and null declarations must not emit a previous-declaration note");
+
+    reportPreviousDeclarationForTesting(analyzer, &withDeclaration);
+    const auto& emitted = diagnostics.diagnostics();
+    c.expect(emitted.size() == 1 && emitted[0].id() == DiagnosticId::PreviousDeclaration &&
+            emitted[0].severity() == DiagnosticSeverity::Note &&
+            emitted[0].message() == "previous declaration is here",
+        "TS-SEMA-101 a concrete previous declaration must emit the one exact note");
 }
 }
 
