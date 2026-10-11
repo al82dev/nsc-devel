@@ -28,41 +28,22 @@ una feature pendiente, no se amplía el compilador y no se reduce el denominador
 
 ## Infraestructura especial pendiente
 
-### `TS-SRC-008` — saturación de tamaño superior a 4 GiB
+### Trabajo futuro fuera del pipeline ordinario
 
-`SourceFile::size` y `buildLineStarts` sólo alcanzan la frontera contractual
-después de construir y recorrer contenido real mayor que 4 GiB. El producto no
-ofrece una representación virtual ni un seam que permita expresar ese tamaño sin
-asignarlo.
+Esta depuración conserva cuatro cuerpos de prueba como trabajo futuro, pero no
+los publica en el manifiesto ni los registra como ejecutables del pipeline
+ordinario:
 
-- Opción fiel sin cambiar producto: proceso aislado `WEEKLY`, con preflight de
-  memoria y disco, límite temporal y evidencia progresiva. Su costo supera el de
-  una prueba normal y no pertenece al gate rápido.
-- Opción que cambia producto: introducir una representación/seam verificable de
-  tamaño. No se autoriza sólo para facilitar la prueba porque ampliaría la
-  superficie productiva.
-- Recomendación actual: mantenerlo pendiente hasta aprobar explícitamente un gate
-  de recursos pesados. No intentar una muestra pequeña, porque no ejercita la
-  saturación.
+| Caso | Perfil futuro requerido | Estado actual |
+|---|---|---|
+| `TA-AST-017` | target test-only con ThreadSanitizer | fuera del pipeline; no bloquea ni cuenta como ejecutable |
+| `TS-SEMA-077` | target test-only con ASan+LSan | fuera del pipeline; no bloquea ni cuenta como ejecutable |
+| `TS-SEMA-094` | target test-only con ASan+LSan | fuera del pipeline; no bloquea ni cuenta como ejecutable |
+| `TS-SRC-049` | target ASan aislado en subprocess | fuera del pipeline; no bloquea ni cuenta como ejecutable |
 
-### `TS-SRC-040` y `TS-SRC-041` — mutación coordinada durante lectura
-
-Ambos casos necesitan cambiar el archivo exactamente después de consultar
-`file_size` y antes de completar `ifstream::read`/`peek`. Un segundo hilo basado
-en tiempos no puede garantizar ese interleaving y produciría una prueba flaky.
-
-- Opción preferida: ejecutable de prueba aislado con intercepción determinista de
-  la operación de sistema usada por la lectura. El controlador libera la
-  truncación o crecimiento al observar el punto exacto.
-- Alternativa: seam de coordinación inyectable en producto, únicamente si una
-  auditoría demuestra que la intercepción no es viable y el cambio se autoriza
-  como superficie de test.
-- Requisitos: subprocess por caso, timeout, log de cada transición y comprobación
-  de que la mutación ocurrió en la ventana requerida. No se admite polling por
-  tiempo ni repetir hasta que falle.
-- Estado: `INFRAESTRUCTURA DETERMINISTA PENDIENTE`; hace falta identificar la API
-  efectiva importada por la implementación de `std::filesystem`/`ifstream` antes
-  de elegir la técnica de intercepción.
+Sus IDs, cuerpos y oráculos permanecen trazados para una integración futura con
+los perfiles instrumentados correspondientes. Su ausencia del pipeline no se
+interpreta como `PASS`, `SKIP` ni validación funcional.
 
 ### `TS-SRC-049` — invalidación de referencia por realocación
 
@@ -171,12 +152,14 @@ rechaza explícitamente en `TS-SEMA-090`.
 
 ## Decisión de avance independiente
 
-Los cuatro casos de infraestructura especial permanecen pendientes y visibles;
-no se eliminan, no se cuentan como implementados y no permiten declarar lista la
-ola 1. Como no son productores de `Host.Lexer`, `Host.AST`, `Host.Parser` ni
-`Host.Sema`, tampoco bloquean causalmente la ola 2. La implementación continúa
-por dependencias y volverá a estos huecos en una tanda específica de
-infraestructura.
+`TS-SRC-049` permanece pendiente y visible; no se elimina ni permite declarar
+lista la ola 1. Como no es productor de `Host.Lexer`, `Host.AST`, `Host.Parser`
+ni `Host.Sema`, tampoco bloquea causalmente la ola 2. `TS-SRC-008`,
+`TS-SRC-040` y `TS-SRC-041` ya salieron de esta lista al integrarse en los
+perfiles WEEKLY/NIGHTLY, sin presentarse todavía como validados.
+
+`TA-AST-017`, `TS-SEMA-077` y `TS-SEMA-094` siguen la misma política de trabajo
+futuro: permanecen fuera del pipeline ordinario y no bloquean su cierre.
 
 ## Corrección del caso mal definido
 

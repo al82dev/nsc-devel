@@ -16,8 +16,8 @@
     "Host.Source": {
       "expected": 58,
       "materialized": 58,
-      "executable": 54,
-      "infrastructure_pending": 4,
+      "executable": 57,
+      "infrastructure_pending": 1,
       "known_product_defect": 0,
       "integrated": true,
       "verified": 54
@@ -337,7 +337,7 @@
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
     "total": 14,
-    "special_infrastructure_pending": 4,
+    "special_infrastructure_pending": 1,
     "product_defect_tests_to_implement": 0,
     "test_plan_corrections_total": 3,
     "test_plan_corrections_implemented": 3,
@@ -440,22 +440,17 @@
   "independent_partial_contracts": {
     "CS-SRC-002": {
       "materialized_cases": 6,
-      "executable_cases": 5,
+      "executable_cases": 6,
       "verified_cases": 5,
-      "infrastructure_pending_cases": 1,
-      "blocked_cases": [
-        "TS-SRC-008"
-      ]
+      "infrastructure_pending_cases": 0,
+      "blocked_cases": []
     },
     "CS-SRC-006": {
       "materialized_cases": 11,
-      "executable_cases": 9,
+      "executable_cases": 11,
       "verified_cases": 9,
-      "infrastructure_pending_cases": 2,
-      "blocked_cases": [
-        "TS-SRC-040",
-        "TS-SRC-041"
-      ]
+      "infrastructure_pending_cases": 0,
+      "blocked_cases": []
     },
     "CS-SRC-007": {
       "materialized_cases": 5,
@@ -572,7 +567,7 @@
       "product_cases_verified": 736,
       "known_failure_cases_implemented": 7,
       "defect_tests_pending_implementation": 0,
-      "special_infrastructure_pending": 4,
+      "special_infrastructure_pending": 1,
       "product_features_pending": 0,
       "corrected_test_plan_cases_pending_implementation": 0
     },
@@ -716,7 +711,7 @@
     "cases_expected": 9587,
     "cases_materialized": 9587,
     "cases_integrated": 9587,
-    "manifest_executable_rows": 5695,
+    "manifest_executable_rows": 5709,
     "implementation_gaps": 0,
     "validated_cases": 333,
     "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
@@ -807,8 +802,8 @@
     "manifest_cases_with_external_producers": 213,
     "manifest_unique_external_producers": 11,
     "host_source_inventory_cases": 58,
-    "host_source_executable_cases": 54,
-    "host_source_infrastructure_pending_cases": 4,
+    "host_source_executable_cases": 57,
+    "host_source_infrastructure_pending_cases": 1,
     "synthetic_gate_dynamic_protocol_tests": 2,
     "integration_controllers_audited": 118,
     "live_manifest_causal_selections": 176,

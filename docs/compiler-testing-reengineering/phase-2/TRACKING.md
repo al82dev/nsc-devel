@@ -353,15 +353,16 @@ la matriz de asignación gobierna la ejecución. Ningún caso de la Ola 9 aument
 `Validados` en este corte.
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
-de forma individual, y `4` casos materializados como `InfrastructurePending`.
-Los siete defectos permanecen rojos sin interferir con el flujo ordinario.
+de forma individual, `3` casos Source adicionales ejecutables aún no validados
+y `1` caso materializado como `InfrastructurePending`. Los siete defectos
+permanecen rojos sin interferir con el flujo ordinario.
 
-La ola 1 conserva cuatro limitaciones de infraestructura (`TS-SRC-008`,
-`TS-SRC-040`, `TS-SRC-041`, `TS-SRC-049`). Ya existen en el registro central
-con disposición `InfrastructurePending`, permanecen fuera del manifiesto
-ejecutable y no aumentan `Validados`. La ola 1 no se declara `LISTA` porque la
-validación de esos cuatro oráculos sigue requiriendo memoria extrema,
-coordinación determinista de E/S o ASan con aislamiento de proceso.
+La ola 1 conserva una limitación de infraestructura (`TS-SRC-049`). El caso
+permanece en el registro central con disposición `InfrastructurePending`, fuera
+del manifiesto ejecutable y sin aumentar `Validados`. `TS-SRC-008`,
+`TS-SRC-040` y `TS-SRC-041` ya son ejecutables en sus perfiles WEEKLY/NIGHTLY,
+pero esta integración no los ejecutó. La ola 1 no se declara `LISTA` porque el
+oráculo restante requiere ASan con aislamiento de proceso.
 
 La auditoría estática global contra los inventarios canónicos cerró `44/44`
 componentes, `1,208/1,208` contratos y `9,587/9,587` casos materializados e
