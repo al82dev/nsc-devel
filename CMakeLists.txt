@@ -987,8 +987,7 @@ if(NSC_BUILD_TESTS)
         set_tests_properties(
             nsc.harness.cases-o0
             PROPERTIES
-                ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}"
-                TIMEOUT 1800)
+                ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}")
 
         add_test(
             NAME nsc.harness.specialized-o0
@@ -1009,8 +1008,7 @@ if(NSC_BUILD_TESTS)
             nsc.harness.specialized-o0
             PROPERTIES
                 ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}"
-                RUN_SERIAL TRUE
-                TIMEOUT 7200)
+                RUN_SERIAL TRUE)
 
         add_custom_target(pruebas DEPENDS nsc nsc_unit_tests)
         message(STATUS
