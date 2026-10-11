@@ -132,6 +132,12 @@ int main(int argumentCount, char** arguments)
     {
         const Options options = parseOptions(argumentCount, arguments);
         nsc::suite::TestRegistry registry;
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
+        // The destructive runner must remain a five-case process boundary.  Reusing the ordinary
+        // registration graph here would duplicate the complete host suite and would also expose
+        // its test-only global allocator to unrelated cases.
+        nsc::suite::registerAstInfrastructurePendingModule(registry);
+#else
         nsc::suite::registerInfrastructureModule(registry);
         nsc::suite::registerBasicValuesModule(registry);
         nsc::suite::registerBasicSha256Module(registry);
@@ -439,6 +445,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerRuntimeAbiVerificationModule(registry);
         nsc::suite::registerRuntimeCapabilityModule(registry);
         nsc::suite::registerRuntimeInfrastructureModule(registry);
+#endif
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
@@ -450,12 +457,17 @@ int main(int argumentCount, char** arguments)
         }
         if (options.listPending)
         {
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
+            throw std::invalid_argument(
+                "the destructive runner does not own the infrastructure-pending inventory");
+#else
             for (const auto& row : nsc::suite::infrastructurePendingInventory())
             {
                 std::cout << row.id << '\t' << row.contractId << '\t'
                           << row.component << '\n';
             }
             return 0;
+#endif
         }
 
         std::vector<const nsc::suite::TestCase*> selected;

@@ -626,6 +626,32 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/SumTypeSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/TraitSemantics.cpp")
 
+# Death, watchdog, and allocator-failure probes live in a dedicated executable.  It intentionally
+# owns only five Host.AST cases: compiling the full module graph with the replacement operator new
+# would change the allocator of every ordinary host test and duplicate the consolidated registry.
+add_executable(
+    nsc_component_tests_destructive
+    host/src/main.cpp
+    host/src/TestRegistry.cpp
+    host/modules/AstInfrastructurePendingModule.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNodeKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/TypeSyntax.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstDumper.cpp")
+
+target_include_directories(
+    nsc_component_tests_destructive
+    PRIVATE
+        host/include
+        "${CMAKE_CURRENT_LIST_DIR}/../../include")
+target_compile_definitions(
+    nsc_component_tests_destructive
+    PRIVATE
+        NSC_AST_DESTRUCTIVE_TESTS_ENABLED=1)
+target_compile_features(nsc_component_tests_destructive PRIVATE cxx_std_20)
+
 target_include_directories(
     nsc_component_tests
     PRIVATE
@@ -653,10 +679,13 @@ add_custom_command(
 
 if(MSVC)
     target_compile_options(nsc_component_tests PRIVATE /W4 /WX)
+    target_compile_options(nsc_component_tests_destructive PRIVATE /W4 /WX)
 elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(nsc_component_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(nsc_component_tests_destructive PRIVATE -Wall -Wextra -Wpedantic -Werror)
 else()
     target_compile_options(nsc_component_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(nsc_component_tests_destructive PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 add_test(NAME nsc.compiler-suite.infrastructure COMMAND nsc_component_tests --all)
