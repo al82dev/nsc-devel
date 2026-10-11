@@ -122,11 +122,15 @@ void c110(TestContext& c)
 
 void c111(TestContext& c)
 {
-    AnalyzerFixture fixture("struct Broken { Broken Value; void Empty; }");
+    AnalyzerFixture fixture("struct Broken { Broken Value; }");
     fixture.analyze();
     Symbol* symbol = findGlobal(fixture.analyzer(), "Broken");
-    c.expect(symbol != nullptr && symbol->type()->isComplete() && fixture.diagnostics().hasErrors(),
-        "TS-SEMA-111 struct type is marked complete after traversal even when fields diagnosed");
+    c.expect(symbol != nullptr,
+        "TS-SEMA-111 self-recursive struct must still publish its nominal symbol");
+    c.expect(symbol != nullptr && symbol->type()->isComplete(),
+        "TS-SEMA-111 struct type is marked complete after semantic field traversal");
+    c.expect(fixture.diagnostics().hasErrors(),
+        "TS-SEMA-111 semantic layout traversal must diagnose the recursive by-value field");
 }
 }
 

@@ -28,6 +28,47 @@ Scenario badWithPrevious(std::string label, std::string source, DiagnosticId id)
         {{id, {}}, {DiagnosticId::PreviousDeclaration, {}}}, {}};
 }
 
+// The parser intentionally rejects extern-C bodies, so construct the AST directly to keep
+// these contracts at SemanticAnalyzer::analyzeFunction instead of testing parser recovery.
+void analyzeExternCBody(SemaFixture& fixture)
+{
+    fixture.initializeGlobalScope();
+    auto* function = fixture.node(nativesharp::ast::AstNodeKind::FunctionDeclaration);
+    function->setText("F");
+    function->setTypeSyntax(fixture.typeSyntax(nativesharp::lexer::TokenKind::KwInt, "int"));
+    function->setFirst(fixture.node(nativesharp::ast::AstNodeKind::BlockStatement));
+    fixture.analyzer.analyzeFunction(function, true);
+}
+
+void testExternCBodyDiagnostic(TestContext& context)
+{
+    SemaFixture fixture;
+    analyzeExternCBody(fixture);
+    const auto& diagnostics = fixture.diagnostics.diagnostics();
+    context.expect(diagnostics.size() == 1U &&
+            diagnostics.front().id() == DiagnosticId::InvalidType,
+        "TS-SEMA-128 extern-C body must emit exactly InvalidType at the semantic boundary");
+    if (!diagnostics.empty())
+    {
+        context.expect(diagnostics.front().message() ==
+                "extern C functions cannot have a body in NativeSharp 2.0",
+            "TS-SEMA-128 extern-C body diagnostic text must remain exact");
+    }
+}
+
+void testFunctionDiagnosticText(TestContext& context)
+{
+    SemaFixture fixture;
+    analyzeExternCBody(fixture);
+    const auto& diagnostics = fixture.diagnostics.diagnostics();
+    context.expect(diagnostics.size() == 1U &&
+            diagnostics.front().message().find("NativeSharp 2.0") != std::string::npos,
+        "TS-SEMA-135 extern-C body diagnostic must identify the NativeSharp 2.0 contract");
+    sema_flow_support::runScenario(context, "TS-SEMA-135",
+        bad("main-text", "int Main(int x){return x;}", DiagnosticId::InvalidMainSignature,
+            "NativeSharp 2.0 Main"));
+}
+
 // Keeps the parser-facing void/array cases while constructing the incomplete nominal directly.
 // A forward `struct S;` declaration is not part of the current grammar, so using that spelling
 // would stop in Parser and would never exercise SemanticAnalyzer::validateObjectType.
@@ -86,10 +127,7 @@ void registerSemaFunctionModule(TestRegistry& registry)
         badWithPrevious("double-definition", "int F(){return 1;} int F(){return 2;}",
             DiagnosticId::DuplicateFunctionDefinition),
     });
-    addCase(registry, "TS-SEMA-128", "CS-SEMA-015", {
-        bad("extern-body", "extern C { int F(){return 0;} }", DiagnosticId::InvalidType,
-            "extern C functions cannot have a body in NativeSharp 2.0"),
-    });
+    addSemaCase(registry, "TS-SEMA-128", "CS-SEMA-015", "component", testExternCBodyDiagnostic);
     addCase(registry, "TS-SEMA-129", "CS-SEMA-015", {
         ok("scalars", "enum E { A } extern C int F(byte x, int* p, E e);", {"E", "F"}),
     });
@@ -116,11 +154,6 @@ void registerSemaFunctionModule(TestRegistry& registry)
     addCase(registry, "TS-SEMA-134", "CS-SEMA-015", {
         ok("scope", "int F(int x){ { int y=x; } return x; } int G(){int x=2;return x;}", {"F", "G"}),
     });
-    addCase(registry, "TS-SEMA-135", "CS-SEMA-015", {
-        bad("extern-text", "extern C { int F(){return 0;} }", DiagnosticId::InvalidType,
-            "NativeSharp 2.0"),
-        bad("main-text", "int Main(int x){return x;}", DiagnosticId::InvalidMainSignature,
-            "NativeSharp 2.0 Main"),
-    });
+    addSemaCase(registry, "TS-SEMA-135", "CS-SEMA-015", "component", testFunctionDiagnosticText);
 }
 }

@@ -22,13 +22,6 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
 
-Scenario badMany(std::string label, std::string source, std::initializer_list<DiagnosticId> ids)
-{
-    Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
-    for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
-    return scenario;
-}
-
 // The grammar has no forward `struct S;` declaration. Install an incomplete nominal directly
 // and keep the observable under test at SemanticAnalyzer::analyzeIndex.
 void testInvalidPointerIndexBases(TestContext& context)
@@ -57,6 +50,52 @@ void testInvalidPointerIndexBases(TestContext& context)
     context.expect(fixture.diagnostics.diagnostics().size() == 1U &&
             hasDiagnostic(fixture.diagnostics, DiagnosticId::InvalidIndex),
         "TS-SEMA-214 incomplete pointer indexing must emit exactly InvalidIndex");
+}
+
+// A const local without an initializer is rejected by the grammar. Model the bound receiver
+// directly so this case observes only const propagation through member access and assignment.
+void testConstMemberAssignment(TestContext& context)
+{
+    sema_flow_support::runScenario(context, "TS-SEMA-220",
+        ok("mutable", "struct S{int X;}int F(){S s;s.X=1;return s.X;}"));
+
+    SemaFixture fixture;
+    fixture.initializeGlobalScope();
+    auto* integer = fixture.types.builtin(nativesharp::sema::TypeKind::Int);
+    auto* structure = fixture.types.createStruct("S", nullptr);
+    structure->setComplete(true);
+    nativesharp::sema::Symbol structureSymbol(
+        nativesharp::sema::SymbolKind::Struct, "S", structure, nullptr);
+    nativesharp::sema::Symbol field(
+        nativesharp::sema::SymbolKind::Field, "X", integer, nullptr);
+    structureSymbol.addMember(&field);
+    context.expect(fixture.analyzer.globalScope_->declare(&structureSymbol),
+        "TS-SEMA-220 fixture must declare the struct symbol");
+
+    nativesharp::sema::Symbol receiver(
+        nativesharp::sema::SymbolKind::Variable, "s", structure, nullptr);
+    receiver.setConst(true);
+    context.expect(fixture.analyzer.currentScope_->declare(&receiver),
+        "TS-SEMA-220 fixture must declare the const receiver");
+
+    auto* identifier = fixture.node(nativesharp::ast::AstNodeKind::IdentifierExpression);
+    identifier->setText("s");
+    auto* member = fixture.node(nativesharp::ast::AstNodeKind::MemberExpression);
+    member->setFirst(identifier);
+    member->setText("X");
+    auto* assignment = fixture.node(nativesharp::ast::AstNodeKind::AssignmentExpression);
+    assignment->setTokenKind(nativesharp::lexer::TokenKind::Equal);
+    assignment->setFirst(member);
+    assignment->setSecond(fixture.integer(1));
+
+    const auto result = fixture.analyzer.analyzeExpression(assignment);
+    context.expect(result.type != nullptr &&
+            result.type->kind() == nativesharp::sema::TypeKind::Error,
+        "TS-SEMA-220 assignment through a const receiver must return the error type");
+    const auto& diagnostics = fixture.diagnostics.diagnostics();
+    context.expect(diagnostics.size() == 1U &&
+            diagnostics.front().id() == DiagnosticId::InvalidAssignmentTarget,
+        "TS-SEMA-220 const receiver must emit exactly InvalidAssignmentTarget");
 }
 }
 
@@ -110,11 +149,7 @@ void registerSemaIndexMemberModule(TestRegistry& registry)
         bad("struct-arrow", "struct S{int X;}int F(){S s;return s->X;}", DiagnosticId::InvalidMemberAccess),
         bad("scalar-arrow", "int F(){int x=1;return x->Value;}", DiagnosticId::InvalidMemberAccess),
     });
-    addCase(registry, "TS-SEMA-220", "CS-SEMA-021", {
-        ok("mutable", "struct S{int X;}int F(){S s;s.X=1;return s.X;}"),
-        badMany("const", "struct S{int X;}int F(){const S s;s.X=1;return s.X;}",
-            {DiagnosticId::ConstRequiresConstant, DiagnosticId::InvalidAssignmentTarget}),
-    });
+    addSemaCase(registry, "TS-SEMA-220", "CS-SEMA-021", "component", testConstMemberAssignment);
     addCase(registry, "TS-SEMA-221", "CS-SEMA-021", {
         ok("binding", "struct S{int X;}int F(){S s;return s.X;}"),
     });
