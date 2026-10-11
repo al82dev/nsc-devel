@@ -44,9 +44,7 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
         emitted: list[str] = []
         controller = builder.ProcessController(emitted.append)
 
-        completed = controller.run_completed(
-            ["synthetic"], Path("A:/nsc-devel"), timeout=10.0
-        )
+        completed = controller.run_completed(["synthetic"], Path("A:/nsc-devel"))
 
         self.assertEqual(completed.returncode, 0)
         self.assertEqual(completed.stdout, "standard output\n")
@@ -66,32 +64,6 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 130)
         self.assertIn("cancelled before launch", completed.stderr)
         self.assertEqual(controller.last_termination_reason, "cancelled")
-
-    @patch.object(builder.time, "monotonic", side_effect=(0.0, 2.0))
-    @patch.object(builder.subprocess, "Popen")
-    def test_separate_capture_honours_active_timeout(
-        self, popen: object, _monotonic: object
-    ) -> None:
-        activity: list[tuple[float, str]] = []
-        controller = builder.ProcessController(
-            lambda _line: None,
-            lambda *value: activity.append(value),
-        )
-        process = RunningDualProcess()
-        popen.return_value = process
-
-        def terminate(owned: RunningDualProcess) -> None:
-            owned.returncode = 130
-
-        with patch.object(controller, "_terminate_tree", side_effect=terminate):
-            completed = controller.run_completed(
-                ["synthetic"], Path("A:/nsc-devel"), timeout=1.0
-            )
-
-        self.assertEqual(completed.returncode, 130)
-        self.assertIn("timed out", completed.stderr)
-        self.assertEqual(controller.last_termination_reason, "timeout")
-        self.assertEqual(activity, [(2.0, "")])
 
     @patch.object(builder.subprocess, "Popen")
     def test_separate_capture_honours_active_cancellation(self, popen: object) -> None:

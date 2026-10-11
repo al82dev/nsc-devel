@@ -27,7 +27,7 @@ def write_text(path: Path, value: str) -> None:
 
 
 def run_process(
-    command: list[str], cwd: Path, environment: dict[str, str], timeout: float | None = None
+    command: list[str], cwd: Path, environment: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -38,7 +38,6 @@ def run_process(
         errors="replace",
         capture_output=True,
         check=False,
-        **({"timeout": timeout} if timeout is not None else {}),
     )
 
 
@@ -108,7 +107,7 @@ def main() -> int:
         str(executable),
     ]
     write_text(work_root / "compile.command.json", json.dumps(compile_command, indent=2) + "\n")
-    compiled = run_process(compile_command, work_root, environment, 900.0)
+    compiled = run_process(compile_command, work_root, environment)
     write_text(work_root / "compile.stdout.log", compiled.stdout)
     write_text(work_root / "compile.stderr.log", compiled.stderr)
     if compiled.returncode != 0 or not executable.is_file():

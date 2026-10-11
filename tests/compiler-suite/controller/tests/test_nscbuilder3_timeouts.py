@@ -30,7 +30,7 @@ class Builder3DeadlineRemovalTests(unittest.TestCase):
         self.assertNotIn("TA-AST-223", catalog.by_id)
         self.assertNotIn("TA-AST-224", catalog.by_id)
 
-    def test_selfhost_gates_only_budget_fixture_compilation(self) -> None:
+    def test_selfhost_gates_have_no_automatic_deadline(self) -> None:
         integration = (
             REPOSITORY_ROOT / "tests" / "compiler-suite" / "controller" / "integration"
         )
@@ -39,10 +39,15 @@ class Builder3DeadlineRemovalTests(unittest.TestCase):
                 encoding="utf-8"
             )
             with self.subTest(name=name):
-                self.assertIn("timeout: float | None = None", source)
-                self.assertIn('{"timeout": timeout} if timeout is not None else {}', source)
-                self.assertNotIn("timeout=timeout", source)
-                self.assertRegex(source, r"compiled = run_process\([\s\S]*?900\.0\)")
+                self.assertNotIn("timeout", source.casefold())
+
+    def test_process_controller_has_no_automatic_deadline_api(self) -> None:
+        source = (REPOSITORY_ROOT / "nscbuilder3.py").read_text(encoding="utf-8")
+        controller_source = source.split("class ProcessController:", 1)[1].split(
+            "def effective_build_dir", 1
+        )[0]
+        self.assertNotIn("last_termination_reason = \"timeout\"", controller_source)
+        self.assertNotIn("timeout: float | None", controller_source)
 
 
 if __name__ == "__main__":

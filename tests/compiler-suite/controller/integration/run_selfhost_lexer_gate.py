@@ -25,12 +25,11 @@ def write_text(path: Path, value: str) -> None:
 
 
 def run_process(
-    command: list[str], cwd: Path, environment: dict[str, str], timeout: float | None = None
+    command: list[str], cwd: Path, environment: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command, cwd=cwd, env=environment, text=True, encoding="utf-8",
         errors="replace", capture_output=True, check=False,
-        **({"timeout": timeout} if timeout is not None else {}),
     )
 
 
@@ -84,7 +83,7 @@ def main() -> int:
     command = [str(nsc), "--emit-project-oop-exe", str(project), f"-{options.optimization}",
                f"--profile={options.build_mode.lower()}", "-g0", "-o", str(executable)]
     write_text(work_root / "compile.command.json", json.dumps(command, indent=2) + "\n")
-    compiled = run_process(command, work_root, environment, 900.0)
+    compiled = run_process(command, work_root, environment)
     write_text(work_root / "compile.stdout.log", compiled.stdout)
     write_text(work_root / "compile.stderr.log", compiled.stderr)
     if compiled.returncode != 0 or not executable.is_file():

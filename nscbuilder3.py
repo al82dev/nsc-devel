@@ -1758,7 +1758,6 @@ class ProcessController:
         command: Sequence[str],
         cwd: Path,
         environment: dict[str, str] | None = None,
-        timeout: float | None = None,
     ) -> tuple[int, str]:
         """Stream merged output and return exit code plus captured text."""
         self.last_termination_reason = None
@@ -1814,13 +1813,6 @@ class ProcessController:
                 last_activity = now
             if process.poll() is not None and stream_closed and pending.empty():
                 break
-            if timeout is not None and now - started > timeout:
-                self.last_termination_reason = "timeout"
-                self._terminate_tree(process)
-                message = f"process timed out after {timeout:.1f} seconds\n"
-                output.append(message)
-                self.output(message)
-                break
             if self.cancelled.is_set():
                 self.last_termination_reason = "cancelled"
                 self._terminate_tree(process)
@@ -1846,7 +1838,6 @@ class ProcessController:
         command: Sequence[str],
         cwd: Path,
         environment: dict[str, str] | None = None,
-        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run one owned child while preserving stdout and stderr separately."""
         self.last_termination_reason = None
@@ -1917,13 +1908,6 @@ class ProcessController:
                 self.activity(now - started, last_line)
                 last_activity = now
             if process.poll() is not None and len(closed) == 2 and pending.empty():
-                break
-            if timeout is not None and now - started > timeout:
-                self.last_termination_reason = "timeout"
-                self._terminate_tree(process)
-                message = f"process timed out after {timeout:.1f} seconds\n"
-                captured["stderr"].append(message)
-                self.output(message)
                 break
             if self.cancelled.is_set():
                 self.last_termination_reason = "cancelled"
@@ -2829,10 +2813,8 @@ class ExecutionEngine:
             str(fixture_root),
         )
         write_json(fixture_root / "compile.command.json", command)
-        code, captured = self.process.run(command, fixture_root, self._nsc_environment(), 900.0)
+        code, captured = self.process.run(command, fixture_root, self._nsc_environment())
         (fixture_root / "compile.log").write_text(captured, encoding="utf-8", newline="\n")
-        if self.process.last_termination_reason == "timeout":
-            raise RuntimeError(f"fixture {source_project.name} timed out after 900.0 seconds")
         if self.process.last_termination_reason == "cancelled":
             raise RuntimeError(f"fixture {source_project.name} compilation was cancelled")
         if code != 0:
@@ -2919,9 +2901,8 @@ class ExecutionEngine:
             command: Sequence[str],
             cwd: Path,
             environment: dict[str, str],
-            timeout: float | None = None,
         ) -> subprocess.CompletedProcess[str]:
-            return self.process.run_completed(command, cwd, environment, timeout)
+            return self.process.run_completed(command, cwd, environment)
 
         raw_result: Any = None
         gate_error = ""
