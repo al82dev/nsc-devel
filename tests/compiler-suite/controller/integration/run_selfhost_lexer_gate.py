@@ -24,9 +24,14 @@ def write_text(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8", newline="\n")
 
 
-def run_process(command: list[str], cwd: Path, environment: dict[str, str], timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, env=environment, text=True, encoding="utf-8",
-                          errors="replace", capture_output=True, timeout=timeout, check=False)
+def run_process(
+    command: list[str], cwd: Path, environment: dict[str, str], timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command, cwd=cwd, env=environment, text=True, encoding="utf-8",
+        errors="replace", capture_output=True, check=False,
+        **({"timeout": timeout} if timeout is not None else {}),
+    )
 
 
 def main() -> int:

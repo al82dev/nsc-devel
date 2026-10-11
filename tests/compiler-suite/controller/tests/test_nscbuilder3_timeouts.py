@@ -30,6 +30,20 @@ class Builder3DeadlineRemovalTests(unittest.TestCase):
         self.assertNotIn("TA-AST-223", catalog.by_id)
         self.assertNotIn("TA-AST-224", catalog.by_id)
 
+    def test_selfhost_gates_only_budget_fixture_compilation(self) -> None:
+        integration = (
+            REPOSITORY_ROOT / "tests" / "compiler-suite" / "controller" / "integration"
+        )
+        for name in ("basic", "diagnostics", "lexer", "source", "types"):
+            source = integration.joinpath(f"run_selfhost_{name}_gate.py").read_text(
+                encoding="utf-8"
+            )
+            with self.subTest(name=name):
+                self.assertIn("timeout: float | None = None", source)
+                self.assertIn('{"timeout": timeout} if timeout is not None else {}', source)
+                self.assertNotIn("timeout=timeout", source)
+                self.assertRegex(source, r"compiled = run_process\([\s\S]*?900\.0\)")
+
 
 if __name__ == "__main__":
     unittest.main()
