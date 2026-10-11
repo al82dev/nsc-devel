@@ -74,11 +74,15 @@ void workerCancellationContract(TestContext& context, std::size_t variant)
     for (std::size_t index = 0; index < queued; ++index)
         pool.submit([&](std::size_t) { ++executed; });
     pool.requestCancellation();
+    const bool cancellationObserved = pool.cancellationRequested();
     release.store(true, std::memory_order_release);
     pool.wait();
-    context.expect(pool.cancellationRequested() && executed == 1U &&
+    const bool cancellationClosed = !pool.cancellationRequested();
+    pool.submit([&](std::size_t) { ++executed; });
+    pool.wait();
+    context.expect(cancellationObserved && cancellationClosed && executed == 2U &&
             pool.discardedTaskCount() == queued,
-        "cancellation keeps active work, discards queued work, and wait reaches idle");
+        "cancellation closes after wait and the worker pool accepts a new task");
 }
 
 void consoleArgumentsContract(TestContext& context, std::size_t variant)
