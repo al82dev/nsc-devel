@@ -204,7 +204,7 @@ void treeNodeMetadataContract(TestContext& context, std::size_t variant)
     else if (variant == 4)
     {
         auto* root = function->dominatorTree()->root();
-        root->addChild(root->children().front());
+        root->addChild(root);
     }
     else if (variant == 8)
     {
