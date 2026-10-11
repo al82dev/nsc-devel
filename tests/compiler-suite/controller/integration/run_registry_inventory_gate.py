@@ -15,15 +15,6 @@ from component_gate_support import read_csv, read_jsonl
 
 RegistryRow = tuple[str, str, str]
 EXTERNAL_EXECUTOR = "nsc_suite_controller+nsc"
-FUTURE_INVENTORY_FIELDS = {
-    "case_id",
-    "component",
-    "contract_id",
-    "disposition",
-    "required_profile",
-}
-
-
 def expected_registry_rows(
     repository_root: Path, source_root: Path
 ) -> tuple[RegistryRow, ...]:
@@ -76,55 +67,6 @@ def parse_registry_output(output: str) -> tuple[RegistryRow, ...]:
     if rows != sorted(rows):
         raise RuntimeError("host registry is not ordered by case identity")
     return tuple(rows)
-
-
-def future_inventory_rows(
-    source_root: Path, expected: tuple[RegistryRow, ...]
-) -> tuple[RegistryRow, ...]:
-    """Load the versioned future-only surface without making it executable."""
-    path = source_root / "manifest" / "future-infrastructure.jsonl"
-    rows = read_jsonl(path)
-    if not rows:
-        raise RuntimeError("future infrastructure inventory is empty")
-
-    expected_by_id = {row[0]: row for row in expected}
-    manifest_ids = {
-        row.get("case_id")
-        for row in read_jsonl(source_root / "manifest" / "cases.jsonl")
-    }
-    future: list[RegistryRow] = []
-    seen: set[str] = set()
-    for line_number, row in enumerate(rows, start=1):
-        if set(row) != FUTURE_INVENTORY_FIELDS:
-            raise RuntimeError(
-                f"future infrastructure row {line_number} has invalid fields"
-            )
-        if any(not isinstance(row[field], str) or not row[field] for field in row):
-            raise RuntimeError(
-                f"future infrastructure row {line_number} has an empty field"
-            )
-        if row["disposition"] != "InfrastructurePending":
-            raise RuntimeError(
-                f"future infrastructure row {line_number} has invalid disposition"
-            )
-        case_id = row["case_id"]
-        if case_id in seen:
-            raise RuntimeError(f"duplicate future infrastructure case ID: {case_id}")
-        seen.add(case_id)
-        canonical = expected_by_id.get(case_id)
-        candidate = (case_id, row["contract_id"], row["component"])
-        if canonical is None:
-            raise RuntimeError(f"future infrastructure case is not canonical: {case_id}")
-        if candidate != canonical:
-            raise RuntimeError(
-                f"future infrastructure metadata differs from design: {case_id}"
-            )
-        if case_id in manifest_ids:
-            raise RuntimeError(
-                f"future infrastructure case is present in executable manifest: {case_id}"
-            )
-        future.append(candidate)
-    return tuple(sorted(future))
 
 
 def external_inventory_rows(
@@ -185,37 +127,19 @@ def external_inventory_rows(
 
 def validate_inventory_partition(
     expected: tuple[RegistryRow, ...],
-    future: tuple[RegistryRow, ...],
     ordinary: tuple[RegistryRow, ...],
     destructive: tuple[RegistryRow, ...],
     source_extended: tuple[RegistryRow, ...],
-    pending: tuple[RegistryRow, ...],
     external: tuple[RegistryRow, ...],
 ) -> None:
     expected_by_id = {row[0]: row[1:] for row in expected}
-    future_by_id = {row[0]: row[1:] for row in future}
-    if len(future_by_id) != len(future):
-        raise RuntimeError("future infrastructure inventory contains duplicate case IDs")
-    foreign_future = sorted(set(future_by_id) - set(expected_by_id))
-    changed_future = sorted(
-        case_id
-        for case_id in set(future_by_id) & set(expected_by_id)
-        if future_by_id[case_id] != expected_by_id[case_id]
-    )
-    if foreign_future or changed_future:
-        raise RuntimeError(
-            "future infrastructure inventory differs from canonical design; "
-            f"foreign={foreign_future}; changed={changed_future}"
-        )
-
     surfaces = {
         "ordinary": ordinary,
         "destructive": destructive,
         "source-extended": source_extended,
-        "pending": pending,
         "external": external,
     }
-    owner_by_id = {case_id: "future" for case_id in future_by_id}
+    owner_by_id: dict[str, str] = {}
     combined: list[RegistryRow] = []
     overlaps: list[str] = []
     for owner, rows in surfaces.items():
@@ -227,18 +151,13 @@ def validate_inventory_partition(
                 owner_by_id[row[0]] = owner
                 combined.append(row)
 
-    runtime_expected_by_id = {
-        case_id: metadata
-        for case_id, metadata in expected_by_id.items()
-        if case_id not in future_by_id
-    }
     actual_by_id = {row[0]: row[1:] for row in combined}
-    missing = sorted(set(runtime_expected_by_id) - set(actual_by_id))
-    unexpected = sorted(set(actual_by_id) - set(runtime_expected_by_id))
+    missing = sorted(set(expected_by_id) - set(actual_by_id))
+    unexpected = sorted(set(actual_by_id) - set(expected_by_id))
     changed = sorted(
         case_id
-        for case_id in set(runtime_expected_by_id) & set(actual_by_id)
-        if runtime_expected_by_id[case_id] != actual_by_id[case_id]
+        for case_id in set(expected_by_id) & set(actual_by_id)
+        if expected_by_id[case_id] != actual_by_id[case_id]
     )
     if overlaps or missing or unexpected or changed:
         raise RuntimeError(
@@ -277,16 +196,14 @@ def main() -> int:
     options = parser.parse_args()
 
     expected = expected_registry_rows(options.repository_root, options.source_root)
-    future = future_inventory_rows(options.source_root, expected)
     ordinary = listed_registry_rows(options.host_executable, "--list")
     destructive = listed_registry_rows(options.destructive_host_executable, "--list")
     source_extended = listed_registry_rows(options.source_extended_host_executable, "--list")
-    pending = listed_registry_rows(options.host_executable, "--list-pending")
     external = external_inventory_rows(
         options.repository_root, options.source_root, expected
     )
     validate_inventory_partition(
-        expected, future, ordinary, destructive, source_extended, pending, external
+        expected, ordinary, destructive, source_extended, external
     )
     return 0
 

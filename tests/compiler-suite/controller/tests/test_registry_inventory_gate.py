@@ -15,7 +15,6 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 from run_registry_inventory_gate import (
     external_inventory_rows,
     expected_registry_rows,
-    future_inventory_rows,
     parse_registry_output,
     validate_inventory_partition,
 )
@@ -43,21 +42,6 @@ class RegistryInventoryGateTests(unittest.TestCase):
         expected_ids = {row[0] for row in expected}
         self.assertEqual({row[0] for row in external} - expected_ids, set())
 
-    def test_future_inventory_is_explicit_canonical_and_non_executable(self) -> None:
-        expected = expected_registry_rows(REPOSITORY_ROOT, SUITE_ROOT)
-        future = future_inventory_rows(SUITE_ROOT, expected)
-        self.assertEqual(
-            {row[0] for row in future},
-            {
-                "TA-AST-017",
-                "TA-AST-223",
-                "TA-AST-224",
-                "TS-SEMA-077",
-                "TS-SEMA-094",
-                "TS-SRC-049",
-            },
-        )
-
     def test_partition_rejects_overlap_omission_and_changed_metadata(self) -> None:
         expected = (
             ("A", "CA", "Host.A"),
@@ -65,33 +49,28 @@ class RegistryInventoryGateTests(unittest.TestCase):
             ("C", "CC", "SelfHost.C"),
             ("D", "CD", "Host.D"),
         )
-        future = (expected[3],)
         validate_inventory_partition(
-            expected, future, (expected[0],), (expected[1],), (), (expected[2],), ()
+            expected, (expected[0],), (expected[1],), (), (expected[2], expected[3])
         )
         with self.assertRaisesRegex(RuntimeError, "overlaps"):
             validate_inventory_partition(
                 expected,
-                future,
                 (expected[0], expected[3]),
                 (expected[1],),
                 (),
                 (expected[2],),
-                (),
             )
         with self.assertRaisesRegex(RuntimeError, "missing"):
             validate_inventory_partition(
-                expected, future, (expected[0],), (), (), (expected[2],), ()
+                expected, (expected[0],), (), (), (expected[2], expected[3])
             )
         with self.assertRaisesRegex(RuntimeError, "changed"):
             validate_inventory_partition(
                 expected,
-                future,
                 (("A", "wrong", "Host.A"),),
                 (expected[1],),
                 (),
-                (expected[2],),
-                (),
+                (expected[2], expected[3]),
             )
 
 

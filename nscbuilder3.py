@@ -63,24 +63,6 @@ RESULT_STATUSES = TERMINAL_FAILURES | {"PASS", "KNOWN_FAILURE"}
 # canonical envelope still carries ``"SKIPPED": 0``. Keep that reporting-only
 # status separate so execution routing does not silently start accepting skips.
 IDENTITY_COUNT_STATUSES = RESULT_STATUSES | {"SKIPPED"}
-NON_EXECUTABLE = {
-    "InfrastructurePending",
-    "HistoricalDelegated",
-    "PlanContradiction",
-    "MetadataConflict",
-    "UNCLASSIFIED",
-}
-DISPOSITION_VALUES = NON_EXECUTABLE | {"Executable", "KnownProductDefect"}
-DISPOSITION_METADATA_ONLY_NAMES = frozenset(
-    {
-        "PackagingPlanContradictions.jsonl",
-        "SelfHostBootstrapInfrastructurePlanContradictions.jsonl",
-        "SelfHostContractsPlanContradictions.jsonl",
-        "SelfHostProjectPlanContradictions.jsonl",
-    }
-)
-INFERRED_DISPOSITIONS: dict[str, str] = {}
-CATALOG_CASE_ID = re.compile(r"^[A-Z][A-Z0-9-]*-[0-9]{3,}$")
 NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
 CONFIG_STRING_FIELDS = (
     "nsc_executable",
@@ -230,75 +212,6 @@ def validate_allocation_domains(rows: Sequence[dict[str, str]]) -> None:
                     f"allocation {case_id} mixes sentinel in {field_name}: "
                     f"{row[field_name]!r}"
                 )
-
-
-def expand_catalog_case_range(path: Path, value: Any) -> tuple[str, ...]:
-    """Expand one canonical ascending case range without silent empty output."""
-    if not isinstance(value, str) or value.count("..") != 1:
-        raise ValueError(f"{path}: invalid case range: {value!r}")
-    start, end = value.split("..", maxsplit=1)
-    left = re.fullmatch(r"(.*?)([0-9]+)", start)
-    right = re.fullmatch(r"(.*?)([0-9]+)", end)
-    if (
-        left is None
-        or right is None
-        or left.group(1) != right.group(1)
-        or len(left.group(2)) != len(right.group(2))
-        or CATALOG_CASE_ID.fullmatch(start) is None
-        or CATALOG_CASE_ID.fullmatch(end) is None
-    ):
-        raise ValueError(f"{path}: invalid case range: {value!r}")
-    first = int(left.group(2))
-    last = int(right.group(2))
-    if first > last:
-        raise ValueError(f"{path}: descending case range: {value!r}")
-    width = len(left.group(2))
-    return tuple(
-        f"{left.group(1)}{number:0{width}d}" for number in range(first, last + 1)
-    )
-
-
-def parse_disposition_row(
-    path: Path, row: dict[str, Any]
-) -> tuple[tuple[str, ...], str] | None:
-    """Parse one case disposition row or one explicitly inventoried metadata row."""
-    identity_fields = [
-        field
-        for field in ("case_id", "case_ids", "affected_case_ids", "case_range")
-        if field in row
-    ]
-    if not identity_fields:
-        if path.name in DISPOSITION_METADATA_ONLY_NAMES:
-            return None
-        raise ValueError(f"{path}: disposition row has no supported case identity")
-    if len(identity_fields) != 1:
-        raise ValueError(f"{path}: disposition row has ambiguous case identity")
-    identity = identity_fields[0]
-    value = row[identity]
-    if identity == "case_id":
-        if not isinstance(value, str) or CATALOG_CASE_ID.fullmatch(value) is None:
-            raise ValueError(f"{path}: invalid case identity in case_id")
-        case_ids = (value,)
-    elif identity == "case_range":
-        case_ids = expand_catalog_case_range(path, value)
-    else:
-        if (
-            not isinstance(value, list)
-            or not value
-            or not all(
-                isinstance(item, str) and CATALOG_CASE_ID.fullmatch(item) is not None
-                for item in value
-            )
-            or len(value) != len(set(value))
-        ):
-            raise ValueError(f"{path}: invalid case identity in {identity}")
-        case_ids = tuple(value)
-    disposition = row.get("disposition")
-    if disposition is None:
-        disposition = INFERRED_DISPOSITIONS.get(path.name)
-    if not isinstance(disposition, str) or disposition not in DISPOSITION_VALUES:
-        raise ValueError(f"{path}: invalid disposition: {disposition!r}")
-    return case_ids, disposition
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -739,7 +652,7 @@ class CaseRecord:
     @property
     def executable(self) -> bool:
         """Report whether the central executable manifest owns this case."""
-        return self.manifest is not None and self.disposition not in NON_EXECUTABLE
+        return self.manifest is not None
 
 
 @dataclass(frozen=True)
@@ -898,7 +811,7 @@ def case_evidence_output(
 
 
 class CanonicalCatalog:
-    """Join Phase 2 inventories without hiding non-executable dispositions."""
+    """Join the executable Phase 2 design, allocation, and manifest inventories."""
 
     def __init__(self, cases: Sequence[CaseRecord]) -> None:
         self.cases = tuple(cases)
@@ -929,15 +842,7 @@ class CanonicalCatalog:
         ]
         validate_allocation_domains(allocation_rows)
         manifest_rows = read_jsonl(MANIFEST_PATH)
-        dispositions = cls._load_dispositions()
         cls._validate_sources(design, allocation_rows, manifest_rows, waves)
-        foreign_dispositions = sorted(
-            set(dispositions) - {row["case_id"] for row in design}
-        )
-        if foreign_dispositions:
-            raise ValueError(
-                f"disposition catalogues contain {len(foreign_dispositions)} foreign cases"
-            )
         allocation = {row["case_id"]: row for row in allocation_rows}
         manifest = {row["case_id"]: row for row in manifest_rows}
         cases: list[CaseRecord] = []
@@ -946,7 +851,7 @@ class CanonicalCatalog:
             assigned = allocation[case_id]
             executable = manifest.get(case_id)
             canonical = validated_by_id.get(case_id)
-            disposition = dispositions.get(case_id, "Executable" if executable else "UNCLASSIFIED")
+            disposition = "Executable"
             expected = ""
             if canonical is not None:
                 expected = canonical.expected_outcome
@@ -982,7 +887,7 @@ class CanonicalCatalog:
 
     @staticmethod
     def _optimizations(allocation: dict[str, str]) -> tuple[str, ...]:
-        """Normalize non-executable allocation optimizations for display."""
+        """Normalize allocation optimizations for display."""
         values = split_semicolon(allocation["supported_optimizations"])
         normalized = tuple("NA" if value in {"N/A", ""} else value for value in values)
         return normalized or ("NA",)
@@ -1032,41 +937,9 @@ class CanonicalCatalog:
         foreign_manifest = sorted(set(manifest_ids) - design_set)
         if foreign_manifest:
             raise ValueError(f"manifest contains {len(foreign_manifest)} non-canonical cases")
-
-    @staticmethod
-    def _load_dispositions() -> dict[str, str]:
-        """Collect explicit case dispositions from all Phase 2 JSONL catalogues."""
-        dispositions: dict[str, str] = {}
-        for path in sorted(SUITE_ROOT.rglob("*.jsonl")):
-            if (
-                path == MANIFEST_PATH
-                or path.parent.name == "infrastructure"
-                or path.name == "SelfHostBootstrapInfrastructureCatalog.jsonl"
-            ):
-                continue
-            for row in read_jsonl(path):
-                parsed = parse_disposition_row(path, row)
-                if parsed is None:
-                    continue
-                case_ids, disposition = parsed
-                if (
-                    disposition == "InfrastructurePending"
-                    and path.name != "future-infrastructure.jsonl"
-                ):
-                    continue
-                for case_id in case_ids:
-                    previous = dispositions.get(case_id)
-                    if previous and previous != disposition:
-                        if previous == "Executable":
-                            dispositions[case_id] = disposition
-                        elif disposition != "Executable":
-                            raise ValueError(
-                                f"conflicting dispositions for {case_id}: "
-                                f"{previous} and {disposition}"
-                            )
-                    elif not previous:
-                        dispositions[case_id] = disposition
-        return dispositions
+        missing_manifest = sorted(design_set - set(manifest_ids))
+        if missing_manifest:
+            raise ValueError(f"manifest is missing {len(missing_manifest)} canonical cases")
 
     def summary(self) -> dict[str, Any]:
         """Return deterministic catalogue counts for the audit mode and GUI."""
@@ -3115,10 +2988,6 @@ def catalog_audit() -> dict[str, Any]:
     catalog = CanonicalCatalog.load()
     summary = catalog.summary()
     summary["manifest_rows"] = len(read_jsonl(MANIFEST_PATH))
-    summary["non_executable"] = len(catalog.cases) - int(summary["executable"])
-    summary["unclassified"] = sum(
-        case.disposition == "UNCLASSIFIED" for case in catalog.cases
-    )
     return summary
 
 
@@ -5902,7 +5771,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.audit_catalog:
             summary = catalog_audit()
             print(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True))
-            return 1 if summary["unclassified"] else 0
+            return 0
         return launch_gui(smoke_only=arguments.gui_smoke)
     except Exception as error:
         print(f"nscbuilder3: error: {error}", file=sys.stderr)
