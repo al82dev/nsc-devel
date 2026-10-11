@@ -1846,6 +1846,123 @@ def effective_build_dir(config: BuilderConfig, mode: str) -> Path:
     return Path(config.build_root).resolve() / mode.casefold()
 
 
+@dataclass(frozen=True)
+class TestTreeCleanupResult:
+    """Summarize one bounded cleanup of generated test-build directories."""
+
+    targets: tuple[Path, ...]
+    missing_targets: tuple[Path, ...]
+    removed_files: int
+    removed_directories: int
+    failures: tuple[str, ...]
+
+
+def _has_reparse_attribute(path: Path) -> bool:
+    """Detect Windows junctions and other reparse points without following them."""
+    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    return bool(attributes & 0x400)
+
+
+def _ensure_plain_path(path: Path, label: str) -> None:
+    """Reject symlinks or junctions in an existing path before destructive work."""
+    existing: list[Path] = []
+    current = path
+    while True:
+        if current.exists() or current.is_symlink():
+            existing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for candidate in reversed(existing):
+        if candidate.is_symlink() or _has_reparse_attribute(candidate):
+            raise ValueError(f"{label} crosses a symbolic link or junction: {candidate}")
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    """Return whether either absolute path contains the other."""
+    return left == right or left in right.parents or right in left.parents
+
+
+def test_tree_cleanup_targets(config: BuilderConfig) -> tuple[Path, ...]:
+    """Return the only test-build roots that Builder 3 is allowed to remove."""
+    raw_root = Path(os.path.abspath(config.build_root))
+    if not is_a_drive(raw_root):
+        raise ValueError(f"test build root must be on A:, got {raw_root}")
+    if raw_root.parent == raw_root:
+        raise ValueError("test build root cannot be a drive root")
+    _ensure_plain_path(raw_root, "test build root")
+    root = raw_root.resolve()
+    targets = tuple(root / mode.casefold() for mode in ("Debug", "Release"))
+
+    protected = (
+        SUITE_ROOT.resolve(),
+        STORAGE_ROOT.resolve(),
+        compiler_build_dir(config, "Debug").resolve(),
+        compiler_build_dir(config, "Release").resolve(),
+        Path(config.install_prefix).resolve(),
+        Path(config.nsc_executable).resolve().parent,
+        Path(config.nslink_executable).resolve().parent,
+    )
+    for target in targets:
+        if target.parent != root:
+            raise ValueError(f"test cleanup target escaped its configured root: {target}")
+        if target == SOURCE_ROOT or target in SOURCE_ROOT.parents:
+            raise ValueError(f"test cleanup target contains the source tree: {target}")
+        if any(_paths_overlap(target, reserved) for reserved in protected):
+            raise ValueError(f"test cleanup target overlaps a protected path: {target}")
+        _ensure_plain_path(target, "test cleanup target")
+    return targets
+
+
+def clean_test_build_trees(config: BuilderConfig) -> TestTreeCleanupResult:
+    """Delete selected generated trees with an explicit iterative post-order walk."""
+    targets = test_tree_cleanup_targets(config)
+    removed_files = 0
+    removed_directories = 0
+    missing: list[Path] = []
+    failures: list[str] = []
+
+    for root in targets:
+        if not root.exists():
+            missing.append(root)
+            continue
+        stack: list[tuple[Path, bool]] = [(root, False)]
+        while stack:
+            path, visited = stack.pop()
+            try:
+                if visited:
+                    path.rmdir()
+                    removed_directories += 1
+                    continue
+                if path.is_symlink() or _has_reparse_attribute(path):
+                    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+                    if attributes & 0x10:
+                        path.rmdir()
+                        removed_directories += 1
+                    else:
+                        path.unlink()
+                        removed_files += 1
+                    continue
+                if not path.is_dir():
+                    path.unlink()
+                    removed_files += 1
+                    continue
+                stack.append((path, True))
+                with os.scandir(path) as entries:
+                    children = [Path(entry.path) for entry in entries]
+                stack.extend((child, False) for child in children)
+            except OSError as error:
+                failures.append(f"{path}: {error}")
+
+    return TestTreeCleanupResult(
+        targets=tuple(targets),
+        missing_targets=tuple(missing),
+        removed_files=removed_files,
+        removed_directories=removed_directories,
+        failures=tuple(failures),
+    )
+
+
 def compiler_build_dir(config: BuilderConfig, mode: str) -> Path:
     """Keep Debug and Release compiler products in independent build trees."""
     release = Path(config.compiler_build_root).resolve()
@@ -3284,6 +3401,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_optimization.addItems(["O0", "O1", "O2", "O3"])
             self.compiler_configure_button = QPushButton("Configurar NSC")
             self.compiler_build_button = QPushButton("Construir NSC")
+            self.clean_test_tree_button = QPushButton("Limpiar árbol de pruebas")
+            self.clean_test_tree_button.setToolTip(
+                "Elimina únicamente los builds Debug y Release de la infraestructura "
+                "de pruebas configurada."
+            )
             self.infrastructure_cancel_button = QPushButton("Cancelar construcción")
             self.infrastructure_cancel_button.setEnabled(False)
             compiler_controls.addWidget(QLabel("Build"))
@@ -3294,6 +3416,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             compiler_controls.addWidget(self.compiler_optimization)
             compiler_controls.addWidget(self.compiler_configure_button)
             compiler_controls.addWidget(self.compiler_build_button)
+            compiler_controls.addWidget(self.clean_test_tree_button)
             compiler_controls.addWidget(self.infrastructure_cancel_button)
             compiler_controls.addStretch(1)
             layout.addWidget(compiler_group)
@@ -3337,6 +3460,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_build_button.clicked.connect(
                 lambda: self._start_infrastructure("compiler-build")
             )
+            self.clean_test_tree_button.clicked.connect(self._clean_test_tree)
             self.infrastructure_cancel_button.clicked.connect(self._cancel_active)
             self.configure_button.clicked.connect(
                 lambda: self._start_infrastructure("tests-configure")
@@ -3687,6 +3811,128 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.infrastructure_log.setPlainText("\n".join(lines))
             except Exception as error:
                 self._show_error("No se pudo validar el recibo", error)
+
+        def _clean_test_tree(self) -> None:
+            """Remove only generated test builds after an exact-path confirmation."""
+            if self.worker is not None:
+                QMessageBox.warning(
+                    self,
+                    "Hay un proceso activo",
+                    "No se puede limpiar el árbol de pruebas mientras Builder 3 "
+                    "ejecuta o construye un proceso. Cancélalo y espera a que termine "
+                    "antes de volver a intentarlo.",
+                )
+                self.statusBar().showMessage(
+                    "Limpieza rechazada: todavía hay un proceso activo", 8000
+                )
+                return
+            try:
+                config = self._config_from_ui().validated(require_tools=False)
+                targets = test_tree_cleanup_targets(config)
+            except Exception as error:
+                self._show_error("No se puede limpiar el árbol de pruebas", error)
+                return
+
+            existing = tuple(path for path in targets if path.exists())
+            path_lines = [
+                f"• {path} ({'existe' if path.exists() else 'no existe'})"
+                for path in targets
+            ]
+            if not existing:
+                message = (
+                    "No hay artefactos generados que limpiar en:\n\n"
+                    + "\n".join(path_lines)
+                )
+                self.infrastructure_stage.setText("Árbol de pruebas ya limpio")
+                self.infrastructure_progress_detail.setText(message)
+                self.infrastructure_log.setPlainText(message)
+                self.statusBar().showMessage("Árbol de pruebas ya limpio", 8000)
+                self._preview_plan()
+                self._refresh_history()
+                QMessageBox.information(self, "Árbol de pruebas limpio", message)
+                return
+
+            prompt = (
+                "Se eliminarán únicamente estos árboles generados de pruebas:\n\n"
+                + "\n".join(path_lines)
+                + "\n\nLa limpieza incluye binarios, objetos y archivos de "
+                "configuración/build contenidos en esas rutas. No modifica fuentes, "
+                "manifiestos, historial/evidencias, la instalación de NSC ni el build "
+                "del compilador. ¿Continuar?"
+            )
+            answer = QMessageBox.warning(
+                self,
+                "Confirmar limpieza del árbol de pruebas",
+                prompt,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.statusBar().showMessage("Limpieza cancelada por el usuario", 5000)
+                return
+            if self.worker is not None:
+                QMessageBox.warning(
+                    self,
+                    "Hay un proceso activo",
+                    "La limpieza no comenzó porque se inició otro proceso.",
+                )
+                return
+
+            self._set_busy(True)
+            self.infrastructure_stage.setText("Limpiando árbol generado de pruebas")
+            self.infrastructure_progress.setRange(0, 0)
+            self.infrastructure_progress.setFormat("Limpieza en curso")
+            self.infrastructure_progress_detail.setText("\n".join(path_lines))
+            try:
+                result = clean_test_build_trees(config)
+            except Exception as error:
+                self._show_error("Falló la limpieza del árbol de pruebas", error)
+                return
+            finally:
+                self._set_busy(False)
+
+            lines = [
+                "LIMPIEZA DEL ÁRBOL DE PRUEBAS",
+                "=" * 72,
+                *(f"Ruta: {path}" for path in result.targets),
+                f"Archivos eliminados: {result.removed_files:,}",
+                f"Directorios eliminados: {result.removed_directories:,}",
+                f"Rutas ya ausentes: {len(result.missing_targets):,}",
+            ]
+            if result.failures:
+                lines.extend(("", "ERRORES:"))
+                lines.extend(result.failures)
+            self.infrastructure_log.setPlainText("\n".join(lines))
+            self.infrastructure_progress.setRange(0, 1)
+            self.infrastructure_progress.setValue(1)
+            self._preview_plan()
+            self._refresh_history()
+            if result.failures:
+                self.infrastructure_stage.setText("Limpieza incompleta")
+                self.infrastructure_progress.setFormat("Limpieza incompleta")
+                self.infrastructure_progress_detail.setText(
+                    f"{len(result.failures):,} rutas no pudieron eliminarse; "
+                    "revisa el registro."
+                )
+                QMessageBox.critical(
+                    self,
+                    "Limpieza incompleta",
+                    f"Se encontraron {len(result.failures):,} errores. "
+                    "No se tocó ninguna ruta fuera de los árboles confirmados.",
+                )
+            else:
+                self.infrastructure_stage.setText("Árbol de pruebas limpio")
+                self.infrastructure_progress.setFormat("Limpieza terminada")
+                self.infrastructure_progress_detail.setText(
+                    f"Eliminados {result.removed_files:,} archivos y "
+                    f"{result.removed_directories:,} directorios."
+                )
+                self.statusBar().showMessage("Árbol de pruebas limpio", 8000)
+                QMessageBox.information(
+                    self,
+                    "Árbol de pruebas limpio",
+                    "La próxima construcción/configuración de pruebas partirá de cero.",
+                )
 
         def _start_infrastructure(self, operation: str) -> None:
             if self.worker is not None:
@@ -4651,6 +4897,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         def _set_busy(self, busy: bool) -> None:
             self.compiler_configure_button.setEnabled(not busy)
             self.compiler_build_button.setEnabled(not busy)
+            self.clean_test_tree_button.setEnabled(not busy)
             self.configure_button.setEnabled(not busy)
             self.build_button.setEnabled(not busy)
             self.run_button.setEnabled(not busy)
