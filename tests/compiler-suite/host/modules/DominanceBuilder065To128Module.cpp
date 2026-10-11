@@ -89,6 +89,17 @@ void nearestCommonDominatorContract(TestContext& context, std::size_t variant)
             "TF-DOM-076 TEST-INFRASTRUCTURE: a broken parent/depth chain requires crash isolation");
         return;
     }
+    if (variant == 8)
+    {
+        const cfg::CfgNode* root = graph.nodes.front();
+        const cfg::CfgNode* middle = graph.nodes[graph.nodes.size() / 2U];
+        const cfg::CfgNode* tail = graph.nodes.back();
+        context.expect(tree->nearestCommonDominator(root, tail) == root &&
+                tree->nearestCommonDominator(middle, tail) == middle &&
+                tree->nearestCommonDominator(tail, tail) == tail,
+            "TF-DOM-080 linear scale queries preserve root, ancestor and identity contracts");
+        return;
+    }
     const DominatorSets sets = computeDominatorSets(graph.function);
     bool exact = true;
     for (const cfg::CfgNode* first : graph.function->reversePostOrder())
