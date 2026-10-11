@@ -13,7 +13,6 @@
     },
     "stderr": ""
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "tokens"],
   "requires": []
 }

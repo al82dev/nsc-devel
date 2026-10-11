@@ -22,7 +22,6 @@ ALLOWED_KEYS = {
     "optimization",
     "stdin",
     "expected",
-    "timeout_seconds",
     "tags",
     "requires",
     "working_files",
@@ -83,7 +82,6 @@ class TestCase:
     optimization: str
     stdin: str | None
     expected: ExpectedOutcome
-    timeout_seconds: float
     tags: tuple[str, ...]
     requires: tuple[str, ...]
     working_files: tuple[Path, ...]
@@ -131,9 +129,6 @@ class TestCase:
             raise ManifestError(f"invalid optimization in {path}: {optimization}")
         arguments = tuple(string_list(payload, "arguments", path))
         stdin = optional_string(payload, "stdin", path)
-        timeout = payload.get("timeout_seconds", 60.0)
-        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
-            raise ManifestError(f"timeout_seconds must be positive in {path}")
         expected = parse_expected(payload.get("expected"), path)
         tags = tuple(string_list(payload, "tags", path))
         requires = tuple(string_list(payload, "requires", path))
@@ -151,7 +146,6 @@ class TestCase:
             optimization=optimization,
             stdin=stdin,
             expected=expected,
-            timeout_seconds=float(timeout),
             tags=tags,
             requires=requires,
             working_files=working_files,

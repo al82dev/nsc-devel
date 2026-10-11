@@ -9,7 +9,6 @@
     "exit_code": 0,
     "stdout": {"mode": "regex", "text": "CompoundAssignment.*read-conversion=integral-promotion"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "legacy-parity", "hir"],
   "requires": []
 }

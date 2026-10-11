@@ -101,7 +101,6 @@ class ReportWriter:
                     f"passed={str(result.passed).lower()}",
                     f"command={subprocess.list2cmdline(list(result.process.command))}",
                     f"exit_code={result.process.exit_code}",
-                    f"timed_out={str(result.process.timed_out).lower()}",
                 ]
             )
             for failure in result.failures:
@@ -130,7 +129,6 @@ class ReportWriter:
             "stdout": process.stdout,
             "stderr": process.stderr,
             "duration_seconds": process.duration_seconds,
-            "timed_out": process.timed_out,
         }
 
     @staticmethod
@@ -145,7 +143,6 @@ class ReportWriter:
                     f"command={subprocess.list2cmdline(list(process.command))}",
                     f"working_directory={process.working_directory}",
                     f"exit_code={process.exit_code}",
-                    f"timed_out={str(process.timed_out).lower()}",
                     f"duration_seconds={process.duration_seconds:.6f}",
                     "--- stdout ---",
                     process.stdout,

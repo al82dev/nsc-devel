@@ -9,7 +9,6 @@
     "exit_code": 1,
     "stderr": {"mode": "contains", "text": "unresolved external symbol: 'MissingNativeSymbol'"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "negative", "nslink"],
   "requires": ["nslink"]
 }

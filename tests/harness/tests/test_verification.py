@@ -132,7 +132,6 @@ class ResultVerifierTests(unittest.TestCase):
                     stdout="first\nintermediate\nlast\n",
                     stderr="",
                     duration_seconds=0.1,
-                    timed_out=False,
                 )
                 result = ResultVerifier().verify(case, workspace, process)
                 self.assertTrue(result.passed)
@@ -174,7 +173,6 @@ class ResultVerifierTests(unittest.TestCase):
                     stdout="compiled Main.ns\n",
                     stderr="",
                     duration_seconds=0.1,
-                    timed_out=False,
                 )
                 result = ResultVerifier().verify(case, workspace, process)
                 self.assertTrue(result.passed)
@@ -216,7 +214,6 @@ class ResultVerifierTests(unittest.TestCase):
                     stdout="different\n",
                     stderr="",
                     duration_seconds=0.1,
-                    timed_out=False,
                 )
                 result = ResultVerifier().verify(case, workspace, process)
                 self.assertFalse(result.passed)

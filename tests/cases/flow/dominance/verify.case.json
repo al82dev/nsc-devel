@@ -9,7 +9,6 @@
     "exit_code": 0,
     "stdout": {"mode": "contains", "text": "Dominance verification: ok"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "dominance", "verification"],
   "requires": []
 }

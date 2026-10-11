@@ -9,7 +9,6 @@
     "exit_code": 0,
     "stdout": {"mode": "regex", "text": "LLVM optimization verification: ok"}
   },
-  "timeout_seconds": 60,
   "tags": ["legacy-parity", "fixed-profile"],
   "requires": []
 }

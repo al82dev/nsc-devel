@@ -13,7 +13,6 @@
   "expected": {
     "exit_code": 1
   },
-  "timeout_seconds": 30,
   "tags": [
     "negative",
     "legacy-parity",

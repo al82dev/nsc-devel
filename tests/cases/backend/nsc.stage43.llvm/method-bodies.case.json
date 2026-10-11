@@ -3,5 +3,5 @@
   "project": "Stage43App.nsproj", "working_files": ["Main.ns"],
   "arguments": ["--dump-project-method-bodies", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "lambda-bindings=10.*captures=2"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

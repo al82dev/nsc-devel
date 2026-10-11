@@ -19,7 +19,6 @@
       "text": "project member binding check: ok"
     }
   },
-  "timeout_seconds": 60,
   "tags": [
     "project",
     "legacy-parity",

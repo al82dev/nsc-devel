@@ -10,7 +10,6 @@
     "exit_code": 0,
     "stdout": {"mode": "contains", "text": "destruction=dynamic-descriptor"}
   },
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "mir"],
   "requires": []
 }

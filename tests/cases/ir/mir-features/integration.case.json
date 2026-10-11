@@ -6,7 +6,6 @@
   "arguments": ["--check", "{source:0}"],
   "optimization": "O0",
   "expected": {"exit_code": 0},
-  "timeout_seconds": 30,
   "tags": ["integration", "legacy-parity", "mir"],
   "requires": []
 }

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -28,25 +27,11 @@ class ProcessExecutorTests(unittest.TestCase):
                     "import sys; print('out'); print('err', file=sys.stderr); raise SystemExit(7)",
                 ),
                 working_directory=Path(__file__).resolve().parents[3],
-                timeout_seconds=5,
             )
         )
         self.assertEqual(result.exit_code, 7)
         self.assertEqual(result.stdout, "out\n")
         self.assertEqual(result.stderr, "err\n")
-        self.assertFalse(result.timed_out)
-
-    def test_timeout_terminates_process(self) -> None:
-        started = time.perf_counter()
-        result = ProcessExecutor().execute(
-            ProcessRequest(
-                command=(sys.executable, "-c", "import time; time.sleep(30)"),
-                working_directory=Path(__file__).resolve().parents[3],
-                timeout_seconds=0.2,
-            )
-        )
-        self.assertTrue(result.timed_out)
-        self.assertLess(time.perf_counter() - started, 5)
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -88,7 +73,6 @@ class ReportWriterTests(unittest.TestCase):
             ProcessRequest(
                 command=(sys.executable, "-c", "print('report-output')"),
                 working_directory=repo,
-                timeout_seconds=5,
             )
         )
         output = ReportWriter(root).write(

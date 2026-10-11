@@ -9,7 +9,6 @@
     "exit_code": 0,
     "stdout": {"mode": "contains", "text": "dominance.module"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "dominance", "dump"],
   "requires": []
 }

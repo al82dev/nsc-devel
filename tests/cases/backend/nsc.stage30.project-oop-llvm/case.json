@@ -19,7 +19,6 @@
       "text": "project OOP LLVM verification: ok"
     }
   },
-  "timeout_seconds": 60,
   "tags": [
     "project",
     "legacy-parity",

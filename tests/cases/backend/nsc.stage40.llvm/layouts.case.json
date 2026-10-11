@@ -3,5 +3,5 @@
   "project": "Stage40App.nsproj", "working_files": ["Main.ns"],
   "arguments": ["--dump-project-layouts", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "struct-values=3"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

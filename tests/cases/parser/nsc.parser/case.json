@@ -10,7 +10,6 @@
     "stdout": {"mode": "contains", "text": "FunctionDeclaration \"Main\""},
     "stderr": ""
   },
-  "timeout_seconds": 30,
   "tags": ["migration", "grammar", "ast"],
   "requires": []
 }

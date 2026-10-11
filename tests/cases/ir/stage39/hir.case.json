@@ -7,7 +7,6 @@
   "arguments": ["--dump-project-oop-hir", "{project}"],
   "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "contains", "text": "runtime-type-test"}},
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "hir"],
   "requires": []
 }

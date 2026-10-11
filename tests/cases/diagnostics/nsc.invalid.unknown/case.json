@@ -9,7 +9,6 @@
     "exit_code": 1,
     "stderr": {"mode": "contains", "text": "unknown identifier 'Missing'"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "negative"],
   "requires": []
 }

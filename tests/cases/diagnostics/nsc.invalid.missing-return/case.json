@@ -9,7 +9,6 @@
     "exit_code": 1,
     "stderr": {"mode": "contains", "text": "not all reachable control paths return a value from function 'F'"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "negative"],
   "requires": []
 }

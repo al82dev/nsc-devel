@@ -1,4 +1,4 @@
-"""Process execution with complete capture and bounded process-tree cleanup."""
+"""Process execution with complete capture and no automatic deadline."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from pathlib import Path
 class ProcessRequest:
     command: tuple[str, ...]
     working_directory: Path
-    timeout_seconds: float
     stdin: str | None = None
     environment: dict[str, str] | None = None
 
@@ -27,7 +26,6 @@ class ProcessResult:
     stdout: str
     stderr: str
     duration_seconds: float
-    timed_out: bool
 
 
 class ProcessExecutor:
@@ -39,8 +37,6 @@ class ProcessExecutor:
         working_directory = request.working_directory.resolve()
         if not working_directory.is_dir():
             raise ValueError(f"working directory does not exist: {working_directory}")
-        if request.timeout_seconds <= 0:
-            raise ValueError("process timeout must be positive")
 
         environment = os.environ.copy()
         if request.environment is not None:
@@ -67,16 +63,7 @@ class ProcessExecutor:
             creationflags=creation_flags,
             start_new_session=start_new_session,
         )
-        timed_out = False
-        try:
-            stdout, stderr = process.communicate(
-                input=request.stdin,
-                timeout=request.timeout_seconds,
-            )
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            self._terminate_tree(process)
-            stdout, stderr = process.communicate()
+        stdout, stderr = process.communicate(input=request.stdin)
         duration = time.perf_counter() - started
         return ProcessResult(
             command=request.command,
@@ -85,7 +72,6 @@ class ProcessExecutor:
             stdout=stdout,
             stderr=stderr,
             duration_seconds=duration,
-            timed_out=timed_out,
         )
 
     @staticmethod

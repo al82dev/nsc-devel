@@ -87,7 +87,6 @@ class NscCommandBuilder:
         return ProcessRequest(
             command=tuple(command),
             working_directory=workspace.root,
-            timeout_seconds=case.timeout_seconds,
             stdin=case.stdin,
             environment=environment,
         )

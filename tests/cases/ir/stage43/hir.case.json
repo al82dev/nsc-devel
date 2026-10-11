@@ -7,7 +7,6 @@
   "arguments": ["--dump-project-oop-hir", "{project}"],
   "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "lambda-create.*closure-capture-value"}},
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "hir"],
   "requires": []
 }

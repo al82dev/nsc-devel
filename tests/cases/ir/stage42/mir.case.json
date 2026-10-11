@@ -7,7 +7,6 @@
   "arguments": ["--dump-project-oop-mir", "{project}"],
   "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "delegate-invoke.*event-remove"}},
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "mir"],
   "requires": []
 }

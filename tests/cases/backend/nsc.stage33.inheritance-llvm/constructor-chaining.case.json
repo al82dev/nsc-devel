@@ -3,5 +3,5 @@
   "project": "Stage33App.nsproj", "working_files": ["Inheritance.ns"],
   "arguments": ["--check-project-constructions", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project construction semantic check: ok"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

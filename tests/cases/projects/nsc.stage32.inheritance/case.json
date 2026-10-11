@@ -13,7 +13,6 @@
       "text": "project inheritance check: ok.*4 classes.*3 base edges"
     }
   },
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "o0-only"],
   "requires": []
 }

@@ -9,7 +9,6 @@
     "exit_code": 2,
     "stderr": {"mode": "contains", "text": "unsupported LLVM optimization level '-O4'"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "legacy-parity", "negative"],
   "requires": []
 }

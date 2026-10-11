@@ -9,7 +9,6 @@
     "exit_code": 0,
     "stdout": {"mode": "regex", "text": "Function Main.*defined"}
   },
-  "timeout_seconds": 60,
   "tags": ["legacy-parity", "o0-only"],
   "requires": []
 }

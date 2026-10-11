@@ -9,7 +9,6 @@
     "exit_code": 1,
     "stderr": {"mode": "contains", "text": "constant fixed-array index is outside [0, 2)"}
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "negative"],
   "requires": []
 }

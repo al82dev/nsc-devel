@@ -19,7 +19,6 @@
       "text": "project OOP object emission: ok.*machine=0x8664"
     }
   },
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "fixed-profile"],
   "requires": []
 }

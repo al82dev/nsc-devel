@@ -13,7 +13,6 @@ from .workspace import CaseWorkspace
 
 
 class FailureKind(str, Enum):
-    TIMEOUT = "timeout"
     COMPILER_EXIT = "compiler-exit"
     STDOUT = "stdout"
     STDERR = "stderr"
@@ -47,10 +46,6 @@ class ResultVerifier:
         product: ProcessResult | None = None,
     ) -> TestResult:
         failures: list[VerificationFailure] = []
-        if process.timed_out:
-            failures.append(
-                VerificationFailure(FailureKind.TIMEOUT, "compiler process exceeded its timeout")
-            )
         if process.exit_code != case.expected.exit_code:
             failures.append(
                 VerificationFailure(

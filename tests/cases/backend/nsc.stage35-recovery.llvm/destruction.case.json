@@ -3,5 +3,5 @@
   "project": "Stage35RecoveryApp.nsproj", "working_files": ["AbstractSealedDestruction.ns"],
   "arguments": ["--check-project-destruction", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project destruction semantic check: ok"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

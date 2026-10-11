@@ -10,7 +10,6 @@
     "stdout": {"mode": "contains", "text": "conversion implicit-string-literal-to-char-pointer"},
     "stderr": ""
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "semantic-dump"],
   "requires": []
 }

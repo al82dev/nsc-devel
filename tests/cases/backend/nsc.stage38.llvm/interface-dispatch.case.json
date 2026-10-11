@@ -3,5 +3,5 @@
   "project": "Stage38App.nsproj", "working_files": ["PropertiesIndexersOperators.ns"],
   "arguments": ["--dump-project-oop-mir", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "interface-instance-call"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

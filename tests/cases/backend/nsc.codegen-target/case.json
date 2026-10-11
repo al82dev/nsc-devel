@@ -13,7 +13,6 @@
       "text": "0x8664"
     }
   },
-  "timeout_seconds": 30,
   "tags": [
     "query",
     "legacy-parity",

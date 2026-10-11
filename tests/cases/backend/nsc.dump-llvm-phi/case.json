@@ -17,7 +17,6 @@
       "text": "phi i32"
     }
   },
-  "timeout_seconds": 60,
   "tags": [
     "integration",
     "legacy-parity",

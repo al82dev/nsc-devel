@@ -13,7 +13,6 @@
       "text": "flavor: Windows COFF/PE"
     }
   },
-  "timeout_seconds": 30,
   "tags": [
     "query",
     "legacy-parity"

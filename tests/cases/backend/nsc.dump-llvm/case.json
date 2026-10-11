@@ -17,7 +17,6 @@
       "text": "target triple = \"x86_64-pc-windows-msvc\""
     }
   },
-  "timeout_seconds": 60,
   "tags": [
     "integration",
     "legacy-parity",

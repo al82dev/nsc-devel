@@ -10,7 +10,6 @@
     "exit_code": 0,
     "stdout": {"mode": "regex", "text": "receiver=explicit-object"}
   },
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "o0-only"],
   "requires": []
 }

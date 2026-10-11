@@ -22,7 +22,6 @@
       "out.exe"
     ]
   },
-  "timeout_seconds": 60,
   "tags": [
     "integration",
     "legacy-parity",

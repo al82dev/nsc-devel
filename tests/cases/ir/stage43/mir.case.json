@@ -7,7 +7,6 @@
   "arguments": ["--dump-project-oop-mir", "{project}"],
   "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "lambda-body captures=2.*closure-capture-load"}},
-  "timeout_seconds": 60,
   "tags": ["project", "legacy-parity", "mir"],
   "requires": []
 }

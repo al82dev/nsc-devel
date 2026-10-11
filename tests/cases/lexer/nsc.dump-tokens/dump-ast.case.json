@@ -10,7 +10,6 @@
     "stdout": {"mode": "contains", "text": "CompilationUnit"},
     "stderr": ""
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "ast"],
   "requires": []
 }

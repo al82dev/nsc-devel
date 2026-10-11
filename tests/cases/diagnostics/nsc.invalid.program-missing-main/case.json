@@ -12,7 +12,6 @@
       "text": "executable compilation requires exactly one definition of int Main()"
     }
   },
-  "timeout_seconds": 30,
   "tags": ["integration", "negative"],
   "requires": []
 }

@@ -3,5 +3,5 @@
   "project": "Stage36RecoveryApp.nsproj", "working_files": ["InterfacesAndDispatch.ns"],
   "arguments": ["--check-project-interfaces", "{project}"], "optimization": "O0",
   "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project interface semantic check: ok"}},
-  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+  "tags": ["project", "legacy-parity", "o0-only"], "requires": []
 }

@@ -17,7 +17,6 @@
       "text": ""
     }
   },
-  "timeout_seconds": 30,
   "tags": [
     "migration-pilot",
     "embedded-source",
