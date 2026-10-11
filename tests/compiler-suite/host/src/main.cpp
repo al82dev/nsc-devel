@@ -222,7 +222,6 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerAstNodeLifetimeModule(registry);
         nsc::suite::registerAstNodeTopologyModule(registry);
         nsc::suite::registerAstNodeScalarStateModule(registry);
-        nsc::suite::registerAstInfrastructurePendingModule(registry);
         nsc::suite::registerTypeSyntaxIdentityModule(registry);
         nsc::suite::registerTypeSyntaxOwnershipModule(registry);
         nsc::suite::registerTypeSyntaxArgumentsModule(registry);
@@ -364,17 +363,11 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLlvmFoundationModule(registry);
         nsc::suite::registerLlvmPolicyModule(registry);
         nsc::suite::registerLlvmObservationLowererModule(registry);
-        nsc::suite::registerLlvmGenericPartitionModule(registry);
-        nsc::suite::registerLlvmOopRuntimeModule(registry);
-        nsc::suite::registerLlvmOopAbiLifetimeModule(registry);
-        nsc::suite::registerLlvmOopControlExpressionsModule(registry);
-        nsc::suite::registerLlvmOopDataObjectsModule(registry);
         nsc::suite::registerInteropMetadataModelModule(registry);
         nsc::suite::registerInteropCodecModule(registry);
         nsc::suite::registerInteropSurfacesModule(registry);
         nsc::suite::registerInteropValidationMergeModule(registry);
         nsc::suite::registerInteropDiffSchemaModule(registry);
-        nsc::suite::registerInteropCHeaderModule(registry);
         nsc::suite::registerLinkerFormatsModule(registry);
         nsc::suite::registerLinkerToolProcessModule(registry);
         nsc::suite::registerLinkerBuildersModule(registry);
@@ -386,21 +379,15 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerCompilationIdentity385To416Module(registry);
         nsc::suite::registerDriverFoundation001To096Module(registry);
         nsc::suite::registerDriverRuntime097To192Module(registry);
-        nsc::suite::registerDriverPipeline193To344Module(registry);
         nsc::suite::registerDriverMigration345To432Module(registry);
-        nsc::suite::registerDriverInstallation433To496Module(registry);
         nsc::suite::registerDriverProject497To616Module(registry);
         nsc::suite::registerLanguageServiceProtocol001To080Module(registry);
         nsc::suite::registerLanguageServiceDocuments081To160Module(registry);
-        nsc::suite::registerLanguageServiceIndex161To232Module(registry);
         nsc::suite::registerLanguageServiceQueries233To312Module(registry);
         nsc::suite::registerLanguageServiceAnalysis313To336Module(registry);
-        nsc::suite::registerNscUnit001To080Module(registry);
-        nsc::suite::registerNscProcess081To160Module(registry);
         nsc::suite::registerRuntimeAbiIdentityModule(registry);
         nsc::suite::registerRuntimeAbiVerificationModule(registry);
         nsc::suite::registerRuntimeCapabilityModule(registry);
-        nsc::suite::registerRuntimeInfrastructureModule(registry);
 #endif
         if (options.list)
         {

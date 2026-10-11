@@ -176,7 +176,6 @@ add_executable(
     host/modules/AstNodeLifetimeModule.cpp
     host/modules/AstNodeTopologyModule.cpp
     host/modules/AstNodeScalarStateModule.cpp
-    host/modules/AstInfrastructurePendingModule.cpp
     host/modules/TypeSyntaxIdentityModule.cpp
     host/modules/TypeSyntaxOwnershipModule.cpp
     host/modules/TypeSyntaxArgumentsModule.cpp
@@ -319,17 +318,11 @@ add_executable(
     host/modules/LlvmFoundationModule.cpp
     host/modules/LlvmPolicyModule.cpp
     host/modules/LlvmObservationLowererModule.cpp
-    host/modules/LlvmGenericPartitionModule.cpp
-    host/modules/LlvmOopRuntimeModule.cpp
-    host/modules/LlvmOopAbiLifetimeModule.cpp
-    host/modules/LlvmOopControlExpressionsModule.cpp
-    host/modules/LlvmOopDataObjectsModule.cpp
     host/modules/InteropMetadataModelModule.cpp
     host/modules/InteropCodecModule.cpp
     host/modules/InteropSurfacesModule.cpp
     host/modules/InteropValidationMergeModule.cpp
     host/modules/InteropDiffSchemaModule.cpp
-    host/modules/InteropCHeaderModule.cpp
     modules/LinkerFormatsModule.cpp
     modules/LinkerToolProcessModule.cpp
     modules/LinkerBuildersModule.cpp
@@ -341,21 +334,15 @@ add_executable(
     host/modules/CompilationIdentity385To416Module.cpp
     host/modules/DriverFoundation001To096Module.cpp
     host/modules/DriverRuntime097To192Module.cpp
-    host/modules/DriverPipeline193To344Module.cpp
     host/modules/DriverMigration345To432Module.cpp
-    host/modules/DriverInstallation433To496Module.cpp
     host/modules/DriverProject497To616Module.cpp
     host/modules/LanguageServiceProtocol001To080Module.cpp
     host/modules/LanguageServiceDocuments081To160Module.cpp
-    host/modules/LanguageServiceIndex161To232Module.cpp
     host/modules/LanguageServiceQueries233To312Module.cpp
     host/modules/LanguageServiceAnalysis313To336Module.cpp
-    host/modules/NscUnit001To080Module.cpp
-    host/modules/NscProcess081To160Module.cpp
     host/modules/RuntimeAbiIdentityModule.cpp
     host/modules/RuntimeAbiVerificationModule.cpp
     host/modules/RuntimeCapabilityModule.cpp
-    host/modules/RuntimeInfrastructureModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Version.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
