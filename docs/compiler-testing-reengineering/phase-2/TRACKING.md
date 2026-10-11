@@ -1541,3 +1541,9 @@ escala `CF-FRONT-024` en el commit `022e3aaab`. El build exclusivo de
 con cero faltantes, extras o duplicados. Tanda 2 queda nuevamente lista para
 su gate correctivo; la corrida integral sigue pendiente. Evidencia:
 `TANDA-VALIDACION-172-TF-FRONT-192.md`.
+
+Validacion 205 corrige `TF-PAS-273..280`: el fixture de `CF-PAS-035` coloca
+ahora el PHI constante dentro del prefijo que procesa el pase y comprueba una
+sola sustitucion con identidad y valor exactos. No se modifico producto ni se
+ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-205-PASSES-PHI-CONSTANTE.md`.

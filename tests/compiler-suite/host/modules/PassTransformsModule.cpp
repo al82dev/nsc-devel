@@ -122,19 +122,25 @@ void phiIdenticalContract(TestContext& context, std::size_t)
 void phiConstantContract(TestContext& context, std::size_t variant)
 {
     MutableFixture fixture;
+    auto* phi = fixture.instruction(mir::MirOpcode::Phi);
+    mir::MirValue* phiResult = fixture.value();
+    phi->setResult(phiResult);
     auto* left = fixture.constant(variant);
     auto* right = fixture.constant(variant);
-    auto* phi = fixture.instruction(mir::MirOpcode::Phi);
-    phi->setResult(fixture.value());
     phi->addPhiIncoming(fixture.block(), left->result());
     phi->addPhiIncoming(fixture.block(), right->result());
     fixture.terminate();
     passes::PhiSimplificationPass pass;
     std::string error;
     const auto result = pass.run(fixture.context(), error);
-    context.expect(error.empty() && result.changed, "bit-equal constant PHI must simplify");
-    context.expect(fixture.block()->instructions()[2]->opcode() == mir::MirOpcode::Constant,
-        "equal constant PHI must materialize an exact Constant");
+    const mir::MirInstruction* replacement = fixture.block()->instructions().front();
+    context.expect(error.empty() && result.changed && result.transformations == 1,
+        "bit-equal constant PHI prefix must simplify exactly once");
+    context.expect(replacement->opcode() == mir::MirOpcode::Constant &&
+            replacement->result() == phiResult && replacement->hasConstant() &&
+            passes::ConstantFolder::equal(
+                replacement->constant(), sema::ConstantValue::signedInteger(variant)),
+        "equal constant PHI prefix must preserve result identity and exact value");
 }
 
 void phiLayoutContract(TestContext& context, std::size_t)
