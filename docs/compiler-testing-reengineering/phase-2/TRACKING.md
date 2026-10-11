@@ -1706,3 +1706,11 @@ consumidores MIR permanecen `BLOQUEADO_POR TF-HIR-120` hasta validar el
 productor y `TS-SEMA-111` permanece `PENDIENTE_EVIDENCIA`. La suma por
 componente es `155/155`, sin casos omitidos. No se compilo ni ejecuto ninguna
 prueba. Evidencia: `TANDA-VALIDACION-243-CIERRE-ESTATICO-155.md`.
+
+Validacion 244 corrige `INFRA|1` de la corrida
+`20261010-205025-25b2ecce`: restaura la compuerta compatible anterior de LLVM
+20 o posterior y retira la restriccion agregada que aceptaba exclusivamente
+23.x. Builder 3 ya pasaba fielmente el `LLVM_DIR` persistido y no se modifico.
+`INFRA|2` permanece como bloqueo derivado hasta la corrida del usuario. No se
+configuro, compilo ni ejecuto. Evidencia:
+`TANDA-VALIDACION-244-INFRA-LLVM-COMPATIBILITY.md`.
