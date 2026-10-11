@@ -46,6 +46,41 @@ class TestVariant:
         return f"{self.case.case_id}|{self.build_mode}|{self.optimization}"
 
 
+@dataclass(frozen=True)
+class TestProducer:
+    """One build-system producer declared by an executable test executor."""
+
+    key: str
+    target: str
+    executable_name: str
+
+
+@dataclass(frozen=True)
+class ProducerPlan:
+    """Deduplicated producer requirement for one build configuration."""
+
+    producer: TestProducer
+    build_mode: str
+    executable: Path
+    consumer_keys: tuple[str, ...]
+
+    @property
+    def key(self) -> str:
+        return f"{self.producer.key}|{self.build_mode}"
+
+
+@dataclass(frozen=True)
+class ProducerPreparation:
+    """Terminal preparation evidence shared by every producer consumer."""
+
+    key: str
+    status: str
+    detail: str
+    executable: Path
+    consumer_keys: tuple[str, ...]
+    evidence: str = ""
+
+
 @dataclass
 class TestExecution:
     """Canonical terminal or live projection for one exact test variant."""
@@ -120,10 +155,13 @@ __all__ = (
     "CaseOutcome",
     "CaseRecord",
     "HistoricalExecution",
+    "ProducerPlan",
+    "ProducerPreparation",
     "Run",
     "RunVariant",
     "TestCase",
     "TestExecution",
+    "TestProducer",
     "TestTreeCleanupResult",
     "TestVariant",
     "VariantTimeoutBudget",

@@ -92,6 +92,33 @@ def infrastructure_failure_detail(exit_code: int, captured_output: str) -> str:
     return prefix
 
 
+def isolate_missing_llvm_discovery(
+    case_id: str,
+    command: Sequence[str],
+    environment: dict[str, str],
+) -> tuple[list[str], dict[str, str]]:
+    """Make the missing-LLVM BuildSystem oracle independent of host discovery."""
+    controlled_command = list(command)
+    controlled_environment = dict(environment)
+    if case_id != "T12B-00453":
+        return controlled_command, controlled_environment
+    blocked = {
+        "LLVM_DIR",
+        "LLVM_ROOT",
+        "LLVM_HOME",
+        "CMAKE_PREFIX_PATH",
+        "CMAKE_MODULE_PATH",
+    }
+    controlled_environment = {
+        key: value
+        for key, value in controlled_environment.items()
+        if key.upper() not in blocked
+    }
+    if not any(argument.startswith("-DLLVM_DIR=") for argument in controlled_command):
+        controlled_command.append("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE")
+    return controlled_command, controlled_environment
+
+
 def cancelled_infrastructure_outcomes(
     commands: Sequence[tuple[str, Sequence[str], Path]],
     first_unstarted_index: int,
@@ -472,6 +499,7 @@ class ExecutionEngine:
         timeout_budgets: dict[
             tuple[str, str, str, str], VariantTimeoutBudget
         ] | None = None,
+        preparation: Callable[[str, int, int, str], None] | None = None,
     ) -> None:
         self.config = config
         self.store = store
@@ -480,6 +508,7 @@ class ExecutionEngine:
         self.progress = progress
         self.process = ProcessController(self._emit_output, self._emit_activity)
         self.timeout_budgets = dict(timeout_budgets or {})
+        self.preparation = preparation or (lambda _phase, _done, _total, _detail: None)
         self.fixture_cache: dict[tuple[str, str, str], Path] = {}
         self.fixture_failures: dict[tuple[str, str, str], tuple[str, str]] = {}
         self.module_cache: dict[str, Any] = {}
@@ -502,12 +531,23 @@ class ExecutionEngine:
         )
         outcomes: list[CaseOutcome] = []
         total = len(ordered)
+        preparations = self._prepare_producers(ordered)
+        blocked_by_key = {
+            consumer: result
+            for result in preparations
+            if result.status != "PASS"
+            for consumer in result.consumer_keys
+        }
         for index, variant in enumerate(ordered, start=1):
             if self.process.cancelled.is_set():
                 outcomes.extend(self._cancelled_outcomes(ordered[index - 1 :]))
                 break
-            self.store.event("CASE_STARTED", self._variant_payload(variant))
-            outcome = self._run_controlled_variant(variant)
+            preparation = blocked_by_key.get(variant.key)
+            if preparation is not None:
+                outcome = self._producer_blocked_outcome(variant, preparation)
+            else:
+                self.store.event("CASE_STARTED", self._variant_payload(variant))
+                outcome = self._run_controlled_variant(variant)
             outcomes.append(outcome)
             self.status(
                 variant.key,
@@ -522,6 +562,127 @@ class ExecutionEngine:
             self.active_phase = ""
             self.active_detail = ""
         return outcomes, self.process.cancelled.is_set()
+
+    def _prepare_producers(
+        self, variants: Sequence[RunVariant]
+    ) -> tuple[ProducerPreparation, ...]:
+        """Build each selected producer once and validate its concrete artifact."""
+        plans = plan_test_producers(self.config, variants)
+        if not plans:
+            return ()
+        total = len(plans)
+        self.preparation(
+            "Preparar pruebas",
+            0,
+            total,
+            ", ".join(plan.key for plan in plans),
+        )
+        failures: dict[str, tuple[str, str]] = {}
+        try:
+            commands = producer_preparation_commands(self.config, plans)
+        except Exception as error:
+            detail = f"{type(error).__name__}: {error}"
+            commands = []
+            for plan in plans:
+                failures[plan.key] = (detail, "")
+        preparation_root = self.store.root / "preparation"
+        preparation_root.mkdir(parents=True, exist_ok=True)
+        for command_index, (label, command, cwd, producer_keys) in enumerate(
+            commands, start=1
+        ):
+            if all(key in failures for key in producer_keys):
+                continue
+            if self.process.cancelled.is_set():
+                break
+            self.preparation("Preparar pruebas", 0, total, label)
+            self.store.event(
+                "PRODUCER_COMMAND_STARTED",
+                {"label": label, "producer_keys": list(producer_keys), "command": command},
+            )
+            code, captured = self.process.run(command, cwd)
+            log_path = preparation_root / f"command-{command_index:02d}.log"
+            write_text_atomic(log_path, captured)
+            self.store.event(
+                "PRODUCER_COMMAND_FINISHED",
+                {
+                    "label": label,
+                    "producer_keys": list(producer_keys),
+                    "exit_code": code,
+                    "evidence": str(log_path),
+                },
+            )
+            if code != 0:
+                detail = infrastructure_failure_detail(code, captured)
+                for key in producer_keys:
+                    failures.setdefault(key, (detail, str(log_path)))
+        results: list[ProducerPreparation] = []
+        for index, plan in enumerate(plans, start=1):
+            executable = component_test_executable(
+                self.config, plan.build_mode, plan.producer.target
+            )
+            if self.process.cancelled.is_set():
+                detail = "preparación cancelada por el usuario"
+                status = "CANCELLED"
+                evidence = ""
+            elif plan.key in failures:
+                detail, evidence = failures[plan.key]
+                status = "FAIL"
+            elif not executable.is_file() or executable.stat().st_size <= 0:
+                detail = f"el productor terminó sin ejecutable válido: {executable}"
+                evidence = ""
+                status = "FAIL"
+            else:
+                stat = executable.stat()
+                detail = (
+                    "grafo incremental verificado; "
+                    f"ejecutable {stat.st_size} bytes, mtime_ns={stat.st_mtime_ns}"
+                )
+                evidence = str(executable)
+                status = "PASS"
+            receipt_path = preparation_root / f"{plan.producer.key}-{plan.build_mode}.json"
+            payload = {
+                "schema": 1,
+                "producer": plan.producer.key,
+                "target": plan.producer.target,
+                "build_mode": plan.build_mode,
+                "status": status,
+                "detail": detail,
+                "executable": str(executable),
+                "consumers": list(plan.consumer_keys),
+                "command_evidence": evidence,
+            }
+            write_json_atomic(receipt_path, payload)
+            result = ProducerPreparation(
+                key=plan.key,
+                status=status,
+                detail=detail,
+                executable=executable,
+                consumer_keys=plan.consumer_keys,
+                evidence=str(receipt_path),
+            )
+            results.append(result)
+            self.store.event("PRODUCER_FINISHED", payload | {"evidence": str(receipt_path)})
+            self.preparation("Preparar pruebas", index, total, f"{plan.key}: {status}")
+        return tuple(results)
+
+    @staticmethod
+    def _producer_blocked_outcome(
+        variant: RunVariant, preparation: ProducerPreparation
+    ) -> CaseOutcome:
+        """Close one consumer without dispatch after its producer failed."""
+        return CaseOutcome(
+            key=variant.key,
+            case_id=variant.case.case_id,
+            contract_id=variant.case.contract_id,
+            component=variant.case.component,
+            wave=variant.case.wave,
+            build_mode=variant.build_mode,
+            optimization=variant.optimization,
+            status="NOT_RUN",
+            detail=f"BLOQUEADO_POR productor {preparation.key}: {preparation.detail}",
+            evidence=preparation.evidence,
+            profile=variant.case.profile,
+        )
 
     def cancel(self) -> None:
         """Request cancellation of the active child and all remaining variants."""
@@ -994,7 +1155,12 @@ class ExecutionEngine:
             cwd: Path,
             environment: dict[str, str],
         ) -> subprocess.CompletedProcess[str]:
-            return self.process.run_completed(command, cwd, environment)
+            controlled_command, controlled_environment = isolate_missing_llvm_discovery(
+                variant.case.case_id, command, environment
+            )
+            return self.process.run_completed(
+                controlled_command, cwd, controlled_environment
+            )
 
         raw_result: Any = None
         gate_error = ""

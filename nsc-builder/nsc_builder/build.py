@@ -186,6 +186,92 @@ def component_test_executable(config: BuilderConfig, mode: str, target: str) -> 
     return candidates[0]
 
 
+def test_producer_for_case(case: CaseRecord) -> TestProducer | None:
+    """Derive a host producer from its canonical executor, without a closed target list."""
+    if not case.executor.startswith("nsc_component_tests"):
+        return None
+    target = case.executor
+    return TestProducer(
+        key=target,
+        target=target,
+        executable_name=f"{target}.exe",
+    )
+
+
+def plan_test_producers(
+    config: BuilderConfig, variants: Sequence[RunVariant]
+) -> tuple[ProducerPlan, ...]:
+    """Group selected consumers by their canonical producer and build mode."""
+    consumers: dict[tuple[str, str], list[str]] = defaultdict(list)
+    producers: dict[tuple[str, str], TestProducer] = {}
+    for variant in variants:
+        producer = test_producer_for_case(variant.case)
+        if producer is None:
+            continue
+        identity = (producer.key, variant.build_mode)
+        producers[identity] = producer
+        consumers[identity].append(variant.key)
+    plans: list[ProducerPlan] = []
+    for identity in sorted(producers, key=lambda item: (item[1], item[0])):
+        producer = producers[identity]
+        mode = identity[1]
+        plans.append(
+            ProducerPlan(
+                producer=producer,
+                build_mode=mode,
+                executable=component_test_executable(config, mode, producer.target),
+                consumer_keys=tuple(sorted(set(consumers[identity]))),
+            )
+        )
+    return tuple(plans)
+
+
+def test_build_tree_is_configured(config: BuilderConfig, mode: str) -> bool:
+    """Return whether the selected test tree has a complete Ninja configuration."""
+    root = effective_build_dir(config, mode)
+    return (root / "CMakeCache.txt").is_file() and (root / "build.ninja").is_file()
+
+
+def producer_preparation_commands(
+    config: BuilderConfig, plans: Sequence[ProducerPlan]
+) -> list[tuple[str, list[str], Path, tuple[str, ...]]]:
+    """Create one configure/build sequence per mode for the exact producer plan."""
+    if not plans:
+        return []
+    by_mode: dict[str, list[ProducerPlan]] = defaultdict(list)
+    for plan in plans:
+        by_mode[plan.build_mode].append(plan)
+    commands: list[tuple[str, list[str], Path, tuple[str, ...]]] = []
+    tools = discover_build_tools(str(config.llvm_root_path()))
+    for mode in sorted(by_mode):
+        mode_plans = sorted(by_mode[mode], key=lambda item: item.producer.target)
+        producer_keys = tuple(plan.key for plan in mode_plans)
+        if not test_build_tree_is_configured(config, mode):
+            label, command, cwd = configure_commands(config, (mode,))[0]
+            commands.append((label, command, cwd, producer_keys))
+        targets = [plan.producer.target for plan in mode_plans]
+        build = effective_build_dir(config, mode)
+        commands.append(
+            (
+                f"Preparar pruebas {mode}: {', '.join(targets)}",
+                [
+                    tools["cmake"],
+                    "--build",
+                    build.as_posix(),
+                    "--config",
+                    mode,
+                    "--target",
+                    *targets,
+                    "--parallel",
+                    str(config.jobs),
+                ],
+                SOURCE_ROOT,
+                producer_keys,
+            )
+        )
+    return commands
+
+
 def host_executable(config: BuilderConfig, mode: str) -> Path:
     """Locate the ordinary consolidated host executable."""
     return component_test_executable(config, mode, "nsc_component_tests")
