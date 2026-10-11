@@ -65,11 +65,11 @@ def expand_case_range(value: object) -> tuple[str, ...]:
 
 
 def run_process(
-    command: list[str], cwd: Path, environment: dict[str, str], timeout: float | None = None
+    command: list[str], cwd: Path, environment: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command, cwd=cwd, env=environment, text=True, encoding="utf-8",
-        errors="replace", capture_output=True, timeout=timeout, check=False,
+        errors="replace", capture_output=True, check=False,
     )
 
 

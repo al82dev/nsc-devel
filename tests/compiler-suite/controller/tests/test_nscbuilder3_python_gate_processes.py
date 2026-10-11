@@ -127,7 +127,7 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
         module = SimpleNamespace(run_process=original_runner)
 
         def run_case(_manifest: object, _options: object, root: Path, env: object):
-            completed = module.run_process(["tool"], root, env, timeout=7.0)
+            completed = module.run_process(["tool"], root, env)
             return completed.stdout == "out" and completed.stderr == "err", "oracle"
 
         module.run_case = run_case
@@ -144,7 +144,7 @@ class Builder3PythonGateProcessTests(unittest.TestCase):
 
         self.assertEqual(result[0], "PASS")
         self.assertIs(module.run_process, original_runner)
-        runner.assert_called_once_with(["tool"], case_root, unittest.mock.ANY, 7.0)
+        runner.assert_called_once_with(["tool"], case_root, unittest.mock.ANY)
 
     def test_gate_runner_is_restored_after_oracle_exception(self) -> None:
         engine = builder.ExecutionEngine(
