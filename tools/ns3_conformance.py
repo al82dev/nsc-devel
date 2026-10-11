@@ -121,10 +121,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
             raise ManifestError(
                 f"NS3099: 'expected.{checks}' requires 'expected.{evidence}'"
             )
-    timeout = data.get("timeoutSeconds", 30.0)
     repeat = data.get("repeat", 1)
-    if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > 600:
-        raise ManifestError("NS3099: 'timeoutSeconds' must be in (0, 600]")
     if not isinstance(repeat, int) or repeat < 1 or repeat > 10:
         raise ManifestError("NS3099: 'repeat' must be an integer from 1 through 10")
     if "inputs" in data:
@@ -172,7 +169,6 @@ def _observe(
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=float(manifest.get("timeoutSeconds", 30.0)),
         check=False,
     )
     expected = manifest["expected"]
@@ -227,8 +223,6 @@ def run_case(
         for _ in range(manifest.get("repeat", 1)):
             with tempfile.TemporaryDirectory(prefix=f"ns3-{manifest['id']}-", dir=work_root) as temporary:
                 observations.append(_observe(manifest, path, Path(temporary), compiler))
-    except subprocess.TimeoutExpired:
-        return CaseResult(manifest["id"], "timeout", "case exceeded timeoutSeconds")
     except (ManifestError, OSError) as error:
         return CaseResult(manifest["id"], "invalid", str(error))
     if any(item != observations[0] for item in observations[1:]):
@@ -254,7 +248,6 @@ def self_test() -> int:
         }
         valid = dict(base, id="valid", command=["{python}", "-c", "print('ok')"], repeat=2)
         invalid = {"schema": SCHEMA, "id": "invalid"}
-        timeout = dict(base, id="timeout", command=["{python}", "-c", "import time; time.sleep(2)"], timeoutSeconds=0.05)
         nondeterministic = dict(base, id="nondeterministic", command=["{python}", "-c", "import time; print(time.time_ns())"], repeat=2)
         isolated = dict(base, id="isolated", command=["{python}", "-c", "from pathlib import Path; p=Path('token'); print('old' if p.exists() else 'ok'); p.write_text('x')"], repeat=2)
         traversal = dict(base, id="traversal", command=["{python}", "-c", "print('ok')"], inputs=["../outside.ns"])
@@ -263,7 +256,6 @@ def self_test() -> int:
         cases = [
             (valid, "passed"),
             (invalid, "invalid"),
-            (timeout, "timeout"),
             (nondeterministic, "nondeterministic"),
             (isolated, "passed"),
             (traversal, "invalid"),

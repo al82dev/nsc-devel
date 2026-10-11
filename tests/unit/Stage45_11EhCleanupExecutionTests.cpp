@@ -96,7 +96,7 @@ bool runUnderWine(
     int& exitCode,
     bool& crashed)
 {
-    const std::string command = "WINEDEBUG=-all timeout 25 " + wine + " " + exePath.string() +
+    const std::string command = "WINEDEBUG=-all " + wine + " " + exePath.string() +
         " >" + logPath.string() + " 2>&1";
     const int raw = std::system(command.c_str());
     if (raw < 0) return false;

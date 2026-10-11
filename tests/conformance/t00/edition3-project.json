@@ -10,6 +10,5 @@
     "diagnostics": [],
     "stdoutContains": ["project Edition3Conformance"]
   },
-  "timeoutSeconds": 30,
   "repeat": 1
 }

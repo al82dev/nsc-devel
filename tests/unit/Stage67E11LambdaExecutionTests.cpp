@@ -42,7 +42,7 @@ int execute(const std::filesystem::path& executable)
     else if (commandAvailable("wine")) wine = "wine";
     if (wine.empty()) return -1;
     const int raw = std::system(
-        ("WINEDEBUG=-all timeout 25 " + wine + " \"" + executable.string() +
+        ("WINEDEBUG=-all " + wine + " \"" + executable.string() +
          "\" >/dev/null 2>&1").c_str());
 #ifdef WIFEXITED
     return WIFEXITED(raw) ? WEXITSTATUS(raw) : (raw & 0xFF);

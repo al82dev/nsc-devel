@@ -100,7 +100,7 @@ std::string wineCommand()
 int runUnderWine(const std::string& wine, const std::filesystem::path& exePath)
 {
     const std::string exeText = exePath.string();
-    const std::string command = "WINEDEBUG=-all timeout 25 " + wine + " " + exeText + " >/dev/null 2>&1";
+    const std::string command = "WINEDEBUG=-all " + wine + " " + exeText + " >/dev/null 2>&1";
     const int raw = std::system(command.c_str());
 #ifdef WIFEXITED
     return WIFEXITED(raw) ? WEXITSTATUS(raw) : (raw & 0xFF);

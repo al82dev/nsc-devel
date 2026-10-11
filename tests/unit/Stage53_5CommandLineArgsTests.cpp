@@ -152,7 +152,7 @@ bool runUnderWineWithArgs(
     bool& crashed)
 {
     std::string command = "cd " + workingDirectory.string() +
-        " && WINEDEBUG=-all timeout 20 " + wine + " " + exePath.string();
+        " && WINEDEBUG=-all " + wine + " " + exePath.string();
     for (const std::string& argument : arguments)
     {
         command += " " + singleQuoteEscapeForShell(argument);

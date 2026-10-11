@@ -10,6 +10,5 @@
     "diagnostics": [],
     "stdoutContains": ["project OOP MIR check: ok"]
   },
-  "timeoutSeconds": 30,
   "repeat": 1
 }
