@@ -42,13 +42,6 @@ struct TestResult
     std::vector<std::string> failures;
 };
 
-struct TestInventoryRow
-{
-    std::string id;
-    std::string contractId;
-    std::string component;
-};
-
 class TestRegistry
 {
 public:
@@ -67,8 +60,6 @@ private:
     std::unordered_set<std::string> identifiers_;
     mutable bool ordered_ = true;
 };
-
-[[nodiscard]] std::vector<TestInventoryRow> infrastructurePendingInventory();
 
 void registerInfrastructureModule(TestRegistry& registry);
 void registerBasicValuesModule(TestRegistry& registry);

@@ -44,7 +44,6 @@ void configureNonInteractiveFailureReporting() noexcept
 struct Options
 {
     bool list = false;
-    bool listPending = false;
     bool all = false;
     std::optional<std::string> caseId;
     std::optional<std::string> component;
@@ -59,10 +58,6 @@ Options parseOptions(int argumentCount, char** arguments)
         if (argument == "--list")
         {
             options.list = true;
-        }
-        else if (argument == "--list-pending")
-        {
-            options.listPending = true;
         }
         else if (argument == "--all")
         {
@@ -81,14 +76,13 @@ Options parseOptions(int argumentCount, char** arguments)
             throw std::invalid_argument("unknown or incomplete argument: " + std::string(argument));
         }
     }
-    const int selectors = static_cast<int>(options.list) + static_cast<int>(options.listPending) +
-                          static_cast<int>(options.all) +
+    const int selectors = static_cast<int>(options.list) + static_cast<int>(options.all) +
                           static_cast<int>(options.caseId.has_value()) +
                           static_cast<int>(options.component.has_value());
     if (selectors != 1)
     {
         throw std::invalid_argument(
-            "select exactly one of --list, --list-pending, --all, --case, or --component");
+            "select exactly one of --list, --all, --case, or --component");
     }
     return options;
 }
@@ -460,22 +454,6 @@ int main(int argumentCount, char** arguments)
             }
             return 0;
         }
-        if (options.listPending)
-        {
-#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED) || \
-    defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
-            throw std::invalid_argument(
-                "isolated runners do not own the infrastructure-pending inventory");
-#else
-            for (const auto& row : nsc::suite::infrastructurePendingInventory())
-            {
-                std::cout << row.id << '\t' << row.contractId << '\t'
-                          << row.component << '\n';
-            }
-            return 0;
-#endif
-        }
-
         std::vector<const nsc::suite::TestCase*> selected;
         if (options.caseId)
         {
