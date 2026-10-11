@@ -563,15 +563,77 @@ void genericDumpOracle(TestContext& context, std::size_t variant)
         emptyGenericOracle);
 }
 
+void tupleConversionScaleOracle(TestContext& context)
+{
+    constexpr std::size_t fanout = 64;
+    constexpr std::size_t depth = 16;
+
+    std::vector<std::string> sourceElements;
+    std::vector<std::string> targetElements;
+    sourceElements.reserve(fanout);
+    targetElements.reserve(fanout);
+    for (std::size_t index = 0; index < fanout; ++index)
+    {
+        sourceElements.push_back(index % 2 == 0 ? "builtin:int" : "builtin:short");
+        targetElements.push_back("builtin:long");
+    }
+
+    const std::string wideSource = ProjectTypeConversion::tupleTypeKey(sourceElements);
+    const std::string wideTarget = ProjectTypeConversion::tupleTypeKey(targetElements);
+    const std::optional<std::vector<std::string>> decoded =
+        ProjectTypeConversion::tupleElementTypeKeys(wideSource);
+    context.expect(decoded.has_value() && *decoded == sourceElements,
+        "wide tuple conversion source must retain all canonical element identities");
+
+    const ProjectImplicitConversion wide =
+        ProjectTypeConversion::classifyImplicit(wideSource, wideTarget);
+    context.expect(wide.exists() && wide.kind == ProjectConversionKind::Tuple && wide.rank == 4,
+        "64-way tuple conversion must retain its structural kind and maximum element rank");
+    context.expect(wide.sourceTypeKey == wideSource && wide.targetTypeKey == wideTarget,
+        "wide tuple conversion must retain its exact canonical source and target payload");
+
+    std::string nestedSource = "builtin:int";
+    std::string nestedTarget = "builtin:long";
+    for (std::size_t level = 0; level < depth; ++level)
+    {
+        const std::array<std::string, 2> source = {nestedSource, "builtin:int"};
+        const std::array<std::string, 2> target = {nestedTarget, "builtin:long"};
+        nestedSource = ProjectTypeConversion::tupleTypeKey(source);
+        nestedTarget = ProjectTypeConversion::tupleTypeKey(target);
+    }
+    const ProjectImplicitConversion nested =
+        ProjectTypeConversion::classifyImplicit(nestedSource, nestedTarget);
+    context.expect(nested.exists() && nested.kind == ProjectConversionKind::Tuple &&
+            nested.rank == static_cast<int>(depth + 3),
+        "sixteen nested tuple levels must terminate with the accumulated structural rank");
+    context.expect(nested.sourceTypeKey == nestedSource &&
+            nested.targetTypeKey == nestedTarget,
+        "nested tuple conversion must retain its exact canonical source and target payload");
+
+    targetElements.pop_back();
+    const std::string wrongArityTarget =
+        ProjectTypeConversion::tupleTypeKey(targetElements);
+    const ProjectImplicitConversion rejected =
+        ProjectTypeConversion::classifyImplicit(wideSource, wrongArityTarget);
+    context.expect(!rejected.exists(),
+        "tuple conversion must reject the first structurally incompatible arity");
+}
+
 void conversionOracle(TestContext& context, std::size_t variant)
 {
-    constexpr std::array<std::string_view, 8> sources = {
+    if (variant == 7)
+    {
+        tupleConversionScaleOracle(context);
+        return;
+    }
+
+    constexpr std::array<std::string_view, 7> sources = {
         "builtin:byte", "builtin:short", "builtin:int", "builtin:uint",
-        "builtin:float", "builtin:null", "builtin:int*", "tuple:builtin:int,builtin:long",
+        "builtin:float", "builtin:null", "builtin:int*",
     };
-    constexpr std::array<std::string_view, 8> targets = {
+    constexpr std::array<std::string_view, 7> targets = {
         "builtin:int", "builtin:int", "builtin:long", "builtin:ulong",
-        "builtin:double", "class:Suite.Item", "builtin:void*", "tuple:builtin:long,builtin:long",
+        "builtin:double", "class:Suite.Item", "builtin:void*",
     };
     const ProjectImplicitConversion conversion =
         ProjectTypeConversion::classifyImplicit(sources[variant], targets[variant], std::nullopt, variant == 5);
