@@ -235,12 +235,18 @@ void registerSemaAnalyzerLifecycleModule(TestRegistry& registry)
         const std::string id = "TS-SEMA-" + std::string(ordinal < 100 ? "0" : "") +
             std::to_string(ordinal);
         const std::string contract = ordinal <= 94 ? "CS-SEMA-011" : "CS-SEMA-012";
-        const TestDisposition disposition = ordinal == 94
-            ? TestDisposition::InfrastructurePending : TestDisposition::Required;
-        std::vector<std::string> tags;
-        if (ordinal == 94) tags = {"infrastructure-special"};
-        addSemaCase(registry, id, contract, "component", tests[index],
-            ordinal == 94 ? "NIGHTLY" : "PR", disposition, std::move(tags));
+        if (ordinal == 94)
+        {
+            // This opt-in is owned by the future test-only ASan+LSan profile.  The normal
+            // component target must not infer or define it merely because a sanitizer is available.
+#if defined(NSC_SEMA_ASAN_LSAN_TESTS_ENABLED)
+            addSemaCase(registry, id, contract, "component", tests[index], "NIGHTLY",
+                TestDisposition::InfrastructurePending,
+                {"infrastructure-special", "asan-lsan-test-only"});
+#endif
+            continue;
+        }
+        addSemaCase(registry, id, contract, "component", tests[index]);
     }
 }
 }

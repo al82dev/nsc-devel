@@ -22,9 +22,15 @@ ownership pertenece al perfil ASan/LSan: cualquier fuga, doble liberación o uso
 inválido debe terminar la corrida. El caso permanece `InfrastructurePending` y
 fuera del manifiesto ejecutable hasta integrar ese perfil.
 
+El cuerpo queda compilado, pero su alta en `TestRegistry` está protegida por la
+macro test-only `NSC_SEMA_ASAN_LSAN_TESTS_ENABLED`. El target normal no la
+define ni intenta inferirla a partir de macros del compilador, por lo que
+`TS-SEMA-077` no aparece como caso ejecutable ordinario.
+
 ## Evidencia
 
 - Implementación: `tests/compiler-suite/host/modules/SemaTypeSystemModule.cpp`.
 - Contrato: `CS-SEMA-009`.
 - Validación ejecutada: ninguna, por prohibición expresa.
-- Integración pendiente: perfil sanitizer y fila del manifiesto.
+- Integración pendiente: target/perfil ASan+LSan test-only, definición explícita
+  de la macro y fila del manifiesto.

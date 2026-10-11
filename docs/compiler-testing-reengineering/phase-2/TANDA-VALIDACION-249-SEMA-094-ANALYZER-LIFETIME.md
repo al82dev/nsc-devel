@@ -22,9 +22,15 @@ sanitizer es el oráculo para fugas, dobles liberaciones y accesos posteriores a
 la destrucción. El caso conserva `InfrastructurePending`; su perfil y su fila
 de manifiesto se integrarán por separado.
 
+El cuerpo queda compilado, pero su alta en `TestRegistry` está protegida por la
+macro test-only `NSC_SEMA_ASAN_LSAN_TESTS_ENABLED`. El target normal no la
+define ni intenta inferirla a partir de macros del compilador, por lo que
+`TS-SEMA-094` no aparece como caso ejecutable ordinario.
+
 ## Evidencia
 
 - Implementación: `tests/compiler-suite/host/modules/SemaAnalyzerLifecycleModule.cpp`.
 - Contrato: `CS-SEMA-011`.
 - Validación ejecutada: ninguna, por prohibición expresa.
-- Integración pendiente: perfil sanitizer y fila del manifiesto.
+- Integración pendiente: target/perfil ASan+LSan test-only, definición explícita
+  de la macro y fila del manifiesto.

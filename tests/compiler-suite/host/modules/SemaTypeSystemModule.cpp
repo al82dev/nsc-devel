@@ -306,12 +306,19 @@ void registerSemaTypeSystemModule(TestRegistry& registry)
     {
         const std::size_t ordinal = index + 54;
         const std::string id = "TS-SEMA-0" + std::to_string(ordinal);
-        const TestDisposition disposition = ordinal == 77
-            ? TestDisposition::InfrastructurePending : TestDisposition::Required;
-        std::vector<std::string> tags;
-        if (ordinal == 77) tags = {"infrastructure-special"};
+        if (ordinal == 77)
+        {
+            // This opt-in is owned by the future test-only ASan+LSan profile.  The normal
+            // component target must not infer or define it merely because a sanitizer is available.
+#if defined(NSC_SEMA_ASAN_LSAN_TESTS_ENABLED)
+            addSemaCase(registry, id, "CS-SEMA-009", "unit", tests[index], "NIGHTLY",
+                TestDisposition::InfrastructurePending,
+                {"infrastructure-special", "asan-lsan-test-only"});
+#endif
+            continue;
+        }
         addSemaCase(registry, id, ordinal <= 65 ? "CS-SEMA-008" : "CS-SEMA-009", "unit",
-            tests[index], ordinal == 77 ? "NIGHTLY" : "PR", disposition, std::move(tags));
+            tests[index]);
     }
 }
 }
