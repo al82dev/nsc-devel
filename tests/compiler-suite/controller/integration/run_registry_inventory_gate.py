@@ -103,7 +103,7 @@ def future_inventory_rows(
             raise RuntimeError(
                 f"future infrastructure row {line_number} has an empty field"
             )
-        if row["disposition"] != "FutureInfrastructure":
+        if row["disposition"] != "InfrastructurePending":
             raise RuntimeError(
                 f"future infrastructure row {line_number} has invalid disposition"
             )

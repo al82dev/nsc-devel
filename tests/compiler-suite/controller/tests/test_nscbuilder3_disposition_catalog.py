@@ -24,6 +24,16 @@ class Builder3DispositionCatalogTests(unittest.TestCase):
 
         self.assertTrue(dispositions)
         self.assertEqual(set(dispositions) - design_ids, set())
+        for case_id in (
+            "TA-AST-017",
+            "TA-AST-223",
+            "TA-AST-224",
+            "TS-SEMA-077",
+            "TS-SEMA-094",
+            "TS-SRC-049",
+        ):
+            with self.subTest(case_id=case_id):
+                self.assertEqual(dispositions[case_id], "InfrastructurePending")
 
     def test_identity_must_be_exactly_one_supported_nonempty_shape(self) -> None:
         path = Path("SyntheticCaseClassifications.jsonl")
