@@ -176,7 +176,8 @@ ambas clases de referencia.
 ## 18. Mutaciones del grafo
 
 `addLibraryReferences` agrega closure binaria al owner conocido, deduplica y ordena. `addPrecompiledProjects` crea
-nodos sintéticos de metadata, verifica owner e identidad de módulo, deduplica paths, conecta peers y conserva root.
+nodos sintéticos de metadata, verifica owner y unicidad de identidad, deduplica paths, conecta peers y conserva root.
+Los descriptors llegan resueltos: esta mutación no comprueba existencia ni contenido del `.nsmeta`.
 
 `replaceLibraryReferencesWithSourceProjects` valida owner/source, elimina sólo la metadata coincidente, agrega el
 ProjectReference sin duplicarlo y reconstruye orden topológico. Rechaza ciclos, referencias desconocidas y proyectos

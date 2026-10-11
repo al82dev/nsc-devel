@@ -334,14 +334,25 @@ void graphPrecompiledContract(TestContext& context, std::size_t variant)
     std::string error;
     const PrecompiledProjectDescriptor descriptor{
         variant == 3 ? tree.root() / "Unknown.nsproj" : appPath,
-        variant == 4 ? tree.root() / "Missing.nsmeta" : metadata,
+        metadata,
         variant == 5 ? "App" : "Core"};
+    std::vector<PrecompiledProjectDescriptor> descriptors{descriptor};
+    if (variant == 4)
+    {
+        // ProjectGraph receives descriptors after metadata discovery. Exercise the invalid
+        // relation it owns: one metadata path cannot identify two different modules.
+        descriptors.push_back({appPath, metadata, "Graphics"});
+    }
     const bool result = graph.addPrecompiledProjects(
-        std::span<const PrecompiledProjectDescriptor>(&descriptor, 1U), error);
+        std::span<const PrecompiledProjectDescriptor>(descriptors.data(), descriptors.size()), error);
     if (variant == 3 || variant == 4 || variant == 5)
     {
-        context.expect(!result && !error.empty(),
-            "CF-COMPILATION-013 invalid owner, metadata, or duplicate module is rejected");
+        const std::string_view expectedError = variant == 3 ? "unknown owner project" :
+            variant == 4 ? "assigned conflicting module identities" : "duplicate module name";
+        context.expect(!result && contains(error, expectedError) &&
+                graph.projects().size() == 1U && graph.rootProject() != nullptr &&
+                graph.rootProject()->moduleName() == "App",
+            "CF-COMPILATION-013 invalid graph relations are rejected without partial mutation");
         return;
     }
     context.expect(result && equalProjectOrder(graph, {"Core", "App"}) &&
