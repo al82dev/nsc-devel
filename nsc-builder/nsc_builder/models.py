@@ -68,6 +68,15 @@ class TestExecution:
 
 
 @dataclass(frozen=True)
+class VariantTimeoutBudget:
+    """One per-variant deadline derived exclusively from trusted PASS history."""
+
+    pass_count: int
+    average_seconds: float | None
+    limit_seconds: int
+
+
+@dataclass(frozen=True)
 class Run:
     """Canonical aggregate restored from one complete durable suite run."""
 
@@ -90,8 +99,19 @@ class Run:
         return self.outcomes
 
 
+@dataclass(frozen=True)
+class TestTreeCleanupResult:
+    """Summarize one bounded cleanup of generated test-build directories."""
+
+    targets: tuple[Path, ...]
+    missing_targets: tuple[Path, ...]
+    removed_files: int
+    removed_directories: int
+    failures: tuple[str, ...]
+
+
 def bind_runtime_models(runtime: Any) -> None:
-    """Install canonical records into the frozen compatibility runtime."""
+    """Keep the compatibility bridge coherent during staged extraction commits."""
     runtime.CaseRecord = TestCase
     runtime.RunVariant = TestVariant
     runtime.CaseOutcome = TestExecution
@@ -112,6 +132,8 @@ __all__ = (
     "RunVariant",
     "TestCase",
     "TestExecution",
+    "TestTreeCleanupResult",
     "TestVariant",
+    "VariantTimeoutBudget",
     "bind_runtime_models",
 )
