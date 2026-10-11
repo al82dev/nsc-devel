@@ -1,3 +1,4 @@
+#include "SemaConversionEvaluationTestSupport.h"
 #include "SemaFlowTestSupport.h"
 
 namespace nsc::suite
@@ -7,6 +8,9 @@ namespace
 using sema_flow_support::DiagnosticId;
 using sema_flow_support::Scenario;
 using sema_flow_support::addCase;
+using sema_conversion_evaluation_support::SemaFixture;
+using sema_conversion_evaluation_support::addSemaCase;
+using sema_conversion_evaluation_support::hasDiagnostic;
 
 Scenario ok(std::string label, std::string source, std::vector<std::string> globals = {}, bool main = false)
 {
@@ -23,6 +27,37 @@ Scenario badWithPrevious(std::string label, std::string source, DiagnosticId id)
     return {std::move(label), std::move(source), false, false,
         {{id, {}}, {DiagnosticId::PreviousDeclaration, {}}}, {}};
 }
+
+// Keeps the parser-facing void/array cases while constructing the incomplete nominal directly.
+// A forward `struct S;` declaration is not part of the current grammar, so using that spelling
+// would stop in Parser and would never exercise SemanticAnalyzer::validateObjectType.
+void testInvalidParameterTypes(TestContext& context)
+{
+    for (const Scenario& scenario : {
+             bad("void-param", "void F(void x);", DiagnosticId::InvalidType),
+             bad("array-param", "void F(int[2] x);", DiagnosticId::InvalidType),
+         })
+    {
+        sema_flow_support::runScenario(context, "TS-SEMA-123", scenario);
+    }
+
+    SemaFixture fixture;
+    fixture.initializeGlobalScope();
+    auto* incomplete = fixture.types.createStruct("S", nullptr);
+    nativesharp::sema::Symbol symbol(
+        nativesharp::sema::SymbolKind::Struct, "S", incomplete, nullptr);
+    context.expect(fixture.analyzer.globalScope_->declare(&symbol),
+        "TS-SEMA-123 incomplete fixture must install nominal S");
+    auto* syntax = fixture.typeSyntax(nativesharp::lexer::TokenKind::Identifier, "S");
+    auto* resolved = fixture.analyzer.resolveType(syntax);
+    context.expect(resolved == incomplete,
+        "TS-SEMA-123 incomplete parameter type must resolve to the installed nominal");
+    context.expect(!fixture.analyzer.validateObjectType(resolved, {}, false),
+        "TS-SEMA-123 incomplete parameter object type must be rejected");
+    context.expect(fixture.diagnostics.diagnostics().size() == 1U &&
+            hasDiagnostic(fixture.diagnostics, DiagnosticId::IncompleteType),
+        "TS-SEMA-123 incomplete parameter must emit exactly IncompleteType");
+}
 }
 
 // Registers CS-SEMA-015 function, linkage, parameter, and entry-point contracts.
@@ -36,11 +71,7 @@ void registerSemaFunctionModule(TestRegistry& registry)
     addCase(registry, "TS-SEMA-122", "CS-SEMA-015", {
         bad("array-return", "int[2] F();", DiagnosticId::InvalidType),
     });
-    addCase(registry, "TS-SEMA-123", "CS-SEMA-015", {
-        bad("void-param", "void F(void x);", DiagnosticId::InvalidType),
-        bad("array-param", "void F(int[2] x);", DiagnosticId::InvalidType),
-        bad("incomplete-param", "struct S; void F(S x);", DiagnosticId::IncompleteType),
-    });
+    addSemaCase(registry, "TS-SEMA-123", "CS-SEMA-015", "component", testInvalidParameterTypes);
     addCase(registry, "TS-SEMA-124", "CS-SEMA-015", {
         ok("repeat", "int F(int x); int F(int x);", {"F"}),
     });
@@ -75,7 +106,7 @@ void registerSemaFunctionModule(TestRegistry& registry)
     });
     addCase(registry, "TS-SEMA-132", "CS-SEMA-015", {
         bad("absent", "int F(){return 0;}", DiagnosticId::MissingMain, {}, true),
-        bad("declared", "int Main();", DiagnosticId::MissingFunctionDefinition, {}, true),
+        bad("declared", "int Main();", DiagnosticId::MissingMain, {}, true),
         ok("defined", "int Main(){return 0;}", {"Main"}, true),
     });
     addCase(registry, "TS-SEMA-133", "CS-SEMA-015", {

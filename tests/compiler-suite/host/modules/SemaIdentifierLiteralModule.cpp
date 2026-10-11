@@ -53,7 +53,7 @@ void registerSemaIdentifierLiteralModule(TestRegistry& registry)
     });
     addCase(registry, "TS-SEMA-168", "CS-SEMA-018", {
         ok("finite", "double F(){float a=1.5f;double b=2.25;return a+b;}"),
-        bad("malformed", "double F(){return 1.2.3;}", DiagnosticId::InvalidNumericLiteral),
+        lexicalError("malformed", "double F(){return 1e+;}", DiagnosticId::InvalidNumericLiteral),
     });
     addCase(registry, "TS-SEMA-169", "CS-SEMA-018", {
         ok("character", "int F(){char c='A';return (int)c;}"),

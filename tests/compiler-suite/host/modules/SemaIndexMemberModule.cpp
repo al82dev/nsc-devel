@@ -1,3 +1,4 @@
+#include "SemaConversionEvaluationTestSupport.h"
 #include "SemaFlowTestSupport.h"
 
 namespace nsc::suite
@@ -7,6 +8,9 @@ namespace
 using sema_flow_support::DiagnosticId;
 using sema_flow_support::Scenario;
 using sema_flow_support::addCase;
+using sema_conversion_evaluation_support::SemaFixture;
+using sema_conversion_evaluation_support::addSemaCase;
+using sema_conversion_evaluation_support::hasDiagnostic;
 
 Scenario ok(std::string label, std::string source)
 {
@@ -16,6 +20,36 @@ Scenario ok(std::string label, std::string source)
 Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
+}
+
+// The grammar has no forward `struct S;` declaration. Install an incomplete nominal directly
+// and keep the observable under test at SemanticAnalyzer::analyzeIndex.
+void testInvalidPointerIndexBases(TestContext& context)
+{
+    sema_flow_support::runScenario(context, "TS-SEMA-214",
+        bad("void", "int F(){void* p=null;p[0];return 0;}", DiagnosticId::InvalidIndex));
+
+    SemaFixture fixture;
+    fixture.initializeGlobalScope();
+    auto* incomplete = fixture.types.createStruct("S", nullptr);
+    auto* pointer = fixture.types.pointerTo(incomplete);
+    nativesharp::sema::Symbol variable(
+        nativesharp::sema::SymbolKind::Variable, "p", pointer, nullptr);
+    context.expect(fixture.analyzer.currentScope_->declare(&variable),
+        "TS-SEMA-214 incomplete fixture must declare pointer p");
+
+    auto* base = fixture.node(nativesharp::ast::AstNodeKind::IdentifierExpression);
+    base->setText("p");
+    auto* index = fixture.node(nativesharp::ast::AstNodeKind::IndexExpression);
+    index->setFirst(base);
+    index->setSecond(fixture.integer(0));
+    const auto result = fixture.analyzer.analyzeIndex(index);
+    context.expect(result.type != nullptr &&
+            result.type->kind() == nativesharp::sema::TypeKind::Error,
+        "TS-SEMA-214 incomplete pointer indexing must return the error type");
+    context.expect(fixture.diagnostics.diagnostics().size() == 1U &&
+            hasDiagnostic(fixture.diagnostics, DiagnosticId::InvalidIndex),
+        "TS-SEMA-214 incomplete pointer indexing must emit exactly InvalidIndex");
 }
 }
 
@@ -50,10 +84,7 @@ void registerSemaIndexMemberModule(TestRegistry& registry)
     addCase(registry, "TS-SEMA-213", "CS-SEMA-021", {
         bad("scalar", "int F(){int x=1;return x[0];}", DiagnosticId::InvalidIndex),
     });
-    addCase(registry, "TS-SEMA-214", "CS-SEMA-021", {
-        bad("void", "int F(){void* p=null;p[0];return 0;}", DiagnosticId::InvalidIndex),
-        bad("incomplete", "struct S;int F(){S* p=null;p[0];return 0;}", DiagnosticId::InvalidIndex),
-    });
+    addSemaCase(registry, "TS-SEMA-214", "CS-SEMA-021", "component", testInvalidPointerIndexBases);
     addCase(registry, "TS-SEMA-215", "CS-SEMA-021", {
         ok("hit", "struct S{int X;}int F(){S s;s.X=1;return s.X;}"),
         bad("miss", "struct S{int X;}int F(){S s;return s.Y;}", DiagnosticId::UnknownMember),

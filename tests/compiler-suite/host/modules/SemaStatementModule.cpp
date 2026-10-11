@@ -1,3 +1,4 @@
+#include "SemaConversionEvaluationTestSupport.h"
 #include "SemaFlowTestSupport.h"
 
 namespace nsc::suite
@@ -7,6 +8,9 @@ namespace
 using sema_flow_support::DiagnosticId;
 using sema_flow_support::Scenario;
 using sema_flow_support::addCase;
+using sema_conversion_evaluation_support::SemaFixture;
+using sema_conversion_evaluation_support::addSemaCase;
+using sema_conversion_evaluation_support::hasDiagnostic;
 
 Scenario ok(std::string label, std::string source)
 {
@@ -23,6 +27,44 @@ Scenario badMany(std::string label, std::string source, std::initializer_list<Di
     Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
     for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
     return scenario;
+}
+
+// A global return cannot be parsed as a compilation-unit declaration. Exercise the semantic
+// context check directly so the test remains a Sema contract instead of a Parser oracle.
+void testReturnOutsideFunction(TestContext& context)
+{
+    SemaFixture fixture;
+    auto* statement = fixture.node(nativesharp::ast::AstNodeKind::ReturnStatement);
+    statement->setFirst(fixture.integer(1));
+    fixture.analyzer.analyzeReturn(statement);
+    context.expect(fixture.diagnostics.diagnostics().size() == 1U &&
+            hasDiagnostic(fixture.diagnostics, DiagnosticId::InvalidReturn),
+        "TS-SEMA-152 return without current function must emit exactly InvalidReturn");
+}
+
+// Observes the restored analyzer state after failing bodies. The old second source appended a
+// global return, which Parser rejected before the restoration invariant could be inspected.
+void testContextRestoration(TestContext& context)
+{
+    const Scenario loop = badMany("loop-restore", "int F(){while(1){}break;return 0;}",
+        {DiagnosticId::InvalidCondition, DiagnosticId::BreakOutsideLoop});
+    sema_flow_support::FrontendCompilation loopCompilation;
+    context.expect(!loopCompilation.compileBuffer("TS-SEMA-161-loop.ns", loop.source, false),
+        "TS-SEMA-161 invalid loop fixture must fail semantic analysis");
+    sema_flow_support::expectDiagnostics(context, "TS-SEMA-161", loop, loopCompilation);
+    context.expect(loopCompilation.semanticAnalyzer() != nullptr &&
+            loopCompilation.semanticAnalyzer()->loopDepth_ == 0,
+        "TS-SEMA-161 loop depth must be restored after the failing loop");
+
+    const Scenario function = bad("function-restore", "int F(){return \"x\";}",
+        DiagnosticId::InvalidConversion);
+    sema_flow_support::FrontendCompilation functionCompilation;
+    context.expect(!functionCompilation.compileBuffer("TS-SEMA-161-function.ns", function.source, false),
+        "TS-SEMA-161 invalid function fixture must fail semantic analysis");
+    sema_flow_support::expectDiagnostics(context, "TS-SEMA-161", function, functionCompilation);
+    context.expect(functionCompilation.semanticAnalyzer() != nullptr &&
+            functionCompilation.semanticAnalyzer()->currentFunction_ == nullptr,
+        "TS-SEMA-161 current function must be restored after the failing body");
 }
 }
 
@@ -54,9 +96,7 @@ void registerSemaStatementModule(TestRegistry& registry)
     addCase(registry, "TS-SEMA-151", "CS-SEMA-017", {
         ok("nested", "int F(){while(true){for(;;){break;}continue;}}"),
     });
-    addCase(registry, "TS-SEMA-152", "CS-SEMA-017", {
-        bad("global-return", "return 1;", DiagnosticId::InvalidReturn),
-    });
+    addSemaCase(registry, "TS-SEMA-152", "CS-SEMA-017", "component", testReturnOutsideFunction);
     addCase(registry, "TS-SEMA-153", "CS-SEMA-017", {
         ok("empty", "void F(){return;}"),
         bad("value", "void F(){return 1;}", DiagnosticId::InvalidReturn),
@@ -91,9 +131,6 @@ void registerSemaStatementModule(TestRegistry& registry)
     addCase(registry, "TS-SEMA-160", "CS-SEMA-017", {
         ok("switch-current", "int F(){switch(0){}return 0;}"),
     });
-    addCase(registry, "TS-SEMA-161", "CS-SEMA-017", {
-        bad("loop-restore", "int F(){while(1){}break;return 0;}", DiagnosticId::InvalidCondition),
-        bad("function-restore", "int F(){return \"x\";} return 1;", DiagnosticId::InvalidConversion),
-    });
+    addSemaCase(registry, "TS-SEMA-161", "CS-SEMA-017", "component", testContextRestoration);
 }
 }

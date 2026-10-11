@@ -1674,3 +1674,10 @@ Validacion 238 corrige `TS-SEMA-285`: la conversion constante signed conserva
 extension de signo al ampliar y truncacion modular al reducir. No se compilo
 ni ejecuto; la validacion queda delegada al usuario. Evidencia:
 `TANDA-VALIDACION-238-SEMA-SIGNED-WIDENING.md`.
+
+Validacion 239 repara los fixtures de `TS-SEMA-123`, `152`, `161`, `168` y
+`214`: los contratos semanticos que no tienen una forma fuente aceptada por el
+parser usan ahora el seam dirigido del analizador, y el literal malformado se
+clasifica en la frontera lexica sin AST. No se modifico producto ni se
+ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-239-SEMA-FRONTERAS-DIRIGIDAS.md`.
