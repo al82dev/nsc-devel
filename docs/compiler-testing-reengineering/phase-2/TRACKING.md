@@ -1714,3 +1714,15 @@ Validacion 244 corrige `INFRA|1` de la corrida
 `INFRA|2` permanece como bloqueo derivado hasta la corrida del usuario. No se
 configuro, compilo ni ejecuto. Evidencia:
 `TANDA-VALIDACION-244-INFRA-LLVM-COMPATIBILITY.md`.
+
+## Validación 245 — construcción de NSC en Builder 3
+
+`IMPLEMENTADA; VALIDACIÓN DE BUILD PENDIENTE DEL USUARIO`.
+
+- `nscbuilder.py` y el historial Git confirmaron dos argumentos exclusivos de Builder 3 en la
+  frontera de construcción de NSC: `CMAKE_MAKE_PROGRAM` al configurar y `--config` al construir el
+  árbol Ninja de configuración única.
+- Se retiraron exclusivamente esos dos argumentos de `nscbuilder3.py`.
+- Rutas, versiones, dependencias, toolchain, modos, producto y archivos CMake permanecen intactos.
+- No se configuró, compiló ni ejecutó ningún artefacto.
+- Evidencia causal: `TANDA-VALIDACION-245-NSCBUILDER3-CONSTRUCCION-NSC.md`.
