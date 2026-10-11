@@ -244,15 +244,16 @@ void testArrayLayouts(TestContext& context)
     const auto many = fixture.analyzer.layoutOfType(fixture.types.arrayOf(integer, 7));
     const auto overflow = fixture.analyzer.layoutOfType(
         fixture.types.arrayOf(integer, std::numeric_limits<std::uint64_t>::max()));
-    context.expect(zero.has_value() && zero->size == 0 && one.has_value() && one->size == 4 &&
+    context.expect(!zero.has_value() && one.has_value() && one->size == 4 &&
             many.has_value() && many->size == 28 && !overflow.has_value(),
-        "TS-SEMA-237 array count 0/1/N must retain exact layout and overflowing counts must return nullopt");
+        "TS-SEMA-237 array count 0 and overflowing counts must be unsized while 1/N retain exact layout");
 }
 
 void testStructPadding(TestContext& context)
 {
     SemaFixture fixture;
     Type* structure = fixture.types.createStruct("Padded", nullptr);
+    structure->setComplete(true);
     fixture.analyzer.structFieldTypes_[structure] = {
         fixture.types.builtin(TypeKind::Byte), fixture.types.builtin(TypeKind::Int),
         fixture.types.builtin(TypeKind::Short)};
@@ -275,6 +276,7 @@ void testOffsetofValidFields(TestContext& context)
     SemaFixture fixture;
     fixture.initializeGlobalScope();
     Type* structure = fixture.types.createStruct("Pair", nullptr);
+    structure->setComplete(true);
     Symbol typeSymbol(SymbolKind::Struct, "Pair", structure, nullptr);
     Symbol first(SymbolKind::Field, "A", fixture.types.builtin(TypeKind::Byte), nullptr);
     Symbol second(SymbolKind::Field, "B", fixture.types.builtin(TypeKind::Int), nullptr);

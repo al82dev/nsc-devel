@@ -381,10 +381,13 @@ void testCAbiStructFields(TestContext& context)
     SemaFixture fixture;
     Type* integer = fixture.types.builtin(TypeKind::Int);
     Type* nested = fixture.types.createStruct("Nested", nullptr);
+    nested->setComplete(true);
     fixture.analyzer.structFieldTypes_[nested] = {integer};
     Type* outer = fixture.types.createStruct("Outer", nullptr);
+    outer->setComplete(true);
     fixture.analyzer.structFieldTypes_[outer] = {fixture.types.arrayOf(integer, 3), nested};
     Type* errorOuter = fixture.types.createStruct("ErrorOuter", nullptr);
+    errorOuter->setComplete(true);
     fixture.analyzer.structFieldTypes_[errorOuter] = {fixture.types.builtin(TypeKind::Error)};
     context.expect(fixture.analyzer.isCAbiCompatibleStruct(outer) &&
             !fixture.analyzer.isCAbiCompatibleStruct(errorOuter),

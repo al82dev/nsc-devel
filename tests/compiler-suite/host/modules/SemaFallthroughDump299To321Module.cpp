@@ -265,9 +265,9 @@ void testSemanticDumpConversions(TestContext& context)
         ConversionInfo{ConversionKind::ExplicitNumeric, ConversionRole::Result, node, longType, intType, -1});
     const std::string expected =
         "CastExpression\n"
-        "  conversion IntegralPromotion byte -> int contextual\n"
-        "  conversion ImplicitNumeric int -> long operand=2\n"
-        "  conversion ExplicitNumeric long -> int result\n";
+        "  conversion integral-promotion byte -> int contextual\n"
+        "  conversion implicit-numeric int -> long operand=2\n"
+        "  conversion explicit-numeric long -> int result\n";
     context.expect(dumpSemantic(node, fixture.analyzer.model()) == expected,
         "TS-SEMA-311 conversion dumps must preserve insertion order, roles, indices and exact fields");
 }

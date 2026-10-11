@@ -1687,3 +1687,9 @@ Validacion 240 completa las secuencias diagnosticas de `TS-SEMA-173`, `204` y
 continuar el analisis del inicializador, argumento excedente y asignacion
 const. No se modifico producto ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-240-SEMA-DIAGNOSTICOS-EXACTOS.md`.
+
+Validacion 241 corrige las precondiciones de `TS-SEMA-237`, `238`, `240`,
+`266` y el texto canonico de `311`: los tipos terminados se marcan completos,
+los arrays de longitud cero permanecen sin layout y las conversiones usan los
+nombres publicos del dumper. No se modifico producto ni se ejecutaron pruebas.
+Evidencia: `TANDA-VALIDACION-241-SEMA-LAYOUT-DUMP.md`.
