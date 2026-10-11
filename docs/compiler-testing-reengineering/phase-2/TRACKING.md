@@ -1693,3 +1693,9 @@ Validacion 241 corrige las precondiciones de `TS-SEMA-237`, `238`, `240`,
 los arrays de longitud cero permanecen sin layout y las conversiones usan los
 nombres publicos del dumper. No se modifico producto ni se ejecutaron pruebas.
 Evidencia: `TANDA-VALIDACION-241-SEMA-LAYOUT-DUMP.md`.
+
+Validacion 242 deja `TS-SEMA-111` en `PENDIENTE_EVIDENCIA`: el recibo historico
+solo conserva un predicado compuesto y no identifica si falto el simbolo, la
+marca de completitud o el diagnostico. La lectura estatica no autoriza elegir
+una causa. No se modifico codigo ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-242-SEMA-111-PENDIENTE-EVIDENCIA.md`.
