@@ -1,4 +1,5 @@
 #include "SemaConversionEvaluationTestSupport.h"
+#include "SemaInfrastructureTestSupport.h"
 
 #include <tuple>
 
@@ -7,6 +8,7 @@ namespace nsc::suite
 namespace
 {
 using namespace sema_conversion_evaluation_support;
+using sema_infrastructure_support::semanticMaskForWidthForTesting;
 
 ExpressionInfo evaluateUnary(
     SemaFixture& fixture,
@@ -37,21 +39,19 @@ ExpressionInfo evaluateBinary(
 
 void testMaskForWidthObservability(TestContext& context)
 {
-    SemaFixture fixture;
-    const ConstantValue byte = fixture.analyzer.convertConstant(
-        ConstantValue::unsignedInteger(std::numeric_limits<std::uint64_t>::max()),
-        fixture.types.builtin(TypeKind::NUInt), fixture.types.builtin(TypeKind::Byte));
-    const ConstantValue integer = fixture.analyzer.convertConstant(
-        ConstantValue::unsignedInteger(std::numeric_limits<std::uint64_t>::max()),
-        fixture.types.builtin(TypeKind::NUInt), fixture.types.builtin(TypeKind::UInt));
-    const ConstantValue native = fixture.analyzer.convertConstant(
-        ConstantValue::unsignedInteger(std::numeric_limits<std::uint64_t>::max()),
-        fixture.types.builtin(TypeKind::NUInt), fixture.types.builtin(TypeKind::NUInt));
-    context.expect(byte.unsignedInteger() == 0xffU && integer.unsignedInteger() == 0xffffffffULL &&
-            native.unsignedInteger() == std::numeric_limits<std::uint64_t>::max(),
-        "TS-SEMA-281 observable 8/32/64-bit masks must truncate exact low bits through convertConstant");
-    context.expect(false,
-        "TS-SEMA-281 TEST-INFRASTRUCTURE: maskForWidth has anonymous linkage, so widths 0/1/63 need an isolated product-source seam");
+    constexpr std::array cases{
+        std::pair{std::uint32_t{0}, std::uint64_t{0}},
+        std::pair{std::uint32_t{1}, std::uint64_t{0x1}},
+        std::pair{std::uint32_t{8}, std::uint64_t{0xff}},
+        std::pair{std::uint32_t{32}, std::uint64_t{0xffffffff}},
+        std::pair{std::uint32_t{63}, std::uint64_t{0x7fffffffffffffff}},
+        std::pair{std::uint32_t{64}, std::numeric_limits<std::uint64_t>::max()}};
+    bool exact = true;
+    for (const auto& [width, expected] : cases)
+        exact = exact && semanticMaskForWidthForTesting(width) == expected;
+
+    context.expect(exact,
+        "TS-SEMA-281 maskForWidth must return exact masks for widths 0, 1, 8, 32, 63, and 64");
 }
 
 void testSignedBitsRoundTrip(TestContext& context)

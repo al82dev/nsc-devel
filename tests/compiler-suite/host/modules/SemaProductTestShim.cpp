@@ -16,4 +16,9 @@ void reportPreviousDeclarationForTesting(
 {
     analyzer.reportPreviousDeclaration(symbol);
 }
+
+std::uint64_t semanticMaskForWidthForTesting(std::uint32_t width) noexcept
+{
+    return nativesharp::sema::maskForWidth(width);
+}
 }

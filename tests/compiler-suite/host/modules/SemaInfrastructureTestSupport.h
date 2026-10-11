@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace nativesharp::sema
 {
 class SemanticAnalyzer;
@@ -13,4 +15,8 @@ namespace nsc::suite::sema_infrastructure_support
 void reportPreviousDeclarationForTesting(
     nativesharp::sema::SemanticAnalyzer& analyzer,
     const nativesharp::sema::Symbol* symbol);
+
+// Exposes the anonymous-namespace product helper from the same translation
+// unit; the calculation itself remains solely in SemanticAnalyzer.cpp.
+std::uint64_t semanticMaskForWidthForTesting(std::uint32_t width) noexcept;
 }
