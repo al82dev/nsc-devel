@@ -52,14 +52,19 @@ void testNestedPartialRules(TestContext& context)
         "TP-PAR-199 partial must be accepted only by nested declaration kinds that support it");
 }
 
-void testRejectedNestedModifiers(TestContext& context)
+void testNestedModifierContracts(TestContext& context)
 {
     DeclarationFixture newType("class Outer { new class Bad { } }");
     DeclarationFixture staticType("class Outer { static struct Bad { } }");
     DeclarationFixture readonlyType("class Outer { readonly interface Bad { } }");
     DeclarationFixture constType("class Outer { const enum Bad { A } }");
-    context.expect(!newType.diagnostics().empty(),
-        "TP-PAR-200 new on a nested type must diagnose the leftover modifier");
+
+    AstNode* const nestedNewType = childNamed(declaration(newType), "Bad");
+    context.expect(nestedNewType != nullptr &&
+            nestedNewType->kind() == AstNodeKind::ClassDeclaration &&
+            nestedNewType->hasModifier(TokenKind::KwNew) &&
+            newType.diagnostics().empty(),
+        "TP-PAR-200 new on a nested class must be preserved without a diagnostic");
     context.expect(!staticType.diagnostics().empty(),
         "TP-PAR-200 static on a non-class nested type must diagnose the modifier");
     context.expect(!readonlyType.diagnostics().empty(),
@@ -74,6 +79,6 @@ void registerParserNestedDeclarationModule(TestRegistry& registry)
     addDeclarationCase(registry, "TP-PAR-197", "CP-PAR-020", "PR", testNestedTypeKinds);
     addDeclarationCase(registry, "TP-PAR-198", "CP-PAR-020", "PR", testNestedAccessibility);
     addDeclarationCase(registry, "TP-PAR-199", "CP-PAR-020", "PR", testNestedPartialRules);
-    addDeclarationCase(registry, "TP-PAR-200", "CP-PAR-020", "PR", testRejectedNestedModifiers);
+    addDeclarationCase(registry, "TP-PAR-200", "CP-PAR-020", "PR", testNestedModifierContracts);
 }
 }

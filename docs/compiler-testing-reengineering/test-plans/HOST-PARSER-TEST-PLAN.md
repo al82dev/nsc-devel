@@ -240,7 +240,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-197 | CP-PAR-020 | nested class/struct/interface/enum/delegate | parser existente y child kind correcto | PR |
 | TP-PAR-198 | CP-PAR-020 | nested accessibility | modifier aplicado al nodo | PR |
 | TP-PAR-199 | CP-PAR-020 | partial válido sólo donde admite | aceptación/rechazo exacto | PR |
-| TP-PAR-200 | CP-PAR-020 | new/static/readonly/const en nested type | diagnóstico por modifier sobrante | PR |
+| TP-PAR-200 | CP-PAR-020 | new class y combinaciones inválidas de modifiers | new preservado; rechazos por kind diagnosticados | PR |
 | TP-PAR-201 | CP-PAR-020 | layout attributes en nested struct | propagación exacta | PR |
 | TP-PAR-202 | CP-PAR-020 | borrowed/copy nested struct | flags exactos | PR |
 | TP-PAR-203 | CP-PAR-020 | token que no abre nested type | atNestedTypeDeclaration false | PR |
