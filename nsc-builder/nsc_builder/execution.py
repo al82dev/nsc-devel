@@ -324,7 +324,7 @@ def parse_identity_envelope(
         raise ValueError("identity report case identity mismatch")
 
     status = result.get("status")
-    if not isinstance(status, str) or status not in RESULT_STATUSES:
+    if not isinstance(status, str) or status not in IDENTITY_RESULT_STATUSES:
         raise ValueError(f"identity report has unknown status: {status!r}")
     duration = result.get("duration_seconds")
     if (
