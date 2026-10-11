@@ -206,6 +206,11 @@ void treeNodeMetadataContract(TestContext& context, std::size_t variant)
         auto* root = function->dominatorTree()->root();
         root->addChild(root);
     }
+    else if (variant == 6)
+    {
+        // A duplicate universe entry is a real metadata corruption, not another valid tree.
+        function->dominatorTree()->addNode(function->dominatorTree()->root());
+    }
     else if (variant == 8)
     {
         context.expect(function->dominatorTree()->nodes().size() == graph.nodes.size() &&

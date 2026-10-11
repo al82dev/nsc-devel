@@ -138,11 +138,11 @@ void edgesOracle(TestContext& context, std::size_t variant)
 
 void namesOracle(TestContext& context, std::size_t variant)
 {
-    constexpr std::array<std::string_view, 34> names{"CompilationUnit", "StructDeclaration",
+    constexpr std::array<std::string_view, 35> names{"CompilationUnit", "StructDeclaration",
         "FieldDeclaration", "EnumDeclaration", "EnumMemberDeclaration", "GlobalVariableDeclaration",
         "FunctionDeclaration", "ParameterDeclaration", "Block", "LocalVariableDeclaration", "If", "While",
         "For", "Break", "Continue", "Return", "ExpressionStatement", "Constant", "SymbolAddress", "Load",
-        "Store", "Conversion", "Unary", "Binary", "Call", "IndexAddress", "FieldAddress",
+        "Store", "Conversion", "Unary", "Binary", "Conditional", "Call", "IndexAddress", "FieldAddress",
         "DereferenceAddress", "ExtractField", "CompoundAssignment", "Increment", "Allocation", "Deallocation",
         "StackAllocation"};
     const std::size_t begin = variant == 7 ? 0 : variant * 4;
