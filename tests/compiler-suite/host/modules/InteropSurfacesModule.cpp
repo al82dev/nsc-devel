@@ -14,7 +14,11 @@ void abiVocabularyContract(TestContext& context, std::size_t variant)
     context.expect(report.starts_with("NativeSharp ABI report v1\n"), "ABI report header must be exact");
     context.expect(report.find("module: Test.Module") != std::string::npos,
         "ABI report must publish module identity");
-    context.expect(report.find("Test.Point") != std::string::npos, "ABI report must publish public type identity");
+    // The report is an ABI artifact: its public identity is the canonical identityKey, not the
+    // source-facing fullyQualifiedName. Requiring the latter would couple this oracle to a field
+    // that the report deliberately does not serialize.
+    context.expect(report.find("  type type:Point kind=struct") != std::string::npos,
+        "ABI report must publish the canonical public type identity");
     if (variant == 8) context.expect(report == abiReport(metadata), "ABI report primitives must be byte-deterministic");
 }
 
