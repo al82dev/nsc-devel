@@ -2,7 +2,10 @@
 
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Source/SourceManager.h"
+#include "../support/AsanSubprocess.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 
@@ -87,7 +90,7 @@ void registerValidLookupCase(TestRegistry& registry)
     });
 }
 
-// Preserves the invalidated-reference contract for a future versioned ASan subprocess profile.
+// Probes one deliberately invalidated SourceFile pointer only inside an isolated ASan child.
 void registerInvalidatedReferenceCase(TestRegistry& registry)
 {
     registry.add(TestCase{
@@ -96,19 +99,55 @@ void registerInvalidatedReferenceCase(TestRegistry& registry)
         "Host.Source",
         "component",
         "NIGHTLY",
-        {"source", "manager", "lifetime", "asan", "infrastructure-pending"},
+        {"source", "manager", "lifetime", "asan", "subprocess"},
         [](TestContext& context) {
-            context.expect(
-                false,
-                "TS-SRC-049 intentionally probes a pointer after vector reallocation; the undefined-access "
-                "oracle requires a versioned ASan build and subprocess isolation");
+            if (source_test_support::isAsanProbeProcess())
+            {
+                nativesharp::source::SourceManager manager;
+                const nativesharp::FileId firstId = manager.addBuffer("retained.ns", "retained");
+                const nativesharp::source::SourceFile* retained = manager.getFile(firstId);
+                bool reallocated = false;
+                for (std::uint32_t index = 0; index < 4096 && !reallocated; ++index)
+                {
+                    manager.addBuffer(
+                        "growth-" + std::to_string(index) + ".ns", std::string(64, 'g'));
+                    reallocated = manager.getFile(firstId) != retained;
+                }
+                if (!reallocated)
+                {
+                    std::fputs("TS-SRC-049: vector did not reallocate\n", stderr);
+                    std::fflush(stderr);
+                    ExitProcess(96);
+                }
+                std::fputs("TS-SRC-049: probing invalidated SourceFile pointer\n", stderr);
+                std::fflush(stderr);
+                volatile std::uint32_t observed = retained->size();
+                (void)observed;
+                std::fputs("TS-SRC-049: ASan did not terminate the invalid access\n", stderr);
+                std::fflush(stderr);
+                ExitProcess(97);
+            }
+
+            const source_test_support::AsanSubprocessResult probe =
+                source_test_support::runAsanProbe("TS-SRC-049");
+            context.expect(probe.launched && probe.error.empty(),
+                "TS-SRC-049 must launch the isolated sanitizer probe successfully");
+            context.expect(!probe.timedOut,
+                "TS-SRC-049 sanitizer probe must terminate within the controlled timeout");
+            context.expect(probe.exitCode != 0,
+                "TS-SRC-049 invalidated-reference access must terminate the child unsuccessfully");
+            context.expect(probe.output.find("AddressSanitizer") != std::string::npos &&
+                    probe.output.find("heap-use-after-free") != std::string::npos,
+                "TS-SRC-049 ASan must diagnose the invalidated SourceFile access as heap-use-after-free");
         },
-        TestDisposition::InfrastructurePending,
+        source_test_support::kAddressSanitizerBuild
+            ? TestDisposition::Required
+            : TestDisposition::InfrastructurePending,
     });
 }
 }
 
-// Registers the bounded CS-SRC-007 cases and its explicit sanitizer-only lifetime contract.
+// Registers the bounded CS-SRC-007 cases and its isolated sanitizer lifetime contract.
 void registerSourceManagerRegistryModule(TestRegistry& registry)
 {
     registerConsecutiveIdentityCase(registry);

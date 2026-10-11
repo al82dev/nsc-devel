@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,7 +13,7 @@
 
 namespace nsc::suite
 {
-// Registers the bounded ownership cases and preserves the UINT32_MAX saturation case as infrastructure-pending.
+// Registers SourceFile ownership cases, including the real 32-bit saturation boundary.
 void registerSourceFileOwnershipModule(TestRegistry& registry)
 {
     registry.add(TestCase{
@@ -128,14 +129,21 @@ void registerSourceFileOwnershipModule(TestRegistry& registry)
         "Host.Source",
         "unit",
         "WEEKLY",
-        {"source", "file", "size", "infrastructure-pending", "large-memory"},
+        {"source", "file", "size", "large-memory", "uint32-saturation"},
         [](TestContext& context) {
+            const std::size_t contentBytes =
+                static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1U;
+            std::string content(contentBytes, 'x');
+            const nativesharp::source::SourceFile file(
+                nativesharp::FileId{71}, "over-uint32.ns", std::move(content));
+
             context.expect(
-                false,
-                "TS-SRC-008 requires a bounded fixture above UINT32_MAX; the current SourceFile API "
-                "must own and scan the complete buffer and exposes no virtual-size seam");
+                file.buffer().size() == contentBytes,
+                "TS-SRC-008 must own content whose real byte count exceeds UINT32_MAX");
+            context.expect(
+                file.size() == std::numeric_limits<std::uint32_t>::max(),
+                "TS-SRC-008 SourceFile::size must saturate at UINT32_MAX");
         },
-        TestDisposition::InfrastructurePending,
     });
 }
 }

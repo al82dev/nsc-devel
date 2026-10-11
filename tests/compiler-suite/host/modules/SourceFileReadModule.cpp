@@ -2,15 +2,27 @@
 
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Source/SourceManager.h"
+#include "../support/SourceReadMutation.h"
 #include "../support/WriterCaseTree.h"
 #include "../support/WriterWin32Handle.h"
 
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+
+// Instantiate the canonical product body under a deterministic, thread-local stream facade.
+// This keeps the production SourceManager binary and API untouched while the race fixtures gain
+// exact coordination points around the real file_size/read/peek algorithm.
+#define SourceManager CoordinatedSourceManager
+#define std nsc_source_test_std
+#include "../../../../src/Source/SourceManager.cpp"
+#undef std
+#undef SourceManager
 
 namespace nsc::suite
 {
@@ -257,7 +269,7 @@ void registerSuccessfulLoadCase(TestRegistry& registry)
     });
 }
 
-// Preserves the two valid race contracts until SourceManager exposes deterministic coordination points.
+// Registers deterministic mutation cases against the canonical SourceManager.cpp algorithm.
 void registerCoordinatedMutationCases(TestRegistry& registry)
 {
     registry.add(TestCase{
@@ -266,14 +278,31 @@ void registerCoordinatedMutationCases(TestRegistry& registry)
         "Host.Source",
         "component",
         "NIGHTLY",
-        {"source", "read", "race", "truncate", "infrastructure-pending"},
+        {"source", "read", "race", "truncate", "coordinated"},
         [](TestContext& context) {
-            context.expect(
-                false,
-                "TS-SRC-040 requires deterministic truncation after file_size and before read; "
-                "SourceManager currently exposes no coordination seam");
+            writer::CaseTree tree("TS-SRC-040");
+            const auto path = tree.path("truncate-after-size.ns");
+            constexpr std::uintmax_t originalBytes = 8192;
+            constexpr std::uintmax_t truncatedBytes = 1024;
+            resizeFixture(path, originalBytes);
+            source_test_support::SourceReadMutationPlan plan{
+                path,
+                source_test_support::SourceReadMutationMode::TruncateBeforeRead,
+                originalBytes,
+                truncatedBytes};
+            std::string error;
+            std::optional<std::string> buffer;
+            {
+                source_test_support::ScopedSourceReadMutation mutation(plan);
+                buffer = nativesharp::source::CoordinatedSourceManager::readFileBuffer(path, error);
+            }
+            context.expect(plan.triggered && plan.error.empty(),
+                "TS-SRC-040 must truncate exactly after file_size and before stream.read");
+            context.expect(!buffer.has_value(),
+                "TS-SRC-040 a short read must fail without publishing a partial buffer");
+            context.expect(error == "cannot read source file '" + path.string() + "'",
+                "TS-SRC-040 a short read must publish the exact read diagnostic");
         },
-        TestDisposition::InfrastructurePending,
     });
     registry.add(TestCase{
         "TS-SRC-041",
@@ -281,19 +310,35 @@ void registerCoordinatedMutationCases(TestRegistry& registry)
         "Host.Source",
         "component",
         "NIGHTLY",
-        {"source", "read", "race", "growth", "infrastructure-pending"},
+        {"source", "read", "race", "growth", "coordinated"},
         [](TestContext& context) {
-            context.expect(
-                false,
-                "TS-SRC-041 requires deterministic growth after file_size and before the final peek; "
-                "SourceManager currently exposes no coordination seam");
+            writer::CaseTree tree("TS-SRC-041");
+            const auto path = tree.path("grow-before-peek.ns");
+            constexpr std::uintmax_t originalBytes = 4096;
+            resizeFixture(path, originalBytes);
+            source_test_support::SourceReadMutationPlan plan{
+                path,
+                source_test_support::SourceReadMutationMode::GrowAfterRead,
+                originalBytes,
+                originalBytes + 1U};
+            std::string error;
+            std::optional<std::string> buffer;
+            {
+                source_test_support::ScopedSourceReadMutation mutation(plan);
+                buffer = nativesharp::source::CoordinatedSourceManager::readFileBuffer(path, error);
+            }
+            context.expect(plan.triggered && plan.error.empty(),
+                "TS-SRC-041 must append exactly after the sized read and before the final peek");
+            context.expect(!buffer.has_value(),
+                "TS-SRC-041 the final peek must reject growth without publishing a partial buffer");
+            context.expect(error == "cannot read source file '" + path.string() + "'",
+                "TS-SRC-041 post-size growth must publish the exact read diagnostic");
         },
-        TestDisposition::InfrastructurePending,
     });
 }
 }
 
-// Registers the deterministic CS-SRC-006 cases and its two explicit race-infrastructure contracts.
+// Registers the deterministic CS-SRC-006 cases, including two coordinated mutation contracts.
 void registerSourceFileReadModule(TestRegistry& registry)
 {
     registerEmptyReadCase(registry);
