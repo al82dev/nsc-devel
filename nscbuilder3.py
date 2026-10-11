@@ -48,6 +48,8 @@ CONTRACTS_PATH = INVENTORY_ROOT / "contracts.csv"
 CONTROLLER_ROOT = SUITE_ROOT / "controller"
 RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
 DEFAULT_COMPILER_LLVM_ROOT = Path("C:/clang-llvm")
+REQUIRED_LLVM_MAJOR = 23
+LLVM_PRODUCER_NAMES = ("clang_cl", "lld_link", "llvm_rc", "llvm_mt")
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TERMINAL_FAILURES = {
@@ -412,30 +414,142 @@ def first_existing_directory(candidates: Iterable[str | Path]) -> str:
     return ""
 
 
-def discover_build_tools(llvm_dir: str) -> dict[str, str]:
-    """Discover the fixed LLVM toolchain and PATH-owned CMake/Ninja tools."""
-    llvm_roots: list[Path] = [Path("C:/clang-llvm")]
-    if llvm_dir:
-        configured = Path(llvm_dir).resolve()
-        if len(configured.parents) >= 3:
-            llvm_roots.insert(0, configured.parents[2])
-    clang = first_existing_file(
-        [*(root / "bin" / "clang-cl.exe" for root in llvm_roots), shutil.which("clang-cl") or ""]
+def llvm_root_from_configured_path(configured: str | Path) -> Path:
+    """Normalize either an LLVM root or its canonical LLVM_DIR to one root."""
+    path = Path(configured).expanduser().resolve()
+    lowered = tuple(part.casefold() for part in path.parts[-3:])
+    if lowered == ("lib", "cmake", "llvm"):
+        return path.parents[2]
+    return path
+
+
+def selected_llvm_root(llvm_root: str, llvm_dir: str) -> Path:
+    """Select one explicit LLVM authority, with C:/clang-llvm as the only default."""
+    configured = llvm_root or llvm_dir or str(DEFAULT_COMPILER_LLVM_ROOT)
+    return llvm_root_from_configured_path(configured)
+
+
+def _llvm_config_version(config_path: Path) -> str:
+    """Read the package version published by the selected LLVMConfig.cmake."""
+    text = config_path.read_text(encoding="utf-8", errors="replace")
+    match = re.search(
+        r"set\(LLVM_PACKAGE_VERSION\s+[\"']?(\d+(?:\.\d+)+)", text
     )
-    if not clang:
-        raise ValueError("clang-cl.exe was not found under C:/clang-llvm or on PATH")
-    root = Path(clang).parent.parent
+    if match is None:
+        raise ValueError(
+            f"LLVMConfig.cmake does not publish LLVM_PACKAGE_VERSION: {config_path}"
+        )
+    return match.group(1)
+
+
+def _llvm_producer_identity(path: Path) -> str:
+    """Query one LLVM producer without using PATH or another installation."""
+    argument = "/?" if path.stem.casefold() in {"llvm-rc", "llvm-mt"} else "--version"
+    completed = subprocess.run(
+        [str(path), argument],
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    return (completed.stdout + "\n" + completed.stderr).strip()
+
+
+def validate_llvm_toolchain(
+    root: Path,
+    producer_paths: dict[str, Path] | None = None,
+    identity_reader: Callable[[Path], str] = _llvm_producer_identity,
+) -> dict[str, str]:
+    """Require one complete LLVM 23 toolchain rooted at one canonical directory."""
+    root = root.expanduser().resolve()
+    expected = {
+        "clang_cl": root / "bin" / "clang-cl.exe",
+        "lld_link": root / "bin" / "lld-link.exe",
+        "llvm_rc": root / "bin" / "llvm-rc.exe",
+        "llvm_mt": root / "bin" / "llvm-mt.exe",
+    }
+    producers = producer_paths or expected
+    if set(producers) != set(LLVM_PRODUCER_NAMES):
+        missing = sorted(set(LLVM_PRODUCER_NAMES) - set(producers))
+        extra = sorted(set(producers) - set(LLVM_PRODUCER_NAMES))
+        raise ValueError(
+            "LLVM 23 producer set is incomplete"
+            + (f"; missing: {', '.join(missing)}" if missing else "")
+            + (f"; unexpected: {', '.join(extra)}" if extra else "")
+        )
+    resolved: dict[str, Path] = {}
+    for name in LLVM_PRODUCER_NAMES:
+        path = Path(producers[name]).expanduser().resolve()
+        if path != expected[name].resolve():
+            raise ValueError(
+                f"LLVM 23 mixed-root producer rejected: {name}={path}; "
+                f"expected {expected[name].resolve()}"
+            )
+        if not path.is_file():
+            raise ValueError(f"LLVM 23 producer does not exist: {name}={path}")
+        resolved[name] = path
+
+    llvm_dir = root / "lib" / "cmake" / "llvm"
+    llvm_config = llvm_dir / "LLVMConfig.cmake"
+    if not llvm_config.is_file():
+        raise ValueError(f"LLVM 23 configuration does not exist: {llvm_config}")
+    config_version = _llvm_config_version(llvm_config)
+    if int(config_version.split(".", 1)[0]) != REQUIRED_LLVM_MAJOR:
+        raise ValueError(
+            f"LLVM major {REQUIRED_LLVM_MAJOR} is required; "
+            f"LLVMConfig.cmake reports {config_version} under {root}"
+        )
+
+    identities: dict[str, str] = {}
+    identity_markers = {
+        "clang_cl": "clang version",
+        "lld_link": "LLD ",
+        "llvm_rc": "LLVM Resource Converter",
+        "llvm_mt": "Manifest Tool",
+    }
+    for name in LLVM_PRODUCER_NAMES:
+        identity = identity_reader(resolved[name])
+        if identity_markers[name].casefold() not in identity.casefold():
+            raise ValueError(
+                f"LLVM 23 producer identity is invalid: {name}={resolved[name]}"
+            )
+        version_match = re.search(
+            r"\b(?:version\s+)?(\d+(?:\.\d+)+)\b", identity
+        )
+        version = version_match.group(1) if version_match else config_version
+        if int(version.split(".", 1)[0]) != REQUIRED_LLVM_MAJOR:
+            raise ValueError(
+                f"LLVM major {REQUIRED_LLVM_MAJOR} is required; "
+                f"{name} reports {version} at {resolved[name]}"
+            )
+        identities[f"{name}_version"] = version
+
+    return {
+        "llvm_root": str(root),
+        "llvm_dir": str(llvm_dir.resolve()),
+        "llvm_config": str(llvm_config.resolve()),
+        "llvm_version": config_version,
+        **{name: str(resolved[name]) for name in LLVM_PRODUCER_NAMES},
+        **identities,
+        "llvm_config_version": config_version,
+    }
+
+
+def discover_llvm_toolchain(configured: str | Path) -> dict[str, str]:
+    """Resolve LLVM only below one configured root and validate its 23.x identity."""
+    root = llvm_root_from_configured_path(configured or DEFAULT_COMPILER_LLVM_ROOT)
+    return validate_llvm_toolchain(root)
+
+
+def discover_build_tools(llvm_root: str) -> dict[str, str]:
+    """Resolve build helpers and one strict, non-fallback LLVM 23 toolchain."""
+    llvm_tools = discover_llvm_toolchain(llvm_root)
     tools = {
         "cmake": shutil.which("cmake") or "",
         "ninja": shutil.which("ninja") or "",
         "python": first_existing_file([sys.executable]),
-        "clang_cl": clang,
-        "lld_link": first_existing_file([root / "bin" / "lld-link.exe"]),
-        "llvm_mt": first_existing_file([root / "bin" / "llvm-mt.exe"]),
-        "llvm_rc": first_existing_file([root / "bin" / "llvm-rc.exe"]),
-        "llvm_dir": first_existing_directory(
-            [llvm_dir, root / "lib" / "cmake" / "llvm"]
-        ),
+        **llvm_tools,
     }
     missing = [name for name, value in tools.items() if not value]
     if missing:
@@ -444,23 +558,16 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
 
 
 def discover_compiler_build_tools(llvm_root: str) -> dict[str, str]:
-    """Resolve the NSC host toolchain from the same LLVM-root contract as NSC Builder 1."""
-    selected_root = llvm_root or os.environ.get("NSC_LLVM_ROOT", "")
-    root = Path(selected_root or DEFAULT_COMPILER_LLVM_ROOT).resolve()
+    """Resolve the NSC host toolchain from one validated LLVM 23 root."""
+    llvm_tools = discover_llvm_toolchain(llvm_root)
+    root = Path(llvm_tools["llvm_root"])
     tools = {
         "cmake": shutil.which("cmake") or "",
         "ninja": shutil.which("ninja") or "",
-        "clang_cl": first_existing_file([root / "bin" / "clang-cl.exe"]),
-        "lld_link": first_existing_file([root / "bin" / "lld-link.exe"]),
-        "llvm_mt": first_existing_file([root / "bin" / "llvm-mt.exe"]),
-        "llvm_rc": first_existing_file([root / "bin" / "llvm-rc.exe"]),
+        **llvm_tools,
         "llvm_readobj": first_existing_file([root / "bin" / "llvm-readobj.exe"]),
         "llvm_core": first_existing_file([root / "lib" / "LLVMCore.lib"]),
         "llvm_support": first_existing_file([root / "lib" / "LLVMSupport.lib"]),
-        "llvm_dir": first_existing_directory([root / "lib" / "cmake" / "llvm"]),
-        "llvm_config": first_existing_file(
-            [root / "lib" / "cmake" / "llvm" / "LLVMConfig.cmake"]
-        ),
     }
     missing = [name for name, value in tools.items() if not value]
     if missing:
@@ -546,16 +653,11 @@ class BuilderConfig:
                 "A:/native-sharp-3.0-baseline/bin/nslink.exe",
             ]
         ) or self.nslink_executable
-        llvm_dir = first_existing_directory(
-            [self.llvm_dir, os.environ.get("LLVM_DIR", ""), "C:/clang-llvm/lib/cmake/llvm"]
+        compiler_llvm_root_path = selected_llvm_root(
+            self.compiler_llvm_root, self.llvm_dir
         )
-        compiler_llvm_root = first_existing_directory(
-            [
-                self.compiler_llvm_root,
-                os.environ.get("NSC_LLVM_ROOT", ""),
-                DEFAULT_COMPILER_LLVM_ROOT,
-            ]
-        )
+        compiler_llvm_root = str(compiler_llvm_root_path)
+        llvm_dir = str(compiler_llvm_root_path / "lib" / "cmake" / "llvm")
         archive = discover_archive_executable(self.archive_executable)
         comparison_nsc = first_distinct_existing_file(
             [
@@ -587,7 +689,11 @@ class BuilderConfig:
 
     def save(self) -> None:
         """Persist settings under the repository-owned Builder 3 directory."""
-        payload = parse_builder_config_payload(asdict(self))
+        payload_source = asdict(self)
+        llvm_root = self.llvm_root_path()
+        payload_source["compiler_llvm_root"] = str(llvm_root)
+        payload_source["llvm_dir"] = str(llvm_root / "lib" / "cmake" / "llvm")
+        payload = parse_builder_config_payload(payload_source)
         self.validated(require_tools=False)
         write_json_atomic(CONFIG_PATH, payload)
 
@@ -620,15 +726,19 @@ class BuilderConfig:
                 require_file_path(Path(self.comparison_nsc), "comparison NSC executable")
             if self.build_id_header:
                 require_file_path(Path(self.build_id_header), "build-id header")
-            if self.llvm_dir:
-                require_directory_path(
-                    Path(self.llvm_dir), "LLVM_DIR", must_exist=True
-                )
-            if self.compiler_llvm_root:
-                require_directory_path(
-                    Path(self.compiler_llvm_root), "NSC LLVM root", must_exist=True
-                )
+            llvm_root = self.llvm_root_path()
+            require_directory_path(llvm_root, "NSC LLVM 23 root", must_exist=True)
+            require_directory_path(
+                llvm_root / "lib" / "cmake" / "llvm",
+                "derived LLVM_DIR",
+                must_exist=True,
+            )
+            discover_llvm_toolchain(self.llvm_root_path())
         return self
+
+    def llvm_root_path(self) -> Path:
+        """Return the single LLVM root that owns tools and LLVMConfig.cmake."""
+        return selected_llvm_root(self.compiler_llvm_root, self.llvm_dir)
 
 
 @dataclass(frozen=True)
@@ -2566,7 +2676,7 @@ def parse_selfhost_inputs(
 
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
-    tools = discover_build_tools(config.llvm_dir)
+    tools = discover_build_tools(str(config.llvm_root_path()))
     runtime_library = compiler_runtime_library(config).resolve().as_posix()
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
@@ -2623,7 +2733,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
 
 def build_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Build the ordinary and isolated host-test targets in selected configurations."""
-    tools = discover_build_tools(config.llvm_dir)
+    tools = discover_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = effective_build_dir(config, mode)
@@ -2651,7 +2761,7 @@ def compiler_configure_commands(
     host_optimization: str,
 ) -> list[tuple[str, list[str], Path]]:
     """Configure NSC itself with the canonical Clang/LLVM/LLD Windows toolchain."""
-    tools = discover_compiler_build_tools(config.compiler_llvm_root)
+    tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = compiler_build_dir(config, mode)
@@ -2689,7 +2799,7 @@ def compiler_build_commands(
     config: BuilderConfig, modes: Sequence[str]
 ) -> list[tuple[str, list[str], Path]]:
     """Build only the NSC target from previously configured compiler trees."""
-    tools = discover_compiler_build_tools(config.compiler_llvm_root)
+    tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         command = [
@@ -3175,7 +3285,7 @@ class ExecutionEngine:
             f"ejecutando gate BuildSystem {variant.case.case_id}",
         )
         module = self._load_gate("run_buildsystem_gate.py")
-        tools = discover_build_tools(self.config.llvm_dir)
+        tools = discover_build_tools(str(self.config.llvm_root_path()))
         cmake = Path(tools["cmake"]).resolve()
         installation = Path(self.config.install_prefix).resolve()
         arguments = argparse.Namespace(
@@ -3420,7 +3530,11 @@ def make_run_id() -> str:
 def compiler_receipt(config: BuilderConfig) -> dict[str, Any]:
     """Capture immutable identities for the externally supplied NSC and NSLink."""
     config.validated(require_tools=True)
-    receipt: dict[str, Any] = {"captured_at": utc_now(), "tools": []}
+    receipt: dict[str, Any] = {
+        "captured_at": utc_now(),
+        "tools": [],
+        "llvm_toolchain": discover_llvm_toolchain(config.llvm_root_path()),
+    }
     for name, text in (
         ("nsc", config.nsc_executable),
         ("nslink", config.nslink_executable),
@@ -3748,8 +3862,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self._add_path_row(form, "compiler_build_root", "Build de NSC", True)
             self._add_path_row(form, "install_prefix", "Prefijo de instalación", True)
             self._add_path_row(form, "build_root", "Árbol de pruebas", True)
-            self._add_path_row(form, "compiler_llvm_root", "LLVM root de NSC", True)
-            self._add_path_row(form, "llvm_dir", "LLVM_DIR", True)
+            self._add_path_row(form, "compiler_llvm_root", "Raíz LLVM 23", True)
+            self._add_path_row(form, "llvm_dir", "LLVM_DIR derivado", True)
+            self.path_edits["llvm_dir"].setReadOnly(True)
             self._add_path_row(form, "archive_executable", "Archivador", False)
             self._add_path_row(form, "comparison_nsc", "NSC de comparación", False)
             self._add_path_row(form, "build_id_header", "Build-id header", False)
@@ -4122,7 +4237,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             try:
                 discovered = self._config_from_ui().with_discovery()
                 self._load_config(discovered)
-                tools = discover_build_tools(discovered.llvm_dir)
+                tools = discover_build_tools(str(discovered.llvm_root_path()))
                 lines = ["RUTAS AUTODETECTADAS", "=" * 72]
                 lines.extend(f"{name}: {value}" for name, value in tools.items())
                 lines.extend(
@@ -4155,7 +4270,9 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         def _save_config(self) -> None:
             try:
-                config = self._config_from_ui().validated(require_tools=False)
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
                 config.save()
                 self.statusBar().showMessage(f"Configuración guardada en {CONFIG_PATH}", 8000)
             except Exception as error:
@@ -4194,7 +4311,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=False)
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
                 targets = test_tree_cleanup_targets(config)
             except Exception as error:
                 self._show_error("No se puede limpiar el árbol de pruebas", error)
@@ -4305,13 +4424,15 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=False)
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
                 self._load_config(config)
                 compiler_operation = operation.startswith("compiler-")
                 tools = (
-                    discover_compiler_build_tools(config.compiler_llvm_root)
+                    discover_compiler_build_tools(str(config.llvm_root_path()))
                     if compiler_operation
-                    else discover_build_tools(config.llvm_dir)
+                    else discover_build_tools(str(config.llvm_root_path()))
                 )
                 selected = (
                     self.compiler_mode.currentText()
