@@ -4,7 +4,7 @@ Fecha: 2026-10-10
 
 ## Estado
 
-PENDIENTE DE VALIDACIÓN DIRIGIDA.
+VALIDADA. `6/6 PASS` EN `Debug/NA`.
 
 ## SCOPE LOCK
 
@@ -18,10 +18,11 @@ Esta tanda corrige exclusivamente los seis consumidores válidos de
 - `TF-FRONT-167` — determinismo;
 - `TF-FRONT-168` — escala.
 
-Fuera del alcance quedan el compilador, el manifiesto, Builder 3,
-`TRACKING.md`, el helper compartido de ausencia y cualquier otro caso. Las
-variantes inválida y de dependencia fallida (`TF-FRONT-165/166`) conservan el
-comportamiento del helper y no forman parte de la corrida dirigida.
+Durante la corrección funcional quedaron fuera del alcance el compilador, el
+manifiesto, Builder 3, `TRACKING.md`, el helper compartido de ausencia y
+cualquier otro caso. Las variantes inválida y de dependencia fallida
+(`TF-FRONT-165/166`) conservan el comportamiento del helper y no forman parte
+de la corrida dirigida.
 
 ## Causa confirmada
 
@@ -92,3 +93,40 @@ La tanda sólo podrá pasar a VALIDADA si:
 - se conservan `results.json`, `summary.md`, `events.jsonl` y logs de caso.
 
 Esta validación dirigida no equivale a la corrida integral.
+
+## Resultado de validación
+
+- Commit funcional validado:
+  `8558b5c8cacafeaf98f9244ad7ff58f24ccb9771`.
+- Build exclusivo:
+  `cmake --build A:/nsc-devel/build-compiler-suite-v3/debug --config Debug --target nsc_component_tests --parallel 12`.
+- Resultado del build: correcto; se recompiló
+  `FrontendGenericsFlowModule.cpp` y se enlazó
+  `nsc_component_tests.exe`.
+- Corrida dirigida:
+  `20261010-tanda171-frontend-generic-inference-8558b5c8c`.
+- Configuración publicada: alcance `focused`, perfil `explicit`, build
+  `Debug`, optimización canónica host `NA` para la solicitud `O0`.
+- Identidad: `6` seleccionados, `6` resultados, `0` faltantes, `0` extras y
+  `0` duplicados.
+- Resultado terminal: `6 PASS`, `0 FAIL`, `0 KNOWN_FAILURE`, `0 BLOCKED`,
+  `0 SKIPPED`, `0 CANCELLED`, `0 INFRASTRUCTURE_ERROR` y
+  `0 UNEXPECTED_PASS`.
+- Evidencia:
+  `_nscbuilder3/directed/20261010-tanda171-frontend-generic-inference-8558b5c8c`.
+- Recibos conservados: seis directorios de caso, seis logs `stdout.log`, seis
+  logs `stderr.log`, `results.json`, `summary.md`, `events.jsonl` y
+  `failures.log` vacío.
+
+## SHA-256
+
+| Artefacto | SHA-256 |
+|---|---|
+| `build-compiler-suite-v3/debug/nsc_component_tests.exe` | `95de3cc29adfc8ee373f98d821fbdd39920fe6d6a93a76d5ff4ef57aededb116` |
+| `results.json` | `ec6538a1f480180f75448ee8b7e8b648066309da9dbecda0c9b4b163cec2e6c5` |
+| `summary.md` | `51f928cb0e861d87aee3eb7daad86502a0f3673e3714dfd70c1772e665a778a6` |
+| `events.jsonl` | `666b02005c0dd22ecbf08c7e696f69b1f6438eaabd38b444aaa20611e40ad79c` |
+
+Esta validación cierra únicamente los seis consumidores de `CF-FRONT-021`.
+Con su evidencia dirigida, Tanda 2 queda lista para su gate correctivo; el gate
+y la corrida integral siguen pendientes.

@@ -1518,3 +1518,13 @@ Frontend en el commit `de719a9fe`. El build exclusivo de
 `20261010-tanda170-frontend-absence-de719a9fe` termino `34/34 PASS` en
 `Debug/NA`, con `0` faltantes, extras o duplicados. Evidencia:
 `TANDA-VALIDACION-170-ORACULOS-AUSENCIA-FRONTEND.md`.
+
+Validacion 171 corrigio el oraculo de identidad `int` y separo los contratos
+nominal, matriz valida, ausencia, limites, determinismo y escala de
+`CF-FRONT-021` en el commit `8558b5c8c`. El build exclusivo de
+`nsc_component_tests` Debug fue correcto y la corrida dirigida
+`20261010-tanda171-frontend-generic-inference-8558b5c8c` termino `6/6 PASS`
+en `Debug/NA`, con `0` faltantes, extras o duplicados. Con este cierre, Tanda 2
+queda lista para su gate correctivo; el gate y la corrida integral aun no se
+han ejecutado. Evidencia:
+`TANDA-VALIDACION-171-INFERENCIA-GENERICA-FRONTEND.md`.
