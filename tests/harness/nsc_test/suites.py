@@ -25,6 +25,9 @@ PROHIBITED_IDENTIFIERS = (
     "distribution-final",
     "promotion",
 )
+PROFILE_MATRIX_GATE = "profile-matrix"
+LEGACY_CTEST_GATE = "legacy-ctest"
+RELEASE_GATE = "release-gate"
 SELFHOST_GENERATION_ORDER = (
     "nsc.selfhost.self-hosted-generation",
     "nsc.selfhost.functional-equivalence",
@@ -49,12 +52,21 @@ class SuiteDefinition:
     component: str
     owner: Path
     command: tuple[str, ...]
-    timeout_seconds: float
-    blocked_reason: str | None
+    execution_gates: tuple[str, ...]
 
     @property
     def runnable(self) -> bool:
-        return self.blocked_reason is None
+        """A validated owner and command form an executable route.
+
+        Execution authorization is intentionally independent.  A route that
+        requires O1/O2/O3 or a release action must remain represented without
+        becoming eligible for an accidental O0 migration run.
+        """
+
+        return True
+
+    def missing_gates(self, allowed_gates: frozenset[str]) -> tuple[str, ...]:
+        return tuple(gate for gate in self.execution_gates if gate not in allowed_gates)
 
 
 @dataclass(frozen=True)
@@ -95,18 +107,14 @@ class SuiteCatalog:
             ):
                 raise SuiteError(f"suite command is invalid: {identifier}")
             command = tuple(command_value)
-            timeout_value = row.get("timeout_seconds", 900.0)
-            if not isinstance(timeout_value, (int, float)) or isinstance(timeout_value, bool):
-                raise SuiteError(f"suite timeout is invalid: {identifier}")
-            blocked = _scope_block(identifier, command, owner)
+            execution_gates = _execution_gates(identifier, command, owner)
             suites.append(
                 SuiteDefinition(
                     identifier=identifier,
                     component=component,
                     owner=owner,
                     command=command,
-                    timeout_seconds=float(timeout_value),
-                    blocked_reason=blocked,
+                    execution_gates=execution_gates,
                 )
             )
         return SuiteCatalog(
@@ -157,9 +165,17 @@ class SuiteAdapter:
         evidence.mkdir(parents=True, exist_ok=True)
         object.__setattr__(self, "evidence_root", evidence)
 
-    def build(self, suite: SuiteDefinition) -> ProcessRequest:
-        if not suite.runnable:
-            raise SuiteError(f"suite is blocked by scope: {suite.identifier}: {suite.blocked_reason}")
+    def build(
+        self,
+        suite: SuiteDefinition,
+        allowed_gates: frozenset[str] = frozenset(),
+    ) -> ProcessRequest:
+        missing = suite.missing_gates(allowed_gates)
+        if missing:
+            raise SuiteError(
+                f"suite requires explicit execution gates: {suite.identifier}: "
+                + ", ".join(missing)
+            )
         command = list(suite.command)
         command[0] = self._tool(command[0])
         adapted = [command[0]]
@@ -205,7 +221,6 @@ class SuiteAdapter:
         return ProcessRequest(
             command=tuple(adapted),
             working_directory=suite_working_directory,
-            timeout_seconds=suite.timeout_seconds,
             environment=environment,
         )
 
@@ -274,22 +289,25 @@ def _required_text(row: dict[str, Any], key: str, matrix: Path) -> str:
     return value
 
 
-def _scope_block(identifier: str, command: tuple[str, ...], owner: Path) -> str | None:
+def _execution_gates(identifier: str, command: tuple[str, ...], owner: Path) -> tuple[str, ...]:
+    """Describe authorizations needed to execute an otherwise valid route."""
+
     lowered = identifier.lower()
+    gates: list[str] = []
     if any(token in lowered for token in PROHIBITED_IDENTIFIERS):
-        return "baseline/certification/distribution/promotion is outside migration scope"
+        gates.append(RELEASE_GATE)
     if "performance" in lowered:
-        return "performance verifier executes an O0/O1/O2/O3 matrix"
+        gates.append(PROFILE_MATRIX_GATE)
     if any(argument.upper().startswith("-DCTEST_EXECUTABLE=") for argument in command):
-        return "owner delegates to the legacy CTest tree outside isolated suite execution"
+        gates.append(LEGACY_CTEST_GATE)
     owner_text = owner.read_text(encoding="utf-8", errors="replace")
     if NON_O0.search(" ".join(command)):
-        return "owner contains an O1/O2/O3 execution path"
+        gates.append(PROFILE_MATRIX_GATE)
     # Python unittest owners may assert profile names as data without invoking
     # the compiler. CMake owners, in contrast, use those tokens in commands.
     if owner.suffix.lower() != ".py" and NON_O0.search(owner_text):
-        return "owner contains an O1/O2/O3 execution path"
-    return None
+        gates.append(PROFILE_MATRIX_GATE)
+    return tuple(dict.fromkeys(gates))
 
 
 def _ordered_suites(suites: tuple[SuiteDefinition, ...]) -> tuple[SuiteDefinition, ...]:

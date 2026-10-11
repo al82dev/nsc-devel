@@ -21,6 +21,7 @@ from nsc_test.report import ReportWriter  # noqa: E402
 from nsc_test.report import TestRunRecord  # noqa: E402
 from nsc_test.scheduler import CaseScheduler, ScheduledItem  # noqa: E402
 from nsc_test.suites import SuiteAdapter, SuiteCatalog, SuiteError  # noqa: E402
+from nsc_test.suites import LEGACY_CTEST_GATE, PROFILE_MATRIX_GATE, RELEASE_GATE  # noqa: E402
 from nsc_test.verify import ResultVerifier  # noqa: E402
 from nsc_test.workspace import CaseWorkspace  # noqa: E402
 
@@ -56,6 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--suite-prefix", type=Path)
     parser.add_argument("--suite-evidence-root", type=Path)
+    parser.add_argument("--allow-suite-profile-matrix", action="store_true")
+    parser.add_argument("--allow-suite-legacy-ctest", action="store_true")
+    parser.add_argument("--allow-suite-release-gate", action="store_true")
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--list", action="store_true")
     selection.add_argument("--case")
@@ -187,6 +191,15 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
     if not (prefix / "lib").is_dir() or not (prefix / "bin").is_dir():
         parser.error(f"suite prefix must contain bin and lib: {prefix}")
     repo_root = HARNESS_ROOT.parent.parent.resolve()
+    allowed_gates = frozenset(
+        gate
+        for enabled, gate in (
+            (arguments.allow_suite_profile_matrix, PROFILE_MATRIX_GATE),
+            (arguments.allow_suite_legacy_ctest, LEGACY_CTEST_GATE),
+            (arguments.allow_suite_release_gate, RELEASE_GATE),
+        )
+        if enabled
+    )
     try:
         catalog = SuiteCatalog.load(arguments.matrix, repo_root)
         if arguments.list_suites:
@@ -204,16 +217,23 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
 
     if arguments.list_suites:
         for suite in selected:
-            state = "runnable" if suite.runnable else f"blocked: {suite.blocked_reason}"
+            requirements = ",".join(suite.execution_gates) or "none"
+            state = f"runnable; gates={requirements}"
             print(f"{suite.identifier}\t{suite.component}\t{state}")
         print(f"suites={len(selected)}")
         print(f"runnable={sum(1 for suite in selected if suite.runnable)}")
         return 0
 
-    blocked = tuple(suite for suite in selected if not suite.runnable)
-    if blocked:
-        details = "; ".join(f"{suite.identifier}: {suite.blocked_reason}" for suite in blocked)
-        parser.error(f"selection includes suites blocked by scope: {details}")
+    gated = tuple(
+        (suite, suite.missing_gates(allowed_gates))
+        for suite in selected
+        if suite.missing_gates(allowed_gates)
+    )
+    if gated:
+        details = "; ".join(
+            f"{suite.identifier}: {','.join(missing)}" for suite, missing in gated
+        )
+        parser.error(f"selection requires explicit suite execution gates: {details}")
     run_id = arguments.run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     evidence_root = (
         arguments.suite_evidence_root
@@ -230,7 +250,7 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
             evidence_root=evidence_root,
         )
         def execute_suite(suite):
-            process = ProcessExecutor().execute(adapter.build(suite))
+            process = ProcessExecutor().execute(adapter.build(suite, allowed_gates))
             return (
                 TestRunRecord(
                     case_id=suite.identifier,
@@ -254,14 +274,15 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
         )
     except (SuiteError, ValueError) as error:
         parser.error(str(error))
-    passed = sum(
-        1 for record in records if not record.process.timed_out and record.process.exit_code == 0
-    )
+    passed = sum(1 for record in records if record.process.exit_code == 0)
     failed = len(records) - passed
     print(f"nsc={arguments.nsc}")
     if arguments.nslink is not None:
         print(f"nslink={arguments.nslink}")
-    print("optimization=O0")
+    print(
+        "optimization="
+        + ("historical-owner-contract" if PROFILE_MATRIX_GATE in allowed_gates else "O0")
+    )
     print(f"jobs={arguments.jobs}")
     print(f"selected={len(records)}")
     print(f"passed={passed}")

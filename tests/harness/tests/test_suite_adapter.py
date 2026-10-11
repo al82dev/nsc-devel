@@ -11,7 +11,7 @@ HARNESS_ROOT = Path(__file__).resolve().parents[1]
 if str(HARNESS_ROOT) not in sys.path:
     sys.path.insert(0, str(HARNESS_ROOT))
 
-from nsc_test.suites import SuiteAdapter, SuiteCatalog  # noqa: E402
+from nsc_test.suites import PROFILE_MATRIX_GATE, SuiteAdapter, SuiteCatalog, SuiteError  # noqa: E402
 from nsc_test.workspace import remove_tree_iterative  # noqa: E402
 
 
@@ -75,7 +75,7 @@ class SuiteAdapterTests(unittest.TestCase):
         finally:
             remove_tree_iterative(temporary)
 
-    def test_blocks_owner_with_non_o0_execution(self) -> None:
+    def test_non_o0_owner_is_runnable_but_requires_explicit_gate(self) -> None:
         repo = Path(__file__).resolve().parents[3]
         temporary = Path(tempfile.mkdtemp(dir=repo, prefix="suite-scope-"))
         try:
@@ -99,8 +99,20 @@ class SuiteAdapterTests(unittest.TestCase):
                 encoding="utf-8",
             )
             suite = SuiteCatalog.load(matrix, repo).require("nsc.test.non-o0")
-            self.assertFalse(suite.runnable)
-            self.assertIn("O1/O2/O3", suite.blocked_reason or "")
+            self.assertTrue(suite.runnable)
+            self.assertEqual(suite.execution_gates, (PROFILE_MATRIX_GATE,))
+            nsc = temporary / "nsc.exe"
+            nsc.write_bytes(b"nsc")
+            build = temporary / "build"
+            build.mkdir()
+            prefix = temporary / "prefix"
+            (prefix / "bin").mkdir(parents=True)
+            (prefix / "lib").mkdir()
+            adapter = SuiteAdapter(nsc, None, repo, build, prefix, temporary / "evidence")
+            with self.assertRaisesRegex(SuiteError, "profile-matrix"):
+                adapter.build(suite)
+            request = adapter.build(suite, frozenset({PROFILE_MATRIX_GATE}))
+            self.assertEqual(request.command[-2:], ("-P", owner.as_posix()))
         finally:
             remove_tree_iterative(temporary)
 
@@ -169,15 +181,15 @@ class SuiteAdapterTests(unittest.TestCase):
         self.assertLess(generation, functional)
         self.assertLess(functional, repeated)
 
-    def test_blocks_suite_that_delegates_to_legacy_ctest_tree(self) -> None:
+    def test_legacy_ctest_suite_keeps_a_gated_executable_route(self) -> None:
         repo = Path(__file__).resolve().parents[3]
         catalog = SuiteCatalog.load(
             repo / "docs/compiler-optimization/test-infrastructure/test-destination-matrix.json",
             repo,
         )
         suite = catalog.require("nsc.selfhost.advanced-toolchain")
-        self.assertFalse(suite.runnable)
-        self.assertIn("legacy CTest", suite.blocked_reason or "")
+        self.assertTrue(suite.runnable)
+        self.assertIn("legacy-ctest", suite.execution_gates)
 
 
 if __name__ == "__main__":
