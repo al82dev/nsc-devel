@@ -90,7 +90,9 @@ void registerValidLookupCase(TestRegistry& registry)
     });
 }
 
-// Probes one deliberately invalidated SourceFile pointer only inside an isolated ASan child.
+// A future versioned ASan profile may opt into the isolated invalidated-reference probe. Merely
+// compiling this ordinary module with ASan must not publish TS-SRC-049.
+#if defined(NSC_SOURCE_ASAN_TESTS_ENABLED)
 void registerInvalidatedReferenceCase(TestRegistry& registry)
 {
     registry.add(TestCase{
@@ -140,20 +142,21 @@ void registerInvalidatedReferenceCase(TestRegistry& registry)
                     probe.output.find("heap-use-after-free") != std::string::npos,
                 "TS-SRC-049 ASan must diagnose the invalidated SourceFile access as heap-use-after-free");
         },
-        source_test_support::kAddressSanitizerBuild
-            ? TestDisposition::Required
-            : TestDisposition::InfrastructurePending,
+        TestDisposition::Required,
     });
 }
+#endif
 }
 
-// Registers the bounded CS-SRC-007 cases and its isolated sanitizer lifetime contract.
+// Registers bounded CS-SRC-007 cases and only the explicitly enabled future sanitizer contract.
 void registerSourceManagerRegistryModule(TestRegistry& registry)
 {
     registerConsecutiveIdentityCase(registry);
     registerDuplicatePathCase(registry);
     registerInvalidIdentityCase(registry);
     registerValidLookupCase(registry);
+#if defined(NSC_SOURCE_ASAN_TESTS_ENABLED)
     registerInvalidatedReferenceCase(registry);
+#endif
 }
 }

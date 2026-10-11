@@ -21,15 +21,8 @@
 #include <utility>
 #include <vector>
 
-#if defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-#define NSC_AST_THREAD_SANITIZER_ENABLED 1
-#endif
-#endif
-#if defined(__SANITIZE_THREAD__)
-#define NSC_AST_THREAD_SANITIZER_ENABLED 1
-#endif
-
+// TA-AST-017 belongs to a future versioned TSAN target. Compiler instrumentation alone must not
+// publish the case; only an explicit NSC_AST_THREAD_SANITIZER_ENABLED profile may enable it.
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 namespace
 {
