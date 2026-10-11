@@ -9,6 +9,7 @@ from .constants import APP_NAME, DEFAULT_COMPILER_LLVM_ROOT
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
+MODULAR_ROOT = Path(__file__).resolve().parents[1]
 SUITE_ROOT = SOURCE_ROOT / "tests" / "compiler-suite"
 INVENTORY_ROOT = SOURCE_ROOT / "docs" / "compiler-testing-reengineering" / "inventory"
 STORAGE_ROOT = SOURCE_ROOT / "_nscbuilder3"
@@ -23,6 +24,7 @@ COMPONENTS_PATH = INVENTORY_ROOT / "components.csv"
 CONTRACTS_PATH = INVENTORY_ROOT / "contracts.csv"
 CONTROLLER_ROOT = SUITE_ROOT / "controller"
 RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
+EXPECTED_OUTCOME_OVERRIDES_PATH = MODULAR_ROOT / "metadata" / "expected-outcomes.json"
 
 
 def is_a_drive(path: Path) -> bool:

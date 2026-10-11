@@ -167,6 +167,30 @@ def split_semicolon(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(";") if part.strip())
 
 
+def load_expected_outcome_overrides(
+    path: Path = EXPECTED_OUTCOME_OVERRIDES_PATH,
+) -> dict[str, str]:
+    """Load explicit Builder-only corrections missing from the suite schema."""
+    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_json_object)
+    if not isinstance(value, dict) or value.get("schema") != 1:
+        raise ValueError(f"{path}: expected schema 1 object")
+    rows = value.get("cases")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"{path}: cases must be a non-empty array")
+    overrides: dict[str, str] = {}
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict) or set(row) != {"case_id", "expected_outcome"}:
+            raise ValueError(f"{path}: invalid case row {index}")
+        case_id = row["case_id"]
+        expected = row["expected_outcome"]
+        if not isinstance(case_id, str) or not case_id or expected != "KNOWN_FAILURE":
+            raise ValueError(f"{path}: invalid expected outcome row {index}")
+        if case_id in overrides:
+            raise ValueError(f"{path}: duplicate case {case_id}")
+        overrides[case_id] = expected
+    return overrides
+
+
 class CanonicalCatalog:
     """Join the executable Phase 2 design, allocation, and manifest inventories."""
 
@@ -199,9 +223,16 @@ class CanonicalCatalog:
         ]
         validate_allocation_domains(allocation_rows)
         manifest_rows = read_jsonl(MANIFEST_PATH)
+        expected_overrides = load_expected_outcome_overrides()
         cls._validate_sources(design, allocation_rows, manifest_rows, waves)
         allocation = {row["case_id"]: row for row in allocation_rows}
         manifest = {row["case_id"]: row for row in manifest_rows}
+        unknown_overrides = sorted(set(expected_overrides) - set(manifest))
+        if unknown_overrides:
+            raise ValueError(
+                "expected-outcome overrides contain foreign cases: "
+                + ", ".join(unknown_overrides)
+            )
         cases: list[CaseRecord] = []
         for row in design:
             case_id = row["case_id"]
@@ -212,8 +243,9 @@ class CanonicalCatalog:
             expected = ""
             if canonical is not None:
                 expected = canonical.expected_outcome
-                if expected == "KNOWN_FAILURE":
-                    disposition = "KnownProductDefect"
+            expected = expected_overrides.get(case_id, expected)
+            if expected == "KNOWN_FAILURE":
+                disposition = "KnownProductDefect"
             cases.append(
                 CaseRecord(
                     case_id=case_id,
