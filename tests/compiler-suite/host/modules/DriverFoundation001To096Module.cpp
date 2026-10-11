@@ -260,10 +260,14 @@ void timingAggregationContract(TestContext& context, std::size_t variant)
             input += "timing phase=p" + std::to_string(index) + " us=1\n";
     }
     const std::string json = renderCompilationTimeTraceJson(input, 7);
+    const bool phasesMatch = variant == 3U
+        ? contains(json, "\"total_ms\": 0") && !contains(json, "\"name\":" )
+        : variant == 8U
+            ? contains(json, "\"name\": \"p999\"")
+            : contains(json, "\"name\": \"parse\"") &&
+                contains(json, "\"total_ms\": 9");
     context.expect(contains(json, "\"exit_code\": 7") &&
-            (variant == 3U ? contains(json, "\"phases\": []") :
-             variant == 8U ? contains(json, "\"name\": \"p999\"") :
-             contains(json, "\"name\": \"parse\"") && contains(json, "\"total_ms\": 9")),
+            phasesMatch,
         "time trace accepts only complete numeric records and aggregates canonical phases");
 }
 
