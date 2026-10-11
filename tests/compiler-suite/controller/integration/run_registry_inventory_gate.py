@@ -90,7 +90,7 @@ def external_inventory_rows(
     )
     unsupported = sorted(
         {case.executor for case in manifests}
-        - {"nsc_component_tests", EXTERNAL_EXECUTOR}
+        - {"nsc_component_tests", "nsc_component_tests_destructive", EXTERNAL_EXECUTOR}
     )
     if unsupported:
         raise RuntimeError(
@@ -125,11 +125,13 @@ def external_inventory_rows(
 def validate_inventory_partition(
     expected: tuple[RegistryRow, ...],
     ordinary: tuple[RegistryRow, ...],
+    destructive: tuple[RegistryRow, ...],
     pending: tuple[RegistryRow, ...],
     external: tuple[RegistryRow, ...],
 ) -> None:
     surfaces = {
         "ordinary": ordinary,
+        "destructive": destructive,
         "pending": pending,
         "external": external,
     }
@@ -185,17 +187,19 @@ def listed_registry_rows(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
+    parser.add_argument("--destructive-host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
 
     expected = expected_registry_rows(options.repository_root, options.source_root)
     ordinary = listed_registry_rows(options.host_executable, "--list")
+    destructive = listed_registry_rows(options.destructive_host_executable, "--list")
     pending = listed_registry_rows(options.host_executable, "--list-pending")
     external = external_inventory_rows(
         options.repository_root, options.source_root, expected
     )
-    validate_inventory_partition(expected, ordinary, pending, external)
+    validate_inventory_partition(expected, ordinary, destructive, pending, external)
     return 0
 
 

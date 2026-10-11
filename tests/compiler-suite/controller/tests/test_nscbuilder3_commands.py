@@ -112,7 +112,7 @@ class Builder3CommandTests(unittest.TestCase):
         )
 
     @patch.object(builder, "discover_build_tools", return_value=TOOLS)
-    def test_test_infrastructure_build_targets_only_consolidated_host(
+    def test_test_infrastructure_build_targets_both_host_boundaries(
         self, _discover: object
     ) -> None:
         commands = builder.build_commands(self.config, ("Debug", "Release"))
@@ -128,6 +128,7 @@ class Builder3CommandTests(unittest.TestCase):
                     mode,
                     "--target",
                     "nsc_component_tests",
+                    "nsc_component_tests_destructive",
                     "--parallel",
                     "12",
                 ],

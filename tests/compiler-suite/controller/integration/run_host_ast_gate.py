@@ -18,6 +18,7 @@ from component_gate_support import (
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
+    parser.add_argument("--destructive-host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--work-parent", type=Path, required=True)
@@ -42,6 +43,7 @@ def main() -> int:
             "--components", str(inventory / "components.csv"),
             "--contracts", str(inventory / "contracts.csv"),
             "--host-executable", str(options.host_executable),
+            "--destructive-host-executable", str(options.destructive_host_executable),
             "--work-root", str(root),
             "--run-id", "host-ast",
             "--revision", "phase-2-host-ast",

@@ -13,15 +13,21 @@ from .workspace import CaseWorkspace
 
 
 class HostExecutor:
-    def __init__(self, command: tuple[str, ...]) -> None:
+    def __init__(
+        self, command: tuple[str, ...], executor: str = "nsc_component_tests"
+    ) -> None:
         if not command or any(not part for part in command):
             raise ValueError("host executor command cannot be empty")
+        if executor not in {"nsc_component_tests", "nsc_component_tests_destructive"}:
+            raise ValueError(f"unsupported host executor identity: {executor}")
         self.command = command
+        self.executor = executor
 
     def __call__(self, case: CaseManifest, workspace: CaseWorkspace) -> CaseResult:
-        if case.executor != "nsc_component_tests":
+        if case.executor != self.executor:
             return _infrastructure_error(
-                case.case_id, f"host executor cannot run {case.executor}"
+                case.case_id,
+                f"{self.executor} adapter cannot run {case.executor}",
             )
         command = (*self.command, "--case", case.case_id)
         started = time.monotonic()

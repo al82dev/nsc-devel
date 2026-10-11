@@ -131,7 +131,12 @@ ALLOCATION_LAYERS = frozenset(
     }
 )
 ALLOCATION_EXECUTORS = frozenset(
-    {"nsc_component_tests", "nsc_suite_controller+nsc", "legacy_historical_suite"}
+    {
+        "nsc_component_tests",
+        "nsc_component_tests_destructive",
+        "nsc_suite_controller+nsc",
+        "legacy_historical_suite",
+    }
 )
 ALLOCATION_ISOLATIONS = frozenset(
     {"RESET_PER_CASE", "FRESH_TEMP_PER_CASE", "LEGACY_OWNED"}
@@ -2020,19 +2025,29 @@ def compiler_runtime_library(config: BuilderConfig) -> Path:
     return generated_root / "NativeSharp.Runtime.Win32.lib"
 
 
-def host_executable(config: BuilderConfig, mode: str) -> Path:
-    """Locate the consolidated host executable in supported CMake layouts."""
+def component_test_executable(config: BuilderConfig, mode: str, target: str) -> Path:
+    """Locate one named component-test executable in supported CMake layouts."""
     root = effective_build_dir(config, mode)
     candidates = (
-        root / "nsc_component_tests.exe",
-        root / mode / "nsc_component_tests.exe",
-        root / "bin" / "nsc_component_tests.exe",
-        root / "bin" / mode / "nsc_component_tests.exe",
+        root / f"{target}.exe",
+        root / mode / f"{target}.exe",
+        root / "bin" / f"{target}.exe",
+        root / "bin" / mode / f"{target}.exe",
     )
     for candidate in candidates:
         if candidate.is_file():
             return candidate
     return candidates[0]
+
+
+def host_executable(config: BuilderConfig, mode: str) -> Path:
+    """Locate the ordinary consolidated host executable."""
+    return component_test_executable(config, mode, "nsc_component_tests")
+
+
+def destructive_host_executable(config: BuilderConfig, mode: str) -> Path:
+    """Locate the isolated five-case destructive Host.AST executable."""
+    return component_test_executable(config, mode, "nsc_component_tests_destructive")
 
 
 def expected_abnormal_termination_detail(
@@ -2406,7 +2421,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
 
 
 def build_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
-    """Build only the consolidated host-test target in selected configurations."""
+    """Build the ordinary and destructive host-test targets in selected configurations."""
     tools = discover_build_tools(config.llvm_dir)
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
@@ -2419,6 +2434,7 @@ def build_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[st
             mode,
             "--target",
             "nsc_component_tests",
+            "nsc_component_tests_destructive",
             "--parallel",
             str(config.jobs),
         ]
@@ -2560,7 +2576,10 @@ class ExecutionEngine:
         started = time.monotonic()
         self.process.last_termination_reason = None
         try:
-            if variant.case.executor == "nsc_component_tests":
+            if variant.case.executor in {
+                "nsc_component_tests",
+                "nsc_component_tests_destructive",
+            }:
                 status, detail, evidence = self._run_host(variant)
             elif variant.case.executor != "nsc_suite_controller+nsc":
                 raise ValueError(
@@ -2585,7 +2604,10 @@ class ExecutionEngine:
         elif self.process.last_termination_reason == "timeout":
             oracle = (getattr(variant.case, "manifest", None) or {}).get("oracle")
             contractual_timeout = (
-                variant.case.executor == "nsc_component_tests"
+                variant.case.executor in {
+                    "nsc_component_tests",
+                    "nsc_component_tests_destructive",
+                }
                 and isinstance(oracle, dict)
                 and oracle.get("timeout_is_contract_failure") is True
             )
@@ -2615,14 +2637,18 @@ class ExecutionEngine:
 
     def _run_host(self, variant: RunVariant) -> tuple[str, str, str]:
         """Run one consolidated C++ host case and validate its JSON envelope."""
-        executable = host_executable(self.config, variant.build_mode)
+        executable = (
+            destructive_host_executable(self.config, variant.build_mode)
+            if variant.case.executor == "nsc_component_tests_destructive"
+            else host_executable(self.config, variant.build_mode)
+        )
         if not executable.is_file():
             return "INFRASTRUCTURE_ERROR", f"host executable does not exist: {executable}", ""
         case_root = self._case_root(variant)
         self._set_active_phase(
             variant,
             "RUNNING",
-            f"ejecutando nsc_component_tests --case {variant.case.case_id}",
+            f"ejecutando {variant.case.executor} --case {variant.case.case_id}",
         )
         code, captured = self.process.run(
             [str(executable), "--case", variant.case.case_id],

@@ -50,9 +50,8 @@ CASE_CLASSES = frozenset(
         "variant-matrix",
     }
 )
-EXECUTORS = frozenset(
-    {"nsc_component_tests", "nsc_suite_controller+nsc", "historical-weekly"}
-)
+HOST_EXECUTORS = frozenset({"nsc_component_tests", "nsc_component_tests_destructive"})
+EXECUTORS = HOST_EXECUTORS | frozenset({"nsc_suite_controller+nsc", "historical-weekly"})
 LAYERS = frozenset(
     {
         "unit",
@@ -71,7 +70,7 @@ PROFILES = frozenset({"PR", "NIGHTLY", "WEEKLY"})
 BUILD_MODES = frozenset({"Debug", "Release"})
 OPTIMIZATIONS = frozenset({"NA", "O0", "O1", "O2", "O3"})
 HOST_ISOLATIONS = frozenset(
-    {"in-process-reset", "temporary-directory", "filesystem-temp"}
+    {"in-process-reset", "temporary-directory", "filesystem-temp", "subprocess"}
 )
 ISOLATIONS = HOST_ISOLATIONS
 TIMEOUT_SECONDS = {
@@ -228,7 +227,7 @@ def _parse_case(
         raise ManifestError(f"invalid expected_outcome at {location}: {expected_outcome}")
     abnormal = oracle.get("abnormal_termination")
     if abnormal is not None:
-        if executor != "nsc_component_tests":
+        if executor not in HOST_EXECUTORS:
             raise ManifestError(
                 f"abnormal termination oracle requires a host case at {location}"
             )
@@ -268,7 +267,7 @@ def _parse_case(
                 f"timeout_is_contract_failure must be true at {location}"
             )
         if (
-            executor != "nsc_component_tests"
+            executor not in HOST_EXECUTORS
             or profile != "NIGHTLY"
             or case_class != "boundary"
             or timeout_class != "extended"
@@ -278,7 +277,7 @@ def _parse_case(
                 f"with extended timeout at {location}"
             )
 
-    if executor == "nsc_component_tests":
+    if executor in HOST_EXECUTORS:
         if isolation not in HOST_ISOLATIONS:
             raise ManifestError(f"host case has invalid isolation at {location}")
         if optimizations != ("NA",):

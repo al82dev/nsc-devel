@@ -97,6 +97,24 @@ class HostExecutorTests(unittest.TestCase):
         self.assertIn("TB-BAS-001", workspace.logs.joinpath("stdout.log").read_text())
         self.assertEqual(workspace.logs.joinpath("stderr.log").read_text(), "")
 
+    def test_routes_the_destructive_executor_only_through_its_bound_adapter(self) -> None:
+        self.next_run += 1
+        script = self.root / f"fake-host-{self.next_run}.py"
+        script.write_text(
+            "import json\n"
+            f"print({json.dumps(json.dumps(self.valid_payload('PASS', []), sort_keys=True))})\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        workspace = WorkspaceManager(self.root).prepare(
+            f"run-{self.next_run:03d}", "TB-BAS-001"
+        )
+        result = HostExecutor(
+            (sys.executable, str(script)), "nsc_component_tests_destructive"
+        )(case(executor="nsc_component_tests_destructive"), workspace)
+
+        self.assertIs(result.status, CaseStatus.PASS)
+
     def test_preserves_a_coherent_product_failure(self) -> None:
         result, _ = self.execute(
             self.valid_payload("FAIL", ["synthetic contract failure"]), exit_code=1

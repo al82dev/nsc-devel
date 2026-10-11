@@ -702,6 +702,7 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_registry_inventory_gate.py"
         --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --destructive-host-executable "$<TARGET_FILE:nsc_component_tests_destructive>"
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_test(
@@ -1429,6 +1430,7 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_ast_gate.py"
         --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --destructive-host-executable "$<TARGET_FILE:nsc_component_tests_destructive>"
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-ast-gate"

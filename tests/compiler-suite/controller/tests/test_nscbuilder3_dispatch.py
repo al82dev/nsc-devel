@@ -37,7 +37,10 @@ class Builder3DispatchTests(unittest.TestCase):
 
     @staticmethod
     def expected_route(case: builder.CaseRecord) -> str:
-        if case.executor == "nsc_component_tests":
+        if case.executor in {
+            "nsc_component_tests",
+            "nsc_component_tests_destructive",
+        }:
             return "host"
         if case.executor != "nsc_suite_controller+nsc":
             raise AssertionError(f"unsupported live executor: {case.executor}")

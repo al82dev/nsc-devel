@@ -33,6 +33,7 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument("--components", type=Path, required=True)
     parser.add_argument("--contracts", type=Path, required=True)
     parser.add_argument("--host-executable", type=Path)
+    parser.add_argument("--destructive-host-executable", type=Path)
     parser.add_argument("--nsc-executable", type=Path)
     parser.add_argument("--comparison-nsc-executable", type=Path)
     parser.add_argument("--build-id-header", type=Path)
@@ -67,7 +68,11 @@ def run(arguments: list[str]) -> int:
         tags=frozenset(options.tag),
     )
     selected = select_cases(cases, selection)
-    supported_executors = {"nsc_component_tests", "nsc_suite_controller+nsc"}
+    supported_executors = {
+        "nsc_component_tests",
+        "nsc_component_tests_destructive",
+        "nsc_suite_controller+nsc",
+    }
     unsupported = tuple(
         case.case_id for case in selected if case.executor not in supported_executors
     )
@@ -84,6 +89,20 @@ def run(arguments: list[str]) -> int:
         host = _required_file(options.host_executable, "host executable")
         executors["nsc_component_tests"] = HostExecutor((str(host),))
         tools.append(ToolIdentity("nsc_component_tests", str(host), _sha256(host)))
+    if "nsc_component_tests_destructive" in required_executors:
+        destructive_host = _required_file(
+            options.destructive_host_executable, "destructive host executable"
+        )
+        executors["nsc_component_tests_destructive"] = HostExecutor(
+            (str(destructive_host),), "nsc_component_tests_destructive"
+        )
+        tools.append(
+            ToolIdentity(
+                "nsc_component_tests_destructive",
+                str(destructive_host),
+                _sha256(destructive_host),
+            )
+        )
     if "nsc_suite_controller+nsc" in required_executors:
         nsc = _required_file(options.nsc_executable, "NSC executable")
         comparison = _optional_file(
