@@ -256,9 +256,10 @@ void buildSettingsContract(TestContext& context, std::size_t variant)
     bool exact = settings.has_value() == expected;
     if (settings.has_value() && variant == 2)
     {
+        const auto canonicalRoot = std::filesystem::weakly_canonical(tree.root());
         exact = settings->optimizationLevel == 3U && settings->compilerJobs == 12U &&
-            settings->outputPath == tree.root() / "bin/App.exe" &&
-            settings->libraryReferenceRoot == tree.root() / "lib";
+            settings->outputPath == canonicalRoot / "bin/App.exe" &&
+            settings->libraryReferenceRoot == canonicalRoot / "lib";
     }
     context.expect(exact, "CF-COMPILATION-037 build settings extract bounds and resolve paths from project directory");
 }

@@ -48,12 +48,15 @@ void graphPathCycleContract(TestContext& context, std::size_t variant)
     TemporaryTree tree("graph_cycle");
     const auto app = tree.write("App.nsproj", "fixture");
     const auto core = tree.write("Core.nsproj", "fixture");
+    const auto canonicalApp = std::filesystem::weakly_canonical(app);
+    const auto canonicalCore = std::filesystem::weakly_canonical(core);
+    const auto canonicalMissing = std::filesystem::weakly_canonical(tree.root() / "Missing.nsproj");
     std::unordered_map<std::string, Project> projects;
-    projects.emplace(foldedPath(app), makeProject(app, "App", variant == 3 ?
-        std::vector<std::filesystem::path>{tree.root() / "Missing.nsproj"} :
-        std::vector<std::filesystem::path>{core}));
-    projects.emplace(foldedPath(core), makeProject(core, "Core", variant == 4 ?
-        std::vector<std::filesystem::path>{app} : std::vector<std::filesystem::path>{}));
+    projects.emplace(foldedPath(canonicalApp), makeProject(canonicalApp, "App", variant == 3 ?
+        std::vector<std::filesystem::path>{canonicalMissing} :
+        std::vector<std::filesystem::path>{canonicalCore}));
+    projects.emplace(foldedPath(canonicalCore), makeProject(canonicalCore, "Core", variant == 4 ?
+        std::vector<std::filesystem::path>{canonicalApp} : std::vector<std::filesystem::path>{}));
     std::string error;
     const auto graph = ProjectGraphLoader(1U, mapLoader(std::move(projects))).load(app, error);
     if (variant == 3)
@@ -69,7 +72,7 @@ void graphPathCycleContract(TestContext& context, std::size_t variant)
             "CF-COMPILATION-015 canonical cycle diagnostic names the closed chain");
         return;
     }
-    context.expect(graph.has_value() && graph->rootProjectFile() == std::filesystem::weakly_canonical(app),
+    context.expect(graph.has_value() && foldedPath(graph->rootProjectFile()) == foldedPath(canonicalApp),
         "CF-COMPILATION-015 graph canonicalizes project paths before publishing identity");
 }
 
