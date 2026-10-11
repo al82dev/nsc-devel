@@ -83,22 +83,18 @@ Los ocho casos ya están materializados con estado
 producto corrija la causa. Está prohibido marcarlos `SKIP`, invertir la
 expectativa o aceptar el comportamiento defectuoso.
 
-## Infraestructura especial pendiente de Host.AST
+## Trabajo futuro de Host.AST
 
 | Caso | Contrato | Infraestructura necesaria | Motivo |
 |---|---|---|---|
-| `TA-AST-014` | `CA-AST-002` | Inyección determinista de fallo de asignación | Debe fallar exactamente al registrar la entrada después de construir el objeto. |
-| `TA-AST-016` | `CA-AST-002` | Death test en subprocess | Un destructor que lanza durante destrucción de arena termina el proceso. |
 | `TA-AST-017` | `CA-AST-002` | Target instrumentado con TSAN | La ausencia de sincronización sólo puede diagnosticarse fielmente bajo carrera real instrumentada. |
-| `TA-AST-215` | `CA-AST-019` | Death test en subprocess | El dumper desreferencia un argumento de tipo nulo; probarlo dentro del runner contaminaría el proceso. |
-| `TA-AST-223` | `CA-AST-020` | Subprocess con watchdog | Un ciclo por slot puede no terminar y necesita límite externo reproducible. |
-| `TA-AST-224` | `CA-AST-020` | Subprocess con watchdog | Un ciclo por `children` puede no terminar y necesita límite externo reproducible. |
 
-Estos seis casos siguen diseñados, trazados y pendientes. No se implementan como
-smokes, proxies ni timeouts internos porque esas sustituciones no probarían el
-contrato. No bloquean `Host.Parser` ni otros contratos causalmente independientes.
+`TA-AST-014`, `TA-AST-016`, `TA-AST-215`, `TA-AST-223` y `TA-AST-224` ya son
+casos `KnownProductDefect` NIGHTLY del runner destructivo aislado. Sólo
+`TA-AST-017` permanece pendiente y fuera del pipeline; no bloquea `Host.Parser`
+ni otros contratos causalmente independientes.
 
-## Host.Parser materializado con estado pendiente
+## Host.Parser materializado y activo
 
 Los `536` casos de Parser ya existen en la suite nueva. Veinte conservan un
 defecto de producto mediante `KNOWN_FAILURE` y no bloquean el flujo ordinario:
@@ -108,21 +104,14 @@ defecto de producto mediante `KNOWN_FAILURE` y no bloquean el flujo ordinario:
 `TP-PAR-356`, `TP-PAR-358`, `TP-PAR-400`, `TP-PAR-405`, `TP-PAR-406`,
 `TP-PAR-422`, `TP-PAR-431`, `TP-PAR-450`, `TP-PAR-476` y `TP-PAR-511`.
 
-Tres casos requieren una seam determinista que no existe todavía:
-
-| Caso | Frontera inaccesible | Estado |
-|---|---|---|
-| `TP-PAR-514` | Clonado completo de `TypeSyntax` en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
-| `TP-PAR-516` | Clonado de constraints/projections en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
-| `TP-PAR-524` | Fallback interno `op_Invalid` en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
-
-Los tres IDs están materializados y documentados, pero se excluyen del
-manifiesto ejecutable hasta disponer de una seam fiel. No se sustituyen por un
-proxy ni se presentan como verificados.
+`TP-PAR-514` y `TP-PAR-524` están activos como `KnownProductDefect`;
+`TP-PAR-516` está activo como `Required`. Los tres salieron del catálogo
+`InfrastructurePending`, aunque esta transición documental no los presenta como
+verificados.
 
 ## Host.Sema materializado con estado pendiente
 
-Los `321` casos `TS-SEMA-001..321` están materializados. Cuatro defectos de
+Los `321` casos `TS-SEMA-001..321` están materializados. Cinco defectos de
 producto permanecen en el manifiesto como `KNOWN_FAILURE`:
 
 | Caso | Defecto que debe revelar |
@@ -130,21 +119,23 @@ producto permanecen en el manifiesto como `KNOWN_FAILURE`:
 | `TS-SEMA-106` | Un field de tipo función no reporta `InvalidType`. |
 | `TS-SEMA-110` | La recursión nominal indirecta no se rechaza por incompletitud. |
 | `TS-SEMA-246` | `validateObjectType` acepta `Function`. |
+| `TS-SEMA-265` | Un struct C ABI autorreferente no termina por falta de visited-set. |
 | `TS-SEMA-317` | `SymbolDumper` no emite el payload constante presente. |
 
-Ocho casos permanecen fuera del manifiesto ejecutable ordinario hasta disponer
+Cinco casos permanecen fuera del manifiesto ejecutable ordinario hasta disponer
 de la infraestructura fiel:
 
 | Caso | Infraestructura necesaria |
 |---|---|
 | `TS-SEMA-077` | Perfil sanitizer para certificar ownership del grafo internado. |
 | `TS-SEMA-094` | Perfil sanitizer para fugas y doble liberación del analyzer. |
-| `TS-SEMA-101` | Seam de test para la rama privada con declaración previa nula. |
-| `TS-SEMA-265` | Proceso aislado para struct C ABI autorreferente sin visited-set. |
-| `TS-SEMA-281` | Seam aislada para `maskForWidth`, que tiene enlace anónimo. |
 | `TS-SEMA-306` | Proceso aislado para profundidad no acotada de fallthrough. |
 | `TS-SEMA-314` | Proceso aislado para grafos profundos/cíclicos del SemanticDumper. |
 | `TS-SEMA-321` | Proceso aislado para ciclos del grafo de miembros de SymbolDumper. |
+
+`TS-SEMA-101` y `TS-SEMA-281` están activos como `Required`;
+`TS-SEMA-265` está activo como `KnownProductDefect`. Ninguno se presenta como
+verificado en esta reconciliación documental.
 
 `TS-SEMA-089` no es una feature pendiente: el plan fue corregido de seis a
 cinco clases globales soportadas, conforme al contrato vigente. La clase se

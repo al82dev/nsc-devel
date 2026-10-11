@@ -384,19 +384,20 @@ como trabajo futuro que requeriría ThreadSanitizer. No se ejecutó la suite
 histórica.
 
 Estado actual de `Host.Parser`: `536/536` casos están materializados en módulos
-nuevos y conservan visibles los defectos conocidos y las limitaciones de
-infraestructura. El registro central, el manifiesto y el gate controlador ya
-están integrados; por eso estos casos aumentan `Implementados`, pero todavía no
-aumentan `Verificados`. La auditoría independiente, el build y la ejecución de
-los `536` IDs quedan diferidos al cierre offline, después de completar toda la
-implementación de la Fase 2.
+nuevos y tienen fila ejecutable en el manifiesto; `22` conservan defectos
+conocidos. `TP-PAR-514` y `TP-PAR-524` son `KnownProductDefect`, mientras
+`TP-PAR-516` es `Required`; los tres salieron del catálogo pendiente. El registro
+central, el manifiesto y el gate controlador ya están integrados, pero todavía
+no aumentan `Verificados`. La auditoría independiente, el build y la ejecución
+de los `536` IDs quedan diferidos al cierre offline.
 
 Estado actual de `Host.Sema`: `321/321` casos están materializados en veinte
-módulos nuevos y tres soportes aislados. Los defectos conocidos y los casos que
-requieren sanitizer, seam privado o aislamiento de proceso permanecen visibles
-en sus registros; no se ejecutaron ni se presentaron como verificados. La
-integración central de registro, manifiesto, CMake y controlador está
-materializada y su validación queda diferida.
+módulos nuevos y tres soportes aislados. `316` tienen fila ejecutable y `5` son
+`KnownProductDefect`; otros `5` permanecen `InfrastructurePending` y fuera del
+manifiesto. `TS-SEMA-101` y `TS-SEMA-281` son `Required`, y `TS-SEMA-265` es
+`KnownProductDefect`; los tres salieron del catálogo pendiente. `TS-SEMA-077` y
+`TS-SEMA-094` permanecen como trabajo futuro ASan+LSan. No se ejecutaron ni se
+presentaron como verificados; la validación queda diferida.
 
 La primera construcción Debug offline alcanzó `144/524` y descubrió una
 omisión del soporte común: siete módulos consumían tres helpers no publicados.
@@ -1783,3 +1784,18 @@ configuro, compilo ni ejecuto. Evidencia:
   futuro sin añadir infraestructura TSAN.
 - Por instrucción de alcance no se configuró, compiló ni ejecutó ninguna
   prueba. Evidencia: `TANDA-02-08-HOST-AST-PRUEBAS-DESTRUCTIVAS.md`.
+
+## Validación 254 — reconciliación del catálogo pending vivo
+
+`ESTADO VIVO RECONCILIADO; SIN BUILD NI EJECUCIÓN`.
+
+- La reauditoría dirigida resolvió `18` casos: `14` quedaron integrados y `4`
+  permanecen como trabajo futuro fuera del pipeline.
+- Los catálogos vivos pasan del snapshot original de `3,438` a `3,424` filas
+  únicas; el nombre histórico de los archivos se conserva por procedencia.
+- Los once casos activos restantes de AST, Parser y Sema salieron de ambos
+  catálogos; las tres filas Source ya habían salido en la integración anterior.
+- `TA-AST-017`, `TS-SEMA-077`, `TS-SEMA-094` y `TS-SRC-049` conservan su
+  trazabilidad pending/future y no cuentan como ejecutables.
+- No se modificó el manifiesto, producto, CMake ni Builder. Evidencia:
+  `TANDA-VALIDACION-254-RECONCILIACION-PENDING-VIVO.md`.

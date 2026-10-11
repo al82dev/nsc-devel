@@ -25,15 +25,18 @@
     "Host.AST": {
       "expected": 230,
       "materialized": 230,
-      "executable": 224,
-      "infrastructure_pending": 6,
-      "known_product_defect": 0,
+      "executable": 229,
+      "infrastructure_pending": 1,
+      "known_product_defect": 5,
       "integrated": true,
       "verified": 224
     },
     "Host.Sema": {
       "expected": 321,
       "materialized": 321,
+      "executable": 316,
+      "infrastructure_pending": 5,
+      "known_product_defect": 5,
       "integrated": true,
       "verified": 0
     },
@@ -523,33 +526,37 @@
     },
     "CA-AST-002": {
       "materialized_cases": 8,
-      "executable_cases": 5,
+      "executable_cases": 7,
       "verified_cases": 5,
-      "infrastructure_pending_cases": 3,
-      "blocked_cases": [
+      "infrastructure_pending_cases": 1,
+      "known_failure_cases": [
         "TA-AST-014",
-        "TA-AST-016",
+        "TA-AST-016"
+      ],
+      "blocked_cases": [
         "TA-AST-017"
       ]
     },
     "CA-AST-019": {
       "materialized_cases": 23,
-      "executable_cases": 22,
+      "executable_cases": 23,
       "verified_cases": 22,
-      "infrastructure_pending_cases": 1,
-      "blocked_cases": [
+      "infrastructure_pending_cases": 0,
+      "known_failure_cases": [
         "TA-AST-215"
-      ]
+      ],
+      "blocked_cases": []
     },
     "CA-AST-020": {
       "materialized_cases": 14,
-      "executable_cases": 12,
+      "executable_cases": 14,
       "verified_cases": 12,
-      "infrastructure_pending_cases": 2,
-      "blocked_cases": [
+      "infrastructure_pending_cases": 0,
+      "known_failure_cases": [
         "TA-AST-223",
         "TA-AST-224"
-      ]
+      ],
+      "blocked_cases": []
     }
   },
   "wave_status": {
@@ -577,7 +584,7 @@
       "product_cases_implemented": 1197,
       "product_cases_integrated": 1197,
       "product_cases_verified": 333,
-      "known_failure_cases_implemented": 1,
+      "known_failure_cases_implemented": 33,
       "validation_pending_cases": 0,
       "special_infrastructure_pending": 6,
       "current_component": "Host.Sema",
@@ -587,6 +594,9 @@
       "current_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE",
       "previous_component": "Host.Parser",
       "previous_component_cases_materialized": 536,
+      "previous_component_cases_executable": 536,
+      "previous_component_infrastructure_pending": 0,
+      "previous_component_known_product_defect": 22,
       "previous_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     },
     "3": {

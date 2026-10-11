@@ -178,3 +178,12 @@ Huellas de salida:
 Esta validacion determina la topologia necesaria para materializar cada caso;
 no implementa los casos pendientes y no demuestra que sus contratos pasen. No
 se configuro, compilo ni ejecuto ninguna prueba.
+
+## Nota de transición posterior
+
+Los conteos, tablas y huellas anteriores son el snapshot histórico producido
+por la validación 247 y no se reescriben. La validación 254 reconcilia el estado
+vivo después de integrar `14` de los `18` casos re-auditados: los catálogos con
+nombre de procedencia `3438` contienen ahora `3,424` filas. Cuatro casos
+permanecen como trabajo futuro fuera del pipeline: `TA-AST-017`, `TS-SEMA-077`,
+`TS-SEMA-094` y `TS-SRC-049`.
