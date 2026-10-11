@@ -1542,6 +1542,23 @@ con cero faltantes, extras o duplicados. Tanda 2 queda nuevamente lista para
 su gate correctivo; la corrida integral sigue pendiente. Evidencia:
 `TANDA-VALIDACION-172-TF-FRONT-192.md`.
 
+Validaciones 223 a 225 corrigen tres defectos de oráculo Dominance sin tocar
+producto: `TF-DOM-030` ahora corrompe realmente la metadata de children,
+`TF-DOM-072` acota la cadena NIGHTLY a una consulta extremo a extremo y
+`TF-DOM-080` sustituye la matriz cartesiana NIGHTLY por consultas
+representativas. Evidencia: `TANDA-VALIDACION-223-DOMINANCE-METADATA-CORRUPTA.md`,
+`TANDA-VALIDACION-224-DOMINANCE-CHAIN-ESCALA.md` y
+`TANDA-VALIDACION-225-DOMINANCE-NCD-ESCALA.md`. No se ejecutaron pruebas por
+orden del usuario.
+
+Validacion 226 corrige el defecto productor compartido del verificador de
+Dominance que afectaba `TF-DOM-024`, `032`, `040`, `104`, `128`, `216`, `224`,
+`232` y `256`: elimina los sets por nodo y las matrices exhaustivas a escala,
+preserva exhaustividad en grafos pequenos y calcula idoms, children y fronteras
+con memoria acotada. Evidencia:
+`TANDA-VALIDACION-226-DOMINANCE-VERIFIER-ACOTADO.md`. No se compilo ni ejecuto;
+la validacion queda delegada al usuario.
+
 Validacion 205 corrige `TF-PAS-273..280`: el fixture de `CF-PAS-035` coloca
 ahora el PHI constante dentro del prefijo que procesa el pase y comprueba una
 sola sustitucion con identidad y valor exactos. No se modifico producto ni se

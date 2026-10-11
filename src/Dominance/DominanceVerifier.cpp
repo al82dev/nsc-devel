@@ -22,150 +22,117 @@ namespace nativesharp::dominance
 namespace
 {
 using NodeSet = std::unordered_set<const cfg::CfgNode*>;
-using DominatorSets = std::unordered_map<const cfg::CfgNode*, NodeSet>;
+using ImmediateDominators = std::unordered_map<const cfg::CfgNode*, const cfg::CfgNode*>;
+using RpoIndices = std::unordered_map<const cfg::CfgNode*, std::size_t>;
 
-bool sameSet(const NodeSet& first, const NodeSet& second)
+const cfg::CfgNode* intersectImmediateDominators(
+    const cfg::CfgNode* first,
+    const cfg::CfgNode* second,
+    const ImmediateDominators& idoms,
+    const RpoIndices& rpoIndices)
 {
-    if (first.size() != second.size())
+    const cfg::CfgNode* left = first;
+    const cfg::CfgNode* right = second;
+    while (left != right)
     {
-        return false;
-    }
-    for (const cfg::CfgNode* node : first)
-    {
-        if (!second.contains(node))
+        const auto leftIndex = rpoIndices.find(left);
+        const auto rightIndex = rpoIndices.find(right);
+        if (leftIndex == rpoIndices.end() || rightIndex == rpoIndices.end())
         {
-            return false;
+            return nullptr;
+        }
+        if (leftIndex->second > rightIndex->second)
+        {
+            const auto parent = idoms.find(left);
+            if (parent == idoms.end())
+            {
+                return nullptr;
+            }
+            left = parent->second;
+        }
+        else if (rightIndex->second > leftIndex->second)
+        {
+            const auto parent = idoms.find(right);
+            if (parent == idoms.end())
+            {
+                return nullptr;
+            }
+            right = parent->second;
         }
     }
-    return true;
+    return left;
 }
 
-DominatorSets computeDominatorSets(const cfg::CfgFunction* function)
+bool computeExpectedImmediateDominators(
+    const cfg::CfgFunction* function,
+    ImmediateDominators& idoms,
+    RpoIndices& rpoIndices)
 {
-    DominatorSets sets;
     const std::vector<cfg::CfgNode*>& rpo = function->reversePostOrder();
-    if (rpo.empty())
+    for (std::size_t index = 0; index < rpo.size(); ++index)
     {
-        return sets;
-    }
-
-    NodeSet all;
-    for (const cfg::CfgNode* node : rpo)
-    {
-        all.insert(node);
+        rpoIndices.emplace(rpo[index], index);
     }
 
     const cfg::CfgNode* entry = function->entryNode();
-    sets[entry] = {entry};
-    for (std::size_t index = 1; index < rpo.size(); ++index)
-    {
-        sets[rpo[index]] = all;
-    }
-
+    idoms.emplace(entry, entry);
     bool changed = true;
     while (changed)
     {
         changed = false;
         for (std::size_t index = 1; index < rpo.size(); ++index)
         {
-            const cfg::CfgNode* node = rpo[index];
-            const std::vector<cfg::CfgNode*> predecessors = node->predecessors();
-            bool havePredecessor = false;
-            NodeSet intersection;
-
-            for (const cfg::CfgNode* predecessor : predecessors)
+            const cfg::CfgNode* block = rpo[index];
+            const cfg::CfgNode* newIdom = nullptr;
+            for (const cfg::CfgNode* predecessor : block->predecessors())
             {
-                if (predecessor == nullptr || !predecessor->reachable())
+                if (predecessor == nullptr || !predecessor->reachable() || !idoms.contains(predecessor))
                 {
                     continue;
                 }
-                const auto predecessorSet = sets.find(predecessor);
-                if (predecessorSet == sets.end())
+                newIdom = newIdom == nullptr ? predecessor :
+                    intersectImmediateDominators(newIdom, predecessor, idoms, rpoIndices);
+                if (newIdom == nullptr)
                 {
-                    continue;
-                }
-                if (!havePredecessor)
-                {
-                    intersection = predecessorSet->second;
-                    havePredecessor = true;
-                }
-                else
-                {
-                    for (auto iterator = intersection.begin(); iterator != intersection.end();)
-                    {
-                        if (!predecessorSet->second.contains(*iterator))
-                        {
-                            iterator = intersection.erase(iterator);
-                        }
-                        else
-                        {
-                            ++iterator;
-                        }
-                    }
+                    return false;
                 }
             }
-
-            if (!havePredecessor)
+            if (newIdom == nullptr)
             {
-                intersection.clear();
+                return false;
             }
-            intersection.insert(node);
-            if (!sameSet(intersection, sets[node]))
+            const auto found = idoms.find(block);
+            if (found == idoms.end() || found->second != newIdom)
             {
-                sets[node] = std::move(intersection);
+                idoms[block] = newIdom;
                 changed = true;
             }
         }
     }
-    return sets;
+    return idoms.size() == rpo.size();
 }
 
-const cfg::CfgNode* expectedImmediateDominator(
+bool expectedDominates(
+    const cfg::CfgNode* dominator,
     const cfg::CfgNode* node,
     const cfg::CfgNode* entry,
-    const DominatorSets& sets)
+    const ImmediateDominators& idoms)
 {
-    if (node == entry)
+    const cfg::CfgNode* cursor = node;
+    for (std::size_t step = 0; cursor != nullptr && step <= idoms.size(); ++step)
     {
-        return nullptr;
+        if (cursor == dominator)
+        {
+            return true;
+        }
+        if (cursor == entry)
+        {
+            return false;
+        }
+        const auto parent = idoms.find(cursor);
+        cursor = parent == idoms.end() ? nullptr : parent->second;
     }
-    const auto nodeSetFound = sets.find(node);
-    if (nodeSetFound == sets.end())
-    {
-        return nullptr;
-    }
-
-    for (const cfg::CfgNode* candidate : nodeSetFound->second)
-    {
-        if (candidate == node)
-        {
-            continue;
-        }
-        const auto candidateSet = sets.find(candidate);
-        if (candidateSet == sets.end())
-        {
-            continue;
-        }
-
-        bool nearest = true;
-        for (const cfg::CfgNode* other : nodeSetFound->second)
-        {
-            if (other == node || other == candidate)
-            {
-                continue;
-            }
-            if (!candidateSet->second.contains(other))
-            {
-                nearest = false;
-                break;
-            }
-        }
-        if (nearest)
-        {
-            return candidate;
-        }
-    }
-    return nullptr;
+    return false;
 }
 
 bool vectorMatchesSet(
@@ -308,23 +275,46 @@ bool DominanceVerifier::verifyFunction(const DominanceFunction* function)
         }
     }
 
-    const DominatorSets sets = computeDominatorSets(cfgFunction);
     const cfg::CfgNode* entry = cfgFunction->entryNode();
-    std::unordered_map<const cfg::CfgNode*, const cfg::CfgNode*> expectedIdoms;
+    ImmediateDominators expectedIdoms;
+    RpoIndices rpoIndex;
+    if (!computeExpectedImmediateDominators(cfgFunction, expectedIdoms, rpoIndex))
+    {
+        return fail("independent immediate-dominator analysis did not converge over the reachable CFG");
+    }
     for (const cfg::CfgNode* cfgNode : rpo)
     {
-        const cfg::CfgNode* expected = expectedImmediateDominator(cfgNode, entry, sets);
-        expectedIdoms[cfgNode] = expected;
+        const cfg::CfgNode* expected = cfgNode == entry ? nullptr : expectedIdoms.at(cfgNode);
         if (tree->immediateDominator(cfgNode) != expected)
         {
-            return fail("immediate dominator does not match fixed-point dominator sets");
+            return fail("immediate dominator does not match independent fixed-point analysis");
         }
+    }
+
+    std::unordered_map<const DominatorTreeNode*, std::unordered_set<const DominatorTreeNode*>> expectedChildren;
+    for (const DominatorTreeNode* node : tree->nodes())
+    {
+        expectedChildren.emplace(node, std::unordered_set<const DominatorTreeNode*>{});
+    }
+    for (const DominatorTreeNode* node : tree->nodes())
+    {
+        if (node == tree->root())
+        {
+            continue;
+        }
+        const cfg::CfgNode* expectedParentNode = expectedIdoms.at(node->cfgNode());
+        const DominatorTreeNode* expectedParent = tree->findNode(expectedParentNode);
+        if (expectedParent == nullptr)
+        {
+            return fail("independent immediate dominator is absent from the materialized tree");
+        }
+        expectedChildren[expectedParent].insert(node);
     }
 
     for (const DominatorTreeNode* node : tree->nodes())
     {
         const cfg::CfgNode* cfgNode = node->cfgNode();
-        const cfg::CfgNode* expectedParent = expectedIdoms[cfgNode];
+        const cfg::CfgNode* expectedParent = cfgNode == entry ? nullptr : expectedIdoms.at(cfgNode);
         const DominatorTreeNode* parent = node->immediateDominator();
         if ((parent == nullptr ? nullptr : parent->cfgNode()) != expectedParent)
         {
@@ -334,104 +324,169 @@ bool DominanceVerifier::verifyFunction(const DominanceFunction* function)
         {
             return fail("dominator tree depth is inconsistent with its parent");
         }
-
-        std::unordered_set<const DominatorTreeNode*> expectedChildren;
-        for (const DominatorTreeNode* candidate : tree->nodes())
+        if (parent != nullptr &&
+            (parent->preorderNumber() > node->preorderNumber() ||
+             parent->postorderNumber() < node->postorderNumber()))
         {
-            if (candidate->immediateDominator() == node)
-            {
-                expectedChildren.insert(candidate);
-            }
+            return fail("dominator tree child interval must be nested inside its parent interval");
         }
-        if (node->children().size() != expectedChildren.size())
+
+        const auto& childrenExpected = expectedChildren.at(node);
+        if (node->children().size() != childrenExpected.size())
         {
             return fail("dominator tree child list does not match immediate-dominator relations");
         }
         std::unordered_set<const DominatorTreeNode*> actualChildren;
         for (const DominatorTreeNode* child : node->children())
         {
-            if (child == nullptr || !expectedChildren.contains(child) || !actualChildren.insert(child).second)
+            if (child == nullptr || !childrenExpected.contains(child) || !actualChildren.insert(child).second)
             {
                 return fail("dominator tree child registration is invalid or duplicated");
             }
         }
-    }
-
-    for (const cfg::CfgNode* dominator : rpo)
-    {
-        for (const cfg::CfgNode* node : rpo)
-        {
-            const bool expected = sets.at(node).contains(dominator);
-            if (tree->dominates(dominator, node) != expected)
+        std::vector<const DominatorTreeNode*> orderedChildren(node->children().begin(), node->children().end());
+        std::sort(orderedChildren.begin(), orderedChildren.end(),
+            [](const DominatorTreeNode* first, const DominatorTreeNode* second)
             {
-                return fail("dominates query disagrees with independently computed dominator sets");
-            }
-            if (tree->strictlyDominates(dominator, node) != (expected && dominator != node))
-            {
-                return fail("strict dominance query is inconsistent");
-            }
-        }
-
-        std::vector<const cfg::CfgNode*> expectedChain;
-        const cfg::CfgNode* current = dominator;
-        while (current != nullptr)
+                return first->preorderNumber() < second->preorderNumber();
+            });
+        for (std::size_t index = 1; index < orderedChildren.size(); ++index)
         {
-            expectedChain.push_back(current);
-            current = expectedIdoms[current];
-        }
-        std::reverse(expectedChain.begin(), expectedChain.end());
-        if (tree->dominators(dominator) != expectedChain)
-        {
-            return fail("dominator chain query does not match immediate-dominator ancestry");
-        }
-    }
-
-    for (const cfg::CfgNode* first : rpo)
-    {
-        for (const cfg::CfgNode* second : rpo)
-        {
-            const cfg::CfgNode* expected = first;
-            while (expected != nullptr && !sets.at(second).contains(expected))
+            if (orderedChildren[index - 1]->postorderNumber() >= orderedChildren[index]->preorderNumber())
             {
-                expected = expectedIdoms[expected];
-            }
-            if (tree->nearestCommonDominator(first, second) != expected)
-            {
-                return fail("nearest common dominator query is inconsistent");
+                return fail("sibling dominator-tree traversal intervals must not overlap");
             }
         }
     }
 
-    std::unordered_map<const cfg::CfgNode*, std::size_t> rpoIndex;
-    for (std::size_t index = 0; index < rpo.size(); ++index)
+    for (const cfg::CfgNode* node : rpo)
     {
-        rpoIndex.emplace(rpo[index], index);
+        if (!tree->dominates(entry, node) || !tree->dominates(node, node) ||
+            tree->strictlyDominates(node, node))
+        {
+            return fail("dominance query violates root, identity or strict-identity contracts");
+        }
+        if (node != entry)
+        {
+            const cfg::CfgNode* parent = expectedIdoms.at(node);
+            if (!tree->dominates(parent, node) || !tree->strictlyDominates(parent, node) ||
+                tree->nearestCommonDominator(parent, node) != parent)
+            {
+                return fail("dominance queries disagree with the immediate-dominator relation");
+            }
+        }
+    }
+
+    constexpr std::size_t exhaustiveQueryLimit = 64U;
+    if (rpo.size() <= exhaustiveQueryLimit)
+    {
+        for (const cfg::CfgNode* dominator : rpo)
+        {
+            for (const cfg::CfgNode* node : rpo)
+            {
+                const bool expected = expectedDominates(dominator, node, entry, expectedIdoms);
+                if (tree->dominates(dominator, node) != expected ||
+                    tree->strictlyDominates(dominator, node) != (expected && dominator != node))
+                {
+                    return fail("dominance query disagrees with independent immediate-dominator ancestry");
+                }
+            }
+
+            std::vector<const cfg::CfgNode*> expectedChain;
+            const cfg::CfgNode* current = dominator;
+            while (true)
+            {
+                expectedChain.push_back(current);
+                if (current == entry)
+                {
+                    break;
+                }
+                current = expectedIdoms.at(current);
+            }
+            std::reverse(expectedChain.begin(), expectedChain.end());
+            if (tree->dominators(dominator) != expectedChain)
+            {
+                return fail("dominator chain query does not match immediate-dominator ancestry");
+            }
+        }
+
+        for (const cfg::CfgNode* first : rpo)
+        {
+            for (const cfg::CfgNode* second : rpo)
+            {
+                const cfg::CfgNode* expected =
+                    intersectImmediateDominators(first, second, expectedIdoms, rpoIndex);
+                if (tree->nearestCommonDominator(first, second) != expected)
+                {
+                    return fail("nearest common dominator query is inconsistent");
+                }
+            }
+        }
+    }
+    else
+    {
+        const cfg::CfgNode* tail = rpo.back();
+        std::vector<const cfg::CfgNode*> expectedTailChain;
+        const cfg::CfgNode* current = tail;
+        while (true)
+        {
+            expectedTailChain.push_back(current);
+            if (current == entry)
+            {
+                break;
+            }
+            current = expectedIdoms.at(current);
+        }
+        std::reverse(expectedTailChain.begin(), expectedTailChain.end());
+        if (tree->dominators(tail) != expectedTailChain)
+        {
+            return fail("large dominator chain query does not match immediate-dominator ancestry");
+        }
+    }
+
+    std::unordered_map<const cfg::CfgNode*, NodeSet> expectedFrontiers;
+    for (const cfg::CfgNode* owner : rpo)
+    {
+        expectedFrontiers.emplace(owner, NodeSet{});
+    }
+    for (const cfg::CfgNode* candidate : rpo)
+    {
+        std::vector<const cfg::CfgNode*> reachablePredecessors;
+        for (const cfg::CfgNode* predecessor : candidate->predecessors())
+        {
+            if (predecessor != nullptr && predecessor->reachable())
+            {
+                reachablePredecessors.push_back(predecessor);
+            }
+        }
+        if (reachablePredecessors.size() < 2U)
+        {
+            continue;
+        }
+        const cfg::CfgNode* stop = candidate == entry ? entry : expectedIdoms.at(candidate);
+        for (const cfg::CfgNode* predecessor : reachablePredecessors)
+        {
+            const cfg::CfgNode* runner = predecessor;
+            for (std::size_t step = 0; runner != stop && step <= rpo.size(); ++step)
+            {
+                if (runner == nullptr || !expectedFrontiers.contains(runner))
+                {
+                    return fail("frontier oracle could not reach the candidate immediate dominator");
+                }
+                expectedFrontiers[runner].insert(candidate);
+                runner = runner == entry ? nullptr : expectedIdoms.at(runner);
+            }
+            if (runner != stop)
+            {
+                return fail("frontier oracle exceeded the bounded immediate-dominator chain");
+            }
+        }
     }
 
     for (const cfg::CfgNode* owner : rpo)
     {
-        NodeSet expectedFrontier;
-        for (const cfg::CfgNode* candidate : rpo)
-        {
-            bool dominatesPredecessor = false;
-            for (const cfg::CfgNode* predecessor : candidate->predecessors())
-            {
-                if (predecessor != nullptr && predecessor->reachable() &&
-                    sets.at(predecessor).contains(owner))
-                {
-                    dominatesPredecessor = true;
-                    break;
-                }
-            }
-            const bool strictlyDominatesCandidate = owner != candidate && sets.at(candidate).contains(owner);
-            if (dominatesPredecessor && !strictlyDominatesCandidate)
-            {
-                expectedFrontier.insert(candidate);
-            }
-        }
-
         const std::vector<const cfg::CfgNode*>& actual = frontier->frontier(owner);
-        if (!vectorMatchesSet(actual, expectedFrontier))
+        if (!vectorMatchesSet(actual, expectedFrontiers.at(owner)))
         {
             return fail("dominance frontier does not match its graph-theoretic definition");
         }

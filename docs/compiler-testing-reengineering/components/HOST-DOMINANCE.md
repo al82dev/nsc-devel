@@ -144,12 +144,10 @@ ajenas, índices inconsistentes o CFG sin análisis.
 
 ### 8.2 Oráculo independiente de dominadores
 
-El verifier no reutiliza el algoritmo del builder. Inicializa el set de entry a `{entry}` y el resto al universo
-alcanzable. Hasta punto fijo, cada nodo sustituye su set por la intersección de sets de predecessors alcanzables
-más el propio nodo. `sameSet` compara cardinalidad y pertenencia.
-
-`expectedImmediateDominator` busca, entre los dominadores estrictos, el candidato más cercano: todos los demás
-dominadores estrictos deben pertenecer al set del candidato. Entry espera null.
+El verifier recompone de manera independiente la relación de dominador inmediato sobre RPO. Conserva un único
+parent esperado por nodo, cruza cadenas mediante índices RPO y repite el barrido hasta punto fijo. Entry se usa
+como raíz durante el cálculo y se compara contra `null` en la representación materializada. El oráculo ocupa
+`O(V)` memoria en lugar de materializar un set potencialmente cuadrático por cada nodo.
 
 ### 8.3 Forma del árbol
 
@@ -157,21 +155,20 @@ El árbol debe contener exactamente los nodos RPO, con root igual a entry. Root 
 Cada nodo exige identidad/index únicos, posición RPO exacta, intervalo válido y dos números de traversal globalmente
 únicos. Ningún nodo CFG inalcanzable puede aparecer.
 
-Cada idom debe coincidir con el oráculo de sets. Parent, depth y children se recomputan; el vector de children debe
-contener exactamente los hijos esperados, sin null ni duplicados.
+Cada idom debe coincidir con el oráculo independiente. Parent, depth y children se recomputan; el vector de children
+debe contener exactamente los hijos esperados, sin null ni duplicados. Los intervalos de cada hijo quedan dentro
+del parent y los intervalos de siblings no se solapan.
 
 ### 8.4 Consultas
 
-Para cada par de nodos alcanzables, el verifier compara `dominates` y `strictlyDominates` con los sets independientes.
-Para cada nodo reconstruye la cadena root-to-node. Para cada par calcula el dominador común más cercano ascendiendo
-por idoms esperados.
+En grafos de hasta 64 nodos, el verifier compara exhaustivamente `dominates`, `strictlyDominates`, cadenas y NCD
+contra la ascendencia esperada. En grafos mayores conserva comprobaciones lineales de raíz, identidad, parent,
+intervalos y una cadena extrema; evita convertir la validación de escala en una matriz cartesiana ajena al contrato.
 
 ### 8.5 Frontera
 
-Para cada owner y candidate, el oráculo aplica la definición gráfica:
-
-- owner domina al menos un predecessor alcanzable de candidate;
-- owner no domina estrictamente a candidate.
+El oráculo recorre cada join desde sus predecessors alcanzables hasta su idom esperado y registra el join en la
+frontera de cada nodo visitado. El recorrido es iterativo y está acotado por `V` para detectar cadenas inválidas.
 
 `vectorMatchesSet` exige cardinalidad, pertenencia y unicidad; después se comprueba orden RPO estrictamente
 creciente.
@@ -199,9 +196,9 @@ creciente.
 - Construcción de frontier asciende desde cada predecessor de join hasta el idom del join.
 - Ordenar cada frontier usa inserción, cuadrático en el tamaño de esa frontera.
 - Consultas de dominancia son `O(1)`; cadena y NCD son `O(altura)`.
-- El verifier deliberadamente usa sets y matrices `V²` para independencia, no para la ruta de producción.
-
-Estos límites no autorizan optimización en esta fase.
+- El verifier usa `O(V)` memoria para idoms y children, más el tamaño real de las fronteras.
+- Las matrices exhaustivas de consultas se reservan para grafos de hasta 64 nodos; a escala se verifican las
+  invariantes estructurales y consultas representativas en espacio acotado.
 
 ## 11. Estrategia de prueba futura
 
