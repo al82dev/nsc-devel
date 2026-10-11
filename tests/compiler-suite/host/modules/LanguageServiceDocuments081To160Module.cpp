@@ -154,12 +154,15 @@ void inlineAssemblyContract(TestContext& context, std::size_t variant)
     std::string error;
     const auto path = documentPath(18U, variant);
     const bool shielded = variant != 3U && variant != 4U;
-    const std::string source = variant == 3U ? "// asm {\nvoid Run(){return;}\n" :
-        variant == 4U ? "string text = \"asm {\";\nvoid Run(){return;}\n" :
+    const std::string source = variant == 3U ? "// asm {\nvoid Run() {\nreturn;\n}\n" :
+        variant == 4U ? "string text = \"asm {\";\nvoid Run() {\nreturn;\n}\n" :
         "void Raw() {\n    asm {\nmov rax, {input}\n    }\n}\n";
     service.openDocument(path, source, 1, error);
     const auto edit = service.formatDocument(path);
-    context.expect(shielded ? !edit.has_value() : edit.has_value(),
+    const std::string expected = variant == 3U ?
+        "// asm {\nvoid Run() {\n    return;\n}\n" :
+        "string text = \"asm {\";\nvoid Run() {\n    return;\n}\n";
+    context.expect(shielded ? !edit.has_value() : edit.has_value() && edit->newText == expected,
         "real inline assembly is a byte-identical formatting no-op while comments and strings do not shield");
 }
 
