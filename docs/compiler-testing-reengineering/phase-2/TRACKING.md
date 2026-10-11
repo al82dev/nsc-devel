@@ -1595,3 +1595,8 @@ Validacion 211 corrige `TSH-00019`: los vectores FNV-1a de `é` y `ñ` usan los
 bytes UTF-8 observables por `string`, no valores Latin-1. No se modifico el
 algoritmo self-host ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-211-SELFHOST-FNV-UTF8.md`.
+
+Validacion 226 completa los oraculos de `TS-SEMA-118`, `125`, `127` y `145`
+con la nota ordenada `PreviousDeclaration` que emite el producto. No se
+modifico producto ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-226-SEMA-PREVIOUS-DECLARATION.md`.

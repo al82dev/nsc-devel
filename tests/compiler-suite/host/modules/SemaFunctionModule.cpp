@@ -17,6 +17,12 @@ Scenario bad(std::string label, std::string source, DiagnosticId id, std::string
 {
     return {std::move(label), std::move(source), main, false, {{id, std::move(text)}}, {}};
 }
+
+Scenario badWithPrevious(std::string label, std::string source, DiagnosticId id)
+{
+    return {std::move(label), std::move(source), false, false,
+        {{id, {}}, {DiagnosticId::PreviousDeclaration, {}}}, {}};
+}
 }
 
 // Registers CS-SEMA-015 function, linkage, parameter, and entry-point contracts.
@@ -39,14 +45,14 @@ void registerSemaFunctionModule(TestRegistry& registry)
         ok("repeat", "int F(int x); int F(int x);", {"F"}),
     });
     addCase(registry, "TS-SEMA-125", "CS-SEMA-015", {
-        bad("type", "int F(int x); int F(float x);", DiagnosticId::ConflictingFunctionDeclaration),
-        bad("linkage", "extern C int G(int x); int G(int x);", DiagnosticId::ConflictingFunctionDeclaration),
+        badWithPrevious("type", "int F(int x); int F(float x);", DiagnosticId::ConflictingFunctionDeclaration),
+        badWithPrevious("linkage", "extern C int G(int x); int G(int x);", DiagnosticId::ConflictingFunctionDeclaration),
     });
     addCase(registry, "TS-SEMA-126", "CS-SEMA-015", {
         ok("declare-define", "int F(); int F() { return 1; }", {"F"}),
     });
     addCase(registry, "TS-SEMA-127", "CS-SEMA-015", {
-        bad("double-definition", "int F(){return 1;} int F(){return 2;}",
+        badWithPrevious("double-definition", "int F(){return 1;} int F(){return 2;}",
             DiagnosticId::DuplicateFunctionDefinition),
     });
     addCase(registry, "TS-SEMA-128", "CS-SEMA-015", {

@@ -17,6 +17,12 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
+
+Scenario badWithPrevious(std::string label, std::string source, DiagnosticId id)
+{
+    return {std::move(label), std::move(source), false, false,
+        {{id, {}}, {DiagnosticId::PreviousDeclaration, {}}}, {}};
+}
 }
 
 // Registers CS-SEMA-016 global and local variable contracts.
@@ -53,7 +59,7 @@ void registerSemaVariableModule(TestRegistry& registry)
         bad("global-array-init", "int[2] values = 1;", DiagnosticId::InvalidConversion),
     });
     addCase(registry, "TS-SEMA-145", "CS-SEMA-016", {
-        bad("duplicate", "int F(){int x;int x;return 0;}", DiagnosticId::DuplicateSymbol),
+        badWithPrevious("duplicate", "int F(){int x;int x;return 0;}", DiagnosticId::DuplicateSymbol),
         ok("shadow", "int x=1;int F(){int x=2;{int x=3;}return x;}", {"x", "F"}),
     });
 }
