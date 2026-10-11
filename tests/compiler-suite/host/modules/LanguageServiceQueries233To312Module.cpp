@@ -40,11 +40,45 @@ void workspaceSymbolsContract(TestContext& context, std::size_t variant)
             "missing semantic model yields empty workspace symbols");
         return;
     }
-    SemanticFixture fixture;
+    SemanticFixture fixture(variant == 8U ? 8U : 1U);
     const std::size_t limit = variant == 4U || variant == 5U ? 0U : variant == 6U ? 1U : 100U;
-    const auto symbols = fixture.snapshot().workspaceSymbols(variant == 2U ? "aDd" : "Add", limit);
-    context.expect(limit == 0U ? symbols.empty() : limit == 1U ? symbols.size() == 1U : symbols.size() == 2U,
-        "workspace symbols use case-insensitive substring matching and a strict result cap");
+    const std::string_view query = variant == 2U ? "aDd" : "Add";
+    const auto symbols = fixture.snapshot().workspaceSymbols(query, limit);
+
+    const auto expectedOrder = [](const std::vector<LanguageSymbol>& values) {
+        return values.size() == 4U &&
+            values[0].name == "Add" && values[0].kind == LanguageSymbolKind::Method &&
+            values[1].name == "delta" && values[1].kind == LanguageSymbolKind::Parameter &&
+            values[1].qualifiedName == values[0].qualifiedName + ".delta" &&
+            values[2].name == "Add" && values[2].kind == LanguageSymbolKind::Method &&
+            values[2].qualifiedName == values[0].qualifiedName &&
+            values[3].name == "delta" && values[3].kind == LanguageSymbolKind::Parameter &&
+            values[3].qualifiedName == values[2].qualifiedName + ".delta";
+    };
+    const auto sameSymbols = [](const std::vector<LanguageSymbol>& left,
+                                const std::vector<LanguageSymbol>& right) {
+        if (left.size() != right.size()) return false;
+        for (std::size_t index = 0; index < left.size(); ++index)
+        {
+            if (left[index].name != right[index].name ||
+                left[index].qualifiedName != right[index].qualifiedName ||
+                left[index].detail != right[index].detail ||
+                left[index].kind != right[index].kind ||
+                left[index].location.path != right[index].location.path ||
+                left[index].location.range != right[index].location.range ||
+                left[index].selectionRange != right[index].selectionRange ||
+                left[index].renameable != right[index].renameable)
+                return false;
+        }
+        return true;
+    };
+
+    const bool expected = limit == 0U ? symbols.empty() :
+        limit == 1U ? symbols.size() == 1U && symbols.front().name == "Add" &&
+            symbols.front().kind == LanguageSymbolKind::Method : expectedOrder(symbols);
+    const auto repeated = variant == 7U ? fixture.snapshot().workspaceSymbols(query, limit) : symbols;
+    context.expect(expected && (variant != 7U || sameSymbols(symbols, repeated)),
+        "workspace symbols search qualified names, preserve source order, ignore case, and cap results");
 }
 
 void symbolAtContract(TestContext& context, std::size_t variant)
