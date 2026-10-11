@@ -1743,3 +1743,23 @@ configuro, compilo ni ejecuto. Evidencia:
   para el paquete divergente.
 - No se configuró, compiló ni ejecutó ningún artefacto.
 - Tabla literal y evidencia: `TANDA-VALIDACION-246-NSCBUILDER3-PARIDAD-CONSTRUCCION.md`.
+
+## Validacion 247 — clasificacion exhaustiva de `InfrastructurePending`
+
+`AUDITORIA DOCUMENTAL COMPLETA; SIN CONFIGURACION, BUILD NI EJECUCION`.
+
+- Se reconstruyo el universo vigente de `4,044` casos `InfrastructurePending`.
+- Se excluyeron por componente canonico los `606` casos de bibliotecas y SDK
+  externos; el universo del compilador queda en `3,438` casos.
+- Los `3,438` casos se cruzaron individualmente contra diseño, asignacion,
+  contrato y origen de disposicion.
+- Una segunda auditoria por contrato y oraculo publico, independiente del
+  ejecutor planeado, clasifica `313` como fixture `.ns` unico, `329` como
+  `.nsproj`/multiples `.ns`, `554` como C++ interno indispensable, `2,171`
+  como integracion/orquestacion/self-host/toolchain y `71` como no
+  determinables por evidencia insuficiente.
+- Los `489` contratos representados se revisaron por entradas, salidas,
+  oraculo, dependencias, capa y variantes de diseño; no se clasificaron por
+  nombre ni por el perfil actual de ejecucion.
+- CSV, JSON, conteos, huellas y metodologia:
+  `TANDA-VALIDACION-247-CLASIFICACION-INFRASTRUCTURE-PENDING.md`.
