@@ -75,13 +75,6 @@ class Builder3DispositionCatalogTests(unittest.TestCase):
                 Path("Synthetic.jsonl"), {"case_id": "T-001"}
             )
 
-        case_ids, disposition = builder.parse_disposition_row(
-            Path("SelfHostBootstrapInfrastructureCatalog.jsonl"),
-            {"case_ids": ["T-001"]},
-        )
-        self.assertEqual(case_ids, ("T-001",))
-        self.assertEqual(disposition, "InfrastructurePending")
-
     def test_only_inventoried_metadata_files_may_omit_case_identity(self) -> None:
         for name in builder.DISPOSITION_METADATA_ONLY_NAMES:
             with self.subTest(name=name):

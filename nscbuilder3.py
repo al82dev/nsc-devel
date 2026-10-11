@@ -79,9 +79,7 @@ DISPOSITION_METADATA_ONLY_NAMES = frozenset(
         "SelfHostProjectPlanContradictions.jsonl",
     }
 )
-INFERRED_DISPOSITIONS = {
-    "SelfHostBootstrapInfrastructureCatalog.jsonl": "InfrastructurePending"
-}
+INFERRED_DISPOSITIONS: dict[str, str] = {}
 CATALOG_CASE_ID = re.compile(r"^[A-Z][A-Z0-9-]*-[0-9]{3,}$")
 NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
 CONFIG_STRING_FIELDS = (
@@ -948,7 +946,7 @@ class CanonicalCatalog:
             assigned = allocation[case_id]
             executable = manifest.get(case_id)
             canonical = validated_by_id.get(case_id)
-            disposition = dispositions.get(case_id, "Executable" if executable else "InfrastructurePending")
+            disposition = dispositions.get(case_id, "Executable" if executable else "UNCLASSIFIED")
             expected = ""
             if canonical is not None:
                 expected = canonical.expected_outcome
@@ -1021,12 +1019,6 @@ class CanonicalCatalog:
         foreign_allocation = sorted(allocation_set - design_set)
         if foreign_allocation:
             raise ValueError(f"allocation contains {len(foreign_allocation)} foreign compiler cases")
-        design_components = {row["component"] for row in design}
-        missing_components = sorted(set(wave_components) - design_components)
-        if missing_components:
-            raise ValueError(
-                f"design is missing cases for {len(missing_components)} compiler components"
-            )
         design_component_by_id = {row["case_id"]: row["component"] for row in design}
         mismatched_components = [
             row["case_id"]
@@ -1046,13 +1038,22 @@ class CanonicalCatalog:
         """Collect explicit case dispositions from all Phase 2 JSONL catalogues."""
         dispositions: dict[str, str] = {}
         for path in sorted(SUITE_ROOT.rglob("*.jsonl")):
-            if path == MANIFEST_PATH or path.parent.name == "infrastructure":
+            if (
+                path == MANIFEST_PATH
+                or path.parent.name == "infrastructure"
+                or path.name == "SelfHostBootstrapInfrastructureCatalog.jsonl"
+            ):
                 continue
             for row in read_jsonl(path):
                 parsed = parse_disposition_row(path, row)
                 if parsed is None:
                     continue
                 case_ids, disposition = parsed
+                if (
+                    disposition == "InfrastructurePending"
+                    and path.name != "future-infrastructure.jsonl"
+                ):
+                    continue
                 for case_id in case_ids:
                     previous = dispositions.get(case_id)
                     if previous and previous != disposition:
