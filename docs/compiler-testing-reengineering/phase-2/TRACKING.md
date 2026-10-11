@@ -1653,3 +1653,9 @@ tipo `Error` conserva solamente el diagnostico causal y no agrega
 `InvalidEnumInitializer`. No se compilo ni ejecuto; la validacion queda
 delegada al usuario. Evidencia:
 `TANDA-VALIDACION-234-SEMA-ENUM-CASCADE.md`.
+
+Validacion 235 corrige `TS-SEMA-140`: una global `const` no constante emite
+solo `ConstRequiresConstant`; la global ordinaria conserva
+`GlobalRequiresConstant`. No se compilo ni ejecuto; la validacion queda
+delegada al usuario. Evidencia:
+`TANDA-VALIDACION-235-SEMA-CONST-GLOBAL.md`.

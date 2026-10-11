@@ -621,7 +621,7 @@ void SemanticAnalyzer::analyzeGlobalVariable(ast::AstNode* node)
             recordImplicitConversion(node, node->first(), initializer, type);
         }
 
-        if (!initializer.isConstant)
+        if (!node->flag() && !initializer.isConstant)
         {
             report(
                 node->first()->range(),
