@@ -3138,6 +3138,10 @@ ExpressionInfo SemanticAnalyzer::makeRValue(Type* type) const noexcept
 ExpressionInfo SemanticAnalyzer::record(ast::AstNode* node, ExpressionInfo info)
 {
     model_.set(node, info);
+    if (info.symbol != nullptr)
+    {
+        model_.bindSymbol(node, info.symbol);
+    }
     return info;
 }
 

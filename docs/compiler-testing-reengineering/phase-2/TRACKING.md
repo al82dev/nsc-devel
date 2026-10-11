@@ -1642,3 +1642,8 @@ Validacion 232 corrige `TP-PAR-170`: una alternativa repetida dentro de un
 recuperacion. No se compilo ni ejecuto; la validacion queda delegada al
 usuario. Evidencia:
 `TANDA-VALIDACION-232-PARSER-VARIANT-DUPLICATE.md`.
+
+Validacion 233 corrige el productor de `TS-SEMA-100`: `record` publica ahora
+en `SemanticModel` el simbolo ya resuelto que contiene `ExpressionInfo`. No se
+compilo ni ejecuto; la validacion queda delegada al usuario. Evidencia:
+`TANDA-VALIDACION-233-SEMA-SYMBOL-BINDING.md`.
