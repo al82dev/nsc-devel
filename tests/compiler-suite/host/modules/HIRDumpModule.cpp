@@ -33,7 +33,7 @@ void constantDumpOracle(TestContext& context, std::size_t variant)
     HirNode* node = arena.make(HirNodeKind::Constant, SourceRange());
     const std::array values{ConstantValue::signedInteger(-7), ConstantValue::unsignedInteger(9),
         ConstantValue::floating(1.25), ConstantValue::boolean(true), ConstantValue::nullValue(),
-        ConstantValue::stringValue("a\\\"\n\r\t\0b"), ConstantValue::stringValue(std::string(1, '\x01')),
+        ConstantValue::stringValue(std::string("a\\\"\n\r\t\0b", 8)), ConstantValue::stringValue(std::string(1, '\x01')),
         ConstantValue::stringValue("plain")};
     constexpr std::array<std::string_view, 8> expected{"Constant constant=-7\n", "Constant constant=9u\n",
         "Constant constant=1.25\n", "Constant constant=true\n", "Constant constant=null\n",
