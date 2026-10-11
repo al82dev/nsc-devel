@@ -12,7 +12,9 @@ IMPLEMENTADA. VALIDACIÓN PENDIENTE.
 de Sema mediante textos que el parser vigente rechaza antes de construir el
 AST requerido. `TS-SEMA-168` clasificaba como diagnóstico semántico una forma
 numérica malformada que pertenece al lexer. Esas pruebas no alcanzaban el
-contrato que declaraban.
+contrato que declaraban. `TS-SEMA-132` esperaba
+`MissingFunctionDefinition`, aunque la validación ejecutable clasifica tanto
+la ausencia de `Main` como su mera declaración mediante `MissingMain`.
 
 ## Corrección
 
@@ -23,6 +25,8 @@ contrato que declaraban.
   conservando la secuencia diagnóstica completa.
 - `168` usa un literal exponencial léxicamente inválido y declara de forma
   explícita que no existe AST.
+- `132` usa la identidad diagnóstica publicada por
+  `validateExecutableEntryPoint` para un `Main` declarado pero no definido.
 
 ## Alcance
 

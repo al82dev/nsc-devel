@@ -1675,8 +1675,8 @@ extension de signo al ampliar y truncacion modular al reducir. No se compilo
 ni ejecuto; la validacion queda delegada al usuario. Evidencia:
 `TANDA-VALIDACION-238-SEMA-SIGNED-WIDENING.md`.
 
-Validacion 239 repara los fixtures de `TS-SEMA-123`, `152`, `161`, `168` y
-`214`: los contratos semanticos que no tienen una forma fuente aceptada por el
+Validacion 239 repara los fixtures de `TS-SEMA-123`, `132`, `152`, `161`,
+`168` y `214`: los contratos semanticos que no tienen una forma fuente aceptada por el
 parser usan ahora el seam dirigido del analizador, y el literal malformado se
 clasifica en la frontera lexica sin AST. No se modifico producto ni se
 ejecutaron pruebas. Evidencia:
@@ -1699,3 +1699,10 @@ solo conserva un predicado compuesto y no identifica si falto el simbolo, la
 marca de completitud o el diagnostico. La lectura estatica no autoriza elegir
 una causa. No se modifico codigo ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-242-SEMA-111-PENDIENTE-EVIDENCIA.md`.
+
+Validacion 243 reconcilia estaticamente el inventario de `155` casos que quedo
+despues de cerrar `TF-FRONT-192`: `148` tienen implementacion commiteada, `6`
+consumidores MIR permanecen `BLOQUEADO_POR TF-HIR-120` hasta validar el
+productor y `TS-SEMA-111` permanece `PENDIENTE_EVIDENCIA`. La suma por
+componente es `155/155`, sin casos omitidos. No se compilo ni ejecuto ninguna
+prueba. Evidencia: `TANDA-VALIDACION-243-CIERRE-ESTATICO-155.md`.
