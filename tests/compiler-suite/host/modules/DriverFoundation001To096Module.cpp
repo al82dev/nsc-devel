@@ -87,9 +87,21 @@ void compatibilityContract(TestContext& context, std::size_t variant)
     std::string explanation;
     if (variant == 3U)
     {
-        tree.write("policy.txt", "NSCOMPAT 1\ncompiler_release=0\n");
+        std::string incompletePolicy = currentCompatibilityPolicy();
+        constexpr std::string_view omittedCapability = "language_release=";
+        const std::size_t omittedBegin = incompletePolicy.find(omittedCapability);
+        if (omittedBegin != std::string::npos)
+        {
+            const std::size_t omittedEnd = incompletePolicy.find('\n', omittedBegin);
+            incompletePolicy.erase(omittedBegin,
+                omittedEnd == std::string::npos
+                    ? std::string::npos
+                    : omittedEnd - omittedBegin + 1U);
+        }
+        // Keep every preceding capability normative so the missing field owns the rejection.
+        tree.write("policy.txt", incompletePolicy);
         context.expect(!verifyInstalledCompatibilityCapabilities(tree.root() / "policy.txt", error) &&
-                contains(error, "missing required capability"),
+                contains(error, "missing required capability 'language_release'"),
             "incomplete installed capability policy is rejected");
         return;
     }
