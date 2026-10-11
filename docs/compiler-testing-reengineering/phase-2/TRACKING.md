@@ -1567,3 +1567,9 @@ Validacion 209 corrige `TF-SSA-294`: la mutacion ya no intenta sobrescribir
 una clave existente mediante insercion; publica un bloque de salida nulo que
 el verificador puede observar. No se modifico producto ni se ejecutaron
 pruebas. Evidencia: `TANDA-VALIDACION-209-SSA-MAPEO-BLOQUES.md`.
+
+Validacion 210 resuelve la evidencia pendiente de `TF-SSA-273`: el `else`
+final del oraculo duplicaba un local tambien en la variante nominal `0`. La
+mutacion queda limitada a la variante `7`; no se modifico producto ni se
+ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-210-SSA-PROVENIENCIA-NOMINAL.md`.

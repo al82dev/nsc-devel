@@ -108,7 +108,7 @@ void provenanceOracle(TestContext& context, std::size_t variant)
     else if (variant == 4) function->function()->addParameter(nullptr);
     else if (variant == 5) function->function()->replaceBlocks({});
     else if (variant == 6) function->setExcludedUnreachableBlocks(999);
-    else
+    else if (variant == 7)
     {
         function->function()->addLocal(function->function()->locals().front());
     }
