@@ -53,6 +53,25 @@ SsaFunction* compileFunction(TestContext& context, std::size_t variant,
     return function;
 }
 
+std::size_t countPromotedOpcode(const SsaFunction* function, MirOpcode opcode)
+{
+    std::size_t count = 0;
+    if (function == nullptr || function->function() == nullptr)
+        return count;
+    for (const MirBlock* block : function->function()->blocks())
+    {
+        if (block == nullptr)
+            continue;
+        for (const MirInstruction* instruction : block->instructions())
+        {
+            if (instruction != nullptr && instruction->opcode() == opcode &&
+                function->isPromoted(instruction->symbol()))
+                ++count;
+        }
+    }
+    return count;
+}
+
 void moduleGateOracle(TestContext& context, std::size_t variant)
 {
     std::unique_ptr<nativesharp::frontend::FrontendCompilation> compilation;
@@ -168,7 +187,7 @@ void symbolDefinitionOracle(TestContext& context, std::size_t variant)
     SsaFunction* function = compileFunction(context, variant, compilation);
     context.expect(countOpcode(function, MirOpcode::Undef) >= 1,
         "CF-SSA-017 promoted variables must have explicit entry definitions");
-    context.expect(countOpcode(function, MirOpcode::StoreSymbol) == 0,
+    context.expect(countPromotedOpcode(function, MirOpcode::StoreSymbol) == 0,
         "CF-SSA-017 promoted definitions must no longer be storage stores");
 }
 
@@ -256,7 +275,7 @@ void storeEliminationOracle(TestContext& context, std::size_t variant)
 {
     std::unique_ptr<nativesharp::frontend::FrontendCompilation> compilation;
     SsaFunction* function = compileFunction(context, variant, compilation);
-    context.expect(countOpcode(function, MirOpcode::StoreSymbol) == 0,
+    context.expect(countPromotedOpcode(function, MirOpcode::StoreSymbol) == 0,
         "CF-SSA-025 promoted stores must be absent from output MIR");
 }
 

@@ -1552,3 +1552,8 @@ Validacion 206 corrige el oraculo ejecutable de `CF-PAS-050`: el dump se
 compara contra el opcode MIR canonico `const`, no contra el nombre inventado
 `constant`. No se modifico producto ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-206-PASSES-DUMP-CONST.md`.
+
+Validacion 207 corrige `TF-SSA-134` y `TF-SSA-198`: los oraculos distinguen
+stores de simbolos promovidos del storage legitimo de un local cuya direccion
+fue tomada. No se modifico producto ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-207-SSA-STORES-PROMOVIDOS.md`.
