@@ -18,6 +18,12 @@ ejecución sin límite; el sexto requiere observar una carrera real bajo ThreadS
 aplica un tiempo límite externo. El proceso padre nunca ejecuta directamente una operación que
 pueda terminarlo o desbordar su pila.
 
+El módulo forma parte de la lista de fuentes del target consolidado ordinario. Por ello, el
+reemplazo global de `operator new` y el registro de los cinco casos destructivos están compilados
+solo cuando un target dedicado define `NSC_AST_DESTRUCTIVE_TESTS_ENABLED`. Sin ese macro, el
+binario normal conserva su asignador y no publica `TA-AST-014`, `TA-AST-016`, `TA-AST-215`,
+`TA-AST-223` ni `TA-AST-224`.
+
 La infraestructura es del harness. No se modificó `AstArena`, `AstDumper` ni ningún otro símbolo
 del producto.
 

@@ -30,6 +30,7 @@
 #define NSC_AST_THREAD_SANITIZER_ENABLED 1
 #endif
 
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 namespace
 {
 std::atomic<bool> failNextScalarAllocation = false;
@@ -55,6 +56,7 @@ void operator delete(void* memory, std::size_t) noexcept
 {
     std::free(memory);
 }
+#endif
 
 namespace nsc::suite
 {
@@ -67,6 +69,7 @@ using nativesharp::ast::AstNode;
 using nativesharp::ast::AstNodeKind;
 using nativesharp::ast::TypeSyntax;
 
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 constexpr DWORD terminateExitCode = 0xE1;
 
 class RegistrationFailureProbe final
@@ -183,6 +186,7 @@ protected:
     AstDumper{}.dump(&first, sink);
     exitNormallyFromProbe();
 }
+#endif
 
 #if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
 struct ConcurrentArenaProbe final
@@ -208,20 +212,18 @@ struct ConcurrentArenaProbe final
     start.store(true, std::memory_order_release);
     first.join();
     second.join();
-    exitNormallyFromProbe();
+    ExitProcess(0);
 }
 #endif
 
-bool dispatchProbe(std::string_view expected)
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
+bool dispatchDestructiveProbe(std::string_view expected)
 {
     if (isolated_process_support::probeMode() != expected) return false;
     if (expected == "TA-AST-016") runDestructorThrowProbe();
     if (expected == "TA-AST-215") runNullTypeProbe();
     if (expected == "TA-AST-223") runSelfCycleProbe();
     if (expected == "TA-AST-224") runTwoNodeCycleProbe();
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
-    if (expected == "TA-AST-017") runThreadSanitizerProbe();
-#endif
     return true;
 }
 
@@ -258,7 +260,7 @@ void testRegistrationFailure(TestContext& context)
 
 void testThrowingDestructor(TestContext& context)
 {
-    if (dispatchProbe("TA-AST-016")) return;
+    if (dispatchDestructiveProbe("TA-AST-016")) return;
     const auto result = isolated_process_support::runCurrentExecutable(
         "TA-AST-016", "TA-AST-016", 5s);
     context.expect(result.started, "TA-AST-016 isolated process must start: " + result.error);
@@ -269,11 +271,18 @@ void testThrowingDestructor(TestContext& context)
     context.expect(result.output.find("REMAINING_ENTRY_DESTROYED") != std::string::npos,
         "TA-AST-016 throwing destruction prevented cleanup of the remaining arena entry");
 }
+#endif
 
 #if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
+bool dispatchThreadSanitizerProbe()
+{
+    if (isolated_process_support::probeMode() != "TA-AST-017") return false;
+    runThreadSanitizerProbe();
+}
+
 void testConcurrentArenaMutation(TestContext& context)
 {
-    if (dispatchProbe("TA-AST-017")) return;
+    if (dispatchThreadSanitizerProbe()) return;
     const auto result = isolated_process_support::runCurrentExecutable(
         "TA-AST-017", "TA-AST-017", 15s,
         {{L"TSAN_OPTIONS", L"halt_on_error=1 exitcode=86"}});
@@ -286,9 +295,10 @@ void testConcurrentArenaMutation(TestContext& context)
 }
 #endif
 
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 void testNullTypeArgument(TestContext& context)
 {
-    if (dispatchProbe("TA-AST-215")) return;
+    if (dispatchDestructiveProbe("TA-AST-215")) return;
     const auto result = isolated_process_support::runCurrentExecutable(
         "TA-AST-215", "TA-AST-215", 5s);
     context.expect(result.started, "TA-AST-215 isolated process must start: " + result.error);
@@ -300,7 +310,7 @@ void testNullTypeArgument(TestContext& context)
 
 void testCycleTraversalCompletes(TestContext& context, std::string_view caseId)
 {
-    if (dispatchProbe(caseId)) return;
+    if (dispatchDestructiveProbe(caseId)) return;
     const auto result = isolated_process_support::runCurrentExecutable(caseId, caseId, 5s);
     const std::string marker = caseId == "TA-AST-223"
         ? "SELF_CYCLE_PROBE_READY" : "TWO_NODE_CYCLE_PROBE_READY";
@@ -310,7 +320,9 @@ void testCycleTraversalCompletes(TestContext& context, std::string_view caseId)
     context.expect(!result.timedOut && result.exitCode == 0,
         std::string(caseId) + " cyclic traversal did not complete safely before the watchdog");
 }
+#endif
 
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED) || defined(NSC_AST_THREAD_SANITIZER_ENABLED)
 void addCase(TestRegistry& registry, std::string id, std::string contractId,
     std::string layer, std::vector<std::string> tags, TestFunction function,
     TestDisposition disposition = TestDisposition::KnownProductDefect)
@@ -318,20 +330,24 @@ void addCase(TestRegistry& registry, std::string id, std::string contractId,
     registry.add(TestCase{std::move(id), std::move(contractId), "Host.AST", std::move(layer),
         "NIGHTLY", std::move(tags), std::move(function), disposition});
 }
+#endif
 }
 
 void registerAstInfrastructurePendingModule(TestRegistry& registry)
 {
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-014", "CA-AST-002", "unit",
         {"ast", "arena", "allocation-failure", "known-product-defect"},
         testRegistrationFailure);
     addCase(registry, "TA-AST-016", "CA-AST-002", "unit",
         {"ast", "arena", "death-test", "known-product-defect"}, testThrowingDestructor);
+#endif
 #if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
     addCase(registry, "TA-AST-017", "CA-AST-002", "unit",
         {"ast", "arena", "thread-sanitizer", "known-product-defect"},
         testConcurrentArenaMutation);
 #endif
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-215", "CA-AST-019", "component",
         {"ast", "dumper", "death-test", "known-product-defect"}, testNullTypeArgument);
     addCase(registry, "TA-AST-223", "CA-AST-020", "robustness",
@@ -340,5 +356,8 @@ void registerAstInfrastructurePendingModule(TestRegistry& registry)
     addCase(registry, "TA-AST-224", "CA-AST-020", "robustness",
         {"ast", "dumper", "watchdog", "known-product-defect"},
         [](TestContext& context) { testCycleTraversalCompletes(context, "TA-AST-224"); });
+#else
+    static_cast<void>(registry);
+#endif
 }
 }
