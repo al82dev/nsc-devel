@@ -84,7 +84,8 @@ Exige un único root y profundidad máxima 128. Soporta elementos normales/self-
 o dobles, texto, nombres XML limitados y entidades `amp`, `lt`, `gt`, `quot`, `apos`.
 
 Rechaza atributos duplicados, cierres no coincidentes, contenido posterior, comentarios inválidos, entidades
-desconocidas, DOCTYPE, CDATA y otras declaraciones. Conserva sólo el primer error con línea/columna.
+desconocidas, DOCTYPE, CDATA y otras declaraciones. Conserva sólo el primer error en la forma
+`XML <línea>:<columna>: <mensaje>`.
 
 `parseElement` es recursivo aunque acotado; también queda registrado como contradicción normativa sin corrección.
 

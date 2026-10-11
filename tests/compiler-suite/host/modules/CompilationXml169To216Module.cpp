@@ -132,11 +132,18 @@ void xmlFirstErrorContract(TestContext& context, std::size_t variant)
         variant == 5 ? "<A><B>" :
         variant == 6 ? "<A\n x=\"1\"\n y=oops/>" :
         variant == 7 ? "<A></Wrong>" : "<A>" + std::string(8192U, 'x');
+    const std::string expectedError = variant == 1 ?
+        std::string("XML 1:8: closing element 'B' does not match 'A'") :
+        variant == 2 ? "XML 4:9: closing element 'C' does not match 'B'" :
+        variant == 3 ? "XML 1:11: duplicate XML attribute 'x'" :
+        variant == 4 ? "XML 1:5: unsupported XML entity '&bad;'" :
+        variant == 5 ? "XML 1:7: element 'B' is not closed" :
+        variant == 6 ? "XML 3:4: expected a quoted XML attribute value" :
+        variant == 7 ? "XML 1:12: closing element 'Wrong' does not match 'A'" :
+            "XML 1:8196: element 'A' is not closed";
     const bool result = parseXml(source, root, error);
-    const bool hasLocation = contains(error, "line ") && contains(error, "column ");
-    const bool firstPreserved = variant != 3 || contains(error, "duplicate XML attribute");
-    context.expect(!result && hasLocation && firstPreserved,
-        "CF-COMPILATION-027 parser reports one deterministic first error with line and column");
+    context.expect(!result && error == expectedError,
+        "CF-COMPILATION-027 parser preserves the exact first error and XML line-column location");
 }
 }
 
