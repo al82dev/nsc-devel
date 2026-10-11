@@ -128,6 +128,7 @@ class Builder3RetryTests(unittest.TestCase):
         self.assertTrue(
             builder.status_filter_matches("FAILURES", "INFRASTRUCTURE_ERROR")
         )
+        self.assertTrue(builder.status_filter_matches("FAILURES", "TIMEOUT"))
         self.assertFalse(builder.status_filter_matches("FAILURES", "PASS"))
         self.assertTrue(builder.status_filter_matches("ACTIVE", "RUNNING"))
         self.assertTrue(builder.status_filter_matches("ACTIVE", "COMPILING"))

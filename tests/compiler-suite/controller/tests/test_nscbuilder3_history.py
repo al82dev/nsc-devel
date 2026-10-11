@@ -174,6 +174,39 @@ class Builder3HistoryTests(unittest.TestCase):
         self.assertEqual(loaded.full_log, "historical output\n")
         self.assertEqual((self.root / "results.json").read_bytes(), before)
 
+    def test_completed_timeout_timing_fields_are_restored(self) -> None:
+        self._write_valid_terminal_run()
+        payload = json.loads((self.root / "results.json").read_text(encoding="utf-8"))
+        result = payload["results"][0]
+        result.update(
+            {
+                "status": "TIMEOUT",
+                "detail": "tiempo límite individual agotado",
+                "timeout_pass_count": 3,
+                "timeout_average_seconds": 2.5,
+                "timeout_limit_seconds": 8,
+            }
+        )
+        payload["status"] = "FAILED"
+        payload["counts"] = {"TIMEOUT": 1}
+        self._write_json("results.json", payload)
+        events = [
+            json.loads(line)
+            for line in (self.root / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        events[-1]["payload"] = {"status": "FAILED", "counts": {"TIMEOUT": 1}}
+        (self.root / "events.jsonl").write_text(
+            "".join(json.dumps(item) + "\n" for item in events), encoding="utf-8"
+        )
+
+        loaded = builder.load_history_execution(self.root, self._catalog())
+
+        outcome = loaded.outcomes[0]
+        self.assertEqual(outcome.status, "TIMEOUT")
+        self.assertEqual(outcome.timeout_pass_count, 3)
+        self.assertEqual(outcome.timeout_average_seconds, 2.5)
+        self.assertEqual(outcome.timeout_limit_seconds, 8)
+
     def test_case_detail_projects_contract_result_and_complete_case_logs(self) -> None:
         case = self._catalog().by_id["CASE"]
         variant = builder.RunVariant(case, "Debug", "O0")

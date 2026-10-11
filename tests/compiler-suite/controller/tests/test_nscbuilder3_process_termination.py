@@ -51,6 +51,20 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self.assertTrue(any("cancelled before launch" in line for line in emitted))
         self.assertEqual(controller.last_termination_reason, "cancelled")
 
+    def test_row_scoped_cancel_terminates_owned_process_without_global_event(self) -> None:
+        controller = builder.ProcessController(lambda _line: None)
+        generation = controller.begin_variant()
+        process = FakeProcess()
+        controller._process = process  # type: ignore[assignment]
+
+        with patch.object(controller, "_terminate_owned") as terminate:
+            accepted = controller.cancel_current("case-cancelled", generation)
+
+        self.assertTrue(accepted)
+        self.assertFalse(controller.cancelled.is_set())
+        terminate.assert_called_once_with(process)
+        self.assertEqual(controller.end_variant(generation), "case-cancelled")
+
     @patch.object(builder.os, "name", "nt")
     @patch.object(builder.subprocess, "run")
     def test_already_exited_process_is_not_touched(self, run: object) -> None:

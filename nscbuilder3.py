@@ -56,6 +56,7 @@ TERMINAL_FAILURES = {
     "BLOCKED",
     "INFRASTRUCTURE_ERROR",
     "CANCELLED",
+    "TIMEOUT",
 }
 RESULT_STATUSES = TERMINAL_FAILURES | {"PASS", "KNOWN_FAILURE"}
 # ``run_suite.py`` publishes the full CaseStatus vocabulary in ``counts``.
@@ -684,6 +685,125 @@ class CaseOutcome:
     duration_seconds: float = 0.0
     detail: str = ""
     evidence: str = ""
+    profile: str = ""
+    timeout_pass_count: int = 0
+    timeout_average_seconds: float | None = None
+    timeout_limit_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class VariantTimeoutBudget:
+    """One per-variant deadline derived exclusively from trusted PASS history."""
+
+    pass_count: int
+    average_seconds: float | None
+    limit_seconds: int
+
+
+def variant_history_key(variant: RunVariant) -> tuple[str, str, str, str]:
+    """Include the manifest profile in addition to the concrete variant identity."""
+    return (
+        variant.case.case_id,
+        variant.build_mode,
+        variant.optimization,
+        variant.case.profile,
+    )
+
+
+def timeout_limit_for_average(average_seconds: float | None) -> int:
+    """Return the PASS-average deadline, always rounded upward to whole seconds.
+
+    No history gets 45 minutes. Averages below one second get five seconds;
+    averages through 30 seconds add five, through 120 add fifteen, through ten
+    minutes add three minutes, and longer averages add the greater of five
+    minutes or twenty percent. Upward rounding never reduces those margins.
+    """
+    if average_seconds is None:
+        return 45 * 60
+    if (
+        isinstance(average_seconds, bool)
+        or not isinstance(average_seconds, (int, float))
+        or not math.isfinite(average_seconds)
+        or average_seconds < 0
+    ):
+        raise ValueError("historical PASS average must be a finite nonnegative number")
+    average = float(average_seconds)
+    if average < 1.0:
+        return 5
+    if average <= 30.0:
+        return math.ceil(average + 5.0)
+    if average <= 120.0:
+        return math.ceil(average + 15.0)
+    if average <= 600.0:
+        return math.ceil(average + 180.0)
+    return math.ceil(average + max(300.0, average * 0.20))
+
+
+def load_variant_timeout_budgets(
+    variants: Sequence[RunVariant], history_root: Path = HISTORY_ROOT
+) -> dict[tuple[str, str, str, str], VariantTimeoutBudget]:
+    """Load all trustworthy PASS durations once and calculate every requested budget."""
+    requested = {variant_history_key(variant) for variant in variants}
+    samples: dict[tuple[str, str, str, str], list[float]] = {
+        key: [] for key in requested
+    }
+    profiles_by_identity = {
+        (case_id, build_mode, optimization): profile
+        for case_id, build_mode, optimization, profile in requested
+    }
+    if history_root.is_dir():
+        for root in history_root.iterdir():
+            if not root.is_dir():
+                continue
+            record = history_record(root)
+            if (
+                record[1] != "phase-2-suite"
+                or record[2] in {"INCOMPLETE", "MALFORMED"}
+            ):
+                continue
+            try:
+                payload = json.loads(
+                    (root / "results.json").read_text(encoding="utf-8"),
+                    object_pairs_hook=unique_json_object,
+                )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                continue
+            rows = payload.get("results") if isinstance(payload, dict) else None
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict) or row.get("status") != "PASS":
+                    continue
+                identity = (
+                    row.get("case_id"),
+                    row.get("build_mode"),
+                    row.get("optimization"),
+                )
+                profile = profiles_by_identity.get(identity)
+                recorded_profile = row.get("profile")
+                duration = row.get("duration_seconds")
+                if (
+                    profile is None
+                    or (
+                        recorded_profile is not None
+                        and recorded_profile != profile
+                    )
+                    or isinstance(duration, bool)
+                    or not isinstance(duration, (int, float))
+                    or not math.isfinite(duration)
+                    or duration < 0
+                ):
+                    continue
+                samples[(*identity, profile)].append(float(duration))
+    budgets: dict[tuple[str, str, str, str], VariantTimeoutBudget] = {}
+    for key, durations in samples.items():
+        average = sum(durations) / len(durations) if durations else None
+        budgets[key] = VariantTimeoutBudget(
+            pass_count=len(durations),
+            average_seconds=average,
+            limit_seconds=timeout_limit_for_average(average),
+        )
+    return budgets
 
 
 @dataclass(frozen=True)
@@ -1505,7 +1625,7 @@ def load_history_execution(
     for index, raw in enumerate(rows, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"historical result {index} must be an object")
-        expected_fields = {
+        base_fields = {
             "key",
             "case_id",
             "contract_id",
@@ -1518,7 +1638,14 @@ def load_history_execution(
             "detail",
             "evidence",
         }
-        if set(raw) != expected_fields:
+        optional_fields = {
+            "profile",
+            "timeout_pass_count",
+            "timeout_average_seconds",
+            "timeout_limit_seconds",
+        }
+        raw_fields = set(raw)
+        if not base_fields <= raw_fields or not raw_fields <= base_fields | optional_fields:
             raise ValueError(f"historical result {index} has an invalid schema")
         text_fields = (
             "key",
@@ -1559,6 +1686,33 @@ def load_history_execution(
             raise ValueError(f"historical result {index} has an invalid duration")
         if raw["status"] not in RESULT_STATUSES:
             raise ValueError(f"historical result {index} has an invalid status")
+        recorded_profile = raw.get("profile")
+        if recorded_profile is not None and (
+            not isinstance(recorded_profile, str) or not recorded_profile
+        ):
+            raise ValueError(f"historical result {index} has an invalid profile")
+        timeout_pass_count = raw.get("timeout_pass_count", 0)
+        timeout_average = raw.get("timeout_average_seconds")
+        timeout_limit = raw.get("timeout_limit_seconds")
+        if (
+            isinstance(timeout_pass_count, bool)
+            or not isinstance(timeout_pass_count, int)
+            or timeout_pass_count < 0
+        ):
+            raise ValueError(f"historical result {index} has an invalid PASS count")
+        if timeout_average is not None and (
+            isinstance(timeout_average, bool)
+            or not isinstance(timeout_average, (int, float))
+            or not math.isfinite(timeout_average)
+            or timeout_average < 0
+        ):
+            raise ValueError(f"historical result {index} has an invalid PASS average")
+        if timeout_limit is not None and (
+            isinstance(timeout_limit, bool)
+            or not isinstance(timeout_limit, int)
+            or timeout_limit < 1
+        ):
+            raise ValueError(f"historical result {index} has an invalid timeout limit")
         case = catalog.by_id.get(raw["case_id"])
         if case is None:
             raise ValueError(
@@ -1571,6 +1725,10 @@ def load_history_execution(
         ):
             raise ValueError(
                 f"historical case identity changed in the current catalogue: {case.case_id}"
+            )
+        if "profile" in raw and recorded_profile != case.profile:
+            raise ValueError(
+                f"historical case profile changed in the current catalogue: {case.case_id}"
             )
         variant = RunVariant(case, raw["build_mode"], raw["optimization"])
         if not case.executable or variant.build_mode not in case.build_modes:
@@ -1591,6 +1749,12 @@ def load_history_execution(
                 duration_seconds=float(duration),
                 detail=raw["detail"],
                 evidence=raw["evidence"],
+                profile=case.profile,
+                timeout_pass_count=timeout_pass_count,
+                timeout_average_seconds=(
+                    float(timeout_average) if timeout_average is not None else None
+                ),
+                timeout_limit_seconds=timeout_limit,
             )
         )
     expected_keys = tuple(variant.key for variant in selected_variants)
@@ -1625,7 +1789,65 @@ class ProcessController:
         self.cancelled = threading.Event()
         self.last_termination_reason: str | None = None
         self._lock = threading.Lock()
+        self._termination_lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
+        self._variant_active = False
+        self._variant_generation = 0
+        self._variant_stop = threading.Event()
+        self._variant_stop_reason: str | None = None
+
+    def begin_variant(self) -> int:
+        """Open a fresh cancellation scope that cannot leak into the next variant."""
+        with self._lock:
+            if self._variant_active:
+                raise RuntimeError("a variant cancellation scope is already active")
+            self._variant_generation += 1
+            self._variant_active = True
+            self._variant_stop.clear()
+            self._variant_stop_reason = None
+            self.last_termination_reason = None
+            return self._variant_generation
+
+    def end_variant(self, generation: int) -> str | None:
+        """Close one exact scope and return its first terminal stop reason."""
+        with self._lock:
+            if not self._variant_active or generation != self._variant_generation:
+                raise RuntimeError("variant cancellation scope identity mismatch")
+            reason = self._variant_stop_reason
+            self._variant_active = False
+            self._variant_stop.clear()
+            self._variant_stop_reason = None
+            return reason
+
+    def cancel_current(
+        self, reason: str = "case-cancelled", generation: int | None = None
+    ) -> bool:
+        """Stop only the active variant tree and leave global cancellation clear."""
+        if reason not in {"case-cancelled", "timeout", "cancelled"}:
+            raise ValueError(f"unsupported variant stop reason: {reason}")
+        with self._lock:
+            if (
+                not self._variant_active
+                or (generation is not None and generation != self._variant_generation)
+                or self._variant_stop_reason is not None
+            ):
+                return False
+            self._variant_stop_reason = reason
+            self.last_termination_reason = reason
+            self._variant_stop.set()
+            process = self._process
+        if process is not None:
+            self._terminate_owned(process)
+        return True
+
+    def _requested_stop_reason(self) -> str | None:
+        """Read global or current-variant stop state without consuming either."""
+        if self.cancelled.is_set():
+            return "cancelled"
+        if self._variant_stop.is_set():
+            with self._lock:
+                return self._variant_stop_reason
+        return None
 
     def run(
         self,
@@ -1634,10 +1856,10 @@ class ProcessController:
         environment: dict[str, str] | None = None,
     ) -> tuple[int, str]:
         """Stream merged output and return exit code plus captured text."""
-        self.last_termination_reason = None
-        if self.cancelled.is_set():
-            self.last_termination_reason = "cancelled"
-            message = "cancelled before launch\n"
+        stop_reason = self._requested_stop_reason()
+        if stop_reason is not None:
+            self.last_termination_reason = stop_reason
+            message = f"{stop_reason} before launch\n"
             self.output(message)
             return 130, message
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
@@ -1687,10 +1909,11 @@ class ProcessController:
                 last_activity = now
             if process.poll() is not None and stream_closed and pending.empty():
                 break
-            if self.cancelled.is_set():
-                self.last_termination_reason = "cancelled"
-                self._terminate_tree(process)
-                message = "process cancelled\n"
+            stop_reason = self._requested_stop_reason()
+            if stop_reason is not None:
+                self.last_termination_reason = stop_reason
+                self._terminate_owned(process)
+                message = f"process stopped: {stop_reason}\n"
                 output.append(message)
                 self.output(message)
                 break
@@ -1714,11 +1937,11 @@ class ProcessController:
         environment: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run one owned child while preserving stdout and stderr separately."""
-        self.last_termination_reason = None
         arguments = [str(part) for part in command]
-        if self.cancelled.is_set():
-            self.last_termination_reason = "cancelled"
-            message = "cancelled before launch\n"
+        stop_reason = self._requested_stop_reason()
+        if stop_reason is not None:
+            self.last_termination_reason = stop_reason
+            message = f"{stop_reason} before launch\n"
             self.output(message)
             return subprocess.CompletedProcess(arguments, 130, "", message)
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
@@ -1783,10 +2006,11 @@ class ProcessController:
                 last_activity = now
             if process.poll() is not None and len(closed) == 2 and pending.empty():
                 break
-            if self.cancelled.is_set():
-                self.last_termination_reason = "cancelled"
-                self._terminate_tree(process)
-                message = "process cancelled\n"
+            stop_reason = self._requested_stop_reason()
+            if stop_reason is not None:
+                self.last_termination_reason = stop_reason
+                self._terminate_owned(process)
+                message = f"process stopped: {stop_reason}\n"
                 captured["stderr"].append(message)
                 self.output(message)
                 break
@@ -1810,12 +2034,20 @@ class ProcessController:
         )
 
     def cancel(self) -> None:
-        """Cancel only the active child process tree owned by this controller."""
+        """Cancel the complete operation and its currently owned child tree."""
         self.last_termination_reason = "cancelled"
         self.cancelled.set()
         with self._lock:
+            if self._variant_active and self._variant_stop_reason is None:
+                self._variant_stop_reason = "cancelled"
+                self._variant_stop.set()
             process = self._process
         if process is not None:
+            self._terminate_owned(process)
+
+    def _terminate_owned(self, process: subprocess.Popen[str]) -> None:
+        """Serialize concurrent UI, timer, and polling termination requests."""
+        with self._termination_lock:
             self._terminate_tree(process)
 
     @staticmethod
@@ -2199,6 +2431,7 @@ def parse_identity_envelope(
         "FAIL",
         "KNOWN_FAILURE",
         "UNEXPECTED_PASS",
+        "TIMEOUT",
         "INFRASTRUCTURE_ERROR",
     } and not failures:
         raise ValueError(f"{status} requires failure evidence")
@@ -2483,6 +2716,9 @@ class ExecutionEngine:
         output: Callable[[str], None],
         status: Callable[[str, str, str, float, str], None],
         progress: Callable[[int, int], None],
+        timeout_budgets: dict[
+            tuple[str, str, str, str], VariantTimeoutBudget
+        ] | None = None,
     ) -> None:
         self.config = config
         self.store = store
@@ -2490,6 +2726,7 @@ class ExecutionEngine:
         self.status = status
         self.progress = progress
         self.process = ProcessController(self._emit_output, self._emit_activity)
+        self.timeout_budgets = dict(timeout_budgets or {})
         self.fixture_cache: dict[tuple[str, str, str], Path] = {}
         self.fixture_failures: dict[tuple[str, str, str], tuple[str, str]] = {}
         self.module_cache: dict[str, Any] = {}
@@ -2516,9 +2753,8 @@ class ExecutionEngine:
             if self.process.cancelled.is_set():
                 outcomes.extend(self._cancelled_outcomes(ordered[index - 1 :]))
                 break
-            self._set_active_phase(variant, "RUNNING", "iniciando variante")
             self.store.event("CASE_STARTED", self._variant_payload(variant))
-            outcome = self._run_variant(variant)
+            outcome = self._run_controlled_variant(variant)
             outcomes.append(outcome)
             self.status(
                 variant.key,
@@ -2537,6 +2773,118 @@ class ExecutionEngine:
     def cancel(self) -> None:
         """Request cancellation of the active child and all remaining variants."""
         self.process.cancel()
+
+    def cancel_current(self, key: str) -> bool:
+        """Cancel exactly the active row without setting the run-wide event."""
+        if not key or key != self.active_key:
+            return False
+        return self.process.cancel_current("case-cancelled")
+
+    def _run_controlled_variant(self, variant: RunVariant) -> CaseOutcome:
+        """Apply one isolated timeout/cancellation scope around a variant dispatch."""
+        budget = self.timeout_budgets.get(
+            variant_history_key(variant),
+            VariantTimeoutBudget(0, None, timeout_limit_for_average(None)),
+        )
+        generation = self.process.begin_variant()
+        started = time.monotonic()
+        average_detail = (
+            f"promedio PASS {budget.average_seconds:.3f} s"
+            if budget.average_seconds is not None
+            else "sin PASS histórico"
+        )
+        self._set_active_phase(
+            variant,
+            "RUNNING",
+            f"iniciando variante; límite {budget.limit_seconds} s; {average_detail}",
+        )
+        heartbeat_stop = threading.Event()
+
+        def heartbeat() -> None:
+            """Keep elapsed duration visible even while no child emits output."""
+            while not heartbeat_stop.wait(0.25):
+                self._emit_activity(time.monotonic() - started, "")
+
+        heartbeat_thread = threading.Thread(
+            target=heartbeat,
+            name="nscbuilder3-variant-heartbeat",
+            daemon=True,
+        )
+        timeout_timer = threading.Timer(
+            budget.limit_seconds,
+            lambda: self.process.cancel_current("timeout", generation),
+        )
+        timeout_timer.daemon = True
+        heartbeat_thread.start()
+        timeout_timer.start()
+        try:
+            outcome = self._run_variant(variant)
+        finally:
+            timeout_timer.cancel()
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=1.0)
+        elapsed = time.monotonic() - started
+        stop_reason = self.process.end_variant(generation)
+        outcome.duration_seconds = elapsed
+        outcome.profile = variant.case.profile
+        outcome.timeout_pass_count = budget.pass_count
+        outcome.timeout_average_seconds = budget.average_seconds
+        outcome.timeout_limit_seconds = budget.limit_seconds
+        if self.process.cancelled.is_set():
+            outcome.status = "CANCELLED"
+            outcome.detail = "corrida cancelada por el usuario"
+        elif stop_reason == "case-cancelled":
+            outcome.status = "CANCELLED"
+            outcome.detail = "prueba cancelada por el usuario; la corrida continúa"
+            outcome.evidence = self._write_variant_stop_evidence(
+                variant, outcome, budget, "CANCELLED", outcome.evidence
+            )
+        elif stop_reason == "timeout":
+            outcome.status = "TIMEOUT"
+            average = (
+                f"{budget.average_seconds:.3f} s en {budget.pass_count} PASS"
+                if budget.average_seconds is not None
+                else "sin PASS histórico confiable"
+            )
+            outcome.detail = (
+                f"tiempo límite individual agotado a {budget.limit_seconds} s; "
+                f"{average}; duración real {elapsed:.3f} s"
+            )
+            outcome.evidence = self._write_variant_stop_evidence(
+                variant, outcome, budget, "TIMEOUT", outcome.evidence
+            )
+        return outcome
+
+    def _write_variant_stop_evidence(
+        self,
+        variant: RunVariant,
+        outcome: CaseOutcome,
+        budget: VariantTimeoutBudget,
+        status: str,
+        process_evidence: str,
+    ) -> str:
+        """Persist the causal timing record for a manual cancel or timeout."""
+        case_root = self._case_root(variant)
+        path = case_root / ("timeout.json" if status == "TIMEOUT" else "cancellation.json")
+        payload = {
+            "schema": 1,
+            "timestamp": utc_now(),
+            "key": variant.key,
+            "status": status,
+            "profile": variant.case.profile,
+            "historical_pass_count": budget.pass_count,
+            "historical_pass_average_seconds": budget.average_seconds,
+            "timeout_limit_seconds": budget.limit_seconds,
+            "elapsed_seconds": outcome.duration_seconds,
+            "process_evidence": process_evidence,
+        }
+        write_json_atomic(path, payload)
+        self.store.event(f"CASE_{status}", payload)
+        self.store.log(
+            f"[{status}] {variant.key}: {outcome.duration_seconds:.3f} s; "
+            f"límite {budget.limit_seconds} s\n"
+        )
+        return str(path)
 
     def _run_variant(self, variant: RunVariant) -> CaseOutcome:
         """Dispatch one variant by its manifest-owned executor contract."""
@@ -3007,6 +3355,7 @@ class ExecutionEngine:
             "wave": variant.case.wave,
             "build_mode": variant.build_mode,
             "optimization": variant.optimization,
+            "profile": variant.case.profile,
         }
 
     @staticmethod
@@ -3023,6 +3372,7 @@ class ExecutionEngine:
                 optimization=item.optimization,
                 status="CANCELLED",
                 detail="not started because the run was cancelled",
+                profile=item.case.profile,
             )
             for item in variants
         ]
@@ -3257,13 +3607,23 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         def run(self) -> None:
             try:
-                self.store = EvidenceStore(self.run_id, self.metadata)
+                timeout_budgets = load_variant_timeout_budgets(self.variants)
+                metadata = dict(self.metadata)
+                metadata["variant_timeout_policy"] = {
+                    "history_status": "PASS",
+                    "history_key": ["case_id", "build_mode", "optimization", "profile"],
+                    "rounding": "ceil-to-whole-second",
+                    "fallback_seconds": 45 * 60,
+                    "loaded_once": True,
+                }
+                self.store = EvidenceStore(self.run_id, metadata)
                 self.engine = ExecutionEngine(
                     self.config,
                     self.store,
                     self.output_ready.emit,
                     self.case_ready.emit,
                     self.progress_ready.emit,
+                    timeout_budgets,
                 )
                 outcomes, cancelled = self.engine.run(self.variants)
                 self.store.finish(outcomes, cancelled)
@@ -3276,6 +3636,10 @@ def launch_gui(smoke_only: bool = False) -> int:
         def cancel(self) -> None:
             if self.engine is not None:
                 self.engine.cancel()
+
+        def cancel_current(self, key: str) -> bool:
+            """Forward one row-scoped cancellation without stopping the worker."""
+            return self.engine is not None and self.engine.cancel_current(key)
 
     class MainWindow(QMainWindow):
         """Present compiler-suite construction and execution as separate workflows."""
@@ -4800,6 +5164,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     duration_seconds=duration,
                     detail=detail,
                     evidence=evidence,
+                    profile=variant.case.profile,
                 )
             self.case_table.setItem(
                 row, self.DETAIL_COLUMN, QTableWidgetItem(merged)

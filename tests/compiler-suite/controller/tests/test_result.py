@@ -43,6 +43,8 @@ class ResultTests(unittest.TestCase):
             CaseResult("TB-BAS-001", CaseStatus.KNOWN_FAILURE)
         with self.assertRaisesRegex(ValueError, "requires failure evidence"):
             CaseResult("TB-BAS-001", CaseStatus.UNEXPECTED_PASS)
+        with self.assertRaisesRegex(ValueError, "requires failure evidence"):
+            CaseResult("TB-BAS-001", CaseStatus.TIMEOUT)
 
     def test_result_invariants_reject_invalid_runtime_types(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires a case_id"):

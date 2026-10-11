@@ -18,6 +18,7 @@ class CaseStatus(str, Enum):
     BLOCKED = "BLOCKED"
     SKIPPED = "SKIPPED"
     CANCELLED = "CANCELLED"
+    TIMEOUT = "TIMEOUT"
     INFRASTRUCTURE_ERROR = "INFRASTRUCTURE_ERROR"
 
 
@@ -60,6 +61,7 @@ class CaseResult:
             CaseStatus.FAIL,
             CaseStatus.KNOWN_FAILURE,
             CaseStatus.UNEXPECTED_PASS,
+            CaseStatus.TIMEOUT,
             CaseStatus.INFRASTRUCTURE_ERROR,
         } and not self.failures:
             raise ValueError(f"{self.status.value} requires failure evidence")
