@@ -189,6 +189,19 @@ void storageOracle(TestContext& context, std::size_t variant)
     address->setSymbol(&variable);
     HirNode* node = nullptr;
     bool accepted = false;
+    if (variant == 7)
+    {
+        for (std::size_t index = 0; index < 256; ++index)
+        {
+            HirNode* store = graph.arena.make(HirNodeKind::Store, SourceRange());
+            store->setType(valueType);
+            store->setFirst(address);
+            store->setSecond(graph.constant(TypeKind::Int, static_cast<std::int64_t>(index)));
+            graph.addExpression(store);
+        }
+        expectVerdict(context, graph.root, true, "CF-HIR-026");
+        return;
+    }
     if (variant == 0)
     {
         node = graph.constant();
@@ -216,12 +229,13 @@ void storageOracle(TestContext& context, std::size_t variant)
     {
         node = graph.arena.make(HirNodeKind::Store, SourceRange());
         node->setType(valueType);
-        node->setFirst(variant == 4 ? address : graph.constant());
+        node->setFirst(variant == 4 || variant == 6 ? address : graph.constant());
         node->setSecond(variant == 5 ? graph.constant(TypeKind::Long) : graph.constant());
-        accepted = variant == 4 || variant >= 6;
+        accepted = variant == 4 || variant == 6;
     }
     graph.addExpression(node);
     expectVerdict(context, graph.root, accepted, "CF-HIR-026");
+    if (variant == 6) expectVerdict(context, graph.root, accepted, "CF-HIR-026");
 }
 
 void operatorOracle(TestContext& context, std::size_t variant)
