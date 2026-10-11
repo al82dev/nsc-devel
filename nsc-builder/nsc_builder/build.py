@@ -63,6 +63,45 @@ def _paths_overlap(left: Path, right: Path) -> bool:
     return left == right or left in right.parents or right in left.parents
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    """Return whether path is root or one of its descendants."""
+    return path == root or root in path.parents
+
+
+def _ensure_generated_compiler_tree(path: Path) -> None:
+    """Reject a populated directory that is not recognizably a CMake build tree."""
+    if not path.exists():
+        return
+    if not path.is_dir():
+        raise ValueError(f"compiler cleanup target is not a directory: {path}")
+    with os.scandir(path) as entries:
+        if next(entries, None) is None:
+            return
+    cache = path / "CMakeCache.txt"
+    ninja = path / "build.ninja"
+    if not cache.is_file() or not ninja.is_file():
+        raise ValueError(
+            "compiler cleanup target is populated but has no complete CMake/Ninja "
+            f"identity: {path}"
+        )
+    source_line = next(
+        (
+            line
+            for line in cache.read_text(encoding="utf-8", errors="replace").splitlines()
+            if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL=")
+        ),
+        "",
+    )
+    if not source_line:
+        raise ValueError(f"compiler cleanup target has no CMake source identity: {path}")
+    configured_source = Path(source_line.split("=", 1)[1]).resolve()
+    if configured_source != SOURCE_ROOT.resolve():
+        raise ValueError(
+            "compiler cleanup target belongs to another source tree: "
+            f"{path} -> {configured_source}"
+        )
+
+
 def test_tree_cleanup_targets(config: BuilderConfig) -> tuple[Path, ...]:
     """Return the only test-build roots that Builder 3 is allowed to remove."""
     raw_root = Path(os.path.abspath(config.build_root))
@@ -97,6 +136,13 @@ def test_tree_cleanup_targets(config: BuilderConfig) -> tuple[Path, ...]:
 def clean_test_build_trees(config: BuilderConfig) -> TestTreeCleanupResult:
     """Delete selected generated trees with an explicit iterative post-order walk."""
     targets = test_tree_cleanup_targets(config)
+    return _clean_generated_build_trees(targets)
+
+
+def _clean_generated_build_trees(
+    targets: Sequence[Path],
+) -> TestTreeCleanupResult:
+    """Delete exact generated roots with an iterative post-order walk."""
     removed_files = 0
     removed_directories = 0
     missing: list[Path] = []
@@ -149,6 +195,64 @@ def compiler_build_dir(config: BuilderConfig, mode: str) -> Path:
     if mode == "Release":
         return release
     return release.parent / f"{release.name}-debug"
+
+
+def compiler_build_cleanup_targets(config: BuilderConfig) -> tuple[Path, ...]:
+    """Return the exact Debug and Release compiler build trees safe to remove."""
+    raw_release = Path(os.path.abspath(config.compiler_build_root))
+    if not is_a_drive(raw_release):
+        raise ValueError(f"compiler build root must be on A:, got {raw_release}")
+    if raw_release.parent == raw_release:
+        raise ValueError("compiler build root cannot be a drive root")
+    _ensure_plain_path(raw_release, "compiler build root")
+    targets = (
+        compiler_build_dir(config, "Debug").resolve(),
+        compiler_build_dir(config, "Release").resolve(),
+    )
+    if len(set(targets)) != 2:
+        raise ValueError("Debug and Release compiler build trees must be distinct")
+    test_root = Path(config.build_root).resolve()
+    protected = (
+        SUITE_ROOT.resolve(),
+        STORAGE_ROOT.resolve(),
+        HISTORY_ROOT.resolve(),
+        CONFIG_PATH.resolve(),
+        test_root,
+        effective_build_dir(config, "Debug").resolve(),
+        effective_build_dir(config, "Release").resolve(),
+        Path(config.install_prefix).resolve(),
+        Path(config.nslink_executable).resolve(),
+        config.llvm_root_path().resolve(),
+    )
+    source = SOURCE_ROOT.resolve()
+    for target in targets:
+        if target == source or target in source.parents:
+            raise ValueError(f"compiler cleanup target contains the source tree: {target}")
+        if any(_paths_overlap(target, reserved) for reserved in protected):
+            raise ValueError(f"compiler cleanup target overlaps a protected path: {target}")
+        _ensure_plain_path(target, "compiler cleanup target")
+        _ensure_generated_compiler_tree(target)
+    return targets
+
+
+def clean_compiler_build_trees(config: BuilderConfig) -> TestTreeCleanupResult:
+    """Delete only the validated compiler build trees owned by the modular Builder."""
+    return _clean_generated_build_trees(compiler_build_cleanup_targets(config))
+
+
+def compiler_cleanup_invalidated_fields(
+    config: BuilderConfig, targets: Sequence[Path]
+) -> tuple[str, ...]:
+    """Identify transient compiler artifact selections invalidated by cleanup."""
+    invalidated: list[str] = []
+    for field_name in ("nsc_executable", "comparison_nsc", "build_id_header"):
+        value = getattr(config, field_name, "")
+        if not value:
+            continue
+        path = Path(value).resolve()
+        if any(_is_within(path, target.resolve()) for target in targets):
+            invalidated.append(field_name)
+    return tuple(invalidated)
 
 
 def compiler_output(config: BuilderConfig, mode: str) -> Path:
