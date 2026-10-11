@@ -269,8 +269,8 @@ namespace ForeachHygiene
     // (1+100) + (2+100) + (3+100) == 306, which wraps to 306 % 256 == 50 through the process
     // exit code's 8-bit width (see runUnderWine's own comment on the WEXITSTATUS convention).
     // Any confusion between the user's `__foreach_index` and the compiler's `$__foreach_index`
-    // would produce a different value (or an infinite loop, timed out by the Wine harness's own
-    // `timeout 20`).
+    // would produce a different value (or an infinite loop that remains active until explicit
+    // external cancellation).
     tests.expect(exitCode == 50, "foreach hygiene executable returns the exact expected value (306, wraps to 50)");
 }
 

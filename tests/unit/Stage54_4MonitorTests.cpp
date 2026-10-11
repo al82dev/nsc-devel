@@ -34,11 +34,10 @@
 // claude/05_metodo_de_trabajo_y_archivo_historico.md's "Regla de rigor de testing: Stage 54"
 // section): every concurrency-dependent check below runs the relevant executable under Wine
 // SEVERAL TIMES, requiring exit code 0 with no crash on EVERY single run. The PulseAll broadcast
-// regression fixture is wrapped by runUnderWine's own `timeout 20`, exactly like Stage 54.3's own
-// deadlock regression fixture: if PulseAll() ever regressed into single-Pulse() behavior, N-1 of
-// its worker threads would hang forever waiting to be woken, and this test would fail LOUDLY (a
-// non-zero, non-crash exit code from `timeout`) instead of hanging the whole ctest suite. No
-// Sleep() is used anywhere as a synchronization substitute, in this test file or in any Main.ns it
+// regression fixture has no automatic elapsed-time cutoff: if PulseAll() ever regressed into
+// single-Pulse() behavior, N-1 of its worker threads would remain blocked until explicit outer
+// cancellation. No Sleep() is used anywhere as a synchronization substitute, in this test file or
+// in any Main.ns it
 // exercises -- every ordering guarantee comes from Thread.Join() plus the monitor/condition-
 // variable primitives themselves, never from timing.
 
@@ -119,9 +118,8 @@ std::string wineCommand()
     return {};
 }
 
-// Same `timeout 20`-wrapped invocation every other Stage 53/54 real-execution test file in this
-// repo uses -- see Stage54_3MutexTests.cpp's own comment for why this is what keeps a hypothetical
-// deadlock regression from ever hanging ctest itself.
+// Direct Wine invocation, matching the other Stage 53/54 real-execution tests. It deliberately
+// applies no automatic deadline; cancellation belongs to the outer test controller.
 bool runUnderWine(
     const std::string& wine,
     const std::filesystem::path& workingDirectory,
@@ -391,9 +389,8 @@ void testPackagedExampleAtOptimizationLevel(
 //    introduces. 8 worker threads, a real barrier (Main's own Wait(-1) only proceeds once all 8
 //    have incremented ThreadsStarted under the SAME lock) GUARANTEES all 8 are genuinely asleep in
 //    their own Wait() before the ONE PulseAll() call fires. If PulseAll() ever regressed into
-//    single-Pulse() behavior, 7 of the 8 threads would never wake, Join() would never return, and
-//    this fixture's own `timeout 20` (inside runUnderWine) turns that into a loud, bounded failure
-//    instead of a hung test binary.
+//    single-Pulse() behavior, 7 of the 8 threads would never wake and Join() would never return.
+//    The fixture remains active until the outer test run is cancelled explicitly.
 // ---------------------------------------------------------------------------------------
 
 constexpr int kPulseAllRegressionWineRuns = 8;
@@ -494,9 +491,8 @@ class Program
         const std::string runLabel = "run " + std::to_string(iteration + 1) + "/" + std::to_string(kPulseAllRegressionWineRuns);
         tests.expect(ran, label + " (" + runLabel + "): Wine could be invoked on the executable");
         tests.expect(!crashed, label + " (" + runLabel + "): executable does not crash under real execution");
-        // The critical assertion: exitCode == 0, NOT 124 (timeout's own exit code, meaning at least
-        // one of the 8 threads never woke up -- exactly the failure shape a PulseAll->Pulse
-        // regression would produce).
+        // The critical assertion is the executable's real zero exit code. The harness does not
+        // synthesize a timeout exit code for a PulseAll->Pulse regression.
         tests.expect(exitCode == 0,
             label + " (" + runLabel + "): exit code 0, all 8 barrier-blocked worker threads woke up "
             "from the SAME single PulseAll() call and completed -- regression guard for PulseAll() "

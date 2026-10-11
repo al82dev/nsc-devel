@@ -29,8 +29,8 @@
 //   Fixed with a per-type "owner thread id" global and a dedicated recursion-check block that lets
 //   a thread recognize it is recursing into its own in-progress initialization and proceed
 //   immediately instead of spin-waiting. See testSelfReferencingStaticInitializerDoesNotDeadlock
-//   below -- deliberately bounded by runUnderWine's own `timeout 20` wrapper, so a regression here
-//   fails loudly (exit code from `timeout`, never a hung test binary) rather than hanging ctest.
+//   below. The executable has no automatic deadline; a reintroduced deadlock remains active until
+//   the outer test run is cancelled explicitly.
 //
 // Covers, in increasing order of confidence, exactly like every other Stage 53/54 real-execution
 // test file in this suite:
@@ -145,11 +145,9 @@ std::string wineCommand()
 
 // Portable (no POSIX-specific code) -- same std::system()-based invocation every other Stage 53/
 // 54 real-execution test file in this repo uses. Per Alberto's explicit, repeated instruction
-// this project's own C++ source (tests included) must contain zero Unix/Linux-specific code. The
-// `timeout 20` here is what makes testSelfReferencingStaticInitializerDoesNotDeadlock below SAFE
-// to run even if the deadlock regression it guards against were reintroduced: the wrapped process
-// gets killed after 20s and this function returns a non-zero, non-crash exit code -- the test
-// binary itself, and ctest, never hang.
+// this project's own C++ source (tests included) must contain zero Unix/Linux-specific code.
+// runUnderWine deliberately applies no elapsed-time cutoff; it returns when the child exits, or the
+// outer test run and its process tree are cancelled explicitly.
 bool runUnderWine(
     const std::string& wine,
     const std::filesystem::path& workingDirectory,
@@ -538,10 +536,8 @@ class Program
 //    while it is still "in progress". Under the naive CAS-only version of the Bug #1 fix, this
 //    hung forever (confirmed experimentally with a 15s timeout before the recursion-check fix was
 //    added). Single-threaded and fully deterministic -- no race, so a handful of Wine runs is
-//    plenty; the important property is that it terminates AT ALL. runUnderWine's own `timeout 20`
-//    wrapper bounds this fixture even if the regression were reintroduced: a hang shows up as a
-//    clean, loud test failure (non-zero, non-crash exit code from `timeout`), never as ctest itself
-//    hanging.
+//    plenty; the important property is that it terminates AT ALL. No automatic watchdog bounds the
+//    fixture; a reintroduced hang requires explicit cancellation of the outer test run.
 // ---------------------------------------------------------------------------------------
 
 constexpr int kSelfRefRegressionWineRuns = 3;
@@ -609,9 +605,8 @@ class Program
         const std::string runLabel = "run " + std::to_string(iteration + 1) + "/" + std::to_string(kSelfRefRegressionWineRuns);
         tests.expect(ran, label + " (" + runLabel + "): Wine could be invoked on the executable");
         tests.expect(!crashed, label + " (" + runLabel + "): executable does not crash under real execution");
-        // The critical assertion: exitCode == 0, NOT 124 (timeout's own exit code when it has to
-        // kill the wrapped process) and not anything else -- a self-deadlock regression here would
-        // fail this exact check with a clearly non-zero, non-crash exit code, never hang the suite.
+        // The critical assertion is the executable's real zero exit code. The harness does not
+        // synthesize a timeout exit code; a self-deadlock requires explicit outer cancellation.
         tests.expect(exitCode == 0,
             label + " (" + runLabel + "): exit code 0, both self-referencing static initializers "
             "(direct field read and indirect via static method call) resolved without deadlocking -- "

@@ -150,7 +150,7 @@ std::string wineCommand()
     return {};
 }
 
-// Runs `exePath` under Wine with a timeout, returning the process's real exit code (Linux
+// Runs `exePath` under Wine without an automatic deadline, returning the process's real exit code (Linux
 // WEXITSTATUS convention -- Windows exit codes wrap mod 256 through Wine's process bridge,
 // exactly like every other real-execution check in this Stage 52.x closure effort) via
 // `exitCode`, and whether Wine itself reported an unhandled native crash (a page fault / access
