@@ -20,7 +20,7 @@ constexpr std::array<std::string_view, 8> kSimplePrograms = {
     "void F(); int Main() { return 0; }",
     "int F(int x) { return x; } int Main() { return F(1); }",
     "int Main() { int x = 1; return x; }",
-    "long Main() { long x = 7; return x; }",
+    "long F() { long x = 7; return x; } int Main() { return (int)F(); }",
     "int A() { return 1; } int B() { return 2; } int Main() { return A() + B(); }",
     "int Main() { int x = 0; x = x + 1; return x; }",
 };
