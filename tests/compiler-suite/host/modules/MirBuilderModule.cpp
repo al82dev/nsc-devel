@@ -270,8 +270,8 @@ void blockTopologyOracle(TestContext& context, std::size_t variant)
 {
     constexpr std::array<std::string_view, 8> programs = {
         "int Main() { if (true) return 1; return 0; }",
-        "int Main() { int i = 0; while (i < 1) i++; return i; }",
-        "int Main() { for (;;) break; return 0; }",
+        "int Main() { int i = 0; while (i < 1) { i++; } return i; }",
+        "int Main() { for (;;) { break; } return 0; }",
         "int Main() { bool x = true && false; return 0; }",
         "int Main() { return 1; int x = 2; }",
         "int Main() { int x = 0; if (x == 0) x = 1; else x = 2; return x; }",
