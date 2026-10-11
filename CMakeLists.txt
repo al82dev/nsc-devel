@@ -506,10 +506,11 @@ if(LLVM_FOUND)
     # appears in LLVM 20. With the old declaration, configuring against a genuine LLVM 19 passed
     # here and then failed later at compile time with an unresolved symbol, which is exactly the
     # kind of contract break a version gate exists to prevent.
-    if(LLVM_PACKAGE_VERSION VERSION_LESS 20)
+    if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
         message(FATAL_ERROR
-            "NativeSharp requires LLVM 20 or newer because LLVMRunPassesOnFunction is required "
-            "for -O0 SEH legalization and is not present in LLVM 19's C API; "
+            "NativeSharp 3.0 supports LLVM 23.x; the API floor is LLVM 20 because "
+            "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
+            "line is qualified for the 3.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")

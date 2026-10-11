@@ -1726,3 +1726,20 @@ configuro, compilo ni ejecuto. Evidencia:
 - Rutas, versiones, dependencias, toolchain, modos, producto y archivos CMake permanecen intactos.
 - No se configuró, compiló ni ejecutó ningún artefacto.
 - Evidencia causal: `TANDA-VALIDACION-245-NSCBUILDER3-CONSTRUCCION-NSC.md`.
+
+## Validación 246 — paridad completa de construcción de NSC
+
+`PARIDAD ESTÁTICA COMPLETA; VALIDACIÓN DE CONFIGURACIÓN Y BUILD PENDIENTE DEL USUARIO`.
+
+- Las corridas `20261010-205612-3820d100` y `20261010-211432-87c4102f` demostraron que la
+  Validación 245 era insuficiente: ambas siguieron seleccionando el paquete LLVM persistido por
+  Builder 3.
+- La causa completa fue la mezcla de dos contratos: Builder 1 selecciona una raíz LLVM única y
+  Builder 3 persistía un `LLVM_DIR` independiente del cual derivaba también el toolchain.
+- Builder 3 dispone ahora de `compiler_llvm_root`; configuración, construcción y recibo de NSC usan
+  exclusivamente esa raíz con precedencia override persistido > `NSC_LLVM_ROOT` > raíz canónica.
+- El `llvm_dir` anterior queda separado y no puede cambiar el compilador construido.
+- Se restauró exactamente la compuerta LLVM 23.x de `CMakeLists.txt` que `6c4c5a516` había relajado
+  para el paquete divergente.
+- No se configuró, compiló ni ejecutó ningún artefacto.
+- Tabla literal y evidencia: `TANDA-VALIDACION-246-NSCBUILDER3-PARIDAD-CONSTRUCCION.md`.

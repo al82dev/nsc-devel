@@ -47,6 +47,7 @@ COMPONENTS_PATH = INVENTORY_ROOT / "components.csv"
 CONTRACTS_PATH = INVENTORY_ROOT / "contracts.csv"
 CONTROLLER_ROOT = SUITE_ROOT / "controller"
 RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
+DEFAULT_COMPILER_LLVM_ROOT = Path("C:/clang-llvm")
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TIMEOUT_SECONDS = {
@@ -98,6 +99,7 @@ CONFIG_STRING_FIELDS = (
     "compiler_build_root",
     "install_prefix",
     "build_root",
+    "compiler_llvm_root",
     "llvm_dir",
     "archive_executable",
     "comparison_nsc",
@@ -532,6 +534,31 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
     return tools
 
 
+def discover_compiler_build_tools(llvm_root: str) -> dict[str, str]:
+    """Resolve the NSC host toolchain from the same LLVM-root contract as NSC Builder 1."""
+    selected_root = llvm_root or os.environ.get("NSC_LLVM_ROOT", "")
+    root = Path(selected_root or DEFAULT_COMPILER_LLVM_ROOT).resolve()
+    tools = {
+        "cmake": shutil.which("cmake") or "",
+        "ninja": shutil.which("ninja") or "",
+        "clang_cl": first_existing_file([root / "bin" / "clang-cl.exe"]),
+        "lld_link": first_existing_file([root / "bin" / "lld-link.exe"]),
+        "llvm_mt": first_existing_file([root / "bin" / "llvm-mt.exe"]),
+        "llvm_rc": first_existing_file([root / "bin" / "llvm-rc.exe"]),
+        "llvm_readobj": first_existing_file([root / "bin" / "llvm-readobj.exe"]),
+        "llvm_core": first_existing_file([root / "lib" / "LLVMCore.lib"]),
+        "llvm_support": first_existing_file([root / "lib" / "LLVMSupport.lib"]),
+        "llvm_dir": first_existing_directory([root / "lib" / "cmake" / "llvm"]),
+        "llvm_config": first_existing_file(
+            [root / "lib" / "cmake" / "llvm" / "LLVMConfig.cmake"]
+        ),
+    }
+    missing = [name for name, value in tools.items() if not value]
+    if missing:
+        raise ValueError("required NSC build tools were not found: " + ", ".join(missing))
+    return tools
+
+
 def discover_archive_executable(configured: str) -> str:
     """Find 7-Zip from an override, PATH, or Windows installation roots."""
     candidates: list[str | Path] = [
@@ -569,6 +596,7 @@ class BuilderConfig:
     compiler_build_root: str = "A:/nsc-devel/build-clang"
     install_prefix: str = "A:/native-sharp-3.0-baseline"
     build_root: str = "A:/nsc-devel/build-compiler-suite-v3"
+    compiler_llvm_root: str = ""
     llvm_dir: str = ""
     archive_executable: str = ""
     comparison_nsc: str = ""
@@ -612,6 +640,13 @@ class BuilderConfig:
         llvm_dir = first_existing_directory(
             [self.llvm_dir, os.environ.get("LLVM_DIR", ""), "C:/clang-llvm/lib/cmake/llvm"]
         )
+        compiler_llvm_root = first_existing_directory(
+            [
+                self.compiler_llvm_root,
+                os.environ.get("NSC_LLVM_ROOT", ""),
+                DEFAULT_COMPILER_LLVM_ROOT,
+            ]
+        )
         archive = discover_archive_executable(self.archive_executable)
         comparison_nsc = first_distinct_existing_file(
             [
@@ -633,6 +668,7 @@ class BuilderConfig:
             compiler_build_root=compiler_build_root,
             install_prefix=self.install_prefix,
             build_root=self.build_root,
+            compiler_llvm_root=compiler_llvm_root,
             llvm_dir=llvm_dir,
             archive_executable=archive,
             comparison_nsc=comparison_nsc,
@@ -678,6 +714,10 @@ class BuilderConfig:
             if self.llvm_dir:
                 require_directory_path(
                     Path(self.llvm_dir), "LLVM_DIR", must_exist=True
+                )
+            if self.compiler_llvm_root:
+                require_directory_path(
+                    Path(self.compiler_llvm_root), "NSC LLVM root", must_exist=True
                 )
         return self
 
@@ -2393,7 +2433,7 @@ def compiler_configure_commands(
     host_optimization: str,
 ) -> list[tuple[str, list[str], Path]]:
     """Configure NSC itself with the canonical Clang/LLVM/LLD Windows toolchain."""
-    tools = discover_build_tools(config.llvm_dir)
+    tools = discover_compiler_build_tools(config.compiler_llvm_root)
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = compiler_build_dir(config, mode)
@@ -2431,7 +2471,7 @@ def compiler_build_commands(
     config: BuilderConfig, modes: Sequence[str]
 ) -> list[tuple[str, list[str], Path]]:
     """Build only the NSC target from previously configured compiler trees."""
-    tools = discover_build_tools(config.llvm_dir)
+    tools = discover_compiler_build_tools(config.compiler_llvm_root)
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         command = [
@@ -3386,6 +3426,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self._add_path_row(form, "compiler_build_root", "Build de NSC", True)
             self._add_path_row(form, "install_prefix", "Prefijo de instalación", True)
             self._add_path_row(form, "build_root", "Árbol de pruebas", True)
+            self._add_path_row(form, "compiler_llvm_root", "LLVM root de NSC", True)
             self._add_path_row(form, "llvm_dir", "LLVM_DIR", True)
             self._add_path_row(form, "archive_executable", "Archivador", False)
             self._add_path_row(form, "comparison_nsc", "NSC de comparación", False)
@@ -3759,6 +3800,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                         f"NSC: {discovered.nsc_executable}",
                         f"NSLink: {discovered.nslink_executable}",
                         f"Fuentes NSC: {SOURCE_ROOT}",
+                        f"LLVM root de NSC: {discovered.compiler_llvm_root}",
                         f"Fuentes de pruebas: {SUITE_ROOT}",
                     ]
                 )
@@ -3773,6 +3815,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 compiler_build_root=self.path_edits["compiler_build_root"].text().strip(),
                 install_prefix=self.path_edits["install_prefix"].text().strip(),
                 build_root=self.path_edits["build_root"].text().strip(),
+                compiler_llvm_root=self.path_edits["compiler_llvm_root"].text().strip(),
                 llvm_dir=self.path_edits["llvm_dir"].text().strip(),
                 archive_executable=self.path_edits["archive_executable"].text().strip(),
                 comparison_nsc=self.path_edits["comparison_nsc"].text().strip(),
@@ -3812,8 +3855,12 @@ def launch_gui(smoke_only: bool = False) -> int:
             try:
                 config = self._config_from_ui().validated(require_tools=False)
                 self._load_config(config)
-                tools = discover_build_tools(config.llvm_dir)
                 compiler_operation = operation.startswith("compiler-")
+                tools = (
+                    discover_compiler_build_tools(config.compiler_llvm_root)
+                    if compiler_operation
+                    else discover_build_tools(config.llvm_dir)
+                )
                 selected = (
                     self.compiler_mode.currentText()
                     if compiler_operation
