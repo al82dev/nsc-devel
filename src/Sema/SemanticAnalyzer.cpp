@@ -379,7 +379,11 @@ void SemanticAnalyzer::analyzeEnum(ast::AstNode* node)
         {
             ExpressionInfo initializer = analyzeExpression(memberNode->first());
             const std::optional<std::int64_t> constant = constantAsSigned(initializer);
-            if (!initializer.isConstant || constant == std::nullopt || !isInteger(initializer.type))
+            if (initializer.type->kind() == TypeKind::Error)
+            {
+                valueValid = false;
+            }
+            else if (!initializer.isConstant || constant == std::nullopt || !isInteger(initializer.type))
             {
                 report(
                     memberNode->range(),

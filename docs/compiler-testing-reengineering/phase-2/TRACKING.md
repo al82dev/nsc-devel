@@ -1647,3 +1647,9 @@ Validacion 233 corrige el productor de `TS-SEMA-100`: `record` publica ahora
 en `SemanticModel` el simbolo ya resuelto que contiene `ExpressionInfo`. No se
 compilo ni ejecuto; la validacion queda delegada al usuario. Evidencia:
 `TANDA-VALIDACION-233-SEMA-SYMBOL-BINDING.md`.
+
+Validacion 234 corrige `TS-SEMA-116`: un inicializador enum que ya produjo
+tipo `Error` conserva solamente el diagnostico causal y no agrega
+`InvalidEnumInitializer`. No se compilo ni ejecuto; la validacion queda
+delegada al usuario. Evidencia:
+`TANDA-VALIDACION-234-SEMA-ENUM-CASCADE.md`.
