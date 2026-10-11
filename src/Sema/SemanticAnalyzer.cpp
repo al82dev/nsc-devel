@@ -992,6 +992,8 @@ ExpressionInfo SemanticAnalyzer::analyzeExpression(ast::AstNode* node, bool allo
             return analyzeUnary(node);
         case ast::AstNodeKind::BinaryExpression:
             return analyzeBinary(node);
+        case ast::AstNodeKind::ConditionalExpression:
+            return analyzeConditional(node);
         case ast::AstNodeKind::AssignmentExpression:
             return analyzeAssignment(node);
         case ast::AstNodeKind::CallExpression:
@@ -1536,6 +1538,67 @@ ExpressionInfo SemanticAnalyzer::analyzeBinary(ast::AstNode* node)
     }
 
     return makeError(node);
+}
+
+ExpressionInfo SemanticAnalyzer::analyzeConditional(ast::AstNode* node)
+{
+    ExpressionInfo condition = analyzeExpression(node->first());
+    ExpressionInfo whenTrue = analyzeExpression(node->second());
+    ExpressionInfo whenFalse = analyzeExpression(node->third());
+    if (condition.type->kind() == TypeKind::Error ||
+        whenTrue.type->kind() == TypeKind::Error || whenFalse.type->kind() == TypeKind::Error)
+    {
+        return makeError(node);
+    }
+    if (condition.type->kind() != TypeKind::Bool)
+    {
+        report(
+            node->first()->range(),
+            diagnostics::DiagnosticId::InvalidCondition,
+            "conditional expression condition must have type bool");
+        return makeError(node);
+    }
+
+    Type* resultType = nullptr;
+    if (whenTrue.type == whenFalse.type)
+    {
+        resultType = whenTrue.type;
+    }
+    else if (isNumeric(whenTrue.type) && isNumeric(whenFalse.type))
+    {
+        resultType = commonNumericType(whenTrue.type, whenFalse.type);
+    }
+    else if (canImplicitlyConvert(whenTrue, whenFalse.type))
+    {
+        resultType = whenFalse.type;
+    }
+    else if (canImplicitlyConvert(whenFalse, whenTrue.type))
+    {
+        resultType = whenTrue.type;
+    }
+
+    if (resultType == nullptr)
+    {
+        report(
+            node->range(),
+            diagnostics::DiagnosticId::InvalidOperand,
+            "conditional expression branches do not have a common type");
+        return makeError(node);
+    }
+
+    recordImplicitConversion(node, node->second(), whenTrue, resultType, 1);
+    recordImplicitConversion(node, node->third(), whenFalse, resultType, 2);
+    ExpressionInfo result = makeRValue(resultType);
+    if (condition.isConstant && condition.constantValue.kind() == ConstantKind::Boolean)
+    {
+        const ExpressionInfo& selected = condition.constantValue.boolean() ? whenTrue : whenFalse;
+        if (selected.isConstant)
+        {
+            result.isConstant = true;
+            result.constantValue = convertConstant(selected.constantValue, selected.type, resultType);
+        }
+    }
+    return record(node, result);
 }
 
 ExpressionInfo SemanticAnalyzer::analyzeAssignment(ast::AstNode* node)

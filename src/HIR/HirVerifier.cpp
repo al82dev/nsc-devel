@@ -40,6 +40,7 @@ bool isExpressionKind(HirNodeKind kind)
         kind == HirNodeKind::Conversion ||
         kind == HirNodeKind::Unary ||
         kind == HirNodeKind::Binary ||
+        kind == HirNodeKind::Conditional ||
         kind == HirNodeKind::Call ||
         kind == HirNodeKind::IndexAddress ||
         kind == HirNodeKind::FieldAddress ||
@@ -414,6 +415,19 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
             }
             return verifyNode(node->first(), functionReturnType, loopDepth) &&
                 verifyNode(node->second(), functionReturnType, loopDepth);
+
+        case HirNodeKind::Conditional:
+            if (node->first() == nullptr || node->second() == nullptr || node->third() == nullptr ||
+                node->type() == nullptr || !isExpressionKind(node->first()->kind()) ||
+                !isExpressionKind(node->second()->kind()) || !isExpressionKind(node->third()->kind()) ||
+                node->first()->type() == nullptr || node->first()->type()->kind() != sema::TypeKind::Bool ||
+                node->second()->type() != node->type() || node->third()->type() != node->type())
+            {
+                return fail(node, "conditional requires bool condition and two branches of its result type");
+            }
+            return verifyNode(node->first(), functionReturnType, loopDepth) &&
+                verifyNode(node->second(), functionReturnType, loopDepth) &&
+                verifyNode(node->third(), functionReturnType, loopDepth);
 
         case HirNodeKind::Call:
         {

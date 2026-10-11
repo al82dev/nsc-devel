@@ -30,6 +30,7 @@ std::string_view hirNodeKindName(HirNodeKind kind) noexcept
         case HirNodeKind::Conversion: return "Conversion";
         case HirNodeKind::Unary: return "Unary";
         case HirNodeKind::Binary: return "Binary";
+        case HirNodeKind::Conditional: return "Conditional";
         case HirNodeKind::Call: return "Call";
         case HirNodeKind::IndexAddress: return "IndexAddress";
         case HirNodeKind::FieldAddress: return "FieldAddress";

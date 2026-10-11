@@ -97,6 +97,10 @@ Literales, `sizeof`, `alignof` y `offsetof` requieren una constante semántica. 
 `++` y `--` conservan si eran postfix. La asignación simple produce `Store`; la compuesta produce
 `CompoundAssignment` con conversiones separadas de lectura y resultado.
 
+El operador condicional se representa como `Conditional`: `first` es la condición `bool`, `second` la rama
+verdadera y `third` la falsa. Sema selecciona el tipo común y registra las conversiones de ambas ramas; HIR las
+materializa antes de fijar el tipo del nodo. La representación no confunde este valor con el statement `If`.
+
 Calls guardan el símbolo función y agregan argumentos convertidos en orden. Casts delegan al registro de
 conversiones de Sema. El builder sólo aplica conversiones cuyo operand pointer y, cuando existe, índice coinciden;
 las conversiones de rol `Result` se excluyen de esa cadena.
@@ -164,7 +168,8 @@ puede retornar valor y un retorno no-void debe coincidir por identidad exacta de
 
 Constants requieren tipo, payload y cero aristas. `SymbolAddress` sólo admite variable, global o parámetro y
 debe ser pointer-to-symbol-type. Loads y stores verifican la relación pointer-to-T. Conversion, unary y binary
-exigen sus metadatos, pero la validez específica de cada `ConversionKind` y token se confía a Sema.
+exigen sus metadatos, pero la validez específica de cada `ConversionKind` y token se confía a Sema. Conditional
+exige condición `bool` y dos ramas cuyo tipo sea exactamente el tipo de resultado.
 
 Calls requieren símbolo función, tipo de retorno exacto, cantidad de argumentos y tipos posicionales idénticos.
 Compound assignment e increment validan destino pointer-to-value; increment restringe el token a `++` o `--`.

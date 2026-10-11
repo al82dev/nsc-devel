@@ -32,6 +32,7 @@ enum class HirNodeKind
     Conversion,
     Unary,
     Binary,
+    Conditional,
     Call,
     IndexAddress,
     FieldAddress,

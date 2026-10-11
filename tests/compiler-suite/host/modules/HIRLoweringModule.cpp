@@ -156,6 +156,15 @@ void operatorOracle(TestContext& context, std::size_t variant)
         "int F(){return 8/2;}", "int F(){return 7%3;}",
         "int F(int a,int b){return ((a+b)*(a-b))/(b==0?1:b);}"};
     auto compilation = compileHir(context, "CF-HIR-015", std::string(sources[variant]));
+    if (variant == 7)
+    {
+        const HirNode* conditional = findFirst(compilation->hirRoot(), HirNodeKind::Conditional);
+        context.expect(conditional != nullptr && conditional->type() != nullptr &&
+                conditional->first() != nullptr && conditional->second() != nullptr &&
+                conditional->third() != nullptr,
+            "TF-HIR-120 conditional node must retain condition, both branches and result type");
+        return;
+    }
     const HirNodeKind kind = variant < 2 ? HirNodeKind::Unary : HirNodeKind::Binary;
     const HirNode* operation = findFirst(compilation->hirRoot(), kind);
     context.expect(operation != nullptr && operation->operation() != TokenKind::Invalid,

@@ -1559,6 +1559,14 @@ con memoria acotada. Evidencia:
 `TANDA-VALIDACION-226-DOMINANCE-VERIFIER-ACOTADO.md`. No se compilo ni ejecuto;
 la validacion queda delegada al usuario.
 
+Validacion 227 implementa el productor HIR del operador condicional para
+`TF-HIR-120`: Sema selecciona el tipo comun y registra conversiones, HIR crea
+un nodo `Conditional` tipado y su verifier exige condicion `bool` y dos ramas
+del tipo de resultado. Los consumidores `TF-MIR-152`, `183`, `195`, `198`,
+`200` y `270` permanecen `BLOQUEADO_POR TF-HIR-120` hasta que el usuario
+valide el productor; no se parchearon consumidores ni se ejecutaron pruebas.
+Evidencia: `TANDA-VALIDACION-227-HIR-CONDICIONAL.md`.
+
 Validacion 205 corrige `TF-PAS-273..280`: el fixture de `CF-PAS-035` coloca
 ahora el PHI constante dentro del prefijo que procesa el pase y comprueba una
 sola sustitucion con identidad y valor exactos. No se modifico producto ni se

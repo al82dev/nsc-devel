@@ -63,6 +63,7 @@ private:
     ExpressionInfo analyzeLiteral(ast::AstNode* node);
     ExpressionInfo analyzeUnary(ast::AstNode* node);
     ExpressionInfo analyzeBinary(ast::AstNode* node);
+    ExpressionInfo analyzeConditional(ast::AstNode* node);
     ExpressionInfo analyzeAssignment(ast::AstNode* node);
     ExpressionInfo analyzeCall(ast::AstNode* node);
     ExpressionInfo analyzeIndex(ast::AstNode* node);

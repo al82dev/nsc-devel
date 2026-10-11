@@ -468,6 +468,23 @@ HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
             return binary;
         }
 
+        case ast::AstNodeKind::ConditionalExpression:
+        {
+            HirNode* condition = lowerExpression(node->first());
+            HirNode* whenTrue = lowerConvertedOperand(node, node->second(), 1);
+            HirNode* whenFalse = lowerConvertedOperand(node, node->third(), 2);
+            if (condition == nullptr || whenTrue == nullptr || whenFalse == nullptr)
+            {
+                return nullptr;
+            }
+            HirNode* conditional = arena_.make(HirNodeKind::Conditional, node->range());
+            conditional->setType(info->type);
+            conditional->setFirst(condition);
+            conditional->setSecond(whenTrue);
+            conditional->setThird(whenFalse);
+            return conditional;
+        }
+
         case ast::AstNodeKind::AssignmentExpression:
         {
             HirNode* address = lowerAddress(node->first());
