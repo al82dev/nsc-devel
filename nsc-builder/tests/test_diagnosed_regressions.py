@@ -57,6 +57,7 @@ class DiagnosedRegressionTests(unittest.TestCase):
             "clone->range().end() == source->range().end()",
             source,
         )
+        self.assertNotIn("AstNode* firstChild(", source)
 
     def test_source_mutation_plans_initialize_terminal_observation_fields(self) -> None:
         source = (
@@ -70,6 +71,9 @@ class DiagnosedRegressionTests(unittest.TestCase):
 
         self.assertEqual(source.count(".triggered = false"), 2)
         self.assertEqual(source.count(".error = {}"), 2)
+        guard = source.index("#if !defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)")
+        limit = source.index("constexpr std::uintmax_t kMaximumSourceBytes")
+        self.assertGreater(limit, guard)
 
     def test_identity_protocol_excludes_builder_only_not_run_state(self) -> None:
         self.assertIn("NOT_RUN", RESULT_STATUSES)

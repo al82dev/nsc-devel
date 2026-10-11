@@ -16,11 +16,6 @@ using namespace parser_support;
 using namespace nativesharp::ast;
 using nativesharp::lexer::TokenKind;
 
-AstNode* firstChild(AstNode* node)
-{
-    return node != nullptr && !node->children().empty() ? node->children().front() : nullptr;
-}
-
 void testMakeHelpers(TestContext& context)
 {
     ParserFixture fixture("");

@@ -28,8 +28,6 @@ namespace nsc::suite
 {
 namespace
 {
-constexpr std::uintmax_t kMaximumSourceBytes = std::uintmax_t{64} * 1024U * 1024U;
-
 // Writes one exact binary fixture and rejects partial or deferred stream failures.
 void writeBytes(const std::filesystem::path& path, std::string_view bytes)
 {
@@ -55,6 +53,8 @@ void resizeFixture(const std::filesystem::path& path, std::uintmax_t size)
 }
 
 #if !defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
+constexpr std::uintmax_t kMaximumSourceBytes = std::uintmax_t{64} * 1024U * 1024U;
+
 // Verifies the exact content of a sparse boundary fixture in one iterative pass.
 bool containsOnlyZeroBytes(std::string_view bytes) noexcept
 {
