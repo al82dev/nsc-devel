@@ -1770,6 +1770,18 @@ ExpressionInfo SemanticAnalyzer::analyzeIndex(ast::AstNode* node)
             "index expression requires at least one index");
         return makeError(node);
     }
+    if (base.type->kind() == TypeKind::Error)
+    {
+        return makeError(node);
+    }
+    for (const auto& [syntax, index] : indices)
+    {
+        (void)syntax;
+        if (index.type->kind() == TypeKind::Error)
+        {
+            return makeError(node);
+        }
+    }
     for (const auto& [syntax, index] : indices)
     {
         if (isInteger(index.type)) continue;
@@ -1899,6 +1911,10 @@ ExpressionInfo SemanticAnalyzer::analyzeMember(ast::AstNode* node, bool pointerF
     }
 
     ExpressionInfo base = analyzeExpression(node->first());
+    if (base.type->kind() == TypeKind::Error)
+    {
+        return makeError(node);
+    }
     Type* structType = base.type;
     if (pointerForm)
     {
@@ -1956,6 +1972,10 @@ ExpressionInfo SemanticAnalyzer::analyzeCast(ast::AstNode* node)
     Type* destination = resolveType(node->typeSyntax());
     ExpressionInfo source = analyzeExpression(node->first());
     if (destination == nullptr)
+    {
+        return makeError(node);
+    }
+    if (source.type->kind() == TypeKind::Error)
     {
         return makeError(node);
     }

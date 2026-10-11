@@ -1659,3 +1659,8 @@ solo `ConstRequiresConstant`; la global ordinaria conserva
 `GlobalRequiresConstant`. No se compilo ni ejecuto; la validacion queda
 delegada al usuario. Evidencia:
 `TANDA-VALIDACION-235-SEMA-CONST-GLOBAL.md`.
+
+Validacion 236 corrige la causa compartida de `TS-SEMA-216`, `219` y `222`:
+cast, member e index propagan `TypeKind::Error` sin agregar diagnosticos
+derivados. No se compilo ni ejecuto; la validacion queda delegada al usuario.
+Evidencia: `TANDA-VALIDACION-236-SEMA-ERROR-CASCADE.md`.
