@@ -23,7 +23,8 @@ void instructionDumpContract(TestContext& context, std::size_t variant)
 {
     auto fixture = makeFixture(context, variant);
     const std::string output = dumpModule(fixture->module());
-    context.expect(output.find("constant") != std::string::npos, "instruction dump must expose constants by opcode");
+    context.expect(output.find(" = const ") != std::string::npos,
+        "instruction dump must expose constants with the canonical MIR opcode");
     context.expect(output.find("%v") != std::string::npos, "instruction dump must expose typed MIR value identities");
     context.expect(output.find("return") != std::string::npos, "instruction dump must expose structural terminators");
     context.expect(output == dumpModule(fixture->module()), "instruction corpus must remain byte-exact across repetition");

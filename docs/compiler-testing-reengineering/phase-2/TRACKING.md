@@ -1547,3 +1547,8 @@ ahora el PHI constante dentro del prefijo que procesa el pase y comprueba una
 sola sustitucion con identidad y valor exactos. No se modifico producto ni se
 ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-205-PASSES-PHI-CONSTANTE.md`.
+
+Validacion 206 corrige el oraculo ejecutable de `CF-PAS-050`: el dump se
+compara contra el opcode MIR canonico `const`, no contra el nombre inventado
+`constant`. No se modifico producto ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-206-PASSES-DUMP-CONST.md`.
