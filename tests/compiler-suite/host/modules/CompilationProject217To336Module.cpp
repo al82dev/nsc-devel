@@ -355,7 +355,9 @@ void descriptorCacheContract(TestContext& context, std::size_t variant)
 void projectMaterializationContract(TestContext& context, std::size_t variant)
 {
     TemporaryTree tree("materialization");
-    if (variant != 3)
+    // Variant 6 is the aggregate-node case: its ProjectReference, not a
+    // synthetic Main.ns, is the sole reason an empty source set is legal.
+    if (variant != 3 && variant != 6)
     {
         tree.write("Main.ns", "fixture");
     }
@@ -378,7 +380,9 @@ void projectMaterializationContract(TestContext& context, std::size_t variant)
     }
     if (project.has_value() && variant == 6)
     {
-        exact = project->sourceSet().sources().empty() && project->projectReferences().size() == 1U;
+        exact = project->sourceSet().isFinalized() && project->sourceSet().sources().empty() &&
+            project->projectReferences().size() == 1U &&
+            project->projectReferences().front().filename() == "Dep.nsproj";
     }
     context.expect(exact, "CF-COMPILATION-042 materialization applies defaults and permits only referenced aggregate nodes empty");
 }
