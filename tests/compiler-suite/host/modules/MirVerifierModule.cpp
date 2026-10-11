@@ -418,10 +418,10 @@ void terminatorVerifierOracle(TestContext& context, std::size_t variant)
             "void F() { return; } int Main() { return 0; }",
             "int Main() { if (true) return 1; return 0; }",
             "", "",
-            "int Main() { while (true) break; return 0; }",
+            "int Main() { while (true) { break; } return 0; }",
             "int Main() { return 1; int x = 2; }",
             "int Main() { int x = 0; if (x == 0) x = 1; return x; }",
-            "int Main() { int i = 0; while (i < 8) i++; return i; }",
+            "int Main() { int i = 0; while (i < 8) { i++; } return i; }",
         };
         expectCompiledValid(context, "mir-terminator-verifier", std::string(programs[variant]));
         return;
