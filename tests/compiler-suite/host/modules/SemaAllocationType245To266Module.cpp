@@ -372,8 +372,14 @@ void testCAbiStructTerminationBoundary(TestContext& context)
     context.expect(!fixture.analyzer.isCAbiCompatibleStruct(empty) &&
             !fixture.analyzer.isCAbiCompatibleStruct(incomplete),
         "TS-SEMA-265 empty and incomplete structs must be rejected before recursive field traversal");
-    context.expect(false,
-        "TS-SEMA-265 TEST-INFRASTRUCTURE: self-recursive C ABI structs require process isolation because the product has no visited-set guard");
+
+    // HostExecutor launches every manifest case in its own process. A missing
+    // recursion guard therefore fails only this case instead of the full suite.
+    Type* recursive = fixture.types.createStruct("Recursive", nullptr);
+    recursive->setComplete(true);
+    fixture.analyzer.structFieldTypes_[recursive] = {recursive};
+    context.expect(!fixture.analyzer.isCAbiCompatibleStruct(recursive),
+        "TS-SEMA-265 a self-recursive C ABI struct must terminate and reject");
 }
 
 void testCAbiStructFields(TestContext& context)
