@@ -1600,3 +1600,8 @@ Validacion 226 completa los oraculos de `TS-SEMA-118`, `125`, `127` y `145`
 con la nota ordenada `PreviousDeclaration` que emite el producto. No se
 modifico producto ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-226-SEMA-PREVIOUS-DECLARATION.md`.
+
+Validacion 227 alinea `TS-SEMA-167` y `193` con la frontera real del frontend:
+un error lexico corta antes del parser y por contrato no publica AST. No se
+modifico producto ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-227-SEMA-FRONTERA-LEXICA.md`.

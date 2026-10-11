@@ -17,6 +17,11 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
+
+Scenario lexicalError(std::string label, std::string source, DiagnosticId id)
+{
+    return {std::move(label), std::move(source), false, false, {{id, {}}}, {}, false};
+}
 }
 
 // Registers CS-SEMA-018 identifier binding and literal-value contracts.
@@ -42,8 +47,8 @@ void registerSemaIdentifierLiteralModule(TestRegistry& registry)
         ok("suffix", "long F(){uint a=1u;long b=2L;ulong c=3uL;return b+(long)a+(long)c;}"),
     });
     addCase(registry, "TS-SEMA-167", "CS-SEMA-018", {
-        bad("malformed", "int F(){return 0xGG;}", DiagnosticId::InvalidNumericLiteral),
-        bad("overflow", "int F(){return 999999999999999999999999999999;}",
+        lexicalError("malformed", "int F(){return 0xGG;}", DiagnosticId::InvalidNumericLiteral),
+        lexicalError("overflow", "int F(){return 999999999999999999999999999999;}",
             DiagnosticId::InvalidNumericLiteral),
     });
     addCase(registry, "TS-SEMA-168", "CS-SEMA-018", {

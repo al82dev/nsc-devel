@@ -151,6 +151,7 @@ struct Scenario final
     bool shouldCompile = true;
     std::vector<ExpectedDiagnostic> diagnostics;
     std::vector<std::string> globalSymbols;
+    bool expectSyntaxTree = true;
 };
 
 // Finds one global symbol by its stable source name. Complexity is O(g).
@@ -200,8 +201,8 @@ inline void runScenario(TestContext& context, const std::string& id, const Scena
         std::filesystem::path(id + "-" + scenario.label + ".ns"), scenario.source, scenario.requireMain);
     context.expect(completed == scenario.shouldCompile,
         id + " " + scenario.label + " completion state must be exact");
-    context.expect(compilation.syntaxTree() != nullptr,
-        id + " " + scenario.label + " must retain the parsed syntax tree");
+    context.expect((compilation.syntaxTree() != nullptr) == scenario.expectSyntaxTree,
+        id + " " + scenario.label + " syntax-tree availability must match the completed frontend stage");
     expectDiagnostics(context, id, scenario, compilation);
     for (const std::string& name : scenario.globalSymbols)
     {

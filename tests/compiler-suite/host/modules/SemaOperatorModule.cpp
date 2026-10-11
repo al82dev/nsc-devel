@@ -17,6 +17,11 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
+
+Scenario lexicalError(std::string label, std::string source, DiagnosticId id)
+{
+    return {std::move(label), std::move(source), false, false, {{id, {}}}, {}, false};
+}
 }
 
 // Registers CS-SEMA-019 unary, binary, conversion, and operator-record contracts.
@@ -103,8 +108,8 @@ void registerSemaOperatorModule(TestRegistry& registry)
         bad("cascade", "int F(){return missing+1;}", DiagnosticId::UnknownIdentifier),
     });
     addCase(registry, "TS-SEMA-193", "CS-SEMA-019", {
-        bad("unknown-unary", "int F(){return @1;}", DiagnosticId::UnexpectedCharacter),
-        bad("unknown-binary", "int F(){return 1 @ 2;}", DiagnosticId::UnexpectedCharacter),
+        lexicalError("unknown-unary", "int F(){return @1;}", DiagnosticId::UnexpectedCharacter),
+        lexicalError("unknown-binary", "int F(){return 1 @ 2;}", DiagnosticId::UnexpectedCharacter),
     });
     addCase(registry, "TS-SEMA-194", "CS-SEMA-019", {
         ok("records", "int F(int a,int b){int c=-a;c=c+b;c=c*b;c=c/b;c=c%b;c=c<<1;return c==b?~c:c;}"),
