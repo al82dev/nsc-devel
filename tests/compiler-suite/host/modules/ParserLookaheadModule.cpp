@@ -78,7 +78,7 @@ void testNestedGenericGreaterGreater(TestContext& context)
 void testNestedGenericGreaterGreaterEqual(TestContext& context)
 {
     ParserFixture fixture("Outer<Inner<int>>= value", {"Outer", "Inner"});
-    TypeSyntax* const type = fixture.parser().parseType();
+    nativesharp::ast::TypeSyntax* const type = fixture.parser().parseType();
     context.expect(type != nullptr && type->baseName() == "Outer" &&
             type->typeArguments().size() == 1 &&
             type->typeArguments()[0]->baseName() == "Inner" &&
