@@ -28,8 +28,8 @@ namespace NativeSharp.CompilerSuite.SelfHost.Basic
 
         private static int ByteNarrowingVector()
         {
-            return StableHash.Text("é") == 12638336734137078692UL &&
-                StableHash.Text("ñ") == 12638345530230104380UL ? 0 : 19;
+            return StableHash.Text("é") == 775207407765167617UL &&
+                StableHash.Text("ñ") == 775181019486090553UL ? 0 : 19;
         }
 
         private static int BoundaryVectors()

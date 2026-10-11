@@ -1573,3 +1573,8 @@ final del oraculo duplicaba un local tambien en la variante nominal `0`. La
 mutacion queda limitada a la variante `7`; no se modifico producto ni se
 ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-210-SSA-PROVENIENCIA-NOMINAL.md`.
+
+Validacion 211 corrige `TSH-00019`: los vectores FNV-1a de `é` y `ñ` usan los
+bytes UTF-8 observables por `string`, no valores Latin-1. No se modifico el
+algoritmo self-host ni se ejecutaron pruebas. Evidencia:
+`TANDA-VALIDACION-211-SELFHOST-FNV-UTF8.md`.
