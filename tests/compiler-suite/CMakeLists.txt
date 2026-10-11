@@ -626,8 +626,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/SumTypeSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/TraitSemantics.cpp")
 
-# Death, watchdog, and allocator-failure probes live in a dedicated executable.  It intentionally
-# owns only five Host.AST cases: compiling the full module graph with the replacement operator new
+# Death and allocator-failure probes live in a dedicated executable.  It intentionally owns only
+# three Host.AST cases: compiling the full module graph with the replacement operator new
 # would change the allocator of every ordinary host test and duplicate the consolidated registry.
 add_executable(
     nsc_component_tests_destructive
