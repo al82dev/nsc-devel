@@ -3000,7 +3000,10 @@ ConstantValue SemanticAnalyzer::convertConstant(
         std::uint64_t bits = 0;
         if (value.kind() == ConstantKind::SignedInteger)
         {
-            bits = bitsFromSigned(value.signedInteger(), integerWidth(source));
+            // Conversion to uint64_t is defined modulo 2^64 and therefore preserves the sign
+            // extension needed when a signed source widens. The destination mask below also
+            // gives the exact truncation for narrower targets.
+            bits = static_cast<std::uint64_t>(value.signedInteger());
         }
         else
         {

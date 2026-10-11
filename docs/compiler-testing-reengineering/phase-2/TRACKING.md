@@ -1669,3 +1669,8 @@ Validacion 237 corrige `TS-SEMA-208`: los grupos sucesivos de arrays fijos se
 canonicalizan de dentro hacia fuera sin invertir las dimensiones escritas en
 un mismo grupo. No se compilo ni ejecuto; la validacion queda delegada al
 usuario. Evidencia: `TANDA-VALIDACION-237-SEMA-ARRAY-DIMENSIONS.md`.
+
+Validacion 238 corrige `TS-SEMA-285`: la conversion constante signed conserva
+extension de signo al ampliar y truncacion modular al reducir. No se compilo
+ni ejecuto; la validacion queda delegada al usuario. Evidencia:
+`TANDA-VALIDACION-238-SEMA-SIGNED-WIDENING.md`.
