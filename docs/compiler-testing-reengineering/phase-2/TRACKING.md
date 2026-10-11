@@ -1562,3 +1562,8 @@ Validacion 208 corrige `TF-SSA-268`: la variante de orden de funciones usa
 dos definiciones, de modo que invertir la secuencia produce una corrupcion
 observable por el verificador. No se modifico producto ni se ejecutaron
 pruebas. Evidencia: `TANDA-VALIDACION-208-SSA-ORDEN-FUNCIONES.md`.
+
+Validacion 209 corrige `TF-SSA-294`: la mutacion ya no intenta sobrescribir
+una clave existente mediante insercion; publica un bloque de salida nulo que
+el verificador puede observar. No se modifico producto ni se ejecutaron
+pruebas. Evidencia: `TANDA-VALIDACION-209-SSA-MAPEO-BLOQUES.md`.

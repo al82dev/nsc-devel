@@ -160,8 +160,12 @@ void mappingOracle(TestContext& context, std::size_t variant)
     }
     else if (variant == 4 && !function->function()->blocks().empty())
         function->function()->addBlock(function->function()->blocks().front());
-    else if (variant == 5 && !function->sourceFunction()->blocks().empty())
-        function->mapBlock(function->sourceFunction()->blocks().front(), nullptr);
+    else if (variant == 5 && !function->function()->blocks().empty())
+    {
+        auto blocks = function->function()->blocks();
+        blocks.front() = nullptr;
+        function->function()->replaceBlocks(std::move(blocks));
+    }
     else if (variant == 6) function->setExcludedUnreachableBlocks(999);
     else if (variant == 7)
     {
