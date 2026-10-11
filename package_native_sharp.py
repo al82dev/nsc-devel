@@ -66,7 +66,6 @@ def read_identity(prefix: Path) -> BuildIdentity:
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=15,
         creationflags=flags,
         check=False,
     )

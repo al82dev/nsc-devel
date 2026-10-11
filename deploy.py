@@ -248,7 +248,6 @@ class DeployWindow(QMainWindow):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=15,
                 creationflags=flags,
                 check=False,
             )
