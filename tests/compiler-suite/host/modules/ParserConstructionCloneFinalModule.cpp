@@ -104,7 +104,9 @@ void testCloneTypeCompleteAndIndependent(TestContext& context)
     context.expect(clone != nullptr && clone != source,
         "TP-PAR-514 cloneParsedType must allocate a distinct root in the destination arena");
     if (clone == nullptr) return;
-    context.expect(clone->range() == source->range() && clone->baseTokenKind() == source->baseTokenKind() &&
+    context.expect(clone->range().begin() == source->range().begin() &&
+            clone->range().end() == source->range().end() &&
+            clone->baseTokenKind() == source->baseTokenKind() &&
             clone->baseName() == source->baseName() &&
             clone->ownershipQualifier() == source->ownershipQualifier() &&
             clone->lifetimeName() == source->lifetimeName() &&

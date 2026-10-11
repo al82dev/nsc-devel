@@ -38,6 +38,39 @@ class DiagnosedRegressionTests(unittest.TestCase):
             source,
         )
 
+    def test_parser_clone_compares_observable_source_range_fields(self) -> None:
+        source = (
+            REPOSITORY_ROOT
+            / "tests"
+            / "compiler-suite"
+            / "host"
+            / "modules"
+            / "ParserConstructionCloneFinalModule.cpp"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("clone->range() == source->range()", source)
+        self.assertIn(
+            "clone->range().begin() == source->range().begin()",
+            source,
+        )
+        self.assertIn(
+            "clone->range().end() == source->range().end()",
+            source,
+        )
+
+    def test_source_mutation_plans_initialize_terminal_observation_fields(self) -> None:
+        source = (
+            REPOSITORY_ROOT
+            / "tests"
+            / "compiler-suite"
+            / "host"
+            / "modules"
+            / "SourceFileReadModule.cpp"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(source.count(".triggered = false"), 2)
+        self.assertEqual(source.count(".error = {}"), 2)
+
     def test_identity_protocol_excludes_builder_only_not_run_state(self) -> None:
         self.assertIn("NOT_RUN", RESULT_STATUSES)
         self.assertNotIn("NOT_RUN", IDENTITY_RESULT_STATUSES)

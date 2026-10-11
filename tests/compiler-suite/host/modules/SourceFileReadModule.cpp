@@ -289,10 +289,12 @@ void registerCoordinatedMutationCases(TestRegistry& registry)
             constexpr std::uintmax_t truncatedBytes = 1024;
             resizeFixture(path, originalBytes);
             source_test_support::SourceReadMutationPlan plan{
-                path,
-                source_test_support::SourceReadMutationMode::TruncateBeforeRead,
-                originalBytes,
-                truncatedBytes};
+                .path = path,
+                .mode = source_test_support::SourceReadMutationMode::TruncateBeforeRead,
+                .expectedBytes = originalBytes,
+                .replacementBytes = truncatedBytes,
+                .triggered = false,
+                .error = {}};
             std::string error;
             std::optional<std::string> buffer;
             {
@@ -320,10 +322,12 @@ void registerCoordinatedMutationCases(TestRegistry& registry)
             constexpr std::uintmax_t originalBytes = 4096;
             resizeFixture(path, originalBytes);
             source_test_support::SourceReadMutationPlan plan{
-                path,
-                source_test_support::SourceReadMutationMode::GrowAfterRead,
-                originalBytes,
-                originalBytes + 1U};
+                .path = path,
+                .mode = source_test_support::SourceReadMutationMode::GrowAfterRead,
+                .expectedBytes = originalBytes,
+                .replacementBytes = originalBytes + 1U,
+                .triggered = false,
+                .error = {}};
             std::string error;
             std::optional<std::string> buffer;
             {
