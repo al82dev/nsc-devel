@@ -119,7 +119,7 @@ class Builder3RetryTests(unittest.TestCase):
         self.assertEqual(builder.row_action_text("PENDIENTE", False), "")
 
     def test_row_action_marks_active_variant_without_offering_a_second_run(self) -> None:
-        self.assertEqual(builder.row_action_text("RUNNING", True), "En ejecución")
+        self.assertEqual(builder.row_action_text("RUNNING", True), "Cancelar prueba")
         self.assertEqual(builder.row_action_text("COMPILING", True), "En ejecución")
 
     def test_status_filter_matches_exact_and_grouped_states(self) -> None:

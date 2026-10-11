@@ -1280,7 +1280,9 @@ def row_action_text(status: str, executable: bool) -> str:
     """Describe the exact-row action without implying a broader selection."""
     if not executable:
         return ""
-    if status in {"RUNNING", "COMPILING"}:
+    if status == "RUNNING":
+        return "Cancelar prueba"
+    if status == "COMPILING":
         return "En ejecución"
     if status in RESULT_STATUSES:
         return "Volver a correr"
@@ -3861,7 +3863,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             grid.addWidget(self.optimization_combo, 1, 3)
             self.preview_button = QPushButton("Previsualizar")
             self.run_button = QPushButton("Ejecutar pruebas")
-            self.cancel_button = QPushButton("Cancelar árbol")
+            self.cancel_button = QPushButton("Cancelar corrida/árbol")
             self.retry_button = QPushButton("Reejecutar fallos")
             self.cancel_button.setEnabled(False)
             self.retry_button.setEnabled(False)
@@ -3887,6 +3889,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
                 ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
+                ("TIMEOUT", "TIMEOUT"),
                 ("RUNNING", "RUNNING"),
                 ("COMPILING", "COMPILING"),
                 ("LISTO", "LISTO"),
@@ -4898,9 +4901,26 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.tabs.setCurrentIndex(2)
 
         def _handle_case_table_click(self, row: int, column: int) -> None:
+            if column == self.ACTION_COLUMN:
+                key = self._case_key_at(self.case_table, row)
+                if (
+                    key is not None
+                    and self.live_status_by_key.get(key) == "RUNNING"
+                    and isinstance(self.worker, SuiteWorker)
+                ):
+                    self._cancel_current_variant(key)
+                    return
             self._queue_exact_action(
                 self.case_table, row, column, failed=False
             )
+
+        def _cancel_current_variant(self, key: str) -> None:
+            """Request cancellation only for the exact active RUNNING row."""
+            worker = self.worker
+            if isinstance(worker, SuiteWorker) and worker.cancel_current(key):
+                self.statusBar().showMessage(
+                    f"Cancelación solicitada únicamente para {key}; la corrida continuará"
+                )
 
         def _show_case_context_menu(self, position: Any) -> None:
             row = self.case_table.rowAt(position.y())
@@ -4912,15 +4932,21 @@ def launch_gui(smoke_only: bool = False) -> int:
                 return
             self.case_table.selectRow(row)
             status = self.live_status_by_key.get(variant.key, "LISTO")
-            label = (
-                "Volver a correr solamente esta prueba"
-                if status in RESULT_STATUSES
-                else "Ejecutar solamente esta prueba"
-            )
             menu = QMenu(self.case_table)
-            action = menu.addAction(label)
-            action.setEnabled(self.worker is None)
-            action.triggered.connect(lambda: self._start_exact_key(variant.key))
+            if status == "RUNNING" and isinstance(self.worker, SuiteWorker):
+                action = menu.addAction("Cancelar prueba")
+                action.triggered.connect(
+                    lambda: self._cancel_current_variant(variant.key)
+                )
+            else:
+                label = (
+                    "Volver a correr solamente esta prueba"
+                    if status in RESULT_STATUSES
+                    else "Ejecutar solamente esta prueba"
+                )
+                action = menu.addAction(label)
+                action.setEnabled(self.worker is None)
+                action.triggered.connect(lambda: self._start_exact_key(variant.key))
             menu.exec(self.case_table.viewport().mapToGlobal(position))
 
         def _handle_failure_table_click(self, row: int, column: int) -> None:
@@ -5140,12 +5166,20 @@ def launch_gui(smoke_only: bool = False) -> int:
             action_item = QTableWidgetItem(row_action_text(status, key in self.variant_by_key))
             if action_item.text():
                 action_item.setForeground(QColor("#70a7ff"))
-                action_item.setToolTip("Ejecutar solamente esta variante exacta")
+                action_item.setToolTip(
+                    "Cancelar únicamente esta variante; la corrida continuará"
+                    if status == "RUNNING"
+                    else "Ejecutar solamente esta variante exacta"
+                )
             self.case_table.setItem(row, self.ACTION_COLUMN, action_item)
             self.case_table.setItem(
                 row,
                 self.DURATION_COLUMN,
-                QTableWidgetItem(f"{duration:.1f} s" if duration else ""),
+                QTableWidgetItem(
+                    f"{duration:.1f} s"
+                    if duration or status in {"RUNNING", "COMPILING"}
+                    else ""
+                ),
             )
             merged = detail
             if evidence:
@@ -5200,6 +5234,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "INFRASTRUCTURE_ERROR",
                 "UNEXPECTED_PASS",
                 "CANCELLED",
+                "TIMEOUT",
             )
             parts = [
                 f"{name}: {self.live_status_counts[name]:,}"
@@ -5624,6 +5659,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
                 ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
+                ("TIMEOUT", "TIMEOUT"),
                 ("PENDIENTE", "PENDIENTE"),
                 ("FILTRADO", "FILTRADO"),
             ):
@@ -6205,6 +6241,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "INFRASTRUCTURE_ERROR": QColor("#ff7777"),
                 "UNEXPECTED_PASS": QColor("#ff7777"),
                 "CANCELLED": QColor("#b7b7b7"),
+                "TIMEOUT": QColor("#ff7777"),
                 "PENDIENTE": QColor("#d9b85f"),
                 "LISTO": QColor("#8cb4ff"),
                 "DESACTIVADA": QColor("#b7b7b7"),
@@ -6239,6 +6276,7 @@ def launch_gui(smoke_only: bool = False) -> int:
     if smoke_only:
         expected_buttons = {
             "run_button": "Ejecutar pruebas",
+            "cancel_button": "Cancelar corrida/árbol",
             "clear_results_button": "Limpiar resultados para nueva corrida",
             "history_load_button": "Abrir corrida completa en un tab",
             "failure_retry_button": "Reejecutar fallos activos",
@@ -6289,6 +6327,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing live execution summaries")
         if window.status_filter_combo.count() < 10:
             raise RuntimeError("GUI smoke missing the primary status filters")
+        if window.status_filter_combo.findData("TIMEOUT") < 0:
+            raise RuntimeError("GUI smoke missing the TIMEOUT status filter")
         valid_history = next(
             (
                 root
