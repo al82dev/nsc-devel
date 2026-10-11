@@ -1,5 +1,7 @@
 #include "ParserFinalTestSupport.h"
+#include "ParserConstructionCloneTestSupport.h"
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -48,23 +50,100 @@ void testMakeHelpers(TestContext& context)
         "TP-PAR-513 Parser make helpers must preserve exact kind, topology, payload, operator, and range");
 }
 
-void testCloneTypeRepresentativeAndExposeSeamLimit(TestContext& context)
+void testCloneTypeCompleteAndIndependent(TestContext& context)
 {
-    ParserFixture fixture("extension ref Box<int> { int Read() { return this.Value; } }");
-    AstNode* root = fixture.parse();
-    AstNode* extension = firstChild(root);
-    AstNode* function = firstChild(extension);
-    AstNode* receiver = firstChild(function);
-    const TypeSyntax* source = extension != nullptr ? extension->typeSyntax() : nullptr;
-    const TypeSyntax* clone = receiver != nullptr ? receiver->typeSyntax() : nullptr;
-    const bool representative = source != nullptr && clone != nullptr && source != clone &&
-        source->baseName() == clone->baseName() && source->typeArguments().size() == 1 &&
-        clone->typeArguments().size() == 1 && source->typeArguments()[0] != clone->typeArguments()[0] &&
-        source->typeArguments()[0]->baseName() == clone->typeArguments()[0]->baseName();
-    context.expect(representative,
-        "TP-PAR-514 observable extension cloning must deep-copy the receiver and nested type arguments");
-    context.expect(false,
-        "TP-PAR-514 TEST-INFRASTRUCTURE: cloneParsedType has anonymous-namespace linkage; all fields cannot be injected without a product seam");
+    AstArena sourceArena;
+    AstArena destinationArena;
+    TypeSyntax* source = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "CompleteType");
+    source->setOwnershipQualifier(OwnershipQualifierSyntaxKind::Borrowed);
+    source->setLifetimeName("borrowed_lifetime");
+    source->setDynamicTrait();
+    source->setOpaqueResult();
+    source->setOpaqueResultTraitName("Display");
+    source->setExplicitTraitImplementation();
+    source->setPointeeConst();
+    source->setTuple();
+    TypeSyntax* tupleElement = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::KwInt, "int");
+    source->addTupleElement(tupleElement, "value");
+    source->setFunction();
+    source->setFunctionCarrier(FunctionTypeCarrierSyntaxKind::Reference);
+    source->setFunctionCallingConvention(FunctionCallingConventionSyntaxKind::Win64);
+    source->setFunctionReturnType(sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::KwLong, "long"));
+    source->setFunctionErrorType(sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "Failure"));
+    source->setFunctionVariadic();
+    source->setFunctionUnsafe();
+    source->setFunctionNoHeap();
+    source->setFunctionAsync();
+    source->setFunctionNullable();
+    source->setFunctionLifetimeName("call_lifetime");
+    AstNode* constExpression = sourceArena.make<AstNode>(
+        AstNodeKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    constExpression->setIntegerValue(17);
+    source->setConstExpression(constExpression);
+    source->setPackExpansion();
+    AstNode* arrayCount = sourceArena.make<AstNode>(
+        AstNodeKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    arrayCount->setIntegerValue(4);
+    TypeModifierSyntax modifier;
+    modifier.kind = TypeModifierSyntaxKind::Array;
+    modifier.arrayCount = arrayCount;
+    modifier.arrayRank = 2;
+    modifier.pointerNullability = PointerNullabilitySyntaxKind::NonNull;
+    modifier.pointerHasProvenance = false;
+    modifier.pointerKnownAlignment = 32;
+    modifier.pointerAddressSpace = 7;
+    source->addModifier(modifier);
+    source->setOriginProjectOrdinal(11);
+    source->setOriginNamespace("Origin.Space");
+
+    const TypeSyntax* clone = parser_clone_test_support::cloneParsedType(destinationArena, source);
+    context.expect(clone != nullptr && clone != source,
+        "TP-PAR-514 cloneParsedType must allocate a distinct root in the destination arena");
+    if (clone == nullptr) return;
+    context.expect(clone->range() == source->range() && clone->baseTokenKind() == source->baseTokenKind() &&
+            clone->baseName() == source->baseName() &&
+            clone->ownershipQualifier() == source->ownershipQualifier() &&
+            clone->lifetimeName() == source->lifetimeName() &&
+            clone->isDynamicTrait() == source->isDynamicTrait() &&
+            clone->isOpaqueResult() == source->isOpaqueResult() &&
+            clone->opaqueResultTraitName() == source->opaqueResultTraitName() &&
+            clone->isExplicitTraitImplementation() == source->isExplicitTraitImplementation() &&
+            clone->isPointeeConst() == source->isPointeeConst(),
+        "TP-PAR-514 cloneParsedType must preserve every nominal, ownership, lifetime, and trait field");
+    context.expect(clone->isTuple() && clone->tupleElementNames() == source->tupleElementNames() &&
+            clone->typeArguments().size() == 1 && clone->typeArguments()[0] != tupleElement &&
+            clone->typeArguments()[0]->baseName() == tupleElement->baseName(),
+        "TP-PAR-514 tuple elements must preserve metadata and be recursively independent");
+    context.expect(clone->isFunction() && clone->functionCarrier() == source->functionCarrier() &&
+            clone->functionCallingConvention() == source->functionCallingConvention() &&
+            clone->functionIsVariadic() && clone->functionIsUnsafe() && clone->functionIsNoHeap() &&
+            clone->functionIsAsync() && clone->functionIsNullable() &&
+            clone->functionLifetimeName() == source->functionLifetimeName() &&
+            clone->functionReturnType() != source->functionReturnType() &&
+            clone->functionErrorType() != source->functionErrorType(),
+        "TP-PAR-514 function-type payload and nested types must be copied exactly without aliasing");
+    context.expect(clone->constExpression() != source->constExpression() &&
+            clone->constExpression() != nullptr && clone->constExpression()->integerValue() == 17 &&
+            clone->isPackExpansion() == source->isPackExpansion(),
+        "TP-PAR-514 const-expression and pack state must survive as an independent subtree");
+    context.expect(clone->modifiers().size() == 1 &&
+            clone->modifiers()[0].kind == modifier.kind &&
+            clone->modifiers()[0].arrayRank == modifier.arrayRank &&
+            clone->modifiers()[0].pointerNullability == modifier.pointerNullability &&
+            clone->modifiers()[0].pointerHasProvenance == modifier.pointerHasProvenance &&
+            clone->modifiers()[0].pointerKnownAlignment == modifier.pointerKnownAlignment &&
+            clone->modifiers()[0].pointerAddressSpace == modifier.pointerAddressSpace &&
+            clone->modifiers()[0].arrayCount != modifier.arrayCount &&
+            clone->modifiers()[0].arrayCount != nullptr &&
+            clone->modifiers()[0].arrayCount->integerValue() == 4,
+        "TP-PAR-514 modifiers and their expression payloads must be complete independent copies");
+    context.expect(clone->originProjectOrdinal() == source->originProjectOrdinal() &&
+            clone->originNamespace() == source->originNamespace(),
+        "TP-PAR-514 origin project and namespace overrides must be preserved exactly");
 }
 
 void testCloneAstTopology(TestContext& context)
@@ -94,10 +173,77 @@ void testCloneAstTopology(TestContext& context)
         "TP-PAR-515 first/second/third descendants must not alias across clones");
 }
 
-void testCloneGenericConstraintSeam(TestContext& context)
+void testCloneGenericConstraintTypesIntoDestination(TestContext& context)
 {
-    context.expect(false,
-        "TP-PAR-516 TEST-INFRASTRUCTURE: generic constraint/projection cloning is anonymous and no public parser path carries those records through cloneParsedNode");
+    AstArena sourceArena;
+    AstArena destinationArena;
+    AstNode* source = sourceArena.make<AstNode>(
+        AstNodeKind::ClassDeclaration, nativesharp::SourceRange{});
+    GenericParameterSyntax parameter;
+    parameter.name = "N";
+    parameter.kind = GenericParameterSyntaxKind::Constant;
+    parameter.constantType = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::KwInt, "int");
+    source->addGenericParameter(parameter);
+    GenericConstraintClause clause;
+    clause.parameterName = "T";
+    clause.requiresClass = true;
+    clause.requiresValueType = true;
+    clause.requiresDefaultConstructor = true;
+    clause.requiresCopy = true;
+    clause.requiresMove = true;
+    clause.requiresTrackedLifetime = true;
+    clause.requiresUnmanaged = true;
+    clause.requiresNotNull = true;
+    clause.equalityConstraint = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "EqualType");
+    clause.associatedProjection = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "T.Item");
+    clause.substitutedArgument = sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "Concrete");
+    clause.typeConstraints.push_back(sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "Base"));
+    clause.typeConstraints.push_back(sourceArena.make<TypeSyntax>(
+        nativesharp::SourceRange{}, TokenKind::Identifier, "Interface"));
+    source->addGenericConstraint(clause);
+
+    const AstNode* clone = parser_clone_test_support::cloneParsedNode(destinationArena, source);
+    context.expect(clone != nullptr && clone != source,
+        "TP-PAR-516 cloneParsedNode must allocate the declaration in the destination arena");
+    if (clone == nullptr || clone->genericParameterSyntaxes().size() != 1 ||
+        clone->genericConstraints().size() != 1)
+    {
+        context.expect(false,
+            "TP-PAR-516 clone must preserve one generic parameter and one constraint clause");
+        return;
+    }
+    const auto& clonedParameter = clone->genericParameterSyntaxes()[0];
+    const auto& clonedClause = clone->genericConstraints()[0];
+    context.expect(clonedParameter.name == parameter.name && clonedParameter.kind == parameter.kind &&
+            clonedParameter.constantType != parameter.constantType &&
+            clonedParameter.constantType != nullptr && clonedParameter.constantType->baseName() == "int",
+        "TP-PAR-516 const-parameter types must be reallocated in the destination arena");
+    context.expect(clonedClause.parameterName == clause.parameterName && clonedClause.requiresClass &&
+            clonedClause.requiresValueType && clonedClause.requiresDefaultConstructor &&
+            clonedClause.requiresCopy && clonedClause.requiresMove &&
+            clonedClause.requiresTrackedLifetime && clonedClause.requiresUnmanaged &&
+            clonedClause.requiresNotNull,
+        "TP-PAR-516 constraint scalar payload must remain identical");
+    context.expect(clonedClause.equalityConstraint != clause.equalityConstraint &&
+            clonedClause.associatedProjection != clause.associatedProjection &&
+            clonedClause.substitutedArgument != clause.substitutedArgument &&
+            clonedClause.equalityConstraint != nullptr && clonedClause.associatedProjection != nullptr &&
+            clonedClause.substitutedArgument != nullptr &&
+            clonedClause.equalityConstraint->baseName() == "EqualType" &&
+            clonedClause.associatedProjection->baseName() == "T.Item" &&
+            clonedClause.substitutedArgument->baseName() == "Concrete",
+        "TP-PAR-516 equality, projection, and substituted types must be distinct destination nodes");
+    context.expect(clonedClause.typeConstraints.size() == clause.typeConstraints.size() &&
+            clonedClause.typeConstraints[0] != clause.typeConstraints[0] &&
+            clonedClause.typeConstraints[1] != clause.typeConstraints[1] &&
+            clonedClause.typeConstraints[0]->baseName() == "Base" &&
+            clonedClause.typeConstraints[1]->baseName() == "Interface",
+        "TP-PAR-516 every ordered type constraint must be reallocated without aliasing");
 }
 
 void testCloneNullThroughOrPattern(TestContext& context)
@@ -189,37 +335,64 @@ void testSignedIntegerNonLiteral(TestContext& context)
         "TP-PAR-523 a non-literal pattern must not publish a signed integer constant");
 }
 
-void testOperatorMappingsAndExposeFallbackLimit(TestContext& context)
+void testOperatorSpellingAndNameMatrix(TestContext& context)
 {
-    ParserFixture fixture(
-        "class C { public static C operator +(C a, C b) { return a; } "
-        "public static C operator -(C a) { return a; } "
-        "public static bool operator ==(C a, C b) { return true; } }");
-    AstNode* root = fixture.parse();
-    bool addition = false;
-    bool negation = false;
-    bool equality = false;
-    for (const AstNode* node : flatten(root))
+    struct Row final { TokenKind kind; std::size_t arity; std::string_view spelling; std::string_view name; };
+    constexpr std::array<Row, 22> rows{{
+        {TokenKind::Plus, 1, "+", "op_UnaryPlus"},
+        {TokenKind::Minus, 1, "-", "op_UnaryNegation"},
+        {TokenKind::Bang, 1, "!", "op_LogicalNot"},
+        {TokenKind::Tilde, 1, "~", "op_OnesComplement"},
+        {TokenKind::Plus, 2, "+", "op_Addition"},
+        {TokenKind::Minus, 2, "-", "op_Subtraction"},
+        {TokenKind::Star, 2, "*", "op_Multiply"},
+        {TokenKind::Slash, 2, "/", "op_Division"},
+        {TokenKind::Percent, 2, "%", "op_Modulus"},
+        {TokenKind::Amp, 2, "&", "op_BitwiseAnd"},
+        {TokenKind::Pipe, 2, "|", "op_BitwiseOr"},
+        {TokenKind::Caret, 2, "^", "op_ExclusiveOr"},
+        {TokenKind::LessLess, 2, "<<", "op_LeftShift"},
+        {TokenKind::GreaterGreater, 2, ">>", "op_RightShift"},
+        {TokenKind::EqualEqual, 2, "==", "op_Equality"},
+        {TokenKind::BangEqual, 2, "!=", "op_Inequality"},
+        {TokenKind::Less, 2, "<", "op_LessThan"},
+        {TokenKind::LessEqual, 2, "<=", "op_LessThanOrEqual"},
+        {TokenKind::Greater, 2, ">", "op_GreaterThan"},
+        {TokenKind::GreaterEqual, 2, ">=", "op_GreaterThanOrEqual"},
+        {TokenKind::PlusPlus, 1, "", "op_Increment"},
+        {TokenKind::MinusMinus, 1, "", "op_Decrement"},
+    }};
+    for (const Row& row : rows)
     {
-        addition = addition || node->text() == "op_Addition";
-        negation = negation || node->text() == "op_UnaryNegation";
-        equality = equality || node->text() == "op_Equality";
+        context.expect(parser_clone_test_support::operatorSpelling(row.kind) == row.spelling &&
+                parser_clone_test_support::operatorMethodName(row.kind, row.arity) == row.name,
+            "TP-PAR-524 every supported token kind and arity must preserve exact spelling and metadata name");
     }
-    context.expect(addition && negation && equality,
-        "TP-PAR-524 supported operator kind/arity pairs must map to exact metadata names");
-    context.expect(false,
-        "TP-PAR-524 TEST-INFRASTRUCTURE: op_Invalid fallback is anonymous and rejected before the public declaration path; it needs a product test seam");
+    constexpr std::array<Row, 7> invalid{{
+        {TokenKind::EndOfFile, 1, "", "op_Invalid"},
+        {TokenKind::Identifier, 2, "", "op_Invalid"},
+        {TokenKind::Plus, 0, "+", "op_Invalid"},
+        {TokenKind::Plus, 3, "+", "op_Invalid"},
+        {TokenKind::AmpAmp, 2, "&&", "op_Invalid"},
+        {TokenKind::PlusPlus, 2, "", "op_Invalid"},
+        {TokenKind::MinusMinus, 0, "", "op_Invalid"},
+    }};
+    for (const Row& row : invalid)
+    {
+        context.expect(parser_clone_test_support::operatorSpelling(row.kind) == row.spelling &&
+                parser_clone_test_support::operatorMethodName(row.kind, row.arity) == row.name,
+            "TP-PAR-524 unsupported kind/arity pairs must return the exact op_Invalid fallback");
+    }
 }
 }
 
 void registerParserConstructionCloneFinalModule(TestRegistry& registry)
 {
     addFinalParserCase(registry, "TP-PAR-513", "CP-PAR-041", testMakeHelpers);
-    addFinalParserCase(registry, "TP-PAR-514", "CP-PAR-041", testCloneTypeRepresentativeAndExposeSeamLimit,
-        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
+    addFinalParserCase(registry, "TP-PAR-514", "CP-PAR-041", testCloneTypeCompleteAndIndependent,
+        "PR", TestDisposition::KnownProductDefect, {"clone", "deep-copy", "product-defect"});
     addFinalParserCase(registry, "TP-PAR-515", "CP-PAR-041", testCloneAstTopology);
-    addFinalParserCase(registry, "TP-PAR-516", "CP-PAR-041", testCloneGenericConstraintSeam,
-        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
+    addFinalParserCase(registry, "TP-PAR-516", "CP-PAR-041", testCloneGenericConstraintTypesIntoDestination);
     addFinalParserCase(registry, "TP-PAR-517", "CP-PAR-041", testCloneNullThroughOrPattern);
     addFinalParserCase(registry, "TP-PAR-518", "CP-PAR-041", testFloatingPointPropagation);
     addFinalParserCase(registry, "TP-PAR-519", "CP-PAR-041", testFloatingPointOverrideBoundary);
@@ -227,7 +400,7 @@ void registerParserConstructionCloneFinalModule(TestRegistry& registry)
     addFinalParserCase(registry, "TP-PAR-521", "CP-PAR-041", testSignedIntegerNegative);
     addFinalParserCase(registry, "TP-PAR-522", "CP-PAR-041", testSignedIntegerOverflow);
     addFinalParserCase(registry, "TP-PAR-523", "CP-PAR-041", testSignedIntegerNonLiteral);
-    addFinalParserCase(registry, "TP-PAR-524", "CP-PAR-041", testOperatorMappingsAndExposeFallbackLimit,
-        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
+    addFinalParserCase(registry, "TP-PAR-524", "CP-PAR-041", testOperatorSpellingAndNameMatrix,
+        "PR", TestDisposition::KnownProductDefect, {"operator", "mapping", "product-defect"});
 }
 }
