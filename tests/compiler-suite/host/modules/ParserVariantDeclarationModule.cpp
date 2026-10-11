@@ -61,13 +61,16 @@ void testVariantOrderAndTags(TestContext& context)
         "TP-PAR-168 variant alternatives must preserve declaration order and monotonic tags");
 }
 
-void testExplicitDiscriminant(TestContext& context)
+void testExplicitDiscriminantRejected(TestContext& context)
 {
     DeclarationFixture fixture("variant Code { Zero = 4, One }");
     AstNode* const node = declaration(fixture);
     AstNode* const zero = childNamed(node, "Zero");
-    context.expect(node != nullptr && zero != nullptr && hasMarker(zero, ":4"),
-        "TP-PAR-169 explicit valid discriminant must be preserved on synthesized members");
+    AstNode* const one = childNamed(node, "One");
+    context.expect(node != nullptr && !fixture.diagnostics().empty() &&
+            hasMarker(zero, "variant-case-factory:Zero:0") &&
+            hasMarker(one, "variant-case-factory:One:1"),
+        "TP-PAR-169 explicit discriminants must diagnose and recover with ordinal tags");
 }
 
 void testDuplicateVariantName(TestContext& context)
@@ -128,7 +131,12 @@ void registerParserVariantDeclarationModule(TestRegistry& registry)
     addDeclarationCase(registry, "TP-PAR-166", "CP-PAR-017", "PR", testUnaryPayloadVariant);
     addDeclarationCase(registry, "TP-PAR-167", "CP-PAR-017", "PR", testTuplePayloadVariant);
     addDeclarationCase(registry, "TP-PAR-168", "CP-PAR-017", "PR", testVariantOrderAndTags);
-    addDeclarationCase(registry, "TP-PAR-169", "CP-PAR-017", "PR", testExplicitDiscriminant);
+    addDeclarationCase(
+        registry,
+        "TP-PAR-169",
+        "CP-PAR-017",
+        "PR",
+        testExplicitDiscriminantRejected);
     addDeclarationCase(registry, "TP-PAR-170", "CP-PAR-017", "PR", testDuplicateVariantName);
     addDeclarationCase(registry, "TP-PAR-171", "CP-PAR-017", "PR", testInvalidPayloadRecovery);
     addDeclarationCase(registry, "TP-PAR-172", "CP-PAR-017", "PR", testGenericVariantSynthesis);

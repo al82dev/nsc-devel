@@ -204,7 +204,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-166 | CP-PAR-017 | variant con payload unario | union field/extractor exactos | PR |
 | TP-PAR-167 | CP-PAR-017 | payload tuple/nombrado | fields y factory params alineados | PR |
 | TP-PAR-168 | CP-PAR-017 | varias alternatives | tags monotónicos y orden | PR |
-| TP-PAR-169 | CP-PAR-017 | discriminante explícito válido | valor preservado | PR |
+| TP-PAR-169 | CP-PAR-017 | discriminante explícito no admitido | diagnóstico, recuperación y tags ordinales | PR |
 | TP-PAR-170 | CP-PAR-017 | nombres duplicados | DuplicateSymbol | PR |
 | TP-PAR-171 | CP-PAR-017 | payload/type inválido | diagnóstico y recuperación | PR |
 | TP-PAR-172 | CP-PAR-017 | genéricos/where | síntesis referencia parámetros correctos | PR |
