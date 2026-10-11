@@ -1789,7 +1789,7 @@ class ProcessController:
         assert process.stdout is not None
 
         def read_output() -> None:
-            """Drain the child pipe without blocking cancellation or timeout checks."""
+            """Drain the child pipe without blocking cancellation checks."""
             for line in process.stdout:
                 pending.put(line)
             pending.put(None)

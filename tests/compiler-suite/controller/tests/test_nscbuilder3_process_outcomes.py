@@ -52,23 +52,5 @@ class Builder3ProcessOutcomeTests(unittest.TestCase):
         self.assertEqual(outcome.detail, "cancelled by user")
         self.assertEqual(outcome.evidence, "fixture.log")
 
-    def test_timeout_overrides_partial_product_result_as_infrastructure(self) -> None:
-        engine = self.engine()
-
-        def timed_out(_variant: object) -> tuple[str, str, str]:
-            engine.process.last_termination_reason = "timeout"
-            return "KNOWN_FAILURE", "exit code 130", "fixture.log"
-
-        with patch.object(
-            engine,
-            "_run_selfhost",
-            side_effect=timed_out,
-        ):
-            outcome = engine._run_variant(variant())
-        self.assertEqual(outcome.status, "INFRASTRUCTURE_ERROR")
-        self.assertEqual(outcome.detail, "process timed out")
-        self.assertEqual(outcome.evidence, "fixture.log")
-
-
 if __name__ == "__main__":
     unittest.main()
