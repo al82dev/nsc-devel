@@ -80,14 +80,14 @@ void emissionOracle(TestContext& context, std::size_t variant)
         "int Main() { return 1; }",
         "int Main() { int x = 1; return x + 2; }",
         "int Main() { return 1; int x = 2; }",
-        "void Main() { return; int x = 2; }",
+        "void F() { return; int x = 2; } int Main() { F(); return 0; }",
         "int Main() { int x; x = 4; return x; }",
         "int Main() { int x = 1; x++; return x; }",
         "int Main() { int x = 1; { int y = 2; x += y; } return x; }",
         "int Main() { int x = 0; x = x + 1; x = x + 2; return x; }",
     };
     auto compilation = compileVariant(context, "mir-emission", programs, variant);
-    const MirFunction* function = findFunction(compilation->mirModule(), "Main");
+    const MirFunction* function = findFunction(compilation->mirModule(), variant == 3 ? "F" : "Main");
     context.expect(function != nullptr && !function->blocks().empty(), "emission must retain ordered blocks");
     if (variant == 2 || variant == 3)
     {
