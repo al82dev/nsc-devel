@@ -99,7 +99,7 @@ void declarationOracle(TestContext& context, std::size_t variant)
     GraphFixture graph;
     if (variant == 1) graph.function->setSymbol(nullptr);
     if (variant == 2) graph.function->setType(nullptr);
-    if (variant == 3) graph.function->setFirst(nullptr);
+    if (variant == 3) graph.function->setFirst(graph.constant());
     if (variant == 4) graph.root->addChild(graph.constant());
     if (variant == 5)
     {
