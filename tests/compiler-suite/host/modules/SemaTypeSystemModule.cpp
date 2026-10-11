@@ -278,45 +278,17 @@ void c076(TestContext& c)
         "TS-SEMA-076 repeated nominal creation yields fresh struct and enum identities");
 }
 
-void c077(TestContext& c)
-{
-    // The sanitizer profile is the oracle for ownership: reaching the end of
-    // this scope without an ASan/LSan report proves unique destruction.
-    {
-        TypeContext types;
-        Type* record = types.createStruct("Node", nullptr);
-        Type* pointer = types.pointerTo(record);
-        Type* array = types.arrayOf(pointer, 16);
-        Type* function = types.functionType(types.builtin(TypeKind::Void), {array, pointer});
-        Type* owned = types.qualified(record, OwnershipKind::Owned);
-        c.expect(function != nullptr && owned != nullptr,
-            "TS-SEMA-077 the interned type graph must be fully constructed before destruction");
-    }
-    c.expect(true,
-        "TS-SEMA-077 the interned graph must leave scope without a sanitizer ownership failure");
-}
 }
 
 void registerSemaTypeSystemModule(TestRegistry& registry)
 {
-    const std::array<TestFunction, 24> tests = {c054, c055, c056, c057, c058, c059, c060, c061,
+    const std::array<TestFunction, 23> tests = {c054, c055, c056, c057, c058, c059, c060, c061,
         c062, c063, c064, c065, c066, c067, c068, c069, c070, c071, c072, c073, c074, c075,
-        c076, c077};
+        c076};
     for (std::size_t index = 0; index < tests.size(); ++index)
     {
         const std::size_t ordinal = index + 54;
         const std::string id = "TS-SEMA-0" + std::to_string(ordinal);
-        if (ordinal == 77)
-        {
-            // This opt-in is owned by the future test-only ASan+LSan profile.  The normal
-            // component target must not infer or define it merely because a sanitizer is available.
-#if defined(NSC_SEMA_ASAN_LSAN_TESTS_ENABLED)
-            addSemaCase(registry, id, "CS-SEMA-009", "unit", tests[index], "NIGHTLY",
-                TestDisposition::InfrastructurePending,
-                {"infrastructure-special", "asan-lsan-test-only"});
-#endif
-            continue;
-        }
         addSemaCase(registry, id, ordinal <= 65 ? "CS-SEMA-008" : "CS-SEMA-009", "unit",
             tests[index]);
     }

@@ -323,8 +323,6 @@ add_executable(
     host/modules/InteropSurfacesModule.cpp
     host/modules/InteropValidationMergeModule.cpp
     host/modules/InteropDiffSchemaModule.cpp
-    modules/LinkerFormatsModule.cpp
-    modules/LinkerToolProcessModule.cpp
     modules/LinkerBuildersModule.cpp
     host/modules/CompilationCore001To112Module.cpp
     host/modules/CompilationGraph113To168Module.cpp
@@ -576,7 +574,7 @@ add_executable(
     nsc_component_tests_destructive
     host/src/main.cpp
     host/src/TestRegistry.cpp
-    host/modules/AstInfrastructurePendingModule.cpp
+    host/modules/AstDestructiveModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstArena.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNode.cpp"

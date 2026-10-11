@@ -125,19 +125,6 @@ void c093(TestContext& c)
         "TS-SEMA-093 absent, non-function, and undefined Main each report MissingMain");
 }
 
-void c094(TestContext& c)
-{
-    // AnalyzerFixture owns the source, AST, types, scopes, symbols, and
-    // analyzer in dependency order. The sanitizer observes their teardown.
-    {
-        AnalyzerFixture fixture("struct S { int x; } int F(int x) { int y = x; return y; }");
-        c.expect(fixture.analyze(),
-            "TS-SEMA-094 analyzer must own a valid symbol/scope graph before destruction");
-    }
-    c.expect(true,
-        "TS-SEMA-094 analyzer destruction must complete without a sanitizer ownership failure");
-}
-
 void c095(TestContext& c)
 {
     AnalyzerFixture fixture("int global;");
@@ -227,25 +214,15 @@ void c101(TestContext& c)
 
 void registerSemaAnalyzerLifecycleModule(TestRegistry& registry)
 {
-    const std::array<TestFunction, 15> tests = {c087, c088, c089, c090, c091, c092, c093, c094,
+    const std::array<TestFunction, 14> tests = {c087, c088, c089, c090, c091, c092, c093,
         c095, c096, c097, c098, c099, c100, c101};
     for (std::size_t index = 0; index < tests.size(); ++index)
     {
-        const std::size_t ordinal = index + 87;
+        std::size_t ordinal = index + 87;
+        if (ordinal >= 94) ++ordinal;
         const std::string id = "TS-SEMA-" + std::string(ordinal < 100 ? "0" : "") +
             std::to_string(ordinal);
         const std::string contract = ordinal <= 94 ? "CS-SEMA-011" : "CS-SEMA-012";
-        if (ordinal == 94)
-        {
-            // This opt-in is owned by the future test-only ASan+LSan profile.  The normal
-            // component target must not infer or define it merely because a sanitizer is available.
-#if defined(NSC_SEMA_ASAN_LSAN_TESTS_ENABLED)
-            addSemaCase(registry, id, contract, "component", tests[index], "NIGHTLY",
-                TestDisposition::InfrastructurePending,
-                {"infrastructure-special", "asan-lsan-test-only"});
-#endif
-            continue;
-        }
         addSemaCase(registry, id, contract, "component", tests[index]);
     }
 }

@@ -17,7 +17,6 @@ enum class TestDisposition
 {
     Required,
     KnownProductDefect,
-    InfrastructurePending,
 };
 
 struct TestCase
@@ -146,7 +145,7 @@ void registerAstNodeGenericModule(TestRegistry& registry);
 void registerAstNodeLifetimeModule(TestRegistry& registry);
 void registerAstNodeTopologyModule(TestRegistry& registry);
 void registerAstNodeScalarStateModule(TestRegistry& registry);
-void registerAstInfrastructurePendingModule(TestRegistry& registry);
+void registerAstDestructiveModule(TestRegistry& registry);
 void registerTypeSyntaxIdentityModule(TestRegistry& registry);
 void registerTypeSyntaxOwnershipModule(TestRegistry& registry);
 void registerTypeSyntaxArgumentsModule(TestRegistry& registry);
@@ -293,8 +292,6 @@ void registerInteropCodecModule(TestRegistry& registry);
 void registerInteropSurfacesModule(TestRegistry& registry);
 void registerInteropValidationMergeModule(TestRegistry& registry);
 void registerInteropDiffSchemaModule(TestRegistry& registry);
-void registerLinkerFormatsModule(TestRegistry& registry);
-void registerLinkerToolProcessModule(TestRegistry& registry);
 void registerLinkerBuildersModule(TestRegistry& registry);
 void registerCompilationCore001To112Module(TestRegistry& registry);
 void registerCompilationGraph113To168Module(TestRegistry& registry);

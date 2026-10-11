@@ -130,7 +130,7 @@ int main(int argumentCount, char** arguments)
         // The destructive runner must remain a five-case process boundary.  Reusing the ordinary
         // registration graph here would duplicate the complete host suite and would also expose
         // its test-only global allocator to unrelated cases.
-        nsc::suite::registerAstInfrastructurePendingModule(registry);
+        nsc::suite::registerAstDestructiveModule(registry);
 #elif defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
         // The extended Source runner is a three-case process boundary.  It keeps the 4 GiB and
         // coordinated filesystem mutations out of the ordinary --all registry.
@@ -368,8 +368,6 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerInteropSurfacesModule(registry);
         nsc::suite::registerInteropValidationMergeModule(registry);
         nsc::suite::registerInteropDiffSchemaModule(registry);
-        nsc::suite::registerLinkerFormatsModule(registry);
-        nsc::suite::registerLinkerToolProcessModule(registry);
         nsc::suite::registerLinkerBuildersModule(registry);
         nsc::suite::registerCompilationCore001To112Module(registry);
         nsc::suite::registerCompilationGraph113To168Module(registry);

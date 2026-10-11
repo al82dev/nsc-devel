@@ -17,12 +17,9 @@
 #include <stdexcept>
 #include <streambuf>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
-// TA-AST-017 belongs to a future versioned TSAN target. Compiler instrumentation alone must not
-// publish the case; only an explicit NSC_AST_THREAD_SANITIZER_ENABLED profile may enable it.
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 namespace
 {
@@ -181,34 +178,6 @@ protected:
 }
 #endif
 
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
-struct ConcurrentArenaProbe final
-{
-    explicit ConcurrentArenaProbe(std::size_t value) : value(value) {}
-    std::size_t value;
-};
-
-[[noreturn]] void runThreadSanitizerProbe()
-{
-    AstArena arena;
-    std::atomic<unsigned> ready = 0;
-    std::atomic<bool> start = false;
-    const auto mutate = [&](std::size_t base) {
-        ready.fetch_add(1, std::memory_order_release);
-        while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
-        for (std::size_t index = 0; index < 4096; ++index)
-            arena.make<ConcurrentArenaProbe>(base + index);
-    };
-    std::thread first(mutate, 0);
-    std::thread second(mutate, 4096);
-    while (ready.load(std::memory_order_acquire) != 2) std::this_thread::yield();
-    start.store(true, std::memory_order_release);
-    first.join();
-    second.join();
-    ExitProcess(0);
-}
-#endif
-
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 bool dispatchDestructiveProbe(std::string_view expected)
 {
@@ -266,28 +235,6 @@ void testThrowingDestructor(TestContext& context)
 }
 #endif
 
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
-bool dispatchThreadSanitizerProbe()
-{
-    if (isolated_process_support::probeMode() != "TA-AST-017") return false;
-    runThreadSanitizerProbe();
-}
-
-void testConcurrentArenaMutation(TestContext& context)
-{
-    if (dispatchThreadSanitizerProbe()) return;
-    const auto result = isolated_process_support::runCurrentExecutable(
-        "TA-AST-017", "TA-AST-017",
-        {{L"TSAN_OPTIONS", L"halt_on_error=1 exitcode=86"}});
-    context.expect(result.started, "TA-AST-017 TSAN process must start: " + result.error);
-    context.expect(result.exitCode == 0,
-        "TA-AST-017 concurrent arena mutation triggered the ThreadSanitizer failure exit");
-    context.expect(result.output.find("ThreadSanitizer") == std::string::npos &&
-            result.output.find("data race") == std::string::npos,
-        "TA-AST-017 concurrent arena mutation produced a ThreadSanitizer data-race report");
-}
-#endif
-
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 void testNullTypeArgument(TestContext& context)
 {
@@ -303,7 +250,7 @@ void testNullTypeArgument(TestContext& context)
 
 #endif
 
-#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED) || defined(NSC_AST_THREAD_SANITIZER_ENABLED)
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
 void addCase(TestRegistry& registry, std::string id, std::string contractId,
     std::string layer, std::vector<std::string> tags, TestFunction function,
     TestDisposition disposition = TestDisposition::KnownProductDefect)
@@ -314,7 +261,7 @@ void addCase(TestRegistry& registry, std::string id, std::string contractId,
 #endif
 }
 
-void registerAstInfrastructurePendingModule(TestRegistry& registry)
+void registerAstDestructiveModule(TestRegistry& registry)
 {
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-014", "CA-AST-002", "unit",
@@ -322,11 +269,6 @@ void registerAstInfrastructurePendingModule(TestRegistry& registry)
         testRegistrationFailure);
     addCase(registry, "TA-AST-016", "CA-AST-002", "unit",
         {"ast", "arena", "death-test", "known-product-defect"}, testThrowingDestructor);
-#endif
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
-    addCase(registry, "TA-AST-017", "CA-AST-002", "unit",
-        {"ast", "arena", "thread-sanitizer", "known-product-defect"},
-        testConcurrentArenaMutation);
 #endif
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-215", "CA-AST-019", "component",

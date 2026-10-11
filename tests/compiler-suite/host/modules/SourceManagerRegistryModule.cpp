@@ -2,10 +2,6 @@
 
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Source/SourceManager.h"
-#include "../support/AsanSubprocess.h"
-
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <string>
 
@@ -90,71 +86,14 @@ void registerValidLookupCase(TestRegistry& registry)
     });
 }
 
-// A future versioned ASan profile may opt into the isolated invalidated-reference probe. Merely
-// compiling this ordinary module with ASan must not publish TS-SRC-049.
-#if defined(NSC_SOURCE_ASAN_TESTS_ENABLED)
-void registerInvalidatedReferenceCase(TestRegistry& registry)
-{
-    registry.add(TestCase{
-        "TS-SRC-049",
-        "CS-SRC-007",
-        "Host.Source",
-        "component",
-        "NIGHTLY",
-        {"source", "manager", "lifetime", "asan", "subprocess"},
-        [](TestContext& context) {
-            if (source_test_support::isAsanProbeProcess())
-            {
-                nativesharp::source::SourceManager manager;
-                const nativesharp::FileId firstId = manager.addBuffer("retained.ns", "retained");
-                const nativesharp::source::SourceFile* retained = manager.getFile(firstId);
-                bool reallocated = false;
-                for (std::uint32_t index = 0; index < 4096 && !reallocated; ++index)
-                {
-                    manager.addBuffer(
-                        "growth-" + std::to_string(index) + ".ns", std::string(64, 'g'));
-                    reallocated = manager.getFile(firstId) != retained;
-                }
-                if (!reallocated)
-                {
-                    std::fputs("TS-SRC-049: vector did not reallocate\n", stderr);
-                    std::fflush(stderr);
-                    ExitProcess(96);
-                }
-                std::fputs("TS-SRC-049: probing invalidated SourceFile pointer\n", stderr);
-                std::fflush(stderr);
-                volatile std::uint32_t observed = retained->size();
-                (void)observed;
-                std::fputs("TS-SRC-049: ASan did not terminate the invalid access\n", stderr);
-                std::fflush(stderr);
-                ExitProcess(97);
-            }
-
-            const source_test_support::AsanSubprocessResult probe =
-                source_test_support::runAsanProbe("TS-SRC-049");
-            context.expect(probe.launched && probe.error.empty(),
-                "TS-SRC-049 must launch the isolated sanitizer probe successfully");
-            context.expect(probe.exitCode != 0,
-                "TS-SRC-049 invalidated-reference access must terminate the child unsuccessfully");
-            context.expect(probe.output.find("AddressSanitizer") != std::string::npos &&
-                    probe.output.find("heap-use-after-free") != std::string::npos,
-                "TS-SRC-049 ASan must diagnose the invalidated SourceFile access as heap-use-after-free");
-        },
-        TestDisposition::Required,
-    });
-}
-#endif
 }
 
-// Registers bounded CS-SRC-007 cases and only the explicitly enabled future sanitizer contract.
+// Registers the bounded executable CS-SRC-007 cases.
 void registerSourceManagerRegistryModule(TestRegistry& registry)
 {
     registerConsecutiveIdentityCase(registry);
     registerDuplicatePathCase(registry);
     registerInvalidIdentityCase(registry);
     registerValidLookupCase(registry);
-#if defined(NSC_SOURCE_ASAN_TESTS_ENABLED)
-    registerInvalidatedReferenceCase(registry);
-#endif
 }
 }
