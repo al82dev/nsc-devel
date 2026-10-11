@@ -6,6 +6,7 @@
 #include "nativesharp/Sema/Symbol.h"
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 
 namespace nsc::suite
@@ -50,7 +51,10 @@ void expectVerify(TestContext& context, const SsaModule* module, bool expected, 
 
 void shapeOracle(TestContext& context, std::size_t variant)
 {
-    auto compilation = fixture(context);
+    auto compilation = variant == 3
+        ? compileSsa(context, "Host.SSA.verifier.order",
+            std::string(kVerifierSource) + "int G(){return 1;}")
+        : fixture(context);
     SsaModule* module = const_cast<SsaModule*>(compilation->ssaModule());
     bool accepted = variant == 0;
     if (variant == 1)

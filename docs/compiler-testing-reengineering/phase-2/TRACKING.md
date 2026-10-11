@@ -1557,3 +1557,8 @@ Validacion 207 corrige `TF-SSA-134` y `TF-SSA-198`: los oraculos distinguen
 stores de simbolos promovidos del storage legitimo de un local cuya direccion
 fue tomada. No se modifico producto ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-207-SSA-STORES-PROMOVIDOS.md`.
+
+Validacion 208 corrige `TF-SSA-268`: la variante de orden de funciones usa
+dos definiciones, de modo que invertir la secuencia produce una corrupcion
+observable por el verificador. No se modifico producto ni se ejecutaron
+pruebas. Evidencia: `TANDA-VALIDACION-208-SSA-ORDEN-FUNCIONES.md`.
