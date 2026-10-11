@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from component_gate_support import component_manifest_rows
-from selfhost_inventory import load_component_inventory
+from selfhost_inventory import validate_empty_component_universe
 
 
 def listed_nsc_cases(host_executable: Path) -> list[tuple[str, str]]:
@@ -31,7 +31,7 @@ def listed_nsc_cases(host_executable: Path) -> list[tuple[str, str]]:
 
 
 def assert_no_required_nsc_cases(host_executable: Path) -> None:
-    """Prove the pending inventory was not accidentally promoted to ordinary execution."""
+    """Prove the retired component was not reintroduced into ordinary execution."""
     completed = subprocess.run(
         [str(host_executable), "--component", "Host.nsc"],
         text=True,
@@ -43,26 +43,21 @@ def assert_no_required_nsc_cases(host_executable: Path) -> None:
     expected = "component has no test cases: Host.nsc"
     if completed.returncode == 0 or expected not in completed.stderr:
         raise RuntimeError(
-            "Host.nsc contains selectable cases even though every current case is "
-            "InfrastructurePending"
+            "Host.nsc contains selectable cases outside the active executable universe"
         )
 
 
 def main() -> int:
-    """Check the canonical denominator, pending registration, and empty executable fragment."""
+    """Check that Host.nsc remains absent from inventory, manifest, and registry."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
 
-    inventory = load_component_inventory(options.repository_root, "Host.nsc")
-    expected = sorted(
-        (case_id, row["contract_id"])
-        for case_id, row in inventory.design_by_id.items()
+    validate_empty_component_universe(
+        options.repository_root, "Host.nsc", "host-nsc.jsonl"
     )
-
-    manifest_path = options.source_root / "manifest" / "cases.jsonl"
     manifests = component_manifest_rows(
         options.source_root, options.repository_root, "Host.nsc"
     )
@@ -72,8 +67,8 @@ def main() -> int:
         )
 
     listed = listed_nsc_cases(options.host_executable)
-    if listed != expected:
-        raise RuntimeError("host registry does not expose the complete ordered Host.nsc inventory")
+    if listed:
+        raise RuntimeError("host registry exposes Host.nsc outside the active inventory")
     assert_no_required_nsc_cases(options.host_executable)
     return 0
 

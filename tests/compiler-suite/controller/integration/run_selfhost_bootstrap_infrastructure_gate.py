@@ -10,10 +10,7 @@ from selfhost_bootstrap_infrastructure_support import (
 )
 from selfhost_inventory import (
     case_ordinal,
-    load_component_inventory,
-    read_jsonl,
-    required_string_field,
-    validate_pending_manifest,
+    validate_empty_component_universe,
 )
 RANGE_ROW = re.compile(
     r'\{\s*(\d+),\s*(\d+),\s*"(C12B-BSI-\d{3})",\s*'
@@ -63,10 +60,6 @@ def main() -> int:
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
     repository_root = options.repository_root.resolve()
-    inventory = load_component_inventory(
-        repository_root,
-        "SelfHost.Bootstrap.Infrastructure",
-    )
     catalog_path = (
         repository_root
         / "tests"
@@ -76,11 +69,6 @@ def main() -> int:
         / "SelfHostBootstrapInfrastructureCatalog.jsonl"
     )
     catalog = load_contracts(repository_root, catalog_path)
-    if any(
-        row["planned_executor"] != "nsc_suite_controller+nsc"
-        for row in inventory.allocation
-    ):
-        raise RuntimeError("Bootstrap.Infrastructure allocation changed its canonical executor")
     materialized = tuple(materialized_ranges(repository_root))
     expected = catalog_ranges(repository_root, catalog)
     if len(set(materialized)) != len(materialized) or set(materialized) != expected:
@@ -94,37 +82,10 @@ def main() -> int:
         / "modules"
         / "SelfHostBootstrapInfrastructureTestSupport.h"
     ).read_text(encoding="utf-8")
-    if "TestDisposition::InfrastructurePending" not in support:
-        raise RuntimeError("Bootstrap.Infrastructure cases lost their pending disposition")
+    if "TestDisposition::Executable" in support:
+        raise RuntimeError("retired Bootstrap.Infrastructure cases expose an executable disposition")
 
-    contradiction = (
-        repository_root
-        / "tests"
-        / "compiler-suite"
-        / "selfhost"
-        / "modules"
-        / "SelfHostBootstrapInfrastructurePlanContradictions.jsonl"
-    )
-    records = read_jsonl(contradiction)
-    record_ids: set[str] = set()
-    for record in records:
-        record_id = required_string_field(
-            record,
-            "id",
-            "SelfHost.Bootstrap.Infrastructure contradiction",
-        )
-        if (
-            not record_id
-            or record_id in record_ids
-            or record.get("component") != "SelfHost.Bootstrap.Infrastructure"
-            or record.get("status") != "OPEN"
-        ):
-            raise RuntimeError("Bootstrap.Infrastructure contradiction is invalid")
-        record_ids.add(record_id)
-    if bool(inventory.profile_mismatch_ids()) != bool(records):
-        raise RuntimeError("Bootstrap.Infrastructure contradiction differs from live profiles")
-
-    validate_pending_manifest(
+    validate_empty_component_universe(
         repository_root,
         "SelfHost.Bootstrap.Infrastructure",
         "selfhost-bootstrap-infrastructure.jsonl",

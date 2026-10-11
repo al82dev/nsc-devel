@@ -5,11 +5,7 @@ import re
 from pathlib import Path
 
 from selfhost_inventory import (
-    expected_nightly_ordinals,
-    expected_ranges,
-    load_component_inventory,
-    materialized_nightly_ordinals,
-    validate_pending_manifest,
+    validate_empty_component_universe,
 )
 
 RANGE_ROW = re.compile(
@@ -40,16 +36,9 @@ def main() -> int:
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
     repository_root = options.repository_root.resolve()
-    inventory = load_component_inventory(repository_root, "SelfHost.Projects")
-    if any(
-        row["planned_executor"] != "nsc_suite_controller+nsc"
-        for row in inventory.allocation
-    ):
-        raise RuntimeError("SelfHost.Projects allocation changed its canonical executor")
     materialized = tuple(materialized_ranges(repository_root))
-    expected = expected_ranges(inventory, include_layer=True)
-    if len(set(materialized)) != len(materialized) or set(materialized) != set(expected):
-        raise RuntimeError("consolidated modules changed Projects range, layer, or contract lineage")
+    if not materialized or len(set(materialized)) != len(materialized):
+        raise RuntimeError("Projects historical ranges are empty or duplicated")
 
     support_path = (
         repository_root
@@ -60,12 +49,10 @@ def main() -> int:
         / "SelfHostProjectsTestSupport.h"
     )
     support = support_path.read_text(encoding="utf-8")
-    if "TestDisposition::InfrastructurePending" not in support:
-        raise RuntimeError("Projects modules do not preserve InfrastructurePending disposition")
-    if materialized_nightly_ordinals(support_path) != expected_nightly_ordinals(inventory):
-        raise RuntimeError("Projects support profiles differ from the live allocation")
+    if "TestDisposition::Executable" in support:
+        raise RuntimeError("retired Projects cases expose an executable disposition")
 
-    validate_pending_manifest(repository_root, "SelfHost.Projects", "selfhost-projects.jsonl")
+    validate_empty_component_universe(repository_root, "SelfHost.Projects", "selfhost-projects.jsonl")
     return 0
 
 
