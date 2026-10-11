@@ -348,6 +348,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_optimization.addItems(["O0", "O1", "O2", "O3"])
             self.compiler_configure_button = QPushButton("Configurar NSC")
             self.compiler_build_button = QPushButton("Construir NSC")
+            self.clean_compiler_button = QPushButton("Limpiar compilador")
+            self.clean_compiler_button.setToolTip(
+                "Elimina únicamente los árboles Debug y Release generados para NSC."
+            )
             self.clean_test_tree_button = QPushButton("Limpiar árbol de pruebas")
             self.clean_test_tree_button.setToolTip(
                 "Elimina únicamente los builds Debug y Release de la infraestructura "
@@ -363,6 +367,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             compiler_controls.addWidget(self.compiler_optimization)
             compiler_controls.addWidget(self.compiler_configure_button)
             compiler_controls.addWidget(self.compiler_build_button)
+            compiler_controls.addWidget(self.clean_compiler_button)
             compiler_controls.addWidget(self.clean_test_tree_button)
             compiler_controls.addWidget(self.infrastructure_cancel_button)
             compiler_controls.addStretch(1)
@@ -407,6 +412,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_build_button.clicked.connect(
                 lambda: self._start_infrastructure("compiler-build")
             )
+            self.clean_compiler_button.clicked.connect(self._clean_compiler)
             self.clean_test_tree_button.clicked.connect(self._clean_test_tree)
             self.infrastructure_cancel_button.clicked.connect(self._cancel_active)
             self.configure_button.clicked.connect(
@@ -886,6 +892,151 @@ def launch_gui(smoke_only: bool = False) -> int:
                     "Árbol de pruebas limpio",
                     "La próxima construcción/configuración de pruebas partirá de cero.",
                 )
+
+        def _clean_compiler(self) -> None:
+            """Remove only generated compiler builds after exact-path confirmation."""
+            if self.worker is not None:
+                QMessageBox.warning(
+                    self,
+                    "Hay un proceso activo",
+                    "No se puede limpiar el compilador mientras Builder 3 ejecuta o "
+                    "construye un proceso. Cancélalo y espera a que termine.",
+                )
+                self.statusBar().showMessage(
+                    "Limpieza del compilador rechazada: hay un proceso activo", 8000
+                )
+                return
+            try:
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
+                targets = compiler_build_cleanup_targets(config)
+            except Exception as error:
+                self._show_error("No se puede limpiar el compilador", error)
+                return
+
+            path_lines = [
+                f"• {path} ({'existe' if path.exists() else 'no existe'})"
+                for path in targets
+            ]
+            existing = tuple(path for path in targets if path.exists())
+            if not existing:
+                invalidated = self._invalidate_compiler_build_state(config, targets)
+                message = (
+                    "Los árboles generados del compilador ya están ausentes:\n\n"
+                    + "\n".join(path_lines)
+                )
+                if invalidated:
+                    message += "\n\nEstado en memoria invalidado: " + ", ".join(invalidated)
+                self.infrastructure_stage.setText("Compilador ya limpio")
+                self.infrastructure_progress_detail.setText(message)
+                self.infrastructure_log.setPlainText(message)
+                self.statusBar().showMessage("Compilador ya limpio", 8000)
+                self._preview_plan()
+                self._refresh_history()
+                QMessageBox.information(self, "Compilador limpio", message)
+                return
+
+            prompt = (
+                "Se eliminarán completamente solo estos árboles generados del compilador:\n\n"
+                + "\n".join(path_lines)
+                + "\n\nNo se modificarán fuentes, instalación/prefix, configuración "
+                "persistente, historial/evidencias, builds de pruebas, NSLink ni "
+                "herramientas externas. La próxima construcción de NSC reconfigurará "
+                "y recompilará desde cero. ¿Continuar?"
+            )
+            answer = QMessageBox.warning(
+                self,
+                "Confirmar limpieza del compilador",
+                prompt,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.statusBar().showMessage(
+                    "Limpieza del compilador cancelada por el usuario", 5000
+                )
+                return
+            if self.worker is not None:
+                QMessageBox.warning(
+                    self,
+                    "Hay un proceso activo",
+                    "La limpieza no comenzó porque se inició otro proceso.",
+                )
+                return
+
+            self._set_busy(True)
+            self.infrastructure_stage.setText("Limpiando compilador")
+            self.infrastructure_progress.setRange(0, 0)
+            self.infrastructure_progress.setFormat("Limpieza en curso")
+            self.infrastructure_progress_detail.setText("\n".join(path_lines))
+            try:
+                result = clean_compiler_build_trees(config)
+            except Exception as error:
+                self._show_error("Falló la limpieza del compilador", error)
+                return
+            finally:
+                self._set_busy(False)
+
+            invalidated = self._invalidate_compiler_build_state(config, result.targets)
+            lines = [
+                "LIMPIEZA DEL COMPILADOR",
+                "=" * 72,
+                *(f"Ruta: {path}" for path in result.targets),
+                f"Archivos eliminados: {result.removed_files:,}",
+                f"Directorios eliminados: {result.removed_directories:,}",
+                f"Rutas ya ausentes: {len(result.missing_targets):,}",
+                "Estado/recibos en memoria invalidados: "
+                + (", ".join(invalidated) if invalidated else "ninguno"),
+            ]
+            if result.failures:
+                lines.extend(("", "ERRORES PARCIALES:"))
+                lines.extend(result.failures)
+            self.infrastructure_log.setPlainText("\n".join(lines))
+            self.infrastructure_progress.setRange(0, 1)
+            self.infrastructure_progress.setValue(1)
+            self.infrastructure_ninja_total = 0
+            self.active_operation = ""
+            self.active_modes = ()
+            self._preview_plan()
+            self._refresh_history()
+            if result.failures:
+                self.infrastructure_stage.setText("Limpieza del compilador incompleta")
+                self.infrastructure_progress.setFormat("Limpieza incompleta")
+                self.infrastructure_progress_detail.setText(
+                    f"{len(result.failures):,} rutas no pudieron eliminarse; revisa el registro."
+                )
+                QMessageBox.critical(
+                    self,
+                    "Limpieza del compilador incompleta",
+                    f"Se encontraron {len(result.failures):,} errores parciales. "
+                    "No se tocó ninguna ruta fuera de los árboles confirmados.",
+                )
+            else:
+                self.infrastructure_stage.setText("Compilador limpio")
+                self.infrastructure_progress.setFormat("Limpieza terminada")
+                self.infrastructure_progress_detail.setText(
+                    f"Eliminados {result.removed_files:,} archivos y "
+                    f"{result.removed_directories:,} directorios."
+                )
+                self.statusBar().showMessage("Compilador limpio", 8000)
+                QMessageBox.information(
+                    self,
+                    "Compilador limpio",
+                    "La próxima construcción de NSC partirá de cero.",
+                )
+
+        def _invalidate_compiler_build_state(
+            self, config: BuilderConfig, targets: Sequence[Path]
+        ) -> tuple[str, ...]:
+            """Clear only transient UI selections owned by deleted build trees."""
+            invalidated = compiler_cleanup_invalidated_fields(config, targets)
+            for field_name in invalidated:
+                self.path_edits[field_name].clear()
+            self.infrastructure_ninja_total = 0
+            self.active_operation = ""
+            self.active_modes = ()
+            return invalidated
 
         def _start_infrastructure(self, operation: str) -> None:
             if self.worker is not None:
@@ -1895,6 +2046,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         def _set_busy(self, busy: bool) -> None:
             self.compiler_configure_button.setEnabled(not busy)
             self.compiler_build_button.setEnabled(not busy)
+            self.clean_compiler_button.setEnabled(not busy)
             self.clean_test_tree_button.setEnabled(not busy)
             self.configure_button.setEnabled(not busy)
             self.build_button.setEnabled(not busy)
@@ -2878,6 +3030,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             "run_button": "Ejecutar pruebas",
             "cancel_button": "Cancelar corrida/árbol",
             "clear_results_button": "Limpiar resultados para nueva corrida",
+            "clean_compiler_button": "Limpiar compilador",
             "history_load_button": "Abrir corrida completa en un tab",
             "failure_retry_button": "Reejecutar fallos activos",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
@@ -2889,6 +3042,10 @@ def launch_gui(smoke_only: bool = False) -> int:
                 raise RuntimeError(
                     f"GUI smoke missing {attribute} with text {expected_text!r}"
                 )
+        window._set_busy(True)
+        if window.clean_compiler_button.isEnabled():
+            raise RuntimeError("GUI smoke allows compiler cleanup while a worker is active")
+        window._set_busy(False)
         if window.result_tabs.tabText(window.failure_tab_index) != "Fallos exactos (0)":
             raise RuntimeError("GUI smoke missing the exact-failure result tab")
         primary_tabs = [
