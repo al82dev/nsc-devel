@@ -13,8 +13,6 @@ MODULE_OWNERSHIP = {
         "CaseRecord",
         "HistoricalExecution",
         "RunVariant",
-        "TestTreeCleanupResult",
-        "VariantTimeoutBudget",
     },
     "catalog": {
         "CanonicalCatalog",
@@ -39,6 +37,7 @@ MODULE_OWNERSHIP = {
     "process_control": {"ProcessController"},
     "history": {
         "EvidenceStore",
+        "VariantTimeoutBudget",
         "history_record",
         "load_history_execution",
         "load_variant_timeout_budgets",
@@ -60,6 +59,7 @@ MODULE_OWNERSHIP = {
         "_ensure_plain_path",
         "_has_reparse_attribute",
         "_paths_overlap",
+        "TestTreeCleanupResult",
         "build_commands",
         "clean_test_build_trees",
         "compiler_build_commands",

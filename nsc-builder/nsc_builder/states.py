@@ -1,0 +1,24 @@
+"""Shared execution states and catalogue-domain constants."""
+
+from __future__ import annotations
+
+from ._runtime import legacy
+
+
+_runtime = legacy()
+
+PROFILE_RANK = _runtime.PROFILE_RANK
+TERMINAL_FAILURES = _runtime.TERMINAL_FAILURES
+RESULT_STATUSES = _runtime.RESULT_STATUSES
+IDENTITY_COUNT_STATUSES = _runtime.IDENTITY_COUNT_STATUSES
+CONFIG_STRING_FIELDS = _runtime.CONFIG_STRING_FIELDS
+WAVE_CATALOG_FIELDS = _runtime.WAVE_CATALOG_FIELDS
+DESIGN_CATALOG_FIELDS = _runtime.DESIGN_CATALOG_FIELDS
+ALLOCATION_CATALOG_FIELDS = _runtime.ALLOCATION_CATALOG_FIELDS
+ALLOCATION_LAYERS = _runtime.ALLOCATION_LAYERS
+ALLOCATION_EXECUTORS = _runtime.ALLOCATION_EXECUTORS
+ALLOCATION_ISOLATIONS = _runtime.ALLOCATION_ISOLATIONS
+ALLOCATION_BUILD_MODES = _runtime.ALLOCATION_BUILD_MODES
+ALLOCATION_OPTIMIZATIONS = _runtime.ALLOCATION_OPTIMIZATIONS
+
+__all__ = tuple(name for name in globals() if name.isupper() and not name.startswith("_"))
