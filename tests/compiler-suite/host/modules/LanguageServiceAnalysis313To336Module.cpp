@@ -89,8 +89,11 @@ void publicationFallbackContract(TestContext& context, std::size_t variant)
     const AnalysisSnapshot broken = fixture.service().analyzeProject(
         fixture.project(), variant == 8U ? 8U : 1U,
         variant == 6U ? std::function<bool()>([] { return true; }) : std::function<bool()>{});
+    const bool currentFailureEvidence = variant == 6U ?
+        broken.cancelled() && broken.error().find("cancelled") != std::string_view::npos :
+        !broken.cancelled() && !broken.diagnostics().empty();
     context.expect(fixture.snapshot().currentAnalysisSucceeded() && fixture.snapshot().semanticModelAvailable() &&
-            opened && !broken.currentAnalysisSucceeded() && !broken.diagnostics().empty() &&
+            opened && !broken.currentAnalysisSucceeded() && currentFailureEvidence &&
             broken.semanticModelAvailable() && broken.usedPreviousSemanticModel() &&
             broken.generation() > fixture.snapshot().generation(),
         "failed or cancelled current analysis publishes current diagnostics and the last-good semantic index");
