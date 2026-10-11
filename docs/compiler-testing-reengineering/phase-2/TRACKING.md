@@ -374,10 +374,13 @@ Desglose certificado de `Host.Lexer`: `110/110` casos implementados, `109 PASS`
 y `1 KNOWN_FAILURE` (`TL-LEX-075`) en Debug y Release. El target consolidado y
 el gate controlador pasaron en ambos modos; no se ejecutó la suite histórica.
 
-Desglose de `Host.AST`: `230/230` casos materializados e integrados. Los `224`
-casos ejecutables conservan su certificación `PASS` en Debug y Release; los seis
-restantes están materializados como `InfrastructurePending`, fuera del manifiesto
-ordinario y sin validación. No se ejecutó la suite histórica.
+Desglose de `Host.AST`: `230/230` casos permanecen inventariados. Los `224`
+casos ordinarios conservan su certificación `PASS` en Debug y Release; otros `5`
+son ejecutables `KnownProductDefect` NIGHTLY mediante el target aislado
+`nsc_component_tests_destructive`, pero todavía no fueron ejecutados. El caso
+`TA-AST-017` queda fuera del pipeline y del manifiesto, documentado únicamente
+como trabajo futuro que requeriría ThreadSanitizer. No se ejecutó la suite
+histórica.
 
 Estado actual de `Host.Parser`: `536/536` casos están materializados en módulos
 nuevos y conservan visibles los defectos conocidos y las limitaciones de
@@ -1763,3 +1766,19 @@ configuro, compilo ni ejecuto. Evidencia:
   nombre ni por el perfil actual de ejecucion.
 - CSV, JSON, conteos, huellas y metodologia:
   `TANDA-VALIDACION-247-CLASIFICACION-INFRASTRUCTURE-PENDING.md`.
+
+## Validación 248 — runner destructivo aislado de Host.AST
+
+`IMPLEMENTACIÓN INTEGRADA; BUILD Y EJECUCIÓN PENDIENTES`.
+
+- `TA-AST-014`, `016`, `215`, `223` y `224` tienen filas
+  `KnownProductDefect` NIGHTLY y se ejecutan exclusivamente mediante
+  `nsc_component_tests_destructive`.
+- El target aislado registra solo esos cinco IDs y no duplica el registro del
+  host ordinario ni cambia su asignador global.
+- El controller, el gate de inventario, el gate `Host.AST` y NSC Builder 3
+  resuelven el ejecutor destructivo por nombre y ruta propios.
+- `TA-AST-017` no se integró al pipeline ni al manifiesto; queda como trabajo
+  futuro sin añadir infraestructura TSAN.
+- Por instrucción de alcance no se configuró, compiló ni ejecutó ninguna
+  prueba. Evidencia: `TANDA-02-08-HOST-AST-PRUEBAS-DESTRUCTIVAS.md`.
