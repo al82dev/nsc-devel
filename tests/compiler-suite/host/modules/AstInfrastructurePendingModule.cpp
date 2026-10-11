@@ -68,9 +68,6 @@ using nativesharp::ast::AstNodeKind;
 using nativesharp::ast::TypeSyntax;
 
 constexpr DWORD terminateExitCode = 0xE1;
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
-constexpr DWORD threadSanitizerExitCode = 86;
-#endif
 
 class RegistrationFailureProbe final
 {
@@ -247,13 +244,16 @@ void testRegistrationFailure(TestContext& context)
     }
     context.expect(allocationFailed,
         "TA-AST-014 registration allocation failure must propagate as bad_alloc");
-    context.expect(orphan != nullptr && alive && destructionCount == 0,
-        "TA-AST-014 failed registration must expose the unowned live allocation");
+    const bool leakedAllocation = orphan != nullptr && alive && destructionCount == 0;
 
-    // The arena has no phantom entry: explicit cleanup is required because ownership was lost.
-    delete orphan;
+    // Preserve process hygiene after observing the defect.  Cleanup is deliberately performed
+    // after capturing the outcome so the current leak remains a failing product oracle.
+    if (leakedAllocation) delete orphan;
+
+    context.expect(!leakedAllocation,
+        "TA-AST-014 failed registration leaked the constructed object outside AstArena ownership");
     context.expect(!alive && destructionCount == 1,
-        "TA-AST-014 explicit cleanup must destroy the leaked allocation exactly once");
+        "TA-AST-014 failed registration must destroy the object exactly once without a phantom entry");
 }
 
 void testThrowingDestructor(TestContext& context)
@@ -262,32 +262,29 @@ void testThrowingDestructor(TestContext& context)
     const auto result = isolated_process_support::runCurrentExecutable(
         "TA-AST-016", "TA-AST-016", 5s);
     context.expect(result.started, "TA-AST-016 isolated process must start: " + result.error);
-    context.expect(!result.timedOut && result.exitCode == terminateExitCode,
-        "TA-AST-016 throwing destruction must invoke abnormal termination");
+    context.expect(!result.timedOut && result.exitCode == 0,
+        "TA-AST-016 throwing destruction terminated the process instead of completing cleanup");
     context.expect(result.output.find("THROWING_DESTRUCTOR") != std::string::npos,
         "TA-AST-016 child must reach the throwing destructor");
-    context.expect(result.output.find("REMAINING_ENTRY_DESTROYED") == std::string::npos,
-        "TA-AST-016 termination must leave earlier arena entries undestroyed");
+    context.expect(result.output.find("REMAINING_ENTRY_DESTROYED") != std::string::npos,
+        "TA-AST-016 throwing destruction prevented cleanup of the remaining arena entry");
 }
 
+#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
 void testConcurrentArenaMutation(TestContext& context)
 {
     if (dispatchProbe("TA-AST-017")) return;
-#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
     const auto result = isolated_process_support::runCurrentExecutable(
         "TA-AST-017", "TA-AST-017", 15s,
         {{L"TSAN_OPTIONS", L"halt_on_error=1 exitcode=86"}});
     context.expect(result.started, "TA-AST-017 TSAN process must start: " + result.error);
-    context.expect(!result.timedOut && result.exitCode == threadSanitizerExitCode,
-        "TA-AST-017 unsynchronized mutation must be rejected by ThreadSanitizer");
-    context.expect(result.output.find("ThreadSanitizer") != std::string::npos &&
-            result.output.find("data race") != std::string::npos,
-        "TA-AST-017 must capture a concrete ThreadSanitizer data-race report");
-#else
-    context.expect(false,
-        "TA-AST-017 requires a ThreadSanitizer-instrumented nsc_component_tests target");
-#endif
+    context.expect(!result.timedOut && result.exitCode == 0,
+        "TA-AST-017 concurrent arena mutation triggered the ThreadSanitizer failure exit");
+    context.expect(result.output.find("ThreadSanitizer") == std::string::npos &&
+            result.output.find("data race") == std::string::npos,
+        "TA-AST-017 concurrent arena mutation produced a ThreadSanitizer data-race report");
 }
+#endif
 
 void testNullTypeArgument(TestContext& context)
 {
@@ -297,11 +294,11 @@ void testNullTypeArgument(TestContext& context)
     context.expect(result.started, "TA-AST-215 isolated process must start: " + result.error);
     context.expect(result.output.find("NULL_TYPE_PROBE_READY") != std::string::npos,
         "TA-AST-215 child must reach the null TypeSyntax probe");
-    context.expect(!result.timedOut && result.exitCode == EXCEPTION_ACCESS_VIOLATION,
-        "TA-AST-215 null TypeSyntax must terminate on the violated dumper precondition");
+    context.expect(!result.timedOut && result.exitCode == 0,
+        "TA-AST-215 null TypeSyntax terminated the dumper instead of being handled safely");
 }
 
-void expectCycleFailure(TestContext& context, std::string_view caseId)
+void testCycleTraversalCompletes(TestContext& context, std::string_view caseId)
 {
     if (dispatchProbe(caseId)) return;
     const auto result = isolated_process_support::runCurrentExecutable(caseId, caseId, 5s);
@@ -310,9 +307,8 @@ void expectCycleFailure(TestContext& context, std::string_view caseId)
     context.expect(result.started, std::string(caseId) + " watchdog process must start: " + result.error);
     context.expect(result.output.find(marker) != std::string::npos,
         std::string(caseId) + " child must reach the cyclic traversal probe");
-    context.expect(result.timedOut || result.exitCode == EXCEPTION_STACK_OVERFLOW,
-        std::string(caseId) +
-            " cyclic traversal must be bounded by the watchdog or stack-overflow termination");
+    context.expect(!result.timedOut && result.exitCode == 0,
+        std::string(caseId) + " cyclic traversal did not complete safely before the watchdog");
 }
 
 void addCase(TestRegistry& registry, std::string id, std::string contractId,
@@ -331,16 +327,18 @@ void registerAstInfrastructurePendingModule(TestRegistry& registry)
         testRegistrationFailure);
     addCase(registry, "TA-AST-016", "CA-AST-002", "unit",
         {"ast", "arena", "death-test", "known-product-defect"}, testThrowingDestructor);
+#if defined(NSC_AST_THREAD_SANITIZER_ENABLED)
     addCase(registry, "TA-AST-017", "CA-AST-002", "unit",
         {"ast", "arena", "thread-sanitizer", "known-product-defect"},
         testConcurrentArenaMutation);
+#endif
     addCase(registry, "TA-AST-215", "CA-AST-019", "component",
         {"ast", "dumper", "death-test", "known-product-defect"}, testNullTypeArgument);
     addCase(registry, "TA-AST-223", "CA-AST-020", "robustness",
         {"ast", "dumper", "watchdog", "known-product-defect"},
-        [](TestContext& context) { expectCycleFailure(context, "TA-AST-223"); });
+        [](TestContext& context) { testCycleTraversalCompletes(context, "TA-AST-223"); });
     addCase(registry, "TA-AST-224", "CA-AST-020", "robustness",
         {"ast", "dumper", "watchdog", "known-product-defect"},
-        [](TestContext& context) { expectCycleFailure(context, "TA-AST-224"); });
+        [](TestContext& context) { testCycleTraversalCompletes(context, "TA-AST-224"); });
 }
 }

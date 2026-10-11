@@ -25,22 +25,22 @@ del producto.
 
 | Caso | Entrada destructiva | Oráculo canónico |
 |---|---|---|
-| `TA-AST-014` | fallo de la primera reserva del registro, después de construir `T` | se propaga `bad_alloc`; el arena no conserva entrada fantasma; el objeto sigue vivo y requiere limpieza explícita, caracterizando la pérdida de ownership |
-| `TA-AST-016` | destructor de la última entrada lanza | el subproceso llega al destructor, termina mediante `std::terminate` y no destruye la entrada anterior |
-| `TA-AST-017` | dos hilos mutan el mismo `AstArena` sin sincronización | el subproceso instrumentado termina con el código configurado de TSAN y el reporte contiene `ThreadSanitizer` y `data race` |
-| `TA-AST-215` | `AstDumper` recibe un argumento genérico `TypeSyntax* == nullptr` | el subproceso termina por violación de acceso; no se acepta retorno normal |
-| `TA-AST-223` | `first()` apunta al mismo nodo | el watchdog acota la ejecución; se acepta timeout o terminación por stack overflow, nunca retorno normal |
-| `TA-AST-224` | dos nodos forman un ciclo mediante `children()` | el watchdog acota la ejecución; se acepta timeout o terminación por stack overflow, nunca retorno normal |
+| `TA-AST-014` | fallo de la primera reserva del registro, después de construir `T` | `bad_alloc` se propaga, pero una asignación que queda viva fuera del arena produce `FAIL`; la prueba limpia el huérfano solo después de registrar el defecto |
+| `TA-AST-016` | destructor de la última entrada lanza | `std::terminate` o la omisión de la destrucción restante producen `FAIL`; solo una salida normal con limpieza completa satisface el contrato |
+| `TA-AST-017` | dos hilos mutan el mismo `AstArena` sin sincronización | código de fallo o reporte `ThreadSanitizer: data race` producen `FAIL`; solo ausencia del reporte y salida normal satisfacen el contrato |
+| `TA-AST-215` | `AstDumper` recibe un argumento genérico `TypeSyntax* == nullptr` | terminación o timeout producen `FAIL`; solo una salida normal satisface el contrato de robustez |
+| `TA-AST-223` | `first()` apunta al mismo nodo | timeout o terminación por stack overflow producen `FAIL`; solo finalización normal antes del watchdog satisface el contrato |
+| `TA-AST-224` | dos nodos forman un ciclo mediante `children()` | timeout o terminación por stack overflow producen `FAIL`; solo finalización normal antes del watchdog satisface el contrato |
 
-Todos los casos se registran como `KnownProductDefect`: son seleccionables explícitamente, pero
-no contaminan el flujo agregado de pruebas requeridas.
+Los casos disponibles se registran como `KnownProductDefect`. Reproducir el defecto genera el
+`FAIL` que el ejecutor transforma en defecto conocido; si el producto empieza a satisfacer el
+contrato, el `PASS` se vuelve `UNEXPECTED_PASS` y obliga a retirar la cuarentena.
 
 ## Integración TSAN pendiente y explícita
 
-El cuerpo real de `TA-AST-017` está compilado únicamente cuando el runner define instrumentación
-ThreadSanitizer (`__has_feature(thread_sanitizer)` o `__SANITIZE_THREAD__`). El target ordinario no
-puede producir evidencia TSAN y, si se invoca el caso allí, falla declarando esa precondición en
-lugar de publicar un falso positivo.
+El cuerpo y el registro de `TA-AST-017` existen únicamente cuando el runner define instrumentación
+ThreadSanitizer (`__has_feature(thread_sanitizer)` o `__SANITIZE_THREAD__`). El binario ordinario no
+expone el identificador, porque sin sanitizer no puede ejecutar ni validar ese contrato.
 
 No se modificó el `CMakeLists.txt` compartido ni manifiestos en esta tanda. La integración debe
 añadir por separado un target `nsc_component_tests` instrumentado con TSAN que compile el mismo
