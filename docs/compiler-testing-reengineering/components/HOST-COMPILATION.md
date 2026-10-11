@@ -152,8 +152,9 @@ arquitectura identificador y versiones numéricas de hasta ocho partes; normaliz
 prohíbe rangos solapados por arquitectura y ordena. Libraries exige nombre identificador y path relativo `.lib` sin
 `..`, deduplica por nombre y ordena.
 
-`SdkTargetSelector` devuelve el primer rango compatible o `NSC-SDK-003`. Al cargar proyecto, cada library declarada
-por el SDK debe existir o produce `NSC-SDK-004`.
+`SdkTargetSelector` devuelve el primer rango compatible. Un selector bien formado sin target produce
+`NSC-SDK-003`; arquitectura o versión malformada produce `invalid SDK target architecture or version`. Al cargar
+proyecto, cada library declarada por el SDK debe existir o produce `NSC-SDK-004`.
 
 ## 16. Grafo de proyectos
 

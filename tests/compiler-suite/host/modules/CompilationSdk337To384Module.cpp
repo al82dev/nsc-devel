@@ -150,11 +150,17 @@ void sdkTargetSelectionContract(TestContext& context, std::size_t variant)
     const SdkTargetVariant* selected = SdkTargetSelector{}.select(manifest, architecture, version, error);
     const bool expected = variant != 3 && variant != 4 && variant != 5;
     bool exact = (selected != nullptr) == expected;
+    const std::string expectedError = variant == 3 ?
+        "NSC-SDK-003: SDK 'Windows' has no target for architecture 'x86' and version '10.2'" :
+        variant == 4 ?
+            "NSC-SDK-003: SDK 'Windows' has no target for architecture 'x64' and version '12.0'" :
+        variant == 5 ? "invalid SDK target architecture or version" : "";
+    exact = exact && (selected != nullptr ? error.empty() : error == expectedError);
     if (selected != nullptr && variant == 6)
     {
         exact = selected->minimumVersion == "10.5";
     }
-    context.expect(exact && (selected != nullptr || contains(error, "NSC-SDK-003")),
+    context.expect(exact,
         "CF-COMPILATION-048 selector returns first compatible range or exact stable diagnostic");
 }
 }
