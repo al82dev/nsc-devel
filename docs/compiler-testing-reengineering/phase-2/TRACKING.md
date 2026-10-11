@@ -1618,3 +1618,8 @@ Validacion 228 actualiza los fixtures de `TS-SEMA-128`, `135`, `157` y `158`
 a las formas vigentes de bloques extern C e inline asm, con la secuencia
 diagnostica completa. No se modifico producto ni se ejecutaron pruebas.
 Evidencia: `TANDA-VALIDACION-228-SEMA-FIXTURES-EXTERN-ASM.md`.
+
+Validacion 229 corrige el productor de `TP-PAR-020`: el lookahead de tipos
+consume ahora la anotacion completa `borrowed[lifetime]` con la misma frontera
+que `parseType`. No se compilo ni ejecuto; la validacion queda delegada al
+usuario. Evidencia: `TANDA-VALIDACION-229-PARSER-LIFETIME-LOOKAHEAD.md`.

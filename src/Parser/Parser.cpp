@@ -566,11 +566,25 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
 
     if (lexer::isOwnershipQualifierKeyword(tokens_[tokenIndex].kind()))
     {
+        const TokenKind ownershipQualifier = tokens_[tokenIndex].kind();
         ++tokenIndex;
         if (tokenIndex >= tokens_.size() ||
             lexer::isOwnershipQualifierKeyword(tokens_[tokenIndex].kind()))
         {
             return false;
+        }
+        if (ownershipQualifier == TokenKind::KwBorrowed &&
+            tokens_[tokenIndex].kind() == TokenKind::LeftBracket)
+        {
+            if (tokenIndex + 2U >= tokens_.size() ||
+                (tokens_[tokenIndex + 1U].kind() != TokenKind::Identifier &&
+                 tokens_[tokenIndex + 1U].kind() != TokenKind::KwThis &&
+                 tokens_[tokenIndex + 1U].kind() != TokenKind::KwStatic) ||
+                tokens_[tokenIndex + 2U].kind() != TokenKind::RightBracket)
+            {
+                return false;
+            }
+            tokenIndex += 3U;
         }
     }
 
