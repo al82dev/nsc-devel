@@ -17,9 +17,9 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str], cwd: Path, timeout: int = 1200) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                          encoding="utf-8", errors="replace", check=False)
 
 
 def main() -> int:

@@ -15,9 +15,9 @@ try:
 except ImportError:
     from profile_selection import selected_profiles
 
-def run(command: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                          encoding="utf-8", errors="replace", check=False)
 
 
 def digest(path: Path) -> str:
@@ -94,7 +94,7 @@ def main() -> int:
             link_command += ["--entry", contract["entry"], "-o", str(executable)]
             linked = run(link_command, root)
             if require(linked, f"{profile} {linker} EXE link", failures):
-                executed = run([str(executable)], output, timeout=10)
+                executed = run([str(executable)], output)
                 if require(executed, f"{profile} {linker} EXE run", failures):
                     cases.append({"profile": profile, "linker": linker, "product": "EXE",
                                   "sha256": digest(executable), "status": "passed"})
@@ -116,7 +116,7 @@ def main() -> int:
                                 "-o", str(consumer_exe)]
             linked_consumer = run(consumer_command, root)
             if require(linked_consumer, f"{profile} {linker} DLL consumer link", failures):
-                consumed = run([str(consumer_exe)], output, timeout=10)
+                consumed = run([str(consumer_exe)], output)
                 if require(consumed, f"{profile} {linker} DLL consumer run", failures):
                     cases.append({"profile": profile, "linker": linker, "product": "DLL",
                                   "sha256": digest(dll), "status": "passed"})

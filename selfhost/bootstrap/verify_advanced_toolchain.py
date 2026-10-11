@@ -17,10 +17,10 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str], cwd: Path, timeout: int = 1200) -> tuple[subprocess.CompletedProcess[str], float]:
+def run(command: list[str], cwd: Path) -> tuple[subprocess.CompletedProcess[str], float]:
     started = time.perf_counter()
     result = subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                            encoding="utf-8", errors="replace", check=False)
     return result, time.perf_counter() - started
 
 

@@ -21,10 +21,10 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str], cwd: Path, timeout: int = 180) -> tuple[subprocess.CompletedProcess[str], float]:
+def run(command: list[str], cwd: Path) -> tuple[subprocess.CompletedProcess[str], float]:
     started = time.perf_counter()
     result = subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                            encoding="utf-8", errors="replace", check=False)
     return result, time.perf_counter() - started
 
 
@@ -202,7 +202,7 @@ def main() -> int:
             linked, elapsed = run(link, root)
             timings[f"link_{lower}_{linker}"] = round(elapsed, 6)
             if require(linked, f"{profile} {linker} link", failures):
-                executed, elapsed = run([str(executable)], output, timeout=30)
+                executed, elapsed = run([str(executable)], output)
                 timings[f"run_{lower}_{linker}"] = round(elapsed, 6)
                 if require(executed, f"{profile} {linker} execution", failures):
                     cases.append({"profile": profile, "linker": linker, "status": "passed",

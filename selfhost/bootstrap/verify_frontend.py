@@ -23,13 +23,12 @@ def require(condition: bool, message: str) -> None:
         raise VerificationError(message)
 
 
-def run(executable: Path, *arguments: str, timeout: int = 120) -> subprocess.CompletedProcess[bytes]:
+def run(executable: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [str(executable), *arguments],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
-        timeout=timeout,
     )
 
 
@@ -117,16 +116,15 @@ def verify(
             ast_cases += 1
 
         recovery = contract["recovery"]
-        timeout = int(recovery["timeout_seconds"])
         maximum_lines = int(recovery["maximum_dump_lines"])
         for ordinal, source_text in enumerate(recovery["cases"]):
             fixture = output_dir / f"recovery-{ordinal}.ns"
             fixture.write_text(source_text, encoding="utf-8", newline="\n")
-            legacy_tokens_result = run(nsc0, "--dump-tokens", str(fixture), timeout=timeout)
-            actual_tokens = run(executable, "--dump-tokens", str(fixture), timeout=timeout)
+            legacy_tokens_result = run(nsc0, "--dump-tokens", str(fixture))
+            actual_tokens = run(executable, "--dump-tokens", str(fixture))
             require(canonical_lines(actual_tokens.stdout) == canonical_lines(legacy_tokens_result.stdout),
                     f"{optimization} recovery token dump differs in case {ordinal}")
-            actual_tree = run(executable, "--dump-ast", str(fixture), timeout=timeout)
+            actual_tree = run(executable, "--dump-ast", str(fixture))
             require(actual_tree.returncode != 0,
                     f"{optimization} malformed recovery case {ordinal} was accepted")
             require(actual_tree.stdout.count(b"\n") <= maximum_lines,

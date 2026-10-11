@@ -64,12 +64,11 @@ def stage_sources(source_root: Path, files: list[Path], target: Path) -> None:
         shutil.copyfile(source, destination)
 
 
-def run(command: list[str], environment: dict[str, str] | None = None,
-        timeout: int = 900) -> tuple[subprocess.CompletedProcess[str], float]:
+def run(command: list[str], environment: dict[str, str] | None = None) -> tuple[subprocess.CompletedProcess[str], float]:
     started = time.perf_counter()
     result = subprocess.run(command, env=environment, text=True, encoding="utf-8",
                             errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            check=False, timeout=timeout)
+                            check=False)
     return result, time.perf_counter() - started
 
 

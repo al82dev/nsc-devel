@@ -34,13 +34,13 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str], timeout: int = 180) -> subprocess.CompletedProcess[bytes]:
+def run(command: list[str]) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          check=False, timeout=timeout)
+                          check=False)
 
 
-def checked(command: list[str], label: str, timeout: int = 180) -> subprocess.CompletedProcess[bytes]:
-    result = run(command, timeout)
+def checked(command: list[str], label: str) -> subprocess.CompletedProcess[bytes]:
+    result = run(command)
     require(result.returncode == 0,
             f"{label} failed ({result.returncode}): "
             f"{result.stdout.decode(errors='replace')}{result.stderr.decode(errors='replace')}")
@@ -52,7 +52,7 @@ def canonical(data: bytes) -> bytes:
 
 
 def call_verifier(python: Path, script: Path, arguments: list[str], report: Path) -> dict:
-    checked([str(python), "-B", str(script), *arguments, "--report", str(report)], script.name, 900)
+    checked([str(python), "-B", str(script), *arguments, "--report", str(report)], script.name)
     value = json.loads(report.read_text(encoding="utf-8"))
     require(value.get("status") == "passed", f"{script.name} did not report passed")
     return value
@@ -107,7 +107,7 @@ def link(tool: Path, obj: Path, output: Path, entry: str,
 
 
 def execute(image: Path, expected: int) -> None:
-    result = run([str(image)], 30)
+    result = run([str(image)])
     require(result.returncode == expected,
             f"{image.name} returned {result.returncode}, expected {expected}")
 

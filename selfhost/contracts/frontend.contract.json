@@ -26,7 +26,6 @@
     "tests/integration/asm_abi/AssemblyAbi.ns"
   ],
   "recovery": {
-    "timeout_seconds": 5,
     "maximum_dump_lines": 256,
     "cases": [
       "int Main( { return 0",

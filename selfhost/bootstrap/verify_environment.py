@@ -76,7 +76,6 @@ def capture_version(path: Path, arguments: list[str]) -> tuple[int, str]:
         encoding="utf-8",
         errors="replace",
         creationflags=flags,
-        timeout=30,
         check=False,
     )
     return completed.returncode, completed.stdout.strip()

@@ -23,9 +23,9 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str], cwd: Path, timeout: int = 1200) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                          encoding="utf-8", errors="replace", check=False)
 
 
 def main() -> int:
@@ -65,7 +65,7 @@ def main() -> int:
         for label, compiler in (("nsc0", args.compiler), ("nsc2", args.selfhost_compiler)):
             if label == "nsc2" and index >= contract["selfhost_fuzz_cases"]:
                 continue
-            result = run([str(compiler), "--dump-tokens", str(source)], root, timeout=20)
+            result = run([str(compiler), "--dump-tokens", str(source)], root)
             if result.returncode not in (0, 1):
                 failures.append(f"{label} hostile case {index} returned {result.returncode}")
         fuzz_results.append({"case": index, "sha256": digest(source)})

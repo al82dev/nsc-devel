@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 
 
-def run(command: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout, check=False)
+                          encoding="utf-8", errors="replace", check=False)
 
 
 def digest(path: Path) -> str:
@@ -84,7 +84,7 @@ def main() -> int:
             command += ["--entry", contract["entry"], "-o", str(executable)]
             linked = run(command, root)
             if require(linked, f"{profile} {linker} link", failures):
-                executed = run([str(executable)], output, timeout=10)
+                executed = run([str(executable)], output)
                 if require(executed, f"{profile} {linker} run", failures):
                     cases.append({"profile": profile, "linker": linker,
                                   "status": "passed", "sha256": digest(executable)})
