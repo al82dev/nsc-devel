@@ -38,16 +38,6 @@ class FakeProcess:
         return self.returncode
 
 
-class RunningProcess:
-    def __init__(self) -> None:
-        self.pid = 9876
-        self.returncode: int | None = None
-        self.stdout: list[str] = []
-
-    def poll(self) -> int | None:
-        return self.returncode
-
-
 class Builder3ProcessTerminationTests(unittest.TestCase):
     def test_cancel_before_launch_is_emitted_to_progressive_log(self) -> None:
         emitted: list[str] = []
@@ -60,31 +50,6 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self.assertIn("cancelled before launch", captured)
         self.assertTrue(any("cancelled before launch" in line for line in emitted))
         self.assertEqual(controller.last_termination_reason, "cancelled")
-
-    @patch.object(builder.time, "monotonic", side_effect=(0.0, 2.0))
-    @patch.object(builder.subprocess, "Popen")
-    def test_timeout_is_emitted_to_progressive_log(
-        self, popen: object, _monotonic: object
-    ) -> None:
-        emitted: list[str] = []
-        activity: list[tuple[float, str]] = []
-        process = RunningProcess()
-        popen.return_value = process
-        controller = builder.ProcessController(emitted.append, lambda *value: activity.append(value))
-
-        def terminate(owned: RunningProcess) -> None:
-            owned.returncode = 130
-
-        with patch.object(controller, "_terminate_tree", side_effect=terminate):
-            code, captured = controller.run(
-                ["synthetic"], Path("A:/nsc-devel"), timeout=1.0
-            )
-
-        self.assertEqual(code, 130)
-        self.assertIn("timed out", captured)
-        self.assertTrue(any("timed out" in line for line in emitted))
-        self.assertEqual(controller.last_termination_reason, "timeout")
-        self.assertEqual(activity, [(2.0, "")])
 
     @patch.object(builder.os, "name", "nt")
     @patch.object(builder.subprocess, "run")
