@@ -80,11 +80,14 @@ void testTraitImplementation(TestContext& context)
         "trait IValue { int Get(); } class Value { } "
         "impl IValue for Value { int Get() { return 1; } }");
     AstNode* const node = declaration(fixture, 2);
-    context.expect(node != nullptr && node->kind() == AstNodeKind::ExtensionDeclaration &&
-            node->text() == "Value" && node->typeSyntax() != nullptr &&
-            node->typeSyntax()->baseName() == "IValue" && node->second() != nullptr &&
-            node->second()->typeSyntax() != nullptr && node->second()->typeSyntax()->baseName() == "Value",
-        "TP-PAR-189 impl Trait for Type must use ExtensionDeclaration receiver/base representation");
+    context.expect(node != nullptr && node->kind() == AstNodeKind::ClassDeclaration &&
+            hasMarker(node, "ns3-trait-impl") && node->text() == "Value" &&
+            node->typeSyntax() != nullptr &&
+            node->typeSyntax()->baseName() == "IValue" &&
+            node->typeSyntax()->isExplicitTraitImplementation() &&
+            node->second() != nullptr && node->second()->typeSyntax() != nullptr &&
+            node->second()->typeSyntax()->baseName() == "Value",
+        "TP-PAR-189 impl Trait for Type must preserve its trait-implementation carrier");
 }
 
 void testAssociatedTypeDeclaration(TestContext& context)

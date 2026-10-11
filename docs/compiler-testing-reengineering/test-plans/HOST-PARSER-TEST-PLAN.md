@@ -229,7 +229,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-186 | CP-PAR-019 | genéricos/where | scope y constraints exactos | PR |
 | TP-PAR-187 | CP-PAR-019 | interface mínima/partial | InterfaceDeclaration flags | PR |
 | TP-PAR-188 | CP-PAR-019 | trait mínima | trait marker y miembros | PR |
-| TP-PAR-189 | CP-PAR-019 | impl Trait for Type | ExtensionDeclaration receiver/base | PR |
+| TP-PAR-189 | CP-PAR-019 | impl Trait for Type | ClassDeclaration marcada con trait y target exactos | PR |
 | TP-PAR-190 | CP-PAR-019 | associated type declaration | kind/name/constraints | PR |
 | TP-PAR-191 | CP-PAR-019 | associated const declaration | type/name/default | PR |
 | TP-PAR-192 | CP-PAR-019 | associated implementation | valor/type requerido según kind | PR |
