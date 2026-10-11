@@ -137,6 +137,11 @@ int main(int argumentCount, char** arguments)
         // registration graph here would duplicate the complete host suite and would also expose
         // its test-only global allocator to unrelated cases.
         nsc::suite::registerAstInfrastructurePendingModule(registry);
+#elif defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
+        // The extended Source runner is a three-case process boundary.  It keeps the 4 GiB and
+        // coordinated filesystem mutations out of the ordinary --all registry.
+        nsc::suite::registerSourceFileOwnershipModule(registry);
+        nsc::suite::registerSourceFileReadModule(registry);
 #else
         nsc::suite::registerInfrastructureModule(registry);
         nsc::suite::registerBasicValuesModule(registry);
@@ -457,9 +462,10 @@ int main(int argumentCount, char** arguments)
         }
         if (options.listPending)
         {
-#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
+#if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED) || \
+    defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
             throw std::invalid_argument(
-                "the destructive runner does not own the infrastructure-pending inventory");
+                "isolated runners do not own the infrastructure-pending inventory");
 #else
             for (const auto& row : nsc::suite::infrastructurePendingInventory())
             {

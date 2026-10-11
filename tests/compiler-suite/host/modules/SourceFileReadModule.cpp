@@ -54,6 +54,7 @@ void resizeFixture(const std::filesystem::path& path, std::uintmax_t size)
     }
 }
 
+#if !defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
 // Verifies the exact content of a sparse boundary fixture in one iterative pass.
 bool containsOnlyZeroBytes(std::string_view bytes) noexcept
 {
@@ -268,7 +269,9 @@ void registerSuccessfulLoadCase(TestRegistry& registry)
         },
     });
 }
+#endif
 
+#if defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
 // Registers deterministic mutation cases against the canonical SourceManager.cpp algorithm.
 void registerCoordinatedMutationCases(TestRegistry& registry)
 {
@@ -336,20 +339,24 @@ void registerCoordinatedMutationCases(TestRegistry& registry)
         },
     });
 }
+#endif
 }
 
 // Registers the deterministic CS-SRC-006 cases, including two coordinated mutation contracts.
 void registerSourceFileReadModule(TestRegistry& registry)
 {
+#if defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
+    registerCoordinatedMutationCases(registry);
+#else
     registerEmptyReadCase(registry);
     registerBinaryReadCase(registry);
     registerInclusiveLimitCase(registry);
     registerExceededLimitCase(registry);
     registerMissingFileCase(registry);
     registerUnknownSizeCase(registry);
-    registerCoordinatedMutationCases(registry);
     registerPreservedErrorCase(registry);
     registerFailedLoadCase(registry);
     registerSuccessfulLoadCase(registry);
+#endif
 }
 }

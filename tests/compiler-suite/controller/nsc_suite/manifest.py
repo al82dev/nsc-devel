@@ -50,7 +50,13 @@ CASE_CLASSES = frozenset(
         "variant-matrix",
     }
 )
-HOST_EXECUTORS = frozenset({"nsc_component_tests", "nsc_component_tests_destructive"})
+HOST_EXECUTORS = frozenset(
+    {
+        "nsc_component_tests",
+        "nsc_component_tests_destructive",
+        "nsc_component_tests_source_extended",
+    }
+)
 EXECUTORS = HOST_EXECUTORS | frozenset({"nsc_suite_controller+nsc", "historical-weekly"})
 LAYERS = frozenset(
     {

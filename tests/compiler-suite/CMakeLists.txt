@@ -652,6 +652,27 @@ target_compile_definitions(
         NSC_AST_DESTRUCTIVE_TESTS_ENABLED=1)
 target_compile_features(nsc_component_tests_destructive PRIVATE cxx_std_20)
 
+# Resource-heavy and deterministically coordinated Source probes use a second isolated registry.
+# It owns exactly TS-SRC-008/040/041, so the ordinary --all path remains bounded and profile-safe.
+add_executable(
+    nsc_component_tests_source_extended
+    host/src/main.cpp
+    host/src/TestRegistry.cpp
+    host/modules/SourceFileOwnershipModule.cpp
+    host/modules/SourceFileReadModule.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp")
+
+target_include_directories(
+    nsc_component_tests_source_extended
+    PRIVATE
+        host/include
+        "${CMAKE_CURRENT_LIST_DIR}/../../include")
+target_compile_definitions(
+    nsc_component_tests_source_extended
+    PRIVATE
+        NSC_SOURCE_EXTENDED_TESTS_ENABLED=1)
+target_compile_features(nsc_component_tests_source_extended PRIVATE cxx_std_20)
+
 target_include_directories(
     nsc_component_tests
     PRIVATE
@@ -680,12 +701,15 @@ add_custom_command(
 if(MSVC)
     target_compile_options(nsc_component_tests PRIVATE /W4 /WX)
     target_compile_options(nsc_component_tests_destructive PRIVATE /W4 /WX)
+    target_compile_options(nsc_component_tests_source_extended PRIVATE /W4 /WX)
 elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(nsc_component_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     target_compile_options(nsc_component_tests_destructive PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(nsc_component_tests_source_extended PRIVATE -Wall -Wextra -Wpedantic -Werror)
 else()
     target_compile_options(nsc_component_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     target_compile_options(nsc_component_tests_destructive PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(nsc_component_tests_source_extended PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 add_test(NAME nsc.compiler-suite.infrastructure COMMAND nsc_component_tests --all)
@@ -703,6 +727,7 @@ add_test(
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_registry_inventory_gate.py"
         --host-executable "$<TARGET_FILE:nsc_component_tests>"
         --destructive-host-executable "$<TARGET_FILE:nsc_component_tests_destructive>"
+        --source-extended-host-executable "$<TARGET_FILE:nsc_component_tests_source_extended>"
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_test(
@@ -791,6 +816,7 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_source_file_ownership_gate.py"
         --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-extended-host-executable "$<TARGET_FILE:nsc_component_tests_source_extended>"
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-source-file-ownership-gate"
@@ -827,6 +853,7 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_source_file_read_gate.py"
         --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-extended-host-executable "$<TARGET_FILE:nsc_component_tests_source_extended>"
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-source-file-read-gate"

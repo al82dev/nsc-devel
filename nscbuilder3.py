@@ -134,6 +134,7 @@ ALLOCATION_EXECUTORS = frozenset(
     {
         "nsc_component_tests",
         "nsc_component_tests_destructive",
+        "nsc_component_tests_source_extended",
         "nsc_suite_controller+nsc",
         "legacy_historical_suite",
     }
@@ -2421,7 +2422,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
 
 
 def build_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
-    """Build the ordinary and destructive host-test targets in selected configurations."""
+    """Build the ordinary and isolated host-test targets in selected configurations."""
     tools = discover_build_tools(config.llvm_dir)
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
@@ -2435,6 +2436,7 @@ def build_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[st
             "--target",
             "nsc_component_tests",
             "nsc_component_tests_destructive",
+            "nsc_component_tests_source_extended",
             "--parallel",
             str(config.jobs),
         ]
@@ -2579,6 +2581,7 @@ class ExecutionEngine:
             if variant.case.executor in {
                 "nsc_component_tests",
                 "nsc_component_tests_destructive",
+                "nsc_component_tests_source_extended",
             }:
                 status, detail, evidence = self._run_host(variant)
             elif variant.case.executor != "nsc_suite_controller+nsc":
@@ -2607,6 +2610,7 @@ class ExecutionEngine:
                 variant.case.executor in {
                     "nsc_component_tests",
                     "nsc_component_tests_destructive",
+                    "nsc_component_tests_source_extended",
                 }
                 and isinstance(oracle, dict)
                 and oracle.get("timeout_is_contract_failure") is True
@@ -2637,10 +2641,8 @@ class ExecutionEngine:
 
     def _run_host(self, variant: RunVariant) -> tuple[str, str, str]:
         """Run one consolidated C++ host case and validate its JSON envelope."""
-        executable = (
-            destructive_host_executable(self.config, variant.build_mode)
-            if variant.case.executor == "nsc_component_tests_destructive"
-            else host_executable(self.config, variant.build_mode)
+        executable = component_test_executable(
+            self.config, variant.build_mode, variant.case.executor
         )
         if not executable.is_file():
             return "INFRASTRUCTURE_ERROR", f"host executable does not exist: {executable}", ""

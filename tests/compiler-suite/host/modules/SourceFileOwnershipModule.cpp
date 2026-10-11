@@ -16,6 +16,7 @@ namespace nsc::suite
 // Registers SourceFile ownership cases, including the real 32-bit saturation boundary.
 void registerSourceFileOwnershipModule(TestRegistry& registry)
 {
+#if !defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
     registry.add(TestCase{
         "TS-SRC-003",
         "CS-SRC-002",
@@ -123,6 +124,8 @@ void registerSourceFileOwnershipModule(TestRegistry& registry)
             context.expect(firstBuffer == bytes, "buffer view must preserve owned bytes");
         },
     });
+#endif
+#if defined(NSC_SOURCE_EXTENDED_TESTS_ENABLED)
     registry.add(TestCase{
         "TS-SRC-008",
         "CS-SRC-002",
@@ -145,5 +148,6 @@ void registerSourceFileOwnershipModule(TestRegistry& registry)
                 "TS-SRC-008 SourceFile::size must saturate at UINT32_MAX");
         },
     });
+#endif
 }
 }

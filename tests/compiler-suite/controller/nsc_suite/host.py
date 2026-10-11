@@ -18,7 +18,11 @@ class HostExecutor:
     ) -> None:
         if not command or any(not part for part in command):
             raise ValueError("host executor command cannot be empty")
-        if executor not in {"nsc_component_tests", "nsc_component_tests_destructive"}:
+        if executor not in {
+            "nsc_component_tests",
+            "nsc_component_tests_destructive",
+            "nsc_component_tests_source_extended",
+        }:
             raise ValueError(f"unsupported host executor identity: {executor}")
         self.command = command
         self.executor = executor

@@ -129,6 +129,7 @@ class Builder3CommandTests(unittest.TestCase):
                     "--target",
                     "nsc_component_tests",
                     "nsc_component_tests_destructive",
+                    "nsc_component_tests_source_extended",
                     "--parallel",
                     "12",
                 ],

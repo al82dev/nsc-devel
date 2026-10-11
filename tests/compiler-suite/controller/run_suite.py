@@ -34,6 +34,7 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument("--contracts", type=Path, required=True)
     parser.add_argument("--host-executable", type=Path)
     parser.add_argument("--destructive-host-executable", type=Path)
+    parser.add_argument("--source-extended-host-executable", type=Path)
     parser.add_argument("--nsc-executable", type=Path)
     parser.add_argument("--comparison-nsc-executable", type=Path)
     parser.add_argument("--build-id-header", type=Path)
@@ -71,6 +72,7 @@ def run(arguments: list[str]) -> int:
     supported_executors = {
         "nsc_component_tests",
         "nsc_component_tests_destructive",
+        "nsc_component_tests_source_extended",
         "nsc_suite_controller+nsc",
     }
     unsupported = tuple(
@@ -101,6 +103,20 @@ def run(arguments: list[str]) -> int:
                 "nsc_component_tests_destructive",
                 str(destructive_host),
                 _sha256(destructive_host),
+            )
+        )
+    if "nsc_component_tests_source_extended" in required_executors:
+        source_extended_host = _required_file(
+            options.source_extended_host_executable, "source extended host executable"
+        )
+        executors["nsc_component_tests_source_extended"] = HostExecutor(
+            (str(source_extended_host),), "nsc_component_tests_source_extended"
+        )
+        tools.append(
+            ToolIdentity(
+                "nsc_component_tests_source_extended",
+                str(source_extended_host),
+                _sha256(source_extended_host),
             )
         )
     if "nsc_suite_controller+nsc" in required_executors:

@@ -40,6 +40,7 @@ class Builder3DispatchTests(unittest.TestCase):
         if case.executor in {
             "nsc_component_tests",
             "nsc_component_tests_destructive",
+            "nsc_component_tests_source_extended",
         }:
             return "host"
         if case.executor != "nsc_suite_controller+nsc":

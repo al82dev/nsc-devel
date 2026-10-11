@@ -90,7 +90,12 @@ def external_inventory_rows(
     )
     unsupported = sorted(
         {case.executor for case in manifests}
-        - {"nsc_component_tests", "nsc_component_tests_destructive", EXTERNAL_EXECUTOR}
+        - {
+            "nsc_component_tests",
+            "nsc_component_tests_destructive",
+            "nsc_component_tests_source_extended",
+            EXTERNAL_EXECUTOR,
+        }
     )
     if unsupported:
         raise RuntimeError(
@@ -126,12 +131,14 @@ def validate_inventory_partition(
     expected: tuple[RegistryRow, ...],
     ordinary: tuple[RegistryRow, ...],
     destructive: tuple[RegistryRow, ...],
+    source_extended: tuple[RegistryRow, ...],
     pending: tuple[RegistryRow, ...],
     external: tuple[RegistryRow, ...],
 ) -> None:
     surfaces = {
         "ordinary": ordinary,
         "destructive": destructive,
+        "source-extended": source_extended,
         "pending": pending,
         "external": external,
     }
@@ -188,6 +195,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
     parser.add_argument("--destructive-host-executable", type=Path, required=True)
+    parser.add_argument("--source-extended-host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
@@ -195,11 +203,14 @@ def main() -> int:
     expected = expected_registry_rows(options.repository_root, options.source_root)
     ordinary = listed_registry_rows(options.host_executable, "--list")
     destructive = listed_registry_rows(options.destructive_host_executable, "--list")
+    source_extended = listed_registry_rows(options.source_extended_host_executable, "--list")
     pending = listed_registry_rows(options.host_executable, "--list-pending")
     external = external_inventory_rows(
         options.repository_root, options.source_root, expected
     )
-    validate_inventory_partition(expected, ordinary, destructive, pending, external)
+    validate_inventory_partition(
+        expected, ordinary, destructive, source_extended, pending, external
+    )
     return 0
 
 

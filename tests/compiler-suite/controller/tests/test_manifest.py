@@ -84,6 +84,12 @@ class ManifestTests(unittest.TestCase):
         invalid["expected_outcome"] = "SKIP"
         self.assert_manifest_error([invalid], "invalid expected_outcome")
 
+    def test_accepts_the_isolated_source_executor_as_a_host_boundary(self) -> None:
+        extended = valid_case()
+        extended["executor"] = "nsc_component_tests_source_extended"
+        loaded = load_manifest(self.write_manifest([extended]), self.inventory)
+        self.assertEqual(loaded[0].executor, "nsc_component_tests_source_extended")
+
     def test_abnormal_termination_requires_an_exact_known_defect_contract(self) -> None:
         known = valid_case()
         known["expected_outcome"] = "KNOWN_FAILURE"

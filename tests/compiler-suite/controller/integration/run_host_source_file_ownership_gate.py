@@ -18,19 +18,24 @@ from selfhost_inventory import (
 )
 
 
-def read_registered_source_ids(host_executable: Path) -> list[str]:
-    completed = subprocess.run(
-        [str(host_executable), "--list"],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return sorted(
-        line.split("\t", 1)[0]
-        for line in completed.stdout.splitlines()
-        if "\tHost.Source" in line
-    )
+def read_registered_source_ids(
+    registry_surfaces: tuple[tuple[Path, str], ...]
+) -> list[str]:
+    case_ids: list[str] = []
+    for host_executable, selector in registry_surfaces:
+        completed = subprocess.run(
+            [str(host_executable), selector],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        case_ids.extend(
+            line.split("\t", 1)[0]
+            for line in completed.stdout.splitlines()
+            if "\tHost.Source" in line
+        )
+    return sorted(case_ids)
 
 
 def main() -> int:
@@ -38,6 +43,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
+    parser.add_argument("--source-extended-host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--work-parent", type=Path, required=True)
@@ -69,7 +75,13 @@ def main() -> int:
         classification_path,
         frozenset({"InfrastructurePending"}),
     )
-    if read_registered_source_ids(options.host_executable) != sorted(
+    if read_registered_source_ids(
+        (
+            (options.host_executable, "--list"),
+            (options.source_extended_host_executable, "--list"),
+            (options.host_executable, "--list-pending"),
+        )
+    ) != sorted(
         component_inventory.case_ids
     ):
         raise RuntimeError(
@@ -85,6 +97,8 @@ def main() -> int:
                 "--components", str(inventory_root / "components.csv"),
                 "--contracts", str(inventory_root / "contracts.csv"),
                 "--host-executable", str(options.host_executable),
+                "--source-extended-host-executable",
+                str(options.source_extended_host_executable),
                 "--work-root", str(root),
                 "--run-id", "host-source-file-ownership",
                 "--revision", "phase-2-host-source-file-ownership",

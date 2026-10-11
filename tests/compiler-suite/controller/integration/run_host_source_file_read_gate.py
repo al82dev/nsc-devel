@@ -17,6 +17,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-executable", type=Path, required=True)
+    parser.add_argument("--source-extended-host-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--work-parent", type=Path, required=True)
@@ -34,6 +35,8 @@ def main() -> int:
                 "--components", str(inventory / "components.csv"),
                 "--contracts", str(inventory / "contracts.csv"),
                 "--host-executable", str(options.host_executable),
+                "--source-extended-host-executable",
+                str(options.source_extended_host_executable),
                 "--work-root", str(root),
                 "--run-id", "host-source-file-read",
                 "--revision", "phase-2-host-source-file-read",
