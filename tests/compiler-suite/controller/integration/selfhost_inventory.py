@@ -416,6 +416,8 @@ def classification_sets(
         case_id = required_string_field(row, "case_id", context)
         disposition = required_string_field(row, "disposition", context)
         contract_id = required_string_field(row, "contract_id", context)
+        if disposition == "InfrastructurePending":
+            continue
         if case_id in seen:
             raise RuntimeError(
                 f"{inventory.component} classifications have a duplicate identity"

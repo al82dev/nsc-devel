@@ -57,7 +57,7 @@ def validate_inventory(
         inventory,
         cases,
         path,
-        frozenset({"PlanContradiction", "InfrastructurePending"}),
+        frozenset({"PlanContradiction"}),
     )
     return inventory, classifications
 
@@ -99,7 +99,6 @@ def main() -> int:
     )
     inventory, classifications = validate_inventory(repository_root, cases)
     known_product_defects = classifications.get("KnownProductDefect", frozenset())
-    infrastructure_pending = classifications.get("InfrastructurePending", frozenset())
     plan_contradictions = classifications.get("PlanContradiction", frozenset())
     selected = [
         row
@@ -175,7 +174,6 @@ def main() -> int:
         "selected_executable": len(selected),
         "required": len(cases) - len(known_product_defects),
         "known_product_defects": len(known_product_defects),
-        "infrastructure_pending": len(infrastructure_pending),
         "plan_contradictions": len(plan_contradictions),
         "failures": failures,
         "results": results,

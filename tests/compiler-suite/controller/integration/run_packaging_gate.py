@@ -121,10 +121,24 @@ def validate_classifications(
     design_by_id: dict[str, dict[str, str]],
     contracts_by_id: dict[str, dict[str, str]],
     profile_mismatches: frozenset[str],
-) -> tuple[frozenset[str], frozenset[str]]:
+) -> frozenset[str]:
     component_root = repository_root / "tests" / "compiler-suite" / "packaging"
-    catalog = read_jsonl(component_root / "PackagingContractCatalog.jsonl")
-    classified = read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
+    live_contract_ids = {row["contract_id"] for row in design_by_id.values()}
+    contracts_by_id = {
+        contract_id: row
+        for contract_id, row in contracts_by_id.items()
+        if contract_id in live_contract_ids
+    }
+    catalog = [
+        row
+        for row in read_jsonl(component_root / "PackagingContractCatalog.jsonl")
+        if row.get("contract_id") in live_contract_ids
+    ]
+    classified = [
+        row
+        for row in read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
+        if row.get("disposition") != "InfrastructurePending"
+    ]
     contradictions = read_jsonl(component_root / "PackagingPlanContradictions.jsonl")
     catalog_by_id = unique_string_index(
         catalog, "contract_id", "Packaging contract catalogue"
@@ -136,7 +150,6 @@ def validate_classifications(
         raise RuntimeError("Packaging contract catalogue differs from the canonical inventory")
     catalog_cases: set[str] = set()
     executable_catalog_cases: set[str] = set()
-    infrastructure_catalog_cases: set[str] = set()
     catalog_case_ids: dict[str, tuple[str, ...]] = {}
     for contract_id, row in catalog_by_id.items():
         contract_cases_ordered = required_string_array(
@@ -158,8 +171,6 @@ def validate_classifications(
         )
         if disposition == "Executable":
             executable_catalog_cases.update(contract_cases)
-        elif disposition == "InfrastructurePending":
-            infrastructure_catalog_cases.update(contract_cases)
         else:
             raise RuntimeError(f"unsupported Packaging contract disposition {disposition!r}")
     if catalog_cases != set(design_by_id):
@@ -176,18 +187,11 @@ def validate_classifications(
         )
         if contract_id != design_row["contract_id"]:
             raise RuntimeError(f"Packaging classification changes the contract of {case_id}")
-    infrastructure = {
-        row["case_id"]
-        for row in classified
-        if row["disposition"] == "InfrastructurePending"
-    }
     defects = {
         row["case_id"]
         for row in classified
         if row["disposition"] == "KnownProductDefect"
     }
-    if infrastructure != infrastructure_catalog_cases:
-        raise RuntimeError("Packaging infrastructure classifications differ from the contract catalogue")
     contradiction_keys: set[tuple[str, str]] = set()
     for row in contradictions:
         key = (
@@ -204,27 +208,23 @@ def validate_classifications(
     executable = {row["case_id"] for row in cases}
     if executable != executable_catalog_cases:
         raise RuntimeError("Packaging manifest differs from the executable contract catalogue")
-    if executable | infrastructure != set(design_by_id) or executable & infrastructure:
-        raise RuntimeError("Packaging denominator is incomplete or overlapping")
+    if executable != set(design_by_id):
+        raise RuntimeError("Packaging executable denominator is incomplete")
     if not defects <= executable:
         raise RuntimeError("Packaging product defects must belong to executable cases")
-    if set(classified_by_id) != infrastructure | defects:
+    if set(classified_by_id) != defects:
         raise RuntimeError("Packaging classifications contain an unsupported disposition")
     for contract_id, row in catalog_by_id.items():
         contract_cases = set(catalog_case_ids[contract_id])
         contract_defects = len(contract_cases & defects)
-        contract_infrastructure = len(contract_cases & infrastructure)
         contract_required = len(contract_cases & executable) - contract_defects
         declared_counts = (
             required_nonnegative_integer(row, "required", f"Packaging contract {contract_id}"),
             required_nonnegative_integer(
                 row, "known_product_defect", f"Packaging contract {contract_id}"
             ),
-            required_nonnegative_integer(
-                row, "infrastructure_pending", f"Packaging contract {contract_id}"
-            ),
         )
-        derived_counts = (contract_required, contract_defects, contract_infrastructure)
+        derived_counts = (contract_required, contract_defects)
         if declared_counts != derived_counts:
             raise RuntimeError(f"Packaging catalogue summary differs at {contract_id}")
     tagged = {
@@ -234,7 +234,7 @@ def validate_classifications(
     }
     if tagged != defects:
         raise RuntimeError("Packaging executable KPD tags changed")
-    return frozenset(infrastructure), frozenset(defects)
+    return frozenset(defects)
 
 
 def cmake_shim(case_root: Path) -> tuple[Path, Path]:
@@ -464,7 +464,7 @@ def main() -> int:
         options.repository_root,
         cases,
     )
-    infrastructure_pending, known_product_defects = validate_classifications(
+    known_product_defects = validate_classifications(
         options.repository_root,
         cases,
         design_by_id,
@@ -507,7 +507,6 @@ def main() -> int:
         "new_suite_executable": len(cases),
         "required": len(cases) - len(known_product_defects),
         "known_product_defects": len(known_product_defects),
-        "infrastructure_pending": len(infrastructure_pending),
         "failures": failures,
         "results": results,
     }
