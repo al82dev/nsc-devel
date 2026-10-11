@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .manifest import CaseManifest, TIMEOUT_SECONDS
+from .manifest import CaseManifest
 from .oracle import compare_structured
 from .result import CaseResult, CaseStatus
 from .workspace import CaseWorkspace
@@ -76,12 +76,6 @@ class CompilerIdentityExecutor:
         started = time.monotonic()
         try:
             failures = self._execute_operation(operation, case, workspace)
-        except subprocess.TimeoutExpired as error:
-            return _infrastructure_error(
-                case.case_id,
-                f"compiler identity command timed out after {error.timeout} seconds",
-                time.monotonic() - started,
-            )
         except OSError as error:
             return _infrastructure_error(
                 case.case_id,
@@ -218,25 +212,15 @@ class CompilerIdentityExecutor:
             encoding="utf-8",
             newline="\n",
         )
-        try:
-            completed = subprocess.run(
-                full_command,
-                cwd=workspace.outputs,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                capture_output=True,
-                timeout=TIMEOUT_SECONDS[case.timeout_class],
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            workspace.logs.joinpath(f"{stem}.stdout.log").write_text(
-                _timeout_text(error.stdout), encoding="utf-8", newline="\n"
-            )
-            workspace.logs.joinpath(f"{stem}.stderr.log").write_text(
-                _timeout_text(error.stderr), encoding="utf-8", newline="\n"
-            )
-            raise
+        completed = subprocess.run(
+            full_command,
+            cwd=workspace.outputs,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+        )
         workspace.logs.joinpath(f"{stem}.stdout.log").write_text(
             completed.stdout, encoding="utf-8", newline="\n"
         )
@@ -299,14 +283,6 @@ def _compare(expected: dict[str, Any], actual: dict[str, Any]) -> tuple[str, ...
         f"{failure.path}: {failure.reason}; expected={failure.expected!r}; actual={failure.actual!r}"
         for failure in compare_structured(expected, actual)
     )
-
-
-def _timeout_text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
 
 
 def _infrastructure_error(

@@ -37,7 +37,6 @@ def case(
         build_modes=build_modes,
         optimizations=optimizations,
         isolation="in-process-reset",
-        timeout_class="tiny",
         tags=tags,
     )
 

@@ -48,7 +48,14 @@ class RegistryInventoryGateTests(unittest.TestCase):
         future = future_inventory_rows(SUITE_ROOT, expected)
         self.assertEqual(
             {row[0] for row in future},
-            {"TA-AST-017", "TS-SEMA-077", "TS-SEMA-094", "TS-SRC-049"},
+            {
+                "TA-AST-017",
+                "TA-AST-223",
+                "TA-AST-224",
+                "TS-SEMA-077",
+                "TS-SEMA-094",
+                "TS-SRC-049",
+            },
         )
 
     def test_partition_rejects_overlap_omission_and_changed_metadata(self) -> None:

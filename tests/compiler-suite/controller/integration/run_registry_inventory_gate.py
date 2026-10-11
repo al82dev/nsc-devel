@@ -257,7 +257,6 @@ def listed_registry_rows(
         encoding="utf-8",
         errors="replace",
         capture_output=True,
-        timeout=60,
         check=False,
     )
     if completed.returncode != 0:

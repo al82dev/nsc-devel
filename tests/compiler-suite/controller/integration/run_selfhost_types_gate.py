@@ -145,7 +145,7 @@ def main() -> int:
         case_root = work_root / "cases" / case_id
         case_root.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
-        completed = run_process([str(executable), case_id], case_root, environment, 180.0)
+        completed = run_process([str(executable), case_id], case_root, environment)
         duration = time.monotonic() - started
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)

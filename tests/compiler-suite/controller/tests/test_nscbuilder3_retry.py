@@ -26,7 +26,7 @@ def case(number: int) -> builder.CaseRecord:
         disposition="Executable",
         objective="project one terminal status",
         expected_outcome="PASS",
-        manifest={"timeout_class": "tiny"},
+        manifest={},
     )
 
 

@@ -93,7 +93,7 @@ class Builder3DispatchTests(unittest.TestCase):
             disposition="Executable",
             objective="reject an executor not implemented by Builder 3",
             expected_outcome="PASS",
-            manifest={"timeout_class": "tiny"},
+            manifest={},
         )
 
         outcome = self.engine._run_variant(builder.RunVariant(case, "Debug", "NA"))

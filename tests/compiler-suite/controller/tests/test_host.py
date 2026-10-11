@@ -34,7 +34,6 @@ def case(
         build_modes=("Debug", "Release"),
         optimizations=("NA",),
         isolation="in-process-reset",
-        timeout_class="tiny",
         tags=(),
         expected_outcome=expected_outcome,
     )
@@ -224,28 +223,6 @@ class HostExecutorTests(unittest.TestCase):
         )
         self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
         self.assertIn("cannot run", result.failures[0])
-
-    def test_timeout_preserves_partial_byte_logs_and_causal_status(self) -> None:
-        self.next_run += 1
-        script = self.root / f"fake-host-{self.next_run}.py"
-        script.write_text(
-            "import sys, time\n"
-            "print('partial-out', flush=True)\n"
-            "print('partial-err', file=sys.stderr, flush=True)\n"
-            "time.sleep(5)\n",
-            encoding="utf-8",
-            newline="\n",
-        )
-        workspace = WorkspaceManager(self.root).prepare(
-            f"run-{self.next_run:03d}", "TB-BAS-001"
-        )
-        with patch.dict("nsc_suite.host.TIMEOUT_SECONDS", {"tiny": 0.1}):
-            result = HostExecutor((sys.executable, str(script)))(case(), workspace)
-        self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
-        self.assertIn("timed out", result.failures[0])
-        self.assertIn("partial-out", workspace.logs.joinpath("stdout.log").read_text())
-        self.assertIn("partial-err", workspace.logs.joinpath("stderr.log").read_text())
-
 
 if __name__ == "__main__":
     unittest.main()

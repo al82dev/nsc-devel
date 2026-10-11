@@ -158,7 +158,7 @@ def main() -> int:
         prepare_case_files(case_root)
         started = time.monotonic()
         completed = run_process(
-            [str(executable), case_id, str(case_root)], case_root, environment, 180.0
+            [str(executable), case_id, str(case_root)], case_root, environment
         )
         duration = time.monotonic() - started
         write_text(case_root / "stdout.log", completed.stdout)

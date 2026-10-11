@@ -18,7 +18,6 @@
     "build_modes",
     "optimizations",
     "isolation",
-    "timeout_class",
     "tags"
   ],
   "properties": {
@@ -55,7 +54,6 @@
       "uniqueItems": true
     },
     "isolation": { "enum": ["in-process-reset", "temporary-directory"] },
-    "timeout_class": { "enum": ["tiny", "normal", "extended", "self-host", "packaging"] },
     "expected_outcome": { "enum": ["PASS", "KNOWN_FAILURE"] },
     "tags": {
       "type": "array",

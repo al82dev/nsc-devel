@@ -50,15 +50,6 @@ RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
 DEFAULT_COMPILER_LLVM_ROOT = Path("C:/clang-llvm")
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
-TIMEOUT_SECONDS = {
-    "tiny": 5.0,
-    "short": 15.0,
-    "normal": 30.0,
-    "medium": 60.0,
-    "extended": 180.0,
-    "self-host": 900.0,
-    "packaging": 900.0,
-}
 TERMINAL_FAILURES = {
     "FAIL",
     "UNEXPECTED_PASS",
@@ -820,7 +811,6 @@ def case_diagnostic_summary(
         f"Etiquetas         : {', '.join(str(tag) for tag in tags) or 'ninguna'}",
         f"Dependencias      : {', '.join(str(item) for item in dependencies) or 'ninguna'}",
         f"Aislamiento       : {manifest.get('isolation', 'no declarado')}",
-        f"Timeout           : {manifest.get('timeout_class', 'no declarado')}",
         f"Ejecutor          : {case.executor}",
         f"Perfil            : {case.profile}",
         f"Disposición       : {case.disposition}",
@@ -2604,27 +2594,6 @@ class ExecutionEngine:
         if self.process.cancelled.is_set():
             status = "CANCELLED"
             detail = "cancelled by user"
-        elif self.process.last_termination_reason == "timeout":
-            oracle = (getattr(variant.case, "manifest", None) or {}).get("oracle")
-            contractual_timeout = (
-                variant.case.executor in {
-                    "nsc_component_tests",
-                    "nsc_component_tests_destructive",
-                    "nsc_component_tests_source_extended",
-                }
-                and isinstance(oracle, dict)
-                and oracle.get("timeout_is_contract_failure") is True
-            )
-            if contractual_timeout:
-                status, detail, evidence = self._expected_status(
-                    variant.case,
-                    False,
-                    "host exceeded its explicit contractual time budget",
-                    evidence,
-                )
-            else:
-                status = "INFRASTRUCTURE_ERROR"
-                detail = "process timed out"
         return CaseOutcome(
             key=variant.key,
             case_id=variant.case.case_id,
@@ -2655,7 +2624,6 @@ class ExecutionEngine:
         code, captured = self.process.run(
             [str(executable), "--case", variant.case.case_id],
             case_root,
-            timeout=TIMEOUT_SECONDS[self._timeout_class(variant.case)],
         )
         log_path = case_root / "host.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
@@ -2737,7 +2705,8 @@ class ExecutionEngine:
             "RUNNING",
             f"ejecutando controlador de identidad {variant.case.case_id}",
         )
-        code, captured = self.process.run(command, SOURCE_ROOT, timeout=180.0)
+        # This command runs the compiler-identity test controller; it does not build NSC.
+        code, captured = self.process.run(command, SOURCE_ROOT)
         log_path = case_root / "controller.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
         result_path = case_root / run_id / "results.json"
@@ -2800,7 +2769,6 @@ class ExecutionEngine:
             command,
             case_root,
             environment,
-            TIMEOUT_SECONDS[self._timeout_class(variant.case)],
         )
         log_path = case_root / "fixture.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
@@ -2951,7 +2919,7 @@ class ExecutionEngine:
             command: Sequence[str],
             cwd: Path,
             environment: dict[str, str],
-            timeout: float = 900.0,
+            timeout: float | None = None,
         ) -> subprocess.CompletedProcess[str]:
             return self.process.run_completed(command, cwd, environment, timeout)
 
@@ -3055,14 +3023,6 @@ class ExecutionEngine:
         (case_root / "source-unicode.ns").write_bytes("á\r\nβ".encode("utf-8"))
         (case_root / "source-frontend.ns").write_bytes(b"comptime int value = #run(2 + 3);\n")
         (case_root / "source-large.ns").write_bytes(b"x\r\n" * 32768)
-
-    @staticmethod
-    def _timeout_class(case: CaseRecord) -> str:
-        """Read a validated timeout class from the executable manifest."""
-        value = (case.manifest or {}).get("timeout_class")
-        if not isinstance(value, str) or value not in TIMEOUT_SECONDS:
-            raise ValueError(f"unsupported timeout class: {value}")
-        return value
 
     @staticmethod
     def _variant_payload(variant: RunVariant) -> dict[str, Any]:

@@ -8,7 +8,6 @@
 #endif
 #include <Windows.h>
 
-#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,7 +21,6 @@ namespace nsc::suite::isolated_process_support
 struct Result
 {
     bool started = false;
-    bool timedOut = false;
     DWORD exitCode = 0;
     std::string output;
     std::string error;
@@ -116,10 +114,9 @@ inline std::string probeMode()
 }
 
 // Starts a fresh copy of the component-test executable for a single case.  A reader thread
-// drains the shared stdout/stderr pipe while the process runs, so a sanitizer report cannot
-// fill the pipe and turn a death test into an accidental timeout.
+// drains the shared stdout/stderr pipe while the process runs. Execution has no automatic
+// deadline; cancellation is owned by the outer controller and terminates the process tree.
 inline Result runCurrentExecutable(std::string_view caseId, std::string_view probe,
-    std::chrono::milliseconds timeout,
     const std::vector<std::pair<std::wstring, std::wstring>>& environment = {})
 {
     Result result;
@@ -194,14 +191,8 @@ inline Result runCurrentExecutable(std::string_view caseId, std::string_view pro
         CloseHandle(readPipe);
     });
 
-    const DWORD wait = WaitForSingleObject(process.hProcess, static_cast<DWORD>(timeout.count()));
-    if (wait == WAIT_TIMEOUT)
-    {
-        result.timedOut = true;
-        TerminateProcess(process.hProcess, 0xEE);
-        WaitForSingleObject(process.hProcess, INFINITE);
-    }
-    else if (wait == WAIT_FAILED)
+    const DWORD wait = WaitForSingleObject(process.hProcess, INFINITE);
+    if (wait == WAIT_FAILED)
     {
         result.error = "WaitForSingleObject failed: " + std::to_string(GetLastError());
         TerminateProcess(process.hProcess, 0xEF);

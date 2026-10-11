@@ -39,14 +39,13 @@ inline bool isAsanProbeProcess() noexcept
 struct AsanSubprocessResult final
 {
     bool launched = false;
-    bool timedOut = false;
     DWORD exitCode = 0;
     std::string output;
     std::string error;
 };
 
-// Runs one case in the current test executable, captures both output streams, and bounds the
-// sanitizer probe. The environment marker exists only while CreateProcess takes its snapshot.
+// Runs one case in the current test executable and captures both output streams. The outer
+// controller owns cancellation; this helper never terminates a test because time elapsed.
 inline AsanSubprocessResult runAsanProbe(std::string_view caseId)
 {
     AsanSubprocessResult result;
@@ -121,18 +120,9 @@ inline AsanSubprocessResult runAsanProbe(std::string_view caseId)
             result.output.append(chunk.data(), bytes);
         }
     };
-    DWORD wait = WAIT_TIMEOUT;
-    for (unsigned iteration = 0; iteration < 1200 && wait == WAIT_TIMEOUT; ++iteration)
-    {
-        drainAvailable();
-        wait = WaitForSingleObject(process.hProcess, 50);
-    }
-    if (wait == WAIT_TIMEOUT)
-    {
-        result.timedOut = true;
-        TerminateProcess(process.hProcess, 0x54534F55U);
-        WaitForSingleObject(process.hProcess, 5000);
-    }
+    const DWORD wait = WaitForSingleObject(process.hProcess, INFINITE);
+    if (wait == WAIT_FAILED)
+        result.error = "cannot wait for sanitizer probe";
     if (!GetExitCodeProcess(process.hProcess, &result.exitCode))
         result.error = "cannot read sanitizer probe exit code";
     CloseHandle(process.hProcess);

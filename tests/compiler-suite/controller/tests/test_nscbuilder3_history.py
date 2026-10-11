@@ -110,7 +110,6 @@ class Builder3HistoryTests(unittest.TestCase):
                         "isolation": "in-process-reset",
                         "oracle": {"value": 7},
                         "tags": ["history", "detail"],
-                        "timeout_class": "tiny",
                     },
                 ),
                 builder.CaseRecord(
@@ -254,7 +253,7 @@ class Builder3HistoryTests(unittest.TestCase):
             disposition="Executable",
             objective="preserve completion order",
             expected_outcome="PASS",
-            manifest={"timeout_class": "tiny"},
+            manifest={},
         )
         catalog = builder.CanonicalCatalog((first, second))
         metadata = self._metadata()

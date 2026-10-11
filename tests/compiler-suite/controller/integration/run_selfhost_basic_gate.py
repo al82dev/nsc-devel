@@ -119,7 +119,7 @@ def main() -> int:
     for row in selected:
         case_id = str(row["case_id"])
         started = time.monotonic()
-        completed = run_process([str(executable), case_id], work_root, environment, 180.0)
+        completed = run_process([str(executable), case_id], work_root, environment)
         duration = time.monotonic() - started
         case_root = work_root / "cases" / case_id
         write_text(case_root / "stdout.log", completed.stdout)

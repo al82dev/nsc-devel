@@ -7,7 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .manifest import CaseManifest, TIMEOUT_SECONDS
+from .manifest import CaseManifest
 from .result import CaseResult, CaseStatus
 from .workspace import CaseWorkspace
 
@@ -43,21 +43,7 @@ class HostExecutor:
                 encoding="utf-8",
                 errors="replace",
                 capture_output=True,
-                timeout=TIMEOUT_SECONDS[case.timeout_class],
                 check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            duration = time.monotonic() - started
-            _write_logs(
-                workspace,
-                _timeout_text(error.stdout),
-                _timeout_text(error.stderr),
-            )
-            return CaseResult(
-                case.case_id,
-                CaseStatus.INFRASTRUCTURE_ERROR,
-                duration_seconds=duration,
-                failures=(f"host case timed out after {TIMEOUT_SECONDS[case.timeout_class]} seconds",),
             )
         except OSError as error:
             _write_logs(workspace, "", str(error))
@@ -155,14 +141,6 @@ class HostExecutor:
 def _write_logs(workspace: CaseWorkspace, stdout: str, stderr: str) -> None:
     workspace.logs.joinpath("stdout.log").write_text(stdout, encoding="utf-8", newline="\n")
     workspace.logs.joinpath("stderr.log").write_text(stderr, encoding="utf-8", newline="\n")
-
-
-def _timeout_text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
 
 
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

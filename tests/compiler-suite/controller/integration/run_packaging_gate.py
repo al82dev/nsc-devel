@@ -27,7 +27,7 @@ def write_text(path: Path, value: str) -> None:
 
 
 def run_process(
-    command: list[str], cwd: Path, environment: dict[str, str], timeout: float = 900.0
+    command: list[str], cwd: Path, environment: dict[str, str], timeout: float | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,

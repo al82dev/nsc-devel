@@ -83,7 +83,6 @@ class ManifestTagBoundaryTests(unittest.TestCase):
             ("build_modes", "Release", "build_modes must be an array"),
             ("optimizations", "O0", "optimizations must be an array"),
             ("isolation", [], "isolation must be a non-empty string"),
-            ("timeout_class", [], "timeout_class must be a non-empty string"),
             ("expected_outcome", "INVALID", "invalid expected_outcome"),
             ("unknown_field", True, "unknown fields"),
         )

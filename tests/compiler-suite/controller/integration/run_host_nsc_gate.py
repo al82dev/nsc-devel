@@ -16,7 +16,6 @@ def listed_nsc_cases(host_executable: Path) -> list[tuple[str, str]]:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
-        timeout=30,
         check=False,
     )
     if completed.returncode != 0:
@@ -39,7 +38,6 @@ def assert_no_required_nsc_cases(host_executable: Path) -> None:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
-        timeout=30,
         check=False,
     )
     expected = "component has no test cases: Host.nsc"

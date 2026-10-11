@@ -40,7 +40,6 @@ def case(case_id: str, expected_outcome: str = "PASS") -> CaseManifest:
         build_modes=("Debug", "Release"),
         optimizations=("NA",),
         isolation="in-process-reset",
-        timeout_class="tiny",
         tags=("foundation",),
         expected_outcome=expected_outcome,
     )

@@ -32,7 +32,6 @@ def case(case_id: str, dependencies: tuple[str, ...] = ()) -> CaseManifest:
         build_modes=("Debug",),
         optimizations=("NA",),
         isolation="in-process-reset",
-        timeout_class="tiny",
         tags=(),
     )
 

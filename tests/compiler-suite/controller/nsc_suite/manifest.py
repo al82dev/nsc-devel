@@ -27,7 +27,6 @@ REQUIRED_FIELDS = frozenset(
         "build_modes",
         "optimizations",
         "isolation",
-        "timeout_class",
         "tags",
     }
 )
@@ -79,16 +78,6 @@ HOST_ISOLATIONS = frozenset(
     {"in-process-reset", "temporary-directory", "filesystem-temp", "subprocess"}
 )
 ISOLATIONS = HOST_ISOLATIONS
-TIMEOUT_SECONDS = {
-    "tiny": 5.0,
-    "short": 15.0,
-    "normal": 30.0,
-    "medium": 60.0,
-    "extended": 180.0,
-    "self-host": 900.0,
-    "packaging": 900.0,
-}
-TIMEOUT_CLASSES = frozenset(TIMEOUT_SECONDS)
 EXPECTED_OUTCOMES = frozenset({"PASS", "KNOWN_FAILURE"})
 
 
@@ -134,7 +123,6 @@ class CaseManifest:
     build_modes: tuple[str, ...]
     optimizations: tuple[str, ...]
     isolation: str
-    timeout_class: str
     tags: tuple[str, ...]
     expected_outcome: str = "PASS"
 
@@ -221,7 +209,6 @@ def _parse_case(
     layer = _enum(payload, "layer", LAYERS, location)
     profile = _enum(payload, "profile", PROFILES, location)
     isolation = _enum(payload, "isolation", ISOLATIONS, location)
-    timeout_class = _enum(payload, "timeout_class", TIMEOUT_CLASSES, location)
     inputs = _object(payload, "inputs", location, allow_empty=True)
     oracle = _object(payload, "oracle", location, allow_empty=False)
     dependencies = _string_array(payload, "dependencies", location, allow_empty=True)
@@ -266,23 +253,6 @@ def _parse_case(
             raise ManifestError(
                 f"invalid abnormal termination output_contains at {location}"
             )
-    timeout_is_contract_failure = oracle.get("timeout_is_contract_failure")
-    if timeout_is_contract_failure is not None:
-        if timeout_is_contract_failure is not True:
-            raise ManifestError(
-                f"timeout_is_contract_failure must be true at {location}"
-            )
-        if (
-            executor not in HOST_EXECUTORS
-            or profile != "NIGHTLY"
-            or case_class != "boundary"
-            or timeout_class != "extended"
-        ):
-            raise ManifestError(
-                "timeout_is_contract_failure requires a NIGHTLY host boundary "
-                f"with extended timeout at {location}"
-            )
-
     if executor in HOST_EXECUTORS:
         if isolation not in HOST_ISOLATIONS:
             raise ManifestError(f"host case has invalid isolation at {location}")
@@ -310,7 +280,6 @@ def _parse_case(
         build_modes=build_modes,
         optimizations=optimizations,
         isolation=isolation,
-        timeout_class=timeout_class,
         tags=tags,
         expected_outcome=expected_outcome,
     )

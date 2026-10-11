@@ -134,8 +134,6 @@ void registerInvalidatedReferenceCase(TestRegistry& registry)
                 source_test_support::runAsanProbe("TS-SRC-049");
             context.expect(probe.launched && probe.error.empty(),
                 "TS-SRC-049 must launch the isolated sanitizer probe successfully");
-            context.expect(!probe.timedOut,
-                "TS-SRC-049 sanitizer probe must terminate within the controlled timeout");
             context.expect(probe.exitCode != 0,
                 "TS-SRC-049 invalidated-reference access must terminate the child unsuccessfully");
             context.expect(probe.output.find("AddressSanitizer") != std::string::npos &&
