@@ -205,7 +205,7 @@ void blockVerifierOracle(TestContext& context, std::size_t variant)
     {
         expectCompiledValid(context, "mir-block-verifier",
             variant == 6 ? "int Main() { if (true) return 1; return 0; }" :
-                           "int Main() { int i = 0; while (i < 4) i++; return i; }");
+                           "int Main() { int i = 0; while (i < 4) { i++; } return i; }");
     }
 }
 
