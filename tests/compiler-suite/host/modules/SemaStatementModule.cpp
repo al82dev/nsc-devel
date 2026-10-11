@@ -17,6 +17,13 @@ Scenario bad(std::string label, std::string source, DiagnosticId id)
 {
     return {std::move(label), std::move(source), false, false, {{id, {}}}, {}};
 }
+
+Scenario badMany(std::string label, std::string source, std::initializer_list<DiagnosticId> ids)
+{
+    Scenario scenario{std::move(label), std::move(source), false, false, {}, {}};
+    for (DiagnosticId id : ids) scenario.diagnostics.push_back({id, {}});
+    return scenario;
+}
 }
 
 // Registers CS-SEMA-017 statement, control-flow, and context-restoration contracts.
@@ -68,15 +75,15 @@ void registerSemaStatementModule(TestRegistry& registry)
         bad("runtime", "int F(int x){static_assert(x==1);return 0;}", DiagnosticId::ConstRequiresConstant),
     });
     addCase(registry, "TS-SEMA-157", "CS-SEMA-017", {
-        bad("unavailable", "int F(){asm { \"nop\" } return 0;}", DiagnosticId::InlineAssemblyNotAvailable),
-        bad("constraint", "int F(){int x=0;asm(\"nop\" : \"?\"(x));return 0;}",
-            DiagnosticId::InvalidInlineAssemblyConstraint),
+        bad("unavailable", "int F(){asm { nop } return 0;}", DiagnosticId::InlineAssemblyNotAvailable),
+        badMany("constraint", "int F(){int x=0;asm { nop } in(x : \"i\");return 0;}",
+            {DiagnosticId::InvalidInlineAssemblyConstraint, DiagnosticId::InlineAssemblyNotAvailable}),
     });
     addCase(registry, "TS-SEMA-158", "CS-SEMA-017", {
-        bad("modifiable", "int F(){int x=0;asm(\"nop\" : \"=r\"(x));return x;}",
+        bad("modifiable", "int F(){int x=0;asm { nop } out(x : \"=r\");return x;}",
             DiagnosticId::InlineAssemblyNotAvailable),
-        bad("constant", "int F(){asm(\"nop\" : \"=r\"(1));return 0;}",
-            DiagnosticId::InvalidAssignmentTarget),
+        badMany("constant", "int F(){asm { nop } out(1 : \"=r\");return 0;}",
+            {DiagnosticId::InvalidAssignmentTarget, DiagnosticId::InlineAssemblyNotAvailable}),
     });
     addCase(registry, "TS-SEMA-159", "CS-SEMA-017", {
         ok("expression", "int F(){int x=1;x+2;return x;}"),

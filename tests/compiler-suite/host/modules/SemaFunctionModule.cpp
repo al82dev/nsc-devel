@@ -56,7 +56,7 @@ void registerSemaFunctionModule(TestRegistry& registry)
             DiagnosticId::DuplicateFunctionDefinition),
     });
     addCase(registry, "TS-SEMA-128", "CS-SEMA-015", {
-        bad("extern-body", "extern C int F(){return 0;}", DiagnosticId::InvalidType,
+        bad("extern-body", "extern C { int F(){return 0;} }", DiagnosticId::InvalidType,
             "extern C functions cannot have a body in NativeSharp 2.0"),
     });
     addCase(registry, "TS-SEMA-129", "CS-SEMA-015", {
@@ -86,7 +86,7 @@ void registerSemaFunctionModule(TestRegistry& registry)
         ok("scope", "int F(int x){ { int y=x; } return x; } int G(){int x=2;return x;}", {"F", "G"}),
     });
     addCase(registry, "TS-SEMA-135", "CS-SEMA-015", {
-        bad("extern-text", "extern C int F(){return 0;}", DiagnosticId::InvalidType,
+        bad("extern-text", "extern C { int F(){return 0;} }", DiagnosticId::InvalidType,
             "NativeSharp 2.0"),
         bad("main-text", "int Main(int x){return x;}", DiagnosticId::InvalidMainSignature,
             "NativeSharp 2.0 Main"),

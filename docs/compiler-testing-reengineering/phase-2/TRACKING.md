@@ -1605,3 +1605,8 @@ Validacion 227 alinea `TS-SEMA-167` y `193` con la frontera real del frontend:
 un error lexico corta antes del parser y por contrato no publica AST. No se
 modifico producto ni se ejecutaron pruebas. Evidencia:
 `TANDA-VALIDACION-227-SEMA-FRONTERA-LEXICA.md`.
+
+Validacion 228 actualiza los fixtures de `TS-SEMA-128`, `135`, `157` y `158`
+a las formas vigentes de bloques extern C e inline asm, con la secuencia
+diagnostica completa. No se modifico producto ni se ejecutaron pruebas.
+Evidencia: `TANDA-VALIDACION-228-SEMA-FIXTURES-EXTERN-ASM.md`.
