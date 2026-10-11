@@ -9,9 +9,12 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
+#include <algorithm>
 #include <array>
+#include <initializer_list>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace nsc::suite
 {
@@ -40,6 +43,277 @@ namespace Suite
     }
 }
 )ns";
+}
+
+std::string nominalGenericInferenceSource()
+{
+    return R"ns(
+namespace Suite
+{
+    public class Algorithms
+    {
+        public static T Identity<T>(T value) { return value; }
+    }
+    public class Program
+    {
+        public static int Run()
+        {
+            int explicitValue = Algorithms.Identity<int>(1);
+            int inferredValue = Algorithms.Identity(2);
+            return explicitValue + inferredValue;
+        }
+    }
+}
+)ns";
+}
+
+std::string genericInferenceMatrixSource()
+{
+    return R"ns(
+namespace Suite
+{
+    public delegate int Mapper<T>(T value);
+    public struct Box<T> { public T Value; }
+    public class Algorithms
+    {
+        public static T Identity<T>(T value) { return value; }
+        public static T Make<T>() { return default(T); }
+        public static T First<T>(T[] values) { return values[0]; }
+        public static T Unbox<T>(Box<T> value) { return value.Value; }
+        public static int Apply<T>(Mapper<T> mapper) { return mapper(default(T)); }
+        public static int PackCount<pack Ts>() { return packcount(Ts); }
+    }
+    public class Program
+    {
+        public static int Run()
+        {
+            int inferred = Algorithms.Identity(1);
+            long explicitValue = Algorithms.Identity<long>(2);
+            int expected = Algorithms.Make();
+            int[] values = new int[1];
+            values[0] = 3;
+            int arrayElement = Algorithms.First(values);
+            Box<int> box;
+            box.Value = 4;
+            int nested = Algorithms.Unbox(box);
+            int lambda = Algorithms.Apply((int value) => value);
+            int emptyPack = Algorithms.PackCount<>();
+            int typePack = Algorithms.PackCount<int, long>();
+            delete[] values;
+            return inferred + (int)explicitValue + expected + arrayElement + nested +
+                lambda + emptyPack + typePack;
+        }
+    }
+}
+)ns";
+}
+
+std::string genericInferenceBoundarySource()
+{
+    return R"ns(
+namespace Suite
+{
+    public struct Fixed<T, const int N>
+    {
+        public int Count() { return N; }
+    }
+    public class Algorithms
+    {
+        public static int PackCount<pack Ts>() { return packcount(Ts); }
+    }
+    public class Program
+    {
+        public Fixed<int, 0> Minimum;
+        public Fixed<int, 1> Adjacent;
+        public static int Run()
+        {
+            int emptyPack = Algorithms.PackCount<>();
+            int oneType = Algorithms.PackCount<int>();
+            int twoTypes = Algorithms.PackCount<int, long>();
+            return emptyPack + oneType + twoTypes;
+        }
+    }
+}
+)ns";
+}
+
+std::string genericInferencePackBoundarySource(std::size_t argumentCount)
+{
+    std::string source =
+        "class Program\n"
+        "{\n"
+        "    private static int PackCount<pack Ts>() { return packcount(Ts); }\n"
+        "    public static int Main() { return PackCount<";
+    for (std::size_t index = 0; index < argumentCount; ++index)
+    {
+        if (index != 0) source += ", ";
+        source += "int";
+    }
+    source += ">(); }\n}\n";
+    return source;
+}
+
+std::string genericInferenceScaleSource()
+{
+    constexpr std::size_t fanout = 32;
+    constexpr std::size_t depth = 16;
+    std::string source =
+        "namespace Suite\n"
+        "{\n"
+        "    public struct Box<T> { public T Value; }\n";
+    for (std::size_t index = 0; index < fanout; ++index)
+    {
+        source += "    public struct Item" + std::to_string(index) +
+            " { public int Value; }\n";
+    }
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "    public struct Layer" + std::to_string(index) + "<T> { public ";
+        if (index + 1 == depth)
+            source += "T Value; }\n";
+        else
+            source += "Layer" + std::to_string(index + 1) + "<T> Next; }\n";
+    }
+    source += "    public class Program\n    {\n";
+    for (std::size_t index = 0; index < fanout; ++index)
+    {
+        source += "        public Box<Item" + std::to_string(index) + "> Field" +
+            std::to_string(index) + ";\n";
+    }
+    source +=
+        "        public Layer0<int> Deep;\n"
+        "        public static int Run() { return 0; }\n"
+        "    }\n"
+        "}\n";
+    return source;
+}
+
+const GenericSpecializationRecord* specializationNamed(
+    const ProjectGenericModel& model,
+    std::string_view name)
+{
+    for (const GenericSpecializationRecord& record : model.specializations())
+    {
+        if (record.specializationKey.find(name) != std::string::npos) return &record;
+    }
+    return nullptr;
+}
+
+std::size_t specializationCountNamed(
+    const ProjectGenericModel& model,
+    std::string_view name)
+{
+    std::size_t count = 0;
+    for (const GenericSpecializationRecord& record : model.specializations())
+    {
+        if (record.specializationKey.find(name) != std::string::npos) ++count;
+    }
+    return count;
+}
+
+bool hasSpecializationArguments(
+    const ProjectGenericModel& model,
+    std::string_view name,
+    std::initializer_list<std::string_view> arguments)
+{
+    for (const GenericSpecializationRecord& record : model.specializations())
+    {
+        if (record.specializationKey.find(name) == std::string::npos ||
+            record.typeArguments.size() != arguments.size())
+            continue;
+        bool equal = true;
+        std::size_t index = 0;
+        for (std::string_view argument : arguments)
+        {
+            if (record.typeArguments[index++] != argument)
+            {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) return true;
+    }
+    return false;
+}
+
+bool hasConstSpecializationArguments(
+    const ProjectGenericModel& model,
+    std::string_view name,
+    std::string_view typeArgument,
+    std::string_view constValue)
+{
+    const std::string suffix = "=" + std::string(constValue);
+    for (const GenericSpecializationRecord& record : model.specializations())
+    {
+        if (record.specializationKey.find(name) != std::string::npos &&
+            record.typeArguments.size() == 2 &&
+            record.typeArguments[0] == typeArgument &&
+            record.typeArguments[1].starts_with("const:") &&
+            record.typeArguments[1].ends_with(suffix))
+            return true;
+    }
+    return false;
+}
+
+struct GenericObservation final
+{
+    bool completed = false;
+    std::string dump;
+    std::vector<std::string> signatures;
+};
+
+GenericObservation observeGenericProject(
+    TestContext& context,
+    std::string_view label,
+    std::string source)
+{
+    TemporaryProject fixture(label, std::move(source));
+    ProjectCompilation compilation;
+    std::string error;
+    GenericObservation observation;
+    observation.completed = compileTo(
+        compilation, ProjectStage::MethodBodies, fixture.projectFile(), error);
+    const std::string evidence = projectFailureEvidence(compilation, error);
+    context.expect(observation.completed,
+        "determinism fixture must reach method bodies; " + evidence);
+    context.expect(error.empty(),
+        "determinism fixture must not retain a load error; " + evidence);
+    if (!observation.completed || compilation.genericModel() == nullptr) return observation;
+
+    observation.dump = ProjectGenericModelDumper::dump(*compilation.genericModel());
+    for (const GenericSpecializationRecord& record : compilation.genericModel()->specializations())
+    {
+        std::string signature = record.specializationKey;
+        for (const std::string& argument : record.typeArguments)
+            signature += "|" + argument;
+        observation.signatures.push_back(std::move(signature));
+    }
+    std::sort(observation.signatures.begin(), observation.signatures.end());
+    return observation;
+}
+
+std::string deterministicGenericInferenceSource(bool permuted)
+{
+    const std::string calls = permuted ?
+        "            long second = Algorithms.Identity<long>(2);\n"
+        "            int first = Algorithms.Identity(1);\n" :
+        "            int first = Algorithms.Identity(1);\n"
+        "            long second = Algorithms.Identity<long>(2);\n";
+    return
+        "namespace Suite\n"
+        "{\n"
+        "    public class Algorithms\n"
+        "    {\n"
+        "        public static T Identity<T>(T value) { return value; }\n"
+        "    }\n"
+        "    public class Program\n"
+        "    {\n"
+        "        public static int Run()\n"
+        "        {\n" + calls +
+        "            return first + (int)second;\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
 }
 
 // Proves that generic discovery completed without synthesizing templates or
@@ -93,16 +367,159 @@ void genericDiscoveryOracle(TestContext& context, std::size_t variant)
 
 void genericInferenceOracle(TestContext& context, std::size_t variant)
 {
-    expectProjectStage(context, 21, variant, ProjectStage::MethodBodies, genericSource(),
-        [](TestContext& test, const ProjectCompilation& compilation)
+    if (variant == 6)
+    {
+        const std::string source = deterministicGenericInferenceSource(false);
+        const GenericObservation first = observeGenericProject(
+            context, "front-21-6-first", source);
+        const GenericObservation repeated = observeGenericProject(
+            context, "front-21-6-repeated", source);
+        const GenericObservation permuted = observeGenericProject(
+            context, "front-21-6-permuted", deterministicGenericInferenceSource(true));
+        if (first.completed && repeated.completed && permuted.completed)
         {
-            test.expect(compilation.genericModel() != nullptr && compilation.methodBodyModel() != nullptr,
+            context.expect(first.dump == repeated.dump,
+                "the same generic input must produce a byte-identical model dump");
+            context.expect(first.signatures == permuted.signatures,
+                "permuting independent generic calls must preserve normalized specialization identities");
+        }
+        return;
+    }
+
+    std::string source = nominalGenericInferenceSource();
+    if (variant == 1)
+        source = genericInferenceMatrixSource();
+    else if (variant == 3)
+        source = genericInferenceBoundarySource();
+    else if (variant == 7)
+        source = genericInferenceScaleSource();
+
+    expectProjectStage(context, 21, variant, ProjectStage::MethodBodies, std::move(source),
+        [variant](TestContext& test, const ProjectCompilation& compilation)
+        {
+            const ProjectGenericModel* model = compilation.genericModel();
+            const ProjectMethodBodyModel* methodModel = compilation.methodBodyModel();
+            test.expect(model != nullptr && methodModel != nullptr,
                 "generic inference must retain specialization and analyzed callable models");
-            const std::string dump = ProjectGenericModelDumper::dump(*compilation.genericModel());
-            test.expect(dump.find("builtin:int") != std::string::npos,
-                "explicit and inferred integer specializations must retain their substituted type");
+            if (model == nullptr || methodModel == nullptr) return;
+
+            if (variant == 0)
+            {
+                const GenericSpecializationRecord* identity =
+                    specializationNamed(*model, "Identity``1<int>");
+                test.expect(identity != nullptr,
+                    "explicit and inferred calls must materialize Identity<int>");
+                if (identity != nullptr)
+                {
+                    test.expect(identity->typeArguments.size() == 1 &&
+                            identity->typeArguments[0] == "int",
+                        "specialization arguments must retain the source identity 'int'");
+                    test.expect(identity->specializedSyntax != nullptr &&
+                            !identity->specializedName.empty(),
+                        "the nominal specialization must retain its cloned syntax and stable name");
+                }
+                test.expect(specializationCountNamed(*model, "Identity``1<int>") == 1,
+                    "explicit and inferred calls must reuse one canonical Identity<int> specialization");
+                test.expect(model->instantiationReport().cacheHitCount >= 1,
+                    "reusing Identity<int> must be observable as a specialization-cache hit");
+            }
+            else if (variant == 1)
+            {
+                constexpr std::array<std::string_view, 6> required = {
+                    "Identity``1<int>", "Identity``1<long>", "Make``1<int>",
+                    "First``1<int>", "Unbox``1<int>", "Apply``1<int>",
+                };
+                for (std::string_view identity : required)
+                {
+                    test.expect(specializationNamed(*model, identity) != nullptr,
+                        "valid inference matrix must materialize " + std::string(identity));
+                }
+                test.expect(hasSpecializationArguments(*model, "PackCount", {}),
+                    "valid inference matrix must materialize the empty type pack");
+                test.expect(hasSpecializationArguments(*model, "PackCount", {"int", "long"}),
+                    "valid inference matrix must materialize the multi-element type pack");
+                test.expect(specializationCountNamed(*model, "Identity``1<int>") == 1,
+                    "explicitly equivalent normalized arguments must retain one identity");
+            }
+            else if (variant == 3)
+            {
+                test.expect(hasConstSpecializationArguments(*model, "Fixed", "int", "0"),
+                    "boundary matrix must materialize the minimum const argument");
+                test.expect(hasConstSpecializationArguments(*model, "Fixed", "int", "1"),
+                    "boundary matrix must materialize the adjacent const argument");
+                test.expect(hasSpecializationArguments(*model, "PackCount", {}),
+                    "boundary matrix must materialize the minimum empty pack");
+                test.expect(hasSpecializationArguments(*model, "PackCount", {"int"}),
+                    "boundary matrix must materialize the first adjacent pack");
+                test.expect(hasSpecializationArguments(*model, "PackCount", {"int", "long"}),
+                    "boundary matrix must materialize the next adjacent pack");
+                const GenericInstantiationReport report = model->instantiationReport();
+                test.expect(report.maximumDepth == ProjectGenericModel::DefaultMaximumInstantiationDepth &&
+                        report.maximumCount == ProjectGenericModel::DefaultMaximumInstantiationCount,
+                    "boundary matrix must publish the exact configured instantiation limits");
+            }
+            else if (variant == 7)
+            {
+                const GenericInstantiationReport report = model->instantiationReport();
+                test.expect(model->specializations().size() >= 48 && report.materializedCount >= 48,
+                    "scale fixture must materialize its 32-way fanout and 16-level dependency chain");
+                test.expect(report.maximumObservedDepth >= 16,
+                    "scale fixture must exercise at least sixteen nested generic instantiations");
+                test.expect(report.maximumObservedDepth <= report.maximumDepth &&
+                        report.materializedCount <= report.maximumCount,
+                    "scale fixture must remain inside the published resource limits");
+                const ProjectCallableAnalysisStatistics& statistics =
+                    methodModel->callableAnalysisStatistics();
+                test.expect(statistics.requestedWorkers == 4,
+                    "scale variant must retain the four-worker compilation request");
+            }
         },
         emptyGenericInferenceOracle);
+
+    if (variant == 3)
+    {
+        TemporaryProject maximumFixture(
+            "front-21-3-maximum",
+            genericInferencePackBoundarySource(
+                ProjectGenericModel::DefaultMaximumPackExpansionCount));
+        ProjectCompilation maximum;
+        std::string maximumError;
+        const bool maximumCompleted = compileTo(
+            maximum, ProjectStage::MethodBodies, maximumFixture.projectFile(), maximumError);
+        context.expect(maximumCompleted,
+            "a pack at the public expansion limit must complete; " +
+                projectFailureEvidence(maximum, maximumError));
+        if (maximumCompleted && maximum.genericModel() != nullptr)
+        {
+            bool retainedMaximum = false;
+            for (const GenericSpecializationRecord& record :
+                 maximum.genericModel()->specializations())
+            {
+                if (record.specializationKey.find("PackCount") != std::string::npos &&
+                    record.typeArguments.size() ==
+                        ProjectGenericModel::DefaultMaximumPackExpansionCount)
+                {
+                    retainedMaximum = true;
+                    break;
+                }
+            }
+            context.expect(retainedMaximum,
+                "a pack at the public expansion limit must retain every argument");
+        }
+
+        TemporaryProject fixture(
+            "front-21-3-first-outside",
+            genericInferencePackBoundarySource(
+                ProjectGenericModel::DefaultMaximumPackExpansionCount + 1));
+        ProjectCompilation rejected;
+        std::string error;
+        const bool completed = compileTo(
+            rejected, ProjectStage::MethodBodies, fixture.projectFile(), error);
+        context.expect(!completed,
+            "the first pack beyond the public expansion limit must be rejected");
+        context.expect(!error.empty() || rejected.diagnostics().errorCount() != 0,
+            "the first pack beyond the public expansion limit must retain causal diagnostics");
+    }
 }
 
 void genericConstraintOracle(TestContext& context, std::size_t variant)
