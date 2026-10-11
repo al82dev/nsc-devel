@@ -251,7 +251,7 @@ void primitiveOracle(TestContext& context, std::size_t variant)
 {
     constexpr std::array<std::string_view, 8> programs = {
         "int Main() { return 42; }",
-        "long Main() { int x = 1; return (long)x; }",
+        "long F(int x) { return (long)x; } int Main() { return (int)F(1); }",
         "int Main() { return -1; }",
         "int Main() { return ~1; }",
         "int Main() { return 1 + 2; }",
