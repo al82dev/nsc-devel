@@ -390,12 +390,18 @@ ast::AstNode* Parser::parseCompilationUnit()
 
 const lexer::Token& Parser::current() const noexcept
 {
+    if (pendingGenericEqual_)
+        return *pendingGenericEqualToken_;
     return tokens_[index_ < tokens_.size() ? index_ : tokens_.size() - 1];
 }
 
 const lexer::Token& Parser::peek(std::size_t distance) const noexcept
 {
-    const std::size_t target = index_ + distance;
+    if (pendingGenericEqual_ && distance == 0U)
+        return *pendingGenericEqualToken_;
+    const std::size_t target = pendingGenericEqual_
+        ? index_ + distance - 1U
+        : index_ + distance;
     return tokens_[target < tokens_.size() ? target : tokens_.size() - 1];
 }
 
@@ -466,6 +472,11 @@ bool Parser::consumeIf(TokenKind kind) noexcept
 const lexer::Token& Parser::consume() noexcept
 {
     const lexer::Token& token = current();
+    if (pendingGenericEqual_)
+    {
+        pendingGenericEqual_ = false;
+        return token;
+    }
     if (!at(TokenKind::EndOfFile))
     {
         ++index_;
@@ -807,7 +818,8 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
             const TokenKind kind = tokens_[cursor].kind();
             if (kind == TokenKind::Less) ++depth;
             else if (kind == TokenKind::Greater) --depth;
-            else if (kind == TokenKind::GreaterGreater) depth -= 2;
+            else if (kind == TokenKind::GreaterGreater ||
+                     kind == TokenKind::GreaterGreaterEqual) depth -= 2;
             else if (kind == TokenKind::EndOfFile) return false;
             ++cursor;
         }
@@ -2247,6 +2259,20 @@ bool Parser::consumeGenericGreater()
     if (at(TokenKind::GreaterGreater))
     {
         consume();
+        ++pendingGenericGreater_;
+        return true;
+    }
+    if (at(TokenKind::GreaterGreaterEqual))
+    {
+        const lexer::Token& combined = consume();
+        const SourceRange combinedRange = combined.range();
+        const SourceLocation equalBegin(
+            combinedRange.begin().fileId(), combinedRange.end().offset() - 1U);
+        pendingGenericEqualToken_.emplace(
+            TokenKind::Equal,
+            SourceRange(equalBegin, combinedRange.end()),
+            combined.lexeme().substr(2U, 1U));
+        pendingGenericEqual_ = true;
         ++pendingGenericGreater_;
         return true;
     }

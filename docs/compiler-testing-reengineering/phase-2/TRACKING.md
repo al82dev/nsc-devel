@@ -1623,3 +1623,10 @@ Validacion 229 corrige el productor de `TP-PAR-020`: el lookahead de tipos
 consume ahora la anotacion completa `borrowed[lifetime]` con la misma frontera
 que `parseType`. No se compilo ni ejecuto; la validacion queda delegada al
 usuario. Evidencia: `TANDA-VALIDACION-229-PARSER-LIFETIME-LOOKAHEAD.md`.
+
+Validacion 230 corrige el productor de `TP-PAR-024` y `TP-PAR-098`: el parser
+descompone `>>=` en dos cierres genericos y un `=` logico con rango estable,
+sin alterar el flujo fisico del lexer. El oraculo 024 observa ahora el parser
+productivo, no un token fisico imposible. No se compilo ni ejecuto; la
+validacion queda delegada al usuario. Evidencia:
+`TANDA-VALIDACION-230-PARSER-GENERIC-SHIFT-ASSIGN.md`.

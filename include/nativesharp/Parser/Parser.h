@@ -381,6 +381,8 @@ private:
     diagnostics::DiagnosticEngine& diagnostics_;
     std::size_t index_ = 0;
     std::size_t pendingGenericGreater_ = 0;
+    bool pendingGenericEqual_ = false;
+    std::optional<lexer::Token> pendingGenericEqualToken_;
     std::size_t nextMatchTemporary_ = 0;
     std::size_t nextDeferTemporary_ = 0;
     struct ComprehensionContext final

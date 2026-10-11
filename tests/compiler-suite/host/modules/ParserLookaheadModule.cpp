@@ -78,9 +78,14 @@ void testNestedGenericGreaterGreater(TestContext& context)
 void testNestedGenericGreaterGreaterEqual(TestContext& context)
 {
     ParserFixture fixture("Outer<Inner<int>>= value", {"Outer", "Inner"});
-    std::size_t afterType = 0;
-    context.expect(fixture.parser().scanTypeAt(0, afterType) &&
-            fixture.tokens()[afterType].kind() == TokenKind::Equal,
+    TypeSyntax* const type = fixture.parser().parseType();
+    context.expect(type != nullptr && type->baseName() == "Outer" &&
+            type->typeArguments().size() == 1 &&
+            type->typeArguments()[0]->baseName() == "Inner" &&
+            type->typeArguments()[0]->typeArguments().size() == 1 &&
+            type->typeArguments()[0]->typeArguments()[0]->baseName() == "int" &&
+            fixture.parser().pendingGenericGreater_ == 0 &&
+            fixture.parser().current().kind() == TokenKind::Equal,
         "TP-PAR-024 >>= must close generic levels while preserving assignment remainder");
 }
 
