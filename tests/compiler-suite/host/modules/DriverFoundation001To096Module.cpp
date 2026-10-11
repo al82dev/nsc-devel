@@ -299,9 +299,13 @@ void progressContract(TestContext& context, std::size_t variant)
             nativesharp::basic::CompilationEventKind::WorkFinished,
         "parse", "unit\"42", 2U, 3U, std::chrono::microseconds(17)};
     const std::string rendered = renderCompilationEvent(event, format);
-    context.expect(parsed && (json ? contains(rendered, "\"schema\":\"nativesharp-progress-event\"") &&
-            contains(rendered, "unit\\\"42") : contains(rendered, "NSC parse")),
-        "progress parsing and text/JSON event rendering preserve exact fields");
+    const bool renderMatches = json ?
+        contains(rendered, "\"schema\":\"nativesharp-progress-event\"") &&
+            contains(rendered, "unit\\\"42") :
+        variant == 5U ? rendered == "-- NSC: failed parse unit\"42" :
+            rendered == "[2/3] NSC parse unit\"42";
+    context.expect(parsed && renderMatches,
+        "progress parsing and text/JSON event rendering preserve their exact format");
 }
 }
 
