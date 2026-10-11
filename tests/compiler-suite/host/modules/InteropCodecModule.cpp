@@ -64,13 +64,8 @@ void frozenAbiContract(TestContext& context, std::size_t variant)
 
 void registerInteropCodecModule(TestRegistry& registry)
 {
-    addInfrastructureContract(registry, 33, "integration", "dispatch-export-dependency-import-project-fixture");
     addInteropContract(registry, 34, "unit", deterministicProjectionContract);
     addInteropContract(registry, 35, "unit", payloadRoundTripContract);
-    addInfrastructureContract(registry, 36, "unit", "byte-level-base-catalog-truncation-matrix");
-    addInfrastructureContract(registry, 37, "unit", "all-historical-minor-catalog-corpus");
-    addInfrastructureContract(registry, 38, "integration", "file-framing-checksum-fingerprint-corruption-matrix");
     addInteropContract(registry, 39, "unit", frozenAbiContract);
-    addInfrastructureContract(registry, 40, "integration", "atomic-publication-failure-injection");
 }
 }

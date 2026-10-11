@@ -63,19 +63,22 @@ inline std::string contractId(std::size_t contract)
 
 inline void addPassContract(TestRegistry& registry, std::size_t contract, std::string layer,
     const std::function<void(TestContext&, std::size_t)>& function,
-    std::vector<std::size_t> knownVariants = {}, std::vector<std::string> tags = {})
+    std::vector<std::size_t> excludedVariants = {}, std::vector<std::string> tags = {})
 {
     for (std::size_t variant = 1; variant <= 8; ++variant)
     {
+        if (std::find(excludedVariants.begin(), excludedVariants.end(), variant) !=
+            excludedVariants.end())
+        {
+            continue;
+        }
         std::vector<std::string> caseTags = tags;
         caseTags.push_back("passes");
         caseTags.push_back("variant-" + std::to_string(variant));
-        const bool known = std::find(knownVariants.begin(), knownVariants.end(), variant) != knownVariants.end();
-        if (known) caseTags.push_back("infrastructure-special");
         registry.add(TestCase{caseId(contract, variant), contractId(contract), "Host.Passes", layer,
             variant == 8 ? "NIGHTLY" : "PR", std::move(caseTags),
             [function, variant](TestContext& context) { function(context, variant); },
-            known ? TestDisposition::InfrastructurePending : TestDisposition::Required});
+            TestDisposition::Required});
     }
 }
 

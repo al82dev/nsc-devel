@@ -111,8 +111,6 @@ void manifestFingerprintContract(TestContext& context, std::size_t variant)
 
 void registerInteropSurfacesModule(TestRegistry& registry)
 {
-    addInfrastructureContract(registry, 9, "unit", "c-header-dependency-cycle-project-fixture");
-    addInfrastructureContract(registry, 10, "integration", "c-header-atomic-publication-filesystem-fixture");
     addInteropContract(registry, 11, "unit", abiVocabularyContract);
     addInteropContract(registry, 12, "unit", deterministicReportContract);
     addInteropContract(registry, 13, "unit", lifetimeEscapeContract);

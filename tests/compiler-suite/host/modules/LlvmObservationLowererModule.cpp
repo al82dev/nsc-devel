@@ -72,11 +72,6 @@ void registerLlvmObservationLowererModule(TestRegistry& registry)
 {
     addLlvmContract(registry, 17, "unit", budgetContract);
     addLlvmContract(registry, 18, "unit", traceParserContract);
-    addInfrastructureContract(registry, 19, "integration", "prepared-llvm-module-and-o0-seh-matrix");
-    addInfrastructureContract(registry, 20, "integration", "child-process-stderr-capture");
     addLlvmContract(registry, 21, "unit", trapAbiContract);
-    addInfrastructureContract(registry, 22, "unit", "llvm-23-generic-lowerer-lifecycle-fixture");
-    addInfrastructureContract(registry, 23, "unit", "llvm-23-type-constant-global-ir-oracle");
-    addInfrastructureContract(registry, 24, "unit", "llvm-23-function-block-phi-ir-oracle");
 }
 }

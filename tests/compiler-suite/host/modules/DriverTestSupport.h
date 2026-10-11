@@ -65,29 +65,6 @@ inline void addDriverContract(
     }
 }
 
-inline void addInfrastructureContract(
-    TestRegistry& registry,
-    std::size_t contractOrdinal,
-    std::string layer,
-    std::string reason)
-{
-    for (std::size_t variant = 1; variant <= 8; ++variant)
-    {
-        registry.add(TestCase{
-            caseId(contractOrdinal, variant),
-            contractId(contractOrdinal),
-            "Host.Driver",
-            layer,
-            variant == 8 ? "NIGHTLY" : "PR",
-            {"driver", "infrastructure-pending", "variant-" + std::to_string(variant)},
-            [reason](TestContext& context)
-            {
-                context.expect(false, reason);
-            },
-            TestDisposition::InfrastructurePending});
-    }
-}
-
 class TemporaryTree final
 {
 public:

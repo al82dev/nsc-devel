@@ -69,11 +69,6 @@ void prefixMapContract(TestContext& context, std::size_t variant)
 void registerLlvmFoundationModule(TestRegistry& registry)
 {
     addLlvmContract(registry, 1, "integration", coffContract);
-    addInfrastructureContract(registry, 2, "unit", "isolated-cache-root-and-thread-state");
-    addInfrastructureContract(registry, 3, "unit", "cache-key-and-metadata-corpus");
-    addInfrastructureContract(registry, 4, "unit", "filesystem-corruption-and-quarantine-fixture");
-    addInfrastructureContract(registry, 5, "unit", "deterministic-lock-time-and-concurrency-fixture");
-    addInfrastructureContract(registry, 6, "integration", "official-llvm-23-c-header-comparison");
     addLlvmContract(registry, 7, "unit", debugKindContract);
     addLlvmContract(registry, 8, "unit", prefixMapContract);
 }

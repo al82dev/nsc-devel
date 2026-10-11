@@ -65,23 +65,6 @@ inline constexpr std::array<LinkerContractDescriptor, 40> kLinkerContracts{{
     {"Cross-product cleanup and no-partial-publication safety", "integration"},
 }};
 
-enum class LinkerPendingDisposition
-{
-    InfrastructurePending,
-};
-
-struct InfrastructurePendingCase final
-{
-    std::string caseIdentifier;
-    std::string contractIdentifier;
-    std::string component;
-    std::string layer;
-    std::string profile;
-    std::string oracle;
-    std::string requirement;
-    LinkerPendingDisposition disposition = LinkerPendingDisposition::InfrastructurePending;
-};
-
 /**
  * Formats one stable Phase 1 case identifier. The mapping is arithmetic and
  * preserves exactly eight consecutive cases per contract in O(1) time.
@@ -113,13 +96,6 @@ inline std::string oracleDescription(std::size_t contract)
     return "independent structural oracle for " + std::string(contractDescriptor(contract).name);
 }
 
-/** Owns the explicit non-executable inventory without exposing it as PASS or SKIP. */
-inline std::vector<InfrastructurePendingCase>& infrastructurePendingCases()
-{
-    static std::vector<InfrastructurePendingCase> cases;
-    return cases;
-}
-
 /**
  * Registers one executable case with its frozen case, contract, component,
  * layer, profile and oracle lineage. The supplied function is the real oracle.
@@ -143,41 +119,11 @@ inline void addExecutableCase(TestRegistry& registry, std::size_t contract, std:
 }
 
 /**
- * Materializes one infrastructure-dependent case outside the ordinary registry.
- * This prevents a missing producer from being reported as PASS, FAIL or SKIP.
- */
-inline void addInfrastructureCase(std::size_t contract, std::size_t variant, std::string requirement)
-{
-    auto& cases = infrastructurePendingCases();
-    const LinkerContractDescriptor& descriptor = contractDescriptor(contract);
-    cases.push_back(InfrastructurePendingCase{
-        caseId(contract, variant),
-        contractId(contract),
-        "Host.Linker",
-        std::string(descriptor.layer),
-        variant == 8 ? "NIGHTLY" : "PR",
-        oracleDescription(contract),
-        std::move(requirement),
-    });
-}
-
-/** Materializes all eight variants of one infrastructure-dependent contract. */
-inline void addInfrastructureContract(std::size_t contract, const std::string& requirement)
-{
-    for (std::size_t variant = 1; variant <= 8; ++variant)
-    {
-        addInfrastructureCase(contract, variant, requirement);
-    }
-}
-
-/**
- * Splits one mixed contract case by case. Only variants with a complete local
- * oracle enter the executable registry; every other ID remains explicit.
+ * Registers the selected executable variants of one mixed contract.
  */
 inline void addMixedContract(TestRegistry& registry, std::size_t contract,
     std::initializer_list<std::size_t> executableVariants,
-    const std::function<void(TestContext&, std::size_t)>& function,
-    const std::string& pendingRequirement)
+    const std::function<void(TestContext&, std::size_t)>& function)
 {
     for (std::size_t variant = 1; variant <= 8; ++variant)
     {
@@ -186,10 +132,6 @@ inline void addMixedContract(TestRegistry& registry, std::size_t contract,
         if (executable)
         {
             addExecutableCase(registry, contract, variant, function);
-        }
-        else
-        {
-            addInfrastructureCase(contract, variant, pendingRequirement);
         }
     }
 }

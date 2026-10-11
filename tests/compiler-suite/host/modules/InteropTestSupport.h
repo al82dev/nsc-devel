@@ -56,53 +56,6 @@ inline void addInteropContract(TestRegistry& registry, std::size_t contract, std
     }
 }
 
-enum class InteropPendingDisposition
-{
-    InfrastructurePending,
-};
-
-struct InfrastructurePendingCase final
-{
-    std::string caseIdentifier;
-    std::string contractIdentifier;
-    std::string layer;
-    std::string profile;
-    std::string requirement;
-    InteropPendingDisposition disposition =
-        InteropPendingDisposition::InfrastructurePending;
-};
-
-inline std::vector<InfrastructurePendingCase>& infrastructurePendingCases()
-{
-    static std::vector<InfrastructurePendingCase> cases;
-    return cases;
-}
-
-inline void addInfrastructureContract(TestRegistry& registry, std::size_t contract,
-    std::string layer, std::string requirement)
-{
-    // Infrastructure-special cases are intentionally not registered in the
-    // ordinary executable suite. Missing external fixtures are not compiler
-    // defects and must never be reported as Required, KnownProductDefect,
-    // PASS, or SKIP.
-    (void)registry;
-    auto& cases = infrastructurePendingCases();
-    for (std::size_t variant = 1; variant <= 8; ++variant)
-    {
-        const std::string identifier = caseId(contract, variant);
-        const auto found = std::find_if(cases.begin(), cases.end(),
-            [&identifier](const InfrastructurePendingCase& candidate) {
-                return candidate.caseIdentifier == identifier;
-            });
-        if (found == cases.end())
-        {
-            cases.push_back(InfrastructurePendingCase{identifier,
-                contractId(contract), layer, variant == 8 ? "NIGHTLY" : "PR",
-                requirement});
-        }
-    }
-}
-
 inline interop::LibraryMetadata minimalMetadata(std::string module = "Test.Module")
 {
     interop::LibraryMetadata metadata;

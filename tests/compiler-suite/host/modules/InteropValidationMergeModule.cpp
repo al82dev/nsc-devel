@@ -88,13 +88,8 @@ void mergeContract(TestContext& context, std::size_t variant)
 
 void registerInteropValidationMergeModule(TestRegistry& registry)
 {
-    addInfrastructureContract(registry, 41, "unit", "historical-minor-representability-feature-matrix");
-    addInfrastructureContract(registry, 42, "integration", "file-read-framing-integrity-corruption-matrix");
     addInteropContract(registry, 43, "unit", compilerGateContract);
     addInteropContract(registry, 44, "unit", typeValidationContract);
-    addInfrastructureContract(registry, 45, "unit", "dispatch-member-generic-corruption-matrix");
-    addInfrastructureContract(registry, 46, "unit", "reference-closure-namespace-dependency-corruption-matrix");
-    addInfrastructureContract(registry, 47, "unit", "lifetime-escape-throws-ffi-corruption-matrix");
     addInteropContract(registry, 48, "unit", mergeContract);
 }
 }

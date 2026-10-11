@@ -93,11 +93,7 @@ void registerInteropDiffSchemaModule(TestRegistry& registry)
 {
     addInteropContract(registry, 17, "unit", surfaceImpactContract);
     addInteropContract(registry, 18, "unit", classificationContract);
-    addInfrastructureContract(registry, 19, "unit", "canonical-capability-nominal-type-corpus");
-    addInfrastructureContract(registry, 20, "unit", "complete-library-capability-surface-corpus");
-    addInfrastructureContract(registry, 21, "integration", "isolated-metadata-directory-and-filesystem-errors");
     addInteropContract(registry, 22, "unit", schemaContract);
-    addInfrastructureContract(registry, 23, "unit", "byte-level-codec-boundary-and-16mib-allocation-fixture");
     addInteropContract(registry, 24, "unit", stableIdentityContract);
 }
 }

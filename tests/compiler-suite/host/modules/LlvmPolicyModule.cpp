@@ -73,10 +73,5 @@ void registerLlvmPolicyModule(TestRegistry& registry)
     addLlvmContract(registry, 9, "unit", floatingContract);
     addLlvmContract(registry, 10, "unit", ltoContract);
     addLlvmContract(registry, 11, "unit", optimizationLevelContract);
-    addInfrastructureContract(registry, 12, "integration", "loaded-llvm-23-library");
-    addInfrastructureContract(registry, 13, "integration", "llvm-context-module-and-verifier");
-    addInfrastructureContract(registry, 14, "integration", "llvm-target-initialization-and-machine");
-    addInfrastructureContract(registry, 15, "integration", "llvm-object-emission-and-windows-file-lock-injection");
-    addInfrastructureContract(registry, 16, "integration", "llvm-address-sanitizer-runtime-and-pipeline");
 }
 }

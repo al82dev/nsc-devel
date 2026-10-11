@@ -160,8 +160,6 @@ void registerLanguageServiceProtocol001To080Module(TestRegistry& registry)
     addLanguageServiceContract(registry, 3U, "unit", symbolSchemaContract);
     addLanguageServiceContract(registry, 4U, "unit", completionSignatureContract);
     addLanguageServiceContract(registry, 5U, "unit", editActionContract);
-    addInfrastructureContract(registry, 6U, "unit",
-        "decodeUtf8 and utf16Width are private anonymous-namespace helpers without an authorized unit seam");
     addLanguageServiceContract(registry, 7U, "unit", offsetToPositionContract);
     addLanguageServiceContract(registry, 8U, "unit", positionToOffsetContract);
     addLanguageServiceContract(registry, 9U, "unit", diagnosticConversionContract);

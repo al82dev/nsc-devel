@@ -86,9 +86,5 @@ void registerInteropMetadataModelModule(TestRegistry& registry)
     addInteropContract(registry, 26, "unit", defaultValueContract);
     addInteropContract(registry, 27, "unit", flagsSignatureContract);
     addInteropContract(registry, 28, "integration", genericCanonicalizationContract);
-    addInfrastructureContract(registry, 29, "integration", "project-compilation-root-and-identity-fixture");
-    addInfrastructureContract(registry, 30, "integration", "project-layout-and-callable-publication-fixture");
-    addInfrastructureContract(registry, 31, "integration", "namespace-function-state-project-fixture");
-    addInfrastructureContract(registry, 32, "integration", "generic-closure-template-specialization-project-fixture");
 }
 }

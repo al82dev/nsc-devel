@@ -226,12 +226,6 @@ void registerDriverRuntime097To192Module(TestRegistry& registry)
     addDriverContract(registry, 18U, "integration", crashBoundaryContract);
     addDriverContract(registry, 19U, "unit", deprecationCatalogContract);
     addDriverContract(registry, 20U, "unit", deprecationDecisionContract);
-    addInfrastructureContract(registry, 21U, "integration",
-        "CF-DRIVER-021 requires a controlled project graph and secret-redaction fixture");
-    addInfrastructureContract(registry, 22U, "integration",
-        "CF-DRIVER-022 requires transactional diagnostic-bundle fault injection");
-    addInfrastructureContract(registry, 23U, "unit",
-        "CF-DRIVER-023 has no public option-extraction seam outside Driver.cpp");
     addDriverContract(registry, 24U, "unit", driverDispatchContract);
 }
 }

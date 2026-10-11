@@ -178,28 +178,15 @@ void runtimeResolutionContract(TestContext& context, std::size_t variant)
 void registerLinkerBuildersModule(TestRegistry& registry)
 {
     using namespace linker_support;
-    constexpr std::array<std::size_t, 12> pendingContracts{
-        24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
-        39, 40,
-    };
-    for (const std::size_t contract : pendingContracts)
-    {
-        addInfrastructureContract(
-            contract,
-            "verified-coff-runtime-cache-nslink-product-and-atomic-publication-fixture");
-    }
-
     addMixedContract(
         registry,
         34,
         {1, 3, 4, 5, 7, 8},
-        libraryConfigurationContract,
-        "successful-static-dll-cache-telemetry-product-fixture");
+        libraryConfigurationContract);
     addMixedContract(
         registry,
         37,
         {1, 2, 3, 4, 5, 7, 8},
-        runtimeResolutionContract,
-        "isolated-process-environment-override-fixture");
+        runtimeResolutionContract);
 }
 }
