@@ -4218,7 +4218,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
         if (!uniqueCase)
         {
             diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticId::DuplicateSymbol,
                 diagnostics::DiagnosticSeverity::Error,
                 caseName.range(),
                 "duplicate variant case '" + item.name + "'");

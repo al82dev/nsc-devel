@@ -1636,3 +1636,9 @@ clasifica como `DuplicateSymbol`, no como declaracion esperada. Se conserva la
 recuperacion existente. No se compilo ni ejecuto; la validacion queda delegada
 al usuario. Evidencia:
 `TANDA-VALIDACION-231-PARSER-PROMOTED-DUPLICATE.md`.
+
+Validacion 232 corrige `TP-PAR-170`: una alternativa repetida dentro de un
+`variant` se clasifica como `DuplicateSymbol`, preservando rango y
+recuperacion. No se compilo ni ejecuto; la validacion queda delegada al
+usuario. Evidencia:
+`TANDA-VALIDACION-232-PARSER-VARIANT-DUPLICATE.md`.
