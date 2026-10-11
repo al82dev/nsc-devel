@@ -315,7 +315,7 @@ void arithmeticVerifierOracle(TestContext& context, std::size_t variant)
             "", "",
             "int Main() { return 8 >> 1; }",
             "int Main() { return 1 < 2 ? 1 : 0; }",
-            "long Main() { int x = 1; return (long)x; }",
+            "long F(int x) { return (long)x; } int Main() { return (int)F(1); }",
             "int Main() { int x = 1; return ((x + 2) * 3) / 2; }",
         };
         expectCompiledValid(context, "mir-arithmetic-verifier", std::string(programs[variant]));
@@ -330,7 +330,12 @@ void arithmeticVerifierOracle(TestContext& context, std::size_t variant)
     operation->addOperand(source);
     if (variant == 2)
     {
-        operation->addOperand(fixture.arena.makeValue(fixture.types.builtin(TypeKind::Float)));
+        MirValue* floating = fixture.arena.makeValue(fixture.types.builtin(TypeKind::Float));
+        MirInstruction* constant = fixture.arena.makeInstruction(MirOpcode::Constant, SourceRange());
+        constant->setResult(floating);
+        constant->setConstant(ConstantValue::floating(1.0));
+        fixture.entry->addInstruction(constant);
+        operation->addOperand(floating);
     }
     else
     {
