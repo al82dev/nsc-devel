@@ -47,6 +47,8 @@ genéricos. `looksLikeVariableDeclaration`, `looksLikeConditionDeclaration` y
 
 La semilla `knownTypeNames_` influye sólo en nombres no builtin. `KnownGenericTypeScope` instala temporalmente
 parámetros de tipo/pack y retira exactamente los nombres que insertó, sin borrar una sombra exterior.
+Un prefijo inequívoco `Identificador Identificador` conserva la ruta de declaración aunque el primer nombre
+todavía no figure como tipo conocido; la resolución nominal posterior decide si ese tipo existe.
 
 ## 5. Nombres, lifetime y tipos base — `CP-PAR-004..007`
 
@@ -103,7 +105,8 @@ Combinaciones sin significado emiten diagnóstico; los atributos válidos se fij
 - Delegate conserva retorno, nombre, genéricos, parámetros, constraints, throws y terminador.
 - Struct/union/record/copy/borrowed admite parámetros primarios, bases/constraints, layout y cuerpo. Los
   parámetros primarios materializan campos y constructor cuando corresponde.
-- Variant se baja a struct nominal con tag, unión payload, factories, pruebas y extractores sintetizados.
+- Variant se baja a struct nominal con tag, unión payload, factories, pruebas y extractores sintetizados. Los
+  discriminantes explícitos se diagnostican y la recuperación asigna ordinales sintetizados desde cero.
 - Opaque se baja a struct nominal de un campo y operaciones explícitas de frontera; copy sólo se propaga si se
   escribió.
 
@@ -112,11 +115,14 @@ Combinaciones sin significado emiten diagnóstico; los atributos válidos se fij
 ## 10. Clases, interfaces, traits y tipos anidados — `CP-PAR-019..020`
 
 Class procesa bases, genéricos, constraints, cuerpo y flags partial/abstract/sealed/static. Un `impl Trait for
-Type` se representa como extension con receptor y base trait. Interface y trait admiten miembros, tipos y
-constantes asociados; implementación y declaración tienen requisitos distintos.
+Type` produce un `ClassDeclaration` marcado `ns3-trait-impl`: `typeSyntax` conserva el trait y el segundo target
+conserva el tipo implementador. Interface y trait admiten miembros, tipos y constantes asociados;
+implementación y declaración tienen requisitos distintos.
 
 Los tipos anidados reutilizan los cinco parsers nominales existentes. `NestedTypeModifiers` transporta la
 accesibilidad y rechaza modifiers que no tengan significado para un tipo, evitando una gramática paralela.
+`new class` anidada es válida y conserva `KwNew`; `static` sólo es válido en class, `readonly` sólo en struct y
+`const` se diagnostica como inválido para tipos anidados.
 
 ## 11. Miembros y dispatch — `CP-PAR-021..027`
 
