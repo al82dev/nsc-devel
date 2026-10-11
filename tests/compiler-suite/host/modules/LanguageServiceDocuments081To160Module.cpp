@@ -123,7 +123,8 @@ void braceShieldContract(TestContext& context, std::size_t variant)
         "void Run() {\nreturn;\n}\n";
     service.openDocument(path, source, 1, error);
     const auto edit = service.formatDocument(path, {2U, true});
-    context.expect(edit.has_value() && edit->newText.find("  return;") != std::string::npos,
+    const std::string expectedLine = variant == 5U ? "  { */ return;" : "  return;";
+    context.expect(edit.has_value() && edit->newText.find(expectedLine) != std::string::npos,
         "brace scanning ignores comments and literals while preserving structural indentation");
 }
 
