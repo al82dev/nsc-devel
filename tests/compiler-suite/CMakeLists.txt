@@ -352,49 +352,6 @@ add_executable(
     host/modules/LanguageServiceAnalysis313To336Module.cpp
     host/modules/NscUnit001To080Module.cpp
     host/modules/NscProcess081To160Module.cpp
-    selfhost/modules/SelfHostBootstrapProfileModule.cpp
-    selfhost/modules/SelfHostBootstrapBuildModule.cpp
-    selfhost/modules/SelfHostCodeGenFoundationModule.cpp
-    selfhost/modules/SelfHostCodeGenLoweringEmissionModule.cpp
-    selfhost/modules/SelfHostDocumentationArchitectureModule.cpp
-    selfhost/modules/SelfHostDocumentationPolicyModule.cpp
-    selfhost/modules/SelfHostDriverCliFrontendModule.cpp
-    selfhost/modules/SelfHostDriverEmissionModule.cpp
-    selfhost/modules/SelfHostDriverAuditDispatchModule.cpp
-    selfhost/modules/SelfHostIrHirFlowModule.cpp
-    selfhost/modules/SelfHostIrMirVerificationModule.cpp
-    selfhost/modules/SelfHostIrDominanceLifecycleModule.cpp
-    selfhost/modules/SelfHostParserTypesLiteralsModule.cpp
-    selfhost/modules/SelfHostParserExpressionsModule.cpp
-    selfhost/modules/SelfHostParserStatementsModule.cpp
-    selfhost/modules/SelfHostParserDeclarationsModule.cpp
-    selfhost/modules/SelfHostProjectIdentityModule.cpp
-    selfhost/modules/SelfHostProjectDependenciesModule.cpp
-    selfhost/modules/SelfHostProjectInventoryModule.cpp
-    selfhost/modules/SelfHostProjectsModelModule.cpp
-    selfhost/modules/SelfHostProjectsIdentityModule.cpp
-    selfhost/modules/SelfHostProjectsArtifactsModule.cpp
-    selfhost/modules/SelfHostProjectsGraphModule.cpp
-    selfhost/modules/SelfHostSemaModelModule.cpp
-    selfhost/modules/SelfHostSemaModuleSetModule.cpp
-    selfhost/modules/SelfHostSemaResolutionModule.cpp
-    selfhost/modules/SelfHostSemaAnalysisModule.cpp
-    selfhost/modules/SelfHostSymbolsIdentityModule.cpp
-    selfhost/modules/SelfHostSymbolsMetadataModule.cpp
-    selfhost/modules/SelfHostSymbolsScopeModule.cpp
-    selfhost/modules/SelfHostSyntaxNodesModule.cpp
-    selfhost/modules/SelfHostSyntaxTreeModule.cpp
-    selfhost/modules/SelfHostSyntaxDumpModule.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog001To012Module.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog013To024Module.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog025To036Module.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog037To048Module.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog049To060Module.cpp
-    selfhost/modules/SelfHostBootstrapInfrastructureCatalog061To073Module.cpp
-    selfhost/modules/SelfHostContractsToolchainModule.cpp
-    selfhost/modules/SelfHostContractsIrRuntimeModule.cpp
-    selfhost/modules/SelfHostContractsDistributionModule.cpp
-    selfhost/modules/SelfHostContractsSourceModule.cpp
     host/modules/RuntimeAbiIdentityModule.cpp
     host/modules/RuntimeAbiVerificationModule.cpp
     host/modules/RuntimeCapabilityModule.cpp
