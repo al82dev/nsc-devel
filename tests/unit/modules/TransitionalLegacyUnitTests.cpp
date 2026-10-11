@@ -3,8 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
-
 #define NSC_TRANSITIONAL_ENTRY(id, component, function) int function();
 #include "TransitionalLegacyEntries.def"
 #undef NSC_TRANSITIONAL_ENTRY
@@ -23,7 +21,6 @@ void addTransitionalLegacyEntry(
         component,
         "historical owner preserved until its NativeSharp fixture reaches parity",
         {"legacy-parity", "transitional", "exclusive"},
-        std::chrono::milliseconds(300000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

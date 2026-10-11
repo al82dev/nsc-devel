@@ -237,7 +237,6 @@ void registerLexerUnitTests(TestRegistry& registry)
         "lexer",
         "lexer tokens and diagnostics",
         {"tokens", "literals", "operators", "diagnostics"},
-        std::chrono::milliseconds(1000),
         verifyLexer,
     });
 }

@@ -4,7 +4,6 @@
 #include "nsc_test/TestRegistry.h"
 
 #include <array>
-#include <chrono>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,7 +29,6 @@ void addLegacyEntry(TestRegistry& registry, const char* id, const char* componen
         component,
         "historical semantic contract",
         {"legacy-parity", "exclusive"},
-        std::chrono::milliseconds(120000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {
@@ -47,7 +45,6 @@ void addCc1Entry(TestRegistry& registry, const char* id, const char* selector)
         "sema",
         "historical CC1 semantic fixture",
         {"legacy-parity", "cc1", "exclusive"},
-        std::chrono::milliseconds(120000),
         [selector](TestContext& context) {
             std::string executable = "nsc_unit_tests";
             std::string selectedFixture = selector;

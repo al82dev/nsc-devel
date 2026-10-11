@@ -3,8 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
-
 #define NSC_IR_ENTRY(id, component, function) int function();
 #include "nsc_test/IrLegacyEntries.def"
 #undef NSC_IR_ENTRY
@@ -24,7 +22,6 @@ void addIrEntry(TestRegistry& registry, const char* id, const char* component, L
         component,
         "historical HIR, MIR, or pass contract",
         {"legacy-parity", "exclusive"},
-        std::chrono::milliseconds(180000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

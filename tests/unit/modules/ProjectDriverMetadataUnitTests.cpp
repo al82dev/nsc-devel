@@ -3,8 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
-
 #define NSC_PDM_ENTRY(id, component, function) int function();
 #include "nsc_test/ProjectDriverMetadataLegacyEntries.def"
 #undef NSC_PDM_ENTRY
@@ -25,7 +23,6 @@ void addProjectDriverMetadataEntry(
         component,
         "historical O0-safe project, driver, or metadata contract",
         {"legacy-parity", "exclusive", "o0-only"},
-        std::chrono::milliseconds(180000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

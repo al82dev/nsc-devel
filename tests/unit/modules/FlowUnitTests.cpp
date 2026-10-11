@@ -4,7 +4,6 @@
 #include "nsc_test/TestRegistry.h"
 
 #include <array>
-#include <chrono>
 #include <string>
 
 #define NSC_FLOW_ENTRY(id, component, function) int function();
@@ -28,7 +27,6 @@ void addFlowEntry(TestRegistry& registry, const char* id, const char* component,
         component,
         "historical flow contract",
         {"legacy-parity", "exclusive"},
-        std::chrono::milliseconds(180000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {
@@ -45,7 +43,6 @@ void addFlowCc1Entry(TestRegistry& registry, const char* id, const char* selecto
         "cfg",
         "historical CC1 flow fixture",
         {"legacy-parity", "cc1", "exclusive"},
-        std::chrono::milliseconds(120000),
         [selector](TestContext& context) {
             std::string executable = "nsc_unit_tests";
             std::string selectedFixture = selector;

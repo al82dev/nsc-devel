@@ -54,7 +54,6 @@ void registerBasicUnitTests(TestRegistry& registry)
         "basic",
         "compiler build identity",
         {"identity", "version"},
-        std::chrono::milliseconds(1000),
         verifyBuildIdentity,
     });
 }

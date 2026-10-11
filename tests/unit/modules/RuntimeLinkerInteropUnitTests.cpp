@@ -3,8 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
-
 #define NSC_RLI_ENTRY(id, component, function) int function();
 #include "nsc_test/RuntimeLinkerInteropLegacyEntries.def"
 #undef NSC_RLI_ENTRY
@@ -24,7 +22,6 @@ void addRuntimeLinkerInteropEntry(
         component,
         "historical O0-safe runtime, linker, or interop contract",
         {"legacy-parity", "exclusive", "o0-only"},
-        std::chrono::milliseconds(180000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

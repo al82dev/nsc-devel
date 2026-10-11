@@ -122,7 +122,6 @@ void registerSourceUnitTests(TestRegistry& registry)
         "source",
         "source manager positions and files",
         {"source", "locations", "files"},
-        std::chrono::milliseconds(1000),
         verifySourceManager,
     });
 }

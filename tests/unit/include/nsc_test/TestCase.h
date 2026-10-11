@@ -1,6 +1,5 @@
 #pragma once
 
-#include <chrono>
 #include <functional>
 #include <string>
 #include <vector>
@@ -17,7 +16,6 @@ struct TestCase
     std::string component;
     std::string name;
     std::vector<std::string> tags;
-    std::chrono::milliseconds timeout{60000};
     TestFunction function;
 };
 }

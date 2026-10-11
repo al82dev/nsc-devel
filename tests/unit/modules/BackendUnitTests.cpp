@@ -3,8 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
-
 #define NSC_BACKEND_ENTRY(id, component, function) int function();
 #include "nsc_test/BackendLegacyEntries.def"
 #undef NSC_BACKEND_ENTRY
@@ -24,7 +22,6 @@ void addBackendEntry(TestRegistry& registry, const char* id, const char* compone
         component,
         "historical O0-safe backend contract",
         {"legacy-parity", "exclusive", "o0-only"},
-        std::chrono::milliseconds(180000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

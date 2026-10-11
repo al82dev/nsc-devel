@@ -3,7 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
 #include <string_view>
 
 int nscLlvmOptimizationLegacyEntry();
@@ -26,7 +25,6 @@ void addArgumentLegacyEntry(
         component,
         "historical argument-aware owner preserved until fixture parity",
         {"legacy-parity", "transitional", "exclusive", "argument-aware"},
-        std::chrono::milliseconds(600000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {

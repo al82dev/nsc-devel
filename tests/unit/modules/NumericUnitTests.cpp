@@ -90,7 +90,6 @@ void registerNumericUnitTests(TestRegistry& registry)
         "lexer",
         "numeric literal parsing and resolution",
         {"numeric", "literal", "width"},
-        std::chrono::milliseconds(1000),
         verifyNumericLiterals,
     });
 }

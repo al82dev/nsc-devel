@@ -186,7 +186,6 @@ void registerDiagnosticsUnitTests(TestRegistry& registry)
         "diagnostics",
         "diagnostic engine and renderer",
         {"engine", "renderer", "ordering"},
-        std::chrono::milliseconds(1000),
         verifyDiagnostics,
     });
 }

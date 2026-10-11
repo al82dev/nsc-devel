@@ -3,7 +3,6 @@
 #include "nsc_test/TestContext.h"
 #include "nsc_test/TestRegistry.h"
 
-#include <chrono>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,7 +41,6 @@ void addLegacyEntry(
         "parser",
         std::move(name),
         std::move(tags),
-        std::chrono::milliseconds(30000),
         [entry](TestContext& context) {
             if (entry() != 0)
             {
