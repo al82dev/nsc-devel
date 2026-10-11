@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,7 +14,11 @@ sys.path.insert(0, str(MODULAR_ROOT))
 
 from nsc_builder.build import plan_test_producers, producer_preparation_commands
 from nsc_builder.catalog import CanonicalCatalog
-from nsc_builder.execution import ExecutionEngine, isolate_missing_llvm_discovery
+from nsc_builder.execution import (
+    ExecutionEngine,
+    isolate_missing_llvm_discovery,
+    validate_missing_llvm_failure,
+)
 from nsc_builder.models import (
     ProducerPlan,
     ProducerPreparation,
@@ -202,20 +207,68 @@ class SuitePreparationTests(unittest.TestCase):
                 self.assertEqual(record.disposition, "KnownProductDefect")
 
     def test_00453_disables_all_inherited_llvm_discovery(self) -> None:
-        command, environment = isolate_missing_llvm_discovery(
-            "T12B-00453",
-            ["cmake", "-S", "A:/repo", "-B", "A:/work"],
-            {
-                "PATH": "C:/clang-llvm/bin",
-                "LLVM_DIR": "C:/clang-llvm/lib/cmake/llvm",
-                "CMAKE_PREFIX_PATH": "C:/clang-llvm",
-            },
+        with tempfile.TemporaryDirectory() as directory:
+            package_root = Path(directory) / "empty-package-root"
+            command, environment = isolate_missing_llvm_discovery(
+                "T12B-00453",
+                [
+                    "cmake",
+                    "-S",
+                    "A:/repo",
+                    "-B",
+                    "A:/work",
+                    "-DLLVM_DIR=C:/clang-llvm/lib/cmake/llvm",
+                    "-DCMAKE_FIND_USE_PACKAGE_REGISTRY:BOOL=TRUE",
+                ],
+                {
+                    "PATH": "C:/clang-llvm/bin",
+                    "LLVM_DIR": "C:/clang-llvm/lib/cmake/llvm",
+                    "CMAKE_PREFIX_PATH": "C:/clang-llvm",
+                },
+                package_root,
+            )
+            self.assertTrue(package_root.is_dir())
+            self.assertEqual(list(package_root.iterdir()), [])
+            self.assertIn(
+                f"-DCMAKE_FIND_ROOT_PATH:PATH={package_root.resolve().as_posix()}",
+                command,
+            )
+            self.assertIn("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE:STRING=ONLY", command)
+            self.assertIn("-DCMAKE_FIND_USE_PACKAGE_REGISTRY:BOOL=FALSE", command)
+            self.assertIn("-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY:BOOL=FALSE", command)
+            self.assertIn("-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH:BOOL=FALSE", command)
+            self.assertIn("-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH:BOOL=FALSE", command)
+            self.assertIn("-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH:BOOL=FALSE", command)
+            self.assertNotIn("-DLLVM_DIR=C:/clang-llvm/lib/cmake/llvm", command)
+            self.assertNotIn("-DCMAKE_FIND_USE_PACKAGE_REGISTRY:BOOL=TRUE", command)
+            self.assertNotIn("LLVM_DIR", environment)
+            self.assertNotIn("CMAKE_PREFIX_PATH", environment)
+            self.assertIn("PATH", environment)
+
+    def test_00453_accepts_only_the_canonical_missing_llvm_failure(self) -> None:
+        missing = subprocess.CompletedProcess(
+            ["cmake", "-S", "A:/repo"],
+            1,
+            "",
+            "CMake Error: NativeSharp requires the LLVM 23 CMake package and its "
+            "static component\nlibraries",
+        )
+        unrelated = subprocess.CompletedProcess(
+            ["cmake", "-S", "A:/repo"],
+            1,
+            "",
+            "CMake Error: source directory does not exist",
+        )
+        success = subprocess.CompletedProcess(
+            ["cmake", "-S", "A:/repo"], 0, "configured", ""
         )
 
-        self.assertIn("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE", command)
-        self.assertNotIn("LLVM_DIR", environment)
-        self.assertNotIn("CMAKE_PREFIX_PATH", environment)
-        self.assertIn("PATH", environment)
+        self.assertEqual(validate_missing_llvm_failure((missing,)), (True, ""))
+        for invocations in ((unrelated,), (success,), (), (missing, missing)):
+            with self.subTest(invocations=len(invocations)):
+                accepted, detail = validate_missing_llvm_failure(invocations)
+                self.assertFalse(accepted)
+                self.assertTrue(detail)
 
     def test_other_llvm_cases_keep_the_locked_toolchain(self) -> None:
         original = ["cmake", "-DLLVM_DIR=C:/clang-llvm/lib/cmake/llvm"]

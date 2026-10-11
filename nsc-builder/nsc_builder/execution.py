@@ -36,6 +36,11 @@ from .process_control import *
 from .build import *
 
 
+MISSING_LLVM_PACKAGE_DIAGNOSTIC = (
+    "NativeSharp requires the LLVM 23 CMake package and its static component libraries"
+)
+
+
 def infrastructure_command_outcome(
     *,
     index: int,
@@ -96,16 +101,25 @@ def isolate_missing_llvm_discovery(
     case_id: str,
     command: Sequence[str],
     environment: dict[str, str],
+    isolation_root: Path | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """Make the missing-LLVM BuildSystem oracle independent of host discovery."""
     controlled_command = list(command)
     controlled_environment = dict(environment)
     if case_id != "T12B-00453":
         return controlled_command, controlled_environment
+    if isolation_root is None:
+        raise ValueError("T12B-00453 requires a controlled empty package root")
+    controlled_root = isolation_root.resolve()
+    controlled_root.mkdir(parents=True, exist_ok=True)
+    if any(controlled_root.iterdir()):
+        raise ValueError("T12B-00453 controlled package root must be empty")
     blocked = {
         "LLVM_DIR",
         "LLVM_ROOT",
         "LLVM_HOME",
+        "LLVM_ROOT_DIR",
+        "LLVM_INSTALL_DIR",
         "CMAKE_PREFIX_PATH",
         "CMAKE_MODULE_PATH",
     }
@@ -114,9 +128,67 @@ def isolate_missing_llvm_discovery(
         for key, value in controlled_environment.items()
         if key.upper() not in blocked
     }
-    if not any(argument.startswith("-DLLVM_DIR=") for argument in controlled_command):
-        controlled_command.append("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE")
+    controlled_cache_entries = {
+        "LLVM_DIR",
+        "CMAKE_PREFIX_PATH",
+        "CMAKE_MODULE_PATH",
+        "CMAKE_FIND_ROOT_PATH",
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE",
+        "CMAKE_FIND_USE_PACKAGE_REGISTRY",
+        "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY",
+        "CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH",
+        "CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH",
+        "CMAKE_FIND_USE_CMAKE_SYSTEM_PATH",
+        "CMAKE_FIND_USE_INSTALL_PREFIX",
+        "CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY",
+        "CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY",
+    }
+
+    def cache_entry(argument: str) -> str:
+        if not argument.startswith("-D") or "=" not in argument:
+            return ""
+        return argument[2:].split("=", 1)[0].split(":", 1)[0].upper()
+
+    controlled_command = [
+        argument
+        for argument in controlled_command
+        if cache_entry(argument) not in controlled_cache_entries
+        and argument.upper() != "-ULLVM_DIR"
+    ]
+    controlled_command.extend(
+        [
+            "-ULLVM_DIR",
+            "-DCMAKE_PREFIX_PATH:PATH=",
+            "-DCMAKE_MODULE_PATH:PATH=",
+            f"-DCMAKE_FIND_ROOT_PATH:PATH={controlled_root.as_posix()}",
+            "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE:STRING=ONLY",
+            "-DCMAKE_FIND_USE_PACKAGE_REGISTRY:BOOL=FALSE",
+            "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY:BOOL=FALSE",
+            "-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH:BOOL=FALSE",
+            "-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH:BOOL=FALSE",
+            "-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH:BOOL=FALSE",
+            "-DCMAKE_FIND_USE_INSTALL_PREFIX:BOOL=FALSE",
+            "-DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY:BOOL=TRUE",
+            "-DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY:BOOL=TRUE",
+        ]
+    )
     return controlled_command, controlled_environment
+
+
+def validate_missing_llvm_failure(
+    invocations: Sequence[subprocess.CompletedProcess[str]],
+) -> tuple[bool, str]:
+    """Accept T12B-00453 only when its sole configure fails for missing LLVM."""
+    if len(invocations) != 1:
+        return False, "missing-LLVM oracle requires exactly one configure invocation"
+    completed = invocations[0]
+    captured = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    normalized = " ".join(captured.split())
+    if completed.returncode == 0:
+        return False, "invalid root configuration unexpectedly found LLVM"
+    if MISSING_LLVM_PACKAGE_DIAGNOSTIC not in normalized:
+        return False, "invalid root configuration failed for a reason other than missing LLVM"
+    return True, ""
 
 
 def cancelled_infrastructure_outcomes(
@@ -1150,17 +1222,26 @@ class ExecutionEngine:
                 str(case_root),
             )
 
+        controlled_invocations: list[subprocess.CompletedProcess[str]] = []
+        isolation_root = case_root / "missing-llvm-package-root"
+
         def controlled_runner(
             command: Sequence[str],
             cwd: Path,
             environment: dict[str, str],
         ) -> subprocess.CompletedProcess[str]:
             controlled_command, controlled_environment = isolate_missing_llvm_discovery(
-                variant.case.case_id, command, environment
+                variant.case.case_id,
+                command,
+                environment,
+                isolation_root,
             )
-            return self.process.run_completed(
+            completed = self.process.run_completed(
                 controlled_command, cwd, controlled_environment
             )
+            if variant.case.case_id == "T12B-00453":
+                controlled_invocations.append(completed)
+            return completed
 
         raw_result: Any = None
         gate_error = ""
@@ -1183,6 +1264,13 @@ class ExecutionEngine:
             satisfied, detail = parse_python_gate_result(raw_result)
         except ValueError as error:
             return "INFRASTRUCTURE_ERROR", str(error), evidence
+        if variant.case.case_id == "T12B-00453":
+            missing_llvm, missing_llvm_detail = validate_missing_llvm_failure(
+                controlled_invocations
+            )
+            if not missing_llvm:
+                satisfied = False
+                detail = missing_llvm_detail
         return self._expected_status(variant.case, satisfied, detail, evidence)
 
     def _emit_case_logs(self, case_root: Path) -> None:
