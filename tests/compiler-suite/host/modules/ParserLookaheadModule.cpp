@@ -98,8 +98,8 @@ void testVariableDeclarationKnownVersusUnknown(TestContext& context)
     ParserFixture known("T value;", {"T"});
     ParserFixture unknown("Mystery value;");
     context.expect(known.parser().looksLikeVariableDeclaration() &&
-            !unknown.parser().looksLikeVariableDeclaration(),
-        "TP-PAR-026 variable declaration lookahead must require a known leading type");
+            unknown.parser().looksLikeVariableDeclaration(),
+        "TP-PAR-026 unambiguous type-shaped declarations must reach semantic name resolution");
 }
 
 void testConditionDeclarationLookahead(TestContext& context)

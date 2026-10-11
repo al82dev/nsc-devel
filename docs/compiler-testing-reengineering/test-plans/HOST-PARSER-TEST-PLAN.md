@@ -41,7 +41,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-023 | CP-PAR-003 | genéricos anidados cerrados con `>>` | afterType exacto | PR |
 | TP-PAR-024 | CP-PAR-003 | genéricos cerrados con `>>=` | preserva porción de asignación pendiente | PR |
 | TP-PAR-025 | CP-PAR-003 | punteros/arrays combinados | consume todos los modifiers | PR |
-| TP-PAR-026 | CP-PAR-003 | `T x` con T conocido/desconocido | variable declaration sólo en primer caso | PR |
+| TP-PAR-026 | CP-PAR-003 | `T x` con T conocido/desconocido | ambos prefijos inequívocos llegan a resolución semántica | PR |
 | TP-PAR-027 | CP-PAR-003 | condición `T x = e` | condition declaration correcta | PR |
 | TP-PAR-028 | CP-PAR-003 | `(T)x` frente a `(a+b)` | type/cast lookahead no confunde expresión | PR |
 | TP-PAR-029 | CP-PAR-003 | generic type parameter scoped | visible dentro y retirado al salir | PR |
