@@ -128,6 +128,7 @@ VISIBLE_STATE_GROUPS = {
             "CANCELLED",
             "FAIL",
             "INFRASTRUCTURE_ERROR",
+            "NOT_RUN",
             "TIMEOUT",
             "UNEXPECTED_PASS",
         }

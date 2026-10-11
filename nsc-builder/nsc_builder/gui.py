@@ -168,6 +168,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         output_ready = Signal(str)
         case_ready = Signal(str, str, str, float, str)
         progress_ready = Signal(int, int)
+        preparation_ready = Signal(str, int, int, str)
         completed = Signal(object, bool, str)
 
         def __init__(
@@ -204,6 +205,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     self.case_ready.emit,
                     self.progress_ready.emit,
                     timeout_budgets,
+                    self.preparation_ready.emit,
                 )
                 outcomes, cancelled = self.engine.run(self.variants)
                 self.store.finish(outcomes, cancelled)
@@ -469,6 +471,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
                 ("TIMEOUT", "TIMEOUT"),
+                ("NOT_RUN / BLOQUEADO_POR", "NOT_RUN"),
                 ("RUNNING", "RUNNING"),
                 ("COMPILING", "COMPILING"),
                 ("LISTO", "LISTO"),
@@ -1589,15 +1592,14 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.error_report.clear()
             self.tabs.setCurrentIndex(1)
             self.case_table.setSortingEnabled(False)
-            self.execution_activity.setText(
-                f"Iniciando 1/{len(variants):,}: {variants[0].case.case_id}"
-            )
+            self.execution_activity.setText("Preparar pruebas — planificando targets")
             self._set_busy(True)
             worker = SuiteWorker(run_id, config, variants, metadata)
             self.worker = worker
             worker.output_ready.connect(self._append_full_output)
             worker.case_ready.connect(self._update_case)
             worker.progress_ready.connect(self._update_progress)
+            worker.preparation_ready.connect(self._update_preparation)
             worker.completed.connect(self._suite_finished)
             worker.start()
 
@@ -1804,6 +1806,16 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.progress.setFormat(f"{done:,}/{total:,} pruebas (%p%)")
             self.statusBar().showMessage(f"Ejecutando {done:,}/{total:,}")
 
+        def _update_preparation(
+            self, phase: str, done: int, total: int, detail: str
+        ) -> None:
+            """Project producer preparation without inventing synthetic test rows."""
+            self.progress.setRange(0, max(1, total))
+            self.progress.setValue(done)
+            self.progress.setFormat(f"{phase}: {done:,}/{total:,} targets (%p%)")
+            self.execution_activity.setText(f"{phase} — {detail}")
+            self.statusBar().showMessage(f"{phase}: {done:,}/{total:,}")
+
         def _refresh_live_counts(self) -> None:
             """Render exact live state totals without rescanning the complete table."""
             order = (
@@ -1820,6 +1832,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "UNEXPECTED_PASS",
                 "CANCELLED",
                 "TIMEOUT",
+                "NOT_RUN",
             )
             parts = [
                 f"{name}: {self.live_status_counts[name]:,}"
@@ -2245,6 +2258,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
                 ("TIMEOUT", "TIMEOUT"),
+                ("NOT_RUN / BLOQUEADO_POR", "NOT_RUN"),
                 ("PENDIENTE", "PENDIENTE"),
                 ("FILTRADO", "FILTRADO"),
             ):
@@ -2827,6 +2841,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "UNEXPECTED_PASS": QColor("#ff7777"),
                 "CANCELLED": QColor("#b7b7b7"),
                 "TIMEOUT": QColor("#ff7777"),
+                "NOT_RUN": QColor("#ff7777"),
                 "PENDIENTE": QColor("#d9b85f"),
                 "LISTO": QColor("#8cb4ff"),
                 "DESACTIVADA": QColor("#b7b7b7"),
@@ -2914,6 +2929,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing the primary status filters")
         if window.status_filter_combo.findData("TIMEOUT") < 0:
             raise RuntimeError("GUI smoke missing the TIMEOUT status filter")
+        if window.status_filter_combo.findData("NOT_RUN") < 0:
+            raise RuntimeError("GUI smoke missing the producer-blocked status filter")
+        if not hasattr(SuiteWorker, "preparation_ready"):
+            raise RuntimeError("GUI smoke missing producer preparation progress")
         valid_history = next(
             (
                 root

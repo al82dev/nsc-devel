@@ -14,6 +14,13 @@ sys.path.insert(0, str(MODULAR_ROOT))
 from nsc_builder.inventory import MODULE_OWNERSHIP
 
 
+AUTHORIZED_MODULAR_DIVERGENCES = {
+    ("catalog", "CanonicalCatalog"),
+    ("execution", "ExecutionEngine"),
+    ("gui", "launch_gui"),
+}
+
+
 def definitions(path: Path) -> dict[str, ast.AST]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return {
@@ -35,10 +42,22 @@ class ExtractionEquivalenceTests(unittest.TestCase):
                 with self.subTest(owner=owner, name=name):
                     self.assertIn(name, root_definitions)
                     self.assertIn(name, module_definitions)
+                    if (owner, name) in AUTHORIZED_MODULAR_DIVERGENCES:
+                        continue
                     self.assertEqual(
                         ast.dump(module_definitions[name], include_attributes=False),
                         ast.dump(root_definitions[name], include_attributes=False),
                     )
+
+    def test_functional_divergences_are_explicit_and_still_present(self) -> None:
+        root_definitions = definitions(REPOSITORY_ROOT / "nscbuilder3.py")
+        for owner, name in AUTHORIZED_MODULAR_DIVERGENCES:
+            module_definitions = definitions(PACKAGE_ROOT / f"{owner}.py")
+            with self.subTest(owner=owner, name=name):
+                self.assertNotEqual(
+                    ast.dump(module_definitions[name], include_attributes=False),
+                    ast.dump(root_definitions[name], include_attributes=False),
+                )
 
     def test_module_ownership_is_unique(self) -> None:
         total = sum(len(names) for names in MODULE_OWNERSHIP.values())
