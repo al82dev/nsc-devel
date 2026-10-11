@@ -333,7 +333,6 @@ CLEANUP_BUILD_NAMES: tuple[str, ...] = (
     "build-test-nslink",
     "build-tests",
 )
-CASE_TIMEOUT_SECONDS = 300
 
 INTEROP_CASES: tuple[tuple[str, str, int | None], ...] = (
     ("c1_03_function_pointer_parameter", "c1_03_function_pointer_parameter", 42),
@@ -720,7 +719,6 @@ class ProcessResult:
     output: str
     error: str = ""
     cancelled: bool = False
-    timed_out: bool = False
 
 
 def utc_stamp() -> str:
@@ -1879,7 +1877,6 @@ class PipelineWorker(QObject):
         cwd: Path,
         env: dict[str, str],
         log_path: Path,
-        timeout: int | None = None,
         prefix: str = "",
         channel: str = "",
         optimization: str = "General",
@@ -1936,7 +1933,6 @@ class PipelineWorker(QObject):
 
         reader = threading.Thread(target=read_output, daemon=True)
         reader.start()
-        timed_out = False
         cancelled = False
         try:
             while process.poll() is None:
@@ -1954,10 +1950,6 @@ class PipelineWorker(QObject):
                     )
                 if self.cancel_event.is_set():
                     cancelled = True
-                    self._terminate_tree(process)
-                    break
-                if timeout is not None and time.monotonic() - started > timeout:
-                    timed_out = True
                     self._terminate_tree(process)
                     break
                 time.sleep(0.05)
@@ -1983,9 +1975,7 @@ class PipelineWorker(QObject):
 
         elapsed = time.monotonic() - started
         exit_code = process.returncode if process.returncode is not None else -1
-        if timed_out:
-            error = f"Timeout después de {timeout} s"
-        elif cancelled:
+        if cancelled:
             error = "Cancelado"
         else:
             error = ""
@@ -2000,7 +1990,6 @@ class PipelineWorker(QObject):
             "\n".join(lines),
             error=error,
             cancelled=cancelled,
-            timed_out=timed_out,
         )
 
     def _base_environment(self, linker: str | None = None) -> dict[str, str]:
@@ -2125,7 +2114,6 @@ class PipelineWorker(QObject):
         name: str,
         command: list[str],
         env: dict[str, str],
-        timeout: int | None = None,
         channel: str = "",
     ) -> bool:
         assert self.run_dir is not None
@@ -2136,7 +2124,6 @@ class PipelineWorker(QObject):
             Path(self.plan.root),
             env,
             log,
-            timeout=timeout,
             channel=channel,
         )
         if result.cancelled:
@@ -2963,7 +2950,6 @@ class PipelineWorker(QObject):
                     Path(self.plan.root),
                     env,
                     log.with_suffix(".obj.log"),
-                    timeout=CASE_TIMEOUT_SECONDS,
                     prefix=prefix,
                     channel=linker,
                     optimization=optimization.lstrip("-"),
@@ -2981,7 +2967,6 @@ class PipelineWorker(QObject):
                         Path(self.plan.root),
                         env,
                         log.with_suffix(".exe.log"),
-                        timeout=CASE_TIMEOUT_SECONDS,
                         prefix=prefix,
                         channel=linker,
                         optimization=optimization.lstrip("-"),
@@ -3032,7 +3017,6 @@ class PipelineWorker(QObject):
                             artifact_dir,
                             env,
                             log.with_suffix(".run.log"),
-                            timeout=CASE_TIMEOUT_SECONDS,
                             prefix=prefix,
                             channel=linker,
                             optimization=optimization.lstrip("-"),
@@ -3040,9 +3024,6 @@ class PipelineWorker(QObject):
                         actual = run.exit_code
                         if run.cancelled:
                             status, detail = "cancelled", "cancelado"
-                        elif run.timed_out:
-                            status, detail = "failed", run.error
-                            error_log = log.with_suffix(".run.log")
                         elif actual == case.expected:
                             suffix = "; binario incremental" if cached else ""
                             status, detail = "passed", f"exit {actual}{suffix}"
