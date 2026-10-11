@@ -31,6 +31,14 @@ void dominatorChainContract(TestContext& context, std::size_t variant)
             "TF-DOM-068 TEST-INFRASTRUCTURE: a cyclic parent chain requires process isolation");
         return;
     }
+    if (variant == 8)
+    {
+        const auto chain = tree->dominators(graph.nodes.back());
+        context.expect(chain.size() == graph.nodes.size() &&
+                chain.front() == graph.function->entryNode() && chain.back() == graph.nodes.back(),
+            "TF-DOM-072 linear scale chain is complete and ordered without rebuilding every prefix");
+        return;
+    }
     const DominatorSets sets = computeDominatorSets(graph.function);
     bool exact = true;
     for (const cfg::CfgNode* node : graph.function->reversePostOrder())
