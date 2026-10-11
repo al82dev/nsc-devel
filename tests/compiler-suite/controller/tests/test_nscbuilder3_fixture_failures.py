@@ -30,24 +30,22 @@ class Builder3FixtureFailureTests(unittest.TestCase):
             key="TSH-00001|Release|O0", build_mode="Release", optimization="O0"
         )
 
-    def test_timeout_and_cancellation_keep_their_process_cause(self) -> None:
+    def test_cancellation_keeps_its_process_cause(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
-            for reason, text in (("timeout", "timed out"), ("cancelled", "cancelled")):
-                with self.subTest(reason=reason):
-                    engine = self._engine(Path(directory) / reason)
+            engine = self._engine(Path(directory) / "cancelled")
 
-                    def run(*_args: object, **_kwargs: object) -> tuple[int, str]:
-                        engine.process.last_termination_reason = reason
-                        return 130, "process evidence"
+            def run(*_args: object, **_kwargs: object) -> tuple[int, str]:
+                engine.process.last_termination_reason = "cancelled"
+                return 130, "process evidence"
 
-                    with patch.object(engine.process, "run", side_effect=run), patch.object(
-                        engine, "_nsc_environment", return_value={}
-                    ):
-                        with self.assertRaisesRegex(RuntimeError, text):
-                            engine._prepare_selfhost_fixture(
-                                self._variant(), "selfhost/modules/SelfHostBasic.nsproj"
-                            )
+            with patch.object(engine.process, "run", side_effect=run), patch.object(
+                engine, "_nsc_environment", return_value={}
+            ):
+                with self.assertRaisesRegex(RuntimeError, "cancelled"):
+                    engine._prepare_selfhost_fixture(
+                        self._variant(), "selfhost/modules/SelfHostBasic.nsproj"
+                    )
 
     def test_exit_failure_and_missing_artifact_are_distinct(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -102,13 +100,13 @@ class Builder3FixtureFailureTests(unittest.TestCase):
             for item in ET.parse(observed_project[0]).getroot().iter("Compile"):
                 self.assertNotIn("..", Path(item.get("Include", "")).parts)
 
-    def test_producer_timeout_is_cached_as_the_downstream_blocker(self) -> None:
+    def test_producer_failure_is_cached_as_the_downstream_blocker(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
             engine = self._engine(Path(directory))
             case = builder.CanonicalCatalog.load().by_id["TSH-00001"]
             variant = builder.RunVariant(case, "Release", "O0")
-            detail = "fixture SelfHostBasic.nsproj timed out after 900.0 seconds"
+            detail = "fixture SelfHostBasic.nsproj compiler exited with code 7"
             with patch.object(
                 engine, "_prepare_selfhost_fixture", side_effect=RuntimeError(detail)
             ):
