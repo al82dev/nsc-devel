@@ -95,13 +95,14 @@ class ManifestTests(unittest.TestCase):
         known["tags"] = ["known-defect", "unsafe-boundary"]
         known["oracle"] = {
             "abnormal_termination": {
-                "exit_code": "nonzero",
+                "kind": "windows-status",
+                "exit_code": "0xC000001D",
                 "output_contains": ["Assertion failed: array subscript out of range"],
             }
         }
         loaded = load_manifest(self.write_manifest([known]), self.inventory)
         self.assertEqual(
-            loaded[0].oracle["abnormal_termination"]["exit_code"], "nonzero"
+            loaded[0].oracle["abnormal_termination"]["exit_code"], "0xC000001D"
         )
 
         for mutation, message in (
@@ -111,12 +112,25 @@ class ManifestTests(unittest.TestCase):
                 {
                     "oracle": {
                         "abnormal_termination": {
+                            "kind": "windows-status",
                             "exit_code": 3,
                             "output_contains": ["assertion"],
                         }
                     }
                 },
-                "exit_code must be nonzero",
+                "exit_code must be an exact Windows status",
+            ),
+            (
+                {
+                    "oracle": {
+                        "abnormal_termination": {
+                            "kind": "process-exit",
+                            "exit_code": "0xC000001D",
+                            "output_contains": [],
+                        }
+                    }
+                },
+                "kind must be windows-status",
             ),
         ):
             with self.subTest(mutation=mutation):

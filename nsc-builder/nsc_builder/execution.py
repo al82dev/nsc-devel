@@ -262,18 +262,34 @@ def expected_abnormal_termination_detail(
     if not isinstance(tags, list) or not {"known-defect", "unsafe-boundary"} <= set(tags):
         raise ValueError("abnormal termination contract lacks required defect tags")
     if not isinstance(abnormal, dict) or set(abnormal) != {
+        "kind",
         "exit_code",
         "output_contains",
     }:
         raise ValueError("invalid abnormal termination contract")
-    if abnormal.get("exit_code") != "nonzero" or exit_code == 0:
+    expected_kind = abnormal.get("kind")
+    expected_code_text = abnormal.get("exit_code")
+    if expected_kind != "windows-status":
+        raise ValueError("invalid abnormal termination kind")
+    if not isinstance(expected_code_text, str) or re.fullmatch(
+        r"0xC[0-9A-F]{7}", expected_code_text
+    ) is None:
+        raise ValueError("invalid exact Windows status contract")
+    expected_code = int(expected_code_text, 16)
+    actual_code = exit_code & 0xFFFFFFFF
+    actual_kind = (
+        "windows-status"
+        if (actual_code & 0xC0000000) == 0xC0000000
+        else "process-exit"
+    )
+    if actual_kind != expected_kind or actual_code != expected_code:
         raise ValueError(
-            f"abnormal termination exit code {exit_code} contradicts nonzero contract"
+            "abnormal termination mismatch: expected "
+            f"{expected_kind}/{expected_code_text}, got {actual_kind}/0x{actual_code:08X}"
         )
     fragments = abnormal.get("output_contains")
     if (
         not isinstance(fragments, list)
-        or not fragments
         or not all(isinstance(value, str) and value for value in fragments)
     ):
         raise ValueError("invalid abnormal termination output contract")
@@ -283,8 +299,9 @@ def expected_abnormal_termination_detail(
             "abnormal termination output omits: " + ", ".join(repr(value) for value in missing)
         )
     return (
-        f"known product defect terminated the isolated host process with exit code {exit_code}; "
-        + "; ".join(f"observed {value!r}" for value in fragments)
+        "known product defect matched exact terminal "
+        f"{actual_kind}/0x{actual_code:08X}"
+        + ("; " + "; ".join(f"observed {value!r}" for value in fragments) if fragments else "")
     )
 
 
@@ -1049,6 +1066,17 @@ class ExecutionEngine:
             return (
                 "INFRASTRUCTURE_ERROR",
                 f"{error}; host exit code {code}",
+                str(log_path),
+            )
+        if (
+            not passed
+            and isinstance(variant.case.manifest, dict)
+            and isinstance(variant.case.manifest.get("oracle"), dict)
+            and "abnormal_termination" in variant.case.manifest["oracle"]
+        ):
+            return (
+                "FAIL",
+                "known defect emitted a structured failure instead of its exact abnormal terminal",
                 str(log_path),
             )
         return self._expected_status(variant.case, passed, detail, str(log_path))

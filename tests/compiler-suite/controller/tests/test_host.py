@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,7 +19,11 @@ from nsc_suite.workspace import WorkspaceManager
 
 
 def case(
-    *, executor: str = "nsc_component_tests", expected_outcome: str = "PASS"
+    *,
+    executor: str = "nsc_component_tests",
+    expected_outcome: str = "PASS",
+    oracle: dict[str, object] | None = None,
+    tags: tuple[str, ...] = (),
 ) -> CaseManifest:
     return CaseManifest(
         case_id="TB-BAS-001",
@@ -28,13 +33,13 @@ def case(
         executor=executor,
         layer="unit",
         inputs={},
-        oracle={"status": "PASS"},
+        oracle=oracle or {"status": "PASS"},
         dependencies=(),
         profile="PR",
         build_modes=("Debug", "Release"),
         optimizations=("NA",),
         isolation="in-process-reset",
-        tags=(),
+        tags=tags,
         expected_outcome=expected_outcome,
     )
 
@@ -164,18 +169,78 @@ class HostExecutorTests(unittest.TestCase):
         )
         self.assertIs(result.status, CaseStatus.UNEXPECTED_PASS)
 
-    def test_classifies_an_isolated_known_defect_crash(self) -> None:
+    def test_classifies_only_an_exact_isolated_known_defect_terminal(self) -> None:
+        workspace = WorkspaceManager(self.root).prepare(
+            "run-exact-terminal", "TB-BAS-001"
+        )
+        abnormal_case = case(
+            expected_outcome="KNOWN_FAILURE",
+            oracle={
+                "abnormal_termination": {
+                    "kind": "windows-status",
+                    "exit_code": "0xC00000FD",
+                    "output_contains": [],
+                }
+            },
+            tags=("known-defect", "unsafe-boundary"),
+        )
+        completed = subprocess.CompletedProcess(
+            args=("fake-host",), returncode=0xC00000FD, stdout="", stderr=""
+        )
+        with patch("nsc_suite.host.subprocess.run", return_value=completed):
+            result = HostExecutor(("fake-host",))(abnormal_case, workspace)
+        self.assertIs(result.status, CaseStatus.KNOWN_FAILURE)
+        self.assertIn("windows-status/0xC00000FD", result.failures[0])
+
+        for terminal in (9, 0xC000001D):
+            with self.subTest(terminal=terminal):
+                mismatch = subprocess.CompletedProcess(
+                    args=("fake-host",), returncode=terminal, stdout="", stderr=""
+                )
+                with patch("nsc_suite.host.subprocess.run", return_value=mismatch):
+                    result = HostExecutor(("fake-host",))(abnormal_case, workspace)
+                self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+
+    def test_never_converts_an_undeclared_kpd_crash(self) -> None:
+        workspace = WorkspaceManager(self.root).prepare("run-undeclared", "TB-BAS-001")
+        completed = subprocess.CompletedProcess(
+            args=("fake-host",), returncode=0xC00000FD, stdout="", stderr=""
+        )
+        with patch("nsc_suite.host.subprocess.run", return_value=completed):
+            result = HostExecutor(("fake-host",))(
+                case(expected_outcome="KNOWN_FAILURE"), workspace
+            )
+        self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+
+    def test_abnormal_kpd_does_not_accept_a_structured_failure(self) -> None:
         self.next_run += 1
         script = self.root / f"fake-host-{self.next_run}.py"
-        script.write_text("raise SystemExit(9)\n", encoding="utf-8", newline="\n")
+        payload = self.valid_payload("FAIL", ["different product failure"])
+        script.write_text(
+            "import json\n"
+            f"print({json.dumps(json.dumps(payload, sort_keys=True))})\n"
+            "raise SystemExit(1)\n",
+            encoding="utf-8",
+            newline="\n",
+        )
         workspace = WorkspaceManager(self.root).prepare(
             f"run-{self.next_run:03d}", "TB-BAS-001"
         )
         result = HostExecutor((sys.executable, str(script)))(
-            case(expected_outcome="KNOWN_FAILURE"), workspace
+            case(
+                expected_outcome="KNOWN_FAILURE",
+                oracle={
+                    "abnormal_termination": {
+                        "kind": "windows-status",
+                        "exit_code": "0xC00000FD",
+                        "output_contains": [],
+                    }
+                },
+                tags=("known-defect", "unsafe-boundary"),
+            ),
+            workspace,
         )
-        self.assertIs(result.status, CaseStatus.KNOWN_FAILURE)
-        self.assertIn("exit code 9", result.failures[0])
+        self.assertIs(result.status, CaseStatus.FAIL)
 
     def test_rejects_wrong_contract_identity(self) -> None:
         payload = self.valid_payload("PASS", [])

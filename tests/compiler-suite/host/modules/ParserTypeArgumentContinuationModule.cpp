@@ -127,8 +127,7 @@ void registerParserTypeArgumentContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-095", testMixedTypeConstAndPackArguments);
     addCase(registry, "TP-PAR-096", testNestedPlainGreaterClosures);
     addCase(registry, "TP-PAR-097", testGreaterGreaterLeavesOnePendingClose);
-    addCase(registry, "TP-PAR-098", testGreaterGreaterEqualPreservesAssignment,
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-098", testGreaterGreaterEqualPreservesAssignment);
     addCase(registry, "TP-PAR-099", testEmptyAndTrailingCommaArgumentLists);
     addCase(registry, "TP-PAR-100", testForbiddenArgumentToken);
 }

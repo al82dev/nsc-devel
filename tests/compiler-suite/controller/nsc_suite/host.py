@@ -53,15 +53,24 @@ class HostExecutor:
         _write_logs(workspace, completed.stdout, completed.stderr)
         lines = tuple(line for line in completed.stdout.splitlines() if line.strip())
         if len(lines) != 1:
-            if case.expected_outcome == "KNOWN_FAILURE" and completed.returncode != 0 and not lines:
+            try:
+                abnormal_detail = _expected_abnormal_termination_detail(
+                    case,
+                    completed.returncode,
+                    completed.stdout + "\n" + completed.stderr,
+                )
+            except ValueError as error:
+                return _infrastructure_error(
+                    case.case_id,
+                    f"host executable emitted {len(lines)} non-empty result lines; expected 1; {error}",
+                    duration,
+                )
+            if abnormal_detail is not None:
                 return CaseResult(
                     case.case_id,
                     CaseStatus.KNOWN_FAILURE,
                     duration_seconds=duration,
-                    failures=(
-                        "known product defect terminated the isolated host process with "
-                        f"exit code {completed.returncode}",
-                    ),
+                    failures=(abnormal_detail,),
                 )
             return _infrastructure_error(
                 case.case_id,
@@ -70,11 +79,26 @@ class HostExecutor:
             )
         try:
             payload = json.loads(lines[0], object_pairs_hook=_unique_json_object)
-        except json.JSONDecodeError as error:
-            return _infrastructure_error(
-                case.case_id, f"host executable emitted invalid JSON: {error.msg}", duration
-            )
-        except ValueError as error:
+        except (json.JSONDecodeError, ValueError) as error:
+            try:
+                abnormal_detail = _expected_abnormal_termination_detail(
+                    case,
+                    completed.returncode,
+                    completed.stdout + "\n" + completed.stderr,
+                )
+            except ValueError as contract_error:
+                return _infrastructure_error(
+                    case.case_id,
+                    f"host executable emitted invalid JSON: {error}; {contract_error}",
+                    duration,
+                )
+            if abnormal_detail is not None:
+                return CaseResult(
+                    case.case_id,
+                    CaseStatus.KNOWN_FAILURE,
+                    duration_seconds=duration,
+                    failures=(abnormal_detail,),
+                )
             return _infrastructure_error(
                 case.case_id, f"host executable emitted invalid JSON: {error}", duration
             )
@@ -118,6 +142,16 @@ class HostExecutor:
             )
         if case.expected_outcome == "KNOWN_FAILURE":
             if status_text == "FAIL":
+                if "abnormal_termination" in case.oracle:
+                    return CaseResult(
+                        case.case_id,
+                        CaseStatus.FAIL,
+                        duration_seconds=duration,
+                        failures=(
+                            "known defect emitted a structured failure instead of its exact "
+                            "abnormal terminal",
+                        ),
+                    )
                 return CaseResult(
                     case.case_id,
                     CaseStatus.KNOWN_FAILURE,
@@ -136,6 +170,45 @@ class HostExecutor:
             duration_seconds=duration,
             failures=tuple(failures),
         )
+
+
+def _expected_abnormal_termination_detail(
+    case: CaseManifest, exit_code: int, captured: str
+) -> str | None:
+    """Accept only the exact terminal kind, code, and evidence declared by one KPD."""
+    abnormal = case.oracle.get("abnormal_termination")
+    if abnormal is None:
+        return None
+    if case.expected_outcome != "KNOWN_FAILURE":
+        raise ValueError("abnormal termination contract belongs to a non-defect case")
+    if not {"known-defect", "unsafe-boundary"} <= set(case.tags):
+        raise ValueError("abnormal termination contract lacks required defect tags")
+    if not isinstance(abnormal, dict) or set(abnormal) != {
+        "kind",
+        "exit_code",
+        "output_contains",
+    }:
+        raise ValueError("invalid abnormal termination contract")
+    expected_kind = abnormal["kind"]
+    expected_code = int(abnormal["exit_code"], 16)
+    actual_code = exit_code & 0xFFFFFFFF
+    actual_kind = "windows-status" if (actual_code & 0xC0000000) == 0xC0000000 else "process-exit"
+    if actual_kind != expected_kind or actual_code != expected_code:
+        raise ValueError(
+            "host terminal mismatch: expected "
+            f"{expected_kind}/{abnormal['exit_code']}, got {actual_kind}/0x{actual_code:08X}"
+        )
+    fragments = abnormal["output_contains"]
+    missing = [fragment for fragment in fragments if fragment not in captured]
+    if missing:
+        raise ValueError(
+            "host terminal evidence omits: " + ", ".join(repr(value) for value in missing)
+        )
+    return (
+        "known product defect matched exact terminal "
+        f"{actual_kind}/0x{actual_code:08X}"
+        + ("; " + "; ".join(f"observed {value!r}" for value in fragments) if fragments else "")
+    )
 
 
 def _write_logs(workspace: CaseWorkspace, stdout: str, stderr: str) -> None:

@@ -233,20 +233,25 @@ def _parse_case(
                 f"abnormal termination oracle requires known-defect and unsafe-boundary tags at {location}"
             )
         if not isinstance(abnormal, dict) or set(abnormal) != {
+            "kind",
             "exit_code",
             "output_contains",
         }:
             raise ManifestError(
                 f"invalid abnormal termination oracle at {location}"
             )
-        if abnormal["exit_code"] != "nonzero":
+        if abnormal["kind"] != "windows-status":
             raise ManifestError(
-                f"abnormal termination exit_code must be nonzero at {location}"
+                f"abnormal termination kind must be windows-status at {location}"
+            )
+        exit_code = abnormal["exit_code"]
+        if not isinstance(exit_code, str) or re.fullmatch(r"0xC[0-9A-F]{7}", exit_code) is None:
+            raise ManifestError(
+                f"abnormal termination exit_code must be an exact Windows status at {location}"
             )
         output_contains = abnormal["output_contains"]
         if (
             not isinstance(output_contains, list)
-            or not output_contains
             or not all(isinstance(value, str) and value for value in output_contains)
             or len(output_contains) != len(set(output_contains))
         ):

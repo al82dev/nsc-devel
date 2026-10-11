@@ -96,10 +96,10 @@ ni otros contratos causalmente independientes.
 
 ## Host.Parser materializado y activo
 
-Los `536` casos de Parser ya existen en la suite nueva. Veinte conservan un
+Los `536` casos de Parser ya existen en la suite nueva. Diecinueve conservan un
 defecto de producto mediante `KNOWN_FAILURE` y no bloquean el flujo ordinario:
 
-`TP-PAR-063`, `TP-PAR-069`, `TP-PAR-098`, `TP-PAR-103`, `TP-PAR-306`,
+`TP-PAR-063`, `TP-PAR-069`, `TP-PAR-103`, `TP-PAR-306`,
 `TP-PAR-309`, `TP-PAR-316`, `TP-PAR-327`, `TP-PAR-334`, `TP-PAR-355`,
 `TP-PAR-356`, `TP-PAR-358`, `TP-PAR-400`, `TP-PAR-405`, `TP-PAR-406`,
 `TP-PAR-422`, `TP-PAR-431`, `TP-PAR-450`, `TP-PAR-476` y `TP-PAR-511`.

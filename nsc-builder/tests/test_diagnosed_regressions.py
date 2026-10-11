@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 MODULAR_ROOT = Path(__file__).resolve().parents[1]
@@ -16,9 +18,82 @@ from nsc_builder.constants import (
     RESULT_STATUSES,
 )
 from nsc_builder.execution import parse_identity_envelope
+from nsc_builder.execution import expected_abnormal_termination_detail
+from nsc_builder.execution import ExecutionEngine
+from nsc_builder.configuration import BuilderConfig
+from nsc_builder.models import TestCase, TestVariant
 
 
 class DiagnosedRegressionTests(unittest.TestCase):
+    def abnormal_case(self) -> TestCase:
+        return TestCase(
+            case_id="TS-SEMA-265",
+            contract_id="CS-SEMA-025",
+            component="Host.Sema",
+            wave=2,
+            purpose="semantic boundary",
+            layer="component",
+            profile="PR",
+            build_modes=("Debug",),
+            optimizations=("NA",),
+            executor="nsc_component_tests",
+            disposition="KnownProductDefect",
+            objective="recursive ABI classification must terminate",
+            expected_outcome="KNOWN_FAILURE",
+            manifest={
+                "oracle": {
+                    "abnormal_termination": {
+                        "kind": "windows-status",
+                        "exit_code": "0xC00000FD",
+                        "output_contains": [],
+                    }
+                },
+                "tags": ["known-defect", "unsafe-boundary"],
+            },
+        )
+
+    def test_expected_abnormal_termination_requires_exact_kind_and_code(self) -> None:
+        detail = expected_abnormal_termination_detail(
+            self.abnormal_case(), 0xC00000FD, ""
+        )
+        self.assertIn("windows-status/0xC00000FD", detail or "")
+        for exit_code in (1, 0xC000001D):
+            with self.subTest(exit_code=exit_code):
+                with self.assertRaisesRegex(ValueError, "mismatch"):
+                    expected_abnormal_termination_detail(
+                        self.abnormal_case(), exit_code, ""
+                    )
+
+    def test_structured_failure_cannot_satisfy_an_abnormal_kpd_contract(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="builder-abnormal-", dir=Path.cwd()) as directory:
+            root = Path(directory)
+            executable = root / "build" / "debug" / "nsc_component_tests.exe"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"fixture")
+            engine = ExecutionEngine(
+                BuilderConfig(build_root=str(root / "build")),
+                SimpleNamespace(root=root / "evidence"),
+                lambda _line: None,
+                lambda *_args: None,
+                lambda *_args: None,
+            )
+            payload = {
+                "case_id": "TS-SEMA-265",
+                "contract_id": "CS-SEMA-025",
+                "component": "Host.Sema",
+                "duration_us": 1,
+                "status": "FAIL",
+                "failures": ["different product failure"],
+            }
+            engine.process.run = lambda *_args, **_kwargs: (1, json.dumps(payload) + "\n")
+
+            status, detail, _ = engine._run_host(
+                TestVariant(self.abnormal_case(), "Debug", "NA")
+            )
+
+            self.assertEqual(status, "FAIL")
+            self.assertIn("instead of its exact abnormal terminal", detail)
+
     def test_parser_lookahead_uses_the_declaring_typesyntax_namespace(self) -> None:
         source = (
             REPOSITORY_ROOT
