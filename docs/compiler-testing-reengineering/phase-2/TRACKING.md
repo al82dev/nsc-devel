@@ -1630,3 +1630,9 @@ sin alterar el flujo fisico del lexer. El oraculo 024 observa ahora el parser
 productivo, no un token fisico imposible. No se compilo ni ejecuto; la
 validacion queda delegada al usuario. Evidencia:
 `TANDA-VALIDACION-230-PARSER-GENERIC-SHIFT-ASSIGN.md`.
+
+Validacion 231 corrige `TP-PAR-160`: una colision entre campos promovidos se
+clasifica como `DuplicateSymbol`, no como declaracion esperada. Se conserva la
+recuperacion existente. No se compilo ni ejecuto; la validacion queda delegada
+al usuario. Evidencia:
+`TANDA-VALIDACION-231-PARSER-PROMOTED-DUPLICATE.md`.

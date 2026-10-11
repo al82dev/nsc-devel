@@ -3970,7 +3970,7 @@ ast::AstNode* Parser::parseStructDeclaration(
                     if (!names.insert(parameter->text()).second)
                     {
                         diagnostics_.report(
-                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticId::DuplicateSymbol,
                             diagnostics::DiagnosticSeverity::Error,
                             parameter->range(),
                             "duplicate promoted field '" + parameter->text() + "'");
