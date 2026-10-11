@@ -174,6 +174,10 @@ public:
     void setPackExpansion(bool value = true) noexcept;
 
     void addModifier(TypeModifierSyntax modifier);
+    // Each written bracket group is outer to the groups that follow it. The parser stores the
+    // dimensions inside one group from innermost to outermost, then inserts the complete group
+    // before the fixed-array suffixes already collected from earlier brackets.
+    void addArrayModifierGroup(const std::vector<TypeModifierSyntax>& modifiers);
     const std::vector<TypeModifierSyntax>& modifiers() const noexcept;
 
     // Stage 52 fix: normally a TypeSyntax node is bound (ProjectNameLookup::bindTypeSyntax)

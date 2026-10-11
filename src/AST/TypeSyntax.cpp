@@ -133,6 +133,16 @@ void TypeSyntax::setConstExpression(AstNode* expression) noexcept
 bool TypeSyntax::isPackExpansion() const noexcept { return isPackExpansion_; }
 void TypeSyntax::setPackExpansion(bool value) noexcept { isPackExpansion_ = value; }
 void TypeSyntax::addModifier(TypeModifierSyntax modifier) { modifiers_.push_back(modifier); }
+void TypeSyntax::addArrayModifierGroup(const std::vector<TypeModifierSyntax>& modifiers)
+{
+    auto insertion = modifiers_.end();
+    while (insertion != modifiers_.begin() &&
+           (insertion - 1)->kind == TypeModifierSyntaxKind::Array)
+    {
+        --insertion;
+    }
+    modifiers_.insert(insertion, modifiers.begin(), modifiers.end());
+}
 const std::vector<TypeModifierSyntax>& TypeSyntax::modifiers() const noexcept { return modifiers_; }
 std::optional<std::size_t> TypeSyntax::originProjectOrdinal() const noexcept { return originProjectOrdinal_; }
 void TypeSyntax::setOriginProjectOrdinal(std::size_t projectOrdinal) noexcept

@@ -1570,13 +1570,16 @@ ast::TypeSyntax* Parser::parseType()
             {
                 modifierRange = join(left, tokens_[index_ - 1].range());
             }
+            std::vector<ast::TypeModifierSyntax> arrayModifiers;
+            arrayModifiers.reserve(dimensions.size());
             for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
             {
-                type->addModifier(ast::TypeModifierSyntax{
+                arrayModifiers.push_back(ast::TypeModifierSyntax{
                     ast::TypeModifierSyntaxKind::Array,
                     *dimension,
                     modifierRange});
             }
+            type->addArrayModifierGroup(arrayModifiers);
             completeRange = join(completeRange, modifierRange);
             continue;
         }
