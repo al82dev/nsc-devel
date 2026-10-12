@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Lexer/Keyword.h"
 #include "nativesharp/Lexer/Token.h"
 #include "nativesharp/Target/TargetInfo.h"
 
@@ -120,18 +121,7 @@ bool validRenameIdentifier(std::string_view name)
     if (!std::ranges::all_of(name.substr(1), [&](char value) {
             return part(static_cast<unsigned char>(value));
         })) return false;
-    static const std::unordered_set<std::string_view> keywords = {
-        "void", "bool", "sbyte", "byte", "char", "short", "ushort", "int", "uint", "long",
-        "ulong", "nint", "nuint", "float", "double", "string", "const", "static", "readonly",
-        "volatile", "inline", "forceinline", "noinline", "noheap", "public", "internal", "protected",
-        "private", "if", "else", "while", "do", "for", "switch", "case", "break", "continue",
-        "return", "try", "catch", "finally", "throw", "struct", "class", "interface", "enum",
-        "namespace", "using", "new", "delete", "destroy", "stackalloc", "sizeof", "alignof",
-        "offsetof", "static_assert", "default", "extern", "export", "c", "vectorcall", "true",
-        "false", "null", "this", "base", "virtual", "override", "abstract", "sealed", "get", "set",
-        "operator", "implicit", "explicit", "is", "as", "delegate", "event", "raii", "move",
-        "owned", "borrowed", "var", "foreach", "in"};
-    return !keywords.contains(name);
+    return lexer::keywordKind(name) == lexer::TokenKind::Identifier;
 }
 
 std::string indentation(std::uint32_t depth, DocumentFormattingOptions options)

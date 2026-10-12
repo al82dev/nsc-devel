@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 39 | 75.00 % | `EN_PROGRESO`; A06 cerrada 1/1 |
+| A | 3.0.3 | 14 | 52 defectos | 40 | 76.92 % | `EN_PROGRESO`; A07 cerrada 1/1 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G33 y A06, quedan 13 KPD abiertos y treinta y nueve casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G34 y A07, quedan 12 KPD abiertos y cuarenta casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -146,14 +146,14 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A04 | Host.Sema | 5 | 5 | `CERRADA` |
 | A05 | Host.CFG | 1 | 1 | `CERRADA` |
 | A06 | Host.Dominance | 1 | 1 | `CERRADA` |
-| A07 | Host.LanguageService | 1 | 0 | `PENDIENTE` |
+| A07 | Host.LanguageService | 1 | 1 | `CERRADA` |
 | A08 | SelfHost.Diagnostics | 2 | 0 | `PENDIENTE` |
 | A09 | SelfHost.Lexer | 1 | 0 | `PENDIENTE` |
 | A10 | SelfHost.Source | 1 | 0 | `PENDIENTE` |
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **39** | **75.00 %** |
+| **Total** |  | **52** | **40** | **76.92 %** |
 
 ## A.3 Inventario exacto
 
@@ -324,7 +324,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
   - Contrato: rename de keyword builtin rechazado atómicamente, sin edits parciales.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5446; T:`LanguageServiceQueries233To312Module.cpp`;
     `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; G34 pasó como KPD y Required para los doce aliases builtin reservados y cerró A07 1/1;
+    commit G34: este commit.
 - **A08 · `TSH-00213` / `CSH-DIA-004`**
   - Contrato: JSON diagnóstico conserva campos tipados y escapa tab/control characters exactamente.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5531; T:`SelfHostDiagnosticsRenderingModule.ns`; `5dee730d`.
@@ -608,9 +609,12 @@ Resultado del inventario causal:
   - Estado: `CERRADO` en A06; sólo se omiten nodos sin predecesores y los lineales siguen vacíos por su idom.
 - **G34 — rename no reserva aliases builtin: `TF-LANGUAGE-SERVICE-304`.**
   - Productor: `validRenameIdentifier` usado por `AnalysisSnapshot::rename`.
-  - Causa: la tabla incluye keywords canónicos, pero no aliases reservados como `i32`.
+  - Causa: LanguageService duplicaba parcialmente la tabla del lexer y omitía `i8/u8`, `i16/u16`, `i32/u32`,
+    `i64/u64`, `isize/usize` e `i128/u128`.
   - Consumidores: rename atómico y ediciones de LanguageService.
-  - Puntual: contrato 38, variante 8 de `LanguageServiceQueries233To312Module.cpp`; existe.
+  - Puntual: contrato 38, variante 8 de `LanguageServiceQueries233To312Module.cpp`; pasó como KPD y Required.
+  - Estado: `CERRADO` en A07; lexer y rename consultan una sola autoridad y el oráculo exige rechazo atómico de
+    los doce aliases sin publicar ediciones parciales.
 - **G35 — JSON no escapa tab: `TSH-00213`.**
   - Productor: `DiagnosticRenderer.JsonEscape` self-host.
   - Causa: escapa slash, quote, CR y LF, pero no tab ni el resto de controles JSON.
@@ -691,7 +695,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A06 cerrada 1/1, 39/52 defectos corregidos y 13 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A07 cerrada 1/1, 40/52 defectos corregidos y 12 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
@@ -770,7 +774,12 @@ Puertas previas a editar producto:
   (4,780 us) al incluir un predecesor self-edge; `TF-DOM-086` preservó la frontier de loop (535 us). Se reconstruyeron
   sólo el shim de `DominanceBuilder`, el módulo propietario y el enlace exacto, sin regenerar configuración.
 - Consolidado A06 Required: una invocación `nsc_component_tests.exe --case TF-DOM-142`, 1/1 `PASS`, 192 ms de pared.
-- Próxima acción de Parte A: A07 G34 (`TF-LANGUAGE-SERVICE-304`).
+- Evidencia G34: `TF-LANGUAGE-SERVICE-304` pasó como KPD corregido (33,118 us) y Required (192,101 us); el guard
+  `TF-LANGUAGE-SERVICE-233` pasó (78,172 us). La reconstrucción cerró 176 dependencias pendientes del mismo target
+  para eliminar una mezcla ABI previa, sin regenerar configuración ni ejecutar batería.
+- Consolidado A07 Required: una invocación `nsc_component_tests.exe --case TF-LANGUAGE-SERVICE-304`, 1/1 `PASS`,
+  228 ms de pared (27,896 us de caso).
+- Próxima acción de Parte A: A08 G35-G36 (`TSH-00213`, `TSH-00214`).
 
 ---
 
@@ -1514,13 +1523,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A04 G31 y tanda | puntual KPD + Required; consolidado A04 5/5 | `PASS`; 15 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A05 G32 y tanda | puntual KPD + Required; consolidado A05 1/1 | `PASS`; 14 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A06 G33 y tanda | puntual KPD + Required; consolidado A06 1/1 | `PASS`; 13 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A07 G34 y tanda | puntual KPD + Required; consolidado A07 1/1 | `PASS`; 12 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `39/52`; A06 cerrada 1/1; siguiente acción vinculante: A07 G34 (`TF-LANGUAGE-SERVICE-304`).
+- A: `40/52`; A07 cerrada 1/1; siguiente acción vinculante: A08 G35-G36 (`TSH-00213`, `TSH-00214`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01, A02, A03 y A04 G28 puntuales; ninguna batería completa.
+- Validación ejecutada: A00-A07 puntuales y consolidados por tanda; ninguna batería completa.
 

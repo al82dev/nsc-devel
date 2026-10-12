@@ -1,6 +1,7 @@
 #include "LanguageServiceTestSupport.h"
 
 #include <algorithm>
+#include <array>
 
 namespace nsc::suite
 {
@@ -195,11 +196,23 @@ void renameContract(TestContext& context, std::size_t variant)
         return;
     }
     SemanticFixture fixture;
-    const std::string_view name = variant == 4U ? "9invalid" : variant == 6U ? "class" :
-        variant == 8U ? "i32" : "Sum";
+    if (variant == 8U)
+    {
+        constexpr std::array aliases = {
+            "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64",
+            "isize", "usize", "i128", "u128"};
+        const bool rejectedAtomically = std::ranges::all_of(aliases, [&](std::string_view alias) {
+            const RenameResult result = fixture.snapshot().rename(fixture.use(), kFirstAdd, alias);
+            return !result.allowed && result.edits.empty() && !result.error.empty();
+        });
+        context.expect(rejectedAtomically,
+            "rename rejects every lexer-reserved builtin alias without publishing partial edits");
+        return;
+    }
+    const std::string_view name = variant == 4U ? "9invalid" : variant == 6U ? "class" : "Sum";
     const RenameResult result = fixture.snapshot().rename(
         fixture.use(), variant == 5U ? TextPosition{99U, 0U} : kFirstAdd, name);
-    const bool rejected = variant == 4U || variant == 5U || variant == 6U || variant == 8U;
+    const bool rejected = variant == 4U || variant == 5U || variant == 6U;
     const bool exact = std::ranges::all_of(result.edits, [](const LanguageTextEdit& edit) {
         return edit.newText == "Sum" && edit.location.range.start.line == edit.location.range.end.line &&
             edit.location.range.end.character - edit.location.range.start.character == 3U;
@@ -243,7 +256,7 @@ void registerLanguageServiceQueries233To312Module(TestRegistry& registry)
     addLanguageServiceContract(registry, 35U, "unit", signatureContract);
     addLanguageServiceContract(registry, 36U, "unit", referencesContract);
     addLanguageServiceContract(registry, 37U, "unit", prepareRenameContract);
-    addLanguageServiceContract(registry, 38U, "unit", renameContract, {8U}, {"rename-keyword-authority"});
+    addLanguageServiceContract(registry, 38U, "unit", renameContract, {}, {"rename-keyword-authority"});
     addLanguageServiceContract(registry, 39U, "unit", semanticTokensContract);
 }
 }

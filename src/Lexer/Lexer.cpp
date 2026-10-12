@@ -2,6 +2,7 @@
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Lexer/Keyword.h"
 
 #include <charconv>
 #include <cctype>
@@ -46,6 +47,7 @@ int hexValue(char value) noexcept
     }
 
     return 10 + value - 'a';
+}
 }
 
 TokenKind keywordKind(std::string_view text) noexcept
@@ -152,7 +154,6 @@ TokenKind keywordKind(std::string_view text) noexcept
 
     const auto iterator = keywords.find(text);
     return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
-}
 }
 
 Lexer::Lexer(
