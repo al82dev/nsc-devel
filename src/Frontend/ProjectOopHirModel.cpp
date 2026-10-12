@@ -467,6 +467,11 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::Unreachable:
     case MethodCoreOperationKind::Assume:
     case MethodCoreOperationKind::Panic:
+    case MethodCoreOperationKind::StringViewFromString:
+    case MethodCoreOperationKind::SpanFromArray:
+    case MethodCoreOperationKind::ReadOnlySpanFromArray:
+    case MethodCoreOperationKind::SpanFromFixedArray:
+    case MethodCoreOperationKind::ReadOnlySpanFromFixedArray:
         return std::nullopt;
     }
 

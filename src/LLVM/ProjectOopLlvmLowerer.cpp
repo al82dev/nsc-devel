@@ -9160,7 +9160,7 @@ private:
                 LLVMValueRef indices[] = {offset};
                 LLVMValueRef gepData = LLVMBuildGEP2(
                     builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data.gep");
-                LLVMValueRef nullData = LLVMConstPointerNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
                 LLVMValueRef data = LLVMBuildSelect(
                     builder_, countIsZero, nullData, gepData, "stringview.data");
                 LLVMTypeRef carrier = llvmType(node->typeKey, error);
@@ -9220,7 +9220,7 @@ private:
                 LLVMValueRef indices[] = {offset};
                 LLVMValueRef gepData = LLVMBuildGEP2(
                     builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "span.data.gep");
-                LLVMValueRef nullData = LLVMConstPointerNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
                 LLVMValueRef data = LLVMBuildSelect(builder_, countIsZero, nullData, gepData, "span.data");
                 LLVMTypeRef carrier = llvmType(node->typeKey, error);
                 if (carrier == nullptr) return nullptr;

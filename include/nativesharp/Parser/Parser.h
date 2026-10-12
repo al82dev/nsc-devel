@@ -260,7 +260,9 @@ private:
     {
         Value,
         Reference,
-        Move
+        Move,
+        Copy,
+        ReferenceMutable
     };
     struct Pattern final
     {

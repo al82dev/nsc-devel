@@ -14186,6 +14186,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         if (!lengthMethods.empty())
         {
             const std::vector<ExpressionResult> noArguments;
+            const bool interfaceCall = receiverType.has_value() && interfaceModel_ != nullptr &&
+                interfaceModel_->isInterface(*receiverType);
             ExpressionResult lengthResult = resolveSyntheticCall(
                 expression, methodMemberOrdinal, scopeOrdinal, "Length",
                 std::move(lengthMethods), noArguments,
