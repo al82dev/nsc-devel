@@ -119,8 +119,8 @@ void c110(TestContext& c)
     AnalyzerFixture indirect("struct First { Second Value; } struct Second { First Value; }");
     indirect.analyze();
     c.expect(diagnosticCount(direct.diagnostics(), DiagnosticId::IncompleteType) == 1 &&
-            diagnosticCount(indirect.diagnostics(), DiagnosticId::IncompleteType) >= 1,
-        "TS-SEMA-110 PRODUCT-DEFECT: direct and indirect nominal recursion must both reject by incompleteness");
+            diagnosticCount(indirect.diagnostics(), DiagnosticId::IncompleteType) == 1,
+        "TS-SEMA-110 direct and indirect nominal recursion must each report one IncompleteType diagnostic");
 }
 
 void c111(TestContext& c)
@@ -144,12 +144,8 @@ void registerSemaStructLayoutModule(TestRegistry& registry)
     for (std::size_t index = 0; index < tests.size(); ++index)
     {
         const std::size_t ordinal = index + 102;
-        const TestDisposition disposition = ordinal == 110
-            ? TestDisposition::KnownProductDefect : TestDisposition::Required;
-        std::vector<std::string> tags;
-        if (disposition == TestDisposition::KnownProductDefect) tags = {"known-product-defect"};
         addSemaCase(registry, "TS-SEMA-" + std::to_string(ordinal), "CS-SEMA-013", "component",
-            tests[index], "PR", disposition, std::move(tags));
+            tests[index]);
     }
 }
 }

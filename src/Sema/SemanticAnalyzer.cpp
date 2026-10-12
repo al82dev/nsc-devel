@@ -11,6 +11,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::sema
@@ -105,6 +106,23 @@ bool SemanticAnalyzer::analyze(ast::AstNode* compilationUnit)
     if (compilationUnit == nullptr || compilationUnit->kind() != ast::AstNodeKind::CompilationUnit)
     {
         return false;
+    }
+
+    // Nominal declarations must exist before any field resolves its type. Keep
+    // their publication deferred so globalSymbols() retains exact source order.
+    std::unordered_set<std::string> encounteredGlobalNames;
+    for (ast::AstNode* declaration : compilationUnit->children())
+    {
+        if (declaration == nullptr || declaration->text().empty() ||
+            !encounteredGlobalNames.insert(declaration->text()).second ||
+            declaration->kind() != ast::AstNodeKind::StructDeclaration)
+        {
+            continue;
+        }
+
+        Type* type = types_.createStruct(declaration->text(), declaration);
+        Symbol* symbol = createSymbol(SymbolKind::Struct, declaration, type, false);
+        globalScope_->declare(symbol);
     }
 
     for (ast::AstNode* declaration : compilationUnit->children())
@@ -233,19 +251,25 @@ void SemanticAnalyzer::analyzeGlobal(ast::AstNode* node)
 
 void SemanticAnalyzer::analyzeStruct(ast::AstNode* node)
 {
-    if (globalScope_->lookupLocal(node->text()) != nullptr)
+    Symbol* structSymbol = globalScope_->lookupLocal(node->text());
+    if (structSymbol != nullptr && structSymbol->declaration() != node)
     {
         report(
             node->range(),
             diagnostics::DiagnosticId::DuplicateSymbol,
             "global name '" + node->text() + "' is already declared");
-        reportPreviousDeclaration(globalScope_->lookupLocal(node->text()));
+        reportPreviousDeclaration(structSymbol);
         return;
     }
 
-    Type* structType = types_.createStruct(node->text(), node);
-    Symbol* structSymbol = createSymbol(SymbolKind::Struct, node, structType, true);
-    globalScope_->declare(structSymbol);
+    if (structSymbol == nullptr)
+    {
+        Type* type = types_.createStruct(node->text(), node);
+        structSymbol = createSymbol(SymbolKind::Struct, node, type, false);
+        globalScope_->declare(structSymbol);
+    }
+    globalSymbols_.push_back(structSymbol);
+    Type* structType = structSymbol->type();
 
     std::vector<Type*> fieldTypes;
     for (ast::AstNode* fieldNode : node->children())

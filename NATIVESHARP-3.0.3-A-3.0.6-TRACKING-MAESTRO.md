@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 34 | 65.38 % | `EN_PROGRESO`; A04 G28 cerrado 2/5 |
+| A | 3.0.3 | 14 | 52 defectos | 35 | 67.31 % | `EN_PROGRESO`; A04 G28-G29 cerrados 3/5 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G28, quedan 18 KPD abiertos y treinta y cuatro casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G29, quedan 17 KPD abiertos y treinta y cinco casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -143,7 +143,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A01 | Host.Lexer | 1 | 1 | `CERRADA` |
 | A02 | Host.AST | 3 | 3 | `CERRADA` |
 | A03 | Host.Parser | 21 | 21 | `CERRADA` |
-| A04 | Host.Sema | 5 | 2 | `EN_PROGRESO` |
+| A04 | Host.Sema | 5 | 3 | `EN_PROGRESO` |
 | A05 | Host.CFG | 1 | 0 | `PENDIENTE` |
 | A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
 | A07 | Host.LanguageService | 1 | 0 | `PENDIENTE` |
@@ -153,7 +153,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **34** | **65.38 %** |
+| **Total** |  | **52** | **35** | **67.31 %** |
 
 ## A.3 Inventario exacto
 
@@ -297,7 +297,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A04 · `TS-SEMA-110` / `CS-SEMA-013`**
   - Contrato: recursión nominal directa e indirecta rechazada por incompletitud.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1734; T:`SemaStructLayoutModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; G29 pasó como KPD y Required, y el guard de orden global `TS-SEMA-092` permaneció `PASS`; commit G29: este commit.
 - **A04 · `TS-SEMA-246` / `CS-SEMA-024`**
   - Contrato: `new` de void/function/incomplete rechazado como `InvalidAllocationType`.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1870; T:`SemaAllocationType245To266Module.cpp`; `5dee730d`.
@@ -574,11 +574,12 @@ Resultado del inventario causal:
   - Consumidores: layout de structs y análisis de `new`/objetos.
   - Puntuales: `SemaStructLayoutModule.cpp` y `SemaAllocationType245To266Module.cpp`; ambas pasaron como KPD y Required.
   - Estado: `CERRADO` en A04; las fronteras `void` y function se ejercitan por separado sin relajar el conteo exacto de `InvalidType`.
-- **G29 — recursión nominal sin DFS de tipos: `TS-SEMA-110`.**
-  - Productor: recorrido de fields de struct en `SemanticAnalyzer`.
-  - Causa: comprueba completitud local, pero no mantiene estado visiting/visited para ciclos indirectos.
+- **G29 — tipos nominales posteriores no están predeclarados: `TS-SEMA-110`.**
+  - Productor: fases global y de fields de struct en `SemanticAnalyzer`.
+  - Causa: el análisis global era de una sola pasada; `First` resolvía `Second` como `UnknownTypeName` antes de que existiera su símbolo y después quedaba completo, ocultando el ciclo. No requería DFS: requería predeclarar nominales antes de resolver fields.
   - Consumidores: layout físico, símbolos de fields y diagnósticos de incompletitud.
-  - Puntual: `SemaStructLayoutModule.cpp`; existe.
+  - Puntual: `SemaStructLayoutModule.cpp`; pasó como KPD y Required con exactamente un `IncompleteType` por escenario.
+  - Estado: `CERRADO` en A04; los símbolos predeclarados se publican después en orden fuente, verificado por `TS-SEMA-092`.
 - **G30 — C ABI recurre sin visited-set: `TS-SEMA-265`.**
   - Productores: `isCAbiCompatibleStruct` e `isCAbiCompatibleStructField`.
   - Causa: un field struct llama de nuevo al mismo análisis sin conjunto active/visited.
@@ -680,14 +681,14 @@ Puertas previas a editar producto:
 - `TP-PAR-306`: ampliar el oráculo para inspeccionar los dos declarators, no sólo consumo hasta EOF.
 - `TP-PAR-511`: reemplazar el fallo artificial por proceso aislado y frontera 128 reproducible.
 - `TP-PAR-524`: su ejecución previa al parche demostró la divergencia de aridad; se corrigió antes de retirar KPD.
-- Los 18 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
+- Los 17 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A04 G28 cerrado 2/5, 34/52 defectos corregidos y 18 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A04 G28-G29 cerrados 3/5, 35/52 defectos corregidos y 17 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21 y A04 G28 2/2 Required `PASS`.
+- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21 y A04 G28-G29 3/3 Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -745,7 +746,10 @@ Puertas previas a editar producto:
 - Evidencia G28: `TS-SEMA-106` pasó como KPD (6,910 us) y Required (18,967 us); `TS-SEMA-246` pasó como KPD
   (4,196 us) y Required (3,209 us). Se reconstruyeron sólo el shim de Sema, los dos módulos propietarios y el enlace
   exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
-- Próxima acción de Parte A: A04 G29 (`TS-SEMA-110`).
+- Evidencia G29: `TS-SEMA-110` pasó como KPD (23,769 us) y Required (13,225 us) tras predeclarar structs sin alterar
+  el orden observable; `TS-SEMA-092` confirmó ese orden (585 us). Se reconstruyeron sólo el shim de Sema, el módulo
+  propietario y el enlace exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
+- Próxima acción de Parte A: A04 G30 (`TS-SEMA-265`).
 
 ---
 
@@ -1484,10 +1488,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G26 | puntual KPD + Required | `PASS`; 21 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G27 y tanda | puntual KPD + Required; consolidado A03 21/21 | `PASS`; 20 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A04 G28 | dos puntuales KPD + Required | 2/2 `PASS`; 18 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A04 G29 | puntual KPD + Required; guard de orden global | `PASS`; 17 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `34/52`; A04 G28 cerrada 2/5; siguiente acción vinculante: G29 (`TS-SEMA-110`).
+- A: `35/52`; A04 G28-G29 cerrados 3/5; siguiente acción vinculante: G30 (`TS-SEMA-265`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
