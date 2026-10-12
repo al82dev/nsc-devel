@@ -17,5 +17,9 @@
 ## Pendiente
 
 - `async` como MODIFIER de función/lambda (los 6 puntos de rechazo NS3049 restantes: :2560,
-  :3367, :5236, :5310, :5634, :6207) — parsear `async` y guardarlo en la metadata del callable.
+  :3367, :5234, :5310, :5634, :6207).
+- **Nota**: `async` NO puede volverse keyword reservada (`KwAsync`) porque también es un EFECTO de
+  tipo función (`fn*()->void async`, Parser.cpp:1226 usa `atContextualKeyword("async")`). El
+  modifier debe guardarse como marcador en el `auxiliaryText` del callable, sin reservar la
+  palabra.
 - El state machine productivo es F03.
