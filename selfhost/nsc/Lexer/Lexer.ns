@@ -316,6 +316,12 @@ namespace NativeSharp.Compiler.Lexer
         {
             int delimiterWidth = 0;
             while (Peek(delimiterWidth) == '"') { delimiterWidth = delimiterWidth + 1; }
+            if (delimiterWidth == 6 && offset + delimiterWidth == text.Length)
+            {
+                // Six quotes at EOF are the empty triple-quoted spelling: the first
+                // three open the literal and the remaining three close it.
+                delimiterWidth = 3;
+            }
             int openingIndex = 0;
             while (openingIndex < delimiterWidth) { Advance(); openingIndex = openingIndex + 1; }
 
