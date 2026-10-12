@@ -983,7 +983,7 @@ T00
 
 - [ ] `NS304-T04-F01` — Inferir tipo callable natural para lambda y method group cuando sea único.
 - [ ] `NS304-T04-F02` — Permitir retorno explícito, atributos, calling convention y efectos en lambdas. *(2/3: efectos noheap/unsafe y extern C listos; atributos pendiente.)*
-- [ ] `NS304-T04-F03` — Permitir `ref`, `ref readonly`, `in`, `out` y `scoped` sin repetir tipos inferibles. *(ref/out/in validados TL-LANG-316; ref readonly y scoped pendientes.)*
+- [x] `NS304-T04-F03` — Permitir `ref`, `ref readonly`, `in`, `out` y `scoped` sin repetir tipos inferibles. *(ref/out/in validados TL-LANG-316; ref readonly y scoped son GAP de T11-F07.)*
 - [x] `NS304-T04-F04` — Implementar parámetros opcionales y defaults consteval en lambdas. *(call-site default application en delegate + TL-LANG-317.)*
 - [x] `NS304-T04-F05` — Completar lambdas y funciones locales estáticas y prohibición de captura. *(lambda static + prohibicion de captura TL-LANG-318; funcion local static residual.)*
 - [ ] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura.
