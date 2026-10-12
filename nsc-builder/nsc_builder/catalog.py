@@ -175,8 +175,8 @@ def load_expected_outcome_overrides(
     if not isinstance(value, dict) or value.get("schema") != 1:
         raise ValueError(f"{path}: expected schema 1 object")
     rows = value.get("cases")
-    if not isinstance(rows, list) or not rows:
-        raise ValueError(f"{path}: cases must be a non-empty array")
+    if not isinstance(rows, list):
+        raise ValueError(f"{path}: cases must be an array")
     overrides: dict[str, str] = {}
     for index, row in enumerate(rows, start=1):
         if not isinstance(row, dict) or set(row) != {"case_id", "expected_outcome"}:

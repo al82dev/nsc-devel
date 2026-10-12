@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 46 | 88.46 % | `EN_PROGRESO`; A11 cerrada 2/2 |
+| A | 3.0.3 | 14 | 52 defectos | 48 | 92.31 % | `EN_PROGRESO`; A12 cerrada 2/2 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G39 y A11, quedan 6 KPD abiertos y 46 casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G40 y A12, quedan 4 KPD abiertos y 48 casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -151,9 +151,9 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A09 | SelfHost.Lexer | 1 | 1 | `CERRADA` |
 | A10 | SelfHost.Source | 1 | 1 | `CERRADA` |
 | A11 | SelfHost.Types | 2 | 2 | `CERRADA` |
-| A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
+| A12 | BuildSystem | 2 | 2 | `CERRADA` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **46** | **88.46 %** |
+| **Total** |  | **52** | **48** | **92.31 %** |
 
 ## A.3 Inventario exacto
 
@@ -359,11 +359,13 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A12 · `T12B-00021` / `C12B-BLD-004`**
   - Contrato: rechazar NSLink producer vacío antes de derivar rutas self-host runtime.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5691; C:`BuildSystemCaseClassifications.jsonl`.
-  - Procedencia: `dc3ee85f`. Cierre: `PENDIENTE`.
+  - Procedencia: `dc3ee85f`. Cierre: `CERRADO`; el helper rechaza productor vacío antes de derivar o publicar;
+    commit G40: este commit.
 - **A12 · `T12B-00022` / `C12B-BLD-004`**
   - Contrato: rechazar NSLink path malformado antes de publicar rutas self-host runtime.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5692; C:`BuildSystemCaseClassifications.jsonl`.
-  - Procedencia: `dc3ee85f`. Cierre: `PENDIENTE`.
+  - Procedencia: `dc3ee85f`. Cierre: `CERRADO`; el helper rechaza paths no absolutos antes de derivar o publicar;
+    commit G40: este commit.
 - **A13 · `T12B-00457` / `C12B-PKG-001`**
   - Contrato: `deploy.bat` respeta build/prefix del caller y no usa rutas hardcoded.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5707; C:`PackagingCaseClassifications.jsonl`; `5dee730d`.
@@ -656,7 +658,9 @@ Resultado del inventario causal:
   - Productor: `cmake/NativeSharpSelfHostRuntime.cmake::nsc_resolve_selfhost_runtime`.
   - Causa: path NSLink vacío o malformado se usa para derivar library/ABI sin precondición estructural.
   - Consumidores: cuatro verificadores CMake de runtime/self-host/fixed-point.
-  - Puntuales: `run_buildsystem_gate.py` + `BuildSystemRuntimeProbe.cmake`; existen.
+  - Puntuales: `BuildSystemRuntimeProbe.cmake`; ambos casos pasaron como KPD y Required; resolución derivada y
+    overrides explícitos preservaron precedencia.
+  - Estado: `CERRADO` en A12; el helper valida productor no vacío y path absoluto antes de calcular salidas.
 - **G41 — deploy no expone contrato de inputs: `T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461`.**
   - Productor: `deploy.bat`.
   - Causa: usa build/prefix hardcoded; no puede preservar paths ni validar destino/root/solape.
@@ -707,10 +711,10 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A11 cerrada 2/2, 46/52 defectos corregidos y 6 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A12 cerrada 2/2, 48/52 defectos corregidos y 4 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
+- Pruebas puntuales: A00-A12 cerradas; cada tanda conserva su consolidado exacto Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -807,7 +811,11 @@ Puertas previas a editar producto:
 - Evidencia G39: `TSH-01023` reprodujo exit 132 (17.733 ms), pasó corregido como KPD (44.400 ms) y Required
   (19.824 ms); `TSH-01026` y `TSH-01022` preservaron predicados/firma válidos (14.917/12.764 ms).
 - Consolidado A11 Required: `TSH-01011` y `TSH-01023`, 2/2 `PASS`, 29.451 ms de pared.
-- Próxima acción de Parte A: A12 G40 (`T12B-00021`, `T12B-00022`).
+- Evidencia G40: `T12B-00021` y `T12B-00022` reprodujeron publicación inválida con exit 0; tras la corrección
+  ambos pasaron como KPD y Required con exit 1 y sin `runtime.txt`. Los guards de ruta absoluta derivada y
+  overrides explícitos terminaron exit 0 y conservaron sus rutas.
+- Consolidado A12 Required: `T12B-00021` y `T12B-00022`, 2/2 `PASS`.
+- Próxima acción de Parte A: A13 G41 (`T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461`).
 
 ---
 
@@ -1558,13 +1566,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A10 G37 y tanda | puntual KPD + Required; consolidado A10 1/1 | `PASS`; 8 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A11 G38 | puntual KPD + Required; A11 1/2 | `PASS`; 7 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A11 G39 y tanda | puntual KPD + Required; consolidado A11 2/2 | `PASS`; 6 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A12 G40 y tanda | dos puntuales KPD + Required; consolidado A12 2/2 | `PASS`; 4 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `46/52`; A11 cerrada 2/2; siguiente acción vinculante: A12 G40 (`T12B-00021`, `T12B-00022`).
+- A: `48/52`; A12 cerrada 2/2; siguiente acción vinculante: A13 G41 (`T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00-A07 puntuales y consolidados por tanda; ninguna batería completa.
+- Validación ejecutada: A00-A12 puntuales y consolidados por tanda; ninguna batería completa.
 

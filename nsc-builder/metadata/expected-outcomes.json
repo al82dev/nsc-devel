@@ -1,7 +1,4 @@
 {
   "schema": 1,
-  "cases": [
-    {"case_id": "T12B-00021", "expected_outcome": "KNOWN_FAILURE"},
-    {"case_id": "T12B-00022", "expected_outcome": "KNOWN_FAILURE"}
-  ]
+  "cases": []
 }

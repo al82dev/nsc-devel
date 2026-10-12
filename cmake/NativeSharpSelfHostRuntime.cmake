@@ -1,4 +1,14 @@
 function(nsc_resolve_selfhost_runtime output_library output_abi nslink_executable)
+    if("${nslink_executable}" STREQUAL "")
+        message(FATAL_ERROR
+            "NSLink producer path is required to resolve the self-host runtime")
+    endif()
+
+    if(NOT IS_ABSOLUTE "${nslink_executable}")
+        message(FATAL_ERROR
+            "NSLink producer path must be absolute: ${nslink_executable}")
+    endif()
+
     get_filename_component(nslink_bin "${nslink_executable}" DIRECTORY)
     get_filename_component(nslink_prefix "${nslink_bin}" DIRECTORY)
 

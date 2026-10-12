@@ -394,18 +394,13 @@ class SuitePreparationTests(unittest.TestCase):
         self.assertIn("etapa build-producer", report)
         self.assertIn("producer failed", report)
 
-    def test_two_tagged_cases_load_as_known_product_defects(self) -> None:
+    def test_a12_cases_load_as_required_after_product_fix(self) -> None:
         catalog = CanonicalCatalog.load()
-        expected = {
-            "T12B-00021",
-            "T12B-00022",
-        }
-
-        for case_id in expected:
+        for case_id in {"T12B-00021", "T12B-00022"}:
             with self.subTest(case_id=case_id):
                 record = catalog.by_id[case_id]
-                self.assertEqual(record.expected_outcome, "KNOWN_FAILURE")
-                self.assertEqual(record.disposition, "KnownProductDefect")
+                self.assertNotEqual(record.expected_outcome, "KNOWN_FAILURE")
+                self.assertEqual(record.disposition, "Executable")
 
     def test_00453_disables_all_inherited_llvm_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
