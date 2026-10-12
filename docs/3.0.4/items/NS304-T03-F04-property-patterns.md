@@ -1,47 +1,34 @@
-# NS304-T03-F04 — Property patterns anidados, posicionales, relacionales y lógicos
+# NS304-T03-F04 — Completar property patterns anidados, posicionales, relacionales y lógicos
 
-- **Estado**: EN IMPLEMENTACIÓN
+- **Estado**: EN IMPLEMENTACIÓN (posicional pendiente)
 - **Rama**: development
-- **Alcance (SCOPE LOCK)**: solo `Parser::parsePattern*`, `Parser::makePatternCondition`,
-  `Parser::emitPatternBindings`, `MethodCoreOperationKind` si se necesita un op nuevo, y la
-  prueba `TL-LANG-311`. NO tocar CMake, toolchain, Builder, foreach, rango T01-F04, ni los
-  commits de longitud/vista de F03.
 
-## Auditoría (línea base)
+## Estado (validado)
 
-Grammar actual de `parsePatternPrimary` (Parser.cpp:10466):
+- Relacionales (`< <= > >=`), lógicos (`not`/`!`, `and`/`&`), y anidados: LISTOS (`TL-LANG-311`).
+- Posicional `T(a, b, ...)`: PENDIENTE.
 
-- `_` → Wildcard
-- `[ ... ]` → List
-- `var x` / `move x` / `ref x` → Binding
-- literal → Literal; `lit .. lit` / `lit ..= lit` → Range
-- `( ... )` → Tuple / agrupado
-- `{ campo: subpatrón, ... }` → Struct (property)
-- `Nombre { ... }` → Struct con nombre
-- `Nombre ( payload )` → Variant (un solo payload; >1 se rechaza)
-- `a | b` → Or
+## Auditoría (posicional)
 
-## Gaps F04
+- El parser trata `T(payload)` como `PatternKind::Variant` con UN payload, y RECHAZA el comma
+  (`Parser.cpp:10790`: "exactly one payload pattern").
+- El lowering de `Variant` (`Parser.cpp:10957-10973`) usa `Is<T>()` + `__nsc_variant_extract_<T>()`
+  (tagged union), que NO sirve para posicional (deconstrucción por posición).
+- La deconstrucción YA existe: `bindDeconstructionSource` (`ProjectMethodBodyModel.cpp:2781`)
+  soporta tuplas y nominales con `Deconstruct`.
 
-1. **Relacionales** (`< 5`, `<= 5`, `> 5`, `>= 5`): falta parseo (solo `..`/`..=` de rango) y
-   falta lowering en `makePatternCondition`.
-2. **Lógicos `and`/`not`**: falta `and` (conjunción) y `not` (negación); solo existe `or`.
-3. **Posicionales** `T(a, b, ...)`: el `Ident(...)` actual es `Variant` de un payload; falta el
-   modo posicional multi-argumento.
-4. **Anidados**: la recursión de parseo ya existe; hay que confirmar que el lowering
-   (`makePatternCondition`/`emitPatternBindings`) baja sub-patrones Struct/Relacional correctamente.
+## Gap F04 (posicional)
 
-## Plan (orden de implementación)
+1. Parser: permitir `T(a, b, c)` (múltiples payloads) como patrón posicional (nuevo
+   `PatternKind::Positional` o `Variant` multi-payload).
+2. Sema: bajar el posicional vía `bindDeconstructionSource` (mapear cada sub-patrón a la posición).
 
-1. Relacionales: nuevo `PatternKind::Relational` + parseo de `< <= > >=` + lowering (compara
-   el scrutinee contra el operando con el operador). Es el más autocontenido.
-2. Lógicos: `not` (unario) y `and` (binario) como `PatternKind::Not`/`PatternKind::And`,
-   con lowering booleano.
-3. Posicionales: reconocer `T(a, b, ...)` multi-argumento y bajar a un índice/constructor por
-   posición (requiere decidir el contrato: constructor de tipo o tupla).
-4. Anidados: prueba de regresión del lowering de Struct anidado.
+## Plan
+
+1. `PatternKind::Positional` (Parser.h) + parseo de `T(a, b, c)`.
+2. Lowering: para nominal con `Deconstruct`, emitir la deconstrucción posicional.
+3. Prueba `TL-LANG-322`.
 
 ## Prueba puntual
 
-`TL-LANG-311` (a crear en LanguageSurfaceModule.cpp + cases.jsonl + CSVs): property anidado,
-relacional, lógico (and/not) y posicional sobre un struct de prueba.
+`TL-LANG-322`: `match(point) { Point(x, y) => x + y, _ => 0 }` con `Point` que publica `Deconstruct`.
