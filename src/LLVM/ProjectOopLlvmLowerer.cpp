@@ -9127,6 +9127,13 @@ private:
             {
                 if (node->children.size() != 3)
                     return failValue(error, "StringView rest capture requires receiver, start and length");
+                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
+                if (count == nullptr) return nullptr;
+                // An empty rest (count == 0) is valid and yields {null, 0}; it must not run the
+                // start < length bounds check, because a valid empty rest has start == length.
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count,
+                    LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0), "stringview.empty");
                 LLVMValueRef object = lowerExpression(node->children[0].get(), error);
                 if (object == nullptr) return nullptr;
                 object = checkedReceiver(object, error);
@@ -9142,18 +9149,20 @@ private:
                     LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
                     LLVMValueRef nonNegative = LLVMBuildICmp(
                         builder_, LLVMIntSGE, index, zero, "stringview.nonneg");
-                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "stringview.valid");
+                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "stringview.nonempty.inrange");
                 }
-                if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "stringview.index", error))
+                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "stringview.valid");
+                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "stringview.index", error))
                     return nullptr;
                 LLVMValueRef offset = LLVMBuildAdd(
                     builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), 8, 0),
                     "stringview.offset");
                 LLVMValueRef indices[] = {offset};
-                LLVMValueRef data = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data");
-                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
-                if (count == nullptr) return nullptr;
+                LLVMValueRef gepData = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data.gep");
+                LLVMValueRef nullData = LLVMConstPointerNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(
+                    builder_, countIsZero, nullData, gepData, "stringview.data");
                 LLVMTypeRef carrier = llvmType(node->typeKey, error);
                 if (carrier == nullptr) return nullptr;
                 const unsigned alignment = structAlignmentFor(node->typeKey);
