@@ -12,7 +12,7 @@ public:
     AstArena() = default;
     AstArena(const AstArena&) = delete;
     AstArena& operator=(const AstArena&) = delete;
-    ~AstArena();
+    ~AstArena() noexcept;
 
     template <typename T, typename... Args>
     T* make(Args&&... args)
