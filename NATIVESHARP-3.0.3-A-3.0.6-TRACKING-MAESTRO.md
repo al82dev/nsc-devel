@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 40 | 76.92 % | `EN_PROGRESO`; A07 cerrada 1/1 |
+| A | 3.0.3 | 14 | 52 defectos | 41 | 78.85 % | `EN_PROGRESO`; A08 G35 cerrado 1/2 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G34 y A07, quedan 12 KPD abiertos y cuarenta casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G35, quedan 11 KPD abiertos y 41 casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -147,13 +147,13 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A05 | Host.CFG | 1 | 1 | `CERRADA` |
 | A06 | Host.Dominance | 1 | 1 | `CERRADA` |
 | A07 | Host.LanguageService | 1 | 1 | `CERRADA` |
-| A08 | SelfHost.Diagnostics | 2 | 0 | `PENDIENTE` |
+| A08 | SelfHost.Diagnostics | 2 | 1 | `EN_PROGRESO`; G35 cerrado |
 | A09 | SelfHost.Lexer | 1 | 0 | `PENDIENTE` |
 | A10 | SelfHost.Source | 1 | 0 | `PENDIENTE` |
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **40** | **76.92 %** |
+| **Total** |  | **52** | **41** | **78.85 %** |
 
 ## A.3 Inventario exacto
 
@@ -329,7 +329,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A08 · `TSH-00213` / `CSH-DIA-004`**
   - Contrato: JSON diagnóstico conserva campos tipados y escapa tab/control characters exactamente.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5531; T:`SelfHostDiagnosticsRenderingModule.ns`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; G35 pasó como KPD y Required con todos los controles U+0000-U+001F escapados;
+    commit G35: este commit.
 - **A08 · `TSH-00214` / `CSH-DIA-004`**
   - Contrato: JSON warning conserva severity/código/argumento exactos.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5532; T:`SelfHostDiagnosticsRenderingModule.ns`; `5dee730d`.
@@ -619,7 +620,9 @@ Resultado del inventario causal:
   - Productor: `DiagnosticRenderer.JsonEscape` self-host.
   - Causa: escapa slash, quote, CR y LF, pero no tab ni el resto de controles JSON.
   - Consumidores: Driver JSON, controller y cualquier parser de diagnósticos.
-  - Puntual: `SelfHostDiagnosticsRenderingModule.ns`; existe.
+  - Puntual: `SelfHostDiagnosticsRenderingModule.ns`; pasó como KPD y Required, incluyendo los cinco escapes
+    nombrados y la ruta genérica `\\u00xx`.
+  - Estado: `CERRADO` en A08; el renderer conserva Unicode y escapa en una pasada todos los controles JSON.
 - **G36 — severidad JSON hardcoded: `TSH-00214`.**
   - Productor: `DiagnosticRenderer.Json` self-host.
   - Causa: serializa siempre `"severity":"error"` e ignora `Diagnostic.Severity()`.
@@ -695,7 +698,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A07 cerrada 1/1, 40/52 defectos corregidos y 12 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A08 G35 cerrado 1/2, 41/52 defectos corregidos y 11 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
@@ -779,7 +782,9 @@ Puertas previas a editar producto:
   para eliminar una mezcla ABI previa, sin regenerar configuración ni ejecutar batería.
 - Consolidado A07 Required: una invocación `nsc_component_tests.exe --case TF-LANGUAGE-SERVICE-304`, 1/1 `PASS`,
   228 ms de pared (27,896 us de caso).
-- Próxima acción de Parte A: A08 G35-G36 (`TSH-00213`, `TSH-00214`).
+- Evidencia G35: `TSH-00213` pasó como KPD corregido (42.834 ms) y Required (18.333 ms); el fixture verifica
+  `\\b`, `\\f`, `\\t`, `\\r`, `\\n` y la ruta genérica `\\u000b` antes del oráculo JSON del controller.
+- Próxima acción de Parte A: A08 G36 (`TSH-00214`).
 
 ---
 
@@ -1524,10 +1529,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A05 G32 y tanda | puntual KPD + Required; consolidado A05 1/1 | `PASS`; 14 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A06 G33 y tanda | puntual KPD + Required; consolidado A06 1/1 | `PASS`; 13 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A07 G34 y tanda | puntual KPD + Required; consolidado A07 1/1 | `PASS`; 12 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A08 G35 | puntual KPD + Required; A08 1/2 | `PASS`; 11 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `40/52`; A07 cerrada 1/1; siguiente acción vinculante: A08 G35-G36 (`TSH-00213`, `TSH-00214`).
+- A: `41/52`; A08 G35 cerrado 1/2; siguiente acción vinculante: A08 G36 (`TSH-00214`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

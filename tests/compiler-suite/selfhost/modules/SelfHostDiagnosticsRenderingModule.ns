@@ -111,9 +111,17 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
             return EmitJson(diagnostic);
         }
 
-        // Product currently leaves tab unescaped, so the controller's JSON parser must reject this output.
+        // Exercise every named JSON control escape plus the generic U+00xx path before emitting
+        // the stable controller oracle. This keeps the boundary case focused on JSON validity.
         private static int JsonControlCharacter()
         {
+            raii Diagnostic controls = new Diagnostic("CTRL-ALL", DiagnosticSeverity.Error,
+                "\b\f\t\v\r\n", 0);
+            raii string rendered = DiagnosticRenderer.Json(controls);
+            if (rendered != "{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"CTRL-ALL\",\"severity\":\"error\",\"argument\":\"\\b\\f\\t\\u000b\\r\\n\"}")
+            {
+                return 23;
+            }
             raii Diagnostic diagnostic = new Diagnostic("CTRL", DiagnosticSeverity.Error, "a\tb", 0);
             return EmitJson(diagnostic);
         }

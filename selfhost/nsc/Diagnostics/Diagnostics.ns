@@ -48,10 +48,30 @@ namespace NativeSharp.Compiler.Diagnostics
     {
         private static owned string JsonEscape(string value)
         {
-            raii string slash = String.Replace(value, "\\", "\\\\");
-            raii string quote = String.Replace(slash, "\"", "\\\"");
-            raii string carriage = String.Replace(quote, "\r", "\\r");
-            return String.Replace(carriage, "\n", "\\n");
+            string hexadecimal = "0123456789abcdef";
+            raii StringBuilder escaped = new StringBuilder(value.Length);
+            int index = 0;
+            while (index < value.Length)
+            {
+                char current = value[index];
+                if (current == '"') { escaped.Append("\\\""); }
+                else if (current == '\\') { escaped.Append("\\\\"); }
+                else if (current == '\b') { escaped.Append("\\b"); }
+                else if (current == '\f') { escaped.Append("\\f"); }
+                else if (current == '\n') { escaped.Append("\\n"); }
+                else if (current == '\r') { escaped.Append("\\r"); }
+                else if (current == '\t') { escaped.Append("\\t"); }
+                else if ((int)current < 32)
+                {
+                    int code = (int)current;
+                    escaped.Append("\\u00");
+                    escaped.Append(hexadecimal[(code >> 4) & 15]);
+                    escaped.Append(hexadecimal[code & 15]);
+                }
+                else { escaped.Append(current); }
+                index = index + 1;
+            }
+            return escaped.ToOwnedString();
         }
 
         public static owned string Human(Diagnostic diagnostic)
