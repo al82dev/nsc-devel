@@ -231,7 +231,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-157 | CL-LANG-012 | language3SurfaceEntry con enum externo | fallback vigente a primera entrada caracterizado | PR |
 | TL-LANG-158 | CL-LANG-012 | language3SurfaceManifest | bytes completos, orden y labels historicas exactos | PR |
 | TL-LANG-159 | CL-LANG-012 | language3SurfaceDiagnostic para Implemented | diagnostico exacto | PR |
-| TL-LANG-160 | CL-LANG-012 | language3SurfaceDiagnostic para DeferredTo4 y RejectedFor3 | texto historico exacto por status | PR |
+| TL-LANG-160 | CL-LANG-012 | language3SurfaceDiagnostic para PlannedFor304, DeferredTo4 y RejectedFor3 | texto exacto y estado no productivo por disposition | PR |
 | TL-LANG-161 | CL-LANG-012 | llamadas repetidas a surface/manifest/diagnostic | resultados deterministas y sin mutacion | PR |
 
 ## Modelo de memoria — `CL-LANG-013`

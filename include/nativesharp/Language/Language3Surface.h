@@ -29,6 +29,7 @@ enum class Language3Feature
 enum class Language3Disposition
 {
     Implemented,
+    PlannedFor304,
     DeferredTo4,
     RejectedFor3
 };

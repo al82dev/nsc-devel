@@ -79,14 +79,14 @@ int main()
             manifest.find("trait-operators=implemented") != std::string::npos &&
             manifest.find("move-only-defaults=implemented") != std::string::npos,
         "the frozen 3.0 manifest publishes the productive language surface");
-    constexpr std::array deferred = {
-        "async-await=deferred-4.0", "async-streams=deferred-4.0",
-        "yield-generators=deferred-4.0", "default-interface-implementations=deferred-4.0",
-        "list-patterns=deferred-4.0", "static-constructors=deferred-4.0",
-        "decimal=deferred-4.0",
-        "condition-declarations=deferred-4.0", "static-locals=deferred-4.0",
+    constexpr std::array unavailable = {
+        "async-await=planned-3.0.4", "async-streams=planned-3.0.4",
+        "yield-generators=planned-3.0.4", "default-interface-implementations=planned-3.0.4",
+        "list-patterns=planned-3.0.4", "static-constructors=planned-3.0.4",
+        "decimal=planned-3.0.4",
+        "condition-declarations=planned-3.0.4", "static-locals=planned-3.0.4",
         "long-double=rejected-3.0"};
-    for (const std::string_view entry : deferred)
+    for (const std::string_view entry : unavailable)
     {
         tests.expect(manifest.find(entry) != std::string::npos,
             "the manifest makes a non-3.0 feature terminal: " + std::string(entry));

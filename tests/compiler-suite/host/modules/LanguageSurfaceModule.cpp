@@ -29,20 +29,20 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "lowered to ordinary fields and constructors before name binding"},
     {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
         "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::DeferredTo4,
+    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::PlannedFor304,
         "requires productive state-machine lowering, cleanup, pinning, cancellation and debugger metadata"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::DeferredTo4,
+    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::PlannedFor304,
         "requires an async iterator ABI with backpressure, cancellation and deterministic cleanup"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::DeferredTo4,
+    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::PlannedFor304,
         "requires productive generator frames, suspension ownership and deterministic cleanup"},
     {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-        Language3Disposition::DeferredTo4,
+        Language3Disposition::PlannedFor304,
         "requires versioned dispatch, coherence and metadata rules for interface bodies"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::DeferredTo4,
+    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
         "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
-    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::DeferredTo4,
+    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::PlannedFor304,
         "requires thread-safe once initialization, reentrancy and failure semantics"},
-    {Language3Feature::Decimal, "decimal", Language3Disposition::DeferredTo4,
+    {Language3Feature::Decimal, "decimal", Language3Disposition::PlannedFor304,
         "requires a frozen value ABI plus arithmetic, overflow, conversion and formatting contracts"},
     {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
         "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
@@ -52,9 +52,9 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
         "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
-    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::DeferredTo4,
+    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::PlannedFor304,
         "requires scope, definite-assignment and cleanup rules across true and false edges"},
-    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::DeferredTo4,
+    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::PlannedFor304,
         "requires thread-safe once initialization, reentrancy, destruction and module-lifetime rules"},
 }};
 
@@ -69,23 +69,23 @@ std::string expectedManifest()
     return
         "NSLANGSURFACE 3.0\n"
         "target=x86_64-pc-windows-msvc\n"
-        "policy=implemented-or-explicitly-deferred-no-placeholder-syntax\n"
+        "policy=implemented-planned-or-explicitly-deferred-no-placeholder-syntax\n"
         "record-structs=implemented:productive parser, layout, metadata and code-generation vertical\n"
         "primary-constructors=implemented:lowered to ordinary fields and constructors before name binding\n"
         "raw-string-literals=implemented:delimiter-aware UTF-8 literal with exact multiline contents\n"
-        "async-await=deferred-4.0:requires productive state-machine lowering, cleanup, pinning, cancellation "
+        "async-await=planned-3.0.4:requires productive state-machine lowering, cleanup, pinning, cancellation "
         "and debugger metadata\n"
-        "async-streams=deferred-4.0:requires an async iterator ABI with backpressure, cancellation and "
+        "async-streams=planned-3.0.4:requires an async iterator ABI with backpressure, cancellation and "
         "deterministic cleanup\n"
-        "yield-generators=deferred-4.0:requires productive generator frames, suspension ownership and "
+        "yield-generators=planned-3.0.4:requires productive generator frames, suspension ownership and "
         "deterministic cleanup\n"
-        "default-interface-implementations=deferred-4.0:requires versioned dispatch, coherence and metadata "
+        "default-interface-implementations=planned-3.0.4:requires versioned dispatch, coherence and metadata "
         "rules for interface bodies\n"
-        "list-patterns=deferred-4.0:requires exhaustiveness and usefulness analysis integrated with borrow "
+        "list-patterns=planned-3.0.4:requires exhaustiveness and usefulness analysis integrated with borrow "
         "and move semantics\n"
-        "static-constructors=deferred-4.0:requires thread-safe once initialization, reentrancy and failure "
+        "static-constructors=planned-3.0.4:requires thread-safe once initialization, reentrancy and failure "
         "semantics\n"
-        "decimal=deferred-4.0:requires a frozen value ABI plus arithmetic, overflow, conversion and formatting "
+        "decimal=planned-3.0.4:requires a frozen value ABI plus arithmetic, overflow, conversion and formatting "
         "contracts\n"
         "extension-methods=implemented:static namespace extensions with deterministic import lookup and no "
         "receiver-type mutation\n"
@@ -95,9 +95,9 @@ std::string expectedManifest()
         "move(value)\n"
         "long-double=rejected-3.0:Windows x64 MSVC ABI aliases long double to double; use double in "
         "NativeSharp 3.0\n"
-        "condition-declarations=deferred-4.0:requires scope, definite-assignment and cleanup rules across true "
+        "condition-declarations=planned-3.0.4:requires scope, definite-assignment and cleanup rules across true "
         "and false edges\n"
-        "static-locals=deferred-4.0:requires thread-safe once initialization, reentrancy, destruction and "
+        "static-locals=planned-3.0.4:requires thread-safe once initialization, reentrancy, destruction and "
         "module-lifetime rules\n";
 }
 
@@ -106,6 +106,8 @@ std::string expectedDiagnostic(const ExpectedSurfaceEntry& entry)
     std::string result(entry.name);
     if (entry.disposition == Language3Disposition::Implemented)
         result += " is implemented in NativeSharp 3.0: ";
+    else if (entry.disposition == Language3Disposition::PlannedFor304)
+        result += " is planned for NativeSharp 3.0.4 but is not implemented because ";
     else if (entry.disposition == Language3Disposition::DeferredTo4)
         result += " is not part of the frozen NativeSharp 3.0 surface; deferred to 4.0 because ";
     else
@@ -187,18 +189,20 @@ void registerImplementedDiagnosticCase(TestRegistry& registry)
 void registerUnavailableDiagnosticCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-160", [](TestContext& context) {
+        std::size_t planned = 0;
         std::size_t deferred = 0;
         std::size_t rejected = 0;
         for (const ExpectedSurfaceEntry& entry : kExpectedSurface)
         {
             if (entry.disposition == Language3Disposition::Implemented) continue;
+            planned += static_cast<std::size_t>(entry.disposition == Language3Disposition::PlannedFor304);
             deferred += static_cast<std::size_t>(entry.disposition == Language3Disposition::DeferredTo4);
             rejected += static_cast<std::size_t>(entry.disposition == Language3Disposition::RejectedFor3);
             context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
-                "TL-LANG-160 every deferred or rejected feature must return its exact status diagnostic");
+                "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
-        context.expect(deferred == 9 && rejected == 1,
-            "TL-LANG-160 the historical catalog must retain nine deferred and one rejected feature");
+        context.expect(planned == 9 && deferred == 0 && rejected == 1,
+            "TL-LANG-160 the catalog must expose nine nonproductive 3.0.4 plans and one rejected feature");
     });
 }
 

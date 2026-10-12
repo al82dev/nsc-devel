@@ -13,20 +13,20 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "lowered to ordinary fields and constructors before name binding"},
     {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
      "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::DeferredTo4,
+    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::PlannedFor304,
      "requires productive state-machine lowering, cleanup, pinning, cancellation and debugger metadata"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::DeferredTo4,
+    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::PlannedFor304,
      "requires an async iterator ABI with backpressure, cancellation and deterministic cleanup"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::DeferredTo4,
+    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::PlannedFor304,
      "requires productive generator frames, suspension ownership and deterministic cleanup"},
     {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-     Language3Disposition::DeferredTo4,
+     Language3Disposition::PlannedFor304,
      "requires versioned dispatch, coherence and metadata rules for interface bodies"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::DeferredTo4,
+    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
      "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
-    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::DeferredTo4,
+    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::PlannedFor304,
      "requires thread-safe once initialization, reentrancy and failure semantics"},
-    {Language3Feature::Decimal, "decimal", Language3Disposition::DeferredTo4,
+    {Language3Feature::Decimal, "decimal", Language3Disposition::PlannedFor304,
      "requires a frozen value ABI plus arithmetic, overflow, conversion and formatting contracts"},
     {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
      "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
@@ -36,9 +36,9 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
-    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::DeferredTo4,
+    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::PlannedFor304,
      "requires scope, definite-assignment and cleanup rules across true and false edges"},
-    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::DeferredTo4,
+    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::PlannedFor304,
      "requires thread-safe once initialization, reentrancy, destruction and module-lifetime rules"}
 }};
 
@@ -47,6 +47,7 @@ std::string_view dispositionName(Language3Disposition disposition) noexcept
     switch (disposition)
     {
         case Language3Disposition::Implemented: return "implemented";
+        case Language3Disposition::PlannedFor304: return "planned-3.0.4";
         case Language3Disposition::DeferredTo4: return "deferred-4.0";
         case Language3Disposition::RejectedFor3: return "rejected-3.0";
     }
@@ -72,7 +73,7 @@ std::string language3SurfaceManifest()
 {
     std::string manifest = "NSLANGSURFACE 3.0\n";
     manifest += "target=x86_64-pc-windows-msvc\n";
-    manifest += "policy=implemented-or-explicitly-deferred-no-placeholder-syntax\n";
+    manifest += "policy=implemented-planned-or-explicitly-deferred-no-placeholder-syntax\n";
     for (const Language3SurfaceEntry& entry : kSurface)
     {
         manifest += std::string(entry.name) + "=" + std::string(dispositionName(entry.disposition)) +
@@ -85,7 +86,9 @@ std::string language3SurfaceDiagnostic(Language3Feature feature)
 {
     const Language3SurfaceEntry& entry = language3SurfaceEntry(feature);
     std::string result(entry.name);
-    if (entry.disposition == Language3Disposition::DeferredTo4)
+    if (entry.disposition == Language3Disposition::PlannedFor304)
+        result += " is planned for NativeSharp 3.0.4 but is not implemented because ";
+    else if (entry.disposition == Language3Disposition::DeferredTo4)
         result += " is not part of the frozen NativeSharp 3.0 surface; deferred to 4.0 because ";
     else if (entry.disposition == Language3Disposition::RejectedFor3)
         result += " is not supported by NativeSharp 3.0 because ";
