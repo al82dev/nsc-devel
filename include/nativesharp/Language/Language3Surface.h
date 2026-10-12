@@ -34,6 +34,27 @@ enum class Language3Disposition
     RejectedFor3
 };
 
+enum class StaticInitializationState
+{
+    Uninitialized,
+    Initializing,
+    Initialized,
+    Failed
+};
+
+constexpr std::string_view staticInitializationStateName(
+    StaticInitializationState state) noexcept
+{
+    switch (state)
+    {
+        case StaticInitializationState::Uninitialized: return "uninitialized";
+        case StaticInitializationState::Initializing: return "initializing";
+        case StaticInitializationState::Initialized: return "initialized";
+        case StaticInitializationState::Failed: return "failed";
+    }
+    return "unknown";
+}
+
 struct Language3SurfaceEntry final
 {
     Language3Feature feature;

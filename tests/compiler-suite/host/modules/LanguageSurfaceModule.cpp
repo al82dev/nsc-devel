@@ -231,6 +231,30 @@ void registerSurfaceDeterminismCase(TestRegistry& registry)
             "TL-LANG-161 diagnostics must not mutate subsequent manifest bytes");
     });
 }
+
+void registerStaticInitializationStatesCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-294", "CL-LANG-012", "Host.Language", "unit", "PR",
+        {"language", "static-initialization", "state"}, [](TestContext& context) {
+            constexpr std::array states = {
+                StaticInitializationState::Uninitialized,
+                StaticInitializationState::Initializing,
+                StaticInitializationState::Initialized,
+                StaticInitializationState::Failed};
+            constexpr std::array<std::string_view, 4> names = {
+                "uninitialized", "initializing", "initialized", "failed"};
+
+            for (std::size_t index = 0; index < states.size(); ++index)
+            {
+                context.expect(static_cast<std::size_t>(states[index]) == index &&
+                        staticInitializationStateName(states[index]) == names[index],
+                    "TL-LANG-294 static initialization states and names must retain exact order");
+            }
+            context.expect(staticInitializationStateName(
+                    static_cast<StaticInitializationState>(states.size())) == "unknown",
+                "TL-LANG-294 an external state value must remain explicitly unknown");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -242,5 +266,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerImplementedDiagnosticCase(registry);
     registerUnavailableDiagnosticCase(registry);
     registerSurfaceDeterminismCase(registry);
+    registerStaticInitializationStatesCase(registry);
 }
 }

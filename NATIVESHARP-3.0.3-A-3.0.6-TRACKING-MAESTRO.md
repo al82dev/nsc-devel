@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 8 | 5.44 % | `ACTIVA`; B00 reconciliada, T00 cerrada; T01-F01 activa |
+| B | 3.0.4 | 18 | 147 ítems | 9 | 6.12 % | `ACTIVA`; T00 cerrada; T01-F01 cerrada, T01-F02 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 1 | 12.5 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -950,7 +950,7 @@ T00
 
 ### T01 — inicialización estática y declaraciones en condiciones
 
-- [ ] `NS304-T01-F01` — Definir estados `uninitialized`, `initializing`, `initialized` y `failed`.
+- [x] `NS304-T01-F01` — Definir estados `uninitialized`, `initializing`, `initialized` y `failed`.
 - [ ] `NS304-T01-F02` — Implementar gramática y semántica de constructores estáticos por tipo.
 - [ ] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
 - [ ] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
@@ -1346,7 +1346,28 @@ Estado: `CERRADO`; consolidado T00 `PASS`.
 - Gate: missing=0, extra=0, order_mismatch=0, contract_issues=0.
 - Consolidado T00: F01=55, F02=55, F03=88, F04=69, F05=7/7,
   F06=6, F07=18, F08=4/4 + gate real; `PASS`, sin batería completa.
-- Siguiente acción: `NS304-T01-F01`.
+- Siguiente acción: T01 habilitada; `NS304-T01-F01` cerrada y
+  `NS304-T01-F02` activa.
+
+## B.6 Ejecución B02 — T01
+
+### NS304-T01-F01 — estados de inicialización estática
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F01-static-initialization-states.md`.
+- Contrato: `StaticInitializationState` es un dominio cerrado con los estados
+  `uninitialized`, `initializing`, `initialized` y `failed`; F01 no adelanta
+  transiciones, espera, reentrancia, ciclos ni política de fallo.
+- Implementación: `include/nativesharp/Language/Language3Surface.h`.
+- Prueba puntual: `TL-LANG-294` (`CL-LANG-012`, `Host.Language`) `PASS` en
+  Debug/O0; valida ordinales, nombres exactos y rechazo nominal de valores
+  externos mediante `unknown`.
+- Integración canónica: una fila en manifest, diseño, allocation y plan
+  Host.Language; productor `nsc_component_tests`.
+- Gate: modelo y prueba dirigidos `PASS`; T01 queda 1/8 y Parte B 9/147, sin
+  batería completa.
+- Siguiente ítem: `NS304-T01-F02`.
 
 ---
 
@@ -1854,18 +1875,20 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00-F07 | Manifest de dependencias por feature | 18 familias contra plan, compiler, runtime y STL | 18/18 trazadas; existentes verificados y futuras explícitas; 7/147 cerrados |
 | 2026-10-12 | B01/T00-F08 | Harness estructural 3.0.4 | unitarias y ejecución sobre fuentes canónicas | 4/4 unitarias PASS; gate real PASS; 8/147 cerrados |
 | 2026-10-12 | B01/T00 | Consolidado puntual de tanda | F01–F08, sólo gates documentales y TL-LANG-155..161 | `PASS`; T00 8/8; T01-F01 habilitada sin batería completa |
+| 2026-10-12 | B02/T01-F01 | Estados de inicialización estática | dominio cerrado, nombre estable y `TL-LANG-294` | `PASS`; T01 1/8; 9/147 cerrados; T01-F02 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `8/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `9/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
   congeló seis ventanas de versión sin adelantar writers ni ABI, y T00-F07
   publicó las dependencias de 18 familias sin convertir planes en artefactos,
-  y T00-F08 añadió el harness estructural; consolidado T00 `PASS`, T01-F01 activa.
+  y T00-F08 añadió el harness estructural; consolidado T00 `PASS`. T01-F01
+  fijó los cuatro estados de inicialización y `TL-LANG-294` pasó; T01-F02 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
