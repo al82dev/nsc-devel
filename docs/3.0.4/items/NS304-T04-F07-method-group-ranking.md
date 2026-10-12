@@ -18,21 +18,24 @@
 
 - La inferencia del `fn*` desde un method group único SÍ se logró (build del `FunctionType` +
   `functionTypeIdentity`), y `var f = Double;` dejó de diagnosticar.
-- **Falta la conversión a valor delegado**: `bindMethodGroupToDelegate` convierte a delegate
-  NOMINAL; para el `fn*` estructural (tipo natural) no produce un local invocable (`f(21)` da
-  "unknown identifier 'f'"). Se necesita bajar un cell/function pointer real para el `fn*`
-  estructural (como hace `bindMethodGroupToDelegate` con el target nominal).
+- **Causa raíz de `f(21)` fallido**: `bindMethodGroupToDelegate` (:23106) SIEMPRE crea un
+  `MethodDelegateBinding{Create}` = **celda delegada** (code + receiver). Para un `fn*`
+  ESTRUCTURAL (tipo natural de un method group ESTÁTICO) hace falta un **puntero de función crudo**
+  (como el caso `externCTarget` :23200-23211, pero con calling convention nativa), no una celda.
+  Por eso el local `f` (tipo `fn*(int)->int`) no queda invocable.
 
 ## Gap F07
 
 1. Inferir el `fn*`/`fn&` natural de un method group único (hecho, ver arriba).
-2. Convertir el method group a un valor `fn*` invocable (cell/function pointer) sin target nominal.
+2. Bajar un method group ESTÁTICO con target `fn*` estructural a puntero de función crudo (no
+   celda). El case `externCTarget` es el precedente; falta el camino nativo.
 3. Congelar el ranking: overload con menos defaults > overload sin defaults > fallo ambiguo.
 
 ## Plan
 
-1. En `analyzeVariable`, cuando el initializer es method group único, inferir `fn*` y convertirlo
-   a valor delegado (replicar `bindMethodGroupToDelegate` para `fn*` estructural).
+1. En `bindMethodGroupToDelegate`, cuando el target es `fn*` estructural (no delegate nominal) y
+   el method es estático, emitir un puntero de función crudo (replicando el camino externC sin C
+   ABI). 
 2. Prueba `TL-LANG-319` (ya redactada; se re-registra al pasar).
 
 ## Prueba puntual
