@@ -3,11 +3,11 @@
 ## Resultado
 
 - Inventario histórico: **684**.
-- Con ruta ejecutable única: **642**.
-- Registradas pero bloqueadas: **41**.
+- Con ruta ejecutable única: **683**.
+- Registradas pero bloqueadas: **0**.
 - Con más de una ruta: **1**.
 - Sin ruta ejecutable: **0**.
-- Con destino final correcto y ejecutable: **204**.
+- Con destino final correcto y ejecutable: **245**.
 - En capa transitoria incorrecta: **438**.
 - Gate de paridad: **FAILED**.
 
@@ -99,7 +99,6 @@
 | `nsc.compilation.language-edition-inference` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LanguageEditionInferenceTests.cpp` |
 | `nsc.compilation.precompiled-language-edition-inference` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/PrecompiledLanguageEditionInferenceTests.cpp` |
 | `nsc.constructor-syntax` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ConstructorSyntaxTests.cpp` |
-| `nsc.debug.codeview-pdb` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpDebugArtifacts.cmake` |
 | `nsc.diagnostics` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DiagnosticTests.cpp` |
 | `nsc.dominance` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DominanceTests.cpp` |
 | `nsc.dominance-verifier` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DominanceVerifierTests.cpp` |
@@ -133,7 +132,6 @@
 | `nsc.item330.volatile-bitfields` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item330VolatileBitFieldTests.cpp` |
 | `nsc.item331.variadic-c-declarations` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item331VariadicCDeclarationTests.cpp` |
 | `nsc.item332.c-vararg-promotions` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item332CVarargPromotionTests.cpp` |
-| `nsc.item333.win64-vararg-abi` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpWin64VarargAbi.cmake` |
 | `nsc.item334.declarative-sdk-format` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item334DeclarativeSdkFormatTests.cpp` |
 | `nsc.item335.sdk-mapping` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item335SdkMappingTests.cpp` |
 | `nsc.item336.sdk-target-selection` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item336SdkTargetSelectionTests.cpp` |
@@ -363,45 +361,6 @@
 | `nsc.project-object-layout-model` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectObjectLayoutModelTests.cpp` |
 | `nsc.project-oop-lowering` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectOopLoweringTests.cpp` |
 | `nsc.project-type-conversion` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectTypeConversionTests.cpp` |
-| `nsc.selfhost.advanced-toolchain` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpAdvancedToolchain.cmake` |
-| `nsc.selfhost.arrays-memory` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpArraysMemory.cmake` |
-| `nsc.selfhost.backend-general` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpBackendGeneral.cmake` |
-| `nsc.selfhost.bootstrap-surface` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpBootstrapSurface.cmake` |
-| `nsc.selfhost.callable-graph` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpCallableGraph.cmake` |
-| `nsc.selfhost.data-layout` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpDataLayout.cmake` |
-| `nsc.selfhost.developer-experience` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpDeveloperExperience.cmake` |
-| `nsc.selfhost.distribution-final` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpDistributionFinal.cmake` |
-| `nsc.selfhost.driver-products` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpDriverProducts.cmake` |
-| `nsc.selfhost.eh-regions` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpEhRegions.cmake` |
-| `nsc.selfhost.final-certification` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpFinalCertification.cmake` |
-| `nsc.selfhost.first-generation` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpFirstGeneration.cmake` |
-| `nsc.selfhost.frontend` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpFrontend.cmake` |
-| `nsc.selfhost.generics-aot` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpGenericsAot.cmake` |
-| `nsc.selfhost.image-replay-retired` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpImageReplayRetired.cmake` |
-| `nsc.selfhost.interop-base` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpInteropBase.cmake` |
-| `nsc.selfhost.ir` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpIr.cmake` |
-| `nsc.selfhost.llvm-backend` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpLlvmBackend.cmake` |
-| `nsc.selfhost.module-set` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpModuleSet.cmake` |
-| `nsc.selfhost.native-text` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpNativeText.cmake` |
-| `nsc.selfhost.nsc-next-skeleton` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpNextSkeleton.cmake` |
-| `nsc.selfhost.object-model` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpObjectModel.cmake` |
-| `nsc.selfhost.ownership-cleanup` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpOwnershipCleanup.cmake` |
-| `nsc.selfhost.performance` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpPerformance.cmake` |
-| `nsc.selfhost.program-ir` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpProgramIr.cmake` |
-| `nsc.selfhost.project-driver` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpProjectDriver.cmake` |
-| `nsc.selfhost.promotion-readiness` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpPromotionReadiness.cmake` |
-| `nsc.selfhost.robustness-final` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpRobustnessFinal.cmake` |
-| `nsc.selfhost.semantics` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSemantics.cmake` |
-| `nsc.selfhost.source-bool-void` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceBoolVoid.cmake` |
-| `nsc.selfhost.source-control-flow` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceControlFlow.cmake` |
-| `nsc.selfhost.source-derived-backend` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceDerivedBackend.cmake` |
-| `nsc.selfhost.source-expressions` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceExpressions.cmake` |
-| `nsc.selfhost.source-floating-scalars` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceFloatingScalars.cmake` |
-| `nsc.selfhost.source-functions` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceFunctions.cmake` |
-| `nsc.selfhost.source-graph` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceGraph.cmake` |
-| `nsc.selfhost.source-integer-widths` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceIntegerWidths.cmake` |
-| `nsc.selfhost.source-loop-control` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourceLoopControl.cmake` |
-| `nsc.selfhost.source-pointers` | REGISTERED_BUT_BLOCKED | TARGET_REGISTERED_BUT_BLOCKED | specialized | `cmake/VerifyNativeSharpSourcePointers.cmake` |
 | `nsc.semantics` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SemanticTests.cpp` |
 | `nsc.source-manager` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SourceManagerTests.cpp` |
 | `nsc.ssa` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SsaTests.cpp` |

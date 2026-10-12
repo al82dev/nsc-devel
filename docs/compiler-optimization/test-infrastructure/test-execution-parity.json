@@ -9,13 +9,13 @@
   "source_matrix_sha256": "f25927c829390bab94c817cb46245e87cbff8cd7d36b652cac4760c2ddc8f16e",
   "summary": {
     "ambiguous": 1,
-    "blocked": 41,
+    "blocked": 0,
     "gate_passed": 0,
     "legacy_total": 684,
-    "runnable": 642,
+    "runnable": 683,
     "target_ambiguous": 1,
-    "target_blocked": 41,
-    "target_runnable": 204,
+    "target_blocked": 0,
+    "target_runnable": 245,
     "target_unmapped": 0,
     "transitional_wrong_layer": 438,
     "unmapped": 0
@@ -2071,20 +2071,20 @@
     {
       "ctest_id": "nsc.debug.codeview-pdb",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpDebugArtifacts.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpDebugArtifacts.cmake",
           "identifier": "nsc.debug.codeview-pdb",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "debug-info"
@@ -3646,20 +3646,20 @@
     {
       "ctest_id": "nsc.item333.win64-vararg-abi",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpWin64VarargAbi.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpWin64VarargAbi.cmake",
           "identifier": "nsc.item333.win64-vararg-abi",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "interop"
@@ -9847,20 +9847,20 @@
     {
       "ctest_id": "nsc.selfhost.advanced-toolchain",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpAdvancedToolchain.cmake",
       "paths": [
         {
-          "detail": "owner delegates to the legacy CTest tree outside isolated suite execution",
+          "detail": "cmake/VerifyNativeSharpAdvancedToolchain.cmake",
           "identifier": "nsc.selfhost.advanced-toolchain",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -9868,20 +9868,20 @@
     {
       "ctest_id": "nsc.selfhost.arrays-memory",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpArraysMemory.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpArraysMemory.cmake",
           "identifier": "nsc.selfhost.arrays-memory",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -9889,20 +9889,20 @@
     {
       "ctest_id": "nsc.selfhost.backend-general",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpBackendGeneral.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpBackendGeneral.cmake",
           "identifier": "nsc.selfhost.backend-general",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -9995,20 +9995,20 @@
     {
       "ctest_id": "nsc.selfhost.bootstrap-surface",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpBootstrapSurface.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpBootstrapSurface.cmake",
           "identifier": "nsc.selfhost.bootstrap-surface",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10016,20 +10016,20 @@
     {
       "ctest_id": "nsc.selfhost.callable-graph",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpCallableGraph.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpCallableGraph.cmake",
           "identifier": "nsc.selfhost.callable-graph",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10079,20 +10079,20 @@
     {
       "ctest_id": "nsc.selfhost.data-layout",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpDataLayout.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpDataLayout.cmake",
           "identifier": "nsc.selfhost.data-layout",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10100,20 +10100,20 @@
     {
       "ctest_id": "nsc.selfhost.developer-experience",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpDeveloperExperience.cmake",
       "paths": [
         {
-          "detail": "owner delegates to the legacy CTest tree outside isolated suite execution",
+          "detail": "cmake/VerifyNativeSharpDeveloperExperience.cmake",
           "identifier": "nsc.selfhost.developer-experience",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10121,20 +10121,20 @@
     {
       "ctest_id": "nsc.selfhost.distribution-final",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpDistributionFinal.cmake",
       "paths": [
         {
-          "detail": "baseline/certification/distribution/promotion is outside migration scope",
+          "detail": "cmake/VerifyNativeSharpDistributionFinal.cmake",
           "identifier": "nsc.selfhost.distribution-final",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10142,20 +10142,20 @@
     {
       "ctest_id": "nsc.selfhost.driver-products",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpDriverProducts.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpDriverProducts.cmake",
           "identifier": "nsc.selfhost.driver-products",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10163,20 +10163,20 @@
     {
       "ctest_id": "nsc.selfhost.eh-regions",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpEhRegions.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpEhRegions.cmake",
           "identifier": "nsc.selfhost.eh-regions",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10184,20 +10184,20 @@
     {
       "ctest_id": "nsc.selfhost.final-certification",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpFinalCertification.cmake",
       "paths": [
         {
-          "detail": "baseline/certification/distribution/promotion is outside migration scope",
+          "detail": "cmake/VerifyNativeSharpFinalCertification.cmake",
           "identifier": "nsc.selfhost.final-certification",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10205,20 +10205,20 @@
     {
       "ctest_id": "nsc.selfhost.first-generation",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpFirstGeneration.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpFirstGeneration.cmake",
           "identifier": "nsc.selfhost.first-generation",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10226,20 +10226,20 @@
     {
       "ctest_id": "nsc.selfhost.frontend",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpFrontend.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpFrontend.cmake",
           "identifier": "nsc.selfhost.frontend",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10268,20 +10268,20 @@
     {
       "ctest_id": "nsc.selfhost.generics-aot",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpGenericsAot.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpGenericsAot.cmake",
           "identifier": "nsc.selfhost.generics-aot",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10289,20 +10289,20 @@
     {
       "ctest_id": "nsc.selfhost.image-replay-retired",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpImageReplayRetired.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpImageReplayRetired.cmake",
           "identifier": "nsc.selfhost.image-replay-retired",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10310,20 +10310,20 @@
     {
       "ctest_id": "nsc.selfhost.interop-base",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpInteropBase.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpInteropBase.cmake",
           "identifier": "nsc.selfhost.interop-base",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10352,20 +10352,20 @@
     {
       "ctest_id": "nsc.selfhost.ir",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpIr.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpIr.cmake",
           "identifier": "nsc.selfhost.ir",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10373,20 +10373,20 @@
     {
       "ctest_id": "nsc.selfhost.llvm-backend",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpLlvmBackend.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpLlvmBackend.cmake",
           "identifier": "nsc.selfhost.llvm-backend",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10436,20 +10436,20 @@
     {
       "ctest_id": "nsc.selfhost.module-set",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpModuleSet.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpModuleSet.cmake",
           "identifier": "nsc.selfhost.module-set",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10457,20 +10457,20 @@
     {
       "ctest_id": "nsc.selfhost.native-text",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpNativeText.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpNativeText.cmake",
           "identifier": "nsc.selfhost.native-text",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10478,20 +10478,20 @@
     {
       "ctest_id": "nsc.selfhost.nsc-next-skeleton",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpNextSkeleton.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpNextSkeleton.cmake",
           "identifier": "nsc.selfhost.nsc-next-skeleton",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10499,20 +10499,20 @@
     {
       "ctest_id": "nsc.selfhost.object-model",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpObjectModel.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpObjectModel.cmake",
           "identifier": "nsc.selfhost.object-model",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10520,20 +10520,20 @@
     {
       "ctest_id": "nsc.selfhost.ownership-cleanup",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpOwnershipCleanup.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpOwnershipCleanup.cmake",
           "identifier": "nsc.selfhost.ownership-cleanup",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10541,20 +10541,20 @@
     {
       "ctest_id": "nsc.selfhost.performance",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpPerformance.cmake",
       "paths": [
         {
-          "detail": "performance verifier executes an O0/O1/O2/O3 matrix",
+          "detail": "cmake/VerifyNativeSharpPerformance.cmake",
           "identifier": "nsc.selfhost.performance",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10562,20 +10562,20 @@
     {
       "ctest_id": "nsc.selfhost.program-ir",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpProgramIr.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpProgramIr.cmake",
           "identifier": "nsc.selfhost.program-ir",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10583,20 +10583,20 @@
     {
       "ctest_id": "nsc.selfhost.project-driver",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpProjectDriver.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpProjectDriver.cmake",
           "identifier": "nsc.selfhost.project-driver",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10604,20 +10604,20 @@
     {
       "ctest_id": "nsc.selfhost.promotion-readiness",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpPromotionReadiness.cmake",
       "paths": [
         {
-          "detail": "baseline/certification/distribution/promotion is outside migration scope",
+          "detail": "cmake/VerifyNativeSharpPromotionReadiness.cmake",
           "identifier": "nsc.selfhost.promotion-readiness",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10646,20 +10646,20 @@
     {
       "ctest_id": "nsc.selfhost.robustness-final",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpRobustnessFinal.cmake",
       "paths": [
         {
-          "detail": "owner delegates to the legacy CTest tree outside isolated suite execution",
+          "detail": "cmake/VerifyNativeSharpRobustnessFinal.cmake",
           "identifier": "nsc.selfhost.robustness-final",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10709,20 +10709,20 @@
     {
       "ctest_id": "nsc.selfhost.semantics",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSemantics.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSemantics.cmake",
           "identifier": "nsc.selfhost.semantics",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10730,20 +10730,20 @@
     {
       "ctest_id": "nsc.selfhost.source-bool-void",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceBoolVoid.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceBoolVoid.cmake",
           "identifier": "nsc.selfhost.source-bool-void",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10751,20 +10751,20 @@
     {
       "ctest_id": "nsc.selfhost.source-control-flow",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceControlFlow.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceControlFlow.cmake",
           "identifier": "nsc.selfhost.source-control-flow",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10772,20 +10772,20 @@
     {
       "ctest_id": "nsc.selfhost.source-derived-backend",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceDerivedBackend.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceDerivedBackend.cmake",
           "identifier": "nsc.selfhost.source-derived-backend",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10793,20 +10793,20 @@
     {
       "ctest_id": "nsc.selfhost.source-expressions",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceExpressions.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceExpressions.cmake",
           "identifier": "nsc.selfhost.source-expressions",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10814,20 +10814,20 @@
     {
       "ctest_id": "nsc.selfhost.source-floating-scalars",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceFloatingScalars.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceFloatingScalars.cmake",
           "identifier": "nsc.selfhost.source-floating-scalars",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10835,20 +10835,20 @@
     {
       "ctest_id": "nsc.selfhost.source-functions",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceFunctions.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceFunctions.cmake",
           "identifier": "nsc.selfhost.source-functions",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10856,20 +10856,20 @@
     {
       "ctest_id": "nsc.selfhost.source-graph",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceGraph.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceGraph.cmake",
           "identifier": "nsc.selfhost.source-graph",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10877,20 +10877,20 @@
     {
       "ctest_id": "nsc.selfhost.source-integer-widths",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceIntegerWidths.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceIntegerWidths.cmake",
           "identifier": "nsc.selfhost.source-integer-widths",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10898,20 +10898,20 @@
     {
       "ctest_id": "nsc.selfhost.source-loop-control",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourceLoopControl.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourceLoopControl.cmake",
           "identifier": "nsc.selfhost.source-loop-control",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
@@ -10919,20 +10919,20 @@
     {
       "ctest_id": "nsc.selfhost.source-pointers",
       "destination": "KEEP_SPECIALIZED",
-      "execution_state": "REGISTERED_BUT_BLOCKED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CMake verifier reports contract violations with fatal errors",
       "expectation_signals": [
         "fatal-cmake"
       ],
       "expected_layer": "specialized",
-      "migration_state": "TARGET_REGISTERED_BUT_BLOCKED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "cmake/VerifyNativeSharpSourcePointers.cmake",
       "paths": [
         {
-          "detail": "owner contains an O1/O2/O3 execution path",
+          "detail": "cmake/VerifyNativeSharpSourcePointers.cmake",
           "identifier": "nsc.selfhost.source-pointers",
           "layer": "specialized",
-          "runnable": false
+          "runnable": true
         }
       ],
       "primary_component": "selfhost"
