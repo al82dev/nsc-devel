@@ -58,6 +58,7 @@ private:
     std::string_view buffer_;
     std::uint32_t offset_ = 0;
     bool awaitingAssemblyBrace_ = false;
+    std::uint32_t assemblyHeaderParenthesisDepth_ = 0;
     bool insideAssemblyBody_ = false;
     std::uint32_t assemblyBraceDepth_ = 0;
 };

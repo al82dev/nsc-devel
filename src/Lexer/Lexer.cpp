@@ -202,6 +202,7 @@ Token Lexer::nextToken()
     if (isAtEnd())
     {
         awaitingAssemblyBrace_ = false;
+        assemblyHeaderParenthesisDepth_ = 0;
         return Token(TokenKind::EndOfFile, range(begin, begin), {});
     }
 
@@ -233,18 +234,31 @@ Token Lexer::nextToken()
 
     if (awaitingAssemblyBrace_)
     {
-        if (token.kind() == TokenKind::LeftBrace)
+        if (token.kind() == TokenKind::LeftBrace && assemblyHeaderParenthesisDepth_ == 0)
         {
             insideAssemblyBody_ = true;
             assemblyBraceDepth_ = 1;
+            awaitingAssemblyBrace_ = false;
         }
-        awaitingAssemblyBrace_ = false;
+        else if (token.kind() == TokenKind::LeftParen)
+        {
+            ++assemblyHeaderParenthesisDepth_;
+        }
+        else if (token.kind() == TokenKind::RightParen && assemblyHeaderParenthesisDepth_ != 0)
+        {
+            --assemblyHeaderParenthesisDepth_;
+        }
+        else if (assemblyHeaderParenthesisDepth_ == 0)
+        {
+            awaitingAssemblyBrace_ = false;
+        }
     }
     else if (token.kind() == TokenKind::Identifier && token.lexeme() == "asm")
     {
-        // `asm` remains contextual. Whitespace and comments may separate it from `{`, while any
-        // real token other than `{` cancels assembly mode and leaves the identifier untouched.
+        // `asm` remains contextual. A parenthesized target/dialect header may precede the body;
+        // otherwise any real token other than `{` cancels assembly mode.
         awaitingAssemblyBrace_ = true;
+        assemblyHeaderParenthesisDepth_ = 0;
     }
 
     return token;

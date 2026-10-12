@@ -2913,10 +2913,11 @@ ast::AstNode* Parser::parseUsingDirective()
 ast::AstNode* Parser::parseGlobalDeclaration()
 {
     // Item 287 keeps `asm` contextual: an existing type/local/member called `asm` is not broken.
-    // The spelling only opens an assembly statement when immediately followed by `{`. At
+    // The spelling only opens an assembly statement when followed by `{` or its explicit header. At
     // namespace scope that same unambiguous shape gets a precise diagnostic and is consumed as a
     // unit so recovery can continue at the next declaration.
-    if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
+    if (atContextualKeyword("asm") &&
+        (peek().kind() == TokenKind::LeftBrace || peek().kind() == TokenKind::LeftParen))
     {
         const SourceRange keywordRange = current().range();
         parseInlineAssemblyStatement();
@@ -8717,7 +8718,8 @@ ast::AstNode* Parser::parseStatement()
         }
         return block;
     }
-    if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
+    if (atContextualKeyword("asm") &&
+        (peek().kind() == TokenKind::LeftBrace || peek().kind() == TokenKind::LeftParen))
         return parseInlineAssemblyStatement();
     const auto beginsConditionalPattern = [&]() noexcept
     {
@@ -9064,6 +9066,49 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
 {
     const std::size_t beginIndex = index_;
     consume(); // contextual `asm`
+
+    std::string targetMetadata;
+    std::string dialectMetadata;
+    if (consumeIf(TokenKind::LeftParen))
+    {
+        do
+        {
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "asm header option name");
+                break;
+            }
+            const lexer::Token& optionToken = consume();
+            const std::string option(optionToken.lexeme());
+            if (!expect(TokenKind::Equal, "'=' after asm header option")) break;
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "asm header option value");
+                break;
+            }
+            const lexer::Token& valueToken = consume();
+            const std::string value(valueToken.lexeme());
+
+            if (option == "target" && value == "x64")
+            {
+                targetMetadata = std::string(target::TargetInfo::WindowsX64().llvmTriple());
+            }
+            else if (option == "dialect" && value == "intel")
+            {
+                dialectMetadata = "intel";
+            }
+            else
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,
+                    diagnostics::DiagnosticSeverity::Error,
+                    valueToken.range(),
+                    "unsupported asm " + option + " value '" + value + "'");
+            }
+        }
+        while (consumeIf(TokenKind::Comma));
+        expect(TokenKind::RightParen, "')' after asm header");
+    }
     expect(TokenKind::LeftBrace, "'{' after asm");
 
     // Item 288: the lexer owns the outer-brace depth and hands the parser exact physical-line
@@ -9074,6 +9119,11 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
     ast::AstNode* statement = arena_.make<ast::AstNode>(
         ast::AstNodeKind::InlineAssemblyStatement,
         tokenRangeFrom(beginIndex));
+    if (!targetMetadata.empty() || !dialectMetadata.empty())
+    {
+        statement->setAuxiliaryText(
+            "target:" + targetMetadata + ";dialect:" + dialectMetadata);
+    }
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const lexer::Token& token = current();

@@ -49,8 +49,11 @@ void testAssemblyTargetAndDialectMetadata(TestContext& context)
 {
     ParserFixture fixture("asm(target = x64, dialect = intel) { nop }");
     AstNode* const node = parseAsm(fixture);
+    const auto lines = childrenOfKind(node, AstNodeKind::InlineAssemblyLine);
     context.expect(node != nullptr && node->kind() == AstNodeKind::InlineAssemblyStatement &&
             node->auxiliaryText() == "target:x86_64-pc-windows-msvc;dialect:intel" &&
+            node->text() == " nop " && lines.size() == 1 && lines[0]->text() == "nop" &&
+            fixture.parser().current().kind() == TokenKind::EndOfFile &&
             fixture.diagnostics().diagnostics().empty(),
         "TP-PAR-316 explicit valid target and dialect must retain canonical metadata");
 }
@@ -248,8 +251,7 @@ void testAssemblyStatementBoundary(TestContext& context)
 void registerParserInlineAssemblyContinuationModule(TestRegistry& registry)
 {
     addCase(registry, "TP-PAR-315", testEmptyAssembly);
-    addCase(registry, "TP-PAR-316", testAssemblyTargetAndDialectMetadata,
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-316", testAssemblyTargetAndDialectMetadata);
     addCase(registry, "TP-PAR-317", testInvalidAssemblyTarget);
     addCase(registry, "TP-PAR-318", testAssemblyRawLines);
     addCase(registry, "TP-PAR-319", testOutputOperands);
