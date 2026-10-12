@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 7 | 4.76 % | `ACTIVA`; B00 reconciliada, T00-F01–F07 cerradas, T00-F08 activa |
+| B | 3.0.4 | 18 | 147 ítems | 8 | 5.44 % | `ACTIVA`; B00 reconciliada, T00 cerrada; T01-F01 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -915,7 +915,7 @@ T00
 
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
-| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 7 | 87.5 % |
+| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
@@ -946,7 +946,7 @@ T00
 - [x] `NS304-T00-F05` — Añadir disposición `PlannedFor304` sin presentar features pendientes como productivas.
 - [x] `NS304-T00-F06` — Congelar versiones previstas de AST, HIR, MIR, NSMETA, ABI runtime y debug metadata.
 - [x] `NS304-T00-F07` — Publicar manifest de dependencias compiler/runtime/STL por feature.
-- [ ] `NS304-T00-F08` — Crear harness v3.0.4 sin conteos fijos, hashes de herramientas ni textos frágiles.
+- [x] `NS304-T00-F08` — Crear harness v3.0.4 sin conteos fijos, hashes de herramientas ni textos frágiles.
 
 ### T01 — inicialización estática y declaraciones en condiciones
 
@@ -1331,6 +1331,22 @@ Estado: `CERRADO`.
 - Prueba puntual: parseo JSON, whitelist de componentes/modos, cierre de owners
   y existencia física de cada ruta STL marcada `existing`.
 - Siguiente ítem: `NS304-T00-F08`.
+
+### NS304-T00-F08 — harness estructural 3.0.4
+
+Estado: `CERRADO`; consolidado T00 `PASS`.
+
+- Expediente: `docs/3.0.4/items/NS304-T00-F08-plan-harness.md`.
+- Implementación: `tools/verify_native_sharp_304_plan.py`.
+- Pruebas: `tests/unit/test_verify_native_sharp_304_plan.py`.
+- Contrato: universo descubierto desde plan/tracking; salida JSON con códigos
+  estables; sin denominador fijo, hashes de herramientas ni oráculos de prosa.
+- Prueba puntual: 4/4 unitarias `PASS`; corrida real `PASS`, 147/147 IDs,
+  8 cerrados y 2 contratos descubiertos.
+- Gate: missing=0, extra=0, order_mismatch=0, contract_issues=0.
+- Consolidado T00: F01=55, F02=55, F03=88, F04=69, F05=7/7,
+  F06=6, F07=18, F08=4/4 + gate real; `PASS`, sin batería completa.
+- Siguiente acción: `NS304-T01-F01`.
 
 ---
 
@@ -1836,18 +1852,21 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00-F05 | Disposición PlannedFor304 | catálogo, manifest, Parser y pruebas Host.Language | 9 planes no productivos; 7/7 casos puntuales PASS; 5/147 cerrados |
 | 2026-10-12 | B01/T00-F06 | Reservas de versión 3.0.4 | seis contratos contra constantes y modelos actuales | 6/6 baselines trazados; ventanas T01–T15 sin bump prematuro; 6/147 cerrados |
 | 2026-10-12 | B01/T00-F07 | Manifest de dependencias por feature | 18 familias contra plan, compiler, runtime y STL | 18/18 trazadas; existentes verificados y futuras explícitas; 7/147 cerrados |
+| 2026-10-12 | B01/T00-F08 | Harness estructural 3.0.4 | unitarias y ejecución sobre fuentes canónicas | 4/4 unitarias PASS; gate real PASS; 8/147 cerrados |
+| 2026-10-12 | B01/T00 | Consolidado puntual de tanda | F01–F08, sólo gates documentales y TL-LANG-155..161 | `PASS`; T00 8/8; T01-F01 habilitada sin batería completa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `7/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `8/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
   congeló seis ventanas de versión sin adelantar writers ni ABI, y T00-F07
-  publicó las dependencias de 18 familias sin convertir planes en artefactos;
-  T00-F08 queda activa en `development`. La contradicción de `v.3.0.3`
+  publicó las dependencias de 18 familias sin convertir planes en artefactos,
+  y T00-F08 añadió el harness estructural; consolidado T00 `PASS`, T01-F01 activa.
+  La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
