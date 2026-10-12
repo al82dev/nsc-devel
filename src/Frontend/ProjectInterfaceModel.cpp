@@ -668,39 +668,36 @@ bool ProjectInterfaceModel::visitInterface(
         info->effectiveMethodMemberOrdinals.push_back(memberOrdinal);
     }
 
-    if (info->isTrait)
+    for (const auto& [signature, defaults] : inheritedDefaults)
     {
-        for (const auto& [signature, defaults] : inheritedDefaults)
+        std::size_t undominatedDefaults = 0;
+        for (const std::size_t candidateOrdinal : defaults)
         {
-            std::size_t undominatedDefaults = 0;
-            for (const std::size_t candidateOrdinal : defaults)
-            {
-                if (candidateOrdinal >= memberModel_->members().size()) continue;
-                const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-                const bool dominated = std::ranges::any_of(
-                    defaults,
-                    [&](const std::size_t otherOrdinal)
-                    {
-                        if (otherOrdinal == candidateOrdinal ||
-                            otherOrdinal >= memberModel_->members().size())
-                            return false;
-                        const ClassMemberSymbol& other = memberModel_->members()[otherOrdinal];
-                        return interfaceDerivesFrom(
-                            other.declaringTypeOrdinal,
-                            candidate.declaringTypeOrdinal);
-                    });
-                if (!dominated) ++undominatedDefaults;
-            }
-            if (undominatedDefaults > 1U && !redeclaredSignatures.contains(signature))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOverride,
-                    diagnostics::DiagnosticSeverity::Error,
-                    nameLookup_->namedTypes()[typeOrdinal].range,
-                    "trait inherits competing default implementations for '" + signature +
-                        "'; redeclare the method to select or replace the default");
-                ok = false;
-            }
+            if (candidateOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+            const bool dominated = std::ranges::any_of(
+                defaults,
+                [&](const std::size_t otherOrdinal)
+                {
+                    if (otherOrdinal == candidateOrdinal ||
+                        otherOrdinal >= memberModel_->members().size())
+                        return false;
+                    const ClassMemberSymbol& other = memberModel_->members()[otherOrdinal];
+                    return interfaceDerivesFrom(
+                        other.declaringTypeOrdinal,
+                        candidate.declaringTypeOrdinal);
+                });
+            if (!dominated) ++undominatedDefaults;
+        }
+        if (undominatedDefaults > 1U && !redeclaredSignatures.contains(signature))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOverride,
+                diagnostics::DiagnosticSeverity::Error,
+                nameLookup_->namedTypes()[typeOrdinal].range,
+                "trait or interface inherits competing default implementations for '" + signature +
+                    "'; redeclare the method to select or replace the default");
+            ok = false;
         }
     }
 

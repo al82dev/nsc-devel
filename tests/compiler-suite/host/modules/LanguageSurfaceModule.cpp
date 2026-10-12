@@ -164,7 +164,8 @@ public:
     std::filesystem::path writeProject(
         std::string_view name,
         std::string_view outputType,
-        std::string_view source) const
+        std::string_view source,
+        std::string_view additionalItems = {}) const
     {
         const std::filesystem::path sourceFile = directory_ / (std::string(name) + ".ns");
         const std::filesystem::path projectFile = directory_ / (std::string(name) + ".nsproj");
@@ -173,7 +174,8 @@ public:
             "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name><OutputType>" + std::string(outputType) +
             "</OutputType><Language>3</Language></PropertyGroup><ItemGroup><Compile Include=\"" +
-            sourceFile.filename().string() + "\"/></ItemGroup></Project>");
+            sourceFile.filename().string() + "\"/>" + std::string(additionalItems) +
+            "</ItemGroup></Project>");
         return projectFile;
     }
 
@@ -1232,6 +1234,142 @@ class Program
                     result.error + result.output + interfacePlan.output);
         }});
 }
+
+void registerDefaultDiamondAndCoherenceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-304", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "interface", "default-body", "diamond", "coherence"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path conflictProject = products.writeProject(
+                "T02DiamondConflict", "Exe", R"ns(
+interface ILeft { int Value() { return 1; } }
+interface IRight { int Value() { return 2; } }
+interface IConflict : ILeft, IRight { }
+class Broken : IConflict { }
+class Program { public static int Main() { return 0; } }
+)ns");
+            const external_program_support::Result conflict = runT01Compiler(
+                {L"--dump-project-interfaces", conflictProject.wstring()}, products.directory());
+            context.expect(conflict.started && conflict.exitCode != 0 &&
+                    conflict.output.find("competing default implementations") != std::string::npos,
+                "TL-LANG-304 an unresolved ordinary-interface diamond must fail causally: " +
+                    conflict.error + conflict.output);
+
+            const std::filesystem::path resolvedProject = products.writeProject(
+                "T02DiamondResolved", "Exe", R"ns(
+interface ILeft { int Value() { return 1; } }
+interface IRight { int Value() { return 2; } }
+interface IResolved : ILeft, IRight { int Value() { return 42; } }
+class Item : IResolved { }
+class Program
+{
+    public static int Main()
+    {
+        Item item = new Item();
+        IResolved value = item;
+        return value.Value();
+    }
+}
+)ns");
+            const std::filesystem::path resolvedExecutable =
+                products.directory() / "T02DiamondResolved.exe";
+            const external_program_support::Result resolved = emitT01Product(
+                L"--emit-project-oop-exe", resolvedProject, resolvedExecutable,
+                products.directory());
+            context.expect(resolved.started && resolved.exitCode == 0 && resolved.error.empty(),
+                "TL-LANG-304 a derived redeclaration must resolve the default diamond: " +
+                    resolved.error + resolved.output);
+            if (resolved.started && resolved.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    resolvedExecutable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                    "TL-LANG-304 the resolving override must dispatch to 42: " +
+                        result.error + result.output);
+            }
+
+            const std::filesystem::path duplicateProject = products.writeProject(
+                "T02DuplicateImpl", "Exe", R"ns(
+trait IScore { int Score(); }
+class Number : IScore { public int Score() { return 42; } }
+impl IScore for Number { }
+class Program { public static int Main() { return 0; } }
+)ns");
+            const external_program_support::Result duplicate = runT01Compiler(
+                {L"--dump-project-interfaces", duplicateProject.wstring()}, products.directory());
+            context.expect(duplicate.started && duplicate.exitCode != 0 &&
+                    duplicate.output.find("duplicate trait impl") != std::string::npos,
+                "TL-LANG-304 base-list plus impl must remain a coherence violation: " +
+                    duplicate.error + duplicate.output);
+
+            const std::filesystem::path producerProject = products.writeProject(
+                "T02CoherenceApi", "Library", R"ns(
+namespace CoherenceApi
+{
+    public trait IScore { int Score(); }
+    public class Foreign { }
+}
+)ns");
+            const std::filesystem::path producerLibrary =
+                products.directory() / "T02CoherenceApi.lib";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-lib", producerProject, producerLibrary,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-304 the imported-trait producer must build: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            constexpr std::string_view libraryReference =
+                "<LibraryReference Include=\"T02CoherenceApi.lib\"/>";
+            const std::filesystem::path localProject = products.writeProject(
+                "T02LocalImpl", "Exe", R"ns(
+using CoherenceApi;
+class Local { }
+impl IScore for Local { int Score() { return 42; } }
+class Program
+{
+    public static int Main()
+    {
+        Local local = new Local();
+        dyn IScore score = local;
+        return score.Score();
+    }
+}
+)ns", libraryReference);
+            const std::filesystem::path localExecutable =
+                products.directory() / "T02LocalImpl.exe";
+            const external_program_support::Result local = emitT01Product(
+                L"--emit-project-oop-exe", localProject, localExecutable, products.directory());
+            context.expect(local.started && local.exitCode == 0 && local.error.empty(),
+                "TL-LANG-304 an imported trait may be implemented for a local class: " +
+                    local.error + local.output);
+            if (local.started && local.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    localExecutable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                    "TL-LANG-304 the coherent local impl must execute with exit 42: " +
+                        result.error + result.output);
+            }
+
+            const std::filesystem::path orphanProject = products.writeProject(
+                "T02OrphanImpl", "Exe", R"ns(
+using CoherenceApi;
+trait ILocal { int Score(); }
+impl ILocal for Foreign { int Score() { return 42; } }
+class Program { public static int Main() { return 0; } }
+)ns", libraryReference);
+            const external_program_support::Result orphan = runT01Compiler(
+                {L"--dump-project-interfaces", orphanProject.wstring()}, products.directory());
+            context.expect(orphan.started && orphan.exitCode != 0 &&
+                    orphan.output.find("sealed trait coherence rejects this impl") !=
+                        std::string::npos,
+                "TL-LANG-304 a consumer must not implement a trait for a foreign class: " +
+                    orphan.error + orphan.output);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1253,5 +1391,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerT01IntegrationCase(registry);
     registerDefaultInterfaceBodyCase(registry);
     registerDefaultImplementationPrecedenceCase(registry);
+    registerDefaultDiamondAndCoherenceCase(registry);
 }
 }
