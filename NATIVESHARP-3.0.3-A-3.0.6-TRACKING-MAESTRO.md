@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 2 | 1.36 % | `ACTIVA`; B00 reconciliada, T00-F01/F02 cerradas, T00-F03 activa |
+| B | 3.0.4 | 18 | 147 ítems | 3 | 2.04 % | `ACTIVA`; B00 reconciliada, T00-F01–F03 cerradas, T00-F04 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -915,7 +915,7 @@ T00
 
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
-| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 2 | 25 % |
+| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 3 | 37.5 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **2** | **1.36 %** |
+| **Total** |  | **147** | **3** | **2.04 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -941,7 +941,7 @@ T00
 
 - [x] `NS304-T00-F01` — Inventariar cada feature declarada `TERMINADA` y localizar su vertical real.
 - [x] `NS304-T00-F02` — Clasificar evidencia por parser, semántica, MIR, LLVM, NSMETA, runtime y ejecución.
-- [ ] `NS304-T00-F03` — Construir matriz C# 8-14: equivalente, alternativa, divergencia o gap obligatorio.
+- [x] `NS304-T00-F03` — Construir matriz C# 8-14: equivalente, alternativa, divergencia o gap obligatorio.
 - [ ] `NS304-T00-F04` — Construir matriz Beef: memoria, extensions, generics, comptime, interop y patterns.
 - [ ] `NS304-T00-F05` — Añadir disposición `PlannedFor304` sin presentar features pendientes como productivas.
 - [ ] `NS304-T00-F06` — Congelar versiones previstas de AST, HIR, MIR, NSMETA, ABI runtime y debug metadata.
@@ -1250,6 +1250,23 @@ Estado: `CERRADO`.
 - Prueba puntual: regeneración mecánica de 55 filas desde F01, expedientes y
   commits, más comprobación exacta de distribución por símbolo de evidencia.
 - Siguiente ítem: `NS304-T00-F03`.
+
+### NS304-T00-F03 — matriz C# 8.0–14
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T00-F03-csharp-8-14-matrix.md`.
+- Cobertura: 88/88 capacidades estables oficiales, distribuidas 16/16/16/15/7/10/8
+  para C# 8.0/9/10/11/12/13/14.
+- Resultado: 15 `EQUIVALENTE`, 22 `ALTERNATIVA`, 4 `DIVERGENCIA` y
+  47 `GAP_OBLIGATORIO`, todos estos últimos ligados a dueño NS304.
+- Frontera: previews de C# 12/13 y tooling de aplicaciones de archivo quedan
+  separados y no se presentan como núcleo estable omitido.
+- Gate: omitidas=0, duplicadas=0, disposiciones_múltiples=0,
+  gaps_sin_dueño=0, previews_mezcladas=0.
+- Prueba puntual: parseo de 88 filas, distribución exacta por versión,
+  vocabulario cerrado de cuatro disposiciones y vínculo NS304 en cada gap.
+- Siguiente ítem: `NS304-T00-F04`.
 
 ---
 
@@ -1750,15 +1767,16 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B00 | Reconciliación causal previa de Parte B | 147 IDs/18 tandas contra plan, código y pruebas actuales | 147/147 reconciliados; 0 cerrados; B01/T00 habilitada sin mover ramas |
 | 2026-10-12 | B01/T00-F01 | Inventario de features 3.0 declaradas terminadas | 55 filas históricas contra expedientes, commits y rutas actuales | 55/55 trazadas; 54 ancladas; 1 implementación retirada registrada; 1/147 cerrado |
 | 2026-10-12 | B01/T00-F02 | Clasificación de evidencia por capas | 55 verticales contra parser/Sema/MIR/LLVM/NSMETA/runtime/ejecución | 55/55 clasificadas; historia separada de evidencia actual; 2/147 cerrados |
+| 2026-10-12 | B01/T00-F03 | Matriz C# 8.0–14 | 88 capacidades estables oficiales con disposición única | 88/88 clasificadas; 47 gaps con dueño; 3/147 cerrados |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `2/147`; B00 reconcilió los 147 IDs, T00-F01 localizó 55/55 cierres
-  históricos y T00-F02 clasificó sus siete capas sin convertir historia en
-  certificación actual; T00-F03 queda activa en `development`. La contradicción
-  de `v.3.0.3` permanece como deuda y la rama no se mueve.
+- B: `3/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+  evidencia histórica, y T00-F03 clasificó 88/88 capacidades estables C# 8.0–14;
+  T00-F04 queda activa en `development`. La contradicción de `v.3.0.3`
+  permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas: `v.3.0.3` ya existía antes del cierre y apunta a `7b7e36faf51fe4712940cc76c18a4598fb94facd`; no se
