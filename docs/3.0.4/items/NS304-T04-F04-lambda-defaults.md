@@ -20,13 +20,23 @@
 Permitir `(int x = 5) => ...` en lambdas (y defaults consteval) y validar contra el target: el
 default de la lambda no puede entrar en conflicto con el del delegate.
 
+## Hallazgo (validado con compilación real)
+
+- El default del lambda YA se parsea y almacena (`parseParameter` :8651-8655 → `parameter->first()`),
+  y `Add add = (int x = 5) => x + 1;` compila contra el delegate target.
+- Falta la **aplicación del default en el call-site**: `add()` (omitir el argumento) falla en
+  `ProjectMethodBodyModel` (:15652-15661) con "delegate invocation argument count does not match".
+  Hay que leer los defaults del delegate (sus `ParameterDeclaration` con `first() != null`) y
+  sintetizar los argumentos omitidos. Es un feature general (delegados + métodos), no solo lambdas.
+
 ## Plan
 
-1. Confirmar que el default se baja al `MethodLambdaBinding` (parámetro opcional + valor default).
-2. Validar el default contra el delegate target y prohibir default en lambda no-convertida.
-3. Prueba `TL-LANG-317`.
+1. En la invocación de delegate (:15642+), obtener los parámetros del delegate y, si
+   `arguments.size() < parameterTypes.size()`, verificar que cada faltante tenga default y
+   sintetizarlo (analyzeExpression sobre `first()`).
+2. Validar que el default del lambda no contradiga el del delegate.
+3. Prueba `TL-LANG-317` (ya redactada; se re-registra al pasar).
 
 ## Prueba puntual
 
-`TL-LANG-317`: lambda `(int x = 5) => x + 1` convertida a delegate con default; invocación sin
-argumento usa el default.
+`TL-LANG-317`: `Add add = (int x = 5) => x + 1; return add();` — exit 6.
