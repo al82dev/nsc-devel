@@ -12778,14 +12778,18 @@ ast::AstNode* Parser::parseNullCoalescingExpression()
 // never consumes a statement or argument that follows the range.
 ast::AstNode* Parser::parseRangeExpression()
 {
-    ast::AstNode* begin = parseLogicalOrExpression();
+    // A range delimiter may open the expression. Do not ask the primary-expression path to
+    // manufacture an operand for `..end`; the missing begin endpoint is part of the range shape.
+    ast::AstNode* begin = nullptr;
+    if (!at(TokenKind::DotDot) && !at(TokenKind::DotDotEqual))
+        begin = parseLogicalOrExpression();
     if (!at(TokenKind::DotDot) && !at(TokenKind::DotDotEqual)) return begin;
 
     const lexer::Token& delimiter = consume();
     const SourceRange operation = delimiter.range();
     const bool inclusive = delimiter.kind() == TokenKind::DotDotEqual;
     ast::AstNode* end = nullptr;
-    if (!at(TokenKind::RightParen) && !at(TokenKind::RightBracket) &&
+    if (!at(TokenKind::EndOfFile) && !at(TokenKind::RightParen) && !at(TokenKind::RightBracket) &&
         !at(TokenKind::Comma) && !at(TokenKind::Semicolon))
     {
         end = parseLogicalOrExpression();

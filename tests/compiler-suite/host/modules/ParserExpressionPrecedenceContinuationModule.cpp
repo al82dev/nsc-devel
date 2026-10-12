@@ -99,16 +99,30 @@ void testRangeForms(TestContext& context)
     AstNode* const omittedEndNode = parseExpression(omittedEnd);
     AstNode* const omittedBeginNode = parseExpression(omittedBegin);
     context.expect(exclusiveNode != nullptr && exclusiveNode->kind() == AstNodeKind::RangeExpression &&
-            !exclusiveNode->flag() && exclusiveNode->first() != nullptr && exclusiveNode->second() != nullptr &&
+            !exclusiveNode->flag() && exclusiveNode->tokenKind() == TokenKind::DotDot &&
+            exclusiveNode->first() != nullptr && exclusiveNode->first()->text() == "begin" &&
+            exclusiveNode->second() != nullptr && exclusiveNode->second()->text() == "end" &&
+            exclusive.diagnostics().diagnostics().empty(),
+        "TP-PAR-431 exclusive range must retain delimiter and both endpoints");
+    context.expect(
             inclusiveNode != nullptr && inclusiveNode->kind() == AstNodeKind::RangeExpression &&
             inclusiveNode->flag() && inclusiveNode->tokenKind() == TokenKind::DotDotEqual &&
+            inclusiveNode->first() != nullptr && inclusiveNode->first()->text() == "begin" &&
+            inclusiveNode->second() != nullptr && inclusiveNode->second()->text() == "end" &&
+            inclusive.diagnostics().diagnostics().empty(),
+        "TP-PAR-431 inclusive range must retain delimiter and both endpoints");
+    context.expect(
             omittedEndNode != nullptr && omittedEndNode->kind() == AstNodeKind::RangeExpression &&
-            omittedEndNode->first() != nullptr && omittedEndNode->second() == nullptr &&
+            omittedEndNode->first() != nullptr && omittedEndNode->first()->text() == "begin" &&
+            omittedEndNode->second() == nullptr &&
+            omittedEnd.diagnostics().diagnostics().empty(),
+        "TP-PAR-431 omitted range end must remain null without diagnostics");
+    context.expect(
             omittedBeginNode != nullptr && omittedBeginNode->kind() == AstNodeKind::RangeExpression &&
             omittedBeginNode->first() == nullptr && omittedBeginNode->second() != nullptr &&
-            exclusive.diagnostics().diagnostics().empty() && inclusive.diagnostics().diagnostics().empty() &&
-            omittedEnd.diagnostics().diagnostics().empty() && omittedBegin.diagnostics().diagnostics().empty(),
-        "TP-PAR-431 exclusive, inclusive, and either omitted endpoint must retain exact range shape");
+            omittedBeginNode->second()->text() == "end" &&
+            omittedBegin.diagnostics().diagnostics().empty(),
+        "TP-PAR-431 omitted range begin must remain null without diagnostics");
 }
 
 void testLogicalPrecedence(TestContext& context)
@@ -264,7 +278,7 @@ void registerParserExpressionPrecedenceContinuationModule(TestRegistry& registry
     addCase(registry, "TP-PAR-428", testAssignmentRightAssociativity);
     addCase(registry, "TP-PAR-429", testConditionalAssociativity);
     addCase(registry, "TP-PAR-430", testNullCoalescingAssociativity);
-    addCase(registry, "TP-PAR-431", testRangeForms, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-431", testRangeForms);
     addCase(registry, "TP-PAR-432", testLogicalPrecedence);
     addCase(registry, "TP-PAR-433", testBitwisePrecedence);
     addCase(registry, "TP-PAR-434", testEqualityRelationalPrecedence);
