@@ -13726,9 +13726,13 @@ ast::AstNode* Parser::parseUnaryExpression()
         peek().kind() != TokenKind::LeftParen)
     {
         const SourceRange awaitRange = consume().range();
-        reportDeferredLanguage3(
-            diagnostics_, awaitRange, language::Language3Feature::AsyncAwait);
-        return parseUnaryExpression();
+        // NS304-T05-F01: `await` ya es una expresion de primer nivel (AwaitExpression). La
+        // transformacion productiva (state machine) es T05-F03; el Sema la rechaza hasta entonces.
+        ast::AstNode* operand = parseUnaryExpression();
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::AwaitExpression, awaitRange);
+        node->setFirst(operand);
+        return node;
     }
 
     if (at(TokenKind::Caret))
