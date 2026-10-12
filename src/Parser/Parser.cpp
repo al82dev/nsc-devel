@@ -5368,7 +5368,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
     if (at(TokenKind::KwThis))
     {
         return parseIndexerTail(
-            returnType, accessibility, false, false, false, true, false,
+            returnType, accessibility, false, false, false, sawAbstract, false,
             isReferenceReturn, beginIndex, true);
     }
 
@@ -5383,7 +5383,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
     {
         ast::AstNode* method = parseMethodTail(
             returnType, name, accessibility,
-            false, sawStatic, false, false, isTrait ? sawAbstract : true,
+            false, sawStatic, false, false, sawAbstract,
             false, false, false, false, false, false,
             sawNoHeap, false, beginIndex, isTrait);
         if (method != nullptr)
@@ -5399,12 +5399,6 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
                     "ordinary static trait methods are not part of T05-F01; declare a static "
                     "property or operator requirement");
             }
-            if (!isTrait && method->first() != nullptr)
-            {
-                reportDeferredLanguage3(
-                    diagnostics_, method->first()->range(),
-                    language::Language3Feature::DefaultInterfaceImplementations);
-            }
         }
         return method;
     }
@@ -5418,17 +5412,9 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
                 name.range(),
                 "ref return is valid only on a method in item 313");
         }
-        if (isTrait && !sawStatic)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                name.range(),
-                "trait properties in T05-F01 are static requirements; add 'static'");
-        }
         return parsePropertyTail(
             returnType, name, accessibility,
-            false, sawStatic, false, false, true, false, beginIndex, true);
+            false, sawStatic, false, false, sawAbstract, false, beginIndex, true);
     }
 
     diagnostics_.report(
@@ -7196,7 +7182,7 @@ ast::AstNode* Parser::parsePropertyTail(
     if (isNew) property->addModifier(TokenKind::KwNew);
     if (isVirtual) property->addModifier(TokenKind::KwVirtual);
     if (isOverride) property->addModifier(TokenKind::KwOverride);
-    if (isAbstract || interfaceContext) property->addModifier(TokenKind::KwAbstract);
+    if (isAbstract) property->addModifier(TokenKind::KwAbstract);
     if (isSealed) property->addModifier(TokenKind::KwSealed);
 
     if (isInvalidVoidObjectType(propertyType))
@@ -7269,7 +7255,7 @@ ast::AstNode* Parser::parsePropertyTail(
             isStatic,
             isVirtual,
             isOverride,
-            isAbstract || interfaceContext,
+            isAbstract,
             isSealed,
             std::string("property:") + (getter ? "get:" : "set:") + propertyName,
             accessorRange);
@@ -7289,7 +7275,11 @@ ast::AstNode* Parser::parsePropertyTail(
         {
             if (interfaceContext || isAbstract)
             {
-                // Pure contract accessor: no body.
+                // A bodyless interface or trait accessor remains a pure contract.  The abstract
+                // marker belongs to the accessor, not to the enclosing declaration: a property
+                // may legally mix a default getter with a required setter.
+                if (!accessor->hasModifier(TokenKind::KwAbstract))
+                    accessor->addModifier(TokenKind::KwAbstract);
             }
             else
             {
@@ -7304,13 +7294,7 @@ ast::AstNode* Parser::parsePropertyTail(
         else if (at(TokenKind::LeftBrace))
         {
             sawExplicit = true;
-            if (interfaceContext)
-            {
-                reportDeferredLanguage3(
-                    diagnostics_, current().range(),
-                    language::Language3Feature::DefaultInterfaceImplementations);
-            }
-            else if (isAbstract)
+            if (isAbstract)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -7393,6 +7377,12 @@ ast::AstNode* Parser::parsePropertyTail(
             "a Stage 38 property cannot mix automatic and explicit accessors");
     }
 
+    if (interfaceContext && !sawExplicit &&
+        !property->hasModifier(TokenKind::KwAbstract))
+    {
+        property->addModifier(TokenKind::KwAbstract);
+    }
+
     if (sawAutomatic && !interfaceContext && !isAbstract)
     {
         ast::AstNode* backing = arena_.make<ast::AstNode>(
@@ -7441,7 +7431,7 @@ ast::AstNode* Parser::parseIndexerTail(
     if (isVirtual) indexer->addModifier(TokenKind::KwVirtual);
     if (isNew) indexer->addModifier(TokenKind::KwNew);
     if (isOverride) indexer->addModifier(TokenKind::KwOverride);
-    if (isAbstract || interfaceContext) indexer->addModifier(TokenKind::KwAbstract);
+    if (isAbstract) indexer->addModifier(TokenKind::KwAbstract);
     if (isSealed) indexer->addModifier(TokenKind::KwSealed);
 
     expect(TokenKind::LeftBracket, "'['");
@@ -7468,6 +7458,7 @@ ast::AstNode* Parser::parseIndexerTail(
 
     bool sawGet = false;
     bool sawSet = false;
+    bool sawBody = false;
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         TokenKind accessorAccessibility = TokenKind::Invalid;
@@ -7527,7 +7518,7 @@ ast::AstNode* Parser::parseIndexerTail(
             false,
             isVirtual,
             isOverride,
-            isAbstract || interfaceContext,
+            isAbstract,
             isSealed,
             std::string("indexer:") + (getter ? "get:Item" : "set:Item"),
             accessorRange);
@@ -7547,7 +7538,12 @@ ast::AstNode* Parser::parseIndexerTail(
 
         if (consumeIf(TokenKind::Semicolon))
         {
-            if (!interfaceContext && !isAbstract)
+            if (interfaceContext || isAbstract)
+            {
+                if (!accessor->hasModifier(TokenKind::KwAbstract))
+                    accessor->addModifier(TokenKind::KwAbstract);
+            }
+            else
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -7558,13 +7554,8 @@ ast::AstNode* Parser::parseIndexerTail(
         }
         else if (at(TokenKind::LeftBrace))
         {
-            if (interfaceContext)
-            {
-                reportDeferredLanguage3(
-                    diagnostics_, current().range(),
-                    language::Language3Feature::DefaultInterfaceImplementations);
-            }
-            else if (isAbstract)
+            sawBody = true;
+            if (isAbstract)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -7587,6 +7578,11 @@ ast::AstNode* Parser::parseIndexerTail(
         indexer->addChild(accessor);
     }
     expect(TokenKind::RightBrace, "'}'");
+    if (interfaceContext && !sawBody &&
+        !indexer->hasModifier(TokenKind::KwAbstract))
+    {
+        indexer->addModifier(TokenKind::KwAbstract);
+    }
     if (!sawGet)
     {
         diagnostics_.report(

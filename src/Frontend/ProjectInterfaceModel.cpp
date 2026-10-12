@@ -566,13 +566,14 @@ bool ProjectInterfaceModel::visitInterface(
         const bool hasBody = method.syntax != nullptr && method.syntax->first() != nullptr;
         if (!info->isTrait && (method.isStatic ||
             method.accessibility != ClassMemberAccessibility::Public ||
-            !method.isAbstract || method.syntax == nullptr || hasBody))
+            method.syntax == nullptr || method.isAbstract == hasBody))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidMemberAccess,
                 diagnostics::DiagnosticSeverity::Error,
                 method.range,
-                "Stage 36 interface methods are public abstract instance signatures without bodies");
+                "interface members are public instance requirements without bodies or default "
+                "members with bodies");
             ok = false;
         }
 
@@ -878,7 +879,7 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                 const ClassMemberSymbol& interfaceMethod = memberModel_->members()[interfaceMethodOrdinal];
                 std::optional<std::size_t> implementation =
                     findImplementation(classOrdinal, interfaceMethod);
-                if (!implementation.has_value() && interface->isTrait &&
+                if (!implementation.has_value() &&
                     interfaceMethod.syntax != nullptr && interfaceMethod.syntax->first() != nullptr)
                 {
                     implementation = interfaceMethodOrdinal;

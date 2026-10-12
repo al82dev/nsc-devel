@@ -249,11 +249,32 @@ class Program
             diagnostic + ")");
 
     diagnostic.clear();
-    tests.expect(rejected(root / "instance_property", "InstanceTraitProperty", R"NS(
-trait IBad { int Value { get; } }
-class Program { public static int Main() { return 0; } }
-)NS", "trait properties in T05-F01 are static requirements", diagnostic),
-        "F01 rejects instance trait properties instead of silently changing object layout (" +
+    tests.expect(compileAndRun(root / "default_accessors", "DefaultAccessors", R"NS(
+trait ITraitDefaults
+{
+    int Value { get { return 20; } }
+    int this[int index] { get { return index + 1; } }
+}
+class TraitItem : ITraitDefaults { }
+interface IInterfaceDefaults
+{
+    int Value { get { return 20; } }
+    int this[int index] { get { return index + 1; } }
+}
+class InterfaceItem : IInterfaceDefaults { }
+class Program
+{
+    public static int Main()
+    {
+        TraitItem traitItem = new TraitItem();
+        dyn ITraitDefaults traitView = traitItem;
+        InterfaceItem interfaceItem = new InterfaceItem();
+        IInterfaceDefaults interfaceView = interfaceItem;
+        return traitView.Value + traitView[0] + interfaceView.Value + interfaceView[0];
+    }
+}
+)NS", 42, diagnostic),
+        "trait and interface properties/indexers accept productive default accessor bodies (" +
             diagnostic + ")");
 
     const std::filesystem::path producer = root / "modules" / "Producer";

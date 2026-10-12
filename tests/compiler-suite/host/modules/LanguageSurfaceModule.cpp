@@ -1104,6 +1104,73 @@ void registerT01IntegrationCase(TestRegistry& registry)
             verifyT01DynamicLibrary(context, products, libraryProject);
         }});
 }
+
+void registerDefaultInterfaceBodyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-302", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "interface", "default-body", "property", "indexer"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T02DefaultBodies", "Exe", R"ns(
+trait ITraitDefaults
+{
+    int Method() { return 5; }
+    int Value { get { return 7; } }
+    int this[int index] { get { return index + 8; } }
+}
+class TraitItem : ITraitDefaults { }
+
+interface IInterfaceDefaults
+{
+    int Method() { return 5; }
+    int Value { get { return 7; } }
+    int this[int index] { get { return index + 8; } }
+}
+class InterfaceItem : IInterfaceDefaults { }
+
+class Program
+{
+    public static int Main()
+    {
+        TraitItem traitItem = new TraitItem();
+        dyn ITraitDefaults traitView = traitItem;
+        InterfaceItem interfaceItem = new InterfaceItem();
+        IInterfaceDefaults interfaceView = interfaceItem;
+        return traitView.Method() + traitView.Value + traitView[1]
+            + interfaceView.Method() + interfaceView.Value + interfaceView[1];
+    }
+}
+)ns");
+            const std::filesystem::path executable = products.directory() / "T02DefaultBodies.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-302 method, property and indexer defaults must lower for traits and "
+                "interfaces: " + emitted.error + emitted.output);
+            if (emitted.started && emitted.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    executable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                    "TL-LANG-302 trait and interface defaults must dispatch with identical "
+                    "observable results: " + result.error + result.output);
+            }
+
+            TemporaryProject invalid(
+                "tl-lang-302-abstract-body",
+                "interface IBad { abstract int Read() { return 1; } }");
+            nativesharp::frontend::ProjectCompilation invalidCompilation;
+            std::string invalidError;
+            const bool invalidAccepted = compileTo(
+                invalidCompilation, ProjectStage::Syntax, invalid.projectFile(), invalidError);
+            const std::string evidence = projectFailureEvidence(invalidCompilation, invalidError);
+            context.expect(!invalidAccepted &&
+                    evidence.find("abstract methods declare no body") != std::string::npos,
+                "TL-LANG-302 an explicitly abstract interface member must still reject a body: " +
+                    evidence);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1123,5 +1190,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticLocalLifetimeCase(registry);
     registerConditionDeclarationCase(registry);
     registerT01IntegrationCase(registry);
+    registerDefaultInterfaceBodyCase(registry);
 }
 }
