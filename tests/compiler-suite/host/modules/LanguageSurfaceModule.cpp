@@ -1956,6 +1956,49 @@ class Program
         }});
 }
 
+void registerPatternBindingModeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-313", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "binding", "copy", "ref", "move"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T03PatternBindingModes", "Exe", R"ns(
+public copy borrowed struct Point
+{
+    public int X;
+    public int Y;
+    public Point(int x, int y) { X = x; Y = y; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Point p = new Point(5, 10);
+        int copyVal = match(p) { { X: copy cx } => cx, _ => 0 };
+        int moveVal = match(p) { { X: move mx } => mx, _ => 0 };
+        int refVal = match(p) { { X: ref rx } => rx, _ => 0 };
+        return copyVal + moveVal + refVal;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T03PatternBindingModes.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-313 copy/move/ref pattern bindings must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 15,
+                "TL-LANG-313 pattern binding modes must preserve values: " +
+                    result.error + result.output);
+        }});
+}
+
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1986,5 +2029,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListPatternSubstratesCase(registry);
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
+    registerPatternBindingModeCase(registry);
 }
 }
