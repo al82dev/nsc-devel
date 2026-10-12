@@ -15,19 +15,24 @@ La infraestructura de callables ya es extensa (análisis por olas paralelas):
 - `analyzeExpression` con `case ast::AstNodeKind::LambdaExpression` (:9539).
 - `functionType` (ProjectMethodBodyModel.cpp:7545) — construye el tipo `fn` desde un callable.
 
-## Gap F01 (a confirmar)
+## Gap F01 (confirmado)
 
-Determinar si el tipo callable NATURAL (`fn*(params) -> ret` / `fn&(...)`) se infiere cuando
-la lambda/method group es el único candidato (sin contexto de asignación), o si hoy exige
-`var`/asignación a un delegate explícito. Si la inferencia ya existe, F01 se cierra con una
-prueba; si no, se añade el camino de inferencia.
+`bindLambdaToDelegate` (ProjectMethodBodyModel.cpp:22625) con `delegateTypeKey` vacío
+(`inferAnonymous = true`, :22642) YA infiere el tipo anónimo cuando:
+- todos los parámetros tienen tipo explícito (:22648-22670),
+- y el retorno es explícito (`syntax->typeSyntax()`, :22671-22672).
+
+**Falta**: inferir el TIPO DE RETORNO desde el cuerpo cuando no hay `-> T` explícito
+(p.ej. `(int x) => x + 1` debe inferir `int`). Hoy `returnType` queda vacío en ese caso.
 
 ## Plan
 
-1. Verificar el camino de inferencia para lambda sin destino tipado.
+1. Confirmar/implementar la inferencia de retorno desde el cuerpo del lambda anónimo
+   (analizar el cuerpo y tomar su tipo) cuando no hay `-> T`.
 2. Añadir/confirmar la inferencia de method group (rank único) a `fn*`/`fn&`.
-3. Prueba `TL-LANG-314`: lambda y method group infieren tipo callable natural y se invocan.
+3. Prueba `TL-LANG-314` (retorno explícito, ya existe) + extenderla al retorno inferido.
 
 ## Prueba puntual
 
-`TL-LANG-314`: asignar lambda a `var`, invocarla, y convertir un method group unívoco.
+`TL-LANG-314`: `var f = (int x) -> int => x + 1; return f(41);` (exit 42) — valida la
+inferencia actual. Se extiende a `(int x) => x + 1` cuando se implemente el retorno inferido.

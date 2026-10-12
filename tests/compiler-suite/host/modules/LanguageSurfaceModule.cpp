@@ -2011,7 +2011,7 @@ class Program
 {
     public static int Main()
     {
-        var f = (int x) => x + 1;
+        var f = (int x) -> int => x + 1;
         return f(41);
     }
 }
