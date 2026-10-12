@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
+| B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `ACTIVA`; B00 reconciliada, B01/T00 habilitada |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -1146,6 +1146,74 @@ Win64 O0, ABI, NSMETA intermodular, consteval, diagnósticos, PDB, self-host y p
 no cierra con ningún `DeferredTo4`, `NS3049`, helper aislado, dependencia de fuentes del producer, costo oculto o
 divergencia host/self-host. El cierre exige 147/147, suite O0 final y baseline autorizado.
 
+## B.4 Reconciliación causal previa B00
+
+`AUDITORÍA COMPLETA; 147/147 RECONCILIADOS; 0/147 CERRADOS; SIN CAMBIOS DE PRODUCTO`.
+
+La orden del 12 de octubre de 2026 activa la Parte B en `development` pese a la
+contradicción documental de la rama preexistente `v.3.0.3`. Esa rama no se
+mueve ni se usa como autoridad de código. La revisión compara los 147 IDs del
+plan fuente con el árbol y la evidencia actuales; no convierte diseño,
+helpers, parsing aislado ni pruebas internas en implementación terminada.
+
+Fuentes congeladas para este ciclo:
+
+- lineamientos: 5,110 líneas, SHA-256
+  `DE896530ED5D0F4DDB1D4DAA42635F921563C7C764060CEB2D781629C77C3D4F`;
+- plan 3.0.4: 606 líneas, SHA-256
+  `7BD3EB2EA0779F6B5EC4D8BCA0B705C6391F031E9786F7997BC6316C6A86757F`;
+- tracking previo a B00: 1,661 líneas, SHA-256
+  `09331F206E96435A19EEA4C1B76C4AB9808735AC307D951C9471214A32C72262`.
+
+La extracción mecánica confirma 147 IDs únicos y la distribución exacta
+`8/8/6/8/8/10/8/8/7/10/8/8/6/9/8/8/8/11` para T00-T17. El inventario del
+plan y B.2 coinciden sin IDs faltantes, adicionales ni duplicados.
+
+| Tanda / IDs reconciliados | Evidencia actual aprovechable | Brecha que impide cierre | Cerrados |
+|---|---|---|---:|
+| T00 / F01-F08 | Plan, tracking, `Language3Surface` y suite 3.0 existentes | faltan matrices C#/Beef ejecutables, `PlannedFor304`, versiones, manifest y harness 3.0.4 | 0/8 |
+| T01 / F01-F08 | lookahead y lowering parcial de declaración condicional en `Parser.cpp`; TP-PAR-027/334 | constructores/locales static siguen `DeferredTo4`/`NS3049`; no hay once, fallo terminal, lifetime ni metadata vertical | 0/8 |
+| T02 / F01-F06 | modelos de traits, witnesses y dispatch existentes | cuerpos default se rechazan con `NS3049`; faltan prioridad, diamantes, NSMETA de cuerpos y ABI de thunks | 0/6 |
+| T03 / F01-F08 | match, patrones relacionales/lógicos y ownership son bases reutilizables | list patterns siguen `DeferredTo4`/`NS3049`; no hay captura slice, usefulness de longitud ni lowering productivo | 0/8 |
+| T04 / F01-F08 | `LambdaExpression`, `CallableSemantics` y pruebas de lambdas normales/genéricas | falta demostrar toda la superficie ref/scoped/default/static, layout/drop/PDB y ejecución combinada | 0/8 |
+| T05 / F01-F10 | `CoroutineSemantics` modela future/frame como helper | parser conserva múltiples rechazos `NS3049`; no hay state machine productiva HIR/MIR/LLVM ni ABI/debug intermodular | 0/10 |
+| T06 / F01-F08 | `IterationSemantics` y contratos de foreach son bases | `yield` se rechaza con `NS3049`; faltan frame, suspensión, pinning, cleanup y ABI ejecutable | 0/8 |
+| T07 / F01-F08 | modelos de concurrencia/coroutine y pruebas internas | async streams siguen diferidos; no hay máquina await+yield, backpressure, task scope ni metadata productiva | 0/8 |
+| T08 / F01-F07 | extension methods y trait operators figuran `Implemented`; `ExtensionDeclaration` baja a funciones de namespace | el ítem exige bloques, properties, estáticos, operadores, coherence y NSMETA como una vertical más amplia aún no certificada | 0/7 |
+| T09 / F01-F10 | primary constructors figuran `Implemented`; existen spreads, events, construcción y placement | no hay keywords `required`/`init`; faltan collection builder, inline arrays y cierre conjunto de fallo parcial/ABI/PDB/self-host | 0/10 |
+| T10 / F01-F08 | raw strings figuran `Implemented`; existen interpolación y null-aware operators | faltan UTF-8 tipado/handlers completos, `nameof` productivo y certificación noheap/no-culture | 0/8 |
+| T11 / F01-F08 | Span/ReadOnlySpan, params y escape analysis tienen verticales actuales | faltan todas las reglas ref-like genéricas/traits, ref fields/scoped intermodular y atributos genéricos cerrados | 0/8 |
+| T12 / F01-F06 | `PartialTypeAggregator` resuelve tipos parciales | no existen verticales completas de métodos/properties/indexers/constructores/events parciales ni generación integrada | 0/6 |
+| T13 / F01-F09 | placement/in-place y modelos de memoria proveen cimientos | no hay protocolo allocator congelado ni selección/arena/trailing/provenance/cost report como contrato productivo | 0/9 |
+| T14 / F01-F08 | `ComptimeEngine` y `MacroExpansionEngine` son helpers reales | no existe generación tipada higiénica de declaraciones con source mapping, capabilities y derives ejecutables | 0/8 |
+| T15 / F01-F08 | tipos enteros/FP y numeric contracts son reutilizables | `decimal` se rechaza con `NS3049` y sigue `DeferredTo4`; faltan los ocho estratos completos | 0/8 |
+| T16 / F01-F08 | HIR, MIR, NSMETA, ABI, PDB y self-host poseen infraestructura general | integración depende de todas las verticales anteriores y no puede cerrar ninguna brecha funcional | 0/8 |
+| T17 / F01-F11 | la suite O0 y NSLink de 3.0.3 quedaron certificados | no existen matrices/fixtures/candidato/baseline 3.0.4; T17 no implementará features nuevas | 0/11 |
+| **Total** | **147 IDs inspeccionados** | **todo cierre requiere evidencia nueva por ítem** | **0/147** |
+
+Autoridades de código principales: `include/nativesharp/Language/Language3Surface.h`,
+`src/Language/Language3Surface.cpp`, `include/nativesharp/AST/AstNodeKind.h`,
+`include/nativesharp/Lexer/TokenKind.h`, `src/Parser/Parser.cpp`,
+`src/Language/CoroutineSemantics.cpp`, `src/Language/IterationSemantics.cpp`,
+`src/Frontend/ProjectNamespaceFunctionModel.cpp`,
+`src/Compilation/PartialTypeAggregator.cpp`, `src/Frontend/ComptimeEngine.cpp` y
+`src/Frontend/MacroExpansionEngine.cpp`. La suite actual prueba varios cimientos,
+pero todavía no existe `docs/3.0.4/items/` ni un harness v3.0.4 que pueda cerrar
+los contratos del plan.
+
+Orden operativo fijado:
+
+1. B01 ejecuta T00 F01-F08 en orden y congela autoridad, disposiciones,
+   versiones, dependencias y harness antes de tocar runtime o bibliotecas.
+2. Después se respetan las ramas causales T01; T02; T03; T04 -> T05/T06 ->
+   T07; T08 -> T09 -> T12; T10 -> T11; T13; T14; T15.
+3. T16 integra únicamente verticales ya ejecutables y T17 certifica; ninguno
+   se usa para ocultar un gap previo.
+4. Cada ítem exige Markdown propio, corrección mínima, prueba puntual y commit;
+   cada tanda recibe consolidado exacto, sin batería completa intermedia.
+5. La batería completa O0 se ejecuta una vez después de T17-F11. Un fallo del
+   alcance reabre la auditoría desde T00 conforme a la regla operativa global.
+
 ---
 
 # Parte C — NativeSharp 3.0.5: reingeniería del proceso de compilación
@@ -1642,12 +1710,15 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 2 | Primera certificación final de Parte A | run `20261012-033650-part-a-final`; 5,714 terminales | 5,713 `PASS`; `TP-PAR-478` `FAIL`; puerta no cerrada y auditoría reabierta desde A00 |
 | 2026-10-12 | 2 | Corrección y consolidado dirigido de reapertura | TP-PAR-478 + guards 4/4; run `20261012-part-a-cycle2-directed-53` | 53/53 `PASS`; causa de prueba/oráculo cerrada; repetición final completa pendiente |
 | 2026-10-12 | 2 | Certificación final de Parte A | run `20261012-0428-part-a-final-cycle2`; revisión `69dd18bd1`; 5,714 terminales | 5,714 `PASS`; `CERTIFICACION_FINAL_OK`; rama `v.3.0.3` preexistente en `7b7e36faf` no movida |
+| 2026-10-12 | B00 | Reconciliación causal previa de Parte B | 147 IDs/18 tandas contra plan, código y pruebas actuales | 147/147 reconciliados; 0 cerrados; B01/T00 habilitada sin mover ramas |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `0/147`; bloqueada hasta resolver la contradicción de la rama milestone `v.3.0.3` preexistente.
+- B: `0/147`; B00 reconcilió los 147 IDs y la orden vigente habilita B01/T00
+  en `development`; la contradicción de `v.3.0.3` permanece como deuda y la
+  rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas: `v.3.0.3` ya existía antes del cierre y apunta a `7b7e36faf51fe4712940cc76c18a4598fb94facd`; no se
