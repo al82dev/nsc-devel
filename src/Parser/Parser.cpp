@@ -13378,6 +13378,13 @@ bool Parser::looksLikeLambdaExpression() const noexcept
         return false;
     };
 
+    // NS304-T04-F02: `noheap`/`unsafe` son prefijos de EFECTO de lambda. Se reconocen como
+    // contextuales delante de una cabecera de parametros real; no se reservan como keywords.
+    if ((atContextualKeyword("noheap") || atContextualKeyword("unsafe")) &&
+        index_ + 1 < tokens_.size() && looksLikeParameterHead(index_ + 1))
+    {
+        return true;
+    }
     if (!at(TokenKind::LeftBracket)) return looksLikeParameterHead(index_);
 
     // T08-F03. A leading capture list is recognized only when the token after its matching ']'
@@ -13401,6 +13408,10 @@ ast::AstNode* Parser::parseLambdaExpression()
     const std::size_t beginIndex = index_;
     auto* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
+    // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe`, antes de la lista de captura.
+    std::string effects;
+    if (atContextualKeyword("noheap")) { effects = "noheap"; consume(); }
+    else if (atContextualKeyword("unsafe")) { effects = "unsafe"; consume(); }
     std::string captureContract;
     if (consumeIf(TokenKind::LeftBracket))
     {
@@ -13552,7 +13563,13 @@ ast::AstNode* Parser::parseLambdaExpression()
     expect(TokenKind::FatArrow, "'=>'");
 
     lambda->setRange(tokenRangeFrom(beginIndex));
-    lambda->setAuxiliaryText(std::move(captureContract));
+    std::string auxiliary = captureContract;
+    if (!effects.empty())
+    {
+        if (!auxiliary.empty()) auxiliary += ';';
+        auxiliary += "effects:" + effects;
+    }
+    lambda->setAuxiliaryText(std::move(auxiliary));
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);
     if (at(TokenKind::LeftBrace))
     {
