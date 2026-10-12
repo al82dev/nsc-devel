@@ -2201,6 +2201,42 @@ class Program
         }});
 }
 
+void registerClosureErrorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-320", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "closure", "error", "layout", "drop"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04ClosureError", "Exe", R"ns(
+class Program
+{
+    public delegate int Map(int x);
+
+    public static int Main()
+    {
+        int captured = 5;
+        Map m = (int x) => x + captured;
+        return m(37);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04ClosureError.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-320 a capturing closure must compile with layout+drop: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-320 a capturing closure must execute: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2235,5 +2271,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLambdaDefaultParamCase(registry);
     registerStaticLambdaCase(registry);
     registerMethodGroupNaturalTypeCase(registry);
+    registerClosureErrorCase(registry);
 }
 }
