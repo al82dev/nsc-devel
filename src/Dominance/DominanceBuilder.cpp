@@ -282,7 +282,7 @@ bool DominanceBuilder::buildFrontier(DominanceFunction* function)
             }
         }
 
-        if (predecessors.size() < 2)
+        if (predecessors.empty())
         {
             continue;
         }

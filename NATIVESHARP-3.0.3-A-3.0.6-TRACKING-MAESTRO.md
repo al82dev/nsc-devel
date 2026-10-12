@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 38 | 73.08 % | `EN_PROGRESO`; A05 cerrada 1/1 |
+| A | 3.0.3 | 14 | 52 defectos | 39 | 75.00 % | `EN_PROGRESO`; A06 cerrada 1/1 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G32 y A05, quedan 14 KPD abiertos y treinta y ocho casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G33 y A06, quedan 13 KPD abiertos y treinta y nueve casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -145,7 +145,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A03 | Host.Parser | 21 | 21 | `CERRADA` |
 | A04 | Host.Sema | 5 | 5 | `CERRADA` |
 | A05 | Host.CFG | 1 | 1 | `CERRADA` |
-| A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
+| A06 | Host.Dominance | 1 | 1 | `CERRADA` |
 | A07 | Host.LanguageService | 1 | 0 | `PENDIENTE` |
 | A08 | SelfHost.Diagnostics | 2 | 0 | `PENDIENTE` |
 | A09 | SelfHost.Lexer | 1 | 0 | `PENDIENTE` |
@@ -153,7 +153,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **38** | **73.08 %** |
+| **Total** |  | **52** | **39** | **75.00 %** |
 
 ## A.3 Inventario exacto
 
@@ -318,7 +318,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A06 · `TF-DOM-142` / `CF-DOM-018`**
   - Contrato: dominance frontier produce vectores exactos, incluido self-edge en su propia frontera.
   - Estado/evidencia: `KNOWN_FAILURE`; M:2514; T:`DominanceTraversalDump129To192Module.cpp`.
-  - Procedencia: `5dee730d`. Cierre: `PENDIENTE`.
+  - Procedencia: `5dee730d`.
+  - Cierre: `CERRADO`; G33 pasó como KPD y Required y cerró A06 1/1; commit G33: este commit.
 - **A07 · `TF-LANGUAGE-SERVICE-304` / `CF-LANGUAGE-SERVICE-038`**
   - Contrato: rename de keyword builtin rechazado atómicamente, sin edits parciales.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5446; T:`LanguageServiceQueries233To312Module.cpp`;
@@ -603,7 +604,8 @@ Resultado del inventario causal:
   - Productor: `DominanceBuilder::buildFrontier`.
   - Causa: descarta todo bloque con menos de dos predecesores; un self-edge único sí crea frontera propia.
   - Consumidores: SSA/phi placement y verificadores de dominancia.
-  - Puntual: `DominanceTraversalDump129To192Module.cpp`; existe.
+  - Puntual: `DominanceTraversalDump129To192Module.cpp`; pasó como KPD y Required con frontier singleton exacta.
+  - Estado: `CERRADO` en A06; sólo se omiten nodos sin predecesores y los lineales siguen vacíos por su idom.
 - **G34 — rename no reserva aliases builtin: `TF-LANGUAGE-SERVICE-304`.**
   - Productor: `validRenameIdentifier` usado por `AnalysisSnapshot::rename`.
   - Causa: la tabla incluye keywords canónicos, pero no aliases reservados como `i32`.
@@ -685,14 +687,14 @@ Puertas previas a editar producto:
 - `TP-PAR-306`: ampliar el oráculo para inspeccionar los dos declarators, no sólo consumo hasta EOF.
 - `TP-PAR-511`: reemplazar el fallo artificial por proceso aislado y frontera 128 reproducible.
 - `TP-PAR-524`: su ejecución previa al parche demostró la divergencia de aridad; se corrigió antes de retirar KPD.
-- Los 14 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
+- Los 13 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A05 cerrada 1/1, 38/52 defectos corregidos y 14 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A06 cerrada 1/1, 39/52 defectos corregidos y 13 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5 y A05 1/1 Required `PASS`.
+- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -764,7 +766,11 @@ Puertas previas a editar producto:
   (3,260 us) tras prevalidar funciones antes de cualquier asignación CFG; se reconstruyeron sólo `CfgBuilder`, el
   módulo propietario y el enlace exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
 - Consolidado A05 Required: una invocación `nsc_component_tests.exe --case TF-CFG-076`, 1/1 `PASS`, 244 ms de pared.
-- Próxima acción de Parte A: A06 G33 (`TF-DOM-142`).
+- Evidencia G33: `TF-DOM-142` falló como KPD previo (62,393 us), pasó como KPD corregido (14,261 us) y Required
+  (4,780 us) al incluir un predecesor self-edge; `TF-DOM-086` preservó la frontier de loop (535 us). Se reconstruyeron
+  sólo el shim de `DominanceBuilder`, el módulo propietario y el enlace exacto, sin regenerar configuración.
+- Consolidado A06 Required: una invocación `nsc_component_tests.exe --case TF-DOM-142`, 1/1 `PASS`, 192 ms de pared.
+- Próxima acción de Parte A: A07 G34 (`TF-LANGUAGE-SERVICE-304`).
 
 ---
 
@@ -1507,10 +1513,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A04 G30 | terminal aislado + puntual KPD corregido + Required | `PASS`; 16 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A04 G31 y tanda | puntual KPD + Required; consolidado A04 5/5 | `PASS`; 15 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A05 G32 y tanda | puntual KPD + Required; consolidado A05 1/1 | `PASS`; 14 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A06 G33 y tanda | puntual KPD + Required; consolidado A06 1/1 | `PASS`; 13 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `38/52`; A05 cerrada 1/1; siguiente acción vinculante: A06 G33 (`TF-DOM-142`).
+- A: `39/52`; A06 cerrada 1/1; siguiente acción vinculante: A07 G34 (`TF-LANGUAGE-SERVICE-304`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

@@ -100,9 +100,13 @@ void frontierConstructionContract(TestContext& context, std::size_t variant)
         fixture.connect(graph, 0, 0);
         dominance::DominanceFunction* function = buildAnalysis(
             context, fixture, graph, "TF-DOM-142 self-edge dominance producer must build");
-        context.expect(function != nullptr &&
-                function->dominanceFrontier()->contains(graph.nodes[0], graph.nodes[0]),
-            "TF-DOM-142 product defect: self-edge owner belongs to its own dominance frontier");
+        if (function == nullptr)
+        {
+            return;
+        }
+        const auto& frontier = function->dominanceFrontier()->frontier(graph.nodes[0]);
+        context.expect(frontier.size() == 1 && frontier.front() == graph.nodes[0],
+            "TF-DOM-142 a self-edge owner has the exact singleton self dominance frontier");
         return;
     }
     GraphFixture fixture;
@@ -396,7 +400,7 @@ void verifierModuleContract(TestContext& context, std::size_t variant)
 void registerDominanceTraversalDump129To192Module(TestRegistry& registry)
 {
     addDominanceContract(registry, 17, "component", traversalNumberingContract, {4});
-    addDominanceContract(registry, 18, "component", frontierConstructionContract, {4}, {6});
+    addDominanceContract(registry, 18, "component", frontierConstructionContract, {4});
     addDominanceContract(registry, 19, "unit", builderErrorContract);
     addDominanceContract(registry, 20, "unit", moduleDumpContract);
     addDominanceContract(registry, 21, "unit", functionDumpContract);
