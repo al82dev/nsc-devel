@@ -126,11 +126,20 @@ namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
             return EmitJson(diagnostic);
         }
 
-        // Product currently hardcodes error and therefore loses the warning identity required by the contract.
+        // Validate the complete named severity matrix before emitting the stable warning oracle.
         private static int JsonSeverityIdentity()
         {
-            raii Diagnostic diagnostic = new Diagnostic("WARN", DiagnosticSeverity.Warning, "warning", 0);
-            return EmitJson(diagnostic);
+            raii Diagnostic error = new Diagnostic("ERROR", DiagnosticSeverity.Error, "error", 0);
+            raii Diagnostic note = new Diagnostic("NOTE", DiagnosticSeverity.Note, "note", 0);
+            raii string renderedError = DiagnosticRenderer.Json(error);
+            raii string renderedNote = DiagnosticRenderer.Json(note);
+            if (renderedError != "{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"ERROR\",\"severity\":\"error\",\"argument\":\"error\"}" ||
+                renderedNote != "{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"NOTE\",\"severity\":\"note\",\"argument\":\"note\"}")
+            {
+                return 24;
+            }
+            raii Diagnostic warning = new Diagnostic("WARN", DiagnosticSeverity.Warning, "warning", 0);
+            return EmitJson(warning);
         }
 
         private static int JsonDeterminism()

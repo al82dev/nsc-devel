@@ -46,6 +46,13 @@ namespace NativeSharp.Compiler.Diagnostics
 
     public class DiagnosticRenderer
     {
+        private static string JsonSeverity(DiagnosticSeverity severity)
+        {
+            if (severity == DiagnosticSeverity.Warning) { return "warning"; }
+            if (severity == DiagnosticSeverity.Note) { return "note"; }
+            return "error";
+        }
+
         private static owned string JsonEscape(string value)
         {
             string hexadecimal = "0123456789abcdef";
@@ -93,9 +100,11 @@ namespace NativeSharp.Compiler.Diagnostics
         {
             raii string escaped = JsonEscape(diagnostic.Argument());
             raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", diagnostic.Code());
-            raii string second = String.Concat(first, "\",\"severity\":\"error\",\"argument\":\"");
-            raii string third = String.Concat(second, escaped);
-            return String.Concat(third, "\"}");
+            raii string severityPrefix = String.Concat(first, "\",\"severity\":\"");
+            raii string severity = String.Concat(severityPrefix, JsonSeverity(diagnostic.Severity()));
+            raii string argumentPrefix = String.Concat(severity, "\",\"argument\":\"");
+            raii string withArgument = String.Concat(argumentPrefix, escaped);
+            return String.Concat(withArgument, "\"}");
         }
 
         public static owned string NormalizedPath(string path)
