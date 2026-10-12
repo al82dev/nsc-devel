@@ -6,6 +6,7 @@
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Compilation/ProjectGraph.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -33,6 +35,15 @@ namespace nativesharp::frontend
 {
 namespace
 {
+std::string modulePathKey(const std::filesystem::path& path)
+{
+    std::string key = path.lexically_normal().generic_string();
+    std::ranges::transform(key, key.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    return key;
+}
+
 language::PointerContract pointerContractFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
     language::PointerContract contract;
@@ -964,9 +975,87 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     return true;
 }
 
+bool ProjectMemberModel::buildModuleInitializationPlan(
+    const compilation::ProjectGraph& graph,
+    std::string& error)
+{
+    error.clear();
+    moduleInitializers_.clear();
+    if (!built_ || nameLookup_ == nullptr)
+    {
+        error = "module initialization planning requires a completed member model";
+        return false;
+    }
+
+    const std::span<const compilation::Project> projects = graph.projects();
+    if (projects.size() != nameLookup_->modules().size())
+    {
+        error = "module initialization planning requires one declaration space per project";
+        return false;
+    }
+
+    std::unordered_map<std::string, std::size_t> projectOrdinalByPath;
+    projectOrdinalByPath.reserve(projects.size());
+    for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
+    {
+        projectOrdinalByPath.emplace(
+            modulePathKey(projects[projectOrdinal].projectFile()), projectOrdinal);
+    }
+
+    moduleInitializers_.reserve(projects.size());
+    for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
+    {
+        ModuleInitializationRecord record;
+        record.projectOrdinal = projectOrdinal;
+        record.moduleName = projects[projectOrdinal].moduleName();
+
+        for (const std::filesystem::path& reference : projects[projectOrdinal].projectReferences())
+        {
+            const auto dependency = projectOrdinalByPath.find(modulePathKey(reference));
+            if (dependency == projectOrdinalByPath.end())
+            {
+                error = "module '" + record.moduleName + "' references project '" +
+                    reference.generic_string() + "' outside the loaded project graph";
+                moduleInitializers_.clear();
+                return false;
+            }
+            record.dependencyProjectOrdinals.push_back(dependency->second);
+        }
+        std::ranges::sort(record.dependencyProjectOrdinals);
+        record.dependencyProjectOrdinals.erase(
+            std::unique(
+                record.dependencyProjectOrdinals.begin(),
+                record.dependencyProjectOrdinals.end()),
+            record.dependencyProjectOrdinals.end());
+
+        for (std::size_t typeOrdinal = 0;
+             typeOrdinal < nameLookup_->namedTypes().size();
+             ++typeOrdinal)
+        {
+            if (nameLookup_->namedTypes()[typeOrdinal].projectOrdinal != projectOrdinal) continue;
+            for (const std::size_t memberOrdinal : membersOfType(typeOrdinal))
+            {
+                if (memberOrdinal >= members_.size()) continue;
+                const ClassMemberSymbol& member = members_[memberOrdinal];
+                if (member.kind == ClassMemberKind::Constructor && member.isStatic)
+                {
+                    record.staticConstructorMemberOrdinals.push_back(memberOrdinal);
+                }
+            }
+        }
+        moduleInitializers_.push_back(std::move(record));
+    }
+    return true;
+}
+
 std::span<const ClassMemberSymbol> ProjectMemberModel::members() const noexcept
 {
     return members_;
+}
+
+std::span<const ModuleInitializationRecord> ProjectMemberModel::moduleInitializers() const noexcept
+{
+    return moduleInitializers_;
 }
 
 std::span<const MemberBodyBinding> ProjectMemberModel::bodyBindings() const noexcept

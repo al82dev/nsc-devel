@@ -595,6 +595,7 @@ bool ProjectCompilation::compileProjectMembers(
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
     memberModel_ = std::make_unique<ProjectMemberModel>();
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
+    if (!memberModel_->buildModuleInitializationPlan(*projectGraph_, loadError)) return false;
 
     std::vector<PrecompiledMemberIdentity> precompiledMembers;
     std::vector<std::pair<std::string, std::string>> specializationTypeAliases;

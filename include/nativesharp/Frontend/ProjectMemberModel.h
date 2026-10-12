@@ -28,6 +28,11 @@ namespace nativesharp::diagnostics
 class DiagnosticEngine;
 }
 
+namespace nativesharp::compilation
+{
+class ProjectGraph;
+}
+
 namespace nativesharp::frontend
 {
 class ProjectGenericModel;
@@ -282,6 +287,14 @@ struct ClassMemberSymbol final
     std::vector<std::size_t> anonymousCarrierMemberOrdinals;
 };
 
+struct ModuleInitializationRecord final
+{
+    std::size_t projectOrdinal = 0;
+    std::string moduleName;
+    std::vector<std::size_t> dependencyProjectOrdinals;
+    std::vector<std::size_t> staticConstructorMemberOrdinals;
+};
+
 struct PrecompiledMemberIdentity final
 {
     ClassMemberKind kind = ClassMemberKind::Field;
@@ -320,8 +333,12 @@ public:
         std::span<const PrecompiledMemberIdentity> identities,
         std::span<const std::pair<std::string, std::string>> typeKeyAliases,
         std::string& error);
+    bool buildModuleInitializationPlan(
+        const compilation::ProjectGraph& graph,
+        std::string& error);
 
     std::span<const ClassMemberSymbol> members() const noexcept;
+    std::span<const ModuleInitializationRecord> moduleInitializers() const noexcept;
     std::span<const MemberBodyBinding> bodyBindings() const noexcept;
     std::span<const std::size_t> membersOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> constructorsOfType(std::size_t typeOrdinal) const noexcept;
@@ -429,6 +446,7 @@ private:
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
     std::vector<ClassMemberSymbol> members_;
+    std::vector<ModuleInitializationRecord> moduleInitializers_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
     std::vector<std::vector<std::size_t>> constructorsByType_;

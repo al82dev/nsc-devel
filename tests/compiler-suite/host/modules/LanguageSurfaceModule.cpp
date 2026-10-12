@@ -5,12 +5,16 @@
 #include "nativesharp/Language/Language3Surface.h"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace nsc::suite
 {
@@ -62,6 +66,53 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
     {Language3Feature::StaticLocals, "static-locals", Language3Disposition::PlannedFor304,
         "requires thread-safe once initialization, reentrancy, destruction and module-lifetime rules"},
 }};
+
+class TemporaryModuleInitializationGraph final
+{
+public:
+    TemporaryModuleInitializationGraph()
+    {
+        static std::atomic<std::uint64_t> sequence{0};
+        directory_ = std::filesystem::current_path() /
+            ("nsc-language-module-init-" +
+             std::to_string(sequence.fetch_add(1, std::memory_order_relaxed)));
+        std::filesystem::create_directories(directory_);
+        write("Producer.ns", "public class ProducerGate { static ProducerGate() { } }");
+        write("Consumer.ns", "public class ConsumerGate { static ConsumerGate() { } }");
+        write("Producer.nsproj",
+            "<Project><PropertyGroup><Name>Producer</Name><OutputType>Library</OutputType>"
+            "</PropertyGroup><ItemGroup><Compile Include=\"Producer.ns\"/></ItemGroup></Project>");
+        write("Consumer.nsproj",
+            "<Project><PropertyGroup><Name>Consumer</Name><OutputType>Library</OutputType>"
+            "</PropertyGroup><ItemGroup><Compile Include=\"Consumer.ns\"/>"
+            "<ProjectReference Include=\"Producer.nsproj\"/></ItemGroup></Project>");
+    }
+
+    TemporaryModuleInitializationGraph(const TemporaryModuleInitializationGraph&) = delete;
+    TemporaryModuleInitializationGraph& operator=(const TemporaryModuleInitializationGraph&) = delete;
+
+    ~TemporaryModuleInitializationGraph()
+    {
+        std::error_code ignored;
+        for (const std::string_view name : {
+                 "Producer.ns", "Consumer.ns", "Producer.nsproj", "Consumer.nsproj"})
+        {
+            std::filesystem::remove(directory_ / name, ignored);
+        }
+        std::filesystem::remove(directory_, ignored);
+    }
+
+    std::filesystem::path rootProject() const { return directory_ / "Consumer.nsproj"; }
+
+private:
+    void write(std::string_view name, std::string_view contents)
+    {
+        std::ofstream output(directory_ / name, std::ios::binary | std::ios::trunc);
+        output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    }
+
+    std::filesystem::path directory_;
+};
 
 void addCase(TestRegistry& registry, std::string id, TestFunction function)
 {
@@ -391,6 +442,52 @@ namespace Suite
                 "this is not available in a static member or field initializer");
         }});
 }
+
+void registerModuleInitializationPlanCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-296", "CL-LANG-012", "Host.Language", "component", "PR",
+        {"language", "static-initialization", "module-order"}, [](TestContext& context) {
+            TemporaryModuleInitializationGraph project;
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Members, project.rootProject(), error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-296 a referenced module graph must build its initialization plan: " +
+                    projectFailureEvidence(compilation, error));
+
+            const auto* lookup = compilation.nameLookup();
+            const auto* members = compilation.memberModel();
+            if (!compiled || lookup == nullptr || members == nullptr) return;
+
+            const auto plan = members->moduleInitializers();
+            context.expect(plan.size() == 2U && plan[0].moduleName == "Producer" &&
+                    plan[1].moduleName == "Consumer",
+                "TL-LANG-296 module initialization order must remain dependency-first");
+            if (plan.size() != 2U) return;
+
+            context.expect(plan[0].projectOrdinal == 0U &&
+                    plan[0].dependencyProjectOrdinals.empty() &&
+                    plan[1].projectOrdinal == 1U &&
+                    plan[1].dependencyProjectOrdinals == std::vector<std::size_t>{0U},
+                "TL-LANG-296 direct module dependencies must be explicit and stable");
+            context.expect(plan[0].staticConstructorMemberOrdinals.size() == 1U &&
+                    plan[1].staticConstructorMemberOrdinals.size() == 1U,
+                "TL-LANG-296 each module must own exactly its declared static constructors");
+
+            for (const auto& module : plan)
+            {
+                for (const std::size_t memberOrdinal : module.staticConstructorMemberOrdinals)
+                {
+                    const auto& member = members->members()[memberOrdinal];
+                    const auto& type = lookup->namedTypes()[member.declaringTypeOrdinal];
+                    context.expect(member.kind == nativesharp::frontend::ClassMemberKind::Constructor &&
+                            member.isStatic && type.projectOrdinal == module.projectOrdinal,
+                        "TL-LANG-296 imports must schedule, not execute or re-own, dependency initializers");
+                }
+            }
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -404,5 +501,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerSurfaceDeterminismCase(registry);
     registerStaticInitializationStatesCase(registry);
     registerStaticConstructorDeclarationCase(registry);
+    registerModuleInitializationPlanCase(registry);
 }
 }

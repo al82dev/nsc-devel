@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 10 | 6.80 % | `ACTIVA`; T00 cerrada; T01-F01/F02 cerradas, T01-F03 activa |
+| B | 3.0.4 | 18 | 147 ítems | 11 | 7.48 % | `ACTIVA`; T00 cerrada; T01-F01/F02/F03 cerradas, T01-F04 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -952,7 +952,7 @@ T00
 
 - [x] `NS304-T01-F01` — Definir estados `uninitialized`, `initializing`, `initialized` y `failed`.
 - [x] `NS304-T01-F02` — Implementar gramática y semántica de constructores estáticos por tipo.
-- [ ] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
+- [x] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
 - [ ] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
 - [ ] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
 - [ ] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
@@ -1385,6 +1385,23 @@ Estado: `CERRADO`.
   `static-constructors=planned-3.0.4` hasta cerrar triggers/once/runtime/F08.
 - Gate: T01 queda 2/8 y Parte B 10/147, sin batería completa.
 - Siguiente ítem: `NS304-T01-F03`.
+
+### NS304-T01-F03 — inicializadores de módulo ordenados
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F03-module-initialization-plan.md`.
+- Contrato: un proyecto es el módulo de inicialización; `ProjectGraph` conserva
+  el orden dependency-first y el plan publica sólo aristas directas explícitas.
+- Implementación: `ProjectMemberModel` agrupa los constructores estáticos de
+  cada módulo sin ejecutarlos durante el import; `ProjectCompilation` construye
+  el plan después de miembros.
+- Prueba puntual: `TL-LANG-296` `PASS` en 40707 microsegundos; Producer y
+  Consumer conservan orden, dependencia y ownership exactos.
+- Guards: `TL-LANG-295` `PASS` en 141701 microsegundos y `TL-LANG-160` `PASS`
+  en 4306 microsegundos.
+- Gate: T01 queda 3/8 y Parte B 11/147, sin batería completa.
+- Siguiente ítem: `NS304-T01-F04`.
 
 ---
 
@@ -1894,12 +1911,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00 | Consolidado puntual de tanda | F01–F08, sólo gates documentales y TL-LANG-155..161 | `PASS`; T00 8/8; T01-F01 habilitada sin batería completa |
 | 2026-10-12 | B02/T01-F01 | Estados de inicialización estática | dominio cerrado, nombre estable y `TL-LANG-294` | `PASS`; T01 1/8; 9/147 cerrados; T01-F02 activa |
 | 2026-10-12 | B02/T01-F02 | Constructor estático por tipo | Parser, miembro, construction y HIR/MIR; `TL-LANG-295` + guard `TL-LANG-160` | `PASS`; T01 2/8; 10/147 cerrados; T01-F03 activa |
+| 2026-10-12 | B02/T01-F03 | Plan de inicialización por módulo | ProjectGraph dependency-first, aristas directas y ownership de cctors; `TL-LANG-296` + guards 295/160 | `PASS`; T01 3/8; 11/147 cerrados; T01-F04 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `10/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `11/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -1907,8 +1925,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   publicó las dependencias de 18 familias sin convertir planes en artefactos,
   y T00-F08 añadió el harness estructural; consolidado T00 `PASS`. T01-F01
   fijó los cuatro estados de inicialización y `TL-LANG-294` pasó; T01-F02
-  cerró la declaración estática hasta MIR con `TL-LANG-295`, manteniendo la
-  promoción de superficie pendiente; T01-F03 activa.
+  cerró la declaración estática hasta MIR con `TL-LANG-295`; T01-F03 añadió el
+  plan dependency-first por módulo con `TL-LANG-296`, manteniendo la promoción
+  de superficie pendiente; T01-F04 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
