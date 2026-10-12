@@ -7,23 +7,13 @@
 
 - El MODELO semántico ya existe en `Language/CoroutineSemantics.{h,cpp}`: `FutureStart` (Lazy/Eager),
   `FutureProtocol` (+ `validateFutureProtocol`), `PollOutcome` (Pending/ReadyValue/ReadyError),
-  `FutureState` (poll/consume/cancel), `Waker`, y `AsyncGeneratorPollOutcome` para generadores.
-- NO está integrado en Parser/Sema/HIR/LLVM: no hay `Future`/`Poll`/`Waker` en `.ns` ni bajan a
-  código (T05-F03 hace la transformación a state machine).
+  `FutureState` (poll/consume/cancel), y `AsyncGeneratorPollOutcome` para generadores.
+- **Falta `Waker`**: no está en `CoroutineSemantics.h` (no hay tipo ni protocolo de wake). El resto
+  del modelo (resultado/error/cancelación) sí está.
+- NO está integrado en Parser/Sema/HIR/LLVM (T05-F03 hace la transformación a state machine).
 
 ## Gap F02
 
-1. Exponer `Future<T, E, C>` (carrier opaco) como tipo nominal del stdlib o builtin, con su
-   protocolo (`Poll`/`Resume`/`Drop`, single-consumer) validado por `validateFutureProtocol`.
-2. Conectar `Waker` (despertar del executor) y la cancelación al `FutureState`.
-3. Resultado/error explícitos en el `FutureProtocol` (value/error/cancellation types).
-
-## Plan
-
-1. Definir `Future<T>` + `Waker` en `lib/NativeSharp.Core` (o como builtin) y registrarlos en el
-   name lookup para que `async` los resuelva.
-2. Prueba `TL-LANG-322`.
-
-## Prueba puntual
-
-`TL-LANG-322`: declarar/consumir `Future<int>` y `Waker` (sin lowering productivo aún).
+1. Añadir `Waker` (callback de readiness al executor) al modelo y al protocolo.
+2. Exponer `Future<T, E, C>` (carrier opaco) + `Waker` como tipos resolubles.
+3. Conectar `Waker` y cancelación al `FutureState`.
