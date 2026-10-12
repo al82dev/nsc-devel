@@ -183,6 +183,9 @@ enum class ProjectOopHirNodeKind
     StringSubstring,
     StringCharacterPointer,
     StringFromCharArray,
+    // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
+    // StringView (receiver + start + length children); LLVM emits { data, count }.
+    StringViewFromString,
     CoreConsoleWriteLine,
     CoreConsoleReadLine,
     // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each

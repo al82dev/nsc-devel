@@ -14114,6 +14114,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         }
     }
 
+    // NS304-T03-F03: the list-pattern lowering marks its length access with
+    // "list-pattern-length". Built-ins (array/string/inline) and user fields resolve
+    // through the core-op/field paths above; a zero-argument `Length()` METHOD on a
+    // borrowed view (Span<T>/ReadOnlySpan<T>/StringView) or a user protocol type is
+    // auto-invoked here so the marked `.Length` member resolves to an int value.
+    if (!typeReceiver && expression->text() == "Length" &&
+        expression->auxiliaryText() == "list-pattern-length" &&
+        !methods.empty() && receiverType.has_value())
+    {
+        std::vector<std::size_t> lengthMethods;
+        for (const std::size_t ordinal : methods)
+        {
+            if (ordinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+            if (member.parameters.empty() && member.declaredTypeKey == "builtin:int")
+                lengthMethods.push_back(ordinal);
+        }
+        if (!lengthMethods.empty())
+        {
+            const std::vector<ExpressionResult> noArguments;
+            ExpressionResult lengthResult = resolveSyntheticCall(
+                expression, methodMemberOrdinal, scopeOrdinal, "Length",
+                std::move(lengthMethods), noArguments,
+                expression->first(), receiver.typeKey, receiverType,
+                receiver.baseReceiver, interfaceCall,
+                diagnostics, true, receiver.readonlyReceiver);
+            if (lengthResult.valid && !lengthResult.methodGroup &&
+                lengthResult.typeKey == "builtin:int")
+            {
+                return lengthResult;
+            }
+        }
+    }
+
     if (!methods.empty())
     {
         result.methodGroup = true;
@@ -14858,6 +14892,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
         }
     }
+    // NS304-T03-F03: list-pattern rest capture `.. var x`. For a receiver without a
+    // public Slice(int,int) -- native array, inline array, native string -- synthesize
+    // the borrowed view directly. Other receivers fall through to ordinary Slice
+    // method resolution below. (This first slice covers the non-generic StringView
+    // case; array/inline synthesize Span<T>/ReadOnlySpan<T> in a later step.)
+    if (expression->auxiliaryText() == "list-pattern-rest" &&
+        expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        expression->first()->first() != nullptr)
+    {
+        ExpressionResult restReceiver = analyzeExpression(
+            expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        const bool nativeString = restReceiver.valid && !restReceiver.methodGroup &&
+            (ProjectTypeConversion::isNativeString(restReceiver.typeKey) ||
+             restReceiver.typeKey == "string-literal");
+        if (nativeString)
+        {
+            bool argumentsValid = expression->children().size() == 2;
+            for (const ast::AstNode* child : expression->children())
+            {
+                const ExpressionResult arg = analyzeExpression(
+                    child, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                argumentsValid = argumentsValid && arg.valid && !arg.methodGroup;
+            }
+            if (argumentsValid)
+            {
+                coreBindings_.push_back(MethodCoreBinding{
+                    MethodCoreOperationKind::StringViewFromString,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    "type:NativeSharp.Core.StringView",
+                    "builtin:string",
+                    false, std::nullopt, std::nullopt});
+                ExpressionResult viewResult;
+                viewResult.typeKey = "type:NativeSharp.Core.StringView";
+                viewResult.valid = true;
+                viewResult.assignable = false;
+                viewResult.addressable = false;
+                return viewResult;
+            }
+        }
+    }
+
     MethodCallBinding call;
     call.syntax = expression;
     call.callerMethodMemberOrdinal = methodMemberOrdinal;
@@ -14885,18 +14963,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression
             ? expression->first()->text()
             : "<expression>";
-    }
-
-    // F03 (T03-F03): the list-pattern lowering emits its length access as a marked
-    // zero-argument call `source.Length()`. For built-ins (array/string/inline) and a
-    // user field, the callee `.Length` already resolves to a VALUE through the member
-    // paths; the `()` is a no-op and we return that value directly. For a `Length()`
-    // method (Span<T>/ReadOnlySpan<T>/StringView, user protocol) the callee is a method
-    // group and falls through to ordinary call resolution below.
-    if (expression->auxiliaryText() == "list-pattern-length" &&
-        callee.valid && !callee.methodGroup)
-    {
-        return callee;
     }
 
     if (callee.extensionMethodGroup && namespaceFunctionModel_ != nullptr)
@@ -24305,6 +24371,11 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::StringSubstring: return "string-substring";
         case MethodCoreOperationKind::StringCharacterPointer: return "string-character-pointer";
         case MethodCoreOperationKind::StringFromCharArray: return "string-from-char-array";
+        case MethodCoreOperationKind::StringViewFromString: return "string-view-from-string";
+        case MethodCoreOperationKind::SpanFromArray: return "span-from-array";
+        case MethodCoreOperationKind::ReadOnlySpanFromArray: return "readonly-span-from-array";
+        case MethodCoreOperationKind::SpanFromFixedArray: return "span-from-fixed-array";
+        case MethodCoreOperationKind::ReadOnlySpanFromFixedArray: return "readonly-span-from-fixed-array";
         case MethodCoreOperationKind::ConsoleWriteLine: return "console-writeline";
         case MethodCoreOperationKind::ConsoleWrite: return "console-write";
         case MethodCoreOperationKind::ConsoleErrorWriteLine: return "console-error-writeline";

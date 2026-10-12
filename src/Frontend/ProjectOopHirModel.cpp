@@ -1062,6 +1062,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::StringSubstring: return "string-substring";
         case ProjectOopHirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
+        case ProjectOopHirNodeKind::StringViewFromString: return "string-view-from-string";
         case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
         case ProjectOopHirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopHirNodeKind::AggregateEquals: return "aggregate-equals";
@@ -3993,6 +3994,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 return lowerResolvedCall(accessorCall, {});
             }
+            // NS304-T03-F03: a marked list-pattern length member that resolved to a
+            // zero-argument `Length()` method was auto-invoked in Sema; lower it as the
+            // ordinary instance call it became.
+            if (const MethodCallBinding* lengthCall = callBinding(expression);
+                lengthCall != nullptr && expression->auxiliaryText() == "list-pattern-length")
+            {
+                return lowerResolvedCall(lengthCall, {});
+            }
             if (currentLambda_ != nullptr)
             {
                 const MethodLambdaValueBinding* lambdaValue = lambdaValueBinding(expression);
@@ -5958,6 +5967,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
 
             const MethodCoreBinding* core = coreBinding(expression);
+            // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
+            // StringView view directly (no Slice method). Receiver + start + length.
+            if (core != nullptr &&
+                core->kind == MethodCoreOperationKind::StringViewFromString)
+            {
+                if (addressContext)
+                {
+                    error = "a StringView rest capture is a value and is not addressable";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::StringViewFromString, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                auto receiver = lowerExpression(
+                    expression->first()->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                node->children.push_back(std::move(receiver));
+                for (const ast::AstNode* child : expression->children())
+                {
+                    auto operand = lowerExpression(child, memberOrdinal, false, error);
+                    if (operand == nullptr) return nullptr;
+                    node->children.push_back(std::move(operand));
+                }
+                return node;
+            }
             // Las TRES preguntas --entra en este bloque, con cuantos operandos, y en que nodo
             // HIR se convierte-- salen de la MISMA respuesta: ver stringCallLowering() al
             // principio de este archivo.

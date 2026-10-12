@@ -665,6 +665,17 @@ enum class MethodCoreOperationKind
     // original, que es la unica prueba de que no hubo copia.
     StringCharacterPointer,
     StringFromCharArray,
+    // NS304-T03-F03 "list patterns sobre colecciones". Rest-capture `.. var x` sobre un
+    // receptor SIN `Slice(int,int)` publico: el compilador sintetiza una vista prestada sin
+    // copia ni heap. `StringViewFromString` produce `StringView` (no generico); los demas
+    // producen `Span<T>`/`ReadOnlySpan<T>` (cerrado). El receptor + start + length viajan como
+    // operandos del nodo; el LLVM emite `{ data, count }` reutilizando la GEP de
+    // StringCharacterPointer / RawElement y la longitud ya disponible.
+    StringViewFromString,
+    SpanFromArray,
+    ReadOnlySpanFromArray,
+    SpanFromFixedArray,
+    ReadOnlySpanFromFixedArray,
     // SHR-022. Las cuatro son LA MISMA operacion con dos bits distintos: a que descriptor se
     // escribe (salida estandar o error estandar) y si se anade el salto de linea. Se enumeran por
     // separado porque el reconocimiento es por NOMBRE DE METODO, y una sola entrada obligaria a

@@ -9119,6 +9119,53 @@ private:
             // en la biblioteca, no pidiendo la direccion de un caracter que no existe.
             case frontend::ProjectOopMirNodeKind::StringCharacterPointer:
                 return lowerArrayElementAddress(node, true, error);
+            // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
+            // StringView `{ char* start; int count }` (16-byte indirect aggregate carrier)
+            // without calling StringView.Of. The data pointer is the same bounds-checked GEP
+            // as StringCharacterPointer; the count is the length operand.
+            case frontend::ProjectOopMirNodeKind::StringViewFromString:
+            {
+                if (node->children.size() != 3)
+                    return failValue(error, "StringView rest capture requires receiver, start and length");
+                LLVMValueRef object = lowerExpression(node->children[0].get(), error);
+                if (object == nullptr) return nullptr;
+                object = checkedReceiver(object, error);
+                if (object == nullptr) return nullptr;
+                LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+                if (index == nullptr) return nullptr;
+                LLVMValueRef length = LLVMBuildLoad2(
+                    builder_, LLVMInt64TypeInContext(context_), object, "stringview.length");
+                LLVMValueRef inRange = LLVMBuildICmp(
+                    builder_, LLVMIntULT, index, length, "stringview.inrange");
+                if (isSignedInteger(node->children[1]->typeKey))
+                {
+                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                    LLVMValueRef nonNegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, index, zero, "stringview.nonneg");
+                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "stringview.valid");
+                }
+                if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "stringview.index", error))
+                    return nullptr;
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), 8, 0),
+                    "stringview.offset");
+                LLVMValueRef indices[] = {offset};
+                LLVMValueRef data = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data");
+                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
+                if (count == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                const unsigned alignment = structAlignmentFor(node->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "stringview.init");
+                if (slot == nullptr)
+                    return failValue(error, "StringView rest capture could not reserve storage");
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "stringview.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "stringview.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "stringview.init.value");
+                if (alignment > 1U) LLVMSetAlignment(loaded, alignment);
+                return loaded;
+            }
             case frontend::ProjectOopMirNodeKind::StringSubstring:
                 return lowerStringSubstring(node, error);
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:

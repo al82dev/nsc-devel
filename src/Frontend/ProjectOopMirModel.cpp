@@ -766,6 +766,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::StringSubstring: return "string-substring";
         case ProjectOopMirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopMirNodeKind::StringFromCharArray: return "string-from-char-array";
+        case ProjectOopMirNodeKind::StringViewFromString: return "string-view-from-string";
         case ProjectOopMirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
         case ProjectOopMirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopMirNodeKind::AggregateEquals: return "aggregate-equals";
@@ -2219,6 +2220,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::StringFromCharArray:
             result->kind = ProjectOopMirNodeKind::StringFromCharArray;
+            break;
+        case ProjectOopHirNodeKind::StringViewFromString:
+            result->kind = ProjectOopMirNodeKind::StringViewFromString;
             break;
         // SHR-022. La mascara de dos bits que el HIR fijo pasa a `immediate`, que es de donde el
         // backend saca los operandos constantes. El prologo generico de esta funcion ya copia
