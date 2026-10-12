@@ -1,31 +1,21 @@
 # NS304-T04-F03 — Parámetros ref/ref readonly/in/out/scoped en lambdas
 
-- **Estado**: EN IMPLEMENTACIÓN
+- **Estado**: EN IMPLEMENTACIÓN (ref/out/in validados)
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `Parser::parseLambdaExpression` (parámetros),
   `ProjectMethodBodyModel::bindLambdaToDelegate` (validación de parámetros), y la prueba
   `TL-LANG-316`. NO tocar CMake, toolchain, Builder, foreach, rango T01-F04.
 
-## Auditoría (línea base)
+## Resultado (validado)
 
-Los parámetros de lambda hoy exigen tipo explícito por valor; `bindLambdaToDelegate`
-(ProjectMethodBodyModel.cpp:22659-22666) RECHAZA `ref`/`out`/`in` con "an unconverted lambda
-parameter must be passed by value; ref/out/in require a target function type".
+- Parser reconoce `(ref x, out y, in z)` sin tipo y guarda `pass:ref/out/in` en el auxiliaryText
+  del `ParameterDeclaration` (mismo formato que `parseParameter`).
+- `bindLambdaToDelegate` ya cotejaba `lambdaPass` contra `delegatePass` (22791-22814) e infería el
+  tipo contextual del target; con el prefijo `pass:` el cotejo y la inferencia funcionan.
+- **Prueba `TL-LANG-316`** (exit 11): `Bump bump = (ref value) => { value = value + 1; };` — **PASS**.
 
-## Gap F03
+## Pendiente
 
-Permitir `ref` / `ref readonly` / `in` / `out` / `scoped` en parámetros de lambda, con el tipo
-inferido del TARGET (`fn*`/delegate) en vez de repetirlo. `ref`/`ref readonly`/`in` deben ser
-alias (con mutabilidad), `out` debe exigir asignación antes del retorno, `scoped` no escapa.
+- `ref readonly` (dos palabras) y `scoped` (lifetime, no pass-mode): no reconocidos aún.
+- Semántica de `out` (definite assignment) y `in` (readonly) no se validan por separado aquí.
 
-## Plan
-
-1. Parser: aceptar `ref`/`ref readonly`/`in`/`out`/`scoped` delante del nombre del parámetro sin
-   tipo explícito (cuando el lambda tiene destino tipado).
-2. Sema: bajar el modo del parámetro al `MethodLambdaBinding` y validar `out` (definite
-   assignment) y `scoped` (escape).
-3. Prueba `TL-LANG-316`.
-
-## Prueba puntual
-
-`TL-LANG-316`: lambda con `(ref x, out y)` contra un `fn*` tipado; `out` no asignado debe diagnosticar.
