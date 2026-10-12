@@ -13529,10 +13529,27 @@ ast::AstNode* Parser::parseLambdaExpression()
         {
             while (true)
             {
+                // NS304-T04-F03: `(ref x, out y, in z, scoped w)` — modificador de paso SIN tipo,
+                // inferido del target fn*/delegate. El modificador viaja en el auxiliaryText del
+                // ParameterDeclaration para que bindLambdaToDelegate lo baje.
+                const bool modifierParameter =
+                    atContextualKeyword("ref") || atContextualKeyword("out") ||
+                    atContextualKeyword("scoped") || at(TokenKind::KwIn);
+                if (modifierParameter && peek().kind() == TokenKind::Identifier &&
+                    (peek(2).kind() == TokenKind::Comma || peek(2).kind() == TokenKind::RightParen))
+                {
+                    const lexer::Token& modifier = consume();
+                    const lexer::Token& parameter = consume();
+                    auto* node = arena_.make<ast::AstNode>(
+                        ast::AstNodeKind::ParameterDeclaration, modifier.range());
+                    node->setText(std::string(parameter.lexeme()));
+                    node->setAuxiliaryText(std::string(modifier.lexeme()));
+                    parameters.push_back(node);
+                }
                 // `(x, y)` keeps contextual parameter types.  Every other spelling goes through
                 // the ordinary parameter parser, making `(int x, ref int y)` use the same type,
                 // modifier and pass-mode AST representation as a method/delegate declaration.
-                if (at(TokenKind::Identifier) &&
+                else if (at(TokenKind::Identifier) &&
                     (peek().kind() == TokenKind::Comma || peek().kind() == TokenKind::RightParen))
                 {
                     const lexer::Token& parameter = consume();
