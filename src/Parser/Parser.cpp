@@ -11909,6 +11909,8 @@ ast::AstNode* Parser::parseMatchExpression()
             std::vector<std::string> cases;
             bool wildcard = false;
             bool partial = false;
+            std::optional<std::size_t> listLength;
+            bool listRest = false;
             std::function<void(const Pattern&)> collectCoverage = [&](const Pattern& current)
             {
                 if (current.kind == PatternKind::Wildcard ||
@@ -11924,6 +11926,19 @@ ast::AstNode* Parser::parseMatchExpression()
                         partial = true;
                     return;
                 }
+                if (current.kind == PatternKind::List)
+                {
+                    const std::size_t fixedCount = current.children.size() -
+                        (current.restIndex.has_value() ? 1U : 0U);
+                    listLength = fixedCount;
+                    listRest = current.restIndex.has_value();
+                    for (std::size_t index = 0; index < current.children.size(); ++index)
+                    {
+                        if (current.restIndex.has_value() && *current.restIndex == index) continue;
+                        if (!isCatchAll(current.children[index])) { partial = true; break; }
+                    }
+                    return;
+                }
                 if (current.kind == PatternKind::Or)
                     for (const Pattern& child : current.children) collectCoverage(child);
             };
@@ -11931,7 +11946,13 @@ ast::AstNode* Parser::parseMatchExpression()
             const bool guardRestrictsCoverage = guard != nullptr &&
                 !(guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
                   guard->tokenKind() == TokenKind::KwTrue);
-            if (wildcard)
+            if (listLength.has_value())
+            {
+                if (partial || guardRestrictsCoverage) coverage += '~';
+                coverage += '#' + std::to_string(*listLength);
+                if (listRest) coverage += '+';
+            }
+            else if (wildcard)
             {
                 if (guardRestrictsCoverage) coverage += '~';
                 coverage += '*';

@@ -8502,7 +8502,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
                 armText.remove_prefix(1);
             }
             arm.wildcard = armText == "*";
-            if (!arm.wildcard && armText != "?")
+            if (!arm.wildcard && armText != "?" && !armText.empty() && armText.front() == '#')
+            {
+                armText.remove_prefix(1);
+                const std::size_t plus = armText.find('+');
+                if (plus != std::string_view::npos)
+                {
+                    arm.listLengthRest = true;
+                    armText = armText.substr(0, plus);
+                }
+                arm.listLength = static_cast<std::size_t>(std::stoull(std::string(armText)));
+            }
+            else if (!arm.wildcard && armText != "?")
             {
                 std::size_t caseBegin = 0;
                 while (caseBegin <= armText.size())
@@ -8614,7 +8625,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
     {
         if (domain.empty())
         {
-            if (!std::ranges::any_of(coverageArms, [](const language::MatchArmCoverage& arm)
+            const bool hasListLength = std::ranges::any_of(
+                coverageArms, [](const language::MatchArmCoverage& arm)
+                {
+                    return arm.listLength.has_value();
+                });
+            if (hasListLength)
+            {
+                const language::ExhaustivenessResult result =
+                    language::analyzeListMatch(coverageArms);
+                if (!result.exhaustive)
+                {
+                    std::string message = "non-exhaustive match; missing list length";
+                    if (result.missingCases.empty())
+                    {
+                        message += ": a list pattern needs a rest or wildcard arm to cover "
+                            "unbounded lengths";
+                    }
+                    else
+                    {
+                        message += result.missingCases.size() == 1 ? ": " : "s: ";
+                        for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                        {
+                            if (index != 0) message += ", ";
+                            message += result.missingCases[index];
+                        }
+                    }
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        message);
+                }
+            }
+            else if (!std::ranges::any_of(coverageArms, [](const language::MatchArmCoverage& arm)
                 {
                     return arm.wildcard && !arm.hasGuard;
                 }))
