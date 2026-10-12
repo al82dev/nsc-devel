@@ -1835,6 +1835,50 @@ class Program
                     escapeDiagnostics);
         }});
 }
+
+void registerListPatternSubstratesCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-310", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "array", "string", "borrow", "view"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T03ListSubstrates", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] values = new int[4];
+        values[0] = 10;
+        values[1] = 20;
+        values[2] = 30;
+        values[3] = 40;
+        int arrayRest = match(values) { [10, .. var mid, 40] => mid.Length() + mid[0] + mid[1], _ => 0 };
+        delete[] values;
+
+        string text = "hello";
+        int stringRest = match(text) { [.. var all] => all.Length(), _ => 0 };
+
+        return arrayRest + stringRest;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T03ListSubstrates.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-310 array and string rest capture must compile as Span/StringView: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 57,
+                "TL-LANG-310 rest views must preserve origin elements without copying: " +
+                    result.error + result.output);
+        }});
+}
+
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1862,5 +1906,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultDispatchAbiCase(registry);
     registerListPatternShapeCase(registry);
     registerListPatternRestCaptureCase(registry);
+    registerListPatternSubstratesCase(registry);
 }
 }
