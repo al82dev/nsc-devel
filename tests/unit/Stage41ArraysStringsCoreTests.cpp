@@ -407,6 +407,31 @@ void testCoreRuntimeBridge(TestContext& tests)
 void testNullAndNegativeBoundaries(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "StringNullEquality";
+        writeProject(directory, "StringNullEquality");
+        writeFile(directory / "Main.ns", R"NS(
+class H
+{
+    public static bool Same(string left, string right) { return left == right; }
+    public static bool NullMatrix(string value)
+    {
+        return value == null || null == value || value != null || null != value;
+    }
+}
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectOopMir(
+            directory / "StringNullEquality.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "string/null equality is accepted in both orders for == and !=");
+        tests.expect(countCoreKind(compilation, MethodCoreOperationKind::StringEquals) == 1,
+            "only string/string content equality binds StringEquals; null comparisons use identity");
+        tests.expect(countMirKind(compilation, ProjectOopMirNodeKind::StringEquals) == 1,
+            "string/null comparisons do not reach the dereferencing StringEquals MIR node");
+    }
+
+    {
         const auto directory = root / "NullReferences";
         writeProject(directory, "NullReferences");
         writeFile(directory / "Main.ns", R"NS(

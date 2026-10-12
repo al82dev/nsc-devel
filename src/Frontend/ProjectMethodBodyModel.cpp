@@ -18803,7 +18803,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     {
         return typeKey == "builtin:string" || typeKey == "string-literal";
     };
-    if (isStringLike(left.typeKey) && isStringLike(right.typeKey))
+    // A string compared with the null literal is reference identity, not content equality.
+    // Compute this before the string intrinsic branch so both operand orders and both equality
+    // operators share the same null-safe path as every other reference type.
+    const bool nullLiteralOperand =
+        (expression->first() != nullptr &&
+         expression->first()->kind() == ast::AstNodeKind::NullLiteralExpression) ||
+        (expression->second() != nullptr &&
+         expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression);
+    if (!nullLiteralOperand && isStringLike(left.typeKey) && isStringLike(right.typeKey))
     {
         if (operation == TokenKind::Plus)
         {
@@ -18859,11 +18867,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     // null literal, which is a thing nobody wants; the benefit is that the obvious, correct-
     // looking guard stops being a hang. A comparison against null is reference identity, and
     // that is what it now lowers to.
-    const bool nullLiteralOperand =
-        (expression->first() != nullptr &&
-         expression->first()->kind() == ast::AstNodeKind::NullLiteralExpression) ||
-        (expression->second() != nullptr &&
-         expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression);
     if (!operatorName.empty() && !operatorTraitKey.empty() && !nullLiteralOperand)
     {
         std::vector<std::size_t> candidates = stage38OperatorCandidates(
