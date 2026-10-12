@@ -56,7 +56,7 @@ void registerEmptyCase(TestRegistry& registry)
         lexer_test::expectToken(context, fixture.tokens()[0], TokenKind::StringLiteral,
             0, 6, source, "TL-LEX-075");
         lexer_test::expectStringValue(context, fixture.tokens()[0], "", "TL-LEX-075");
-    }, TestDisposition::KnownProductDefect);
+    });
 }
 
 // Verifies that opening runs of three, four, and five quotes fix the required close width. Complexity is O(1).

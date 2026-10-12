@@ -737,6 +737,12 @@ Token Lexer::lexRawString(std::uint32_t begin)
 {
     std::uint32_t delimiterWidth = 0;
     while (peek(delimiterWidth) == '"') ++delimiterWidth;
+    if (delimiterWidth == 6 && offset_ + delimiterWidth == buffer_.size())
+    {
+        // Six quotes at EOF are the empty triple-quoted spelling: the first
+        // three open the literal and the remaining three close it.
+        delimiterWidth = 3;
+    }
     for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
 
     std::string decoded;
