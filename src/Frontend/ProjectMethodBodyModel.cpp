@@ -5774,22 +5774,61 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         ExpressionResult varInit = analyzeExpression(
             variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
-            /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-        if (!varInit.valid || varInit.typeKey.empty() || varInit.typeKey == "<error>")
+            /*allowMethodGroup=*/true, /*allowEvent=*/false, /*allowMove=*/true);
+        if (!varInit.valid)
         {
             return;
         }
-        if (varInit.typeKey == "builtin:void")
+        // NS304-T04-F07: tipo natural de method group. Un overload UNICO infiere su `fn*`. El
+        // typeKey de un method group esta vacio, asi que se comprueba ANTES del chequeo de tipo.
+        if (varInit.methodGroup)
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                variable->first()->range(),
-                "'var' cannot infer a type from a void-returning expression");
-            return;
+            if (varInit.methodCandidates.size() != 1U)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "a method group with multiple overloads cannot infer a natural callable type; "
+                    "use an explicit fn* target");
+                return;
+            }
+            const ClassMemberSymbol* candidate = methodSymbol(varInit.methodCandidates[0]);
+            if (candidate == nullptr || candidate->kind != ClassMemberKind::Method) return;
+            language::FunctionType signature;
+            if (candidate->hasImplicitThis) signature.parameters.emplace_back("abi:this");
+            for (const MethodParameterSymbol& parameter : candidate->parameters)
+                signature.parameters.push_back(parameter.typeKey);
+            signature.result = candidate->declaredTypeKey;
+            signature.carrier = language::FunctionCarrier::Pointer;
+            signature.callingConvention = candidate->isExternC
+                ? language::CallingConvention::C : language::CallingConvention::NativeSharp;
+            signature.errorType = candidate->declaredErrorTypeKey;
+            signature.lifetime = candidate->returnLifetimeName;
+            signature.variadic = candidate->isVariadic;
+            signature.isUnsafe = candidate->isUnsafe;
+            signature.isNoHeap = candidate->isNoHeap;
+            varInferredTypeKey = language::functionTypeIdentity(signature);
+            precomputedVarInitializer = std::move(varInit);
         }
-        varInferredTypeKey = varInit.typeKey;
-        precomputedVarInitializer = std::move(varInit);
+        else
+        {
+            if (varInit.typeKey.empty() || varInit.typeKey == "<error>")
+            {
+                return;
+            }
+            if (varInit.typeKey == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "'var' cannot infer a type from a void-returning expression");
+                return;
+            }
+            varInferredTypeKey = varInit.typeKey;
+            precomputedVarInitializer = std::move(varInit);
+        }
     }
 
     bool isVariableLengthArray = false;
@@ -6118,6 +6157,14 @@ void ProjectMethodBodyModel::analyzeVariable(
             // Already analyzed above (before typeKey existed, so this couldn't happen in the
             // usual typeKey-first order) -- reuse it rather than analyzing the initializer twice.
             initializer = std::move(*precomputedVarInitializer);
+            // NS304-T04-F07: el method group natural ya infirio su fn*; convertirlo en un valor
+            // delegado real (cell/function pointer) antes de registrar el local.
+            if (initializer.methodGroup && isDelegateTypeKey(typeKey))
+            {
+                initializer = bindMethodGroupToDelegate(
+                    variable->first(), initializer, typeKey, methodMemberOrdinal, scopeOrdinal,
+                    diagnostics);
+            }
         }
         else if (variable->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression)
         {
