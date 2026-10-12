@@ -189,20 +189,25 @@ namespace NativeSharp.Compiler.Types
             if (display.Length >= 2 && display[display.Length - 1] == ']')
             {
                 int bracket = display.Length - 2; while (bracket >= 0 && display[bracket] != '[') { bracket = bracket - 1; }
-                if (bracket < 0) { bracket = display.Length; }
-                raii string elementName = String.Substring(display, 0, bracket);
-                int element = Intern(elementName); raii SemanticType array = new SemanticType(SemanticTypeKind.Array, display);
-                long count = 0; if (bracket + 1 < display.Length - 1)
+                long count = 0; bool validCount = bracket >= 0;
+                if (validCount && bracket + 1 < display.Length - 1)
                 {
-                    raii string countText = String.Substring(display, bracket + 1, display.Length - bracket - 2); Number.TryParseInt64(countText, out count);
+                    raii string countText = String.Substring(display, bracket + 1, display.Length - bracket - 2);
+                    validCount = Number.TryParseInt64(countText, out count);
                 }
-                array.SetElementType(element); array.SetElementCount(count);
-                // Unsized arrays are runtime references.  Treating T[] as a zero-byte inline
-                // field made the following field overlap it (List<T>.items and count were both
-                // at offset zero), corrupting every generic collection during bootstrap.
-                if (count == 0) { array.SetLayout(8, 8); }
-                else { array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment()); }
-                types.Add(move(array)); return types.Count() - 1;
+                if (validCount)
+                {
+                    raii string elementName = String.Substring(display, 0, bracket);
+                    int element = Intern(elementName);
+                    raii SemanticType array = new SemanticType(SemanticTypeKind.Array, display);
+                    array.SetElementType(element); array.SetElementCount(count);
+                    // Unsized arrays are runtime references.  Treating T[] as a zero-byte inline
+                    // field made the following field overlap it (List<T>.items and count were both
+                    // at offset zero), corrupting every generic collection during bootstrap.
+                    if (count == 0) { array.SetLayout(8, 8); }
+                    else { array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment()); }
+                    types.Add(move(array)); return types.Count() - 1;
+                }
             }
             raii SemanticType named = new SemanticType(SemanticTypeKind.Named, display);
             // Nominal values begin life as opaque native references. Aggregate declaration

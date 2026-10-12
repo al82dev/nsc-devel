@@ -3,8 +3,7 @@ using NativeSharp.Compiler.Types;
 
 namespace NativeSharp.CompilerSuite.SelfHost.Types
 {
-    // Covers structural interning with exact descriptors and mutation counts. TSH-01011
-    // intentionally keeps the documented malformed-descriptor oracle and remains red.
+    // Covers structural interning with exact descriptors and mutation counts.
     public class SelfHostTypesInterningModule
     {
         public static int Run(string caseId)
@@ -57,9 +56,12 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
         private static int MalformedCompositeRemainsUnknown()
         {
             raii TypeTable table = new TypeTable();
+            int before = table.Count();
             int malformed = table.Intern("int[not-a-count]");
+            int repeated = table.Intern("int[not-a-count]");
             SemanticType descriptor = table.Get(malformed);
-            return descriptor.Kind() == SemanticTypeKind.Named &&
+            return malformed == repeated && table.Count() == before + 1 &&
+                descriptor.Kind() == SemanticTypeKind.Named &&
                 descriptor.Display() == "int[not-a-count]" ? 0 : 31;
         }
 
