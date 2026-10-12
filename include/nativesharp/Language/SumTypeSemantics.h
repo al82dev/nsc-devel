@@ -43,7 +43,9 @@ enum class PatternBindingMode
 {
     Value,
     Reference,
-    Move
+    Move,
+    Copy,
+    ReferenceMutable
 };
 
 struct PatternBinding final

@@ -10035,7 +10035,8 @@ ast::AstNode* Parser::parseConditionalPatternStatement()
     const auto bindings = collectBindings(pattern);
     const bool hasReferenceBinding = std::ranges::any_of(bindings, [](const auto& binding)
     {
-        return binding.second == PatternBindingMode::Reference;
+        return binding.second == PatternBindingMode::Reference ||
+                binding.second == PatternBindingMode::ReferenceMutable;
     });
     const bool hasMoveBinding = std::ranges::any_of(bindings, [](const auto& binding)
     {
@@ -10568,17 +10569,30 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         return result;
     }
     if (at(TokenKind::KwVar) || at(TokenKind::KwMove) ||
-        (atContextualKeyword("ref") && peek().kind() == TokenKind::Identifier))
+        atContextualKeyword("copy") || atContextualKeyword("ref"))
     {
         if (at(TokenKind::KwMove))
         {
             result.bindingMode = PatternBindingMode::Move;
             consume();
         }
+        else if (atContextualKeyword("copy"))
+        {
+            result.bindingMode = PatternBindingMode::Copy;
+            consume();
+        }
         else if (atContextualKeyword("ref"))
         {
-            result.bindingMode = PatternBindingMode::Reference;
             consume();
+            if (atContextualKeyword("mut"))
+            {
+                result.bindingMode = PatternBindingMode::ReferenceMutable;
+                consume();
+            }
+            else
+            {
+                result.bindingMode = PatternBindingMode::Reference;
+            }
         }
         else
         {
@@ -11043,8 +11057,10 @@ ast::AstNode* Parser::lowerPattern(
             pattern.name,
             source(),
             false,
-            pattern.bindingMode == PatternBindingMode::Value);
-        if (pattern.bindingMode == PatternBindingMode::Reference)
+            pattern.bindingMode == PatternBindingMode::Value ||
+                pattern.bindingMode == PatternBindingMode::Copy);
+        if (pattern.bindingMode == PatternBindingMode::Reference ||
+            pattern.bindingMode == PatternBindingMode::ReferenceMutable)
             declaration->setAuxiliaryText("local:ref");
         block->addChild(declaration);
         block->addChild(continuation);
@@ -11237,7 +11253,8 @@ void Parser::emitPatternBindings(
                 arm->setFirst(makePatternCondition(alternative, matchValue));
                 emitPatternBindings(alternative, matchValue, arm, temporaryPrefix);
                 arm->setThird(makeIdentifierExpression(alternative.range, name));
-                arm->setFlag(mode == PatternBindingMode::Reference);
+                arm->setFlag(mode == PatternBindingMode::Reference ||
+                    mode == PatternBindingMode::ReferenceMutable);
                 selector->addChild(arm);
             }
 
@@ -11248,8 +11265,9 @@ void Parser::emitPatternBindings(
                 name,
                 selector,
                 false,
-                mode == PatternBindingMode::Value);
-            if (mode == PatternBindingMode::Reference)
+                mode == PatternBindingMode::Value || mode == PatternBindingMode::Copy);
+            if (mode == PatternBindingMode::Reference ||
+                mode == PatternBindingMode::ReferenceMutable)
                 declaration->setAuxiliaryText("local:ref");
             destination->addChild(declaration);
         }
@@ -11264,8 +11282,10 @@ void Parser::emitPatternBindings(
             pattern.name,
             source(),
             false,
-            pattern.bindingMode == PatternBindingMode::Value);
-        if (pattern.bindingMode == PatternBindingMode::Reference)
+            pattern.bindingMode == PatternBindingMode::Value ||
+                pattern.bindingMode == PatternBindingMode::Copy);
+        if (pattern.bindingMode == PatternBindingMode::Reference ||
+            pattern.bindingMode == PatternBindingMode::ReferenceMutable)
             declaration->setAuxiliaryText("local:ref");
         destination->addChild(declaration);
         return;
@@ -11404,6 +11424,8 @@ ast::AstNode* Parser::parseMatchStatement()
             case PatternBindingMode::Value: return "value";
             case PatternBindingMode::Reference: return "ref";
             case PatternBindingMode::Move: return "move";
+            case PatternBindingMode::Copy: return "copy";
+            case PatternBindingMode::ReferenceMutable: return "ref mut";
         }
         return "value";
     };
@@ -11706,7 +11728,8 @@ ast::AstNode* Parser::parseMatchStatement()
             const auto bindings = collectBindings(arm.pattern);
             return std::ranges::any_of(bindings, [](const auto& binding)
             {
-                return binding.second == PatternBindingMode::Reference;
+                return binding.second == PatternBindingMode::Reference ||
+                binding.second == PatternBindingMode::ReferenceMutable;
             });
         });
     const bool hasMoveBinding = std::ranges::any_of(
