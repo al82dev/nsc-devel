@@ -236,7 +236,7 @@ void testMalformedControlRecovery(TestContext& context)
 void registerParserControlFlowContinuationModule(TestRegistry& registry)
 {
     addCase(registry, "TP-PAR-333", testIfHierarchy);
-    addCase(registry, "TP-PAR-334", testConditionDeclaration, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-334", testConditionDeclaration);
     addCase(registry, "TP-PAR-335", testConditionalPattern);
     addCase(registry, "TP-PAR-336", testWhileStatement);
     addCase(registry, "TP-PAR-337", testDoWhileStatement);

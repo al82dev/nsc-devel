@@ -10047,12 +10047,23 @@ ast::AstNode* Parser::parseIfStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
+    ast::AstNode* conditionDeclaration = nullptr;
+    ast::AstNode* condition = nullptr;
     if (looksLikeConditionDeclaration())
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+        conditionDeclaration = parseVariableDeclaration(false);
+        if (conditionDeclaration != nullptr)
+        {
+            condition = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IdentifierExpression,
+                conditionDeclaration->range());
+            condition->setText(conditionDeclaration->text());
+        }
     }
-    ast::AstNode* condition = parseExpression();
+    else
+    {
+        condition = parseExpression();
+    }
     expect(TokenKind::RightParen, "')'");
     ast::AstNode* thenBlock = parseEmbeddedStatementBlock();
 
@@ -10077,6 +10088,16 @@ ast::AstNode* Parser::parseIfStatement()
     node->setFirst(condition);
     node->setSecond(thenBlock);
     node->setThird(elseNode);
+    if (conditionDeclaration != nullptr)
+    {
+        ast::AstNode* lowered = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            tokenRangeFrom(beginIndex));
+        lowered->setAuxiliaryText("condition-declaration");
+        lowered->addChild(conditionDeclaration);
+        lowered->addChild(node);
+        return lowered;
+    }
     return node;
 }
 
