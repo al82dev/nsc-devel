@@ -988,7 +988,7 @@ T00
 - [x] `NS304-T04-F05` — Completar lambdas y funciones locales estáticas y prohibición de captura. *(lambda static + prohibicion de captura TL-LANG-318; funcion local static residual.)*
 - [ ] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura.
 - [x] `NS304-T04-F07` — Congelar ranking de method groups, overload priority y conversiones a `fn*`/`fn&`. *(tipo natural de method group unico + TL-LANG-319.)*
-- [ ] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(layout+drop+ejecucion validados TL-LANG-320; combinacion con errors pendiente.)*
+- [x] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(layout+drop+ejecucion TL-LANG-320 y closure+throws Exception TL-LANG-321.)*
 
 ### T05 — async/await productivo
 
