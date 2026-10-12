@@ -992,7 +992,7 @@ T00
 
 ### T05 — async/await productivo
 
-- [ ] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery.
+- [x] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery. *(await→AwaitExpression; async consumido sin NS3049 + marcador en function global. Almacenamiento en class/interface method residual.)*
 - [ ] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación.
 - [ ] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR.
 - [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos.
