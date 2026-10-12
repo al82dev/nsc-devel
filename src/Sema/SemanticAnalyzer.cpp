@@ -260,14 +260,26 @@ void SemanticAnalyzer::analyzeStruct(ast::AstNode* node)
             continue;
         }
 
-        Type* fieldType = resolveType(fieldNode->typeSyntax());
+        const bool functionType =
+            fieldNode->typeSyntax() != nullptr && fieldNode->typeSyntax()->isFunction();
+        Type* fieldType = functionType
+            ? types_.builtin(TypeKind::Error)
+            : resolveType(fieldNode->typeSyntax());
         if (fieldType == nullptr)
         {
             fieldType = types_.builtin(TypeKind::Error);
         }
 
         bool valid = true;
-        if (fieldType->kind() == TypeKind::Void)
+        if (functionType)
+        {
+            report(
+                fieldNode->range(),
+                diagnostics::DiagnosticId::InvalidType,
+                "struct field cannot have function type");
+            valid = false;
+        }
+        else if (fieldType->kind() == TypeKind::Void)
         {
             report(fieldNode->range(), diagnostics::DiagnosticId::InvalidType, "struct field cannot have type void");
             valid = false;
@@ -2392,6 +2404,11 @@ bool SemanticAnalyzer::validateObjectType(Type* type, SourceRange range, bool al
     if (type->kind() == TypeKind::Void)
     {
         report(range, diagnostics::DiagnosticId::InvalidType, "object cannot have type void");
+        return false;
+    }
+    if (type->kind() == TypeKind::Function)
+    {
+        report(range, diagnostics::DiagnosticId::InvalidType, "object cannot have function type");
         return false;
     }
     if (!allowArray && type->kind() == TypeKind::Array)

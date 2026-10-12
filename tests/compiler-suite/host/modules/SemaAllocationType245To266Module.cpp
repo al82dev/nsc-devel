@@ -404,8 +404,7 @@ void testCAbiStructFields(TestContext& context)
 void registerSemaAllocationType245To266Module(TestRegistry& registry)
 {
     addSemaCase(registry, "TS-SEMA-245", "CS-SEMA-024", "component", testNewObject);
-    addSemaCase(registry, "TS-SEMA-246", "CS-SEMA-024", "component", testNewInvalidObjectTypes,
-        "PR", TestDisposition::KnownProductDefect, {"product-defect", "allocation", "function-type"});
+    addSemaCase(registry, "TS-SEMA-246", "CS-SEMA-024", "component", testNewInvalidObjectTypes);
     addSemaCase(registry, "TS-SEMA-247", "CS-SEMA-024", "component", testNewArrayCounts);
     addSemaCase(registry, "TS-SEMA-248", "CS-SEMA-024", "component", testNewArrayNonIntegerCount);
     addSemaCase(registry, "TS-SEMA-249", "CS-SEMA-024", "component", testNewArrayTrapPoststate);

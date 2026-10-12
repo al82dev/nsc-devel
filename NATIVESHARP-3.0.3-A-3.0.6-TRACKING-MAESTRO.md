@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 32 | 61.54 % | `EN_PROGRESO`; A03 21/21 cerrada |
+| A | 3.0.3 | 14 | 52 defectos | 34 | 65.38 % | `EN_PROGRESO`; A04 G28 cerrado 2/5 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G27 y A03, quedan 20 KPD abiertos y treinta y dos casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G28, quedan 18 KPD abiertos y treinta y cuatro casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -142,8 +142,8 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A00 | Host.Language | 7 | 7 | `CERRADA` |
 | A01 | Host.Lexer | 1 | 1 | `CERRADA` |
 | A02 | Host.AST | 3 | 3 | `CERRADA` |
-| A03 | Host.Parser | 21 | 5 | `EN_PROGRESO` |
-| A04 | Host.Sema | 5 | 0 | `PENDIENTE` |
+| A03 | Host.Parser | 21 | 21 | `CERRADA` |
+| A04 | Host.Sema | 5 | 2 | `EN_PROGRESO` |
 | A05 | Host.CFG | 1 | 0 | `PENDIENTE` |
 | A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
 | A07 | Host.LanguageService | 1 | 0 | `PENDIENTE` |
@@ -153,7 +153,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **16** | **30.77 %** |
+| **Total** |  | **52** | **34** | **65.38 %** |
 
 ## A.3 Inventario exacto
 
@@ -293,7 +293,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A04 · `TS-SEMA-106` / `CS-SEMA-013`**
   - Contrato: fields `void` y function rechazados ambos con `InvalidType`.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1730; T:`SemaStructLayoutModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; G28 pasó como KPD y Required, con un fixture independiente por frontera diagnóstica; commit G28: este commit.
 - **A04 · `TS-SEMA-110` / `CS-SEMA-013`**
   - Contrato: recursión nominal directa e indirecta rechazada por incompletitud.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1734; T:`SemaStructLayoutModule.cpp`; `5dee730d`.
@@ -301,7 +301,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A04 · `TS-SEMA-246` / `CS-SEMA-024`**
   - Contrato: `new` de void/function/incomplete rechazado como `InvalidAllocationType`.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1870; T:`SemaAllocationType245To266Module.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; G28 pasó como KPD y Required tras rechazar `TypeKind::Function`; commit G28: este commit.
 - **A04 · `TS-SEMA-265` / `CS-SEMA-025`**
   - Contrato: C ABI struct vacío/incompleto/recursivo rechaza y termina.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1889; T:`SemaAllocationType245To266Module.cpp`.
@@ -570,9 +570,10 @@ Resultado del inventario causal:
   - Estado: `CERRADO` en A03; aridades distintas de uno retornan `op_Invalid`.
 - **G28 — categoría Function no se rechaza: `TS-SEMA-106`, `TS-SEMA-246`.**
   - Productores: análisis de fields y `SemanticAnalyzer::validateObjectType`.
-  - Causa: ambos rechazan `Void`/incomplete, pero carecen de rama para `TypeKind::Function`.
+  - Causa: `validateObjectType` omitía `TypeKind::Function`; el análisis de fields tampoco rechazaba `TypeSyntax::isFunction()` y el fixture combinado de `TS-SEMA-106` quedaba detenido por el diagnóstico Parser del field `void` antes de alcanzar Sema.
   - Consumidores: layout de structs y análisis de `new`/objetos.
-  - Puntuales: `SemaStructLayoutModule.cpp` y `SemaAllocationType245To266Module.cpp`; existen.
+  - Puntuales: `SemaStructLayoutModule.cpp` y `SemaAllocationType245To266Module.cpp`; ambas pasaron como KPD y Required.
+  - Estado: `CERRADO` en A04; las fronteras `void` y function se ejercitan por separado sin relajar el conteo exacto de `InvalidType`.
 - **G29 — recursión nominal sin DFS de tipos: `TS-SEMA-110`.**
   - Productor: recorrido de fields de struct en `SemanticAnalyzer`.
   - Causa: comprueba completitud local, pero no mantiene estado visiting/visited para ciclos indirectos.
@@ -679,14 +680,14 @@ Puertas previas a editar producto:
 - `TP-PAR-306`: ampliar el oráculo para inspeccionar los dos declarators, no sólo consumo hasta EOF.
 - `TP-PAR-511`: reemplazar el fallo artificial por proceso aislado y frontera 128 reproducible.
 - `TP-PAR-524`: su ejecución previa al parche demostró la divergencia de aridad; se corrigió antes de retirar KPD.
-- Los 20 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
+- Los 18 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 cerrada 21/21, 32/52 defectos corregidos y 20 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A04 G28 cerrado 2/5, 34/52 defectos corregidos y 18 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3 y A03 21/21 Required `PASS`.
+- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21 y A04 G28 2/2 Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -741,7 +742,10 @@ Puertas previas a editar producto:
   después de limitar ambos atajos a aridad 1, pasó como KPD (1,605 us) y Required (1,100 us); dos objetos LLVM 23.1.0
   sin regenerar configuración.
 - Consolidado A03 Required: 21 invocaciones `nsc_component_tests.exe --case <ID>`, 21/21 `PASS`, 4,542 ms de pared.
-- Próxima acción de Parte A: A04; no iniciada en este cierre.
+- Evidencia G28: `TS-SEMA-106` pasó como KPD (6,910 us) y Required (18,967 us); `TS-SEMA-246` pasó como KPD
+  (4,196 us) y Required (3,209 us). Se reconstruyeron sólo el shim de Sema, los dos módulos propietarios y el enlace
+  exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
+- Próxima acción de Parte A: A04 G29 (`TS-SEMA-110`).
 
 ---
 
@@ -1479,13 +1483,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G25 | puntual aislada KPD + Required | `PASS`; 22 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G26 | puntual KPD + Required | `PASS`; 21 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G27 y tanda | puntual KPD + Required; consolidado A03 21/21 | `PASS`; 20 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A04 G28 | dos puntuales KPD + Required | 2/2 `PASS`; 18 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `32/52`; A03 cerrada 21/21; siguiente acción vinculante: A04, no iniciada.
+- A: `34/52`; A04 G28 cerrada 2/5; siguiente acción vinculante: G29 (`TS-SEMA-110`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01, A02 y G09-G20 puntuales; ninguna batería completa.
+- Validación ejecutada: A00, A01, A02, A03 y A04 G28 puntuales; ninguna batería completa.
 

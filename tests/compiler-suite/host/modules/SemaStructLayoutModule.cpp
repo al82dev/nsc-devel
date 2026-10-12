@@ -73,10 +73,13 @@ void c105(TestContext& c)
 
 void c106(TestContext& c)
 {
-    AnalyzerFixture fixture("struct InvalidFields { void Empty; fn*()->int Callback; }");
-    fixture.analyze();
-    c.expect(diagnosticCount(fixture.diagnostics(), DiagnosticId::InvalidType) == 2,
-        "TS-SEMA-106 PRODUCT-DEFECT: both void and function fields must report InvalidType; current analyzer only rejects void explicitly");
+    AnalyzerFixture voidField("struct InvalidVoidField { void Empty; }");
+    AnalyzerFixture functionField("struct InvalidFunctionField { fn*()->int Callback; }");
+    voidField.analyze();
+    functionField.analyze();
+    c.expect(diagnosticCount(voidField.diagnostics(), DiagnosticId::InvalidType) == 1 &&
+            diagnosticCount(functionField.diagnostics(), DiagnosticId::InvalidType) == 1,
+        "TS-SEMA-106 void and function fields must each report one InvalidType diagnostic");
 }
 
 void c107(TestContext& c)
@@ -141,7 +144,7 @@ void registerSemaStructLayoutModule(TestRegistry& registry)
     for (std::size_t index = 0; index < tests.size(); ++index)
     {
         const std::size_t ordinal = index + 102;
-        const TestDisposition disposition = ordinal == 106 || ordinal == 110
+        const TestDisposition disposition = ordinal == 110
             ? TestDisposition::KnownProductDefect : TestDisposition::Required;
         std::vector<std::string> tags;
         if (disposition == TestDisposition::KnownProductDefect) tags = {"known-product-defect"};
