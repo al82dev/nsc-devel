@@ -13385,6 +13385,12 @@ bool Parser::looksLikeLambdaExpression() const noexcept
     {
         return true;
     }
+    if (at(TokenKind::KwExtern) && index_ + 2 < tokens_.size() &&
+        tokens_[index_ + 1].kind() == TokenKind::KwC &&
+        looksLikeParameterHead(index_ + 2))
+    {
+        return true;
+    }
     if (!at(TokenKind::LeftBracket)) return looksLikeParameterHead(index_);
 
     // T08-F03. A leading capture list is recognized only when the token after its matching ']'
@@ -13408,10 +13414,17 @@ ast::AstNode* Parser::parseLambdaExpression()
     const std::size_t beginIndex = index_;
     auto* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
-    // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe`, antes de la lista de captura.
+    // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe` y calling convention `extern C`.
     std::string effects;
     if (at(TokenKind::KwNoHeap)) { effects = "noheap"; consume(); }
     else if (atContextualKeyword("unsafe")) { effects = "unsafe"; consume(); }
+    std::string callingConvention;
+    if (at(TokenKind::KwExtern) && peek().kind() == TokenKind::KwC)
+    {
+        callingConvention = "C";
+        consume();
+        consume();
+    }
     std::string captureContract;
     if (consumeIf(TokenKind::LeftBracket))
     {
@@ -13568,6 +13581,11 @@ ast::AstNode* Parser::parseLambdaExpression()
     {
         if (!auxiliary.empty()) auxiliary += ';';
         auxiliary += "effects:" + effects;
+    }
+    if (!callingConvention.empty())
+    {
+        if (!auxiliary.empty()) auxiliary += ';';
+        auxiliary += "calling-convention:" + callingConvention;
     }
     lambda->setAuxiliaryText(std::move(auxiliary));
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);

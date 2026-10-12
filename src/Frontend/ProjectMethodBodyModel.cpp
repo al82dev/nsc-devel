@@ -23023,6 +23023,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
                 if (effect.find("unsafe") != std::string_view::npos)
                     anonymousIdentity.signature.isUnsafe = true;
             }
+            const std::size_t conventionPos = auxiliary.rfind("calling-convention:");
+            if (conventionPos != std::string_view::npos)
+            {
+                const std::string_view convention = auxiliary.substr(conventionPos + 19U);
+                if (convention.find('C') != std::string_view::npos)
+                    anonymousIdentity.signature.callingConvention = language::CallingConvention::C;
+            }
         }
         resultTypeKey = language::anonymousLambdaTypeIdentity(anonymousIdentity);
         binding.delegateTypeKey = resultTypeKey;
