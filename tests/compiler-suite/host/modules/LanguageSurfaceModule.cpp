@@ -2037,6 +2037,43 @@ class Program
         }});
 }
 
+void registerLambdaParameterModifierCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-316", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "lambda", "callable", "parameter", "ref", "inference"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04LambdaParams", "Exe", R"ns(
+class Program
+{
+    public delegate void Bump(ref int value);
+
+    public static int Main()
+    {
+        int x = 10;
+        Bump bump = (ref value) => { value = value + 1; };
+        bump(ref x);
+        return x;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04LambdaParams.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-316 a lambda with a ref parameter must infer its type from the target: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 11,
+                "TL-LANG-316 a ref lambda must write through the reference: " +
+                    result.error + result.output);
+        }});
+}
+
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -2069,5 +2106,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);
     registerLambdaNaturalTypeCase(registry);
+    registerLambdaParameterModifierCase(registry);
 }
 }
