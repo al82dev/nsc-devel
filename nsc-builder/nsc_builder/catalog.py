@@ -90,7 +90,7 @@ def validate_allocation_domains(rows: Sequence[dict[str, str]]) -> None:
         "supported_build_modes": (ALLOCATION_BUILD_MODES, {"FROZEN_CONTRACT"}),
         "supported_optimizations": (
             ALLOCATION_OPTIMIZATIONS,
-            {"N/A", "FROZEN_CONTRACT"},
+            {"NA", "N/A", "FROZEN_CONTRACT"},
         ),
     }
     for row_number, row in enumerate(rows, start=2):
@@ -278,7 +278,9 @@ class CanonicalCatalog:
     def _optimizations(allocation: dict[str, str]) -> tuple[str, ...]:
         """Normalize allocation optimizations for display."""
         values = split_semicolon(allocation["supported_optimizations"])
-        normalized = tuple("NA" if value in {"N/A", ""} else value for value in values)
+        normalized = tuple(
+            "NA" if value in {"NA", "N/A", ""} else value for value in values
+        )
         return normalized or ("NA",)
 
     @staticmethod

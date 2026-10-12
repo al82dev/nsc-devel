@@ -97,7 +97,7 @@ ALLOCATION_ISOLATIONS = frozenset(
 )
 ALLOCATION_BUILD_MODES = frozenset({"Debug", "Release", "FROZEN_CONTRACT"})
 ALLOCATION_OPTIMIZATIONS = frozenset(
-    {"N/A", "O0", "O1", "O2", "O3", "FROZEN_CONTRACT"}
+    {"NA", "N/A", "O0", "O1", "O2", "O3", "FROZEN_CONTRACT"}
 )
 
 
