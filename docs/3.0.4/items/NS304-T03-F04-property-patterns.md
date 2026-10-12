@@ -16,6 +16,16 @@
   (tagged union), que NO sirve para posicional (deconstrucción por posición).
 - La deconstrucción YA existe: `bindDeconstructionSource` (`ProjectMethodBodyModel.cpp:2781`)
   soporta tuplas y nominales con `Deconstruct`.
+- **Resultado**: `T(a,b)` ahora parsea como `PatternKind::Positional` y reporta error claro
+  (`4a33d271`). El lowering productivo está pendiente.
+
+## Hallazgo (lowering)
+
+- Las TUPLAS son estructurales y NO admiten `.Item{i}` (member access); se acceden por
+  deconstrucción (`TupleDeconstructElement` en HIR). Por eso el lowering posicional no puede
+  emitir `source().Deconstruct().Item{i}`: necesita bajar un `DeconstructionDeclarationStatement`
+  (como el patrón `Tuple`, que usa `Deconstruct` + deconstrucción), o resolver la deconstrucción
+  en Sema dentro del análisis del match arm.
 
 ## Gap F04 (posicional)
 
