@@ -168,7 +168,11 @@ enum class AstNodeKind
     LoopExpression,
     // NativeSharp 3.0 T05-F01. `await expr` is a first-class expression until the productive
     // state-machine lowering (T05-F03) materializes it. first() is the awaited operand.
-    AwaitExpression
+    AwaitExpression,
+    // NativeSharp 3.0 T06-F01. `yield return expr` / `yield break`. first() is the yielded value
+    // (nullptr for break). The productive frame lowering is T06-F03.
+    YieldReturnStatement,
+    YieldBreakStatement
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

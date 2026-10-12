@@ -8801,12 +8801,27 @@ ast::AstNode* Parser::parseStatement()
     if (atContextualKeyword("yield") &&
         (peek().kind() == TokenKind::KwReturn || peek().kind() == TokenKind::KwBreak))
     {
+        // NS304-T06-F01: `yield return expr` / `yield break` ya no se rechazan con NS3049. El
+        // lowering productivo a frame/state machine es T06-F03.
         const std::size_t beginIndex = index_;
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::YieldGenerators);
-        synchronizeStatement();
-        return arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, tokenRangeFrom(beginIndex));
+        consume(); // yield
+        ast::AstNode* statement;
+        if (at(TokenKind::KwReturn))
+        {
+            consume(); // return
+            ast::AstNode* value = parseExpression();
+            statement = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::YieldReturnStatement, tokenRangeFrom(beginIndex));
+            statement->setFirst(value);
+        }
+        else
+        {
+            consume(); // break
+            statement = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::YieldBreakStatement, tokenRangeFrom(beginIndex));
+        }
+        expect(TokenKind::Semicolon, "';' after 'yield return'/'yield break'");
+        return statement;
     }
 
     if (at(TokenKind::KwStatic))

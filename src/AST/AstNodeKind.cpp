@@ -108,6 +108,8 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(MatchValueExpression);
         NS_AST_KIND(LoopExpression);
         NS_AST_KIND(AwaitExpression);
+        NS_AST_KIND(YieldReturnStatement);
+        NS_AST_KIND(YieldBreakStatement);
 #undef NS_AST_KIND
     }
 
