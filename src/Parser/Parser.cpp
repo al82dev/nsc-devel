@@ -10414,8 +10414,9 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
                     "floating-point literals are not permitted in patterns because NaN and "
                     "signed-zero equality do not define a closed pattern domain");
         }
-        if (consumeIf(TokenKind::DotDot))
+        if (at(TokenKind::DotDot) || at(TokenKind::DotDotEqual))
         {
+            result.name = std::string(consume().lexeme());
             result.kind = PatternKind::Range;
             if (!at(TokenKind::IntegerLiteral) &&
                 !(at(TokenKind::Minus) && peek().kind() == TokenKind::IntegerLiteral))
@@ -10434,14 +10435,17 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
                 result.secondInteger = value;
             }
             if (result.firstInteger.has_value() && result.secondInteger.has_value() &&
-                *result.firstInteger >= *result.secondInteger)
+                (result.name == "..="
+                    ? *result.firstInteger > *result.secondInteger
+                    : *result.firstInteger >= *result.secondInteger))
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     start,
-                    "a half-open range pattern requires its lower bound to be less than its "
-                    "upper bound");
+                    result.name == "..="
+                        ? "an inclusive range pattern requires its lower bound not to exceed its upper bound"
+                        : "a half-open range pattern requires its lower bound to be less than its upper bound");
             }
         }
         result.range = tokenRangeFrom(patternBegin);
@@ -10653,7 +10657,10 @@ ast::AstNode* Parser::makePatternCondition(
             return makeBinaryExpression(
                 TokenKind::AmpAmp,
                 makeBinaryExpression(TokenKind::GreaterEqual, source(), pattern.firstValue),
-                makeBinaryExpression(TokenKind::Less, source(), pattern.secondValue));
+                makeBinaryExpression(
+                    pattern.name == "..=" ? TokenKind::LessEqual : TokenKind::Less,
+                    source(),
+                    pattern.secondValue));
         case PatternKind::Struct:
         {
             ast::AstNode* result = makeBooleanLiteral(pattern.range, true);

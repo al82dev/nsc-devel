@@ -145,10 +145,10 @@ void testExclusiveAndInclusiveRanges(TestContext& context)
     const Parser::Pattern first = exclusive.parser().parsePattern(false);
     const Parser::Pattern second = inclusive.parser().parsePattern(false);
     context.expect(first.kind == Parser::PatternKind::Range && first.firstInteger == 1 &&
-            first.secondInteger == 4 && exclusive.diagnostics().diagnostics().empty(),
+            first.secondInteger == 4 && first.name == ".." && exclusive.diagnostics().diagnostics().empty(),
         "TP-PAR-358 exclusive range pattern must retain both integer endpoints");
     context.expect(second.kind == Parser::PatternKind::Range && second.firstInteger == 1 &&
-            second.secondInteger == 4 &&
+            second.secondInteger == 4 && second.name == "..=" &&
             inclusive.parser().current().kind() == TokenKind::EndOfFile &&
             inclusive.diagnostics().diagnostics().empty(),
         "TP-PAR-358 inclusive range pattern must consume its delimiter and endpoints");
@@ -339,8 +339,7 @@ void registerParserPatternSemanticsModule(TestRegistry& registry)
     addPatternCase(registry, "TP-PAR-355", testEmptyAndNestedTuple);
     addPatternCase(registry, "TP-PAR-356", testStructShorthandAndExplicitFields);
     addPatternCase(registry, "TP-PAR-357", testVariantPayloads);
-    addPatternCase(registry, "TP-PAR-358", testExclusiveAndInclusiveRanges,
-        TestDisposition::KnownProductDefect);
+    addPatternCase(registry, "TP-PAR-358", testExclusiveAndInclusiveRanges);
     addPatternCase(registry, "TP-PAR-359", testSimpleAndNestedOrPatterns);
     addPatternCase(registry, "TP-PAR-360", testCompatibleOrBindings);
     addPatternCase(registry, "TP-PAR-361", testIncompatibleOrBindings);
