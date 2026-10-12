@@ -47,10 +47,11 @@ void registerLoweringContractCase(TestRegistry& registry)
         };
         for (const Vector& vector : vectors)
         {
-            const ExpressionLoweringContract& contract = expressionLoweringContract(vector.feature);
-            context.expect(contract.feature == vector.feature && contract.spelling == vector.spelling &&
-                    contract.sourceOrder && contract.primaryEvaluatedOnce &&
-                    !contract.mayAllocateImplicitly && contract.preservesAbi,
+            const ExpressionLoweringContract* contract = expressionLoweringContract(vector.feature);
+            context.expect(contract != nullptr && contract->feature == vector.feature &&
+                    contract->spelling == vector.spelling && contract->sourceOrder &&
+                    contract->primaryEvaluatedOnce && !contract->mayAllocateImplicitly &&
+                    contract->preservesAbi,
                 "TL-LANG-098 each feature must expose its exact allocation-free lowering contract");
         }
     });
@@ -64,16 +65,12 @@ void registerInvalidFeatureCase(TestRegistry& registry)
         "Host.Language",
         "unit",
         "NIGHTLY",
-        {"language", "expressions", "known-product-defect"},
+        {"language", "expressions"},
         [](TestContext& context) {
             constexpr ExpressionFeature invalid = static_cast<ExpressionFeature>(7);
-            const ExpressionLoweringContract& observed = expressionLoweringContract(invalid);
-            context.expect(false,
-                "TL-LANG-099 an external ExpressionFeature must be rejected before table indexing; "
-                "the current product returned feature " +
-                    std::to_string(static_cast<unsigned int>(observed.feature)));
+            context.expect(expressionLoweringContract(invalid) == nullptr,
+                "TL-LANG-099 an external ExpressionFeature must be rejected before table indexing");
         },
-        TestDisposition::KnownProductDefect,
     });
 }
 

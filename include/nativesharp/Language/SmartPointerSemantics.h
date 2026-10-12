@@ -73,7 +73,7 @@ struct SmartPointerOperationContext final
     bool producerModulePinned = true;
 };
 
-const SmartPointerFamilyContract& smartPointerFamilyContract(SmartPointerFamily family) noexcept;
+const SmartPointerFamilyContract* smartPointerFamilyContract(SmartPointerFamily family) noexcept;
 bool validateSmartPointerOperation(const SmartPointerOperationContext& context, std::string& error);
 
 std::string smartPointerContractManifest();

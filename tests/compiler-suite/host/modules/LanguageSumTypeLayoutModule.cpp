@@ -68,7 +68,7 @@ void registerOverflowRejectionCase(TestRegistry& registry)
         "Host.Language",
         "unit",
         "PR",
-        {"language", "sum-type", "layout", "known-product-defect"},
+        {"language", "sum-type", "layout"},
         [](TestContext& context) {
             constexpr std::size_t maximum = std::numeric_limits<std::size_t>::max();
             const std::array<std::array<VariantCase, 1>, 5> structurallyInvalid = {{
@@ -84,12 +84,12 @@ void registerOverflowRejectionCase(TestRegistry& registry)
                     "TL-LANG-262 every invalid name, alignment, or payload sum must be rejected");
             }
 
-            const std::array<VariantCase, 1> finalAlignmentOverflow = {
-                {{{"FinalAlignmentOverflow", maximum - 16U, 16}}}};
+            const std::array<VariantCase, 1> finalAlignmentOverflow = {{
+                {"FinalAlignmentOverflow", maximum - 16U, 16},
+            }};
             context.expect(!computeWindowsX64VariantLayout(finalAlignmentOverflow).has_value(),
                 "TL-LANG-262 final layout alignment must reject overflow instead of publishing a wrapped size");
         },
-        TestDisposition::KnownProductDefect,
     });
 }
 

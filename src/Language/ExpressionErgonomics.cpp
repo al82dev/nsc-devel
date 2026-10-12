@@ -21,9 +21,10 @@ constexpr std::array<ExpressionLoweringContract, 7> kContracts = {{
 
 }
 
-const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature feature) noexcept
+const ExpressionLoweringContract* expressionLoweringContract(ExpressionFeature feature) noexcept
 {
-    return kContracts[static_cast<std::size_t>(feature)];
+    const std::size_t index = static_cast<std::size_t>(feature);
+    return index < kContracts.size() ? &kContracts[index] : nullptr;
 }
 
 bool expressionFeatureAvailable(ExpressionFeature) noexcept

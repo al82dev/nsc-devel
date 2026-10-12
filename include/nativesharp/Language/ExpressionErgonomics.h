@@ -30,7 +30,7 @@ struct ExpressionLoweringContract final
     bool preservesAbi = true;
 };
 
-const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature feature) noexcept;
+const ExpressionLoweringContract* expressionLoweringContract(ExpressionFeature feature) noexcept;
 bool expressionFeatureAvailable(ExpressionFeature feature) noexcept;
 
 bool isTypedParameterPackType(std::string_view typeKey) noexcept;

@@ -38,9 +38,10 @@ bool countCanIncrement(std::uint64_t count) noexcept
 }
 }
 
-const SmartPointerFamilyContract& smartPointerFamilyContract(SmartPointerFamily family) noexcept
+const SmartPointerFamilyContract* smartPointerFamilyContract(SmartPointerFamily family) noexcept
 {
-    return kSmartPointerFamilies[static_cast<std::size_t>(family)];
+    const std::size_t index = static_cast<std::size_t>(family);
+    return index < kSmartPointerFamilies.size() ? &kSmartPointerFamilies[index] : nullptr;
 }
 
 bool validateSmartPointerOperation(
@@ -48,23 +49,28 @@ bool validateSmartPointerOperation(
     std::string& error)
 {
     error.clear();
-    const SmartPointerFamilyContract& family = smartPointerFamilyContract(context.family);
+    const SmartPointerFamilyContract* family = smartPointerFamilyContract(context.family);
+    if (family == nullptr)
+    {
+        error = "unknown smart pointer family";
+        return false;
+    }
     switch (context.operation)
     {
         case SmartPointerOperation::Move:
             return true;
         case SmartPointerOperation::ImplicitCopy:
-            error = std::string(family.name) + " is never implicitly copyable; use Move or explicit Clone";
+            error = std::string(family->name) + " is never implicitly copyable; use Move or explicit Clone";
             return false;
         case SmartPointerOperation::Clone:
-            if (!family.explicitClone)
+            if (!family->explicitClone)
             {
-                error = std::string(family.name) + " does not support Clone";
+                error = std::string(family->name) + " does not support Clone";
                 return false;
             }
-            if (!countCanIncrement(family.weak ? context.weakCount : context.strongCount))
+            if (!countCanIncrement(family->weak ? context.weakCount : context.strongCount))
             {
-                error = std::string(family.name) + " reference count overflow";
+                error = std::string(family->name) + " reference count overflow";
                 return false;
             }
             return true;
@@ -76,7 +82,7 @@ bool validateSmartPointerOperation(
             }
             if (!countCanIncrement(context.weakCount))
             {
-                error = std::string(family.name) + " weak reference count overflow";
+                error = std::string(family->name) + " weak reference count overflow";
                 return false;
             }
             return true;
@@ -88,12 +94,12 @@ bool validateSmartPointerOperation(
             }
             if (context.strongCount == 0)
             {
-                error = std::string(family.name) + " is expired; Upgrade cannot resurrect the payload";
+                error = std::string(family->name) + " is expired; Upgrade cannot resurrect the payload";
                 return false;
             }
             if (!countCanIncrement(context.strongCount))
             {
-                error = std::string(family.name) + " strong reference count overflow";
+                error = std::string(family->name) + " strong reference count overflow";
                 return false;
             }
             return true;
@@ -101,24 +107,24 @@ bool validateSmartPointerOperation(
         case SmartPointerOperation::Reset:
             if (context.family != SmartPointerFamily::Unique)
             {
-                error = std::string(family.name) + " does not expose Unique ownership transfer operations";
+                error = std::string(family->name) + " does not expose Unique ownership transfer operations";
                 return false;
             }
             return true;
         case SmartPointerOperation::CrossThread:
-            if (family.threadModel == SmartPointerThreadModel::LocalOnly)
+            if (family->threadModel == SmartPointerThreadModel::LocalOnly)
             {
-                error = std::string(family.name) + " is local-only; use Arc/WeakArc for shared cross-thread ownership";
+                error = std::string(family->name) + " is local-only; use Arc/WeakArc for shared cross-thread ownership";
                 return false;
             }
             if (!context.payloadSendSync)
             {
-                error = std::string(family.name) + " cannot cross threads because the payload is not Send/Sync";
+                error = std::string(family->name) + " cannot cross threads because the payload is not Send/Sync";
                 return false;
             }
             if (!context.producerModulePinned)
             {
-                error = std::string(family.name) + " cannot outlive its producer module destroy/deallocate thunks";
+                error = std::string(family->name) + " cannot outlive its producer module destroy/deallocate thunks";
                 return false;
             }
             return true;

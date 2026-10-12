@@ -1,5 +1,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 
+#include "CheckedLayoutArithmetic.h"
+
 #include <algorithm>
 #include <charconv>
 
@@ -7,11 +9,6 @@ namespace nativesharp::language
 {
 namespace
 {
-std::size_t alignUp(std::size_t value, std::size_t alignment) noexcept
-{
-    return (value + alignment - 1U) / alignment * alignment;
-}
-
 void appendLengthPrefixed(std::string& output, std::string_view value)
 {
     output += std::to_string(value.size());
@@ -253,15 +250,37 @@ bool computeClosureLayout(
 {
     error.clear();
     layout = {};
+    ClosureLayout computed;
     for (const Capture& capture : captures)
     {
         if (capture.name.empty() || capture.size == 0 || capture.alignment == 0 ||
             capture.alignment > 16 || (capture.alignment & (capture.alignment - 1U)) != 0)
         { error = "closure capture has invalid name, size, or alignment"; return false; }
-        layout.alignment = std::max(layout.alignment, capture.alignment);
-        layout.size = alignUp(layout.size, capture.alignment) + capture.size;
+        computed.alignment = std::max(computed.alignment, capture.alignment);
+        const std::optional<std::size_t> alignedSize =
+            detail::checkedLayoutAlignUp(computed.size, capture.alignment);
+        const std::optional<std::size_t> captureEnd = alignedSize.has_value()
+            ? detail::checkedLayoutAdd(*alignedSize, capture.size)
+            : std::nullopt;
+        if (!captureEnd.has_value())
+        {
+            error = "closure layout overflows size_t";
+            return false;
+        }
+        computed.size = *captureEnd;
     }
-    layout.size = captures.empty() ? 0 : alignUp(layout.size, layout.alignment);
+    if (!captures.empty())
+    {
+        const std::optional<std::size_t> finalSize =
+            detail::checkedLayoutAlignUp(computed.size, computed.alignment);
+        if (!finalSize.has_value())
+        {
+            error = "closure layout overflows size_t";
+            return false;
+        }
+        computed.size = *finalSize;
+    }
+    layout = computed;
     return true;
 }
 

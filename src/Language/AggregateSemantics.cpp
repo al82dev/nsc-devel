@@ -1,18 +1,12 @@
 #include "nativesharp/Language/AggregateSemantics.h"
 
+#include "CheckedLayoutArithmetic.h"
+
 #include <algorithm>
 #include <unordered_set>
 
 namespace nativesharp::language
 {
-namespace
-{
-std::size_t alignUp(std::size_t value, std::size_t alignment) noexcept
-{
-    return alignment == 0 ? value : (value + alignment - 1U) / alignment * alignment;
-}
-}
-
 std::string tupleIdentity(std::span<const TupleElement> elements)
 {
     std::string result = "tuple:(";
@@ -55,11 +49,20 @@ std::optional<AggregateLayout> computeWindowsX64AggregateLayout(
         if (field.size == 0 || field.alignment == 0 || field.alignment > 16 ||
             (field.alignment & (field.alignment - 1U)) != 0) return std::nullopt;
         result.alignment = std::max(result.alignment, field.alignment);
-        result.size = alignUp(result.size, field.alignment);
+        const std::optional<std::size_t> alignedSize =
+            detail::checkedLayoutAlignUp(result.size, field.alignment);
+        if (!alignedSize.has_value()) return std::nullopt;
+        result.size = *alignedSize;
         result.offsets.push_back(result.size);
-        result.size += field.size;
+        const std::optional<std::size_t> fieldEnd =
+            detail::checkedLayoutAdd(result.size, field.size);
+        if (!fieldEnd.has_value()) return std::nullopt;
+        result.size = *fieldEnd;
     }
-    result.size = alignUp(result.size, result.alignment);
+    const std::optional<std::size_t> finalSize =
+        detail::checkedLayoutAlignUp(result.size, result.alignment);
+    if (!finalSize.has_value()) return std::nullopt;
+    result.size = *finalSize;
     return result;
 }
 

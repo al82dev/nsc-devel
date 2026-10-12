@@ -20,12 +20,6 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
         {"language", "generics"}, std::move(function)});
 }
 
-void addKnownDefectCase(TestRegistry& registry, std::string id, TestFunction function)
-{
-    registry.add(TestCase{std::move(id), "CL-LANG-009", "Host.Language", "unit", "PR",
-        {"language", "generics"}, std::move(function), TestDisposition::KnownProductDefect});
-}
-
 void registerConstraintNormalizationCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-112", [](TestContext& context) {
@@ -257,7 +251,7 @@ void registerAliasIdentityCase(TestRegistry& registry)
 
 void registerSpecializationDominanceCase(TestRegistry& registry)
 {
-    addKnownDefectCase(registry, "TL-LANG-121", [](TestContext& context) {
+    addCase(registry, "TL-LANG-121", [](TestContext& context) {
         const std::array<std::string, 2> equalCandidate{"copy", "struct"};
         const std::array<std::string, 2> equalFallback{"copy", "struct"};
         const std::array<std::string, 1> subset{"copy"};

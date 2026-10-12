@@ -36,6 +36,11 @@ SmartPointerOperationContext operation(SmartPointerFamily family, SmartPointerOp
     return context;
 }
 
+const SmartPointerFamilyContract& requiredFamilyContract(SmartPointerFamily family)
+{
+    return *smartPointerFamilyContract(family);
+}
+
 void registerFamilyCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-249", [](TestContext& context) {
@@ -60,10 +65,10 @@ void registerFamilyCase(TestRegistry& registry)
             "TL-LANG-249 the family table must contain exactly five entries");
         for (const ExpectedFamily& item : expected)
         {
-            const SmartPointerFamilyContract& actual = smartPointerFamilyContract(item.family);
-            context.expect(actual.family == item.family && actual.name == item.name &&
-                    actual.threadModel == item.threadModel && actual.nullable && !actual.implicitCopy &&
-                    actual.explicitClone == item.explicitClone && actual.weak == item.weak,
+            const SmartPointerFamilyContract* actual = smartPointerFamilyContract(item.family);
+            context.expect(actual != nullptr && actual->family == item.family && actual->name == item.name &&
+                    actual->threadModel == item.threadModel && actual->nullable && !actual->implicitCopy &&
+                    actual->explicitClone == item.explicitClone && actual->weak == item.weak,
                 "TL-LANG-249 every family field must equal the frozen family matrix");
         }
     });
@@ -77,16 +82,15 @@ void registerInvalidFamilyCase(TestRegistry& registry)
         "Host.Language",
         "component",
         "NIGHTLY",
-        {"language", "smart-pointer", "operation", "known-product-defect"},
+        {"language", "smart-pointer", "operation"},
         [](TestContext& context) {
             constexpr SmartPointerFamily invalid = static_cast<SmartPointerFamily>(5);
-            const SmartPointerFamilyContract& observed = smartPointerFamilyContract(invalid);
-            context.expect(false,
-                "TL-LANG-250 an external SmartPointerFamily must be rejected before table indexing; "
-                "the current product returned family " +
-                    std::to_string(static_cast<unsigned int>(observed.family)));
+            std::string error = "stale";
+            context.expect(smartPointerFamilyContract(invalid) == nullptr &&
+                    !validateSmartPointerOperation(operation(invalid, SmartPointerOperation::Move), error) &&
+                    error == "unknown smart pointer family",
+                "TL-LANG-250 an external SmartPointerFamily must be rejected before table indexing");
         },
-        TestDisposition::KnownProductDefect,
     });
 }
 
@@ -109,7 +113,8 @@ void registerImplicitCopyCase(TestRegistry& registry)
         for (const SmartPointerFamily family : kFamilies)
         {
             std::string error;
-            const std::string name(smartPointerFamilyContract(family).name);
+            const SmartPointerFamilyContract* contract = smartPointerFamilyContract(family);
+            const std::string name(contract != nullptr ? contract->name : std::string_view{});
             context.expect(!validateSmartPointerOperation(
                     operation(family, SmartPointerOperation::ImplicitCopy), error) &&
                     error == name + " is never implicitly copyable; use Move or explicit Clone",
@@ -133,11 +138,11 @@ void registerCloneDowngradeUpgradeCase(TestRegistry& registry)
                     error.empty(),
                 "TL-LANG-253 shared and weak families must support Clone");
             auto overflow = operation(family, SmartPointerOperation::Clone);
-            if (smartPointerFamilyContract(family).weak)
+            if (requiredFamilyContract(family).weak)
                 overflow.weakCount = std::numeric_limits<std::uint64_t>::max();
             else
                 overflow.strongCount = std::numeric_limits<std::uint64_t>::max();
-            const std::string name(smartPointerFamilyContract(family).name);
+            const std::string name(requiredFamilyContract(family).name);
             context.expect(!validateSmartPointerOperation(overflow, error) &&
                     error == name + " reference count overflow",
                 "TL-LANG-253 Clone must reject the relevant maximum count before wraparound");
@@ -154,7 +159,7 @@ void registerCloneDowngradeUpgradeCase(TestRegistry& registry)
             {
                 auto overflow = operation(family, SmartPointerOperation::Downgrade);
                 overflow.weakCount = std::numeric_limits<std::uint64_t>::max();
-                const std::string name(smartPointerFamilyContract(family).name);
+                const std::string name(requiredFamilyContract(family).name);
                 context.expect(!validateSmartPointerOperation(overflow, error) &&
                         error == name + " weak reference count overflow",
                     "TL-LANG-253 Downgrade must reject maximum weak count before wraparound");
@@ -177,7 +182,7 @@ void registerUpgradeBoundaryCase(TestRegistry& registry)
     addCase(registry, "TL-LANG-254", [](TestContext& context) {
         for (const SmartPointerFamily family : {SmartPointerFamily::WeakRc, SmartPointerFamily::WeakArc})
         {
-            const std::string name(smartPointerFamilyContract(family).name);
+            const std::string name(requiredFamilyContract(family).name);
             auto expired = operation(family, SmartPointerOperation::Upgrade);
             expired.strongCount = 0;
             std::string error;
@@ -202,7 +207,7 @@ void registerUniqueTransferCase(TestRegistry& registry)
             {
                 std::string error;
                 const bool accepted = validateSmartPointerOperation(operation(family, kind), error);
-                const std::string expected = std::string(smartPointerFamilyContract(family).name) +
+                const std::string expected = std::string(requiredFamilyContract(family).name) +
                     " does not expose Unique ownership transfer operations";
                 context.expect(accepted == (family == SmartPointerFamily::Unique) &&
                         (accepted ? error.empty() : error == expected),
@@ -221,7 +226,7 @@ void registerCrossThreadCase(TestRegistry& registry)
             auto local = operation(family, SmartPointerOperation::CrossThread);
             local.payloadSendSync = true;
             local.producerModulePinned = true;
-            const std::string name(smartPointerFamilyContract(family).name);
+            const std::string name(requiredFamilyContract(family).name);
             context.expect(!validateSmartPointerOperation(local, error) &&
                     error == name + " is local-only; use Arc/WeakArc for shared cross-thread ownership",
                 "TL-LANG-256 Rc and WeakRc must remain local-only before other cross-thread gates");
@@ -229,7 +234,7 @@ void registerCrossThreadCase(TestRegistry& registry)
         for (const SmartPointerFamily family : {SmartPointerFamily::Unique, SmartPointerFamily::Arc,
                  SmartPointerFamily::WeakArc})
         {
-            const std::string name(smartPointerFamilyContract(family).name);
+            const std::string name(requiredFamilyContract(family).name);
             auto crossThread = operation(family, SmartPointerOperation::CrossThread);
             context.expect(!validateSmartPointerOperation(crossThread, error) &&
                     error == name + " cannot cross threads because the payload is not Send/Sync",

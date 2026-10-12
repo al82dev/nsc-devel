@@ -335,7 +335,6 @@ void registerInvalidClosureLayoutCase(TestRegistry& registry)
                 Capture{"nearMaximum", maximum - 7U, 16, CaptureMode::Copy, true}};
             expectOverflow(finalPaddingOverflow, "final-padding overflow");
         },
-        TestDisposition::KnownProductDefect,
     });
 }
 

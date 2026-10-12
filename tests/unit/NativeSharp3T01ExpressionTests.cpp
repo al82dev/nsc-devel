@@ -74,9 +74,9 @@ int main()
     for (std::size_t value = 0; value <= static_cast<std::size_t>(ExpressionFeature::WithExpressions); ++value)
     {
         const auto feature = static_cast<ExpressionFeature>(value);
-        const auto& contract = language::expressionLoweringContract(feature);
-        tests.expect(contract.feature == feature && contract.sourceOrder &&
-                contract.primaryEvaluatedOnce && !contract.mayAllocateImplicitly && contract.preservesAbi,
+        const auto* contract = language::expressionLoweringContract(feature);
+        tests.expect(contract != nullptr && contract->feature == feature && contract->sourceOrder &&
+                contract->primaryEvaluatedOnce && !contract->mayAllocateImplicitly && contract->preservesAbi,
             "every T01 lowering contract is ordered, single-evaluation, allocation-free and ABI-preserving");
         tests.expect(language::expressionFeatureAvailable(feature),
             "every T01 feature belongs to the cumulative language surface");

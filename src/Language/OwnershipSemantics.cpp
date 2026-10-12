@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <unordered_set>
+#include <utility>
 
 namespace nativesharp::language
 {
@@ -94,16 +95,19 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
 {
     error.clear();
     summary = {};
+    EscapeSummary decoded;
     if (!encoded.starts_with("escape-v1|")) { error = "unsupported escape summary version"; return false; }
     encoded.remove_prefix(10);
     const std::size_t colon = encoded.find(':');
     if (colon == std::string_view::npos) { error = "corrupt escape summary identity"; return false; }
     std::size_t nameSize = 0;
-    const auto parsed = std::from_chars(encoded.data(), encoded.data() + colon, nameSize);
+    const char* nameLengthEnd = encoded.data() + colon;
+    const auto parsed = std::from_chars(encoded.data(), nameLengthEnd, nameSize);
     encoded.remove_prefix(colon + 1);
-    if (parsed.ec != std::errc{} || encoded.size() < nameSize + 1 || encoded[nameSize] != '|')
+    if (parsed.ec != std::errc{} || parsed.ptr != nameLengthEnd ||
+        encoded.size() < nameSize + 1 || encoded[nameSize] != '|')
     { error = "corrupt escape summary length"; return false; }
-    summary.functionIdentity.assign(encoded.substr(0, nameSize));
+    decoded.functionIdentity.assign(encoded.substr(0, nameSize));
     encoded.remove_prefix(nameSize + 1);
     while (!encoded.empty())
     {
@@ -111,11 +115,13 @@ bool decodeEscapeSummary(std::string_view encoded, EscapeSummary& summary, std::
         if (comma == std::string_view::npos) { error = "corrupt escape class list"; return false; }
         int value = -1;
         const auto item = std::from_chars(encoded.data(), encoded.data() + comma, value);
-        if (item.ec != std::errc{} || value < 0 || value > static_cast<int>(EscapeClass::Unknown))
+        if (item.ec != std::errc{} || item.ptr != encoded.data() + comma ||
+            value < 0 || value > static_cast<int>(EscapeClass::Unknown))
         { error = "invalid escape class"; return false; }
-        summary.parameters.push_back(static_cast<EscapeClass>(value));
+        decoded.parameters.push_back(static_cast<EscapeClass>(value));
         encoded.remove_prefix(comma + 1);
     }
+    summary = std::move(decoded);
     return true;
 }
 }

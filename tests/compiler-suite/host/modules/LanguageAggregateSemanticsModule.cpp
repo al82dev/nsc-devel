@@ -145,7 +145,6 @@ void registerInvalidAggregateLayoutCase(TestRegistry& registry)
             context.expect(!computeWindowsX64AggregateLayout(finalPaddingOverflow).has_value(),
                 "TL-LANG-019 final-padding overflow must return nullopt instead of a wrapped size");
         },
-        TestDisposition::KnownProductDefect,
     });
 }
 

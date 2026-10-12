@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 0 | 0 % | `PENDIENTE` |
+| A | 3.0.3 | 14 | 52 defectos | 7 | 13.46 % | `EN_PROGRESO`; A00 cerrada |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -125,11 +125,12 @@ Bitácora mínima por ciclo:
 
 El universo se calcula como unión por `case_id` de:
 
-1. 47 filas del manifiesto con `expected_outcome=KNOWN_FAILURE`;
+1. 47 filas iniciales del manifiesto con `expected_outcome=KNOWN_FAILURE`;
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión da 52 IDs únicos. `KPD` significa que la prueba y su oráculo existen y el producto no los satisface; no
+La unión inicial da 52 IDs únicos. Tras cerrar A00, quedan 45 KPD abiertos y siete casos Required. `KPD` significa
+que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
 
@@ -137,7 +138,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 
 | Tanda | Componente | Ítems | Cerrados | Estado |
 |---|---|---:|---:|---|
-| A00 | Host.Language | 7 | 0 | `PENDIENTE` |
+| A00 | Host.Language | 7 | 7 | `CERRADA` |
 | A01 | Host.Lexer | 1 | 0 | `PENDIENTE` |
 | A02 | Host.AST | 3 | 0 | `PENDIENTE` |
 | A03 | Host.Parser | 21 | 0 | `PENDIENTE` |
@@ -151,7 +152,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **0** | **0 %** |
+| **Total** |  | **52** | **7** | **13.46 %** |
 
 ## A.3 Inventario exacto
 
@@ -162,32 +163,32 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 
 - **A00 · `TL-LANG-019` / `CL-LANG-002`**
   - Contrato: rechazar tamaño/alineación cero, no potencia de dos y overflow sin publicar layout parcial.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:467; T:`LanguageAggregateSemanticsModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:467; T:`LanguageAggregateSemanticsModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-035` / `CL-LANG-003`**
   - Contrato: rechazar overflow de offset, alineación y tamaño final del layout de closure.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:483; T:`LanguageCallableSemanticsModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:483; T:`LanguageCallableSemanticsModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-099` / `CL-LANG-008`**
   - Contrato: rechazar un `ExpressionFeature` externo antes de indexar la tabla.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:547; T:`LanguageExpressionSemanticsModule.cpp`.
-  - Procedencia terminal exacta: `18ae74f2`. Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:547; T:`LanguageExpressionSemanticsModule.cpp`; `18ae74f2`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-121` / `CL-LANG-009`**
   - Contrato: dominancia exacta de especializaciones, sin cambios por spellings duplicados.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:569; T:`LanguageGenericSemanticsModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:569; T:`LanguageGenericSemanticsModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-230` / `CL-LANG-017`**
   - Contrato: summary de ownership malformado falla con error exacto y limpia todo output parcial.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:678; T:`LanguageOwnershipLifetimeModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:678; T:`LanguageOwnershipLifetimeModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-250` / `CL-LANG-019`**
   - Contrato: rechazar una familia externa de smart pointer antes de indexar la tabla.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:698; T:`LanguageSmartPointerOperationsModule.cpp`.
-  - Procedencia terminal exacta: `18ae74f2`. Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:698; T:`LanguageSmartPointerOperationsModule.cpp`; `18ae74f2`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A00 · `TL-LANG-262` / `CL-LANG-020`**
   - Contrato: rechazar nombre/alineación/payload inválido y overflow de alineación final del variant.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:710; T:`LanguageSumTypeLayoutModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:710; T:`LanguageSumTypeLayoutModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual y consolidado A00 `PASS`; commit de implementación A00: este commit.
 - **A01 · `TL-LEX-075` / `CL-LEX-010`**
   - Contrato: triple raw string vacío produce un único `StringLiteral` con valor vacío.
   - Estado/evidencia: `KNOWN_FAILURE`; M:828; T:`LexerRawStringModule.cpp`; `5dee730d`.
@@ -409,21 +410,25 @@ Resultado del inventario causal:
   - Causa: `alignUp`, suma de payload y padding operan en `size_t` sin comprobar suma/redondeo previos.
   - Consumidores: layout de objetos, closures y variants; Frontend y ABI Windows x64.
   - Puntuales: tres módulos `Language*SemanticsModule.cpp`; existen y cubren overflow transaccional.
+  - Estado: `CERRADO` en A00; los tres casos pasan individualmente y en el consolidado.
 - **G02 — enum externo indexa tablas: `TL-LANG-099`, `TL-LANG-250`.**
   - Productores: `expressionLoweringContract` y `smartPointerFamilyContract`.
   - Causa: convierten el enum a índice y acceden a `std::array` sin validar rango.
   - Consumidores: lowering de expresiones y validación de operaciones smart pointer.
   - Puntuales: existen, pero la API devuelve referencia `noexcept` y carece de canal observable de rechazo.
+  - Estado: `CERRADO` en A00; ambas APIs devuelven puntero nullable y validan el índice.
 - **G03 — cardinalidad no normalizada: `TL-LANG-121`.**
   - Productor: `specializationStrictlyDominates`.
   - Causa: compara el tamaño del set candidato con el span fallback, que aún contiene duplicados.
   - Consumidores: selección de especializaciones en `ProjectGenericConstraintModel` y MethodBodyModel.
   - Puntual: `LanguageGenericSemanticsModule.cpp`; existe y cubre duplicados/asimetría.
+  - Estado: `CERRADO` en A00; ambos lados se normalizan antes de comparar cardinalidad.
 - **G04 — decode no transaccional: `TL-LANG-230`.**
   - Productor: `decodeEscapeSummary`.
   - Causa: publica identidad y parámetros conforme avanza; un error posterior deja salida parcial.
   - Consumidores: metadata de escape/ownership y sus lectores.
   - Puntual: `LanguageOwnershipLifetimeModule.cpp`; existe y exige output vacío tras cada error.
+  - Estado: `CERRADO` en A00; parseo local, consumo completo de enteros y publicación al éxito.
 - **G05 — ancho raw toma toda la corrida: `TL-LEX-075`, `TSH-00442`.**
   - Productores: `Lexer::lexRawString` host y `Lexer.LexRawString` self-host.
   - Causa: seis comillas se consumen como apertura de ancho seis; no quedan tres para el cierre vacío.
@@ -647,20 +652,20 @@ El orden de trabajo permanece A00 -> A13. Dentro de cada tanda se respeta la dep
 
 Puertas previas a editar producto:
 
-- `TL-LANG-099` y `TL-LANG-250`: congelar tipo de retorno/error para que la prueba observe rechazo definido.
 - `TP-PAR-306`: ampliar el oráculo para inspeccionar los dos declarators, no sólo consumo hasta EOF.
 - `TP-PAR-511`: reemplazar el fallo artificial por proceso aislado y frontera 128 reproducible.
 - `TP-PAR-524`: ejecutar primero su puntual; si pasa, retirar metadata KPD sin parche de producto.
-- Los otros 47 casos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
+- Los otros 40 casos abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_AUDITORIA`; cero KPD cerrados.
+- Estado de Parte A: `EN_PROGRESO`; A00 cerrada, 7/52 defectos corregidos y 45 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: 52 localizadas; cuatro requieren fortalecimiento o contrato observable.
-- Código de producto modificado durante esta fase: ninguno.
-- Próxima acción permitida: reconciliar las cinco puertas anteriores y congelar el `SCOPE LOCK` de A00.
+- Pruebas puntuales: A00 7/7 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
+- Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
+- Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
+- Próxima acción permitida: abrir A01 sólo después de reportar el cierre A00.
 
 ---
 
@@ -1374,13 +1379,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-11 | 0 | Validación de plan lingüístico | plan 3.0.4 | 147 únicos, 0 duplicados |
 | 2026-10-11 | 0 | Reasignar rendimiento a 3.0.5 | fuente intacta | 15 tandas, 149 elementos |
 | 2026-10-11 | 0 | Alta futura de calidad 3.0.6 | lineamientos §9, §10, §18 | 10 frentes |
+| 2026-10-11 | 1 | Cierre A00 G01-G04 | siete puntuales + consolidado A00 | 7/7 `PASS`; 45 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `0/52`; siguiente acción: auditoría causal completa y grafo productor-consumidor antes de código.
+- A: `7/52`; A00 cerrada; siguiente acción autorizable: inventario causal puntual A01.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Baterías, builds y pruebas ejecutadas durante la creación de este documento: ninguna.
+- Validación ejecutada: sólo siete puntuales A00 y su consolidado; ninguna batería completa.
 

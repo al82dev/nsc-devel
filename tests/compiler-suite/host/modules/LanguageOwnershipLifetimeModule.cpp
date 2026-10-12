@@ -19,12 +19,6 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
         {"language", "ownership"}, std::move(function)});
 }
 
-void addKnownDefectCase(TestRegistry& registry, std::string id, TestFunction function)
-{
-    registry.add(TestCase{std::move(id), "CL-LANG-017", "Host.Language", "unit", "PR",
-        {"language", "ownership"}, std::move(function), TestDisposition::KnownProductDefect});
-}
-
 void registerLifetimeElisionCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-225", [](TestContext& context) {
@@ -111,7 +105,7 @@ void registerEscapeRoundTripCase(TestRegistry& registry)
 
 void registerEscapeRejectionCase(TestRegistry& registry)
 {
-    addKnownDefectCase(registry, "TL-LANG-230", [](TestContext& context) {
+    addCase(registry, "TL-LANG-230", [](TestContext& context) {
         struct Vector final
         {
             std::string encoded;

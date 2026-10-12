@@ -1,7 +1,8 @@
 #include "nativesharp/Language/SumTypeSemantics.h"
 
+#include "CheckedLayoutArithmetic.h"
+
 #include <algorithm>
-#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -9,11 +10,6 @@ namespace nativesharp::language
 {
 namespace
 {
-std::size_t alignUp(std::size_t value, std::size_t alignment) noexcept
-{
-    return (value + alignment - 1U) / alignment * alignment;
-}
-
 bool validAlignment(std::size_t value) noexcept
 {
     return value != 0 && value <= 16 && (value & (value - 1U)) == 0;
@@ -35,10 +31,17 @@ std::optional<VariantLayout> computeWindowsX64VariantLayout(
         payloadAlignment = std::max(payloadAlignment, item.payloadAlignment);
     }
     result.alignment = std::max(result.tagSize, payloadAlignment);
-    result.payloadOffset = alignUp(result.tagSize, payloadAlignment);
-    if (payloadSize > std::numeric_limits<std::size_t>::max() - result.payloadOffset)
-        return std::nullopt;
-    result.size = alignUp(result.payloadOffset + payloadSize, result.alignment);
+    const std::optional<std::size_t> payloadOffset =
+        detail::checkedLayoutAlignUp(result.tagSize, payloadAlignment);
+    if (!payloadOffset.has_value()) return std::nullopt;
+    result.payloadOffset = *payloadOffset;
+    const std::optional<std::size_t> payloadEnd =
+        detail::checkedLayoutAdd(result.payloadOffset, payloadSize);
+    if (!payloadEnd.has_value()) return std::nullopt;
+    const std::optional<std::size_t> finalSize =
+        detail::checkedLayoutAlignUp(*payloadEnd, result.alignment);
+    if (!finalSize.has_value()) return std::nullopt;
+    result.size = *finalSize;
     return result;
 }
 

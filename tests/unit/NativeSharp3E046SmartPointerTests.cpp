@@ -9,13 +9,15 @@ int main(int argc, char** argv)
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
 
-    tests.expect(kSmartPointerFamilies.size() == 5 &&
-            smartPointerFamilyContract(SmartPointerFamily::Unique).name == "Unique" &&
-            smartPointerFamilyContract(SmartPointerFamily::WeakArc).weak,
+    const SmartPointerFamilyContract* unique = smartPointerFamilyContract(SmartPointerFamily::Unique);
+    const SmartPointerFamilyContract* weakArc = smartPointerFamilyContract(SmartPointerFamily::WeakArc);
+    const SmartPointerFamilyContract* rc = smartPointerFamilyContract(SmartPointerFamily::Rc);
+    const SmartPointerFamilyContract* arc = smartPointerFamilyContract(SmartPointerFamily::Arc);
+    tests.expect(kSmartPointerFamilies.size() == 5 && unique != nullptr && weakArc != nullptr &&
+            unique->name == "Unique" && weakArc->weak,
         "E046 freezes the five distinct smart pointer families");
-    tests.expect(!smartPointerFamilyContract(SmartPointerFamily::Rc).implicitCopy &&
-            smartPointerFamilyContract(SmartPointerFamily::Rc).explicitClone &&
-            smartPointerFamilyContract(SmartPointerFamily::Arc).explicitClone,
+    tests.expect(rc != nullptr && arc != nullptr && !rc->implicitCopy &&
+            rc->explicitClone && arc->explicitClone,
         "shared ownership is cloned explicitly and never copied invisibly");
 
     std::string error;

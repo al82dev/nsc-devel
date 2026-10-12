@@ -145,8 +145,9 @@ bool specializationStrictlyDominates(
     std::span<const std::string> fallbackConstraints)
 {
     std::unordered_set<std::string> candidate(candidateConstraints.begin(), candidateConstraints.end());
-    return candidate.size() > fallbackConstraints.size() && std::ranges::all_of(
-        fallbackConstraints, [&](const std::string& item) { return candidate.contains(item); });
+    std::unordered_set<std::string> fallback(fallbackConstraints.begin(), fallbackConstraints.end());
+    return candidate.size() > fallback.size() && std::ranges::all_of(
+        fallback, [&](const std::string& item) { return candidate.contains(item); });
 }
 
 InstantiationBudget::InstantiationBudget(
