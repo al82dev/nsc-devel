@@ -1,4 +1,5 @@
 #include "ParserFinalTestSupport.h"
+#include "IsolatedProcessTestSupport.h"
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 
@@ -141,19 +142,41 @@ void testEofPrimary(TestContext& context)
 
 void testDeepNestedInterpolation(TestContext& context)
 {
+    constexpr std::string_view probe = "TP-PAR-511-depth-128";
+    if (isolated_process_support::probeMode() != probe)
+    {
+        const auto result = isolated_process_support::runCurrentExecutable("TP-PAR-511", probe);
+        context.expect(result.started && result.error.empty() && result.exitCode == 0 &&
+                result.output.find("\"status\":\"PASS\"") != std::string::npos,
+            "TP-PAR-511 depth 128 must complete successfully in the isolated parser process; "
+            "started=" + std::string(result.started ? "true" : "false") +
+            ", exit=" + std::to_string(result.exitCode) + ", error=" + result.error);
+        return;
+    }
+
     std::string source = "$\"{";
-    source.append(32, '(');
+    source.append(128, '(');
     source += "value";
-    source.append(32, ')');
+    source.append(128, ')');
     source += "}\"";
     ParserFixture fixture(source);
     AstNode* root = parseExpression(fixture);
+    ParserFixture tuple("(((first, second)))");
+    AstNode* tupleRoot = parseExpression(tuple);
+    ParserFixture precedence("(((left + right))) * factor");
+    AstNode* precedenceRoot = parseExpression(precedence);
     context.expect(root != nullptr && firstText(root, "value") != nullptr &&
             fixture.parser().current().kind() == TokenKind::EndOfFile &&
-            fixture.diagnostics().diagnostics().empty(),
-        "TP-PAR-511 balanced interpolation at the last directed safe depth must preserve offsets and finish at EOF");
-    context.expect(false,
-        "TP-PAR-511 PRODUCT-DEFECT: depth 128 terminates with Windows stack overflow (0xC00000FD); process isolation is required to keep the suite alive");
+            fixture.diagnostics().diagnostics().empty() &&
+            tupleRoot != nullptr && tupleRoot->kind() == AstNodeKind::TupleExpression &&
+            tupleRoot->children().size() == 2 && tupleRoot->children()[0]->text() == "first" &&
+            tupleRoot->children()[1]->text() == "second" && tuple.diagnostics().diagnostics().empty() &&
+            precedenceRoot != nullptr && precedenceRoot->kind() == AstNodeKind::BinaryExpression &&
+            precedenceRoot->tokenKind() == TokenKind::Star && precedenceRoot->first() != nullptr &&
+            precedenceRoot->first()->kind() == AstNodeKind::BinaryExpression &&
+            precedenceRoot->first()->tokenKind() == TokenKind::Plus &&
+            precedence.diagnostics().diagnostics().empty(),
+        "TP-PAR-511 depth 128 must terminate while grouping preserves tuple and precedence contracts");
 }
 
 void testPrimaryYieldsToPostfix(TestContext& context)
@@ -179,7 +202,7 @@ void registerParserInterpolationFinalModule(TestRegistry& registry)
     addFinalParserCase(registry, "TP-PAR-509", "CP-PAR-040", testUnexpectedPrimaryToken);
     addFinalParserCase(registry, "TP-PAR-510", "CP-PAR-040", testEofPrimary);
     addFinalParserCase(registry, "TP-PAR-511", "CP-PAR-040", testDeepNestedInterpolation,
-        "NIGHTLY", TestDisposition::KnownProductDefect, {"known-defect", "stack-overflow"});
+        "NIGHTLY");
     addFinalParserCase(registry, "TP-PAR-512", "CP-PAR-040", testPrimaryYieldsToPostfix);
 }
 }

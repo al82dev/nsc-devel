@@ -14052,6 +14052,77 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::KwBase: kind = ast::AstNodeKind::BaseExpression; break;
         case TokenKind::LeftParen:
         {
+            // Collapse a pure run of grouping parentheses before entering the full expression
+            // precedence ladder. The recursive spelling previously multiplied every source
+            // parenthesis by the complete ladder depth and exhausted the Windows debug stack at
+            // otherwise practical nesting. A top-level comma disables this path so tuple parsing
+            // keeps the existing node construction and element ordering.
+            std::size_t groupingDepth = 1;
+            while (index_ + groupingDepth < tokens_.size() &&
+                tokens_[index_ + groupingDepth].kind() == TokenKind::LeftParen)
+                ++groupingDepth;
+            bool pureGroupingRun = groupingDepth > 1 &&
+                index_ + groupingDepth < tokens_.size() &&
+                tokens_[index_ + groupingDepth].kind() != TokenKind::RightParen;
+            if (pureGroupingRun)
+            {
+                std::size_t nestedParentheses = 0;
+                std::size_t nestedBrackets = 0;
+                std::size_t nestedBraces = 0;
+                std::size_t closingIndex = tokens_.size();
+                for (std::size_t cursor = index_ + groupingDepth;
+                     cursor < tokens_.size(); ++cursor)
+                {
+                    const TokenKind kind = tokens_[cursor].kind();
+                    if (kind == TokenKind::LeftParen) ++nestedParentheses;
+                    else if (kind == TokenKind::RightParen)
+                    {
+                        if (nestedParentheses != 0)
+                        {
+                            --nestedParentheses;
+                        }
+                        else
+                        {
+                            closingIndex = cursor;
+                            break;
+                        }
+                    }
+                    else if (kind == TokenKind::LeftBracket) ++nestedBrackets;
+                    else if (kind == TokenKind::RightBracket && nestedBrackets != 0)
+                        --nestedBrackets;
+                    else if (kind == TokenKind::LeftBrace) ++nestedBraces;
+                    else if (kind == TokenKind::RightBrace && nestedBraces != 0)
+                        --nestedBraces;
+                    else if (kind == TokenKind::Comma && nestedParentheses == 0 &&
+                        nestedBrackets == 0 && nestedBraces == 0)
+                    {
+                        pureGroupingRun = false;
+                        break;
+                    }
+                }
+                if (closingIndex == tokens_.size()) pureGroupingRun = false;
+                for (std::size_t offset = 1; pureGroupingRun && offset < groupingDepth; ++offset)
+                {
+                    pureGroupingRun = closingIndex + offset < tokens_.size() &&
+                        tokens_[closingIndex + offset].kind() == TokenKind::RightParen;
+                }
+            }
+            if (pureGroupingRun)
+            {
+                const SourceRange outerOpen = current().range();
+                for (std::size_t depth = 0; depth < groupingDepth; ++depth) consume();
+                ast::AstNode* expression = parseArgument();
+                SourceRange outerClose = current().range();
+                for (std::size_t depth = 0; depth < groupingDepth; ++depth)
+                {
+                    outerClose = current().range();
+                    expect(TokenKind::RightParen, "')'");
+                }
+                if (expression != nullptr)
+                    expression->setRange(SourceRange(outerOpen.begin(), outerClose.end()));
+                return expression;
+            }
+
             const SourceRange open = consume().range();
             if (at(TokenKind::RightParen))
             {
