@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 28 | 53.85 % | `EN_PROGRESO`; A03 17/21 |
+| A | 3.0.3 | 14 | 52 defectos | 29 | 55.77 % | `EN_PROGRESO`; A03 18/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G23, quedan 24 KPD abiertos y veintiocho casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G24, quedan 23 KPD abiertos y veintinueve casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -272,7 +272,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A03 · `TP-PAR-450` / `CP-PAR-037`**
   - Contrato: lambda con retorno explícito retiene `TypeSyntax` independiente del body.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1540; T:`ParserLambdaContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; puntual G24 como KPD y Required `PASS`; commit de implementación G24: este commit.
 - **A03 · `TP-PAR-476` / `CP-PAR-038`**
   - Contrato: allocation de `void` emite `InvalidType`.
   - Estado inicial: `KNOWN_FAILURE`; M:1566; T:`ParserUnaryExpressionModule.cpp`; `5dee730d`.
@@ -548,6 +548,7 @@ Resultado del inventario causal:
   - Causa: tras parámetros exige `FatArrow`; no consume `-> TypeSyntax` ni lo adjunta al nodo.
   - Consumidores: binding/inferencia de lambda y lowering callable.
   - Puntual: `ParserLambdaContinuationModule.cpp`; existe.
+  - Estado: `CERRADO` en A03; lookahead y parser conservan `-> TypeSyntax` antes de `=>`.
 - **G25 — recursión de expresiones sin presupuesto: `TP-PAR-511`.**
   - Productor: cadena recursiva de Parser para paréntesis e interpolaciones anidadas.
   - Causa: no hay depth budget ni conversión iterativa antes de agotar stack a profundidad 128.
@@ -678,7 +679,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 17/21, 28/52 defectos corregidos y 24 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 18/21, 29/52 defectos corregidos y 23 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -724,7 +725,9 @@ Puertas previas a editar producto:
   exactamente un `ExpectedToken` y conservar EOF; dos objetos reconstruidos con LLVM 23.1.0 sin regenerar configuración.
 - Evidencia G23: `TP-PAR-431` pasó como KPD (13,032 us) y Required (3,932 us) tras admitir un delimitador inicial y
   tratar EOF como final omitido; el oráculo verifica por separado forma exclusiva, inclusiva y ambos endpoints omitidos.
-- Próxima acción A03: G24.
+- Evidencia G24: `TP-PAR-450` pasó como KPD (3,943 us) y Required (4,044 us) tras reconocer `-> TypeSyntax =>` en el
+  lookahead y adjuntar el tipo explícito al `LambdaExpression`; dos objetos LLVM 23.1.0 sin regenerar configuración.
+- Próxima acción A03: G25.
 
 ---
 
@@ -1458,10 +1461,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G21 | dos puntuales KPD + Required | `PASS`; 26 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G22 | puntual KPD + Required | `PASS`; 25 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G23 | puntual KPD + Required | `PASS`; 24 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G24 | puntual KPD + Required | `PASS`; 23 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `28/52`; A03 17/21; siguiente acción vinculante: G24.
+- A: `29/52`; A03 18/21; siguiente acción vinculante: G25.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

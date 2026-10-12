@@ -12855,6 +12855,18 @@ bool Parser::looksLikeLambdaExpression() const noexcept
 {
     const auto looksLikeParameterHead = [&](std::size_t begin) noexcept
     {
+        const auto hasFatArrowBeforeBoundary = [&](std::size_t cursor) noexcept
+        {
+            for (; cursor < tokens_.size(); ++cursor)
+            {
+                const TokenKind kind = tokens_[cursor].kind();
+                if (kind == TokenKind::FatArrow) return true;
+                if (kind == TokenKind::Semicolon || kind == TokenKind::LeftBrace ||
+                    kind == TokenKind::RightBrace || kind == TokenKind::EndOfFile)
+                    return false;
+            }
+            return false;
+        };
         if (begin >= tokens_.size()) return false;
         // T08-F04.  `<T>(T value) => ...` is unambiguous only after the complete generic head
         // and parameter list have been seen.  Do not treat an arbitrary less-than expression as
@@ -12881,7 +12893,12 @@ bool Parser::looksLikeLambdaExpression() const noexcept
             if (depth != 0 || begin >= tokens_.size()) return false;
         }
         if (tokens_[begin].kind() == TokenKind::Identifier)
-            return begin + 1 < tokens_.size() && tokens_[begin + 1].kind() == TokenKind::FatArrow;
+        {
+            if (begin + 1 >= tokens_.size()) return false;
+            if (tokens_[begin + 1].kind() == TokenKind::FatArrow) return true;
+            return tokens_[begin + 1].kind() == TokenKind::Arrow &&
+                hasFatArrowBeforeBoundary(begin + 2);
+        }
         if (tokens_[begin].kind() != TokenKind::LeftParen) return false;
 
         // E11: the old recognizer only admitted `(x, y) => ...`; consequently an explicitly
@@ -12900,21 +12917,14 @@ bool Parser::looksLikeLambdaExpression() const noexcept
                 {
                     if (cursor + 1 >= tokens_.size()) return false;
                     if (tokens_[cursor + 1].kind() == TokenKind::FatArrow) return true;
+                    if (tokens_[cursor + 1].kind() == TokenKind::Arrow)
+                        return hasFatArrowBeforeBoundary(cursor + 2);
                     if (tokens_[cursor + 1].kind() != TokenKind::Identifier ||
                         tokens_[cursor + 1].lexeme() != "where")
                         return false;
                     // Constraint clauses contain types, commas and equality operators but no
                     // statement boundary. The first fat arrow closes the generic-lambda head.
-                    for (std::size_t constraint = cursor + 2; constraint < tokens_.size(); ++constraint)
-                    {
-                        const TokenKind constraintKind = tokens_[constraint].kind();
-                        if (constraintKind == TokenKind::FatArrow) return true;
-                        if (constraintKind == TokenKind::Semicolon ||
-                            constraintKind == TokenKind::LeftBrace ||
-                            constraintKind == TokenKind::RightBrace)
-                            return false;
-                    }
-                    return false;
+                    return hasFatArrowBeforeBoundary(cursor + 2);
                 }
             }
             else if (kind == TokenKind::LeftBracket) ++bracketDepth;
@@ -13095,6 +13105,8 @@ ast::AstNode* Parser::parseLambdaExpression()
     }
     if (!lambda->genericParameters().empty())
         parseGenericConstraintClauses(lambda);
+    if (consumeIf(TokenKind::Arrow))
+        lambda->setTypeSyntax(parseType());
     expect(TokenKind::FatArrow, "'=>'");
 
     lambda->setRange(tokenRangeFrom(beginIndex));

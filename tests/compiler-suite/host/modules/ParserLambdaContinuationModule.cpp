@@ -111,6 +111,6 @@ void registerParserLambdaContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-447", testAutomaticAndTypedParameters);
     addCase(registry, "TP-PAR-448", testCaptureModes);
     addCase(registry, "TP-PAR-449", testGenericLambdaConstraints);
-    addCase(registry, "TP-PAR-450", testExplicitLambdaReturnType, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-450", testExplicitLambdaReturnType);
 }
 }
