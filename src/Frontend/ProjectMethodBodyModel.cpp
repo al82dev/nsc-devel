@@ -4373,6 +4373,15 @@ void ProjectMethodBodyModel::analyzeBlock(
             if (hasListLength)
             {
                 const language::ExhaustivenessResult result = language::analyzeListMatch(arms);
+                for (const std::size_t arm : result.unreachableArms)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        block->range(),
+                        "match arm #" + std::to_string(arm + 1) +
+                            " is unreachable for the list-length domain");
+                }
                 if (!result.exhaustive)
                 {
                     std::string message = "non-exhaustive match; missing list length";

@@ -109,17 +109,32 @@ ExhaustivenessResult analyzeListMatch(std::span<const MatchArmCoverage> arms)
     for (std::size_t index = 0; index < arms.size(); ++index)
     {
         const MatchArmCoverage& arm = arms[index];
-        if (arm.wildcard && !arm.hasGuard) unguardedWildcard = true;
-        if (!arm.listLength.has_value() || arm.hasGuard) continue;
-        if (arm.listLengthRest)
+        const bool coveredByWildcard = unguardedWildcard;
+        bool useful = true;
+        if (arm.wildcard)
         {
-            if (!restMin.has_value() || *arm.listLength < *restMin)
-                restMin = *arm.listLength;
+            useful = !coveredByWildcard;
+            if (!arm.hasGuard) unguardedWildcard = true;
         }
-        else
+        else if (arm.listLength.has_value() && !arm.hasGuard)
         {
-            exactLengths.insert(*arm.listLength);
+            if (arm.listLengthRest)
+            {
+                useful = !coveredByWildcard &&
+                    (!restMin.has_value() || *arm.listLength < *restMin);
+                if (!restMin.has_value() || *arm.listLength < *restMin)
+                    restMin = *arm.listLength;
+            }
+            else
+            {
+                const bool covered = coveredByWildcard ||
+                    exactLengths.contains(*arm.listLength) ||
+                    (restMin.has_value() && *restMin <= *arm.listLength);
+                useful = !covered;
+                exactLengths.insert(*arm.listLength);
+            }
         }
+        if (!useful) result.unreachableArms.push_back(index);
     }
     if (unguardedWildcard)
     {
