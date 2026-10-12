@@ -55,8 +55,8 @@ void classificationContract(TestContext& context, std::size_t)
 
 void schemaContract(TestContext& context, std::size_t variant)
 {
-    context.expect(interop::kMetadataFormatMajor == 1 && interop::kMetadataFormatMinor == 38,
-        "current public NSMETA format must be 1.38");
+    context.expect(interop::kMetadataFormatMajor == 1 && interop::kMetadataFormatMinor == 39,
+        "current public NSMETA format must be 1.39");
     context.expect(interop::kNativeAbiMajor == 1 && interop::kNativeAbiMinor == 0,
         "native ABI version must be independent from metadata format");
     context.expect(interop::kManagedDelegateCellSize == 32, "managed delegate cell size must remain ABI-visible");

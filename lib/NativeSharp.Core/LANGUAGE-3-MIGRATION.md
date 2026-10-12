@@ -125,7 +125,7 @@ Resultados puntuales:
 - smoke de `Optional<int>`, `Optional<MoveToken>`, `Lazy<int>`, fechas, SIMD, bits, binario y texto: exit 42;
 - sonda de `Optional<MoveToken>` con `UncheckedTake`: compiló, enlazó y ejecutó con exit 42;
 - sonda negativa de `Lazy<MoveToken>`: rechazo esperado por `where T : copy`;
-- metadata NSMETA 1.38 válida: 71 tipos, 671 miembros y ABI fingerprint verificado;
+- metadata NSMETA 1.39 válida: 71 tipos, 671 miembros y ABI fingerprint verificado;
 - coherencia metadata/archive válida: 15 miembros de archive y 647 símbolos requeridos;
 - artefactos producidos y ejecutables: Windows AMD64, O0, enlazados con NSLink release.
 

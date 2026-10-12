@@ -34,7 +34,7 @@ contrastó documentos, contratos y casos.
 
 ## Hallazgos conservados
 
-1. NSMETA vigente es 1.38 y contiene compuertas aditivas desde 1.0.
+1. NSMETA vigente es 1.39 y contiene compuertas aditivas desde 1.0.
 2. El byte de revisión de fuente introducido en 1.23 se consume pero se descarta; no selecciona edición.
 3. `producerVersion` sí conserva una ventana de productores conocidos incompatibles.
 4. Los comentarios históricos duplican y desordenan minors 23, 34 y 38.

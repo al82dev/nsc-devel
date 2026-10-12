@@ -45,5 +45,5 @@ lifetime across iterations.
   `TL-LANG-160`: `PASS`.
 - No full battery was run.
 
-Surface promotion remains pending until `NS304-T01-F08` closes metadata, debug and execution
-integration for the whole T01 family.
+Surface promotion was deliberately deferred to `NS304-T01-F08`, which subsequently closed
+metadata, debug, and productive execution integration for the whole T01 family.

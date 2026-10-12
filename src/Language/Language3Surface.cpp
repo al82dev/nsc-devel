@@ -24,8 +24,8 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "requires versioned dispatch, coherence and metadata rules for interface bodies"},
     {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
      "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
-    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::PlannedFor304,
-     "requires thread-safe once initialization, reentrancy and failure semantics"},
+    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
+     "thread-safe once initialization with reentrancy and terminal failure"},
     {Language3Feature::Decimal, "decimal", Language3Disposition::PlannedFor304,
      "requires a frozen value ABI plus arithmetic, overflow, conversion and formatting contracts"},
     {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
@@ -36,10 +36,10 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
-    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::PlannedFor304,
-     "requires scope, definite-assignment and cleanup rules across true and false edges"},
-    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::PlannedFor304,
-     "requires thread-safe once initialization, reentrancy, destruction and module-lifetime rules"}
+    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
+     "edge-scoped if, while and switch locals with definite assignment and cleanup"},
+    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::Implemented,
+     "module storage with thread-safe once initialization and unload destruction"}
 }};
 
 std::string_view dispositionName(Language3Disposition disposition) noexcept

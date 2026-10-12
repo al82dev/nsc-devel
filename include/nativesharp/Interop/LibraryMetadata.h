@@ -94,7 +94,18 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-inline constexpr std::uint16_t kMetadataFormatMinor = 38;
+inline constexpr std::uint16_t kMetadataFormatMinor = 39;
+
+// NSMETA 1.39. These bits version producer language capabilities that affect private lowering
+// and debug behavior without changing the public NativeSharp ABI projection. Older files decode
+// as zero; deliberate down-level emission omits this catalogue.
+inline constexpr std::uint32_t kMetadataLanguageStaticConstructors = 1U << 0U;
+inline constexpr std::uint32_t kMetadataLanguageStaticLocals = 1U << 1U;
+inline constexpr std::uint32_t kMetadataLanguageConditionDeclarations = 1U << 2U;
+inline constexpr std::uint32_t kMetadataLanguageFeatureMask =
+    kMetadataLanguageStaticConstructors |
+    kMetadataLanguageStaticLocals |
+    kMetadataLanguageConditionDeclarations;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -544,6 +555,7 @@ struct LibraryMetadata final
     std::uint32_t targetId = 1;
     std::uint32_t pointerSize = 8;
     std::uint32_t pointerAlignment = 8;
+    std::uint32_t languageFeatureFlags = 0;
     std::string producerVersion;
     std::string moduleName;
     std::string targetTriple;

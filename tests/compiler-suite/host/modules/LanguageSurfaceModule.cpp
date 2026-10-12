@@ -1,9 +1,12 @@
 #include "FrontendContractSupport.h"
+#include "ExternalProgramTestSupport.h"
 #include "nsc_suite/TestRegistry.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/ErrorSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/LLVM/DebugMetadataVersion.h"
 
 #include <algorithm>
 #include <array>
@@ -15,8 +18,27 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+
+#ifndef NSC_SUITE_NSC_EXECUTABLE
+#error "NSC_SUITE_NSC_EXECUTABLE is required for T01 product integration"
+#endif
+#ifndef NSC_SUITE_NSLINK_EXECUTABLE
+#error "NSC_SUITE_NSLINK_EXECUTABLE is required for T01 product integration"
+#endif
+#ifndef NSC_SUITE_WINDOWS_RUNTIME_LIBRARY
+#error "NSC_SUITE_WINDOWS_RUNTIME_LIBRARY is required for T01 product integration"
+#endif
 
 namespace nsc::suite
 {
@@ -51,8 +73,8 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "requires versioned dispatch, coherence and metadata rules for interface bodies"},
     {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
         "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
-    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::PlannedFor304,
-        "requires thread-safe once initialization, reentrancy and failure semantics"},
+    {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
+        "thread-safe once initialization with reentrancy and terminal failure"},
     {Language3Feature::Decimal, "decimal", Language3Disposition::PlannedFor304,
         "requires a frozen value ABI plus arithmetic, overflow, conversion and formatting contracts"},
     {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
@@ -63,10 +85,10 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
         "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
-    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::PlannedFor304,
-        "requires scope, definite-assignment and cleanup rules across true and false edges"},
-    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::PlannedFor304,
-        "requires thread-safe once initialization, reentrancy, destruction and module-lifetime rules"},
+    {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
+        "edge-scoped if, while and switch locals with definite assignment and cleanup"},
+    {Language3Feature::StaticLocals, "static-locals", Language3Disposition::Implemented,
+        "module storage with thread-safe once initialization and unload destruction"},
 }};
 
 class TemporaryModuleInitializationGraph final
@@ -117,6 +139,135 @@ private:
 
     std::filesystem::path directory_;
 };
+
+class TemporaryT01Products final
+{
+public:
+    TemporaryT01Products()
+    {
+        static std::atomic<std::uint64_t> sequence{0};
+        directory_ = std::filesystem::current_path() /
+            ("nsc-language-t01-products-" +
+             std::to_string(sequence.fetch_add(1, std::memory_order_relaxed)));
+        std::filesystem::create_directories(directory_);
+    }
+
+    TemporaryT01Products(const TemporaryT01Products&) = delete;
+    TemporaryT01Products& operator=(const TemporaryT01Products&) = delete;
+
+    ~TemporaryT01Products()
+    {
+        std::error_code ignored;
+        std::filesystem::remove_all(directory_, ignored);
+    }
+
+    std::filesystem::path writeProject(
+        std::string_view name,
+        std::string_view outputType,
+        std::string_view source) const
+    {
+        const std::filesystem::path sourceFile = directory_ / (std::string(name) + ".ns");
+        const std::filesystem::path projectFile = directory_ / (std::string(name) + ".nsproj");
+        write(sourceFile, source);
+        write(projectFile,
+            "<Project><PropertyGroup><Name>" + std::string(name) +
+            "</Name><OutputType>" + std::string(outputType) +
+            "</OutputType><Language>3</Language></PropertyGroup><ItemGroup><Compile Include=\"" +
+            sourceFile.filename().string() + "\"/></ItemGroup></Project>");
+        return projectFile;
+    }
+
+    const std::filesystem::path& directory() const noexcept
+    {
+        return directory_;
+    }
+
+private:
+    static void write(const std::filesystem::path& path, std::string_view contents)
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    }
+
+    std::filesystem::path directory_;
+};
+
+external_program_support::Result runT01Compiler(
+    std::vector<std::wstring> arguments,
+    const std::filesystem::path& directory)
+{
+    const std::vector<std::pair<std::wstring, std::wstring>> environment = {
+        {L"NSC_LINKER", std::filesystem::path(NSC_SUITE_NSLINK_EXECUTABLE).wstring()},
+        {L"NSC_WINDOWS_RUNTIME_LIBRARY",
+            std::filesystem::path(NSC_SUITE_WINDOWS_RUNTIME_LIBRARY).wstring()}};
+    return external_program_support::run(
+        std::filesystem::path(NSC_SUITE_NSC_EXECUTABLE), arguments, {}, directory, environment);
+}
+
+external_program_support::Result emitT01Product(
+    std::wstring_view action,
+    const std::filesystem::path& project,
+    const std::filesystem::path& product,
+    const std::filesystem::path& directory)
+{
+    return runT01Compiler(
+        {L"-O0", L"-g", std::wstring(action), project.wstring(), L"-o", product.wstring()},
+        directory);
+}
+
+constexpr std::string_view kT01DllSource = R"ns(
+public class Gate
+{
+    private static int Value = Initialize();
+
+    static Gate()
+    {
+        Value = Value + Reenter();
+    }
+
+    private static int Initialize() { return 40; }
+    private static int Reenter() { return 2; }
+
+    public static export extern C int Read() { return Value; }
+
+    public static export extern C int Next()
+    {
+        static int count = 40;
+        count = count + 1;
+        return count;
+    }
+
+    public static export extern C int Select(int choice)
+    {
+        if (bool ready = choice > 0)
+        {
+            return ready ? 7 : 0;
+        }
+        switch (int selected = choice)
+        {
+            case 0: return selected;
+            default: return -1;
+        }
+    }
+}
+)ns";
+
+constexpr std::string_view kT01ExeSource = R"ns(
+public class ProgramGate
+{
+    private static int Value = 40;
+    static ProgramGate() { Value = Value + Reenter(); }
+    private static int Reenter() { return 2; }
+    public static int Read()
+    {
+        static int cached = Value;
+        if (bool ready = cached == 42) { return ready ? cached : 1; }
+        return 2;
+    }
+
+    public static int Main() { return Read(); }
+}
+)ns";
 
 void collectMirKind(
     const nativesharp::frontend::ProjectOopMirNode* node,
@@ -188,8 +339,7 @@ std::string expectedManifest()
         "rules for interface bodies\n"
         "list-patterns=planned-3.0.4:requires exhaustiveness and usefulness analysis integrated with borrow "
         "and move semantics\n"
-        "static-constructors=planned-3.0.4:requires thread-safe once initialization, reentrancy and failure "
-        "semantics\n"
+        "static-constructors=implemented:thread-safe once initialization with reentrancy and terminal failure\n"
         "decimal=planned-3.0.4:requires a frozen value ABI plus arithmetic, overflow, conversion and formatting "
         "contracts\n"
         "extension-methods=implemented:static namespace extensions with deterministic import lookup and no "
@@ -200,10 +350,9 @@ std::string expectedManifest()
         "move(value)\n"
         "long-double=rejected-3.0:Windows x64 MSVC ABI aliases long double to double; use double in "
         "NativeSharp 3.0\n"
-        "condition-declarations=planned-3.0.4:requires scope, definite-assignment and cleanup rules across true "
-        "and false edges\n"
-        "static-locals=planned-3.0.4:requires thread-safe once initialization, reentrancy, destruction and "
-        "module-lifetime rules\n";
+        "condition-declarations=implemented:edge-scoped if, while and switch locals with definite assignment "
+        "and cleanup\n"
+        "static-locals=implemented:module storage with thread-safe once initialization and unload destruction\n";
 }
 
 std::string expectedDiagnostic(const ExpectedSurfaceEntry& entry)
@@ -306,8 +455,8 @@ void registerUnavailableDiagnosticCase(TestRegistry& registry)
             context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
-        context.expect(planned == 9 && deferred == 0 && rejected == 1,
-            "TL-LANG-160 the catalog must expose nine nonproductive 3.0.4 plans and one rejected feature");
+        context.expect(planned == 6 && deferred == 0 && rejected == 1,
+            "TL-LANG-160 the catalog must expose six nonproductive 3.0.4 plans and one rejected feature");
     });
 }
 
@@ -778,6 +927,183 @@ class Gate
                 "unknown identifier 'value'");
         }});
 }
+
+void verifyT01MetadataAndDebug(
+    TestContext& context,
+    const std::filesystem::path& project,
+    const std::filesystem::path& directory)
+{
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(project, error);
+    context.expect(compiled && error.empty(),
+        "TL-LANG-301 T01 metadata/debug fixture must compile through MIR: " +
+            projectFailureEvidence(compilation, error));
+    if (!compiled || compilation.nameLookup() == nullptr ||
+        compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
+    {
+        return;
+    }
+
+    nativesharp::interop::LibraryMetadataCodec codec;
+    nativesharp::interop::LibraryMetadata written;
+    const std::filesystem::path metadataFile = directory / "T01.nsmeta";
+    error.clear();
+    const bool emitted = codec.write(compilation, metadataFile, written, error);
+    context.expect(emitted && error.empty() &&
+            written.formatMajor == 1 && written.formatMinor == 39 &&
+            written.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
+        "TL-LANG-301 NSMETA 1.39 must publish all three closed T01 capabilities: " + error);
+
+    nativesharp::interop::LibraryMetadata decoded;
+    error.clear();
+    const bool read = codec.read(metadataFile, decoded, error);
+    context.expect(read && error.empty() &&
+            decoded.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
+        "TL-LANG-301 the T01 capability catalogue must survive NSMETA round-trip: " + error);
+
+    nativesharp::interop::LibraryMetadata legacy = written;
+    legacy.formatMinor = 38;
+    const std::filesystem::path legacyFile = directory / "T01-legacy.nsmeta";
+    error.clear();
+    const bool legacyWritten = codec.writeModel(legacy, legacyFile, error);
+    nativesharp::interop::LibraryMetadata legacyDecoded;
+    const bool legacyRead = legacyWritten && codec.read(legacyFile, legacyDecoded, error);
+    context.expect(legacyRead && error.empty() && legacyDecoded.languageFeatureFlags == 0,
+        "TL-LANG-301 NSMETA 1.38 must remain readable without inventing 1.39 capabilities: " +
+            error);
+
+    const external_program_support::Result debugIr = runT01Compiler(
+        {L"-O0", L"--dump-project-oop-llvm", project.wstring()}, directory);
+    context.expect(debugIr.started && debugIr.exitCode == 0 && debugIr.error.empty(),
+        "TL-LANG-301 T01 fixture must lower with full debug information: " +
+            debugIr.error + debugIr.output);
+    if (!debugIr.started || debugIr.exitCode != 0)
+    {
+        return;
+    }
+    context.expect(debugIr.output.find("__nsc_cctor_body_") != std::string::npos,
+        "TL-LANG-301 productive LLVM must retain the static-constructor identity");
+}
+
+void verifyT01Executable(
+    TestContext& context,
+    const TemporaryT01Products& products)
+{
+    const std::filesystem::path project = products.writeProject(
+        "T01Executable", "Exe", kT01ExeSource);
+    const std::filesystem::path executable = products.directory() / "T01Executable.exe";
+    const external_program_support::Result emitted = emitT01Product(
+        L"--emit-project-oop-exe", project, executable, products.directory());
+    context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+        "TL-LANG-301 T01 EXE must link through the productive compiler: " +
+            emitted.error + emitted.output);
+    if (!emitted.started || emitted.exitCode != 0)
+    {
+        return;
+    }
+    std::filesystem::path programDatabase = executable;
+    programDatabase.replace_extension(".pdb");
+    context.expect(std::filesystem::exists(programDatabase) &&
+            std::filesystem::file_size(programDatabase) != 0 &&
+            nativesharp::llvm_backend::kDebugMetadataMajor == 1 &&
+            nativesharp::llvm_backend::kDebugMetadataMinor == 1,
+        "TL-LANG-301 T01 EXE must emit a non-empty NSDEBUG 1.1 CodeView/PDB artifact");
+    const auto result = external_program_support::run(
+        executable, {}, {}, products.directory());
+    context.expect(result.started && result.error.empty() && result.exitCode == 42,
+        "TL-LANG-301 T01 EXE must execute cctor recursion, static local and condition declaration "
+        "with exit 42: " + result.error + result.output);
+}
+
+void verifyT01DynamicLibrary(
+    TestContext& context,
+    const TemporaryT01Products& products,
+    const std::filesystem::path& project)
+{
+    const std::filesystem::path library = products.directory() / "T01Dynamic.dll";
+    const external_program_support::Result emitted = emitT01Product(
+        L"--emit-project-oop-dll", project, library, products.directory());
+    context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+        "TL-LANG-301 T01 DLL must link through the productive compiler: " +
+            emitted.error + emitted.output);
+    if (!emitted.started || emitted.exitCode != 0)
+    {
+        return;
+    }
+    std::filesystem::path programDatabase = library;
+    programDatabase.replace_extension(".pdb");
+    context.expect(std::filesystem::exists(programDatabase) &&
+            std::filesystem::file_size(programDatabase) != 0 &&
+            nativesharp::llvm_backend::kDebugMetadataMajor == 1 &&
+            nativesharp::llvm_backend::kDebugMetadataMinor == 1,
+        "TL-LANG-301 T01 DLL must emit a non-empty NSDEBUG 1.1 CodeView/PDB artifact");
+
+    HMODULE module = LoadLibraryW(library.c_str());
+    using NullaryInt = int(__cdecl*)();
+    using UnaryInt = int(__cdecl*)(int);
+    NullaryInt read = module != nullptr
+        ? reinterpret_cast<NullaryInt>(GetProcAddress(module, "Read"))
+        : nullptr;
+    NullaryInt next = module != nullptr
+        ? reinterpret_cast<NullaryInt>(GetProcAddress(module, "Next"))
+        : nullptr;
+    UnaryInt select = module != nullptr
+        ? reinterpret_cast<UnaryInt>(GetProcAddress(module, "Select"))
+        : nullptr;
+    context.expect(module != nullptr && read != nullptr && next != nullptr && select != nullptr,
+        "TL-LANG-301 T01 DLL must expose its three exact native probes");
+    if (read == nullptr || next == nullptr || select == nullptr)
+    {
+        if (module != nullptr)
+        {
+            FreeLibrary(module);
+        }
+        return;
+    }
+
+    std::atomic<bool> start{false};
+    std::array<int, 16> observed{};
+    std::vector<std::thread> workers;
+    workers.reserve(observed.size());
+    for (std::size_t index = 0; index < observed.size(); ++index)
+    {
+        workers.emplace_back([&, index] {
+            while (!start.load(std::memory_order_acquire))
+            {
+                std::this_thread::yield();
+            }
+            observed[index] = read();
+        });
+    }
+    start.store(true, std::memory_order_release);
+    for (std::thread& worker : workers)
+    {
+        worker.join();
+    }
+    context.expect(std::ranges::all_of(observed, [](int value) { return value == 42; }),
+        "TL-LANG-301 concurrent DLL first touch must initialize once and preserve recursive reentry");
+    context.expect(next() == 41 && next() == 42,
+        "TL-LANG-301 DLL static local must persist across calls");
+    context.expect(select(1) == 7 && select(0) == 0,
+        "TL-LANG-301 DLL condition declarations must execute with scoped values");
+    context.expect(FreeLibrary(module) != FALSE,
+        "TL-LANG-301 T01 DLL must unload through the module-lifetime boundary");
+}
+
+void registerT01IntegrationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-301", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "static-initialization", "metadata", "debug", "exe", "dll"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path libraryProject = products.writeProject(
+                "T01Dynamic", "SharedLibrary", kT01DllSource);
+            verifyT01MetadataAndDebug(context, libraryProject, products.directory());
+            verifyT01Executable(context, products);
+            verifyT01DynamicLibrary(context, products, libraryProject);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -796,5 +1122,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticInitializationFailureCase(registry);
     registerStaticLocalLifetimeCase(registry);
     registerConditionDeclarationCase(registry);
+    registerT01IntegrationCase(registry);
 }
 }

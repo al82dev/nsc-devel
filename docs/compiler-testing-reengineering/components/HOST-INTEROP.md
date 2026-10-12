@@ -67,7 +67,7 @@ menos un archivo, lee cada modelo con `LibraryMetadataCodec` y conserva el prime
 
 ## 7. Esquema NSMETA vigente
 
-El formato público actual es `NSMETA 1.38`. El modelo contiene identidad de productor y módulo, target/puntero,
+El formato público actual es `NSMETA 1.39`. El modelo contiene identidad de productor y módulo, target/puntero,
 contratos ABI y las colecciones de tipos, miembros, funciones/estado de namespace, templates, especializaciones,
 tipos externos, dispatch, exports, dependencias binarias e imports de plataforma.
 
@@ -113,7 +113,7 @@ archivo es atómica.
 ## 11. Lectura y compatibilidad de formato
 
 El lector valida tamaño, magic, header, endian, longitud, checksum y fingerprint antes de entregar el modelo.
-`decodePayload` reconstruye de 1.0 a 1.38 usando las mismas compuertas aditivas; cuenta registros antes de
+`decodePayload` reconstruye de 1.0 a 1.39 usando las mismas compuertas aditivas; cuenta registros antes de
 reservar, valida enums y longitudes paralelas, y rechaza bytes sobrantes.
 
 Desde minor 23 existe un byte histórico de revisión de fuente. El lector actual lo consume y descarta; no usa

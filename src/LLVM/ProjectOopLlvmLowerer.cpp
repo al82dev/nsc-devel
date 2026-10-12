@@ -1,4 +1,5 @@
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/DebugMetadataVersion.h"
 
 #include "LlvmCApi.h"
 #include "SignedDivisionCorrection.h"
@@ -776,10 +777,20 @@ private:
         LLVMMetadataRef debugVersion = LLVMValueAsMetadata(
             LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0));
         LLVMMetadataRef codeView = LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0));
+        LLVMMetadataRef nativeSharpDebugMajor = LLVMValueAsMetadata(
+            LLVMConstInt(i32, kDebugMetadataMajor, 0));
+        LLVMMetadataRef nativeSharpDebugMinor = LLVMValueAsMetadata(
+            LLVMConstInt(i32, kDebugMetadataMinor, 0));
         LLVMAddModuleFlag(
             module_, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 18, debugVersion);
         LLVMAddModuleFlag(
             module_, LLVMModuleFlagBehaviorWarning, "CodeView", 8, codeView);
+        LLVMAddModuleFlag(
+            module_, LLVMModuleFlagBehaviorError,
+            "NativeSharp Debug Metadata Major", 32, nativeSharpDebugMajor);
+        LLVMAddModuleFlag(
+            module_, LLVMModuleFlagBehaviorWarning,
+            "NativeSharp Debug Metadata Minor", 32, nativeSharpDebugMinor);
 
         LLVMMetadataRef primaryFile = nullptr;
         for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
@@ -2872,6 +2883,13 @@ private:
                 continue;
             }
             needsInitializer[function.declaringTypeOrdinal] = true;
+            // Only the coordinator partition defines the initializer and therefore needs the
+            // constructor body. Ordinary code partitions deliberately prune unrelated function
+            // declarations; they only require the externally visible coordinator declaration.
+            if (!defineStorage)
+            {
+                continue;
+            }
             const auto body = functions_.find(function.mangledName);
             if (body == functions_.end())
             {

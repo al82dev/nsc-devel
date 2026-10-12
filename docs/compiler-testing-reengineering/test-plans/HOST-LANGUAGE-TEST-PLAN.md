@@ -240,6 +240,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-298 | CL-LANG-012 | estados de inicializacion y perfiles panic abort/unwind-native | failed terminal sin retry y perfil panic exacto | PR |
 | TL-LANG-299 | CL-LANG-012 | locales static escalar/propietario y negativos ref/VLA | storage/guard 0-1-2-3, sin cleanup lexico y destructor al unload condicionado a initialized | PR |
 | TL-LANG-300 | CL-LANG-012 | declaraciones en if/while/switch y negativos de tipo, aridad y scope | bloque exacto por control, reinicializacion por iteracion y rechazo causal | PR |
+| TL-LANG-301 | CL-LANG-012 | NSMETA 1.39, NSDEBUG 1.1, EXE/DLL, concurrencia y recursion T01 | round-trip/versiones exactas, PDB no vacio, EXE 42, DLL once/reentry/static-local/condition y unload | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

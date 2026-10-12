@@ -23,13 +23,13 @@ ventanas que pueden reclamar T01–T15; no adelanta ningún writer, reader ni AB
 | AST | modelo in-memory sin wire schema global | `include/nativesharp/AST/` |
 | HIR | modelo in-memory sin constante global de schema | `include/nativesharp/Frontend/ProjectOopHirModel.h` |
 | MIR | `1.30` | `kProjectOopMirSchemaMajor/Minor` |
-| NSMETA | `1.38` | `kMetadataFormatMajor/Minor` |
+| NSMETA | `1.39` | `kMetadataFormatMajor/Minor`; T01 reclamó el primer slot |
 | runtime ABI | `1.2`, symbol set `4` | `kRuntimeAbiMajor/Minor`, `kRuntimeSymbolSetVersion` |
-| debug metadata | versión del productor LLVM, sin schema NativeSharp propio | `LLVMDebugMetadataVersion()` en el lowerer |
+| debug metadata | `NSDEBUG 1.1` sobre CodeView/PDB | `kDebugMetadataMajor/Minor` |
 
-AST, HIR y debug no se describen falsamente como formatos wire actuales. La
-reserva introduce namespaces futuros (`NSAST`, `NSHIR`, `NSDEBUG`) que sólo
-adquieren existencia productiva cuando un ítem propietario cierre su contrato.
+AST y HIR no se describen falsamente como formatos wire actuales. T01-F08 reclamó
+`NSMETA 1.39` y `NSDEBUG 1.1`; este último versiona el contrato NativeSharp sobre
+CodeView/PDB sin pretender reemplazar la versión interna de metadata LLVM.
 
 ## Ventanas reservadas
 
@@ -38,9 +38,9 @@ adquieren existencia productiva cuando un ítem propietario cierre su contrato.
 | AST | `NSAST 1.1` | `1.15` | revisión estructural interna, no wire |
 | HIR | `NSHIR 1.1` | `1.15` | revisión estructural interna, no wire |
 | MIR | `1.31` | `1.45` | minor aditivo; reader/verifier en el mismo ítem |
-| NSMETA | `1.39` | `1.53` | minor aditivo; writer/reader/downlevel en el mismo ítem |
+| NSMETA | `1.40` | `1.53` | minor aditivo; writer/reader/downlevel en el mismo ítem |
 | runtime ABI | `1.3` | `1.17` | sólo cambio físico o de símbolos observable |
-| debug metadata | `NSDEBUG 1.1` | `1.15` | contrato NativeSharp sobre CodeView/PDB |
+| debug metadata | `NSDEBUG 1.2` | `1.15` | contrato NativeSharp sobre CodeView/PDB |
 
 Los 15 slots corresponden al máximo de una reclamación por tanda T01–T15. No
 son versiones emitidas ni obligan a consumir un slot: el primer ítem que cambie

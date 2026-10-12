@@ -793,6 +793,7 @@ bool buildMetadataModel(
     metadata.targetId = kWindowsX64Target;
     metadata.pointerSize = kPointerSize;
     metadata.pointerAlignment = kPointerAlignment;
+    metadata.languageFeatureFlags = kMetadataLanguageFeatureMask;
     metadata.producerVersion = std::string(kCompilerVersion);
     metadata.moduleName = compilation.projectGraph()->rootProject()->moduleName();
     metadata.targetTriple = std::string(kTargetTriple);
@@ -2436,6 +2437,10 @@ std::vector<std::uint8_t> encodePayload(
             }
         }
     }
+    if (metadata.formatMinor >= 39)
+    {
+        writer.u32(metadata.languageFeatureFlags);
+    }
     return writer.bytes();
 }
 
@@ -3418,6 +3423,15 @@ bool decodePayload(
             }
         }
     }
+    if (metadata.formatMinor >= 39)
+    {
+        if (!reader.u32(metadata.languageFeatureFlags) ||
+            (metadata.languageFeatureFlags & ~kMetadataLanguageFeatureMask) != 0U)
+        {
+            error = "truncated or invalid metadata language-feature catalogue";
+            return false;
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -3944,6 +3958,10 @@ bool LibraryMetadataCodec::writeModelImpl(
         error = "NativeSharp metadata before 1.38 cannot represent exported generic "
             "ownership, constraints, or lifetime contracts";
         return false;
+    }
+    if (metadata.formatMinor < 39)
+    {
+        metadata.languageFeatureFlags = 0;
     }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))

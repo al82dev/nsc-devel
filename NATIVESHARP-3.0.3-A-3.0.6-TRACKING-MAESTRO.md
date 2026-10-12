@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 7 | 87.5 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **15** | **10.20 %** |
+| **Total** |  | **147** | **16** | **10.88 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -957,7 +957,7 @@ T00
 - [x] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
 - [x] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
 - [x] `NS304-T01-F07` — Implementar declaraciones en `if`, `while` y `switch` con scope y cleanup por arista.
-- [ ] `NS304-T01-F08` — Versionar metadata, emitir debug info y probar EXE, DLL, concurrencia y recursión.
+- [x] `NS304-T01-F08` — Versionar metadata, emitir debug info y probar EXE, DLL, concurrencia y recursión.
 
 ### T02 — cuerpos default de traits e interfaces
 
@@ -1308,7 +1308,7 @@ Estado: `CERRADO`.
 
 - Expediente: `docs/3.0.4/items/NS304-T00-F06-version-reservations.md`.
 - Manifest: `docs/3.0.4/contracts/version-reservations.json`.
-- Baseline: AST/HIR in-memory sin wire schema; MIR `1.30`; NSMETA `1.38`;
+- Baseline: AST/HIR in-memory sin wire schema; MIR `1.30`; NSMETA `1.39`;
   runtime ABI `1.2`/symbol set `4`; debug gobernado por productor LLVM.
 - Reserva: seis ventanas minor, una reclamación máxima por tanda T01–T15;
   ninguna versión se emite antes del cierre del ítem propietario.
@@ -1479,6 +1479,29 @@ Estado: `CERRADO`.
 - Build focal: tres objetos y un relink con LLVM/Clang 23, sin regenerar CMake.
 - Gate: T01 queda 7/8 y Parte B 15/147, sin batería completa.
 - Siguiente ítem: `NS304-T01-F08`.
+
+### NS304-T01-F08 — integración, metadata y debug
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F08-integration.md`.
+- Metadata: NSMETA 1.39 publica un catálogo aditivo de capacidades T01; el
+  reader 1.39 valida bits desconocidos y la emisión deliberada 1.38 omite el
+  catálogo sin inventar capacidades.
+- Debug: NSDEBUG 1.1 versiona el contrato NativeSharp sobre CodeView/PDB; las
+  emisiones `-g` de EXE y DLL produjeron PDB no vacíos.
+- Producto: la partición coordinadora es la única que resuelve el cuerpo del
+  constructor estático; las unidades ordinarias conservan sólo la declaración
+  externa del coordinador y ya no dependen de funciones podadas.
+- Prueba puntual: `TL-LANG-301` `PASS` en 805071 microsegundos; repetición del
+  consolidado en 786280 microsegundos.
+- Consolidado T01: `TL-LANG-294`..`TL-LANG-301`, 8/8 `PASS`.
+- Guards: `TL-LANG-155`..`TL-LANG-161`, 7/7 `PASS`; `TF-INTEROP-273`
+  `PASS` en 26440 microsegundos.
+- Builds focales: compilador 56/56 y 6/6; suite 18/18, 3/3 y 2/2, todos con
+  LLVM/Clang 23, sin regenerar CMake.
+- Gate: T01 queda 8/8 y Parte B 16/147, sin batería completa.
+- Siguiente ítem: `NS304-T02-F01`.
 
 ---
 
@@ -1993,12 +2016,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B02/T01-F05 | Fallo terminal sin retry | state3, cleanuppad Win64, propagación y panic por perfil; `TL-LANG-298` + Stage37 | `PASS`; T01 5/8; 13/147 cerrados; T01-F06 activa |
 | 2026-10-12 | B02/T01-F06 | Locales static y lifetime de módulo | storage/state/owner privados, guard 0/1/2/3, sin cleanup léxico, global dtors; `TL-LANG-299` + Stage37 | `PASS`; T01 6/8; 14/147 cerrados; T01-F07 activa |
 | 2026-10-12 | B02/T01-F07 | Declaraciones en condiciones | bloques if/switch y declaración por iteración while; `TL-LANG-300` + seis guardas | `PASS`; T01 7/8; 15/147 cerrados; T01-F08 activa |
+| 2026-10-12 | B02/T01-F08 | Integración T01, metadata y debug | NSMETA 1.39, NSDEBUG 1.1, EXE/DLL, concurrencia, reentrancia y partición owner-only; `TL-LANG-301` + guards | `PASS`; T01 8/8; 16/147 cerrados; T02-F01 habilitada |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `15/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `16/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2012,8 +2036,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   estado `failed`, preservó unwind y seleccionó panic por perfil con
   `TL-LANG-298`; T01-F06 cerró locales static con storage/guard por declaración
   y destrucción al unload mediante `TL-LANG-299`; T01-F07 cerró declaraciones
-  en `if`/`while`/`switch` con `TL-LANG-300`. La promoción de superficie queda
-  pendiente hasta T01-F08, ahora activa.
+  en `if`/`while`/`switch` con `TL-LANG-300`; T01-F08 promovió la superficie,
+  reclamó NSMETA 1.39/NSDEBUG 1.1 y cerró EXE, DLL, concurrencia y reentrancia
+  con `TL-LANG-301`. T01 queda 8/8 y T02-F01 está habilitada.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
