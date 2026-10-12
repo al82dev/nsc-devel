@@ -2526,29 +2526,62 @@ bool SemanticAnalyzer::isCAbiCompatibleDirectType(Type* type, bool allowVoid) co
 
 bool SemanticAnalyzer::isCAbiCompatibleStruct(Type* type) const
 {
-    if (type != nullptr)
+    std::unordered_set<Type*> active;
+    std::unordered_set<Type*> validated;
+    const auto validateField = [&](auto&& self, Type* fieldType) -> bool
     {
-        type = type->unqualifiedType();
-    }
-    if (type == nullptr || type->kind() != TypeKind::Struct || !type->isComplete())
-    {
-        return false;
-    }
-
-    const auto iterator = structFieldTypes_.find(type);
-    if (iterator == structFieldTypes_.end() || iterator->second.empty())
-    {
-        return false;
-    }
-
-    for (Type* fieldType : iterator->second)
-    {
-        if (!isCAbiCompatibleStructField(fieldType))
+        if (fieldType != nullptr)
+        {
+            fieldType = fieldType->unqualifiedType();
+        }
+        if (fieldType == nullptr || fieldType->kind() == TypeKind::Error || !fieldType->isComplete())
         {
             return false;
         }
-    }
-    return layoutOfType(type).has_value();
+
+        if (fieldType->kind() == TypeKind::Array)
+        {
+            return fieldType->count() != 0 && self(self, fieldType->elementType());
+        }
+        if (fieldType->kind() != TypeKind::Struct)
+        {
+            return isCAbiCompatibleDirectType(fieldType, false);
+        }
+        if (active.contains(fieldType))
+        {
+            return false;
+        }
+        if (validated.contains(fieldType))
+        {
+            return true;
+        }
+
+        const auto iterator = structFieldTypes_.find(fieldType);
+        if (iterator == structFieldTypes_.end() || iterator->second.empty())
+        {
+            return false;
+        }
+
+        active.insert(fieldType);
+        for (Type* nestedField : iterator->second)
+        {
+            if (!self(self, nestedField))
+            {
+                active.erase(fieldType);
+                return false;
+            }
+        }
+        active.erase(fieldType);
+
+        if (!layoutOfType(fieldType).has_value())
+        {
+            return false;
+        }
+        validated.insert(fieldType);
+        return true;
+    };
+
+    return validateField(validateField, type);
 }
 
 bool SemanticAnalyzer::isCAbiCompatibleStructField(Type* type) const

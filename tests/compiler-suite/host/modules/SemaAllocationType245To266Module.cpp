@@ -373,8 +373,6 @@ void testCAbiStructTerminationBoundary(TestContext& context)
             !fixture.analyzer.isCAbiCompatibleStruct(incomplete),
         "TS-SEMA-265 empty and incomplete structs must be rejected before recursive field traversal");
 
-    // HostExecutor launches every manifest case in its own process. A missing
-    // recursion guard therefore fails only this case instead of the full suite.
     Type* recursive = fixture.types.createStruct("Recursive", nullptr);
     recursive->setComplete(true);
     fixture.analyzer.structFieldTypes_[recursive] = {recursive};
@@ -423,9 +421,7 @@ void registerSemaAllocationType245To266Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-262", "CS-SEMA-025", "component", testOwnershipResolution);
     addSemaCase(registry, "TS-SEMA-263", "CS-SEMA-025", "component", testValidateObjectTypeMatrix);
     addSemaCase(registry, "TS-SEMA-264", "CS-SEMA-025", "component", testCAbiDirectTypeMatrix);
-    addSemaCase(registry, "TS-SEMA-265", "CS-SEMA-025", "component", testCAbiStructTerminationBoundary,
-        "PR", TestDisposition::KnownProductDefect,
-        {"known-product-defect", "process-isolation", "known-defect", "unsafe-boundary"});
+    addSemaCase(registry, "TS-SEMA-265", "CS-SEMA-025", "component", testCAbiStructTerminationBoundary);
     addSemaCase(registry, "TS-SEMA-266", "CS-SEMA-025", "component", testCAbiStructFields);
 }
 }

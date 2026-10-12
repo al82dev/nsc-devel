@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 35 | 67.31 % | `EN_PROGRESO`; A04 G28-G29 cerrados 3/5 |
+| A | 3.0.3 | 14 | 52 defectos | 36 | 69.23 % | `EN_PROGRESO`; A04 G28-G30 cerrados 4/5 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G29, quedan 17 KPD abiertos y treinta y cinco casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G30, quedan 16 KPD abiertos y treinta y seis casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -143,7 +143,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A01 | Host.Lexer | 1 | 1 | `CERRADA` |
 | A02 | Host.AST | 3 | 3 | `CERRADA` |
 | A03 | Host.Parser | 21 | 21 | `CERRADA` |
-| A04 | Host.Sema | 5 | 3 | `EN_PROGRESO` |
+| A04 | Host.Sema | 5 | 4 | `EN_PROGRESO` |
 | A05 | Host.CFG | 1 | 0 | `PENDIENTE` |
 | A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
 | A07 | Host.LanguageService | 1 | 0 | `PENDIENTE` |
@@ -153,7 +153,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **35** | **67.31 %** |
+| **Total** |  | **52** | **36** | **69.23 %** |
 
 ## A.3 Inventario exacto
 
@@ -305,7 +305,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A04 · `TS-SEMA-265` / `CS-SEMA-025`**
   - Contrato: C ABI struct vacío/incompleto/recursivo rechaza y termina.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1889; T:`SemaAllocationType245To266Module.cpp`.
-  - Terminal documentado: stack overflow `0xC00000FD`; procedencia `18ae74f2`; cierre `PENDIENTE`.
+  - Terminal documentado: stack overflow `0xC00000FD`; procedencia `18ae74f2`.
+  - Cierre: `CERRADO`; G30 reprodujo el terminal exacto y después pasó como KPD corregido y Required; commit G30: este commit.
 - **A04 · `TS-SEMA-317` / `CS-SEMA-030`**
   - Contrato: `SymbolDumper` emite flags, enum, offset y constant sólo cuando existen.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1939; T:`SemaFallthroughDump299To321Module.cpp`; `5dee730d`.
@@ -584,7 +585,8 @@ Resultado del inventario causal:
   - Productores: `isCAbiCompatibleStruct` e `isCAbiCompatibleStructField`.
   - Causa: un field struct llama de nuevo al mismo análisis sin conjunto active/visited.
   - Consumidores: validación de firmas `extern C`.
-  - Puntual: `SemaAllocationType245To266Module.cpp`; existe y usa proceso aislado.
+  - Puntual: `SemaAllocationType245To266Module.cpp`; reprodujo `0xC00000FD` y pasó como KPD corregido y Required.
+  - Estado: `CERRADO` en A04; ciclos activos se rechazan y subgrafos ya validados se reutilizan antes de calcular layout.
 - **G31 — SymbolDumper omite constante: `TS-SEMA-317`.**
   - Productor: `SymbolDumper::dumpSymbol`.
   - Causa: emite flags, enum y offset, pero nunca consulta `constantValue`.
@@ -681,14 +683,14 @@ Puertas previas a editar producto:
 - `TP-PAR-306`: ampliar el oráculo para inspeccionar los dos declarators, no sólo consumo hasta EOF.
 - `TP-PAR-511`: reemplazar el fallo artificial por proceso aislado y frontera 128 reproducible.
 - `TP-PAR-524`: su ejecución previa al parche demostró la divergencia de aridad; se corrigió antes de retirar KPD.
-- Los 17 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
+- Los 16 casos todavía abiertos pueden entrar a implementación causal después del `SCOPE LOCK` de su tanda.
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A04 G28-G29 cerrados 3/5, 35/52 defectos corregidos y 17 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A04 G28-G30 cerrados 4/5, 36/52 defectos corregidos y 16 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21 y A04 G28-G29 3/3 Required `PASS`.
+- Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21 y A04 G28-G30 4/4 Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -749,7 +751,10 @@ Puertas previas a editar producto:
 - Evidencia G29: `TS-SEMA-110` pasó como KPD (23,769 us) y Required (13,225 us) tras predeclarar structs sin alterar
   el orden observable; `TS-SEMA-092` confirmó ese orden (585 us). Se reconstruyeron sólo el shim de Sema, el módulo
   propietario y el enlace exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
-- Próxima acción de Parte A: A04 G30 (`TS-SEMA-265`).
+- Evidencia G30: `TS-SEMA-265` reprodujo primero el terminal Windows `0xC00000FD`; con el guard causal pasó como KPD
+  corregido (2,817 us) y Required (11,643 us). Se reconstruyeron sólo el shim de Sema, el módulo propietario y el
+  enlace exacto derivado de `build.ninja`, con LLVM 23.1.0 y sin regenerar configuración.
+- Próxima acción de Parte A: A04 G31 (`TS-SEMA-317`).
 
 ---
 
@@ -1489,10 +1494,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G27 y tanda | puntual KPD + Required; consolidado A03 21/21 | `PASS`; 20 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A04 G28 | dos puntuales KPD + Required | 2/2 `PASS`; 18 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A04 G29 | puntual KPD + Required; guard de orden global | `PASS`; 17 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A04 G30 | terminal aislado + puntual KPD corregido + Required | `PASS`; 16 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `35/52`; A04 G28-G29 cerrados 3/5; siguiente acción vinculante: G30 (`TS-SEMA-265`).
+- A: `36/52`; A04 G28-G30 cerrados 4/5; siguiente acción vinculante: G31 (`TS-SEMA-317`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
