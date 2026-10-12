@@ -13378,6 +13378,12 @@ bool Parser::looksLikeLambdaExpression() const noexcept
         return false;
     };
 
+    // NS304-T04-F05: `static` marca un lambda/funcion local sin captura del entorno.
+    if (at(TokenKind::KwStatic) && index_ + 1 < tokens_.size() &&
+        looksLikeParameterHead(index_ + 1))
+    {
+        return true;
+    }
     // NS304-T04-F02: `noheap`/`unsafe` son prefijos de EFECTO de lambda. Se reconocen como
     // contextuales delante de una cabecera de parametros real; no se reservan como keywords.
     if ((at(TokenKind::KwNoHeap) || atContextualKeyword("unsafe")) &&
@@ -13414,6 +13420,10 @@ ast::AstNode* Parser::parseLambdaExpression()
     const std::size_t beginIndex = index_;
     auto* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
+    // NS304-T04-F05: `static` = lambda sin captura. Se guarda como sufijo "static" del
+    // auxiliaryText para que bindLambdaToDelegate lo fuerce a captura vacia.
+    bool staticLambda = false;
+    if (at(TokenKind::KwStatic)) { staticLambda = true; consume(); }
     // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe` y calling convention `extern C`.
     std::string effects;
     if (at(TokenKind::KwNoHeap)) { effects = "noheap"; consume(); }
@@ -13593,6 +13603,11 @@ ast::AstNode* Parser::parseLambdaExpression()
 
     lambda->setRange(tokenRangeFrom(beginIndex));
     std::string auxiliary = captureContract;
+    if (staticLambda)
+    {
+        if (!auxiliary.empty()) auxiliary += ';';
+        auxiliary += "static";
+    }
     if (!effects.empty())
     {
         if (!auxiliary.empty()) auxiliary += ';';

@@ -2111,6 +2111,58 @@ class Program
         }});
 }
 
+void registerStaticLambdaCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-318", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "lambda", "static", "capture", "prohibition"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04StaticLambda", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        var f = static (int x) => x + 1;
+        return f(41);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04StaticLambda.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-318 a captureless static lambda must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-318 a static lambda must remain invocable: " +
+                    result.error + result.output);
+
+            const std::filesystem::path badProject = products.writeProject(
+                "T04StaticLambdaCapture", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int captured = 5;
+        var f = static (int x) => x + captured;
+        return f(1);
+    }
+}
+)ns");
+            const external_program_support::Result badEmitted = emitT01Product(
+                L"--emit-project-oop-exe", badProject,
+                products.directory() / "T04StaticLambdaCapture.exe", products.directory());
+            context.expect(badEmitted.started && badEmitted.exitCode != 0,
+                "TL-LANG-318 a static lambda must reject capture of the enclosing scope: " +
+                    badEmitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2143,5 +2195,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLambdaNaturalTypeCase(registry);
     registerLambdaParameterModifierCase(registry);
     registerLambdaDefaultParamCase(registry);
+    registerStaticLambdaCase(registry);
 }
 }

@@ -22998,6 +22998,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         bodyValid = false;
     }
+    // NS304-T04-F05: un lambda `static` no puede capturar nada del entorno.
+    if (bodyValid && !binding.captures.empty() &&
+        syntax->auxiliaryText().find("static") != std::string::npos)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "a static lambda cannot capture variables from the enclosing scope");
+        bodyValid = false;
+    }
     std::vector<language::Capture> closureCaptures;
     closureCaptures.reserve(binding.captures.size());
     for (const MethodLambdaCapture& capture : binding.captures)
