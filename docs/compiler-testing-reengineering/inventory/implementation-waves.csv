@@ -1,7 +1,7 @@
 "wave","purpose","role","component","files","contracts","cases","executors","profiles","source_document","source_test_plan","disposition"
 "1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Basic","12","16","88","nsc_component_tests;nsc_suite_controller+nsc","NIGHTLY;PR;WEEKLY","components/HOST-BASIC.md","test-plans/HOST-BASIC-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
 "1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Diagnostics","8","12","75","nsc_component_tests","NIGHTLY;PR","components/HOST-DIAGNOSTICS.md","test-plans/HOST-DIAGNOSTICS-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
-"1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Language","42","21","286","nsc_component_tests","NIGHTLY;PR","components/HOST-LANGUAGE.md","test-plans/HOST-LANGUAGE-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
+"1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Language","42","21","290","nsc_component_tests","NIGHTLY;PR","components/HOST-LANGUAGE.md","test-plans/HOST-LANGUAGE-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
 "1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Source","5","8","58","nsc_component_tests","NIGHTLY;PR;WEEKLY","components/HOST-SOURCE.md","test-plans/HOST-SOURCE-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
 "1","Fundaciones host sin pipeline completo","PRIMARY_COMPILER","Host.Target","4","30","240","nsc_component_tests","NIGHTLY;PR","components/HOST-TARGET.md","test-plans/HOST-TARGET-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"
 "2","Sintaxis y semántica frontal","PRIMARY_COMPILER","Host.AST","10","20","230","nsc_component_tests;nsc_suite_controller+nsc","NIGHTLY;PR","components/HOST-AST.md","test-plans/HOST-AST-TEST-PLAN.md","IMPLEMENTAR EN FASE 2"

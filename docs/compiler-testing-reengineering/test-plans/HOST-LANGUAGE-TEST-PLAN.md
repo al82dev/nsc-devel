@@ -201,6 +201,8 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-139 | CL-LANG-010 | hiddenCostAuditPasses con costs explicitos/ocultos | primer costo oculto falla | PR |
 | TL-LANG-140 | CL-LANG-010 | validateZeroCostAudit con records O0/O2, kinds y excepciones | aceptacion o diagnostico exacto | PR |
 | TL-LANG-141 | CL-LANG-010 | semanticToolingSchemaVersion | `nsc-semantic-tooling-v1` exacto y estable | PR |
+| TL-LANG-289 | CL-LANG-010 | `Console.ReadLine` con CRLF, línea vacía, 8192 caracteres y EOF en proceso real | contenido, estados y salida 42 exactos | PR |
+| TL-LANG-290 | CL-LANG-010 | stdin real hacia `Console.ReadLine` y las diez fachadas numéricas | conversiones y fallback exactos; salida 42 | PR |
 
 ## Iteracion y generator ABI — `CL-LANG-011`
 
@@ -306,6 +308,8 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-214 | CL-LANG-016 | constant union activate/read same/different/vacio | active member y errores exactos | PR |
 | TL-LANG-215 | CL-LANG-016 | evaluateConstantIntegerArithmetic y loop con budgets/operations/policies | mismo contrato aritmetico y corte exacto | PR |
 | TL-LANG-216 | CL-LANG-016 | integerSemanticsSelfCheck | true para barrida completa signed i8 | NIGHTLY |
+| TL-LANG-287 | CL-LANG-016 | `Parse` directo y fallback para byte/sbyte/short/ushort/int/uint/long/ulong/float/double | valores y límites exactos; salida 42 | PR |
+| TL-LANG-288 | CL-LANG-016 | `Int32.Parse` directo con `string null` | frontera `panic` determinista, salida 142 | PR |
 
 ## Ownership — `CL-LANG-017`
 
@@ -411,4 +415,4 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 5. Las máquinas de estado prueban cada operación desde cada estado alcanzable y terminal.
 6. Coverage instrumental y mutation testing pertenecen a Fase 3.
 
-**Total diseñado:** 286 casos lógicos parametrizables.
+**Total diseñado:** 290 casos lógicos parametrizables.

@@ -58,7 +58,7 @@ class ModularParityTests(unittest.TestCase):
                 self.assertEqual(reporting.row_action_text(status, True), expected)
 
     def test_cli_audit_contract_uses_the_same_runtime_boundary(self) -> None:
-        expected = {"cases": 5707, "variants": 5707}
+        expected = {"cases": 5711, "variants": 5711}
         output = io.StringIO()
         with patch.object(cli, "catalog_audit", return_value=expected):
             with redirect_stdout(output):
