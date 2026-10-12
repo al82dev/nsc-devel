@@ -121,7 +121,11 @@ void testCloneTypeCompleteAndIndependent(TestContext& context)
             clone->functionIsAsync() && clone->functionIsNullable() &&
             clone->functionLifetimeName() == source->functionLifetimeName() &&
             clone->functionReturnType() != source->functionReturnType() &&
-            clone->functionErrorType() != source->functionErrorType(),
+            clone->functionReturnType() != nullptr &&
+            clone->functionReturnType()->baseName() == "long" &&
+            clone->functionErrorType() != source->functionErrorType() &&
+            clone->functionErrorType() != nullptr &&
+            clone->functionErrorType()->baseName() == "Failure",
         "TP-PAR-514 function-type payload and nested types must be copied exactly without aliasing");
     context.expect(clone->constExpression() != source->constExpression() &&
             clone->constExpression() != nullptr && clone->constExpression()->integerValue() == 17 &&
@@ -387,7 +391,7 @@ void registerParserConstructionCloneFinalModule(TestRegistry& registry)
 {
     addFinalParserCase(registry, "TP-PAR-513", "CP-PAR-041", testMakeHelpers);
     addFinalParserCase(registry, "TP-PAR-514", "CP-PAR-041", testCloneTypeCompleteAndIndependent,
-        "PR", TestDisposition::KnownProductDefect, {"clone", "deep-copy", "product-defect"});
+        "PR", TestDisposition::Required, {"clone", "deep-copy"});
     addFinalParserCase(registry, "TP-PAR-515", "CP-PAR-041", testCloneAstTopology);
     addFinalParserCase(registry, "TP-PAR-516", "CP-PAR-041", testCloneGenericConstraintTypesIntoDestination);
     addFinalParserCase(registry, "TP-PAR-517", "CP-PAR-041", testCloneNullThroughOrPattern);

@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 30 | 57.69 % | `EN_PROGRESO`; A03 19/21 |
+| A | 3.0.3 | 14 | 52 defectos | 31 | 59.62 % | `EN_PROGRESO`; A03 20/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G25, quedan 22 KPD abiertos y treinta casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G26, quedan 21 KPD abiertos y treinta y un casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -284,7 +284,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A03 · `TP-PAR-514` / `CP-PAR-041`**
   - Contrato: clone de `TypeSyntax` profundo, completo e independiente.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1604; T:`ParserConstructionCloneFinalModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; puntual G26 como KPD y Required `PASS`; commit de implementación G26: este commit.
 - **A03 · `TP-PAR-524` / `CP-PAR-041`**
   - Contrato: spelling/name por kind/aridad exacto y `op_Invalid` fuera de matriz.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1614; T:`ParserConstructionCloneFinalModule.cpp`; `5dee730d`.
@@ -560,6 +560,7 @@ Resultado del inventario causal:
   - Causa: omite `constExpression` y origen; copia `TypeModifierSyntax::arrayCount` por alias.
   - Consumidores: clones de nodos, constraints genéricos y receivers sintetizados.
   - Puntual: `ParserConstructionCloneFinalModule.cpp` vía `ParserProductTestShim.cpp`; existe.
+  - Estado: `CERRADO` en A03; payloads de expresión, modifiers y origen se clonan sin alias.
 - **G27 — KPD sin divergencia estática: `TP-PAR-524`.**
   - Productores: `operatorSpelling`, `operatorMethodName` y tabla `kOperatorTraits`.
   - Hallazgo: la matriz vigente devuelve los 22 mappings y los siete `op_Invalid` esperados.
@@ -680,7 +681,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 19/21, 30/52 defectos corregidos y 22 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 20/21, 31/52 defectos corregidos y 21 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -731,7 +732,10 @@ Puertas previas a editar producto:
 - Evidencia G25: el nuevo oráculo aislado reprodujo primero `0xC00000FD` (3221225725) a profundidad 128; después
   `TP-PAR-511` pasó como KPD (223,235 us) y Required (220,726 us), preservando además tuplas y precedencia mediante
   colapso iterativo de agrupaciones puras; dos objetos LLVM 23.1.0 sin regenerar configuración.
-- Próxima acción A03: G26.
+- Evidencia G26: `TP-PAR-514` pasó como KPD (2,094 us) y Required (2,394 us) tras clonar profundamente
+  `constExpression`, `arrayCount`, tipos de función y metadatos de origen en el arena destino; dos objetos LLVM 23.1.0
+  sin regenerar configuración.
+- Próxima acción A03: G27, reconciliación de `TP-PAR-524` con producto actual antes de cualquier parche.
 
 ---
 
@@ -1467,10 +1471,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G23 | puntual KPD + Required | `PASS`; 24 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G24 | puntual KPD + Required | `PASS`; 23 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G25 | puntual aislada KPD + Required | `PASS`; 22 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G26 | puntual KPD + Required | `PASS`; 21 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `30/52`; A03 19/21; siguiente acción vinculante: G26.
+- A: `31/52`; A03 20/21; siguiente acción vinculante: G27 (`TP-PAR-524`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

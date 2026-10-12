@@ -92,6 +92,8 @@ void applyFloatingPointModeToTree(
         applyFloatingPointModeToTree(child, mode);
 }
 
+ast::AstNode* cloneParsedNode(ast::AstArena& arena, const ast::AstNode* source);
+
 ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* source)
 {
     if (source == nullptr) return nullptr;
@@ -116,6 +118,7 @@ ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* so
     result->setFunctionLifetimeName(source->functionLifetimeName());
     result->setFunctionReturnType(cloneParsedType(arena, source->functionReturnType()));
     result->setFunctionErrorType(cloneParsedType(arena, source->functionErrorType()));
+    result->setConstExpression(cloneParsedNode(arena, source->constExpression()));
     result->setPackExpansion(source->isPackExpansion());
     for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
     {
@@ -129,7 +132,15 @@ ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* so
         else result->addTypeArgument(argument);
     }
     for (const ast::TypeModifierSyntax& modifier : source->modifiers())
-        result->addModifier(modifier);
+    {
+        ast::TypeModifierSyntax copy = modifier;
+        copy.arrayCount = cloneParsedNode(arena, modifier.arrayCount);
+        result->addModifier(std::move(copy));
+    }
+    if (source->originProjectOrdinal().has_value())
+        result->setOriginProjectOrdinal(*source->originProjectOrdinal());
+    if (source->originNamespace().has_value())
+        result->setOriginNamespace(*source->originNamespace());
     return result;
 }
 
