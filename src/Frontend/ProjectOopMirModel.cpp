@@ -1929,6 +1929,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
     result->referenceLocal = node->referenceLocal;
+    result->staticLocal = node->staticLocal;
     result->pinnedStorage = node->pinnedStorage;
     result->referenceResult = node->referenceResult;
     result->nullConditionalCall = node->nullConditionalCall;

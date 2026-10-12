@@ -445,6 +445,8 @@ struct ProjectOopMirNode final
     bool booleanValue = false;
     // Item 312. Mirrors ProjectOopHirNode::referenceLocal for backend slot materialization.
     bool referenceLocal = false;
+    // NativeSharp 3.0.4 T01-F06. Mirrors the HIR module-storage lifetime contract.
+    bool staticLocal = false;
     // NativeSharp 3.0 T06-F06. Mirrors the HIR pin contract through MIR and cache identity.
     bool pinnedStorage = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.

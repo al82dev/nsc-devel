@@ -8805,9 +8805,22 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwStatic))
     {
         const SourceRange staticRange = consume().range();
-        reportDeferredLanguage3(
-            diagnostics_, staticRange, language::Language3Feature::StaticLocals);
-        if (looksLikeVariableDeclaration()) return parseVariableDeclaration(true);
+        const bool declaration =
+            (atContextualKeyword("pin") &&
+             (peek().kind() == TokenKind::KwRaii ||
+              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref"))) ||
+            at(TokenKind::KwRaii) || at(TokenKind::KwConst) ||
+            at(TokenKind::KwVolatile) || at(TokenKind::KwVar) ||
+            (atContextualKeyword("ref") &&
+             (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
+              peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii)) ||
+            (looksLikeVariableDeclaration() && !looksLikeClosedGenericTypeReference());
+        if (declaration) return parseVariableDeclaration(true, true);
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            staticRange,
+            "static statement must declare a local variable");
         synchronizeStatement();
         return arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, staticRange);
     }
@@ -9686,7 +9699,7 @@ ast::AstNode* Parser::parseVariableDeclarator(
     return variable;
 }
 
-ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
+ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon, bool isStaticLocal)
 {
     const std::size_t beginIndex = index_;
     const bool isPinnedReferenceSyntax = atContextualKeyword("pin") &&
@@ -9745,6 +9758,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
         synchronizeStatement();
         return nullptr;
     }
+    if (isStaticLocal) variable->addModifier(TokenKind::KwStatic);
     ast::AstNode* declarationList = nullptr;
     while (consumeIf(TokenKind::Comma))
     {
@@ -9755,6 +9769,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
             synchronizeStatement();
             break;
         }
+        if (isStaticLocal) declarator->addModifier(TokenKind::KwStatic);
         if (declarationList == nullptr)
         {
             declarationList = arena_.make<ast::AstNode>(

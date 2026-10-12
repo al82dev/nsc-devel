@@ -544,6 +544,8 @@ struct ProjectOopHirNode final
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;
+    // NativeSharp 3.0.4 T01-F06. LocalDeclaration uses module storage and a once guard.
+    bool staticLocal = false;
     // NativeSharp 3.0 T06-F06. The local's storage/address is statically pinned for its lexical
     // lifetime. Kept in HIR so coroutine/debug/FFI consumers never infer it from source syntax.
     bool pinnedStorage = false;

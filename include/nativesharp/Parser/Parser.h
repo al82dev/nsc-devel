@@ -310,7 +310,7 @@ private:
         bool isVolatile,
         bool isReferenceLocal,
         bool isPinned);
-    ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
+    ast::AstNode* parseVariableDeclaration(bool expectSemicolon, bool isStaticLocal = false);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseEmbeddedStatementBlock();

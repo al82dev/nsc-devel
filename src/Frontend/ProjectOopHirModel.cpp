@@ -1932,7 +1932,7 @@ bool ProjectOopHirModel::buildImpl(
             const std::size_t targetTypeOrdinal = *construction->targetTypeOrdinal;
             const ClassObjectLayout* layout = objectLayoutModel_ != nullptr
                 ? objectLayoutModel_->layoutForType(targetTypeOrdinal) : nullptr;
-            if (local == nullptr || !local->isRaii || local->isReference ||
+            if (local == nullptr || local->isStatic || !local->isRaii || local->isReference ||
                 local->objectLifetimeOwnership != sema::OwnershipKind::Owned ||
                 local->storageOwnership != sema::OwnershipKind::Owned ||
                 binding == nullptr || !binding->selectedImplicitDefault ||
@@ -2521,6 +2521,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
+            node->staticLocal = local->isStatic;
             node->pinnedStorage = local->isPinned;
             node->ownership = local->ownership;
             node->automaticDestruction = local->isRaii || local->requiresValueDrop;
@@ -2528,7 +2529,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             node->storageOwnership = local->storageOwnership;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
-            if (local->isRaii || local->requiresValueDrop)
+            if (!local->isStatic && (local->isRaii || local->requiresValueDrop))
             {
                 const MethodCleanupRegion* region = cleanupRegion(statement);
                 if (region == nullptr)

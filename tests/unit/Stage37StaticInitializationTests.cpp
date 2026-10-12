@@ -646,6 +646,45 @@ void testTerminalFailureUsesPanicProfile(TestContext& tests, const std::filesyst
             unexpectedReturnTrap < cleanupBlock,
         "reaccessing a failed type uses the configured native-unwind panic profile and traps if it returns");
 }
+
+void testStaticLocalGuardAndModuleDestruction(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "StaticLocal";
+    writeProject(directory, "Stage37StaticLocal", "unwind-native");
+    writeFile(directory / "Main.ns",
+        "class Gate { public static int Next() { static int count = 1; "
+        "static raii string lifetime = null; count = count + 1; return count; } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(
+        directory / "Stage37StaticLocal.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "static-local guard fixture compiles through MIR: " + error);
+    if (!ok || compilation.nameLookup() == nullptr || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "static-local guard fixture lowers to LLVM: " + lowerer.error());
+    if (module == nullptr) return;
+
+    std::string verifyError;
+    tests.expect(module->verify(verifyError),
+        "static-local guard LLVM passes verification: " + verifyError);
+    const std::string llvm = module->text();
+    tests.expect(llvm.find("__nsc_static_local_storage_") != std::string::npos &&
+            llvm.find("__nsc_static_local_state_") != std::string::npos &&
+            llvm.find("cmpxchg ptr @__nsc_static_local_state_") != std::string::npos &&
+            llvm.find("static.local.spin") != std::string::npos &&
+            llvm.find("static.local.is_self") != std::string::npos &&
+            llvm.find("static.local.failure_unwind") != std::string::npos,
+        "static locals use private module storage and the full atomic once/failure guard");
+    tests.expect(llvm.find("@llvm.global_dtors") != std::string::npos &&
+            llvm.find("__nsc_static_local_destroy_") != std::string::npos &&
+            llvm.find("static.local.destroy.live") != std::string::npos,
+        "drop-bearing static locals register a state-guarded module-unload destructor");
+}
 }
 
 int main()
@@ -662,6 +701,7 @@ int main()
     testStaticAccessAndConstNegatives(tests, root);
     testInitializerOrderingAndTypeInit(tests, root);
     testTerminalFailureUsesPanicProfile(tests, root);
+    testStaticLocalGuardAndModuleDestruction(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

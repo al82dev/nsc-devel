@@ -118,6 +118,16 @@ private:
     std::filesystem::path directory_;
 };
 
+void collectMirKind(
+    const nativesharp::frontend::ProjectOopMirNode* node,
+    nativesharp::frontend::ProjectOopMirNodeKind kind,
+    std::vector<const nativesharp::frontend::ProjectOopMirNode*>& result)
+{
+    if (node == nullptr) return;
+    if (node->kind == kind) result.push_back(node);
+    for (const auto& child : node->children) collectMirKind(child.get(), kind, result);
+}
+
 void addCase(TestRegistry& registry, std::string id, TestFunction function)
 {
     registry.add(TestCase{std::move(id), "CL-LANG-012", "Host.Language", "unit", "PR",
@@ -566,6 +576,73 @@ void registerStaticInitializationFailureCase(TestRegistry& registry)
                 "TL-LANG-298 initialization failure retains the configured process panic profile");
         }});
 }
+
+void registerStaticLocalLifetimeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-299", "CL-LANG-012", "Host.Language", "component", "PR",
+        {"language", "static-initialization", "static-local", "module-lifetime"},
+        [](TestContext& context) {
+            const std::string source = R"ns(
+class Gate
+{
+    public static int Next()
+    {
+        static int counter = 1;
+        static raii string lifetime = null;
+        counter = counter + 1;
+        return counter;
+    }
+}
+)ns";
+            TemporaryProject project("tl-lang-299-static-local", source);
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Mir, project.projectFile(), error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-299 static locals must compile through MIR: " +
+                    projectFailureEvidence(compilation, error));
+            if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+            std::vector<const nativesharp::frontend::ProjectOopMirNode*> declarations;
+            for (const auto& function : compilation.oopMirModel()->functions())
+                collectMirKind(function.body.get(),
+                    nativesharp::frontend::ProjectOopMirNodeKind::LocalDeclaration,
+                    declarations);
+            const auto staticCount = std::ranges::count_if(
+                declarations, [](const auto* declaration) { return declaration->staticLocal; });
+            const auto staticOwner = std::ranges::find_if(
+                declarations, [](const auto* declaration) {
+                    return declaration->staticLocal && declaration->automaticDestruction;
+                });
+            context.expect(staticCount == 2U && staticOwner != declarations.end() &&
+                    !(*staticOwner)->cleanupRegionOrdinal.has_value(),
+                "TL-LANG-299 MIR must retain two module-static declarations and keep owner "
+                "destruction out of lexical cleanup regions");
+
+            const auto expectRejected = [&](std::string_view label, std::string invalidSource,
+                                            std::string_view diagnostic) {
+                TemporaryProject invalidProject(label, std::move(invalidSource));
+                nativesharp::frontend::ProjectCompilation invalidCompilation;
+                std::string invalidError;
+                const bool accepted = compileTo(
+                    invalidCompilation, ProjectStage::MethodBodies,
+                    invalidProject.projectFile(), invalidError);
+                const std::string evidence = projectFailureEvidence(
+                    invalidCompilation, invalidError);
+                context.expect(!accepted && evidence.find(diagnostic) != std::string::npos,
+                    "TL-LANG-299 invalid static-local storage must fail causally: " + evidence);
+            };
+            expectRejected(
+                "tl-lang-299-reference",
+                "class Gate { static int Value; static void Run() { static ref int alias = ref Value; } }",
+                "static local cannot be a reference local");
+            expectRejected(
+                "tl-lang-299-vla",
+                "class Gate { static void Run(int count) { static int[count] values; } }",
+                "static local cannot be a variable-length array");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -582,5 +659,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerModuleInitializationPlanCase(registry);
     registerStaticInitializationOnceCase(registry);
     registerStaticInitializationFailureCase(registry);
+    registerStaticLocalLifetimeCase(registry);
 }
 }

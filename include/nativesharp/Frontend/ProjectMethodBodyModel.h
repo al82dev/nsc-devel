@@ -81,6 +81,9 @@ struct MethodLocalSymbol final
     const ast::AstNode* syntax = nullptr;
     std::string name;
     std::string typeKey;
+    // NativeSharp 3.0.4 T01-F06. Static locals retain lexical name lookup but their storage and
+    // lifetime belong to the defining module rather than to an invocation frame.
+    bool isStatic = false;
     // NativeSharp 2.0 item 269: `T[length] local;` is stack storage whose extent is
     // evaluated when the declaration executes.  Downstream expression typing uses the
     // pointer-shaped `typeKey`, while these two fields preserve the array declaration's

@@ -238,6 +238,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-296 | CL-LANG-012 | Producer referenciado por Consumer, ambos con constructor estatico | plan dependency-first, dependencia directa explicita y ownership exacto sin ejecutar al importar | PR |
 | TL-LANG-297 | CL-LANG-012 | cctor explicito con campo estatico y grafo de modulos ciclico | CAS/body/publish, espera y reentrancia exactos; ciclo rechazado causalmente | PR |
 | TL-LANG-298 | CL-LANG-012 | estados de inicializacion y perfiles panic abort/unwind-native | failed terminal sin retry y perfil panic exacto | PR |
+| TL-LANG-299 | CL-LANG-012 | locales static escalar/propietario y negativos ref/VLA | storage/guard 0-1-2-3, sin cleanup lexico y destructor al unload condicionado a initialized | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 5 | 62.5 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 6 | 75 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **13** | **8.84 %** |
+| **Total** |  | **147** | **14** | **9.52 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -955,7 +955,7 @@ T00
 - [x] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
 - [x] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
 - [x] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
-- [ ] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
+- [x] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
 - [ ] `NS304-T01-F07` — Implementar declaraciones en `if`, `while` y `switch` con scope y cleanup por arista.
 - [ ] `NS304-T01-F08` — Versionar metadata, emitir debug info y probar EXE, DLL, concurrencia y recursión.
 
@@ -1440,6 +1440,26 @@ Estado: `CERRADO`.
 - Guard LLVM: `nsc_stage37_static_initialization_tests` `PASS`, 67 checks.
 - Gate: T01 queda 5/8 y Parte B 13/147, sin batería completa.
 - Siguiente ítem: `NS304-T01-F06`.
+
+### NS304-T01-F06 — locales `static` y lifetime de módulo
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F06-static-locals.md`.
+- Contrato: storage por módulo, inicialización al primer alcance con guard
+  0/1/2/3 y destrucción una vez al descargar el módulo; nunca al salir del
+  scope. Referencias locales y VLA estáticos se rechazan causalmente.
+- Implementación: `staticLocal` viaja Parser -> MethodLocal -> HIR -> MIR ->
+  cache/dump; LLVM emite storage/state/owner privados, CAS/espera/reentrancia,
+  fallo terminal y thunks registrados en `llvm.global_dtors`.
+- Prueba puntual: `TL-LANG-299` `PASS` en 90358 microsegundos.
+- Guards: `TL-LANG-297` `PASS` en 22235 microsegundos, `TL-LANG-298` `PASS` en
+  7 microsegundos, `TL-LANG-160` `PASS` en 3885 microsegundos y `TL-LANG-294`
+  `PASS` en 7 microsegundos.
+- Guard LLVM: `nsc_stage37_static_initialization_tests` `PASS`, 72 checks.
+- Catálogo: 5720 casos, 5720 ejecutables y 5720 filas de manifest.
+- Gate: T01 queda 6/8 y Parte B 14/147, sin batería completa.
+- Siguiente ítem: `NS304-T01-F07`.
 
 ---
 
@@ -1952,12 +1972,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B02/T01-F03 | Plan de inicialización por módulo | ProjectGraph dependency-first, aristas directas y ownership de cctors; `TL-LANG-296` + guards 295/160 | `PASS`; T01 3/8; 11/147 cerrados; T01-F04 activa |
 | 2026-10-12 | B02/T01-F04 | Once thread-safe, espera, reentrancia y ciclos | guard por tipo CAS/owner/spin, cuerpo explícito separado, rechazo de ciclo; `TL-LANG-297` + Stage37 | `PASS`; T01 4/8; 12/147 cerrados; T01-F05 activa |
 | 2026-10-12 | B02/T01-F05 | Fallo terminal sin retry | state3, cleanuppad Win64, propagación y panic por perfil; `TL-LANG-298` + Stage37 | `PASS`; T01 5/8; 13/147 cerrados; T01-F06 activa |
+| 2026-10-12 | B02/T01-F06 | Locales static y lifetime de módulo | storage/state/owner privados, guard 0/1/2/3, sin cleanup léxico, global dtors; `TL-LANG-299` + Stage37 | `PASS`; T01 6/8; 14/147 cerrados; T01-F07 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `13/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `14/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -1969,7 +1990,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   plan dependency-first por módulo con `TL-LANG-296`; T01-F04 cerró el guard
   CAS/owner/spin y ciclos con `TL-LANG-297` y Stage37; T01-F05 hizo terminal el
   estado `failed`, preservó unwind y seleccionó panic por perfil con
-  `TL-LANG-298`, manteniendo la promoción de superficie pendiente; T01-F06 activa.
+  `TL-LANG-298`; T01-F06 cerró locales static con storage/guard por declaración
+  y destrucción al unload mediante `TL-LANG-299`, manteniendo la promoción de
+  superficie pendiente hasta T01-F08; T01-F07 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.

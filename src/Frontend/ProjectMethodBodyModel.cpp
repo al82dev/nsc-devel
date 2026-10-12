@@ -5679,6 +5679,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         variable->auxiliaryText() == "local:defer-value-capture";
     const bool isForeachEnumerator =
         variable->auxiliaryText() == "local:foreach-enumerator";
+    const bool isStaticLocal = variable->hasModifier(TokenKind::KwStatic);
 
     // `var`: the parser bypasses parseType() entirely for this keyword and hands us a marker
     // TypeSyntax (baseTokenKind() == TokenKind::KwVar) instead -- see Parser::parseVariableDeclaration.
@@ -5881,6 +5882,23 @@ void ProjectMethodBodyModel::analyzeVariable(
                 }
             }
         }
+    }
+
+    if (isStaticLocal && isReferenceLocal)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "static local cannot be a reference local because its referent may not outlive the module");
+    }
+    if (isStaticLocal && isVariableLengthArray)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "static local cannot be a variable-length array because module storage requires a fixed extent");
     }
 
     const std::string typeKey = isVarInferred
@@ -6440,6 +6458,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
+    local.isStatic = isStaticLocal;
     local.isReference = isReferenceLocal;
     local.referenceEscapeOrigin = pendingReferenceEscapeOrigin;
     if (isReferenceLocal)
@@ -6625,7 +6644,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         pendingLocalBorrow->localOrdinal = localOrdinal;
         localBorrowBindings_.push_back(std::move(*pendingLocalBorrow));
     }
-    if (isRaii || locals_[localOrdinal].requiresValueDrop)
+    if (!isStaticLocal && (isRaii || locals_[localOrdinal].requiresValueDrop))
     {
         const std::size_t cleanupOrdinal = createCleanupRegion(
             isRaii
@@ -22106,6 +22125,17 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
             *name.localOrdinal < locals_.size())
         {
             const MethodLocalSymbol& local = locals_[*name.localOrdinal];
+            if (local.isStatic)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "static local '" + local.name +
+                        "' cannot be captured; its module storage is not closure-owned");
+                safe = false;
+                continue;
+            }
             if (local.lambdaOrdinal == binding.lambdaOrdinal)
             {
                 if (local.lambdaParameterOrdinal.has_value())

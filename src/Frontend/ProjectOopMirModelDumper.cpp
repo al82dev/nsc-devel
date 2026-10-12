@@ -150,6 +150,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
                << " category=" << node->elementTypeKey
                << " preserve=" << (node->booleanValue ? "true" : "false");
     if (node->referenceLocal) output << " reference-local=true";
+    if (node->staticLocal) output << " storage=module-static";
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
     if (node->kind == ProjectOopMirNodeKind::LoopExpression)
