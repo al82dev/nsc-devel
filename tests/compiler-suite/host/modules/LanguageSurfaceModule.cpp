@@ -1719,6 +1719,7 @@ class Program
         return exact + prefix + suffix;
     }
 }
+
 )ns");
             const std::filesystem::path executable =
                 products.directory() / "T03ListShapes.exe";
@@ -1733,6 +1734,105 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
                 "TL-LANG-308 list-shape lowering must preserve ordered element tests: " +
                     result.error + result.output);
+        }});
+}
+
+void registerListPatternRestCaptureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-309", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "slice", "borrow"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T03ListRestCapture", "Exe", R"ns(
+public copy borrowed struct PatternSlice
+{
+    private int* data;
+    public int Length;
+
+    public PatternSlice(int* source, int length)
+    {
+        data = source;
+        Length = length;
+    }
+
+    public readonly int this[int index]
+    {
+        get { return data[index]; }
+    }
+
+    public readonly PatternSlice Slice(int start, int length)
+    {
+        return new PatternSlice(data + start, length);
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        int* storage = stackalloc int[4];
+        storage[0] = 10;
+        storage[1] = 20;
+        storage[2] = 30;
+        storage[3] = 40;
+        PatternSlice values = new PatternSlice(storage, 4);
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T03ListRestCapture.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-309 rest capture must compile as a borrowed Slice view: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 52,
+                "TL-LANG-309 rest capture must preserve origin-backed elements without copying: " +
+                    result.error + result.output);
+
+            const std::filesystem::path escapeProject = products.writeProject(
+                "T03ListRestEscape", "Exe", R"ns(
+public copy borrowed struct EscapeSlice
+{
+    private int* data;
+    public int Length;
+    public EscapeSlice(int* source, int length) { data = source; Length = length; }
+    public readonly int this[int index] { get { return data[index]; } }
+    public readonly EscapeSlice Slice(int start, int length)
+    {
+        return new EscapeSlice(data + start, length);
+    }
+}
+
+class Program
+{
+    public static EscapeSlice Escape()
+    {
+        int* storage = stackalloc int[4];
+        EscapeSlice values = new EscapeSlice(storage, 4);
+        return match(values) { [.. var middle] => middle, _ => values };
+    }
+    public static int Main() { return Escape().Length; }
+}
+)ns");
+            const external_program_support::Result escaped = emitT01Product(
+                L"--emit-project-oop-exe", escapeProject,
+                products.directory() / "T03ListRestEscape.exe", products.directory());
+            const std::string escapeDiagnostics = escaped.error + escaped.output;
+            context.expect(escaped.started && escaped.exitCode != 0 &&
+                    escapeDiagnostics.find("borrows from local 'storage' and cannot be returned") !=
+                        std::string::npos,
+                "TL-LANG-309 a rest view rooted in local storage must not escape: " +
+                    escapeDiagnostics);
         }});
 }
 }
@@ -1761,5 +1861,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerMetadataDefaultWitnessCase(registry);
     registerDefaultDispatchAbiCase(registry);
     registerListPatternShapeCase(registry);
+    registerListPatternRestCaptureCase(registry);
 }
 }

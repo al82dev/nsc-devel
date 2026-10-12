@@ -402,6 +402,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-269 | CL-LANG-020 | canReadCUnionMember sobre cuatro combinaciones | true con proof o unsafe context | PR |
 | TL-LANG-270 | CL-LANG-020 | variantMetadataIdentity con 0,1,N cases y payloads distintos | qualified name y case names; payload no afecta identidad | PR |
 | TL-LANG-308 | CL-LANG-020 | array nativo con list patterns exacto, prefijo, sufijo y `_` | length-first, elementos ordenados y salida 42 | PR |
+| TL-LANG-309 | CL-LANG-020 | vista prestada con `[10, .. var middle, 40]` | `middle` conserva el origen mediante `Slice`, no copia elementos y produce salida 52 | PR |
 
 ## Traits y operadores — `CL-LANG-021`
 

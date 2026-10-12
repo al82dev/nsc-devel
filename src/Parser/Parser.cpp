@@ -10538,8 +10538,15 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
                 }
 
                 Pattern rest;
-                rest.kind = PatternKind::Wildcard;
-                rest.range = tokens_[index_ - 1].range();
+                if (!at(TokenKind::Comma) && !at(TokenKind::RightBracket))
+                {
+                    rest = parsePattern(true);
+                }
+                else
+                {
+                    rest.kind = PatternKind::Wildcard;
+                    rest.range = tokens_[index_ - 1].range();
+                }
                 result.children.push_back(std::move(rest));
             }
             else
@@ -11234,7 +11241,25 @@ void Parser::emitPatternBindings(
         const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
         for (std::size_t index = 0; index < pattern.children.size(); ++index)
         {
-            if (pattern.restIndex == index) continue;
+            if (pattern.restIndex == index)
+            {
+                PatternExpressionFactory rest = [&, source]
+                {
+                    const std::size_t fixedCount = pattern.children.size() - 1U;
+                    ast::AstNode* call = arena_.make<ast::AstNode>(
+                        ast::AstNodeKind::CallExpression, pattern.children[index].range);
+                    call->setFirst(makeMemberExpression(source(), "Slice"));
+                    call->addChild(makeIntegerLiteralExpression(pattern.range, restOffset));
+                    call->addChild(makeBinaryExpression(
+                        TokenKind::Minus,
+                        makeMemberExpression(source(), "Length"),
+                        makeIntegerLiteralExpression(pattern.range, fixedCount)));
+                    return call;
+                };
+                emitPatternBindings(
+                    pattern.children[index], rest, destination, temporaryPrefix);
+                continue;
+            }
             PatternExpressionFactory element = [&, source, index, restOffset]
             {
                 ast::AstNode* elementIndex = nullptr;
