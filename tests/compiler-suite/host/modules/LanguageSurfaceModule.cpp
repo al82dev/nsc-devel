@@ -3,6 +3,7 @@
 #include "nsc_suite/TestRegistry.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/ErrorSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
@@ -1558,6 +1559,141 @@ class Program
                 "producer-owned witnesses: " + result.error + result.output);
         }});
 }
+
+void registerDefaultDispatchAbiCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-307", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "default-body", "dll", "abi", "mir", "llvm", "debug"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T02DefaultAbi", "SharedLibrary", R"ns(
+namespace DefaultAbi
+{
+    public trait IDefaults
+    {
+        int First() { return 20; }
+        int Second() { return 1; }
+    }
+}
+)ns");
+            const std::filesystem::path producerRuntime =
+                products.directory() / "T02DefaultAbi.dll";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-dll", producerProject, producerRuntime,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-307 the debug DLL producer must build: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            const std::filesystem::path metadataPath =
+                products.directory() / "T02DefaultAbi.nsmeta";
+            nativesharp::interop::LibraryMetadata metadata;
+            std::string metadataError;
+            const bool metadataRead = nativesharp::interop::LibraryMetadataCodec{}.read(
+                metadataPath, metadata, metadataError);
+            const auto trait = std::ranges::find_if(metadata.types, [](const auto& type) {
+                return type.fullyQualifiedName == "DefaultAbi.IDefaults";
+            });
+            std::vector<std::string> witnesses;
+            for (const auto& member : metadata.members)
+            {
+                if (member.declaringTypeKey == "type:T02DefaultAbi::DefaultAbi.IDefaults" &&
+                    (member.name == "First" || member.name == "Second") &&
+                    !member.mangledName.empty())
+                    witnesses.push_back(member.mangledName);
+            }
+            context.expect(metadataRead && trait != metadata.types.end() &&
+                    trait->traitMethodSignatures.size() == 2U && witnesses.size() == 2U,
+                "TL-LANG-307 NSMETA must publish two ordered default slots and callees: " +
+                    metadataError);
+
+            bool reorderedBreaksContract = false;
+            if (metadataRead && trait != metadata.types.end() &&
+                trait->traitMethodSignatures.size() == 2U)
+            {
+                nativesharp::interop::LibraryMetadata reordered = metadata;
+                const std::size_t traitIndex = static_cast<std::size_t>(
+                    std::distance(metadata.types.begin(), trait));
+                std::ranges::reverse(reordered.types[traitIndex].traitMethodSignatures);
+                const auto diff = nativesharp::interop::LibraryApiDiffer::compare(
+                    metadata, reordered);
+                reorderedBreaksContract = !diff.sourceCompatible || !diff.abiCompatible;
+            }
+            context.expect(reorderedBreaksContract,
+                "TL-LANG-307 reordering default dispatch slots must be an observable evolution "
+                "break");
+
+            constexpr std::string_view libraryReference =
+                "<LibraryReference Include=\"T02DefaultAbi.lib\" "
+                "Runtime=\"T02DefaultAbi.dll\"/>";
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T02DefaultAbiConsumer", "Exe", R"ns(
+using DefaultAbi;
+class Local { }
+impl IDefaults for Local { }
+class Program
+{
+    private static int StaticRead<T>(T value) where T : IDefaults
+    {
+        return value.First() + value.Second();
+    }
+
+    public static int Main()
+    {
+        Local local = new Local();
+        dyn IDefaults dynamicValue = local;
+        return StaticRead<Local>(local) + dynamicValue.First() + dynamicValue.Second();
+    }
+}
+)ns", libraryReference);
+
+            const external_program_support::Result mir = runT01Compiler(
+                {L"--dump-project-oop-mir", consumerProject.wstring(), L"-O0"},
+                products.directory());
+            bool mirCarriesWitnesses = mir.started && mir.exitCode == 0 &&
+                mir.output.find("interface-binding") != std::string::npos;
+            for (const std::string& witness : witnesses)
+                mirCarriesWitnesses = mirCarriesWitnesses &&
+                    mir.output.find(witness) != std::string::npos;
+            context.expect(mirCarriesWitnesses,
+                "TL-LANG-307 MIR must preserve static callees and the dynamic interface table: " +
+                    mir.error + mir.output);
+
+            const external_program_support::Result llvm = runT01Compiler(
+                {L"--dump-project-oop-llvm", consumerProject.wstring(), L"-O0"},
+                products.directory());
+            bool llvmCarriesWitnesses = llvm.started && llvm.exitCode == 0;
+            for (const std::string& witness : witnesses)
+                llvmCarriesWitnesses = llvmCarriesWitnesses &&
+                    llvm.output.find(witness) != std::string::npos;
+            context.expect(llvmCarriesWitnesses,
+                "TL-LANG-307 LLVM must retain imported default callees and debug locations: " +
+                    llvm.error + llvm.output);
+
+            const std::filesystem::path consumerExecutable =
+                products.directory() / "T02DefaultAbiConsumer.exe";
+            const external_program_support::Result consumer = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, consumerExecutable,
+                products.directory());
+            context.expect(consumer.started && consumer.exitCode == 0 && consumer.error.empty(),
+                "TL-LANG-307 the separated static/dynamic consumer must build: " +
+                    consumer.error + consumer.output);
+            if (!consumer.started || consumer.exitCode != 0) return;
+            context.expect(std::filesystem::is_regular_file(
+                    products.directory() / "T02DefaultAbi.pdb") &&
+                    std::filesystem::file_size(
+                        products.directory() / "T02DefaultAbi.pdb") > 0U,
+                "TL-LANG-307 the producer default witnesses must retain a non-empty PDB");
+
+            const auto result = external_program_support::run(
+                consumerExecutable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-307 static and dynamic default dispatch must produce the same result: " +
+                    result.error + result.output);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1582,5 +1718,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultDiamondAndCoherenceCase(registry);
     registerGenericDefaultIntegrationCase(registry);
     registerMetadataDefaultWitnessCase(registry);
+    registerDefaultDispatchAbiCase(registry);
 }
 }

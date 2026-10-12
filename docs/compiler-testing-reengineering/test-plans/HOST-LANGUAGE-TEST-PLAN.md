@@ -246,6 +246,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-304 | CL-LANG-012 | diamante ambiguo/resuelto, duplicado impl y productor/consumidor separados | rechazos causales exactos; override e impl local coherente producen 42 | PR |
 | TL-LANG-305 | CL-LANG-012 | trait genérico con associated defaults, constraint, `some` y `dyn`; negativos object-safety | proyección estática, `dyn` y `some` producen 42; rechazos causales exactos | PR |
 | TL-LANG-306 | CL-LANG-012 | productor static library con defaults de método/propiedad/indexador; consumidor sin fuentes del productor | NSMETA conserva 3 witnesses físicos y el consumidor termina 42 | PR |
+| TL-LANG-307 | CL-LANG-012 | DLL debug con dos defaults y consumidor por constraint/`dyn` | slots/versionado, MIR/LLVM/PDB y paridad 21+21=42 | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

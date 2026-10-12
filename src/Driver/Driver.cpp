@@ -964,8 +964,10 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr || declaringType->accessibility != kPublicAccessibility ||
         !isPubliclyReachableMetadataType(metadata, *declaringType)) return false;
-    if ((member.flags & kStatic) == 0U && declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
-        declaringType->kind != interop::LibraryMetadataTypeKind::Class)
+    if ((member.flags & kStatic) == 0U &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Class &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
     {
         return false;
     }
@@ -7267,7 +7269,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         }
         if (member.kind != frontend::ClassMemberKind::Method ||
             (!member.isStatic && type.kind != frontend::NamedTypeDeclarationKind::Struct &&
-                type.kind != frontend::NamedTypeDeclarationKind::Class) ||
+                type.kind != frontend::NamedTypeDeclarationKind::Class &&
+                type.kind != frontend::NamedTypeDeclarationKind::Interface) ||
             member.isAbstract || member.isCompilerGenerated ||
             (member.isExternC && !member.isExportedC))
         {

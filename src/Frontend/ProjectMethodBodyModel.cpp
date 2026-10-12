@@ -21322,7 +21322,30 @@ std::vector<std::size_t> ProjectMethodBodyModel::memberCandidatesForType(
             ? inheritanceModel_->baseTypeOrdinal(*current)
             : std::nullopt;
     }
-    return {};
+
+    // A default selected for a concrete class is also part of that class's static member
+    // surface. Reuse the already-coherent interface-table plan instead of rediscovering
+    // precedence here: the same member ordinal must serve a direct/constrained call and the
+    // corresponding dyn dispatch slot.
+    std::vector<std::size_t> defaults;
+    if (interfaceModel_ != nullptr)
+    {
+        for (const ClassInterfaceTablePlan& plan : interfaceModel_->tablePlans())
+        {
+            if (plan.classTypeOrdinal != typeOrdinal) continue;
+            for (const std::optional<std::size_t> implementation :
+                 plan.implementationMemberOrdinals)
+            {
+                if (!implementation.has_value() ||
+                    *implementation >= memberModel_->members().size() ||
+                    memberModel_->members()[*implementation].name != name ||
+                    std::ranges::find(defaults, *implementation) != defaults.end())
+                    continue;
+                defaults.push_back(*implementation);
+            }
+        }
+    }
+    return defaults;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::referenceTypeOrdinalForTypeKey(

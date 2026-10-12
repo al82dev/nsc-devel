@@ -917,7 +917,7 @@ T00
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
-| T02 | Cuerpos default de traits e interfaces | 6 | 5 | 83.33 % |
+| T02 | Cuerpos default de traits e interfaces | 6 | 6 | 100 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
 | T05 | Async/await productivo | 10 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **21** | **14.29 %** |
+| **Total** |  | **147** | **22** | **14.97 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -966,7 +966,7 @@ T00
 - [x] `NS304-T02-F03` — Resolver diamantes, overrides, traits sellados, coherence y conflictos intermodulares.
 - [x] `NS304-T02-F04` — Integrar genéricos, associated types, constraints, `some Trait` y `dyn Trait`.
 - [x] `NS304-T02-F05` — Transportar cuerpos y witnesses versionados por NSMETA sin requerir fuentes.
-- [ ] `NS304-T02-F06` — Cerrar vtables, ABI DLL, evolución binaria, MIR, LLVM y debug de thunks.
+- [x] `NS304-T02-F06` — Cerrar vtables, ABI DLL, evolución binaria, MIR, LLVM y debug de thunks.
 
 ### T03 — list, slice y property patterns
 
@@ -1605,6 +1605,25 @@ Estado: `CERRADO`.
 - Gate: T02 queda 5/6 y Parte B 21/147, sin batería completa.
 - Siguiente ítem: `NS304-T02-F06`.
 
+### NS304-T02-F06 — vtables, ABI DLL, evolución y backend
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T02-F06-default-dispatch-abi.md`.
+- Contrato: lookup estático y dispatch dinámico comparten el witness seleccionado;
+  el DLL lo exporta, NSMETA fija orden, MIR/LLVM lo conservan y debug produce PDB.
+- Implementación: lookup concreto reutiliza como fallback el plan coherente de
+  interfaz; publicación/validación DLL admite métodos default no abstractos de
+  interfaz sin ampliar requisitos abstractos.
+- Prueba puntual: `TL-LANG-307` `PASS` en 782796 microsegundos; repetición
+  dirigida `PASS` en 760726 microsegundos.
+- Consolidado T02: `TL-LANG-302`..`TL-LANG-307`, 6/6 `PASS`; guards
+  `TL-LANG-271`..`TL-LANG-278`, 8/8 `PASS`.
+- Builds focales: compilador 6/6; runner 4/4 y 2/2 con LLVM/Clang 23, sin
+  regenerar CMake.
+- Gate: T02 queda 6/6 y Parte B 22/147, sin batería completa.
+- Siguiente tanda habilitada: `T03`, empezando por `NS304-T03-F01`.
+
 ---
 
 # Parte C — NativeSharp 3.0.5: reingeniería del proceso de compilación
@@ -2124,12 +2143,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B03/T02-F03 | Diamantes y coherence | conflicto/redeclaración y ownership intermodular sellado; `TL-LANG-304` + consolidado T02/guards | `PASS`; T02 3/6; 19/147 cerrados; T02-F04 activa |
 | 2026-10-12 | B03/T02-F04 | Integración genérica de defaults | associated defaults, constraints, `some` y `dyn`; `TL-LANG-305` + guards verticales | `PASS`; T02 4/6; 20/147 cerrados; T02-F05 activa |
 | 2026-10-12 | B03/T02-F05 | Witnesses default por NSMETA | método, propiedad e indexador consumidos sin fuentes del productor; `TL-LANG-306` | `PASS`; T02 5/6; 21/147 cerrados; T02-F06 activa |
+| 2026-10-12 | B03/T02-F06 | Cierre ABI de defaults | lookup estático/dyn, DLL exports, slots, MIR, LLVM y PDB; `TL-LANG-307` | `PASS`; T02 6/6; 22/147 cerrados; T03-F01 habilitada |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `21/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `22/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2152,8 +2172,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   sellada para trait/interface mediante `TL-LANG-304`; T02-F04 integró defaults
   con genéricos, associated items, constraints, `some` y `dyn` mediante
   `TL-LANG-305`; T02-F05 preservó witnesses default de método, propiedad e
-  indexador por NSMETA mediante `TL-LANG-306`, y T02 queda 5/6 con T02-F06
-  activa.
+  indexador por NSMETA mediante `TL-LANG-306`; T02-F06 cerró lookup estático,
+  vtables, DLL exports, evolución, MIR/LLVM y PDB mediante `TL-LANG-307`. T02
+  queda 6/6 y T03-F01 queda habilitada.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
