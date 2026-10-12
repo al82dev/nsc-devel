@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 26 | 50.00 % | `EN_PROGRESO`; A03 15/21 |
+| A | 3.0.3 | 14 | 52 defectos | 27 | 51.92 % | `EN_PROGRESO`; A03 16/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G21, quedan 26 KPD abiertos y veintiséis casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G22, quedan 25 KPD abiertos y veintisiete casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -264,7 +264,7 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A03 · `TP-PAR-422` / `CP-PAR-035`**
   - Contrato: `try` sin `catch` ni `finally` diagnostica constructo incompleto.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1512; T:`ParserCleanupContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; puntual G22 como KPD y Required `PASS`; commit de implementación G22: este commit.
 - **A03 · `TP-PAR-431` / `CP-PAR-036`**
   - Contrato: ranges `..`, `..=` y endpoints omitidos retienen forma/flags exactos.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1521; T:`ParserExpressionPrecedenceContinuationModule.cpp`.
@@ -536,6 +536,7 @@ Resultado del inventario causal:
   - Causa: retorna tras cero `catch` y ausencia de `finally` sin emitir diagnóstico.
   - Consumidores: cleanup, control de flujo y lowering de excepciones.
   - Puntual: `ParserCleanupContinuationModule.cpp`; existe.
+  - Estado: `CERRADO` en A03; emite `ExpectedToken` sin consumir el siguiente token.
 - **G23 — range expression no admite inicio omitido: `TP-PAR-431`.**
   - Productor: `Parser::parseRangeExpression`.
   - Causa: llama primero a `parseLogicalOrExpression`; no detecta `DotDot` como inicio sin operando.
@@ -676,7 +677,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 15/21, 26/52 defectos corregidos y 26 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 16/21, 27/52 defectos corregidos y 25 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -718,7 +719,9 @@ Puertas previas a editar producto:
 - Evidencia G21: `TP-PAR-405` (KPD 15,387 us; Required 18,201 us) y `TP-PAR-406` (KPD 841 us; Required 928 us) pasaron
   tras reservar un prefijo único por instancia antes de parsear el cuerpo; cuatro objetos reconstruidos con LLVM 23.1.0
   sin regenerar configuración.
-- Próxima acción A03: G22.
+- Evidencia G22: `TP-PAR-422` pasó como KPD (18,580 us) y Required (16,204 us) al exigir `catch` o `finally`, emitir
+  exactamente un `ExpectedToken` y conservar EOF; dos objetos reconstruidos con LLVM 23.1.0 sin regenerar configuración.
+- Próxima acción A03: G23.
 
 ---
 
@@ -1450,10 +1453,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G19 | puntual KPD + Required | `PASS`; 29 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G20 | puntual KPD + Required | `PASS`; 28 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G21 | dos puntuales KPD + Required | `PASS`; 26 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G22 | puntual KPD + Required | `PASS`; 25 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `26/52`; A03 15/21; siguiente acción vinculante: G22.
+- A: `27/52`; A03 16/21; siguiente acción vinculante: G23.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

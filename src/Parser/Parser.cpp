@@ -12540,8 +12540,10 @@ ast::AstNode* Parser::parseTryStatement()
         node->addChild(parseCatchClause());
     }
 
+    bool hasFinally = false;
     if (consumeIf(TokenKind::KwFinally))
     {
+        hasFinally = true;
         ast::AstNode* finallyBlock = nullptr;
         if (at(TokenKind::LeftBrace))
         {
@@ -12552,6 +12554,17 @@ ast::AstNode* Parser::parseTryStatement()
             expect(TokenKind::LeftBrace, "'{' after finally");
         }
         node->setSecond(finallyBlock);
+    }
+
+    // A protected block is not a complete try statement on its own. Report the missing handler
+    // without consuming the following token so normal statement recovery remains in control.
+    if (node->children().empty() && !hasFinally)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "expected 'catch' or 'finally' after try block");
     }
 
     node->setRange(tokenRangeFrom(beginIndex));

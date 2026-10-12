@@ -199,8 +199,10 @@ void testTryRequiresHandler(TestContext& context)
 {
     ParserFixture fixture("try { work(); }");
     AstNode* const node = parseStatement(fixture);
+    const auto& diagnostics = fixture.diagnostics().diagnostics();
     context.expect(node != nullptr && node->kind() == AstNodeKind::TryStatement &&
-            fixture.diagnostics().hasErrors(),
+            diagnostics.size() == 1 && diagnostics[0].id() == DiagnosticId::ExpectedToken &&
+            fixture.parser().current().kind() == TokenKind::EndOfFile,
         "TP-PAR-422 try without catch or finally must diagnose an incomplete cleanup construct");
 }
 
@@ -262,7 +264,7 @@ void registerParserCleanupContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-419", testCatchOrder);
     addCase(registry, "TP-PAR-420", testCatchDeclarationAndFilter);
     addCase(registry, "TP-PAR-421", testTryFinally);
-    addCase(registry, "TP-PAR-422", testTryRequiresHandler, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-422", testTryRequiresHandler);
     addCase(registry, "TP-PAR-423", testThrowExpression);
     addCase(registry, "TP-PAR-424", testRethrow);
     addCase(registry, "TP-PAR-425", testUsingStatement);
