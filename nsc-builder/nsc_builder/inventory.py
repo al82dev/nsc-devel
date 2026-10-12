@@ -130,10 +130,9 @@ VISIBLE_STATE_GROUPS = {
             "INFRASTRUCTURE_ERROR",
             "NOT_RUN",
             "TIMEOUT",
-            "UNEXPECTED_PASS",
         }
     ),
-    "successful": frozenset({"KNOWN_FAILURE", "PASS"}),
+    "successful": frozenset({"PASS"}),
     "live": frozenset({"COMPILING", "RUNNING"}),
     "waiting": frozenset({"LISTO", "PENDIENTE"}),
 }

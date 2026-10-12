@@ -365,6 +365,25 @@ class CanonicalCatalog:
         return tuple(selected)
 
 
+def refresh_run_variants(
+    catalog: CanonicalCatalog, variants: Sequence[RunVariant]
+) -> tuple[RunVariant, ...]:
+    """Rebind an existing run selection to freshly loaded case definitions."""
+    refreshed: list[RunVariant] = []
+    for variant in variants:
+        case = catalog.by_id.get(variant.case.case_id)
+        if case is None or not case.executable:
+            raise ValueError(
+                f"case is absent from the current executable catalogue: {variant.case.case_id}"
+            )
+        if variant.build_mode not in case.build_modes:
+            raise ValueError(f"build mode changed for current case: {variant.key}")
+        if variant.optimization not in case.optimizations:
+            raise ValueError(f"optimization changed for current case: {variant.key}")
+        refreshed.append(RunVariant(case, variant.build_mode, variant.optimization))
+    return tuple(refreshed)
+
+
 def expand_variants(
     cases: Iterable[CaseRecord], build_mode: str, optimization: str
 ) -> tuple[RunVariant, ...]:

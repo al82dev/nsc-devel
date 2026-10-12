@@ -27,3 +27,18 @@ python nsc-builder/nscbuilder3.py --gui-smoke
 
 The package does not configure or build NSC unless the operator explicitly
 uses those GUI actions.
+
+## Observed results and run-time inputs
+
+Current runs publish the observed oracle result: a satisfied oracle is
+`PASS`, and an unsatisfied oracle is `FAIL`. Historical expectation metadata
+such as `expected_outcome` or `KnownProductDefect` remains attached to the
+canonical `TestCase`, but it never rewrites the observed result. Legacy
+`KNOWN_FAILURE` and `UNEXPECTED_PASS` evidence remains readable and is
+projected as `FAIL` and `PASS`, respectively.
+
+The GUI reloads the canonical catalogue immediately before every run, then
+rebinds the selected variants by stable identity. It also resolves the
+comparison compiler and generated build-id header from the configured install
+and compiler-build roots before saving or launching. These identity inputs do
+not use `PATH`, the registry, or unrelated compiler installations.

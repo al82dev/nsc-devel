@@ -19,7 +19,7 @@ import threading
 import time
 import uuid
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
@@ -118,21 +118,7 @@ class BuilderConfig:
         compiler_llvm_root = str(compiler_llvm_root_path)
         llvm_dir = str(compiler_llvm_root_path / "lib" / "cmake" / "llvm")
         archive = discover_archive_executable(self.archive_executable)
-        comparison_nsc = first_distinct_existing_file(
-            [
-                self.comparison_nsc,
-                "A:/native-sharp-3.0-baseline/bin/nsc.exe",
-                "A:/nsc-devel/build-clang/bin/nsc.exe",
-            ],
-            nsc,
-        )
-        build_id_header = first_existing_file(
-            [
-                self.build_id_header,
-                Path(compiler_build_root) / "generated" / "nativesharp" / "Basic" / "BuildId.h",
-            ]
-        )
-        return BuilderConfig(
+        discovered = BuilderConfig(
             nsc_executable=nsc,
             nslink_executable=nslink,
             compiler_build_root=compiler_build_root,
@@ -141,9 +127,36 @@ class BuilderConfig:
             compiler_llvm_root=compiler_llvm_root,
             llvm_dir=llvm_dir,
             archive_executable=archive,
+            comparison_nsc=self.comparison_nsc,
+            build_id_header=self.build_id_header,
+            jobs=self.jobs,
+        )
+        return discovered.with_canonical_identity_inputs()
+
+    def with_canonical_identity_inputs(self) -> "BuilderConfig":
+        """Resolve identity inputs only from the selected compiler roots."""
+        comparison_nsc = first_distinct_existing_file(
+            [
+                self.comparison_nsc,
+                Path(self.install_prefix) / "bin" / "nsc.exe",
+                Path(self.compiler_build_root) / "bin" / "nsc.exe",
+            ],
+            self.nsc_executable,
+        )
+        build_id_header = first_existing_file(
+            [
+                self.build_id_header,
+                Path(self.compiler_build_root)
+                / "generated"
+                / "nativesharp"
+                / "Basic"
+                / "BuildId.h",
+            ]
+        )
+        return replace(
+            self,
             comparison_nsc=comparison_nsc,
             build_id_header=build_id_header,
-            jobs=self.jobs,
         )
 
     def save(self) -> None:

@@ -482,10 +482,8 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("Pendientes / listos", "WAITING"),
                 ("PASS", "PASS"),
                 ("FAIL", "FAIL"),
-                ("KNOWN_FAILURE", "KNOWN_FAILURE"),
                 ("BLOCKED", "BLOCKED"),
                 ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
-                ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
                 ("TIMEOUT", "TIMEOUT"),
                 ("NOT_RUN / BLOQUEADO_POR", "NOT_RUN"),
@@ -1432,7 +1430,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=False)
+                self.catalog = CanonicalCatalog.load()
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
+                self._load_config(config)
                 config.save()
                 cases = self._selected_cases()
                 variants = expand_variants(
@@ -1460,7 +1462,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().validated(require_tools=False)
+                config = self._config_from_ui().with_discovery().validated(
+                    require_tools=False
+                )
+                self._load_config(config)
                 config.save()
                 self._update_case(
                     variant.key,
@@ -1729,6 +1734,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             variants: Sequence[RunVariant],
             origin: str,
         ) -> None:
+            self.catalog = CanonicalCatalog.load()
+            variants = refresh_run_variants(self.catalog, variants)
+            config = config.with_discovery().validated(require_tools=False)
+            self._load_config(config)
+            config.save()
             self.visible_variants = tuple(variants)
             self.current_outcomes_by_key.clear()
             self.variant_position_by_key = {
@@ -2005,10 +2015,8 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "RUNNING",
                 "PASS",
                 "FAIL",
-                "KNOWN_FAILURE",
                 "BLOCKED",
                 "INFRASTRUCTURE_ERROR",
-                "UNEXPECTED_PASS",
                 "CANCELLED",
                 "TIMEOUT",
                 "NOT_RUN",
@@ -2281,15 +2289,16 @@ def launch_gui(smoke_only: bool = False) -> int:
                         "FAIL",
                         "INFRASTRUCTURE_ERROR",
                         "BLOCKED",
-                        "KNOWN_FAILURE",
-                        "UNEXPECTED_PASS",
                         "CANCELLED",
                     )
+                    projected_counts: Counter[str] = Counter()
+                    for name, count in raw_counts.items():
+                        if isinstance(name, str) and isinstance(count, int):
+                            projected_counts[normalize_observed_status(name)] += count
                     result_summary = " · ".join(
-                        f"{name}: {raw_counts[name]:,}"
+                        f"{name}: {projected_counts[name]:,}"
                         for name in order
-                        if isinstance(raw_counts.get(name), int)
-                        and raw_counts[name] > 0
+                        if projected_counts[name] > 0
                     )
                 raw_results = payload.get("results")
                 if isinstance(raw_results, list):
@@ -2479,10 +2488,8 @@ def launch_gui(smoke_only: bool = False) -> int:
                 ("Fallos", "FAILURES"),
                 ("PASS", "PASS"),
                 ("FAIL", "FAIL"),
-                ("KNOWN_FAILURE", "KNOWN_FAILURE"),
                 ("BLOCKED", "BLOCKED"),
                 ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
-                ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
                 ("CANCELLED", "CANCELLED"),
                 ("TIMEOUT", "TIMEOUT"),
                 ("NOT_RUN / BLOQUEADO_POR", "NOT_RUN"),
@@ -3062,11 +3069,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "PASS": QColor("#73d673"),
                 "RUNNING": QColor("#8cb4ff"),
                 "COMPILING": QColor("#e6c76a"),
-                "KNOWN_FAILURE": QColor("#f0a35e"),
                 "FAIL": QColor("#ff7777"),
                 "BLOCKED": QColor("#d9955b"),
                 "INFRASTRUCTURE_ERROR": QColor("#ff7777"),
-                "UNEXPECTED_PASS": QColor("#ff7777"),
                 "CANCELLED": QColor("#b7b7b7"),
                 "TIMEOUT": QColor("#ff7777"),
                 "NOT_RUN": QColor("#ff7777"),

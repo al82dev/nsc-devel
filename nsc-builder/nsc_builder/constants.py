@@ -14,25 +14,37 @@ LLVM_PRODUCER_NAMES = ("clang_cl", "lld_link", "llvm_rc", "llvm_mt")
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TERMINAL_FAILURES = {
     "FAIL",
-    "UNEXPECTED_PASS",
     "BLOCKED",
     "INFRASTRUCTURE_ERROR",
     "CANCELLED",
     "TIMEOUT",
     "NOT_RUN",
 }
-RESULT_STATUSES = TERMINAL_FAILURES | {"PASS", "KNOWN_FAILURE"}
+RESULT_STATUSES = TERMINAL_FAILURES | {"PASS"}
 IDENTITY_RESULT_STATUSES = {
     "PASS",
     "FAIL",
-    "KNOWN_FAILURE",
-    "UNEXPECTED_PASS",
     "BLOCKED",
     "CANCELLED",
     "TIMEOUT",
     "INFRASTRUCTURE_ERROR",
 }
 IDENTITY_COUNT_STATUSES = IDENTITY_RESULT_STATUSES | {"SKIPPED"}
+LEGACY_EXPECTATION_STATUSES = {"KNOWN_FAILURE", "UNEXPECTED_PASS"}
+HISTORICAL_RESULT_STATUSES = RESULT_STATUSES | LEGACY_EXPECTATION_STATUSES
+IDENTITY_WIRE_RESULT_STATUSES = IDENTITY_RESULT_STATUSES | LEGACY_EXPECTATION_STATUSES
+IDENTITY_WIRE_COUNT_STATUSES = IDENTITY_WIRE_RESULT_STATUSES | {"SKIPPED"}
+
+
+def normalize_observed_status(status: str) -> str:
+    """Project legacy expectation classifications onto observed outcomes."""
+    if status == "KNOWN_FAILURE":
+        return "FAIL"
+    if status == "UNEXPECTED_PASS":
+        return "PASS"
+    return status
+
+
 NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
 CONFIG_STRING_FIELDS = (
     "nsc_executable",
@@ -89,4 +101,6 @@ ALLOCATION_OPTIMIZATIONS = frozenset(
 )
 
 
-__all__ = tuple(name for name in globals() if name.isupper() and not name.startswith("_"))
+__all__ = tuple(name for name in globals() if name.isupper() and not name.startswith("_")) + (
+    "normalize_observed_status",
+)

@@ -15,9 +15,11 @@ from nsc_builder.inventory import MODULE_OWNERSHIP
 
 
 AUTHORIZED_MODULAR_DIVERGENCES = {
+    ("configuration", "BuilderConfig"),
     ("catalog", "CanonicalCatalog"),
     ("build", "clean_test_build_trees"),
     ("execution", "ExecutionEngine"),
+    ("execution", "expected_abnormal_termination_detail"),
     ("execution", "parse_identity_envelope"),
     ("gui", "launch_gui"),
     ("history", "EvidenceStore"),

@@ -270,7 +270,7 @@ class EvidenceStore:
 
     @staticmethod
     def _overall_status(counts: Counter[str]) -> str:
-        """Keep known defects visible while distinguishing hard failures."""
+        """Derive the run status exclusively from observed terminal outcomes."""
         if sum(counts.values()) <= 0:
             raise ValueError("cannot publish evidence with no case results")
         unknown = sorted(set(counts) - RESULT_STATUSES)
@@ -278,8 +278,6 @@ class EvidenceStore:
             raise ValueError("unknown result states: " + ", ".join(unknown))
         if any(counts[name] for name in TERMINAL_FAILURES):
             return "FAILED"
-        if counts["KNOWN_FAILURE"]:
-            return "COMPLETED_WITH_KNOWN_DEFECTS"
         return "PASSED"
 
     def close(self) -> None:
@@ -345,7 +343,7 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
         if len(keys) != len(set(keys)):
             raise ValueError("terminal result keys must be unique")
         statuses = [item.get("status") for item in results]
-        if any(status not in RESULT_STATUSES for status in statuses):
+        if any(status not in HISTORICAL_RESULT_STATUSES for status in statuses):
             raise ValueError("terminal result contains an unknown status")
         observed = Counter(statuses)
         raw_counts = payload.get("counts")
@@ -353,7 +351,7 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
             raise ValueError("result counts must be an object")
         if any(
             not isinstance(name, str)
-            or name not in RESULT_STATUSES
+            or name not in HISTORICAL_RESULT_STATUSES
             or isinstance(count, bool)
             or not isinstance(count, int)
             or count <= 0
@@ -377,11 +375,22 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
             if status != preparation.status:
                 raise ValueError("overall status does not match preparation failure")
         else:
-            expected_status = EvidenceStore._overall_status(counts)
+            projected_counts: Counter[str] = Counter()
+            for name, count in counts.items():
+                projected_counts[normalize_observed_status(name)] += count
+            expected_status = EvidenceStore._overall_status(projected_counts)
+            accepted_statuses = {expected_status}
+            if any(name in counts for name in LEGACY_EXPECTATION_STATUSES):
+                if counts["UNEXPECTED_PASS"] or any(
+                    counts[name] for name in TERMINAL_FAILURES
+                ):
+                    accepted_statuses.add("FAILED")
+                elif counts["KNOWN_FAILURE"]:
+                    accepted_statuses.add("COMPLETED_WITH_KNOWN_DEFECTS")
             if status == "CANCELLED":
                 if counts["CANCELLED"] <= 0:
                     raise ValueError("cancelled run has no cancelled result")
-            elif status != expected_status:
+            elif status not in accepted_statuses:
                 raise ValueError("overall status does not match terminal rows")
         events = read_jsonl(events_path)
         if not events:
@@ -558,7 +567,7 @@ def load_history_execution(
             or duration < 0
         ):
             raise ValueError(f"historical result {index} has an invalid duration")
-        if raw["status"] not in RESULT_STATUSES:
+        if raw["status"] not in HISTORICAL_RESULT_STATUSES:
             raise ValueError(f"historical result {index} has an invalid status")
         recorded_profile = raw.get("profile")
         if recorded_profile is not None and (
@@ -619,7 +628,7 @@ def load_history_execution(
                 wave=wave,
                 build_mode=raw["build_mode"],
                 optimization=raw["optimization"],
-                status=raw["status"],
+                status=normalize_observed_status(raw["status"]),
                 duration_seconds=float(duration),
                 detail=raw["detail"],
                 evidence=raw["evidence"],

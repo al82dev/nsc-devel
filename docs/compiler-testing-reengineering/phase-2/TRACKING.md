@@ -1799,3 +1799,27 @@ configuro, compilo ni ejecuto. Evidencia:
   trazabilidad pending/future y no cuentan como ejecutables.
 - No se modificó el manifiesto, producto, CMake ni Builder. Evidencia:
   `TANDA-VALIDACION-254-RECONCILIACION-PENDING-VIVO.md`.
+
+## Validación 255 — resultado observado e identidad fresca por corrida
+
+`IMPLEMENTADA; VALIDACIÓN UNITARIA DIRIGIDA COMPLETA; SIN BATERÍA`.
+
+- Builder 3 modular publica el resultado observado de cada oráculo: satisfecho
+  es `PASS` y no satisfecho es `FAIL`. `expected_outcome` y
+  `KnownProductDefect` quedan como metadata del caso y ya no producen estados
+  visibles `KNOWN_FAILURE` ni `UNEXPECTED_PASS`.
+- La lectura de evidencia histórica conserva compatibilidad con ambos estados
+  anteriores y los proyecta a `FAIL`/`PASS`; las corridas nuevas, filtros,
+  conteos y reportes sólo usan estados observados.
+- La GUI vuelve a cargar `CanonicalCatalog` antes de iniciar cada corrida y
+  reubica la selección por identidad estable, evitando metadata retenida desde
+  la apertura de la aplicación.
+- `comparison_nsc` y `build_id_header` se resuelven de forma determinista desde
+  `install_prefix` y `compiler_build_root`. El comando de configuración recibe
+  los dos `-D` cuando existen los artefactos canónicos, por lo que
+  `TB-BAS-021` y `TB-BAS-022` no reciben `-U` por campos vacíos de la GUI.
+- La validación dirigida reproduce los 52 IDs antes clasificados por metadata,
+  confirma su proyección satisfecha a `PASS`, conserva `FAIL` para un oráculo
+  no satisfecho, cubre lectura legacy, recarga de catálogo y las precondiciones
+  exactas de `TB-BAS-021/022`. No se configuró ni compiló NSC y no se ejecutó
+  la batería del compilador.

@@ -414,7 +414,7 @@ def parse_identity_envelope(
         raise ValueError("identity report case identity mismatch")
 
     status = result.get("status")
-    if not isinstance(status, str) or status not in IDENTITY_RESULT_STATUSES:
+    if not isinstance(status, str) or status not in IDENTITY_WIRE_RESULT_STATUSES:
         raise ValueError(f"identity report has unknown status: {status!r}")
     duration = result.get("duration_seconds")
     if (
@@ -451,7 +451,16 @@ def parse_identity_envelope(
         raise ValueError(f"{status} requires failure evidence")
 
     counts = payload.get("counts")
-    expected_counts = {name: 0 for name in IDENTITY_COUNT_STATUSES}
+    uses_legacy_schema = status in LEGACY_EXPECTATION_STATUSES or (
+        isinstance(counts, dict)
+        and any(name in counts for name in LEGACY_EXPECTATION_STATUSES)
+    )
+    count_statuses = (
+        IDENTITY_WIRE_COUNT_STATUSES
+        if uses_legacy_schema
+        else IDENTITY_COUNT_STATUSES
+    )
+    expected_counts = {name: 0 for name in count_statuses}
     expected_counts[status] = 1
     if (
         not isinstance(counts, dict)
@@ -472,7 +481,7 @@ def parse_identity_envelope(
             f"identity controller exit code {exit_code} contradicts status {status}; "
             f"expected {expected_exit}"
         )
-    return status, "; ".join(failures)
+    return normalize_observed_status(status), "; ".join(failures)
 
 
 def parse_python_gate_result(value: Any) -> tuple[bool, str]:
@@ -1436,12 +1445,8 @@ class ExecutionEngine:
     def _expected_status(
         self, case: CaseRecord, passed: bool, detail: str, evidence: str
     ) -> tuple[str, str, str]:
-        """Preserve known defects as visible red outcomes rather than skips."""
-        if case.expected_outcome == "KNOWN_FAILURE" or case.disposition == "KnownProductDefect":
-            status = "UNEXPECTED_PASS" if passed else "KNOWN_FAILURE"
-        else:
-            status = "PASS" if passed else "FAIL"
-        return status, detail, evidence
+        """Publish the observed oracle result independently from expectation metadata."""
+        return ("PASS" if passed else "FAIL"), detail, evidence
 
     def _case_root(self, variant: RunVariant) -> Path:
         """Create an isolated evidence directory for one concrete variant."""

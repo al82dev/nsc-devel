@@ -224,7 +224,6 @@ def condensed_error_report(
 ) -> str:
     """Render one causal report shared by infrastructure and suite closures."""
     failures = [item for item in outcomes if item.status in TERMINAL_FAILURES]
-    known = [item for item in outcomes if item.status == "KNOWN_FAILURE"]
     counts = Counter(item.status for item in outcomes)
     controller_failure = evidence.startswith("ERROR:")
     lines = [
@@ -274,7 +273,4 @@ def condensed_error_report(
         )
     else:
         lines.append("No hubo fallos terminales.")
-    if known:
-        lines.extend(["", f"DEFECTOS CONOCIDOS OBSERVADOS: {len(known)}"])
-        lines.extend(f"  - {item.key}: {item.detail}" for item in known)
     return "\n".join(lines)
