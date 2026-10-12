@@ -11624,8 +11624,10 @@ ast::AstNode* Parser::parseMatchStatement()
     // the pattern shape. This compact bridge lets the canonical closed-domain algorithm combine
     // both facts without introducing a second match AST/backend representation.
     std::string coverage = "match-coverage:v1:";
-    std::function<void(const Pattern&, std::vector<std::string>&, bool&, bool&)> coveredCases =
-        [&](const Pattern& pattern, std::vector<std::string>& cases, bool& wildcard, bool& partial)
+    std::function<void(const Pattern&, std::vector<std::string>&, bool&, bool&,
+        std::optional<std::size_t>&, bool&)> coveredCases =
+        [&](const Pattern& pattern, std::vector<std::string>& cases, bool& wildcard, bool& partial,
+            std::optional<std::size_t>& listLength, bool& listRest)
     {
         if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding)
         {
@@ -11638,9 +11640,22 @@ ast::AstNode* Parser::parseMatchStatement()
             if (!pattern.children.empty() && !isCatchAll(pattern.children.front())) partial = true;
             return;
         }
+        if (pattern.kind == PatternKind::List)
+        {
+            const std::size_t fixedCount = pattern.children.size() -
+                (pattern.restIndex.has_value() ? 1U : 0U);
+            listLength = fixedCount;
+            listRest = pattern.restIndex.has_value();
+            for (std::size_t index = 0; index < pattern.children.size(); ++index)
+            {
+                if (pattern.restIndex.has_value() && *pattern.restIndex == index) continue;
+                if (!isCatchAll(pattern.children[index])) { partial = true; break; }
+            }
+            return;
+        }
         if (pattern.kind == PatternKind::Or)
             for (const Pattern& child : pattern.children)
-                coveredCases(child, cases, wildcard, partial);
+                coveredCases(child, cases, wildcard, partial, listLength, listRest);
     };
     for (std::size_t armIndex = 0; armIndex < arms.size(); ++armIndex)
     {
@@ -11648,10 +11663,19 @@ ast::AstNode* Parser::parseMatchStatement()
         std::vector<std::string> cases;
         bool wildcard = false;
         bool partial = false;
-        coveredCases(arms[armIndex].pattern, cases, wildcard, partial);
+        std::optional<std::size_t> listLength;
+        bool listRest = false;
+        coveredCases(arms[armIndex].pattern, cases, wildcard, partial, listLength, listRest);
         const bool guardRestrictsCoverage = arms[armIndex].guard != nullptr &&
             !(arms[armIndex].guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
               arms[armIndex].guard->tokenKind() == TokenKind::KwTrue);
+        if (listLength.has_value())
+        {
+            if (partial || guardRestrictsCoverage) coverage += '~';
+            coverage += '#' + std::to_string(*listLength);
+            if (listRest) coverage += '+';
+            continue;
+        }
         if (wildcard)
         {
             if (guardRestrictsCoverage) coverage += '~';

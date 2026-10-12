@@ -100,6 +100,48 @@ ExhaustivenessResult analyzeClosedMatch(
     return result;
 }
 
+ExhaustivenessResult analyzeListMatch(std::span<const MatchArmCoverage> arms)
+{
+    ExhaustivenessResult result;
+    bool unguardedWildcard = false;
+    std::unordered_set<std::size_t> exactLengths;
+    std::optional<std::size_t> restMin;
+    for (std::size_t index = 0; index < arms.size(); ++index)
+    {
+        const MatchArmCoverage& arm = arms[index];
+        if (arm.wildcard && !arm.hasGuard) unguardedWildcard = true;
+        if (!arm.listLength.has_value() || arm.hasGuard) continue;
+        if (arm.listLengthRest)
+        {
+            if (!restMin.has_value() || *arm.listLength < *restMin)
+                restMin = *arm.listLength;
+        }
+        else
+        {
+            exactLengths.insert(*arm.listLength);
+        }
+    }
+    if (unguardedWildcard)
+    {
+        result.exhaustive = true;
+        return result;
+    }
+    // Sin brazo con rest, un conjunto finito de longitudes exactas jamas cubre el dominio
+    // infinito de longitudes.
+    if (!restMin.has_value())
+    {
+        result.exhaustive = false;
+        return result;
+    }
+    for (std::size_t length = 0; length < *restMin; ++length)
+    {
+        if (!exactLengths.contains(length))
+            result.missingCases.push_back("length " + std::to_string(length));
+    }
+    result.exhaustive = result.missingCases.empty();
+    return result;
+}
+
 bool letElseGuaranteesInitialization(bool elseDiverges) noexcept { return elseDiverges; }
 
 bool canReadCUnionMember(bool activeMemberProven, bool inUnsafeContext) noexcept

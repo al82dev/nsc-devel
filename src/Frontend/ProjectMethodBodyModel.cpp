@@ -4272,7 +4272,18 @@ void ProjectMethodBodyModel::analyzeBlock(
                 casesText.remove_prefix(1);
             }
             arm.wildcard = casesText == "*";
-            if (!arm.wildcard && casesText != "?")
+            if (!arm.wildcard && casesText != "?" && !casesText.empty() && casesText.front() == '#')
+            {
+                casesText.remove_prefix(1);
+                const std::size_t plus = casesText.find('+');
+                if (plus != std::string_view::npos)
+                {
+                    arm.listLengthRest = true;
+                    casesText = casesText.substr(0, plus);
+                }
+                arm.listLength = static_cast<std::size_t>(std::stoull(std::string(casesText)));
+            }
+            else if (!arm.wildcard && casesText != "?")
             {
                 std::size_t caseBegin = 0;
                 while (caseBegin <= casesText.size())
@@ -4354,7 +4365,31 @@ void ProjectMethodBodyModel::analyzeBlock(
 
         if (domain.empty())
         {
-            if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
+            const bool hasListLength = std::ranges::any_of(
+                arms, [](const language::MatchArmCoverage& arm)
+                {
+                    return arm.listLength.has_value();
+                });
+            if (hasListLength)
+            {
+                const language::ExhaustivenessResult result = language::analyzeListMatch(arms);
+                if (!result.exhaustive)
+                {
+                    std::string message = "non-exhaustive match; missing list length";
+                    message += result.missingCases.size() == 1 ? ": " : "s: ";
+                    for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                    {
+                        if (index != 0) message += ", ";
+                        message += result.missingCases[index];
+                    }
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        block->range(),
+                        message);
+                }
+            }
+            else if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
                 {
                     return arm.wildcard && !arm.hasGuard;
                 }))

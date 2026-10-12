@@ -63,6 +63,10 @@ struct MatchArmCoverage final
     std::vector<std::string> cases;
     bool wildcard = false;
     bool hasGuard = false;
+    // NS304-T03-F05: cobertura por LONGITUD de list pattern. `listLength` es la longitud
+    // exacta; `listLengthRest` indica que el brazo cubre TODA longitud >= listLength (rest `..`).
+    std::optional<std::size_t> listLength;
+    bool listLengthRest = false;
 };
 
 struct ExhaustivenessResult final
@@ -75,6 +79,11 @@ struct ExhaustivenessResult final
 ExhaustivenessResult analyzeClosedMatch(
     std::span<const std::string> domain,
     std::span<const MatchArmCoverage> arms);
+
+// NS304-T03-F05. Exhaustiveness por longitud para match sobre listas/arrays. Exhaustivo solo si
+// un brazo sin guard cubre toda longitud >= restMin (rest) y TODAS las longitudes < restMin estan
+// cubiertas por brazos de longitud exacta (o un wildcard sin guard cubre todo).
+ExhaustivenessResult analyzeListMatch(std::span<const MatchArmCoverage> arms);
 
 bool letElseGuaranteesInitialization(bool elseDiverges) noexcept;
 bool canReadCUnionMember(bool activeMemberProven, bool inUnsafeContext) noexcept;
