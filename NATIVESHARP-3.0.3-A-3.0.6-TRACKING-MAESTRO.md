@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `ACTIVA`; B00 reconciliada, B01/T00 habilitada |
+| B | 3.0.4 | 18 | 147 ítems | 1 | 0.68 % | `ACTIVA`; B00 reconciliada, T00-F01 cerrada, T00-F02 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -915,7 +915,7 @@ T00
 
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
-| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 0 | 0 % |
+| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 1 | 12.5 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
@@ -933,13 +933,13 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **0** | **0 %** |
+| **Total** |  | **147** | **1** | **0.68 %** |
 
 ## B.2 Inventario exacto T00-T17
 
 ### T00 — auditoría ejecutable y congelamiento de contratos
 
-- [ ] `NS304-T00-F01` — Inventariar cada feature declarada `TERMINADA` y localizar su vertical real.
+- [x] `NS304-T00-F01` — Inventariar cada feature declarada `TERMINADA` y localizar su vertical real.
 - [ ] `NS304-T00-F02` — Clasificar evidencia por parser, semántica, MIR, LLVM, NSMETA, runtime y ejecución.
 - [ ] `NS304-T00-F03` — Construir matriz C# 8-14: equivalente, alternativa, divergencia o gap obligatorio.
 - [ ] `NS304-T00-F04` — Construir matriz Beef: memoria, extensions, generics, comptime, interop y patterns.
@@ -1213,6 +1213,26 @@ Orden operativo fijado:
    cada tanda recibe consolidado exacto, sin batería completa intermedia.
 5. La batería completa O0 se ejecuta una vez después de T17-F11. Un fallo del
    alcance reabre la auditoría desde T00 conforme a la regla operativa global.
+
+## B.5 Ejecución B01 — T00
+
+### NS304-T00-F01 — inventario de features declaradas `TERMINADA`
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T00-F01-completed-feature-inventory.md`.
+- Inventario canónico: 55 IDs únicos, distribuidos T00=6, T01=7, T02=6,
+  T03=6, T04=7, T05=7, T06=7, T07=6 y T08=3.
+- Trazabilidad: 55/55 expedientes presentes; 55/55 commits resolubles y
+  ancestros de la revisión base; 55/55 filas localizadas.
+- Resultado actual: 54 verticales conservan anclas vigentes para la auditoría
+  por capas de F02; `NS3-T00-F01` quedó clasificada como
+  `IMPLEMENTACIÓN RETIRADA` por `0bea623fb` y ya no se presenta como productiva.
+- Gate: omitidos=0, desconocidos=0, contradicciones_sin_registrar=0.
+- Prueba puntual: extracción determinista, unicidad, existencia de expedientes,
+  resolución/ancestría de commits y comprobación de rutas; no se ejecutó build,
+  batería ni prueba funcional.
+- Siguiente ítem: `NS304-T00-F02`.
 
 ---
 
@@ -1711,14 +1731,16 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 2 | Corrección y consolidado dirigido de reapertura | TP-PAR-478 + guards 4/4; run `20261012-part-a-cycle2-directed-53` | 53/53 `PASS`; causa de prueba/oráculo cerrada; repetición final completa pendiente |
 | 2026-10-12 | 2 | Certificación final de Parte A | run `20261012-0428-part-a-final-cycle2`; revisión `69dd18bd1`; 5,714 terminales | 5,714 `PASS`; `CERTIFICACION_FINAL_OK`; rama `v.3.0.3` preexistente en `7b7e36faf` no movida |
 | 2026-10-12 | B00 | Reconciliación causal previa de Parte B | 147 IDs/18 tandas contra plan, código y pruebas actuales | 147/147 reconciliados; 0 cerrados; B01/T00 habilitada sin mover ramas |
+| 2026-10-12 | B01/T00-F01 | Inventario de features 3.0 declaradas terminadas | 55 filas históricas contra expedientes, commits y rutas actuales | 55/55 trazadas; 54 ancladas; 1 implementación retirada registrada; 1/147 cerrado |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `0/147`; B00 reconcilió los 147 IDs y la orden vigente habilita B01/T00
-  en `development`; la contradicción de `v.3.0.3` permanece como deuda y la
-  rama no se mueve.
+- B: `1/147`; B00 reconcilió los 147 IDs y T00-F01 localizó 55/55 cierres
+  históricos, con 54 anclados y una implementación retirada; T00-F02 queda
+  activa en `development`. La contradicción de `v.3.0.3` permanece como deuda
+  y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas: `v.3.0.3` ya existía antes del cierre y apunta a `7b7e36faf51fe4712940cc76c18a4598fb94facd`; no se
