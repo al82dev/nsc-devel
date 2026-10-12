@@ -1447,7 +1447,11 @@ ast::TypeSyntax* Parser::parseType()
                     }
                     else
                     {
-                        expect(TokenKind::Identifier, "'tracked' or 'none' provenance mode");
+                        expectContextualKeyword("tracked", "'tracked' or 'none' provenance mode");
+                        if (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+                        {
+                            consume();
+                        }
                     }
                 }
                 else

@@ -184,8 +184,7 @@ void registerParserTypeModifierContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-060", testPointerChainsAndPointeeConst);
     addCase(registry, "TP-PAR-061", testPointerAlignment);
     addCase(registry, "TP-PAR-062", testPointerAddressSpace);
-    addCase(registry, "TP-PAR-063", testPointerProvenance,
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-063", testPointerProvenance);
     addCase(registry, "TP-PAR-064", testFixedArrayBound);
     addCase(registry, "TP-PAR-065", testDynamicAndRankArrays);
     addCase(registry, "TP-PAR-066", testFlexibleArray);

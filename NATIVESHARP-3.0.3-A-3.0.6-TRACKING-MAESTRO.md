@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 11 | 21.15 % | `EN_PROGRESO`; A00-A02 cerradas |
+| A | 3.0.3 | 14 | 52 defectos | 12 | 23.08 % | `EN_PROGRESO`; A03 1/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar A02, quedan 41 KPD abiertos y once casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G09, quedan 40 KPD abiertos y doce casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -141,7 +141,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A00 | Host.Language | 7 | 7 | `CERRADA` |
 | A01 | Host.Lexer | 1 | 1 | `CERRADA` |
 | A02 | Host.AST | 3 | 3 | `CERRADA` |
-| A03 | Host.Parser | 21 | 0 | `PENDIENTE` |
+| A03 | Host.Parser | 21 | 1 | `EN_PROGRESO` |
 | A04 | Host.Sema | 5 | 0 | `PENDIENTE` |
 | A05 | Host.CFG | 1 | 0 | `PENDIENTE` |
 | A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
@@ -152,7 +152,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **11** | **21.15 %** |
+| **Total** |  | **52** | **12** | **23.08 %** |
 
 ## A.3 Inventario exacto
 
@@ -207,8 +207,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
   - Cierre: `CERRADO`; puntual G08 y consolidado A02 como Required `PASS`; commit de implementación G08: este commit.
 - **A03 · `TP-PAR-063` / `CP-PAR-007`**
   - Contrato: provenance none/tracked mapea flag exacto; texto inválido diagnostica y recupera.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:1153; T:`ParserTypeModifierContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:1153; T:`ParserTypeModifierContinuationModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual G09 como KPD y Required `PASS`; commit de implementación G09: este commit.
 - **A03 · `TP-PAR-069` / `CP-PAR-007`**
   - Contrato: elemento allocation inválido/void emite `InvalidType` sin perder progreso.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1159; T:`ParserTypeModifierContinuationModule.cpp`; `5dee730d`.
@@ -458,6 +458,7 @@ Resultado del inventario causal:
   - Causa: para un modo desconocido llama `expect(Identifier)`, que acepta cualquier identificador.
   - Consumidores: todas las declaraciones y expresiones que usan `TypeSyntax` de puntero.
   - Puntual: `ParserTypeModifierContinuationModule.cpp`; existe.
+  - Estado: `CERRADO` en A03; el parser exige el contextual `tracked`, diagnostica cualquier otro valor y recupera hasta `)`.
 - **G10 — `void` aceptado como objeto allocation: `TP-PAR-069`, `TP-PAR-476`.**
   - Productor: `Parser::parseAllocationElementType` y el camino `new` que lo consume.
   - Causa: acepta todo builtin y no diagnostica `KwVoid` como `InvalidType`.
@@ -663,7 +664,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A00-A02 cerradas, 11/52 defectos corregidos y 41 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 1/21, 12/52 defectos corregidos y 40 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -678,7 +679,9 @@ Puertas previas a editar producto:
 - Evidencia G08: `AstDumper.cpp` y registro destructivo reconstruidos con LLVM 23.1.0;
   `TA-AST-215` puntual como KPD y Required `PASS`.
 - Consolidado A02 Required: `TA-AST-014`, `TA-AST-016` y `TA-AST-215`, 3/3 `PASS`, 154 ms de pared.
-- Próxima acción permitida: abrir A03 sólo después de reportar el cierre A02.
+- Evidencia G09: `ParserProductTestShim.cpp` y el registro TypeModifier reconstruidos con LLVM 23.1.0;
+  `TP-PAR-063` puntual como KPD y Required `PASS`.
+- Próxima acción A03: G10, sin omitir el cierre individual de sus dos consumidores.
 
 ---
 
@@ -1397,13 +1400,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-11 | 1 | Cierre A02 G06 | puntual KPD + Required | 1/1 `PASS`; 43 KPD abiertos |
 | 2026-10-11 | 1 | Cierre A02 G07 | puntual KPD + Required | 1/1 `PASS`; 42 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A02 G08 y consolidado | puntual KPD + Required; A02 3/3 | `PASS`; 41 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G09 | puntual KPD + Required | 1/1 `PASS`; 40 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `11/52`; A00-A02 cerradas; siguiente acción autorizable: inventario causal puntual A03.
+- A: `12/52`; A03 1/21; siguiente acción vinculante: G10.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01 y A02 puntuales/consolidados; ninguna batería completa.
+- Validación ejecutada: A00, A01, A02 y G09 puntuales; ninguna batería completa.
 
