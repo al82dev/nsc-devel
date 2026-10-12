@@ -91,6 +91,40 @@ namespace cc1number
             return 1;
         }
 
+        // --- narrow integer families ----------------------------------------------------------
+        //
+        // These wrappers must reuse the 64-bit parser and apply only the destination range.
+        // Every boundary pair proves both acceptance of the exact limit and rejection of the
+        // immediately adjacent value, including the asymmetric signed minima.
+        static int NarrowIntegerFamilies()
+        {
+            byte byteValue;
+            if (!Number.TryParseByte("0", out byteValue) || byteValue != 0) { return 0; }
+            if (!Number.TryParseByte("255", out byteValue) || byteValue != 255) { return 0; }
+            if (Number.TryParseByte("256", out byteValue)) { return 0; }
+            if (Number.TryParseByte("-1", out byteValue)) { return 0; }
+
+            sbyte sbyteValue;
+            if (!Number.TryParseSByte("-128", out sbyteValue) || sbyteValue != -128) { return 0; }
+            if (!Number.TryParseSByte("127", out sbyteValue) || sbyteValue != 127) { return 0; }
+            if (Number.TryParseSByte("-129", out sbyteValue)) { return 0; }
+            if (Number.TryParseSByte("128", out sbyteValue)) { return 0; }
+
+            short shortValue;
+            if (!Number.TryParseInt16("-32768", out shortValue) || shortValue != -32768) { return 0; }
+            if (!Number.TryParseInt16("32767", out shortValue) || shortValue != 32767) { return 0; }
+            if (Number.TryParseInt16("-32769", out shortValue)) { return 0; }
+            if (Number.TryParseInt16("32768", out shortValue)) { return 0; }
+
+            ushort ushortValue;
+            if (!Number.TryParseUInt16("0", out ushortValue) || ushortValue != 0) { return 0; }
+            if (!Number.TryParseUInt16("65535", out ushortValue) || ushortValue != 65535) { return 0; }
+            if (Number.TryParseUInt16("65536", out ushortValue)) { return 0; }
+            if (Number.TryParseUInt16("-1", out ushortValue)) { return 0; }
+
+            return 1;
+        }
+
         // --- bases -----------------------------------------------------------------------------
         static int RadixParsing()
         {
@@ -302,11 +336,12 @@ namespace cc1number
         {
             if (DecimalRoundTrip() != 1) { return 1; }
             if (LimitsAreExact() != 1) { return 2; }
-            if (RadixParsing() != 1) { return 3; }
-            if (IntegerLiterals() != 1) { return 4; }
-            if (PositionAdvances() != 1) { return 5; }
-            if (FloatingPoint() != 1) { return 6; }
-            if (RejectsGarbage() != 1) { return 7; }
+            if (NarrowIntegerFamilies() != 1) { return 3; }
+            if (RadixParsing() != 1) { return 4; }
+            if (IntegerLiterals() != 1) { return 5; }
+            if (PositionAdvances() != 1) { return 6; }
+            if (FloatingPoint() != 1) { return 7; }
+            if (RejectsGarbage() != 1) { return 8; }
 
             return 42;
         }

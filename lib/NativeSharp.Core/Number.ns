@@ -518,9 +518,62 @@ namespace NativeSharp.Core
             return true;
         }
 
-        // Los de 32 bits parsean en 64 y comprueban el rango DESPUES. Un acumulador de 32 bits
-        // seria una segunda copia de la deteccion de desbordamiento, y dos copias de una regla de
-        // rango es exactamente como se separan.
+        // Every narrower integer parses through the 64-bit core and checks only its own range.
+        // This keeps sign handling, cursor rollback and overflow detection in one implementation.
+        // Keep the initial out write explicitly narrow: an uncast integer literal is physically
+        // wider than byte/short storage and must never be used to initialize that destination.
+        public static bool TryParseByte(string text, out byte value)
+        {
+            value = (byte)0;
+            ulong wide;
+            if (!TryParseUInt64(text, out wide) || wide > (ulong)NumericLimits.ByteMax())
+            {
+                return false;
+            }
+            value = (byte)wide;
+            return true;
+        }
+
+        public static bool TryParseSByte(string text, out sbyte value)
+        {
+            value = (sbyte)0;
+            long wide;
+            if (!TryParseInt64(text, out wide) ||
+                wide < (long)NumericLimits.SByteMin() ||
+                wide > (long)NumericLimits.SByteMax())
+            {
+                return false;
+            }
+            value = (sbyte)wide;
+            return true;
+        }
+
+        public static bool TryParseInt16(string text, out short value)
+        {
+            value = (short)0;
+            long wide;
+            if (!TryParseInt64(text, out wide) ||
+                wide < (long)NumericLimits.ShortMin() ||
+                wide > (long)NumericLimits.ShortMax())
+            {
+                return false;
+            }
+            value = (short)wide;
+            return true;
+        }
+
+        public static bool TryParseUInt16(string text, out ushort value)
+        {
+            value = (ushort)0;
+            ulong wide;
+            if (!TryParseUInt64(text, out wide) || wide > (ulong)NumericLimits.UShortMax())
+            {
+                return false;
+            }
+            value = (ushort)wide;
+            return true;
+        }
+
         public static bool TryParseInt32(string text, out int value)
         {
             value = 0;

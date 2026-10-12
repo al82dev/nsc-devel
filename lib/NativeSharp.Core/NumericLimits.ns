@@ -34,6 +34,16 @@ namespace NativeSharp.Core
     // `2147483648` A SECAS, sin menos delante, sigue siendo `long`. Solo cambia el par.
     public class NumericLimits
     {
+        public static sbyte SByteMin()
+        {
+            return (sbyte)(-127 - 1);
+        }
+
+        public static sbyte SByteMax()
+        {
+            return 127;
+        }
+
         public static byte ByteMin()
         {
             return 0;
