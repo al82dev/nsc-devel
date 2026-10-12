@@ -1063,6 +1063,10 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopHirNodeKind::StringViewFromString: return "string-view-from-string";
+        case ProjectOopHirNodeKind::SpanFromArray: return "span-from-array";
+        case ProjectOopHirNodeKind::ReadOnlySpanFromArray: return "readonly-span-from-array";
+        case ProjectOopHirNodeKind::SpanFromFixedArray: return "span-from-fixed-array";
+        case ProjectOopHirNodeKind::ReadOnlySpanFromFixedArray: return "readonly-span-from-fixed-array";
         case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
         case ProjectOopHirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopHirNodeKind::AggregateEquals: return "aggregate-equals";
@@ -5979,6 +5983,48 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 auto node = makeNode(
                     ProjectOopHirNodeKind::StringViewFromString, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                auto receiver = lowerExpression(
+                    expression->first()->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                node->children.push_back(std::move(receiver));
+                for (const ast::AstNode* child : expression->children())
+                {
+                    auto operand = lowerExpression(child, memberOrdinal, false, error);
+                    if (operand == nullptr) return nullptr;
+                    node->children.push_back(std::move(operand));
+                }
+                return node;
+            }
+            // NS304-T03-F03: same view synthesis over a native/fixed array -> Span<T>/ReadOnlySpan<T>.
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::SpanFromArray ||
+                 core->kind == MethodCoreOperationKind::ReadOnlySpanFromArray ||
+                 core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
+                 core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray))
+            {
+                if (addressContext)
+                {
+                    error = "a Span/ReadOnlySpan rest capture is a value and is not addressable";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::SpanFromArray;
+                switch (core->kind)
+                {
+                    case MethodCoreOperationKind::SpanFromArray:
+                        nodeKind = ProjectOopHirNodeKind::SpanFromArray;
+                        break;
+                    case MethodCoreOperationKind::ReadOnlySpanFromArray:
+                        nodeKind = ProjectOopHirNodeKind::ReadOnlySpanFromArray;
+                        break;
+                    case MethodCoreOperationKind::SpanFromFixedArray:
+                        nodeKind = ProjectOopHirNodeKind::SpanFromFixedArray;
+                        break;
+                    default:
+                        nodeKind = ProjectOopHirNodeKind::ReadOnlySpanFromFixedArray;
+                        break;
+                }
+                auto node = makeNode(nodeKind, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
                 auto receiver = lowerExpression(
                     expression->first()->first(), memberOrdinal, false, error);

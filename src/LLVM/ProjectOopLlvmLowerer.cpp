@@ -9175,6 +9175,71 @@ private:
                 if (alignment > 1U) LLVMSetAlignment(loaded, alignment);
                 return loaded;
             }
+            // NS304-T03-F03: list-pattern rest capture over a native array -> Span<T>/ReadOnlySpan<T>
+            // (`{ T* data; int count }`). Same no-copy synthesis as StringView, but the data pointer
+            // is the array element address and the element size comes from `elementTypeKey`.
+            case frontend::ProjectOopMirNodeKind::SpanFromArray:
+            case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromArray:
+            {
+                if (node->children.size() != 3)
+                    return failValue(error, "Span rest capture requires receiver, start and length");
+                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
+                if (count == nullptr) return nullptr;
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count,
+                    LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0), "span.empty");
+                LLVMValueRef object = lowerExpression(node->children[0].get(), error);
+                if (object == nullptr) return nullptr;
+                object = checkedReceiver(object, error);
+                if (object == nullptr) return nullptr;
+                LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+                if (index == nullptr) return nullptr;
+                LLVMValueRef length = LLVMBuildLoad2(
+                    builder_, LLVMInt64TypeInContext(context_), object, "span.length");
+                LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "span.inrange");
+                if (isSignedInteger(node->children[1]->typeKey))
+                {
+                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                    LLVMValueRef nonNegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, index, zero, "span.nonneg");
+                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "span.nonempty.inrange");
+                }
+                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "span.valid");
+                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "span.index", error))
+                    return nullptr;
+                const auto [elementSize, elementAlignment] = captureValueLayout(node->elementTypeKey, error);
+                if (elementSize == 0) return nullptr;
+                const std::uint64_t dataOffset =
+                    (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+                LLVMValueRef scaled = LLVMBuildMul(
+                    builder_, index,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0), "span.index.scaled");
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, scaled,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "span.offset");
+                LLVMValueRef indices[] = {offset};
+                LLVMValueRef gepData = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "span.data.gep");
+                LLVMValueRef nullData = LLVMConstPointerNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(builder_, countIsZero, nullData, gepData, "span.data");
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                const unsigned carrierAlignment = structAlignmentFor(node->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(carrier, carrierAlignment, "span.init");
+                if (slot == nullptr)
+                    return failValue(error, "Span rest capture could not reserve storage");
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "span.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "span.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "span.init.value");
+                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
+                return loaded;
+            }
+            // NS304-T03-F03: inline/fixed array rest capture is deferred: the fixed array has no
+            // length header (the receiver is an inline value, not a heap reference), so the address
+            // and length sources differ from the native array case above.
+            case frontend::ProjectOopMirNodeKind::SpanFromFixedArray:
+            case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray:
+                return failValue(error, "Stage 41 fixed-array rest capture is not implemented yet");
             case frontend::ProjectOopMirNodeKind::StringSubstring:
                 return lowerStringSubstring(node, error);
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:

@@ -186,6 +186,12 @@ enum class ProjectOopHirNodeKind
     // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
     // StringView (receiver + start + length children); LLVM emits { data, count }.
     StringViewFromString,
+    // NS304-T03-F03: same view synthesis over a native/fixed array -> Span<T>/ReadOnlySpan<T>.
+    // elementTypeKey carries T; LLVM emits { &receiver[start], count }.
+    SpanFromArray,
+    ReadOnlySpanFromArray,
+    SpanFromFixedArray,
+    ReadOnlySpanFromFixedArray,
     CoreConsoleWriteLine,
     CoreConsoleReadLine,
     // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each

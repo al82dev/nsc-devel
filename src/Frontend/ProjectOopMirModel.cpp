@@ -767,6 +767,10 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopMirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopMirNodeKind::StringViewFromString: return "string-view-from-string";
+        case ProjectOopMirNodeKind::SpanFromArray: return "span-from-array";
+        case ProjectOopMirNodeKind::ReadOnlySpanFromArray: return "readonly-span-from-array";
+        case ProjectOopMirNodeKind::SpanFromFixedArray: return "span-from-fixed-array";
+        case ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray: return "readonly-span-from-fixed-array";
         case ProjectOopMirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
         case ProjectOopMirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopMirNodeKind::AggregateEquals: return "aggregate-equals";
@@ -2223,6 +2227,18 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::StringViewFromString:
             result->kind = ProjectOopMirNodeKind::StringViewFromString;
+            break;
+        case ProjectOopHirNodeKind::SpanFromArray:
+            result->kind = ProjectOopMirNodeKind::SpanFromArray;
+            break;
+        case ProjectOopHirNodeKind::ReadOnlySpanFromArray:
+            result->kind = ProjectOopMirNodeKind::ReadOnlySpanFromArray;
+            break;
+        case ProjectOopHirNodeKind::SpanFromFixedArray:
+            result->kind = ProjectOopMirNodeKind::SpanFromFixedArray;
+            break;
+        case ProjectOopHirNodeKind::ReadOnlySpanFromFixedArray:
+            result->kind = ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray;
             break;
         // SHR-022. La mascara de dos bits que el HIR fijo pasa a `immediate`, que es de donde el
         // backend saca los operandos constantes. El prologo generico de esta funcion ya copia

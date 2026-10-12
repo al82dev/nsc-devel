@@ -177,6 +177,16 @@ public:
         const ast::AstNode* syntax) const noexcept;
     const GenericSpecializationRecord* specializationForTypeKey(
         std::string_view typeKey) const noexcept;
+    // NS304-T03-F03. Construye la clave de tipo cerrada (`type:...Span__g1__<T>__h<16hex>`) de la
+    // especializacion unaria de un template dado, para un TIPO ELEMENTO que ya esta resuelto como
+    // clave (array/inline array). Reutiliza `sanitize` + `stableHashSuffix` (una sola fuente del
+    // hash) y espeja el prefijo de `ProjectCompilation`. Devuelve vacio si el template no existe o
+    // no es unario. Para tipos elemento definidos por el usuario la identidad se limita a su
+    // spelling terminal (T11 completa la identidad de origen); para builtins coincide con la
+    // identidad real.
+    std::string closedTypeKeyForTemplate(
+        std::string_view templateName,
+        std::string_view elementTypeKey) const;
     GenericInstantiationReport instantiationReport() const noexcept;
     bool isBuilt() const noexcept;
 

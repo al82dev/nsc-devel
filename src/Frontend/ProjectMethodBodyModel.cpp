@@ -14934,6 +14934,58 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 return viewResult;
             }
         }
+        // NS304-T03-F03: array nativo / inline array sin Slice publico -> sintetiza
+        // Span<T> (receptor mutable) o ReadOnlySpan<T> (receptor solo lectura) sin copia.
+        const std::optional<std::string> arrayElement =
+            restReceiver.valid && !restReceiver.methodGroup &&
+                    ProjectTypeConversion::isNativeArray(restReceiver.typeKey)
+                ? ProjectTypeConversion::nativeArrayElementType(restReceiver.typeKey)
+                : std::nullopt;
+        const std::optional<std::string> fixedElement =
+            !arrayElement.has_value() && restReceiver.valid && !restReceiver.methodGroup
+                ? ProjectMemberModel::fixedArrayElementTypeKey(restReceiver.typeKey)
+                : std::nullopt;
+        if (arrayElement.has_value() || fixedElement.has_value())
+        {
+            bool argumentsValid = expression->children().size() == 2;
+            for (const ast::AstNode* child : expression->children())
+            {
+                const ExpressionResult arg = analyzeExpression(
+                    child, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                argumentsValid = argumentsValid && arg.valid && !arg.methodGroup;
+            }
+            if (argumentsValid)
+            {
+                const std::string& elementKey = arrayElement.has_value() ? *arrayElement : *fixedElement;
+                const bool readOnly = restReceiver.readonlyReceiver;
+                const MethodCoreOperationKind kind = arrayElement.has_value()
+                    ? (readOnly ? MethodCoreOperationKind::ReadOnlySpanFromArray
+                                : MethodCoreOperationKind::SpanFromArray)
+                    : (readOnly ? MethodCoreOperationKind::ReadOnlySpanFromFixedArray
+                                : MethodCoreOperationKind::SpanFromFixedArray);
+                std::string resultKey = genericModel_ != nullptr
+                    ? genericModel_->closedTypeKeyForTemplate(
+                          readOnly ? "ReadOnlySpan" : "Span", elementKey)
+                    : std::string{};
+                if (!resultKey.empty())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        kind,
+                        expression,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        resultKey,
+                        elementKey,
+                        !readOnly, std::nullopt, std::nullopt});
+                    ExpressionResult viewResult;
+                    viewResult.typeKey = std::move(resultKey);
+                    viewResult.valid = true;
+                    viewResult.assignable = !readOnly;
+                    viewResult.addressable = false;
+                    return viewResult;
+                }
+            }
+        }
     }
 
     MethodCallBinding call;

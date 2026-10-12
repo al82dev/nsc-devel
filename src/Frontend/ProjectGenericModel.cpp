@@ -1612,6 +1612,46 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
     return found == specializations_.end() ? nullptr : &*found;
 }
 
+std::string ProjectGenericModel::closedTypeKeyForTemplate(
+    std::string_view templateName,
+    std::string_view elementTypeKey) const
+{
+    const GenericTemplateRecord* templateRecord = nullptr;
+    for (const GenericTemplateRecord& record : templates())
+    {
+        if (record.name == templateName)
+        {
+            templateRecord = &record;
+            break;
+        }
+    }
+    if (templateRecord == nullptr) return {};
+
+    // Identidad del elemento. Para un tipo builtin/nativo es su spelling terminal; para un tipo de
+    // usuario se limita al spelling (T11 completa la identidad de origen `@origin-module...`).
+    std::string spelling = std::string(elementTypeKey);
+    if (spelling.starts_with("builtin:")) spelling.erase(0, 8U);
+    if (spelling.starts_with("type:")) spelling.erase(0, 5U);
+    const std::size_t separator = spelling.find_last_of(".+:");
+    if (separator != std::string::npos) spelling.erase(0, separator + 1U);
+    const std::string identity = spelling;
+
+    const std::string key = templateRecord->canonicalKey + "<" + identity + ">";
+    const std::string specializedName = templateRecord->name + "__g1__" + sanitize(spelling) +
+        "__h" + stableHashSuffix(key);
+
+    const std::string_view canonicalKey = templateRecord->canonicalKey;
+    const std::size_t moduleSeparator = canonicalKey.find("::");
+    if (moduleSeparator == std::string_view::npos) return {};
+    const std::size_t terminal = canonicalKey.find_last_of(".+");
+    const std::size_t terminalBegin = terminal == std::string_view::npos ||
+            terminal < moduleSeparator + 2U
+        ? moduleSeparator + 2U
+        : terminal + 1U;
+    if (canonicalKey.find('`', terminalBegin) == std::string_view::npos) return {};
+    return "type:" + std::string(canonicalKey.substr(0, terminalBegin)) + specializedName;
+}
+
 GenericInstantiationReport ProjectGenericModel::instantiationReport() const noexcept
 {
     return GenericInstantiationReport{
