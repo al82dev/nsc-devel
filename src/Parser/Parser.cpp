@@ -336,8 +336,10 @@ std::string_view operatorSpelling(TokenKind kind) noexcept
 
 std::string operatorMethodName(TokenKind kind, std::size_t arity)
 {
-    if (kind == TokenKind::PlusPlus) return "op_Increment";
-    if (kind == TokenKind::MinusMinus) return "op_Decrement";
+    if (kind == TokenKind::PlusPlus)
+        return arity == 1 ? "op_Increment" : "op_Invalid";
+    if (kind == TokenKind::MinusMinus)
+        return arity == 1 ? "op_Decrement" : "op_Invalid";
     const std::string_view method = language::operatorMethodName(operatorSpelling(kind), arity);
     return method.empty() ? "op_Invalid" : std::string(method);
 }

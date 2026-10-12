@@ -402,6 +402,6 @@ void registerParserConstructionCloneFinalModule(TestRegistry& registry)
     addFinalParserCase(registry, "TP-PAR-522", "CP-PAR-041", testSignedIntegerOverflow);
     addFinalParserCase(registry, "TP-PAR-523", "CP-PAR-041", testSignedIntegerNonLiteral);
     addFinalParserCase(registry, "TP-PAR-524", "CP-PAR-041", testOperatorSpellingAndNameMatrix,
-        "PR", TestDisposition::KnownProductDefect, {"operator", "mapping", "product-defect"});
+        "PR", TestDisposition::Required, {"operator", "mapping"});
 }
 }
