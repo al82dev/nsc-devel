@@ -4,7 +4,6 @@ using NativeSharp.Compiler.Types;
 namespace NativeSharp.CompilerSuite.SelfHost.Types
 {
     // Covers structural function identity and the complete numeric predicate table.
-    // TSH-01023 invokes the invalid-ID contract directly and must remain red until fixed.
     public class SelfHostTypesFunctionModule
     {
         public static int Run(string caseId)

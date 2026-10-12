@@ -240,12 +240,17 @@ namespace NativeSharp.Compiler.Types
 
         public bool IsInteger(int id)
         {
+            if (id < 0 || id >= types.Count()) { return false; }
             SemanticTypeKind kind = Get(id).Kind();
             return kind == SemanticTypeKind.Byte || kind == SemanticTypeKind.Char || kind == SemanticTypeKind.Short ||
                 kind == SemanticTypeKind.UShort || kind == SemanticTypeKind.Int || kind == SemanticTypeKind.UInt ||
                 kind == SemanticTypeKind.Long || kind == SemanticTypeKind.ULong || kind == SemanticTypeKind.NInt ||
                 kind == SemanticTypeKind.NUInt;
         }
-        public bool IsNumeric(int id) { return IsInteger(id) || Get(id).Kind() == SemanticTypeKind.Float || Get(id).Kind() == SemanticTypeKind.Double; }
+        public bool IsNumeric(int id)
+        {
+            if (id < 0 || id >= types.Count()) { return false; }
+            return IsInteger(id) || Get(id).Kind() == SemanticTypeKind.Float || Get(id).Kind() == SemanticTypeKind.Double;
+        }
     }
 }

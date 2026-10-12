@@ -394,10 +394,9 @@ class SuitePreparationTests(unittest.TestCase):
         self.assertIn("etapa build-producer", report)
         self.assertIn("producer failed", report)
 
-    def test_three_tagged_cases_load_as_known_product_defects(self) -> None:
+    def test_two_tagged_cases_load_as_known_product_defects(self) -> None:
         catalog = CanonicalCatalog.load()
         expected = {
-            "TSH-01023",
             "T12B-00021",
             "T12B-00022",
         }

@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 45 | 86.54 % | `EN_PROGRESO`; A11 G38 cerrado 1/2 |
+| A | 3.0.3 | 14 | 52 defectos | 46 | 88.46 % | `EN_PROGRESO`; A11 cerrada 2/2 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G38, quedan 7 KPD abiertos y 45 casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G39 y A11, quedan 6 KPD abiertos y 46 casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -150,10 +150,10 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A08 | SelfHost.Diagnostics | 2 | 2 | `CERRADA` |
 | A09 | SelfHost.Lexer | 1 | 1 | `CERRADA` |
 | A10 | SelfHost.Source | 1 | 1 | `CERRADA` |
-| A11 | SelfHost.Types | 2 | 1 | `EN_PROGRESO`; G38 cerrado |
+| A11 | SelfHost.Types | 2 | 2 | `CERRADA` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **45** | **86.54 %** |
+| **Total** |  | **52** | **46** | **88.46 %** |
 
 ## A.3 Inventario exacto
 
@@ -354,7 +354,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A11 · `TSH-01023` / `CSH-TYP-007`**
   - Contrato: `IsInteger`/`IsNumeric` dan false para IDs inválidos sin indexar fuera de tabla.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5566; C:`SelfHostTypesCaseClassifications.jsonl`.
-  - Procedencia: `dc3ee85f`. Cierre: `PENDIENTE`.
+  - Procedencia: `dc3ee85f`. Cierre: `CERRADO`; G39 pasó como KPD y Required y cerró A11 2/2;
+    commit G39: este commit.
 - **A12 · `T12B-00021` / `C12B-BLD-004`**
   - Contrato: rechazar NSLink producer vacío antes de derivar rutas self-host runtime.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5691; C:`BuildSystemCaseClassifications.jsonl`.
@@ -649,7 +650,8 @@ Resultado del inventario causal:
   - Productores: `TypeTable.IsInteger` e `IsNumeric` self-host.
   - Causa: llaman `Get(id)` sin comprobar `0 <= id < Count()`.
   - Consumidores: conversiones numéricas de Sema y CodeGen self-host.
-  - Puntual: `SelfHostTypesFunctionModule.ns`; existe.
+  - Puntual: `SelfHostTypesFunctionModule.ns`; pasó como KPD y Required para `-1` y `Count()`.
+  - Estado: `CERRADO` en A11; ambos predicados rechazan IDs inválidos antes de indexar.
 - **G40 — helper runtime publica desde path inválido: `T12B-00021`, `T12B-00022`.**
   - Productor: `cmake/NativeSharpSelfHostRuntime.cmake::nsc_resolve_selfhost_runtime`.
   - Causa: path NSLink vacío o malformado se usa para derivar library/ABI sin precondición estructural.
@@ -705,7 +707,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A11 G38 cerrado 1/2, 45/52 defectos corregidos y 7 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A11 cerrada 2/2, 46/52 defectos corregidos y 6 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
@@ -802,7 +804,10 @@ Puertas previas a editar producto:
 - Consolidado A10 Required: una invocación `TSH-00903`, 1/1 `PASS`, 12.873 ms de pared.
 - Evidencia G38: `TSH-01011` reprodujo exit 31 (42.690 ms), pasó corregido como KPD (41.556 ms) y Required
   (17.715 ms); `TSH-01009` y `TSH-01012` preservaron arrays válidos (15.103/12.883 ms).
-- Próxima acción de Parte A: A11 G39 (`TSH-01023`).
+- Evidencia G39: `TSH-01023` reprodujo exit 132 (17.733 ms), pasó corregido como KPD (44.400 ms) y Required
+  (19.824 ms); `TSH-01026` y `TSH-01022` preservaron predicados/firma válidos (14.917/12.764 ms).
+- Consolidado A11 Required: `TSH-01011` y `TSH-01023`, 2/2 `PASS`, 29.451 ms de pared.
+- Próxima acción de Parte A: A12 G40 (`T12B-00021`, `T12B-00022`).
 
 ---
 
@@ -1552,10 +1557,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A09 G05 self-host y tanda | puntual KPD + Required; consolidado A09 1/1 | `PASS`; 9 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A10 G37 y tanda | puntual KPD + Required; consolidado A10 1/1 | `PASS`; 8 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A11 G38 | puntual KPD + Required; A11 1/2 | `PASS`; 7 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A11 G39 y tanda | puntual KPD + Required; consolidado A11 2/2 | `PASS`; 6 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `45/52`; A11 G38 cerrado 1/2; siguiente acción vinculante: A11 G39 (`TSH-01023`).
+- A: `46/52`; A11 cerrada 2/2; siguiente acción vinculante: A12 G40 (`T12B-00021`, `T12B-00022`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
