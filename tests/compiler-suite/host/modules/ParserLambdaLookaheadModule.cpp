@@ -7,7 +7,8 @@ namespace
 using namespace expression_support;
 using namespace parser_support;
 
-// Verifies the current lambda grammar has no async/unsafe/noheap prefix flags. Complexity is O(n).
+// Verifies the lambda grammar recognizes noheap/unsafe effect prefixes and still rejects async.
+// Complexity is O(n).
 void testCurrentLambdaFlags(TestContext& context)
 {
     ParserFixture ordinary("x => x");
@@ -18,9 +19,9 @@ void testCurrentLambdaFlags(TestContext& context)
     context.expect(lambda != nullptr && lambda->kind() == AstNodeKind::LambdaExpression && !lambda->flag(),
         "TP-PAR-451 ordinary expression lambda must retain the current body flag");
     context.expect(!asyncPrefix.parser().looksLikeLambdaExpression() &&
-            !unsafePrefix.parser().looksLikeLambdaExpression() &&
-            !noheapPrefix.parser().looksLikeLambdaExpression(),
-        "TP-PAR-451 unsupported callable prefixes must not be mistaken for lambda flags");
+            unsafePrefix.parser().looksLikeLambdaExpression() &&
+            noheapPrefix.parser().looksLikeLambdaExpression(),
+        "TP-PAR-451 async remains unsupported; noheap/unsafe are recognized lambda effect prefixes");
 }
 
 // Verifies a parenthesized arithmetic expression is not a lambda head. Complexity is O(n).

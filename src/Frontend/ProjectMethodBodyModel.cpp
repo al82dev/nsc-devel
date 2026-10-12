@@ -23010,6 +23010,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         anonymousIdentity.signature.result = returnType;
         anonymousIdentity.signature.carrier = language::FunctionCarrier::Pointer;
         anonymousIdentity.signature.callingConvention = language::CallingConvention::NativeSharp;
+        // NS304-T04-F02: efectos noheap/unsafe del lambda, guardados por el parser como
+        // sufijo "effects:<efecto>" del auxiliaryText (tras la lista de capturas).
+        if (const std::string_view auxiliary = syntax->auxiliaryText(); !auxiliary.empty())
+        {
+            const std::size_t effectsPos = auxiliary.rfind("effects:");
+            if (effectsPos != std::string_view::npos)
+            {
+                const std::string_view effect = auxiliary.substr(effectsPos + 8U);
+                if (effect.find("noheap") != std::string_view::npos)
+                    anonymousIdentity.signature.isNoHeap = true;
+                if (effect.find("unsafe") != std::string_view::npos)
+                    anonymousIdentity.signature.isUnsafe = true;
+            }
+        }
         resultTypeKey = language::anonymousLambdaTypeIdentity(anonymousIdentity);
         binding.delegateTypeKey = resultTypeKey;
     }

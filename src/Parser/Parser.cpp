@@ -13380,7 +13380,7 @@ bool Parser::looksLikeLambdaExpression() const noexcept
 
     // NS304-T04-F02: `noheap`/`unsafe` son prefijos de EFECTO de lambda. Se reconocen como
     // contextuales delante de una cabecera de parametros real; no se reservan como keywords.
-    if ((atContextualKeyword("noheap") || atContextualKeyword("unsafe")) &&
+    if ((at(TokenKind::KwNoHeap) || atContextualKeyword("unsafe")) &&
         index_ + 1 < tokens_.size() && looksLikeParameterHead(index_ + 1))
     {
         return true;
@@ -13410,7 +13410,7 @@ ast::AstNode* Parser::parseLambdaExpression()
         ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
     // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe`, antes de la lista de captura.
     std::string effects;
-    if (atContextualKeyword("noheap")) { effects = "noheap"; consume(); }
+    if (at(TokenKind::KwNoHeap)) { effects = "noheap"; consume(); }
     else if (atContextualKeyword("unsafe")) { effects = "unsafe"; consume(); }
     std::string captureContract;
     if (consumeIf(TokenKind::LeftBracket))
