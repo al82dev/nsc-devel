@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 5 | 3.40 % | `ACTIVA`; B00 reconciliada, T00-F01–F05 cerradas, T00-F06 activa |
+| B | 3.0.4 | 18 | 147 ítems | 6 | 4.08 % | `ACTIVA`; B00 reconciliada, T00-F01–F06 cerradas, T00-F07 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -915,7 +915,7 @@ T00
 
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
-| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 5 | 62.5 % |
+| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 6 | 75 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
@@ -944,7 +944,7 @@ T00
 - [x] `NS304-T00-F03` — Construir matriz C# 8-14: equivalente, alternativa, divergencia o gap obligatorio.
 - [x] `NS304-T00-F04` — Construir matriz Beef: memoria, extensions, generics, comptime, interop y patterns.
 - [x] `NS304-T00-F05` — Añadir disposición `PlannedFor304` sin presentar features pendientes como productivas.
-- [ ] `NS304-T00-F06` — Congelar versiones previstas de AST, HIR, MIR, NSMETA, ABI runtime y debug metadata.
+- [x] `NS304-T00-F06` — Congelar versiones previstas de AST, HIR, MIR, NSMETA, ABI runtime y debug metadata.
 - [ ] `NS304-T00-F07` — Publicar manifest de dependencias compiler/runtime/STL por feature.
 - [ ] `NS304-T00-F08` — Crear harness v3.0.4 sin conteos fijos, hashes de herramientas ni textos frágiles.
 
@@ -1301,6 +1301,22 @@ Estado: `CERRADO`.
 - Gate: entradas=16, planned_como_implemented=0, labels_vacíos=0,
   disposiciones_desconocidas=0.
 - Siguiente ítem: `NS304-T00-F06`.
+
+### NS304-T00-F06 — reservas de versión 3.0.4
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T00-F06-version-reservations.md`.
+- Manifest: `docs/3.0.4/contracts/version-reservations.json`.
+- Baseline: AST/HIR in-memory sin wire schema; MIR `1.30`; NSMETA `1.38`;
+  runtime ABI `1.2`/symbol set `4`; debug gobernado por productor LLVM.
+- Reserva: seis ventanas minor, una reclamación máxima por tanda T01–T15;
+  ninguna versión se emite antes del cierre del ítem propietario.
+- Gate: contratos=6/6, mismatch_baseline=0, owners=6x15,
+  duplicados=0, bumps_productivos_prematuros=0.
+- Prueba puntual: parseo JSON, contraste de constantes numéricas y validación
+  exacta de owners, ventanas y prohibiciones.
+- Siguiente ítem: `NS304-T00-F07`.
 
 ---
 
@@ -1804,16 +1820,18 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00-F03 | Matriz C# 8.0–14 | 88 capacidades estables oficiales con disposición única | 88/88 clasificadas; 47 gaps con dueño; 3/147 cerrados |
 | 2026-10-12 | B01/T00-F04 | Matriz Beef por capacidad | 69 capacidades en seis áreas oficiales con disposición única | 69/69 clasificadas; 32 gaps con dueño; 4/147 cerrados |
 | 2026-10-12 | B01/T00-F05 | Disposición PlannedFor304 | catálogo, manifest, Parser y pruebas Host.Language | 9 planes no productivos; 7/7 casos puntuales PASS; 5/147 cerrados |
+| 2026-10-12 | B01/T00-F06 | Reservas de versión 3.0.4 | seis contratos contra constantes y modelos actuales | 6/6 baselines trazados; ventanas T01–T15 sin bump prematuro; 6/147 cerrados |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `5/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `6/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
-  T00-F05 separó nueve planes 3.0.4 de la superficie productiva;
-  T00-F06 queda activa en `development`. La contradicción de `v.3.0.3`
+  T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
+  congeló seis ventanas de versión sin adelantar writers ni ABI;
+  T00-F07 queda activa en `development`. La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

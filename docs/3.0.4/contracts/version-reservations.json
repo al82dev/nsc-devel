@@ -1,0 +1,83 @@
+{
+  "schema": "NS304_VERSION_RESERVATIONS",
+  "schema_version": 1,
+  "release": "3.0.4",
+  "base_revision": "73019e590",
+  "allocation_rule": "claim-next-minor-in-owning-item",
+  "contracts": [
+    {
+      "name": "AST",
+      "current": "unversioned-in-memory",
+      "current_source": "include/nativesharp/AST",
+      "planned_namespace": "NSAST",
+      "planned_major": 1,
+      "next_minor": 1,
+      "ceiling_minor": 15,
+      "wire_format": false,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "name": "HIR",
+      "current": "unversioned-in-memory",
+      "current_source": "include/nativesharp/Frontend/ProjectOopHirModel.h",
+      "planned_namespace": "NSHIR",
+      "planned_major": 1,
+      "next_minor": 1,
+      "ceiling_minor": 15,
+      "wire_format": false,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "name": "MIR",
+      "current": "1.30",
+      "current_source": "include/nativesharp/Frontend/ProjectOopMirModel.h",
+      "planned_namespace": "ProjectOopMirSchema",
+      "planned_major": 1,
+      "next_minor": 31,
+      "ceiling_minor": 45,
+      "wire_format": true,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "name": "NSMETA",
+      "current": "1.38",
+      "current_source": "include/nativesharp/Interop/LibraryMetadata.h",
+      "planned_namespace": "NSMETA",
+      "planned_major": 1,
+      "next_minor": 39,
+      "ceiling_minor": 53,
+      "wire_format": true,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "name": "RuntimeABI",
+      "current": "1.2",
+      "current_symbol_set": 4,
+      "current_source": "include/nativesharp/Runtime/RuntimeAbiContract.h",
+      "planned_namespace": "NSRUNTIMEABI",
+      "planned_major": 1,
+      "next_minor": 3,
+      "ceiling_minor": 17,
+      "wire_format": true,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "name": "DebugMetadata",
+      "current": "llvm-producer-version-only",
+      "current_source": "src/LLVM/ProjectOopLlvmLowerer.cpp",
+      "planned_namespace": "NSDEBUG",
+      "planned_major": 1,
+      "next_minor": 1,
+      "ceiling_minor": 15,
+      "wire_format": false,
+      "owners": ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    }
+  ],
+  "forbidden": [
+    "emit-a-reserved-version-before-the-owning-item-closes",
+    "reuse-a-minor-for-two-observable-shapes",
+    "change-a-major-without-an-explicit-breaking-contract",
+    "advance-runtime-abi-for-a-source-only-change",
+    "describe-unversioned-ast-hir-or-debug-contracts-as-current-wire-formats"
+  ]
+}
