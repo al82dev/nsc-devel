@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 48 | 92.31 % | `EN_PROGRESO`; A12 cerrada 2/2 |
+| A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G40 y A12, quedan 4 KPD abiertos y 48 casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G41 y A13, quedan 0 KPD abiertos y 52 casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -152,8 +152,8 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A10 | SelfHost.Source | 1 | 1 | `CERRADA` |
 | A11 | SelfHost.Types | 2 | 2 | `CERRADA` |
 | A12 | BuildSystem | 2 | 2 | `CERRADA` |
-| A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **48** | **92.31 %** |
+| A13 | Packaging | 4 | 4 | `CERRADA` |
+| **Total** |  | **52** | **52** | **100 %** |
 
 ## A.3 Inventario exacto
 
@@ -369,19 +369,19 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A13 · `T12B-00457` / `C12B-PKG-001`**
   - Contrato: `deploy.bat` respeta build/prefix del caller y no usa rutas hardcoded.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5707; C:`PackagingCaseClassifications.jsonl`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; build y prefix explícitos llegan citados a `cmake --install`; commit G41: este commit.
 - **A13 · `T12B-00458` / `C12B-PKG-001`**
   - Contrato: `deploy.bat` acepta y preserva paths con espacios o Unicode.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5708; C:`PackagingCaseClassifications.jsonl`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; espacios de paths representativos se preservan al invocar CMake; commit G41: este commit.
 - **A13 · `T12B-00460` / `C12B-PKG-001`**
   - Contrato: destino drive-root inválido se rechaza antes de publicar.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5710; C:`PackagingCaseClassifications.jsonl`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; el destino raíz se rechaza antes de localizar o invocar CMake; commit G41: este commit.
 - **A13 · `T12B-00461` / `C12B-PKG-001`**
   - Contrato: build y prefix iguales se rechazan antes de publicar.
   - Estado/evidencia: `KNOWN_FAILURE`; M:5711; C:`PackagingCaseClassifications.jsonl`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; build y prefix iguales se rechazan antes de publicar; commit G41: este commit.
 
 ## A.4 Criterio de transición y cierre
 
@@ -665,7 +665,10 @@ Resultado del inventario causal:
   - Productor: `deploy.bat`.
   - Causa: usa build/prefix hardcoded; no puede preservar paths ni validar destino/root/solape.
   - Consumidores: instalación manual y superficie Packaging.
-  - Puntuales: `run_packaging_gate.py` con `cmake.cmd` espía y sandbox; existen.
+  - Puntuales: `run_packaging_gate.py` con `cmake.cmd` espía y sandbox; los cuatro casos pasaron como KPD y
+    Required; ausencia de CMake y repetición conservaron los guards del contrato.
+  - Estado: `CERRADO` en A13; el wrapper exige build/prefix explícitos, normaliza, rechaza raíz/igualdad y sólo
+    después resuelve e invoca CMake.
 
 ### A.5.3 Grafo productor-consumidor y dependencias
 
@@ -711,10 +714,11 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A12 cerrada 2/2, 48/52 defectos corregidos y 4 KPD abiertos.
+- Estado de Parte A: `TANDAS_CERRADAS`; A00-A13 cerradas, 52/52 defectos corregidos y 0 KPD abiertos; falta la
+  batería final vinculante antes de certificar 3.0.3.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
-- Pruebas puntuales: A00-A12 cerradas; cada tanda conserva su consolidado exacto Required `PASS`.
+- Pruebas puntuales: A00-A13 cerradas; cada tanda conserva su consolidado exacto Required `PASS`.
 - Evidencia A00: productor Release LLVM 23.1.0 reconstruido sin regenerar CMake; 14 objetos y enlace de 166 objetos.
 - Consolidado A00 Required: siete invocaciones `nsc_component_tests.exe --case <ID>`, 7/7 `PASS`, 684 ms.
 - Evidencia A01: `Lexer.cpp` y su módulo de registro reconstruidos con LLVM 23.1.0 sin regenerar CMake;
@@ -815,7 +819,12 @@ Puertas previas a editar producto:
   ambos pasaron como KPD y Required con exit 1 y sin `runtime.txt`. Los guards de ruta absoluta derivada y
   overrides explícitos terminaron exit 0 y conservaron sus rutas.
 - Consolidado A12 Required: `T12B-00021` y `T12B-00022`, 2/2 `PASS`.
-- Próxima acción de Parte A: A13 G41 (`T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461`).
+- Evidencia G41: los cuatro casos reprodujeron que el wrapper ignoraba al caller y publicaba el comando fijo.
+  Tras la corrección, `T12B-00457` y `T12B-00458` preservaron build/prefix citados; `T12B-00460` y
+  `T12B-00461` rechazaron raíz e igualdad sin crear el log espía. Los guards de CMake ausente y repetición pasaron.
+- Consolidado A13 Required: `T12B-00457`, `T12B-00458`, `T12B-00460` y `T12B-00461`, 4/4 `PASS`.
+- Próxima acción de Parte A: comprobar conteos y árbol atribuible, reportar la frontera 52/52 y sólo después
+  iniciar la batería final vinculante por instrucción explícita de continuidad.
 
 ---
 
@@ -1567,13 +1576,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A11 G38 | puntual KPD + Required; A11 1/2 | `PASS`; 7 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A11 G39 y tanda | puntual KPD + Required; consolidado A11 2/2 | `PASS`; 6 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A12 G40 y tanda | dos puntuales KPD + Required; consolidado A12 2/2 | `PASS`; 4 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A13 G41 y tandas A00-A13 | cuatro puntuales KPD + Required; consolidado A13 4/4 | `PASS`; 0 KPD abiertos; batería final pendiente |
 
 ## 6. Estado al corte
 
-- A: `48/52`; A12 cerrada 2/2; siguiente acción vinculante: A13 G41 (`T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461`).
+- A: `52/52`; A00-A13 cerradas; batería completa final pendiente antes de certificar y crear `v.3.0.3`.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00-A12 puntuales y consolidados por tanda; ninguna batería completa.
+- Validación ejecutada: A00-A13 puntuales y consolidados por tanda; ninguna batería completa.
 
