@@ -17,6 +17,11 @@
 
 namespace nativesharp::cfg
 {
+namespace
+{
+constexpr char kInvalidFunctionError[] = "CFG builder received an invalid MIR function definition";
+}
+
 CfgBuilder::CfgBuilder(CfgArena& arena) : arena_(arena) {}
 
 CfgModule* CfgBuilder::build(const mir::MirModule* module)
@@ -27,10 +32,19 @@ CfgModule* CfgBuilder::build(const mir::MirModule* module)
         return nullptr;
     }
 
+    for (const mir::MirFunction* function : module->functions())
+    {
+        if (function == nullptr)
+        {
+            fail(kInvalidFunctionError);
+            return nullptr;
+        }
+    }
+
     CfgModule* result = arena_.makeModule(module);
     for (const mir::MirFunction* function : module->functions())
     {
-        if (function != nullptr && function->defined() && !buildFunction(function, result))
+        if (function->defined() && !buildFunction(function, result))
         {
             return nullptr;
         }
@@ -45,7 +59,7 @@ bool CfgBuilder::buildFunction(const mir::MirFunction* function, CfgModule* modu
 {
     if (function == nullptr || !function->defined())
     {
-        return fail("CFG builder received an invalid MIR function definition");
+        return fail(kInvalidFunctionError);
     }
 
     CfgFunction* cfgFunction = arena_.makeFunction(function);

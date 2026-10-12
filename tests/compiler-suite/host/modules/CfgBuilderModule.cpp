@@ -31,8 +31,9 @@ void builderSelectionContract(TestContext& c, std::size_t variant)
     CfgModule* module = fixture.build();
     if (variant == 4)
     {
-        c.expect(false && module != nullptr,
-            "TF-CFG-076 PRODUCT-DEFECT: null MIR function entries are silently ignored instead of rejected");
+        c.expect(module == nullptr && !fixture.builder()->succeeded() &&
+                fixture.builder()->error() == "CFG builder received an invalid MIR function definition",
+            "TF-CFG-076 a null MIR function rejects the module before any CFG can be published");
         return;
     }
     const std::size_t expected = variant == 5 ? 0U : 1U;
@@ -185,7 +186,7 @@ void builderErrorLatchContract(TestContext& c, std::size_t variant)
 
 void registerCfgBuilderModule(TestRegistry& registry)
 {
-    addCfgContract(registry, 10, "component", builderSelectionContract, {}, {4});
+    addCfgContract(registry, 10, "component", builderSelectionContract);
     addCfgContract(registry, 11, "component", builderFunctionContract);
     addCfgContract(registry, 12, "component", builderTerminatorContract);
     addCfgContract(registry, 13, "component", builderEdgeContract);
