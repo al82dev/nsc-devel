@@ -714,10 +714,11 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `REABIERTA_CICLO_2`; A00-A13 conservan sus cierres puntuales, pero la primera batería final
-  vinculante no cerró la puerta de certificación: run `20261012-033650-part-a-final`, revisión
-  `bc9e2441c631a08d9a1a7b943a163d3985387e22`, 5,714/5,714 terminales, 5,713 `PASS` y un `FAIL` en
-  `TP-PAR-478|Debug|NA`. La puerta `CERTIFICACION_FINAL_OK` continúa abierta y no autoriza crear `v.3.0.3`.
+- Estado de Parte A: `CERTIFICADA_CICLO_2`; A00-A13 conservan sus cierres puntuales, los 52 KPD permanecen
+  reconciliados en `PASS` y la repetición final vinculante cerró limpia: run
+  `20261012-0428-part-a-final-cycle2`, revisión `69dd18bd16d151224e1a12dd9f54a94a9251c3ec`, 5,714/5,714
+  terminales `PASS`, cero cancelaciones y cero fallos de preparación. La puerta funcional
+  `CERTIFICACION_FINAL_OK` queda cerrada.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00-A13 cerradas; cada tanda conserva su consolidado exacto Required `PASS`.
@@ -878,8 +879,14 @@ sin reclasificar ni invalidar artificialmente los 52 resultados demostrados.
   `bc9e2441c631a08d9a1a7b943a163d3985387e22`, preparación completa, 53/53 terminales `PASS`, cero cancelaciones y
   cero fallos de preparación. Evidencia: `_nscbuilder3/history/20261012-part-a-cycle2-directed-53/`. La selección
   contiene exactamente los 52 IDs iniciales más `TP-PAR-478`, sin duplicados.
-- Estado de puerta: la causa puntual y la reconciliación dirigida están cerradas; aún falta repetir una sola batería
-  completa final antes de certificar Parte A y crear la frontera `v.3.0.3`.
+- Certificación final del ciclo 2: run `20261012-0428-part-a-final-cycle2`, 5,714/5,714 terminales `PASS`, cero
+  estados alternos, cero cancelaciones y preparación de los tres productores completa. Evidencia canónica:
+  `_nscbuilder3/history/20261012-0428-part-a-final-cycle2/` (`metadata.json`, `events.jsonl`, `results.json`,
+  `full.log`, `summary.md`).
+- Estado de puerta: `CERTIFICACION_FINAL_OK` cerrada para Parte A. La rama `v.3.0.3` preexiste y apunta a
+  `7b7e36faf51fe4712940cc76c18a4598fb94facd` (`Relax C23 view exception contract`, 2026-10-08), no a la
+  frontera certificada actual. La política prohíbe mover una frontera existente sin instrucción explícita; por ello
+  la rama no se modifica y la transición operativa a Parte B permanece bloqueada por esta contradicción de milestone.
 
 ---
 
@@ -1634,18 +1641,20 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A13 G41 y tandas A00-A13 | cuatro puntuales KPD + Required; consolidado A13 4/4 | `PASS`; 0 KPD abiertos; batería final pendiente |
 | 2026-10-12 | 2 | Primera certificación final de Parte A | run `20261012-033650-part-a-final`; 5,714 terminales | 5,713 `PASS`; `TP-PAR-478` `FAIL`; puerta no cerrada y auditoría reabierta desde A00 |
 | 2026-10-12 | 2 | Corrección y consolidado dirigido de reapertura | TP-PAR-478 + guards 4/4; run `20261012-part-a-cycle2-directed-53` | 53/53 `PASS`; causa de prueba/oráculo cerrada; repetición final completa pendiente |
+| 2026-10-12 | 2 | Certificación final de Parte A | run `20261012-0428-part-a-final-cycle2`; revisión `69dd18bd1`; 5,714 terminales | 5,714 `PASS`; `CERTIFICACION_FINAL_OK`; rama `v.3.0.3` preexistente en `7b7e36faf` no movida |
 
 ## 6. Estado al corte
 
-- A: `52/52` cierres puntuales preservados; primera batería final 5,713/5,714; `TP-PAR-478` reabre el ciclo 2 y
-  quedó corregido y el consolidado dirigido cerró 53/53; falta una nueva batería final completa antes de certificar y
-  crear `v.3.0.3`.
-- B: `0/147`; bloqueada por cierre certificado de A.
+- A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
+  5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
+- B: `0/147`; bloqueada hasta resolver la contradicción de la rama milestone `v.3.0.3` preexistente.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
-- Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
+- Ramas: `v.3.0.3` ya existía antes del cierre y apunta a `7b7e36faf51fe4712940cc76c18a4598fb94facd`; no se
+  movió. `v.3.0.4` a `v.3.0.6` no se crean anticipadamente.
 - Validación ejecutada: A00-A13 puntuales y consolidados por tanda; primera batería completa ejecutada con un
   fallo terminal en `TP-PAR-478`, seguida por corrección puntual, guards y consolidado dirigido 53/53 `PASS`;
-  evidencias en `_nscbuilder3/history/20261012-033650-part-a-final/` y
-  `_nscbuilder3/history/20261012-part-a-cycle2-directed-53/`.
+  repetición final 5,714/5,714 `PASS`. Evidencias en `_nscbuilder3/history/20261012-033650-part-a-final/`,
+  `_nscbuilder3/history/20261012-part-a-cycle2-directed-53/` y
+  `_nscbuilder3/history/20261012-0428-part-a-final-cycle2/`.
 
