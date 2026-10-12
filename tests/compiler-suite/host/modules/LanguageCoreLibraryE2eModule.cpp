@@ -28,6 +28,12 @@ namespace
 namespace fs = std::filesystem;
 using external_program_support::Result;
 
+enum class ProjectComposition
+{
+    PublishedCore,
+    FocusedNumberSources,
+};
+
 class TemporaryProject final
 {
 public:
@@ -89,7 +95,8 @@ struct PreparedProgram
     explicit PreparedProgram(std::string_view caseId) : project(caseId) {}
 };
 
-PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixtureName)
+PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixtureName,
+    ProjectComposition composition)
 {
     PreparedProgram prepared(caseId);
     if (!prepared.project.valid())
@@ -110,15 +117,35 @@ PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixture
         return prepared;
     }
 
+    if (composition == ProjectComposition::FocusedNumberSources)
+    {
+        for (const std::string_view file :
+            {"Number.ns", "NumericLimits.ns", "NumericParsing.ns"})
+        {
+            copyError.clear();
+            const fs::path filePath(file);
+            const fs::path unitSource = repository / "lib/NativeSharp.Core" / filePath;
+            fs::copy_file(unitSource, prepared.project.path() / filePath,
+                fs::copy_options::overwrite_existing, copyError);
+            if (copyError)
+            {
+                prepared.compilation.error = "unit source copy failed for " +
+                    std::string(file) + ": " + copyError.message();
+                return prepared;
+            }
+        }
+    }
+
     const std::string projectName = "LanguageCoreProbe";
     const fs::path projectFile = prepared.project.path() / (projectName + ".nsproj");
     const std::string coreProject =
         (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
-    writeFile(projectFile,
-        "<Project><PropertyGroup><Name>" + projectName +
-        "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
-        "<ProjectReference Include=\"" + coreProject +
-        "\"/></ItemGroup></Project>");
+    std::string projectContents = "<Project><PropertyGroup><Name>" + projectName +
+        "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>";
+    if (composition == ProjectComposition::PublishedCore)
+        projectContents += "<ProjectReference Include=\"" + coreProject + "\"/>";
+    projectContents += "</ItemGroup></Project>";
+    writeFile(projectFile, projectContents);
 
     const fs::path compiler(NSC_SUITE_NSC_EXECUTABLE);
     const std::vector<std::wstring> arguments = {
@@ -134,9 +161,9 @@ PreparedProgram prepareProgram(std::string_view caseId, std::string_view fixture
 }
 
 void expectProgram(TestContext& context, std::string_view caseId, std::string_view fixtureName,
-    std::string input, DWORD expectedExit)
+    ProjectComposition composition, std::string input, DWORD expectedExit)
 {
-    PreparedProgram prepared = prepareProgram(caseId, fixtureName);
+    PreparedProgram prepared = prepareProgram(caseId, fixtureName, composition);
     std::error_code sizeError;
     const bool executableReady = fs::is_regular_file(prepared.executable, sizeError) &&
         !sizeError && fs::file_size(prepared.executable, sizeError) != 0 && !sizeError;
@@ -155,36 +182,55 @@ void expectProgram(TestContext& context, std::string_view caseId, std::string_vi
 }
 
 void addCase(TestRegistry& registry, std::string id, std::string contract,
-    std::vector<std::string> tags, TestFunction function)
+    std::string layer, std::vector<std::string> tags, TestFunction function)
 {
-    registry.add(TestCase{std::move(id), std::move(contract), "Host.Language", "integration",
+    registry.add(TestCase{std::move(id), std::move(contract), "Host.Language", std::move(layer),
         "PR", std::move(tags), std::move(function)});
 }
 }
 
 void registerLanguageCoreLibraryE2eModule(TestRegistry& registry)
 {
-    addCase(registry, "TL-LANG-287", "CL-LANG-016",
+    addCase(registry, "TL-LANG-287", "CL-LANG-016", "integration",
         {"language", "numeric", "core", "e2e"}, [](TestContext& context) {
-            expectProgram(context, "TL-LANG-287", "numeric", {}, 42);
+            expectProgram(context, "TL-LANG-287", "numeric", ProjectComposition::PublishedCore,
+                {}, 42);
         });
-    addCase(registry, "TL-LANG-288", "CL-LANG-016",
+    addCase(registry, "TL-LANG-288", "CL-LANG-016", "integration",
         {"language", "numeric", "panic", "e2e"}, [](TestContext& context) {
-            expectProgram(context, "TL-LANG-288", "numeric-invalid", {}, 142);
+            expectProgram(context, "TL-LANG-288", "numeric-invalid",
+                ProjectComposition::PublishedCore, {}, 142);
         });
-    addCase(registry, "TL-LANG-289", "CL-LANG-010",
+    addCase(registry, "TL-LANG-289", "CL-LANG-010", "integration",
         {"language", "console", "readline", "e2e"}, [](TestContext& context) {
             std::string input = "alpha\r\n\r\n";
             input.append(8192, 'x');
             input += "\r\n";
-            expectProgram(context, "TL-LANG-289", "console-readline", std::move(input), 42);
+            expectProgram(context, "TL-LANG-289", "console-readline",
+                ProjectComposition::PublishedCore, std::move(input), 42);
         });
-    addCase(registry, "TL-LANG-290", "CL-LANG-010",
+    addCase(registry, "TL-LANG-290", "CL-LANG-010", "integration",
         {"language", "console", "numeric", "e2e"}, [](TestContext& context) {
             expectProgram(context, "TL-LANG-290", "console-parse",
+                ProjectComposition::PublishedCore,
                 "255\r\n-128\r\n-32768\r\n65535\r\n-2147483648\r\n4294967295\r\n"
                 "-9223372036854775808\r\n18446744073709551615\r\n1.5\r\n2.5\r\nbad\r\n",
                 42);
+        });
+    addCase(registry, "TL-LANG-291", "CL-LANG-016", "unit",
+        {"language", "numeric", "number", "boundary", "unit"}, [](TestContext& context) {
+            expectProgram(context, "TL-LANG-291", "unit-number-boundaries",
+                ProjectComposition::FocusedNumberSources, {}, 42);
+        });
+    addCase(registry, "TL-LANG-292", "CL-LANG-016", "unit",
+        {"language", "numeric", "number", "null", "unit"}, [](TestContext& context) {
+            expectProgram(context, "TL-LANG-292", "unit-number-null",
+                ProjectComposition::FocusedNumberSources, {}, 42);
+        });
+    addCase(registry, "TL-LANG-293", "CL-LANG-016", "unit",
+        {"language", "numeric", "parse", "fallback", "unit"}, [](TestContext& context) {
+            expectProgram(context, "TL-LANG-293", "unit-number-facades",
+                ProjectComposition::FocusedNumberSources, {}, 42);
         });
 }
 }

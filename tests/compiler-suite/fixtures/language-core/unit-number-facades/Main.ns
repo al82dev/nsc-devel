@@ -1,0 +1,39 @@
+using NativeSharp.Core;
+
+// Focused unit: public facades delegate TryParse/fallback to Number without redefining parsing.
+public class Program
+{
+    public static int Main()
+    {
+        byte byteValue;
+        if (!Byte.TryParse("255", out byteValue) || byteValue != 255 || Byte.Parse("bad", (byte)11) != 11) { return 1; }
+        sbyte sbyteValue;
+        if (!SByte.TryParse("-128", out sbyteValue) || sbyteValue != -128 || SByte.Parse("bad", (sbyte)-12) != -12) { return 2; }
+        short shortValue;
+        if (!Int16.TryParse("-32768", out shortValue) || shortValue != -32768 || Int16.Parse("bad", (short)-13) != -13) { return 3; }
+        ushort ushortValue;
+        if (!UInt16.TryParse("65535", out ushortValue) || ushortValue != 65535 || UInt16.Parse("bad", (ushort)14) != 14) { return 4; }
+        int intValue;
+        if (!Int32.TryParse("-2147483648", out intValue) || intValue != -2147483648 || Int32.Parse("bad", 15) != 15) { return 5; }
+        uint uintValue;
+        if (!UInt32.TryParse("4294967295", out uintValue) || uintValue != 4294967295U || UInt32.Parse("bad", 16U) != 16U) { return 6; }
+        long longValue;
+        if (!Int64.TryParse("-9223372036854775808", out longValue) || longValue != -9223372036854775808L || Int64.Parse("bad", 17L) != 17L) { return 7; }
+        ulong ulongValue;
+        if (!UInt64.TryParse("18446744073709551615", out ulongValue) || ulongValue != 18446744073709551615UL || UInt64.Parse("bad", 18UL) != 18UL) { return 8; }
+        float floatValue;
+        if (!Float.TryParse("1.5", out floatValue) || floatValue != (float)1.5 || Float.Parse("bad", (float)1.25) != (float)1.25) { return 9; }
+        double doubleValue;
+        if (!Double.TryParse("2.5", out doubleValue) || doubleValue != (double)2.5 || Double.Parse("bad", (double)1.25) != (double)1.25) { return 10; }
+
+        string missing = null;
+        if (Byte.Parse(missing, (byte)21) != 21 || SByte.Parse(missing, (sbyte)-22) != -22) { return 11; }
+        if (Int16.Parse(missing, (short)-23) != -23 || UInt16.Parse(missing, (ushort)24) != 24) { return 12; }
+        if (Int32.Parse(missing, -25) != -25 || UInt32.Parse(missing, 26U) != 26U) { return 13; }
+        if (Int64.Parse(missing, -27L) != -27L || UInt64.Parse(missing, 28UL) != 28UL) { return 14; }
+        if (Float.Parse(missing, (float)2.5) != (float)2.5 || Double.Parse(missing, (double)3.5) != (double)3.5) { return 15; }
+
+        if (Int32.Parse("-42") != -42 || Double.Parse("1.25") != (double)1.25) { return 16; }
+        return 42;
+    }
+}

@@ -310,6 +310,9 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-216 | CL-LANG-016 | integerSemanticsSelfCheck | true para barrida completa signed i8 | NIGHTLY |
 | TL-LANG-287 | CL-LANG-016 | `Parse` directo y fallback para byte/sbyte/short/ushort/int/uint/long/ulong/float/double | valores y límites exactos; salida 42 | PR |
 | TL-LANG-288 | CL-LANG-016 | `Int32.Parse` directo con `string null` | frontera `panic` determinista, salida 142 | PR |
+| TL-LANG-291 | CL-LANG-016 | unidad con Number/NumericLimits/NumericParsing: mínimos, máximos y adyacentes | aceptación/rechazo exactos; salida 42 | PR |
+| TL-LANG-292 | CL-LANG-016 | unidad con `null` para diez `Number.TryParse*` y out previamente no cero | false y out cero tipado; salida 42 | PR |
+| TL-LANG-293 | CL-LANG-016 | unidad de fachadas `Parse`, fallback y `TryParse` sin proyecto Core completo | delegación, valores y fallback exactos; salida 42 | PR |
 
 ## Ownership — `CL-LANG-017`
 
@@ -415,4 +418,4 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 5. Las máquinas de estado prueban cada operación desde cada estado alcanzable y terminal.
 6. Coverage instrumental y mutation testing pertenecen a Fase 3.
 
-**Total diseñado:** 290 casos lógicos parametrizables.
+**Total diseñado:** 293 casos lógicos parametrizables.

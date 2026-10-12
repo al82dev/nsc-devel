@@ -1,0 +1,32 @@
+using NativeSharp.Core;
+
+// Focused unit: every core TryParse guard rejects null and clears its out value.
+public class Program
+{
+    public static int Main()
+    {
+        string missing = null;
+
+        byte byteValue = (byte)1;
+        if (Number.TryParseByte(missing, out byteValue) || byteValue != 0) { return 1; }
+        sbyte sbyteValue = (sbyte)1;
+        if (Number.TryParseSByte(missing, out sbyteValue) || sbyteValue != 0) { return 2; }
+        short shortValue = (short)1;
+        if (Number.TryParseInt16(missing, out shortValue) || shortValue != 0) { return 3; }
+        ushort ushortValue = (ushort)1;
+        if (Number.TryParseUInt16(missing, out ushortValue) || ushortValue != 0) { return 4; }
+        int intValue = 1;
+        if (Number.TryParseInt32(missing, out intValue) || intValue != 0) { return 5; }
+        uint uintValue = 1U;
+        if (Number.TryParseUInt32(missing, out uintValue) || uintValue != 0U) { return 6; }
+        long longValue = 1L;
+        if (Number.TryParseInt64(missing, out longValue) || longValue != 0L) { return 7; }
+        ulong ulongValue = 1UL;
+        if (Number.TryParseUInt64(missing, out ulongValue) || ulongValue != 0UL) { return 8; }
+        float floatValue = (float)1;
+        if (Number.TryParseFloat(missing, out floatValue) || floatValue != (float)0) { return 9; }
+        double doubleValue = (double)1;
+        if (Number.TryParseDouble(missing, out doubleValue) || doubleValue != (double)0) { return 10; }
+        return 42;
+    }
+}

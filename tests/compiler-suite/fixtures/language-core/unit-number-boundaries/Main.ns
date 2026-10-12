@@ -1,0 +1,57 @@
+using NativeSharp.Core;
+
+// Focused unit: only Number, NumericLimits and NumericParsing are compiled beside this file.
+public class Program
+{
+    public static int Main()
+    {
+        byte byteValue;
+        if (!Number.TryParseByte("0", out byteValue) || byteValue != 0) { return 1; }
+        if (!Number.TryParseByte("255", out byteValue) || byteValue != 255) { return 2; }
+        if (Number.TryParseByte("256", out byteValue) || Number.TryParseByte("-1", out byteValue)) { return 3; }
+
+        sbyte sbyteValue;
+        if (!Number.TryParseSByte("-128", out sbyteValue) || sbyteValue != -128) { return 4; }
+        if (!Number.TryParseSByte("127", out sbyteValue) || sbyteValue != 127) { return 5; }
+        if (Number.TryParseSByte("-129", out sbyteValue) || Number.TryParseSByte("128", out sbyteValue)) { return 6; }
+
+        short shortValue;
+        if (!Number.TryParseInt16("-32768", out shortValue) || shortValue != -32768) { return 7; }
+        if (!Number.TryParseInt16("32767", out shortValue) || shortValue != 32767) { return 8; }
+        if (Number.TryParseInt16("-32769", out shortValue) || Number.TryParseInt16("32768", out shortValue)) { return 9; }
+
+        ushort ushortValue;
+        if (!Number.TryParseUInt16("0", out ushortValue) || ushortValue != 0) { return 10; }
+        if (!Number.TryParseUInt16("65535", out ushortValue) || ushortValue != 65535) { return 11; }
+        if (Number.TryParseUInt16("65536", out ushortValue) || Number.TryParseUInt16("-1", out ushortValue)) { return 12; }
+
+        int intValue;
+        if (!Number.TryParseInt32("-2147483648", out intValue) || intValue != -2147483648) { return 13; }
+        if (!Number.TryParseInt32("2147483647", out intValue) || intValue != 2147483647) { return 14; }
+        if (Number.TryParseInt32("-2147483649", out intValue) || Number.TryParseInt32("2147483648", out intValue)) { return 15; }
+
+        uint uintValue;
+        if (!Number.TryParseUInt32("0", out uintValue) || uintValue != 0U) { return 16; }
+        if (!Number.TryParseUInt32("4294967295", out uintValue) || uintValue != 4294967295U) { return 17; }
+        if (Number.TryParseUInt32("4294967296", out uintValue) || Number.TryParseUInt32("-1", out uintValue)) { return 18; }
+
+        long longValue;
+        if (!Number.TryParseInt64("-9223372036854775808", out longValue) || longValue != -9223372036854775808L) { return 19; }
+        if (!Number.TryParseInt64("9223372036854775807", out longValue) || longValue != 9223372036854775807L) { return 20; }
+        if (Number.TryParseInt64("-9223372036854775809", out longValue) || Number.TryParseInt64("9223372036854775808", out longValue)) { return 21; }
+
+        ulong ulongValue;
+        if (!Number.TryParseUInt64("0", out ulongValue) || ulongValue != 0UL) { return 22; }
+        if (!Number.TryParseUInt64("18446744073709551615", out ulongValue) || ulongValue != 18446744073709551615UL) { return 23; }
+        if (Number.TryParseUInt64("18446744073709551616", out ulongValue) || Number.TryParseUInt64("-1", out ulongValue)) { return 24; }
+
+        float floatValue;
+        if (!Number.TryParseFloat("-3.5", out floatValue) || floatValue != (float)-3.5) { return 25; }
+        if (Number.TryParseFloat("1e", out floatValue)) { return 26; }
+
+        double doubleValue;
+        if (!Number.TryParseDouble("2.5e2", out doubleValue) || doubleValue != (double)250) { return 27; }
+        if (Number.TryParseDouble(".", out doubleValue)) { return 28; }
+        return 42;
+    }
+}
