@@ -1239,10 +1239,18 @@ ExpressionInfo SemanticAnalyzer::analyzeUnary(ast::AstNode* node)
         if (!isPointer(operand.type) || operand.type->elementType()->kind() == TypeKind::Void ||
             !operand.type->elementType()->isComplete())
         {
+            // The parser lowers `value->member` to `(*value).member` and marks the
+            // synthesized dereference so diagnostics keep naming the operator the
+            // programmer wrote. A source-level `*value` remains InvalidDereference.
+            const bool writtenAsArrow = node->auxiliaryText() == "arrow";
             report(
                 node->range(),
-                diagnostics::DiagnosticId::InvalidDereference,
-                "operand of * must point to a complete non-void type");
+                writtenAsArrow
+                    ? diagnostics::DiagnosticId::InvalidMemberAccess
+                    : diagnostics::DiagnosticId::InvalidDereference,
+                writtenAsArrow
+                    ? "operator -> requires pointer to complete struct"
+                    : "operand of * must point to a complete non-void type");
             return makeError(node);
         }
         result.type = operand.type->elementType();
