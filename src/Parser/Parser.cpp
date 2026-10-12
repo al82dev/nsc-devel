@@ -13529,12 +13529,11 @@ ast::AstNode* Parser::parseLambdaExpression()
         {
             while (true)
             {
-                // NS304-T04-F03: `(ref x, out y, in z, scoped w)` — modificador de paso SIN tipo,
-                // inferido del target fn*/delegate. El modificador viaja en el auxiliaryText del
-                // ParameterDeclaration para que bindLambdaToDelegate lo baje.
+                // NS304-T04-F03: `(ref x, out y, in z)` — modificador de paso SIN tipo, inferido
+                // del target fn*/delegate. El pass-mode viaja con el prefijo "pass:" (igual que
+                // parseParameter) para que bindLambdaToDelegate lo coteje contra el target.
                 const bool modifierParameter =
-                    atContextualKeyword("ref") || atContextualKeyword("out") ||
-                    atContextualKeyword("scoped") || at(TokenKind::KwIn);
+                    atContextualKeyword("ref") || atContextualKeyword("out") || at(TokenKind::KwIn);
                 if (modifierParameter && peek().kind() == TokenKind::Identifier &&
                     (peek(2).kind() == TokenKind::Comma || peek(2).kind() == TokenKind::RightParen))
                 {
@@ -13543,7 +13542,7 @@ ast::AstNode* Parser::parseLambdaExpression()
                     auto* node = arena_.make<ast::AstNode>(
                         ast::AstNodeKind::ParameterDeclaration, modifier.range());
                     node->setText(std::string(parameter.lexeme()));
-                    node->setAuxiliaryText(std::string(modifier.lexeme()));
+                    node->setAuxiliaryText("pass:" + std::string(modifier.lexeme()));
                     parameters.push_back(node);
                 }
                 // `(x, y)` keeps contextual parameter types.  Every other spelling goes through
