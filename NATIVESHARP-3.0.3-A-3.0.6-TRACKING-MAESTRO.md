@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 20 | 38.46 % | `EN_PROGRESO`; A03 9/21 |
+| A | 3.0.3 | 14 | 52 defectos | 21 | 40.38 % | `EN_PROGRESO`; A03 10/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G16, quedan 32 KPD abiertos y veinte casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G17, quedan 31 KPD abiertos y veintiún casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -239,8 +239,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
   - Cierre: `CERRADO`; puntual G16 como KPD y Required `PASS`; commit de implementación G16: este commit.
 - **A03 · `TP-PAR-355` / `CP-PAR-031`**
   - Contrato: tuple pattern vacío/nested conserva cero children o jerarquía exacta.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:1445; T:`ParserPatternSemanticsModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial/evidencia: `KNOWN_FAILURE`; M:1445; T:`ParserPatternSemanticsModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual G17 como KPD y Required `PASS`; commit de implementación G17: este commit.
 - **A03 · `TP-PAR-356` / `CP-PAR-031`**
   - Contrato: struct pattern shorthand/explicit alinea nombres y children.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1446; T:`ParserPatternSemanticsModule.cpp`; `5dee730d`.
@@ -506,6 +506,7 @@ Resultado del inventario causal:
   - Causa: tras `(` llama siempre a `parsePattern`; no reconoce `()` antes de construir el primer hijo.
   - Consumidores: `match`, conditional patterns y deconstruction.
   - Puntual: `ParserPatternSemanticsModule.cpp`; existe.
+  - Estado: `CERRADO` en A03; `()` produce una tupla sin hijos y la jerarquía nested se conserva.
 - **G18 — struct pattern exige colon: `TP-PAR-356`.**
   - Productor: lambda `parseStructBody` dentro de `parsePatternPrimary`.
   - Causa: ejecuta siempre `expect(Colon)`; no convierte shorthand en binding implícito.
@@ -671,7 +672,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 9/21, 20/52 defectos corregidos y 32 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 10/21, 21/52 defectos corregidos y 31 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -702,7 +703,9 @@ Puertas previas a editar producto:
   exclusivamente contra inputs declarados y diagnosticar un nombre ausente; dos objetos reconstruidos con LLVM 23.1.0.
 - Evidencia G16: `TP-PAR-334` pasó como KPD (16,104 us) y como Required (4,568 us) tras bajar la declaración condicional a
   un bloque con el local y el `IfStatement` en orden; dos objetos reconstruidos con LLVM 23.1.0.
-- Próxima acción A03: G17.
+- Evidencia G17: `TP-PAR-355` pasó como KPD (2,683 us) y como Required (3,481 us) tras reconocer `()` antes de intentar
+  construir el primer hijo; dos objetos reconstruidos con LLVM 23.1.0.
+- Próxima acción A03: G18.
 
 ---
 
@@ -1429,13 +1432,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G14 | puntual KPD + Required | `PASS`; 34 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G15 | puntual KPD + Required | `PASS`; 33 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G16 | puntual KPD + Required | `PASS`; 32 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G17 | puntual KPD + Required | `PASS`; 31 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `20/52`; A03 9/21; siguiente acción vinculante: G17.
+- A: `21/52`; A03 10/21; siguiente acción vinculante: G18.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01, A02 y G09-G16 puntuales; ninguna batería completa.
+- Validación ejecutada: A00, A01, A02 y G09-G17 puntuales; ninguna batería completa.
 

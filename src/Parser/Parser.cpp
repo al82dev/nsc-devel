@@ -10449,6 +10449,12 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
     }
     if (consumeIf(TokenKind::LeftParen))
     {
+        if (consumeIf(TokenKind::RightParen))
+        {
+            result.kind = PatternKind::Tuple;
+            result.range = tokenRangeFrom(patternBegin);
+            return result;
+        }
         Pattern first = parsePattern(true);
         if (!consumeIf(TokenKind::Comma))
         {
