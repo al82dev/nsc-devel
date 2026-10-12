@@ -22,7 +22,7 @@ void testCalls(TestContext& context)
         "TP-PAR-477 populated call must retain argument order");
 }
 
-// Verifies supported named, by-reference, and move arguments; spread remains outside call grammar. Complexity is O(n).
+// Verifies named, by-reference, move, and open-range arguments preserve exact metadata. Complexity is O(n).
 void testArgumentMetadata(TestContext& context)
 {
     ParserFixture fixture("run(named: value, ref target, move(owner))");
@@ -34,10 +34,15 @@ void testArgumentMetadata(TestContext& context)
             reference->kind() == AstNodeKind::UnaryExpression && reference->auxiliaryText() == "pass:ref" &&
             moved != nullptr && moved->kind() == AstNodeKind::MoveExpression,
         "TP-PAR-478 named, ref, and move arguments must retain exact metadata");
-    ParserFixture spread("run(..items)");
-    parse(spread);
-    context.expect(!spread.diagnostics().diagnostics().empty(),
-        "TP-PAR-478 spread-call argument is outside the current argument grammar and must diagnose");
+    ParserFixture rangeFixture("run(..items)");
+    AstNode* rangeCall = parse(rangeFixture);
+    AstNode* range = rangeCall != nullptr && !rangeCall->children().empty()
+        ? rangeCall->children()[0] : nullptr;
+    context.expect(range != nullptr && range->kind() == AstNodeKind::RangeExpression &&
+            range->tokenKind() == TokenKind::DotDot && range->first() == nullptr &&
+            range->second() != nullptr && range->second()->text() == "items" &&
+            rangeFixture.diagnostics().diagnostics().empty(),
+        "TP-PAR-478 open range call argument must preserve its omitted start and end expression");
 }
 
 // Verifies explicit generic call arguments remain separate from value arguments. Complexity is O(n).

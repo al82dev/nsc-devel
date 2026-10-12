@@ -714,8 +714,10 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `TANDAS_CERRADAS`; A00-A13 cerradas, 52/52 defectos corregidos y 0 KPD abiertos; falta la
-  batería final vinculante antes de certificar 3.0.3.
+- Estado de Parte A: `REABIERTA_CICLO_2`; A00-A13 conservan sus cierres puntuales, pero la primera batería final
+  vinculante no cerró la puerta de certificación: run `20261012-033650-part-a-final`, revisión
+  `bc9e2441c631a08d9a1a7b943a163d3985387e22`, 5,714/5,714 terminales, 5,713 `PASS` y un `FAIL` en
+  `TP-PAR-478|Debug|NA`. La puerta `CERTIFICACION_FINAL_OK` continúa abierta y no autoriza crear `v.3.0.3`.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00-A13 cerradas; cada tanda conserva su consolidado exacto Required `PASS`.
@@ -823,8 +825,61 @@ Puertas previas a editar producto:
   Tras la corrección, `T12B-00457` y `T12B-00458` preservaron build/prefix citados; `T12B-00460` y
   `T12B-00461` rechazaron raíz e igualdad sin crear el log espía. Los guards de CMake ausente y repetición pasaron.
 - Consolidado A13 Required: `T12B-00457`, `T12B-00458`, `T12B-00460` y `T12B-00461`, 4/4 `PASS`.
-- Próxima acción de Parte A: comprobar conteos y árbol atribuible, reportar la frontera 52/52 y sólo después
-  iniciar la batería final vinculante por instrucción explícita de continuidad.
+- Primera certificación final: preparación completa con los tres productores requeridos en `PASS`; ejecución
+  5,714/5,714; 5,713 `PASS`, un `FAIL` (`TP-PAR-478|Debug|NA`) y cero cancelaciones. Evidencia canónica:
+  `_nscbuilder3/history/20261012-033650-part-a-final/` (`results.json`, `events.jsonl`, `full.log`, `summary.md`).
+- Próxima acción de Parte A: recorrer A00 -> A13 contra esa evidencia, reconciliar los 52 IDs cerrados, aislar y
+  corregir causalmente `TP-PAR-478`, ejecutar el consolidado dirigido de 52 + `TP-PAR-478` y sólo entonces lanzar
+  una nueva batería final completa.
+
+### A.5.6 Matriz de reapertura A00 -> A13, ciclo 2
+
+Autoridad: `_nscbuilder3/history/20261012-033650-part-a-final/results.json`. La reconciliación usa la identidad
+terminal exacta `case_id|Debug|optimization`; no sustituye una ausencia por evidencia histórica ni vuelve a ejecutar
+los casos que ya tienen terminal en la batería. Los 52 IDs aparecen una sola vez, 52 tienen resultado y los 52 son
+`PASS`; no hay ausencias, duplicados ni estados no `PASS` dentro del inventario KPD cerrado.
+
+| Tanda | IDs reconciliados en orden del maestro | Resultado de batería | Auditoría ciclo 2 |
+|---|---|---:|---|
+| A00 | `TL-LANG-019`, `TL-LANG-035`, `TL-LANG-099`, `TL-LANG-121`, `TL-LANG-230`, `TL-LANG-250`, `TL-LANG-262` | 7/7 `PASS` | cierre preservado |
+| A01 | `TL-LEX-075` | 1/1 `PASS` | cierre preservado |
+| A02 | `TA-AST-014`, `TA-AST-016`, `TA-AST-215` | 3/3 `PASS` | cierre preservado |
+| A03 | `TP-PAR-063`, `TP-PAR-069`, `TP-PAR-103`, `TP-PAR-306`, `TP-PAR-309`, `TP-PAR-316`, `TP-PAR-327`, `TP-PAR-334`, `TP-PAR-355`, `TP-PAR-356`, `TP-PAR-358`, `TP-PAR-400`, `TP-PAR-405`, `TP-PAR-406`, `TP-PAR-422`, `TP-PAR-431`, `TP-PAR-450`, `TP-PAR-476`, `TP-PAR-511`, `TP-PAR-514`, `TP-PAR-524` | 21/21 `PASS` | cierre preservado |
+| A04 | `TS-SEMA-106`, `TS-SEMA-110`, `TS-SEMA-246`, `TS-SEMA-265`, `TS-SEMA-317` | 5/5 `PASS` | cierre preservado |
+| A05 | `TF-CFG-076` | 1/1 `PASS` | cierre preservado |
+| A06 | `TF-DOM-142` | 1/1 `PASS` | cierre preservado |
+| A07 | `TF-LANGUAGE-SERVICE-304` | 1/1 `PASS` | cierre preservado |
+| A08 | `TSH-00213`, `TSH-00214` | 2/2 `PASS` | cierre preservado |
+| A09 | `TSH-00442` | 1/1 `PASS` | cierre preservado |
+| A10 | `TSH-00903` | 1/1 `PASS` | cierre preservado |
+| A11 | `TSH-01011`, `TSH-01023` | 2/2 `PASS` | cierre preservado |
+| A12 | `T12B-00021`, `T12B-00022` | 2/2 `PASS` | cierre preservado |
+| A13 | `T12B-00457`, `T12B-00458`, `T12B-00460`, `T12B-00461` | 4/4 `PASS` | cierre preservado |
+| **Total** | **52 IDs únicos** | **52/52 `PASS`** | **A00-A13 reconciliadas** |
+
+El único terminal no `PASS` de la batería es `TP-PAR-478|Debug|NA`; no pertenece a los 52 KPD iniciales, pero
+sí pertenece al denominador ejecutable y bloquea la certificación global. Se abre como hallazgo de cierre del ciclo 2
+sin reclasificar ni invalidar artificialmente los 52 resultados demostrados.
+
+#### Hallazgo de cierre TP-PAR-478
+
+- Clasificación causal: defecto de prueba/oráculo y metadata, no defecto de producto. `parseArgument()` consume una
+  `AssignmentExpression` y la gramática vigente representa `..items` como `RangeExpression` con inicio omitido,
+  operador `DotDot` y extremo final `items`; no existe un operador spread de llamada separado en 3.0.3. El spread de
+  colección general permanece planificado en 3.0.4 (`NS304-T09-F05`) y no autoriza reinterpretar un rango válido.
+- Corrección: el caso conserva named/by-reference/move y reemplaza la expectativa de diagnóstico por validación
+  estructural exacta del rango abierto, incluido el extremo inicial nulo, el extremo final y la ausencia de diagnósticos.
+  Manifest, plan e inventario describen de forma coincidente `named/ref/move/range args` y el mismo contrato
+  `CP-PAR-039`.
+- Validación puntual post-corrección: `TP-PAR-476`, `TP-PAR-477`, `TP-PAR-478` y `TP-PAR-479`, 4/4 `PASS`, contra
+  `build-compiler-suite-v3/debug/nsc_component_tests.exe` después de recompilar únicamente
+  `ParserPostfixExpressionModule.cpp` y relinkar el productor mediante la arista incremental existente.
+- Consolidado dirigido de reapertura: run `20261012-part-a-cycle2-directed-53`, revisión
+  `bc9e2441c631a08d9a1a7b943a163d3985387e22`, preparación completa, 53/53 terminales `PASS`, cero cancelaciones y
+  cero fallos de preparación. Evidencia: `_nscbuilder3/history/20261012-part-a-cycle2-directed-53/`. La selección
+  contiene exactamente los 52 IDs iniciales más `TP-PAR-478`, sin duplicados.
+- Estado de puerta: la causa puntual y la reconciliación dirigida están cerradas; aún falta repetir una sola batería
+  completa final antes de certificar Parte A y crear la frontera `v.3.0.3`.
 
 ---
 
@@ -1577,13 +1632,20 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A11 G39 y tanda | puntual KPD + Required; consolidado A11 2/2 | `PASS`; 6 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A12 G40 y tanda | dos puntuales KPD + Required; consolidado A12 2/2 | `PASS`; 4 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A13 G41 y tandas A00-A13 | cuatro puntuales KPD + Required; consolidado A13 4/4 | `PASS`; 0 KPD abiertos; batería final pendiente |
+| 2026-10-12 | 2 | Primera certificación final de Parte A | run `20261012-033650-part-a-final`; 5,714 terminales | 5,713 `PASS`; `TP-PAR-478` `FAIL`; puerta no cerrada y auditoría reabierta desde A00 |
+| 2026-10-12 | 2 | Corrección y consolidado dirigido de reapertura | TP-PAR-478 + guards 4/4; run `20261012-part-a-cycle2-directed-53` | 53/53 `PASS`; causa de prueba/oráculo cerrada; repetición final completa pendiente |
 
 ## 6. Estado al corte
 
-- A: `52/52`; A00-A13 cerradas; batería completa final pendiente antes de certificar y crear `v.3.0.3`.
+- A: `52/52` cierres puntuales preservados; primera batería final 5,713/5,714; `TP-PAR-478` reabre el ciclo 2 y
+  quedó corregido y el consolidado dirigido cerró 53/53; falta una nueva batería final completa antes de certificar y
+  crear `v.3.0.3`.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00-A13 puntuales y consolidados por tanda; ninguna batería completa.
+- Validación ejecutada: A00-A13 puntuales y consolidados por tanda; primera batería completa ejecutada con un
+  fallo terminal en `TP-PAR-478`, seguida por corrección puntual, guards y consolidado dirigido 53/53 `PASS`;
+  evidencias en `_nscbuilder3/history/20261012-033650-part-a-final/` y
+  `_nscbuilder3/history/20261012-part-a-cycle2-directed-53/`.
 

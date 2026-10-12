@@ -553,7 +553,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-475 | CP-PAR-038 | profundidad grande | resultado o límite/fallo caracterizado | NIGHTLY |
 | TP-PAR-476 | CP-PAR-038 | void allocation inválida | InvalidType | PR |
 | TP-PAR-477 | CP-PAR-039 | call sin/con args | CallExpression children | PR |
-| TP-PAR-478 | CP-PAR-039 | named/ref/move/spread args | argument metadata exacta | PR |
+| TP-PAR-478 | CP-PAR-039 | named/ref/move/range args | argument and range metadata exacta | PR |
 | TP-PAR-479 | CP-PAR-039 | generic call | typeSyntaxes y args | PR |
 | TP-PAR-480 | CP-PAR-039 | index uno/múltiple | IndexExpression indices | PR |
 | TP-PAR-481 | CP-PAR-039 | slice/range index | RangeExpression child | PR |
