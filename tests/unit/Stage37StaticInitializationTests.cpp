@@ -465,14 +465,16 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
         "class Delegating { public int X = 4; public Delegating() : this(5) { } "
         "public Delegating(int value) { X = X + value; } } "
         "class Statics { public static int A = 2; public static int B = Init(); "
-        "public static int Init() { return A * 3; } public int Read() { return B; } } "
+        "static Statics() { B = B + 1; } public static int Init() { return A * 3; } "
+        "public Statics() { } public int Read() { return B; } } "
         "class Harness { public static Leaf MakeLeaf() { return new Leaf(); } "
         "public static Delegating MakeDelegating() { return new Delegating(); } }");
 
     ProjectCompilation compilation;
     std::string error;
     const bool ok = compilation.compileProjectOopMir(directory / "Stage37Ordering.nsproj", error);
-    tests.expect(ok && error.empty(), "inheritance/delegation/static initialization fixture compiles through MIR");
+    tests.expect(ok && error.empty(),
+        "inheritance/delegation/static initialization fixture compiles through MIR: " + error);
     if (!ok || compilation.oopMirModel() == nullptr || compilation.memberModel() == nullptr) return;
 
     const auto leaf = findType(compilation, "Leaf");
@@ -538,6 +540,9 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 37 initializer LLVM passes verifier before optimization");
     const std::string llvm = module->text();
+    const std::size_t stateClaim = llvm.find("cmpxchg ptr @__nsc_cctor_state_");
+    const std::size_t bodyCall = llvm.find("call void @\"__nsc_cctor_body_");
+    const std::size_t stateDone = llvm.find("store atomic i8 2", bodyCall);
     tests.expect(llvm.find("private global i8") != std::string::npos &&
             llvm.find("private global i32") != std::string::npos &&
             llvm.find("define private void") != std::string::npos &&
@@ -551,10 +556,13 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
     // holds and is what we check here: the type is atomically claimed for initialization
     // before it is atomically published as done, with the initializer's own field
     // stores/calls happening in between (see the cctor.initialize block above).
-    const std::size_t stateClaim = llvm.find("cmpxchg ptr @__nsc_cctor_state_");
-    const std::size_t stateDone = llvm.find("store atomic i8 2, ptr @__nsc_cctor_state_");
-    tests.expect(stateClaim != std::string::npos && stateDone != std::string::npos && stateClaim < stateDone,
-        "type initializer atomically claims initialization (CAS 0->1) before publishing state=2 after all stores/calls");
+    tests.expect(stateClaim != std::string::npos && bodyCall != std::string::npos &&
+            stateDone != std::string::npos && stateClaim < bodyCall && bodyCall < stateDone,
+        "type initializer atomically claims initialization, executes the explicit body once, then publishes state=2");
+    tests.expect(llvm.find("cctor.spin_wait") != std::string::npos &&
+            llvm.find("cctor.is_self") != std::string::npos &&
+            llvm.find("define void @\"__nsc_cctor_body_") != std::string::npos,
+        "losing threads wait while same-thread static-constructor reentrancy bypasses the wait");
 
     std::string targetError;
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(

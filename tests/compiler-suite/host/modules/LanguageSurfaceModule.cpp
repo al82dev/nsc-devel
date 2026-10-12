@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Language/Language3Surface.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -70,7 +71,7 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
 class TemporaryModuleInitializationGraph final
 {
 public:
-    TemporaryModuleInitializationGraph()
+    explicit TemporaryModuleInitializationGraph(bool cyclic = false)
     {
         static std::atomic<std::uint64_t> sequence{0};
         directory_ = std::filesystem::current_path() /
@@ -81,7 +82,9 @@ public:
         write("Consumer.ns", "public class ConsumerGate { static ConsumerGate() { } }");
         write("Producer.nsproj",
             "<Project><PropertyGroup><Name>Producer</Name><OutputType>Library</OutputType>"
-            "</PropertyGroup><ItemGroup><Compile Include=\"Producer.ns\"/></ItemGroup></Project>");
+            "</PropertyGroup><ItemGroup><Compile Include=\"Producer.ns\"/>" +
+            std::string(cyclic ? "<ProjectReference Include=\"Consumer.nsproj\"/>" : "") +
+            "</ItemGroup></Project>");
         write("Consumer.nsproj",
             "<Project><PropertyGroup><Name>Consumer</Name><OutputType>Library</OutputType>"
             "</PropertyGroup><ItemGroup><Compile Include=\"Consumer.ns\"/>"
@@ -488,6 +491,51 @@ void registerModuleInitializationPlanCase(TestRegistry& registry)
             }
         }});
 }
+
+void registerStaticInitializationOnceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-297", "CL-LANG-012", "Host.Language", "component", "PR",
+        {"language", "static-initialization", "once", "reentrancy"}, [](TestContext& context) {
+            const std::string source = R"ns(
+class Gate
+{
+    private static int Value = 1;
+    static Gate() { Value = Value + 1; }
+    public Gate() { }
+    public static int Read() { return Value; }
+}
+)ns";
+            TemporaryProject project("tl-lang-297-once", source);
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Mir, project.projectFile(), error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-297 static initialization must compile through MIR: " +
+                    projectFailureEvidence(compilation, error));
+            if (!compiled || compilation.nameLookup() == nullptr ||
+                compilation.oopMirModel() == nullptr)
+            {
+                return;
+            }
+            const auto& functions = compilation.oopMirModel()->functions();
+            const auto body = std::find_if(functions.begin(), functions.end(),
+                [](const nativesharp::frontend::ProjectOopMirFunction& function) {
+                    return function.constructor && function.isStatic;
+                });
+            context.expect(body != functions.end() &&
+                    body->mangledName.starts_with("__nsc_cctor_body_"),
+                "TL-LANG-297 MIR must keep the explicit static-constructor body distinct from its once guard");
+
+            TemporaryModuleInitializationGraph cycle(true);
+            nativesharp::frontend::ProjectCompilation cyclicCompilation;
+            std::string cycleError;
+            const bool acceptedCycle = compileTo(
+                cyclicCompilation, ProjectStage::Members, cycle.rootProject(), cycleError);
+            context.expect(!acceptedCycle && cycleError.find("project reference cycle:") != std::string::npos,
+                "TL-LANG-297 module dependency cycles must fail with their explicit graph cycle");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -502,5 +550,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticInitializationStatesCase(registry);
     registerStaticConstructorDeclarationCase(registry);
     registerModuleInitializationPlanCase(registry);
+    registerStaticInitializationOnceCase(registry);
 }
 }

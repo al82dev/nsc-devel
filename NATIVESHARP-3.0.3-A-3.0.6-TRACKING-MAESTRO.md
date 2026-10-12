@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 11 | 7.48 % | `ACTIVA`; T00 cerrada; T01-F01/F02/F03 cerradas, T01-F04 activa |
+| B | 3.0.4 | 18 | 147 ítems | 12 | 8.16 % | `ACTIVA`; T00 cerrada; T01-F01/F02/F03/F04 cerradas, T01-F05 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 2 | 25 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 4 | 50 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **3** | **2.04 %** |
+| **Total** |  | **147** | **12** | **8.16 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -953,7 +953,7 @@ T00
 - [x] `NS304-T01-F01` — Definir estados `uninitialized`, `initializing`, `initialized` y `failed`.
 - [x] `NS304-T01-F02` — Implementar gramática y semántica de constructores estáticos por tipo.
 - [x] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
-- [ ] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
+- [x] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
 - [ ] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
 - [ ] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
 - [ ] `NS304-T01-F07` — Implementar declaraciones en `if`, `while` y `switch` con scope y cleanup por arista.
@@ -1402,6 +1402,25 @@ Estado: `CERRADO`.
   en 4306 microsegundos.
 - Gate: T01 queda 3/8 y Parte B 11/147, sin batería completa.
 - Siguiente ítem: `NS304-T01-F04`.
+
+### NS304-T01-F04 — once thread-safe, espera, reentrancia y ciclos
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F04-static-initialization-once.md`.
+- Contrato: un coordinador privado por tipo reclama `0 -> 1`, ejecuta
+  inicializadores y cuerpo explícito una sola vez, y publica `2`; otros hilos
+  esperan y la reentrada del propietario evita auto-bloqueo.
+- Implementación: HIR distingue `__nsc_cctor_body_*`; LLVM conserva
+  `__nsc_cctor_*`, CAS/loads/stores `seq_cst`, owner thread, spin y triggers en
+  accesos estáticos y construcción de instancia. `ProjectGraphLoader` rechaza
+  ciclos de módulos antes del plan.
+- Prueba puntual: `TL-LANG-297` `PASS` en 68613 microsegundos.
+- Guards: `TL-LANG-296` `PASS` en 11406 microsegundos, `TL-LANG-295` `PASS` en
+  45586 microsegundos y `TL-LANG-160` `PASS` en 1268 microsegundos.
+- Guard LLVM: `nsc_stage37_static_initialization_tests` `PASS`, 61 checks.
+- Gate: T01 queda 4/8 y Parte B 12/147, sin batería completa.
+- Siguiente ítem: `NS304-T01-F05`.
 
 ---
 
@@ -1912,12 +1931,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B02/T01-F01 | Estados de inicialización estática | dominio cerrado, nombre estable y `TL-LANG-294` | `PASS`; T01 1/8; 9/147 cerrados; T01-F02 activa |
 | 2026-10-12 | B02/T01-F02 | Constructor estático por tipo | Parser, miembro, construction y HIR/MIR; `TL-LANG-295` + guard `TL-LANG-160` | `PASS`; T01 2/8; 10/147 cerrados; T01-F03 activa |
 | 2026-10-12 | B02/T01-F03 | Plan de inicialización por módulo | ProjectGraph dependency-first, aristas directas y ownership de cctors; `TL-LANG-296` + guards 295/160 | `PASS`; T01 3/8; 11/147 cerrados; T01-F04 activa |
+| 2026-10-12 | B02/T01-F04 | Once thread-safe, espera, reentrancia y ciclos | guard por tipo CAS/owner/spin, cuerpo explícito separado, rechazo de ciclo; `TL-LANG-297` + Stage37 | `PASS`; T01 4/8; 12/147 cerrados; T01-F05 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `11/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `12/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -1926,8 +1946,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   y T00-F08 añadió el harness estructural; consolidado T00 `PASS`. T01-F01
   fijó los cuatro estados de inicialización y `TL-LANG-294` pasó; T01-F02
   cerró la declaración estática hasta MIR con `TL-LANG-295`; T01-F03 añadió el
-  plan dependency-first por módulo con `TL-LANG-296`, manteniendo la promoción
-  de superficie pendiente; T01-F04 activa.
+  plan dependency-first por módulo con `TL-LANG-296`; T01-F04 cerró el guard
+  CAS/owner/spin y ciclos con `TL-LANG-297` y Stage37, manteniendo la promoción
+  de superficie pendiente; T01-F05 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.

@@ -2847,6 +2847,23 @@ private:
                 needsInitializer[initializer.declaringTypeOrdinal] = true;
             }
         }
+        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        {
+            if (!function.constructor || !function.isStatic)
+            {
+                continue;
+            }
+            needsInitializer[function.declaringTypeOrdinal] = true;
+            const auto body = functions_.find(function.mangledName);
+            if (body == functions_.end())
+            {
+                return fail(error, "static constructor body was not declared before its guard");
+            }
+            if (!staticConstructorBodies_.emplace(function.declaringTypeOrdinal, body->second).second)
+            {
+                return fail(error, "type initialization guard has more than one static constructor body");
+            }
+        }
 
         LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
         for (const auto& [typeOrdinal, ignored] : needsInitializer)
@@ -3073,6 +3090,20 @@ private:
                     return false;
                 }
                 LLVMBuildStore(builder_, value, globalFound->second);
+            }
+            const auto explicitBody = staticConstructorBodies_.find(typeOrdinal);
+            if (explicitBody != staticConstructorBodies_.end())
+            {
+                if (buildPotentiallyThrowingCall(
+                        explicitBody->second.functionType,
+                        explicitBody->second.function,
+                        nullptr,
+                        0,
+                        "",
+                        error) == nullptr && !error.empty())
+                {
+                    return false;
+                }
             }
             LLVMValueRef publish = LLVMBuildStore(builder_, two, stateGlobal);
             LLVMSetOrdering(publish, LLVMAtomicOrderingSequentiallyConsistent);
@@ -5031,6 +5062,12 @@ private:
             thisValue_ = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(thisValue_, "this", 4);
             if (!emitDebugThis(function, error)) return false;
+        }
+
+        if (function.constructor && !function.isStatic &&
+            !ensureTypeInitialized(function.declaringTypeOrdinal, error))
+        {
+            return false;
         }
 
         if (function.capturesThisCell)
@@ -16882,6 +16919,7 @@ private:
     // a same-thread self-referencing static field initializer recursing into its own cctor).
     std::unordered_map<std::size_t, LLVMValueRef> staticInitOwnerGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
+    std::unordered_map<std::size_t, FunctionInfo> staticConstructorBodies_;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
     // C8 "type root": one name constant per class, keyed by its global's name.

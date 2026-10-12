@@ -1238,7 +1238,7 @@ std::string ProjectOopHirModel::mangleCallable(
     const ClassMemberSymbol& member)
 {
     const std::string prefix = member.kind == ClassMemberKind::Constructor
-        ? (member.isStatic ? "__nsc_cctor_" : "__nsc_ctor_")
+        ? (member.isStatic ? "__nsc_cctor_body_" : "__nsc_ctor_")
         : member.kind == ClassMemberKind::Destructor
             ? "__nsc_dtor_body_"
             : "__nsc_method_";
