@@ -14,15 +14,20 @@ La infraestructura de closures es extensa y mayormente presente:
 
 ## Gap F08 (a confirmar)
 
-- Closures COMBINADAS con `errors` (closure que propaga/atrapa Error) — validar el carrier de
-  error en el lambda (el `FunctionType.errorType` ya se arma en `functionType`/`bindLambdaToDelegate`).
+- Closures COMBINADAS con `errors`: la validación necesita la core library (el tipo `Error` es el
+  root de excepciones, definido en el subset de core, como TL-LANG-310). La prueba `TL-LANG-321`
+  (closure + `throws Error`) se redactará copiando el subset de core.
+
+## Resultado parcial (validado)
+
+- Layout + drop + ejecución de closure con captura: **`TL-LANG-320` PASS** (exit 42).
 
 ## Plan
 
-1. Confirmar con una prueba que un lambda con `throws Error` (closure + error) compila y ejecuta
-   (layout + drop + escape + PDB combinados).
-2. Prueba `TL-LANG-320`.
+1. Prueba `TL-LANG-321`: closure sobre delegate `throws Error` con subset de core copiado
+   (Object.ns + error root), invocación en try/catch.
+2. Confirmar layout + drop + escape + PDB combinados con error.
 
 ## Prueba puntual
 
-`TL-LANG-320`: lambda con `throws Error` que captura un local y propaga; invocación captura el error.
+`TL-LANG-320` (closure layout+drop) ✅; `TL-LANG-321` (closure + throws Error) pendiente con core subset.
