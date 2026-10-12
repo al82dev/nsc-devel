@@ -18,18 +18,18 @@ NO soporta (TP-PAR-451 lo confirma: "no async/unsafe/noheap prefix flags"):
 2. **Calling convention** (`extern C`, etc.) sobre lambda.
 3. **Efectos** `noheap`/`unsafe` (y `async`/`throws` se tratan en T05/T07, no aquí).
 
-## Gaps F02 (orden)
+## Gaps F02
 
-1. Efectos `noheap`/`unsafe` como prefijos de lambda (reconocer en `looksLikeLambdaExpression` +
-   `parseLambdaExpression`, propagar a `CallableTrait`/`AnonymousLambdaType`).
-2. Atributos sobre lambda (parsear `[...]` delante y adjuntar al `LambdaExpression`).
-3. Calling convention `extern C` sobre lambda (propagar al `FunctionType`/`CallingConvention`).
+1. **Efectos `noheap`/`unsafe`** ✅ HECHO: prefijos reconocidos (`KwNoHeap` + `unsafe` contextual) y
+   propagados a `AnonymousLambdaType.signature.isNoHeap/isUnsafe` (`9dbd5ba2`). TP-PAR-451 actualizado.
+2. **Atributos** sobre lambda: pendiente (parsear `[...]` delante y adjuntar al `LambdaExpression`).
+3. **Calling convention** `extern C` sobre lambda: pendiente (propagar a `signature.callingConvention`).
 
 ## Plan
 
-1. Reconocer `noheap`/`unsafe` como prefijos de lambda (y rechazar `async` con diagnóstico hasta T05).
-2. Bajar el flag a `CallableTrait`/binding y al tipo `fn`.
-3. Atributos y calling convention si el pipeline de `TypeSyntax`/`FunctionType` ya los admite.
+1. Reconocer `noheap`/`unsafe` ✅.
+2. Atributos `[...]` delante de lambda.
+3. `extern C` como prefijo (propagar a `callingConvention`).
 
 ## Prueba puntual
 
