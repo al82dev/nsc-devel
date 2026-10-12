@@ -1649,6 +1649,15 @@ ast::TypeSyntax* Parser::parseAllocationElementType()
         completeRange = base.range();
     }
 
+    if (baseKind == TokenKind::KwVoid)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            completeRange,
+            "void cannot be used as an allocation element type");
+    }
+
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
         completeRange, baseKind, std::move(baseName));
 

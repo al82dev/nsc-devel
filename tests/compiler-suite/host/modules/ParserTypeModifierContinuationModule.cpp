@@ -190,7 +190,6 @@ void registerParserTypeModifierContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-066", testFlexibleArray);
     addCase(registry, "TP-PAR-067", testMixedPointerArrayOrder);
     addCase(registry, "TP-PAR-068", testAllocationElementStopsBeforeInitializer);
-    addCase(registry, "TP-PAR-069", testInvalidAndVoidAllocationElements,
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-069", testInvalidAndVoidAllocationElements);
 }
 }

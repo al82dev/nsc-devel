@@ -284,7 +284,6 @@ void registerParserUnaryExpressionModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-473", "CP-PAR-038", testUnaryChain);
     addCase(registry, "TP-PAR-474", "CP-PAR-038", testMissingUnaryOperand);
     addCase(registry, "TP-PAR-475", "CP-PAR-038", testLargeUnaryDepth, "NIGHTLY");
-    addCase(registry, "TP-PAR-476", "CP-PAR-038", testVoidAllocation, "PR",
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-476", "CP-PAR-038", testVoidAllocation, "PR");
 }
 }
