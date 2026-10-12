@@ -2555,10 +2555,12 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
 
 ast::AstNode* Parser::parseNamespaceMember()
 {
+    // NS304-T05-F01: `async` se consume como modifier (ya no se rechaza con NS3049) y se guarda
+    // como marcador "async" en el auxiliaryText del callable global; el lowering es T05-F03.
+    bool isAsync = false;
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        isAsync = true;
         consume();
     }
     if (atContextualKeyword("extension"))
@@ -2583,7 +2585,16 @@ ast::AstNode* Parser::parseNamespaceMember()
     {
         return parseNamespaceDeclaration();
     }
-    return parseGlobalDeclaration();
+    ast::AstNode* declaration = parseGlobalDeclaration();
+    if (isAsync && declaration != nullptr &&
+        declaration->kind() == ast::AstNodeKind::FunctionDeclaration)
+    {
+        std::string marker = declaration->auxiliaryText();
+        if (!marker.empty()) marker += ';';
+        marker += "async";
+        declaration->setAuxiliaryText(std::move(marker));
+    }
+    return declaration;
 }
 
 ast::AstNode* Parser::parseImportDirective(bool reexport)
