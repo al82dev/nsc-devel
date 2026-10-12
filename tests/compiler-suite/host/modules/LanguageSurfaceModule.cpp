@@ -2237,6 +2237,63 @@ class Program
         }});
 }
 
+void registerClosureErrorThrowCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-321", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "closure", "error", "throws"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            std::error_code copyError;
+            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                     "NumericParsing.ns", "String.ns", "Exception.ns"})
+            {
+                copyError.clear();
+                std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                    std::filesystem::copy_options::overwrite_existing, copyError);
+            }
+            const std::filesystem::path project = products.writeProject(
+                "T04ClosureThrows", "Exe", R"ns(
+using NativeSharp.Core;
+
+class Program
+{
+    public delegate int Map(int x) throws Exception;
+
+    public static int Main()
+    {
+        int captured = 5;
+        Map m = (int x) => x + captured;
+        try
+        {
+            return m(37);
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T04ClosureThrows.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-321 a closure over a throws-delegate must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-321 a closure over a throws-delegate must execute: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2272,5 +2329,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticLambdaCase(registry);
     registerMethodGroupNaturalTypeCase(registry);
     registerClosureErrorCase(registry);
+    registerClosureErrorThrowCase(registry);
 }
 }
