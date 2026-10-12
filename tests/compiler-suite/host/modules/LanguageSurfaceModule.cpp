@@ -1171,6 +1171,67 @@ class Program
                     evidence);
         }});
 }
+
+void registerDefaultImplementationPrecedenceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-303", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "interface", "default-body", "precedence"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T02DefaultPrecedence", "Exe", R"ns(
+trait IExplicit { int Value() { return 1; } }
+class ExplicitItem { }
+impl IExplicit for ExplicitItem { int Value() { return 42; } }
+
+trait INominal { int Value() { return 1; } }
+class NominalItem : INominal { public int Value() { return 42; } }
+
+interface IBase { int Value() { return 1; } }
+interface IDerived : IBase { int Value() { return 42; } }
+interface ICombined : IBase, IDerived { }
+class DefaultItem : ICombined { }
+
+class Program
+{
+    public static int Main()
+    {
+        ExplicitItem explicitItem = new ExplicitItem();
+        dyn IExplicit explicitView = explicitItem;
+        NominalItem nominalItem = new NominalItem();
+        dyn INominal nominalView = nominalItem;
+        DefaultItem defaultItem = new DefaultItem();
+        ICombined defaultView = defaultItem;
+        if (explicitView.Value() != 42) return 11;
+        if (nominalView.Value() != 42) return 12;
+        if (defaultView.Value() != 42) return 13;
+        return 42;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T02DefaultPrecedence.exe";
+            const external_program_support::Result interfacePlan = runT01Compiler(
+                {L"--dump-project-interfaces", project.wstring()}, products.directory());
+            context.expect(interfacePlan.started && interfacePlan.exitCode == 0 &&
+                    interfacePlan.error.empty(),
+                "TL-LANG-303 precedence fixture must expose its interface-table plan: " +
+                    interfacePlan.error + interfacePlan.output);
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-303 explicit, nominal and most-specific default candidates must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-303 precedence must be explicit implementation, nominal member, then "
+                "most-specific default (observed exit " + std::to_string(result.exitCode) + "): " +
+                    result.error + result.output + interfacePlan.output);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1191,5 +1252,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerConditionDeclarationCase(registry);
     registerT01IntegrationCase(registry);
     registerDefaultInterfaceBodyCase(registry);
+    registerDefaultImplementationPrecedenceCase(registry);
 }
 }

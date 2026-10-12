@@ -242,6 +242,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-300 | CL-LANG-012 | declaraciones en if/while/switch y negativos de tipo, aridad y scope | bloque exacto por control, reinicializacion por iteracion y rechazo causal | PR |
 | TL-LANG-301 | CL-LANG-012 | NSMETA 1.39, NSDEBUG 1.1, EXE/DLL, concurrencia y recursion T01 | round-trip/versiones exactas, PDB no vacio, EXE 42, DLL once/reentry/static-local/condition y unload | PR |
 | TL-LANG-302 | CL-LANG-012 | cuerpos default en metodos, propiedades e indexadores de trait e interface | dispatch dinamico/ordinario produce 42 y abstract explicito con cuerpo se rechaza | PR |
+| TL-LANG-303 | CL-LANG-012 | implementacion explicita, miembro nominal y defaults base/derivado en trait e interface | prioridad exacta produce 42 en cada ruta y el plan de tablas se obtiene sin error | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

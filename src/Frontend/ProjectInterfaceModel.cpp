@@ -501,7 +501,7 @@ bool ProjectInterfaceModel::visitInterface(
                     previous.syntax->first() != nullptr;
                 const bool methodDefault = method.syntax != nullptr &&
                     method.syntax->first() != nullptr;
-                if (info->isTrait && methodDefault &&
+                if (methodDefault &&
                     (!previousDefault || interfaceDerivesFrom(
                         method.declaringTypeOrdinal,
                         previous.declaringTypeOrdinal)))
@@ -654,7 +654,7 @@ bool ProjectInterfaceModel::visitInterface(
                     info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
                 found->second = memberOrdinal;
             }
-            else if (info->isTrait)
+            else
             {
                 std::ranges::replace(
                     info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);

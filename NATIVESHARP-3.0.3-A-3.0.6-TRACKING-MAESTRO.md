@@ -917,7 +917,7 @@ T00
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
-| T02 | Cuerpos default de traits e interfaces | 6 | 1 | 16.67 % |
+| T02 | Cuerpos default de traits e interfaces | 6 | 2 | 33.33 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
 | T05 | Async/await productivo | 10 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **17** | **11.56 %** |
+| **Total** |  | **147** | **18** | **12.24 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -962,7 +962,7 @@ T00
 ### T02 — cuerpos default de traits e interfaces
 
 - [x] `NS304-T02-F01` — Aceptar cuerpos default en métodos, propiedades e indexadores.
-- [ ] `NS304-T02-F02` — Fijar prioridad: implementación explícita, miembro nominal, default más específico.
+- [x] `NS304-T02-F02` — Fijar prioridad: implementación explícita, miembro nominal, default más específico.
 - [ ] `NS304-T02-F03` — Resolver diamantes, overrides, traits sellados, coherence y conflictos intermodulares.
 - [ ] `NS304-T02-F04` — Integrar genéricos, associated types, constraints, `some Trait` y `dyn Trait`.
 - [ ] `NS304-T02-F05` — Transportar cuerpos y witnesses versionados por NSMETA sin requerir fuentes.
@@ -1525,6 +1525,25 @@ Estado: `CERRADO`.
 - Gate: T02 queda 1/6 y Parte B 17/147, sin batería completa.
 - Siguiente ítem: `NS304-T02-F02`.
 
+### NS304-T02-F02 — precedencia de implementaciones default
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T02-F02-default-precedence.md`.
+- Contrato: implementación explícita antes que miembro nominal y miembro nominal
+  antes que el default más específico; la selección por derivación es idéntica
+  para `trait` e `interface` ordinaria.
+- Implementación: el plan existente conserva primero las implementaciones de la
+  clase; los dos reemplazos de default dejaron de depender del spelling `trait`
+  y ahora siguen cuerpo y relación de derivación.
+- Prueba puntual: `TL-LANG-303` `PASS` en 392739 microsegundos.
+- Guards: `TL-LANG-302` `PASS` en 419338 microsegundos;
+  `TL-LANG-271`..`TL-LANG-278`, 8/8 `PASS`.
+- Builds focales: compilador 6/6 y runner 3/3 con LLVM/Clang 23, sin regenerar
+  CMake.
+- Gate: T02 queda 2/6 y Parte B 18/147, sin batería completa.
+- Siguiente ítem: `NS304-T02-F03`.
+
 ---
 
 # Parte C — NativeSharp 3.0.5: reingeniería del proceso de compilación
@@ -2040,12 +2059,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B02/T01-F07 | Declaraciones en condiciones | bloques if/switch y declaración por iteración while; `TL-LANG-300` + seis guardas | `PASS`; T01 7/8; 15/147 cerrados; T01-F08 activa |
 | 2026-10-12 | B02/T01-F08 | Integración T01, metadata y debug | NSMETA 1.39, NSDEBUG 1.1, EXE/DLL, concurrencia, reentrancia y partición owner-only; `TL-LANG-301` + guards | `PASS`; T01 8/8; 16/147 cerrados; T02-F01 habilitada |
 | 2026-10-12 | B03/T02-F01 | Cuerpos default básicos | métodos y accessors de propiedad/indexador en trait e interface; `TL-LANG-302` + 22 guards | `PASS`; T02 1/6; 17/147 cerrados; T02-F02 activa |
+| 2026-10-12 | B03/T02-F02 | Precedencia de defaults | implementación explícita, miembro nominal y default más específico en trait/interface; `TL-LANG-303` + 9 guards | `PASS`; T02 2/6; 18/147 cerrados; T02-F03 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `17/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `18/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2063,7 +2083,8 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   reclamó NSMETA 1.39/NSDEBUG 1.1 y cerró EXE, DLL, concurrencia y reentrancia
   con `TL-LANG-301`. T01 queda 8/8; T02-F01 habilitó cuerpos default en
   métodos, propiedades e indexadores de traits e interfaces mediante
-  `TL-LANG-302`, y T02 queda 1/6 con T02-F02 activa.
+  `TL-LANG-302`; T02-F02 fijó la precedencia explícita, nominal y default más
+  específico mediante `TL-LANG-303`, y T02 queda 2/6 con T02-F03 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
