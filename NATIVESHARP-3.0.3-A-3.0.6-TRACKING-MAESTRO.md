@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 6 | 75 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 7 | 87.5 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **14** | **9.52 %** |
+| **Total** |  | **147** | **15** | **10.20 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -956,7 +956,7 @@ T00
 - [x] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
 - [x] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
 - [x] `NS304-T01-F06` — Implementar locales `static`, guard, lifetime y destrucción al descargar módulo.
-- [ ] `NS304-T01-F07` — Implementar declaraciones en `if`, `while` y `switch` con scope y cleanup por arista.
+- [x] `NS304-T01-F07` — Implementar declaraciones en `if`, `while` y `switch` con scope y cleanup por arista.
 - [ ] `NS304-T01-F08` — Versionar metadata, emitir debug info y probar EXE, DLL, concurrencia y recursión.
 
 ### T02 — cuerpos default de traits e interfaces
@@ -1460,6 +1460,25 @@ Estado: `CERRADO`.
 - Catálogo: 5720 casos, 5720 ejecutables y 5720 filas de manifest.
 - Gate: T01 queda 6/8 y Parte B 14/147, sin batería completa.
 - Siguiente ítem: `NS304-T01-F07`.
+
+### NS304-T01-F07 — declaraciones en condiciones
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F07-condition-declarations.md`.
+- Contrato: exactamente un local inicializado; `if`/`while` conservan condición
+  `bool`, `switch` integral/enum, y el nombre no escapa de la sentencia controlada.
+- Implementación: `if`/`switch` bajan a bloque declaración-control; `while` baja
+  a `while(true)` con declaración por iteración, salida `!nombre` y cuerpo
+  original. Los bloques existentes concentran scope y cleanup por arista.
+- Prueba puntual: `TL-LANG-300` `PASS` en 90353 microsegundos.
+- Guards: `TP-PAR-027` `PASS` en 4676 microsegundos, `TP-PAR-334` `PASS` en
+  690 microsegundos, `TP-PAR-336` `PASS` en 300 microsegundos, `TP-PAR-340`
+  `PASS` en 261 microsegundos, `TP-PAR-341` `PASS` en 349 microsegundos y
+  `TL-LANG-160` `PASS` en 4196 microsegundos.
+- Build focal: tres objetos y un relink con LLVM/Clang 23, sin regenerar CMake.
+- Gate: T01 queda 7/8 y Parte B 15/147, sin batería completa.
+- Siguiente ítem: `NS304-T01-F08`.
 
 ---
 
@@ -1973,12 +1992,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B02/T01-F04 | Once thread-safe, espera, reentrancia y ciclos | guard por tipo CAS/owner/spin, cuerpo explícito separado, rechazo de ciclo; `TL-LANG-297` + Stage37 | `PASS`; T01 4/8; 12/147 cerrados; T01-F05 activa |
 | 2026-10-12 | B02/T01-F05 | Fallo terminal sin retry | state3, cleanuppad Win64, propagación y panic por perfil; `TL-LANG-298` + Stage37 | `PASS`; T01 5/8; 13/147 cerrados; T01-F06 activa |
 | 2026-10-12 | B02/T01-F06 | Locales static y lifetime de módulo | storage/state/owner privados, guard 0/1/2/3, sin cleanup léxico, global dtors; `TL-LANG-299` + Stage37 | `PASS`; T01 6/8; 14/147 cerrados; T01-F07 activa |
+| 2026-10-12 | B02/T01-F07 | Declaraciones en condiciones | bloques if/switch y declaración por iteración while; `TL-LANG-300` + seis guardas | `PASS`; T01 7/8; 15/147 cerrados; T01-F08 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `14/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `15/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -1991,8 +2011,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   CAS/owner/spin y ciclos con `TL-LANG-297` y Stage37; T01-F05 hizo terminal el
   estado `failed`, preservó unwind y seleccionó panic por perfil con
   `TL-LANG-298`; T01-F06 cerró locales static con storage/guard por declaración
-  y destrucción al unload mediante `TL-LANG-299`, manteniendo la promoción de
-  superficie pendiente hasta T01-F08; T01-F07 activa.
+  y destrucción al unload mediante `TL-LANG-299`; T01-F07 cerró declaraciones
+  en `if`/`while`/`switch` con `TL-LANG-300`. La promoción de superficie queda
+  pendiente hasta T01-F08, ahora activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.

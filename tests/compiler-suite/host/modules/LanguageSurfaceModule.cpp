@@ -128,6 +128,41 @@ void collectMirKind(
     for (const auto& child : node->children) collectMirKind(child.get(), kind, result);
 }
 
+bool mirBlockContainsOrdered(
+    const nativesharp::frontend::ProjectOopMirNode* node,
+    std::string_view localName,
+    nativesharp::frontend::ProjectOopMirNodeKind followingKind)
+{
+    if (node == nullptr)
+    {
+        return false;
+    }
+    if (node->kind == nativesharp::frontend::ProjectOopMirNodeKind::Block)
+    {
+        bool foundLocal = false;
+        for (const auto& child : node->children)
+        {
+            if (child->kind == nativesharp::frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                child->stringValue == localName)
+            {
+                foundLocal = true;
+            }
+            else if (foundLocal && child->kind == followingKind)
+            {
+                return true;
+            }
+        }
+    }
+    for (const auto& child : node->children)
+    {
+        if (mirBlockContainsOrdered(child.get(), localName, followingKind))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void addCase(TestRegistry& registry, std::string id, TestFunction function)
 {
     registry.add(TestCase{std::move(id), "CL-LANG-012", "Host.Language", "unit", "PR",
@@ -643,6 +678,106 @@ class Gate
                 "static local cannot be a variable-length array");
         }});
 }
+
+void registerConditionDeclarationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-300", "CL-LANG-012", "Host.Language", "component", "PR",
+        {"language", "condition-declaration", "scope", "cleanup"},
+        [](TestContext& context) {
+            const std::string source = R"ns(
+class Gate
+{
+    public static int Run(bool first, int choice)
+    {
+        int result = 0;
+        if (bool ready = first) { result = 1; } else { result = 2; }
+        while (bool again = result < 4)
+        {
+            result = result + 1;
+            if (result == 3) { continue; }
+            if (result > 3) { break; }
+        }
+        switch (int selected = choice)
+        {
+            case 0: result = result + selected; break;
+            default: result = result + 1; break;
+        }
+        return result;
+    }
+}
+)ns";
+            TemporaryProject project("tl-lang-300-condition-declaration", source);
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Mir, project.projectFile(), error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-300 condition declarations must compile through MIR: " +
+                    projectFailureEvidence(compilation, error));
+            if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+            bool ifScope = false;
+            bool whileScope = false;
+            bool switchScope = false;
+            bool whilePerIteration = false;
+            for (const auto& function : compilation.oopMirModel()->functions())
+            {
+                ifScope = ifScope || mirBlockContainsOrdered(
+                    function.body.get(), "ready",
+                    nativesharp::frontend::ProjectOopMirNodeKind::If);
+                switchScope = switchScope || mirBlockContainsOrdered(
+                    function.body.get(), "selected",
+                    nativesharp::frontend::ProjectOopMirNodeKind::Switch);
+                std::vector<const nativesharp::frontend::ProjectOopMirNode*> loops;
+                collectMirKind(function.body.get(),
+                    nativesharp::frontend::ProjectOopMirNodeKind::While, loops);
+                for (const auto* loop : loops)
+                {
+                    if (loop->children.size() < 2U ||
+                        loop->children[0]->kind !=
+                            nativesharp::frontend::ProjectOopMirNodeKind::BooleanConstant ||
+                        !loop->children[0]->booleanValue)
+                    {
+                        continue;
+                    }
+                    const auto* iteration = loop->children[1].get();
+                    const bool hasPerIterationLocal = mirBlockContainsOrdered(
+                        iteration, "again", nativesharp::frontend::ProjectOopMirNodeKind::If);
+                    whileScope = whileScope || hasPerIterationLocal;
+                    whilePerIteration = whilePerIteration || hasPerIterationLocal;
+                }
+            }
+            context.expect(ifScope && whileScope && switchScope && whilePerIteration,
+                "TL-LANG-300 MIR must place condition locals before their if/synthetic-stop/switch "
+                "inside the exact lexical lifetime block");
+
+            const auto expectRejected = [&](std::string_view label, std::string invalidSource,
+                                            std::string_view diagnostic) {
+                TemporaryProject invalidProject(label, std::move(invalidSource));
+                nativesharp::frontend::ProjectCompilation invalidCompilation;
+                std::string invalidError;
+                const bool accepted = compileTo(
+                    invalidCompilation, ProjectStage::MethodBodies,
+                    invalidProject.projectFile(), invalidError);
+                const std::string evidence = projectFailureEvidence(
+                    invalidCompilation, invalidError);
+                context.expect(!accepted && evidence.find(diagnostic) != std::string::npos,
+                    "TL-LANG-300 invalid condition declaration must fail causally: " + evidence);
+            };
+            expectRejected(
+                "tl-lang-300-non-bool",
+                "class Gate { static void Run() { if (int value = 1) { } } }",
+                "if condition must have type bool");
+            expectRejected(
+                "tl-lang-300-multiple",
+                "class Gate { static void Run() { if (bool first = true, second = false) { } } }",
+                "condition declaration must declare exactly one local");
+            expectRejected(
+                "tl-lang-300-scope",
+                "class Gate { static void Run() { switch (int value = 1) { default: break; } value = 2; } }",
+                "unknown identifier 'value'");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -660,5 +795,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticInitializationOnceCase(registry);
     registerStaticInitializationFailureCase(registry);
     registerStaticLocalLifetimeCase(registry);
+    registerConditionDeclarationCase(registry);
 }
 }

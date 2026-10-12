@@ -43,14 +43,34 @@ void testIfHierarchy(TestContext& context)
 
 void testConditionDeclaration(TestContext& context)
 {
-    ParserFixture fixture("if (int value = source) { consume(value); }");
-    AstNode* const node = parseStatement(fixture);
-    context.expect(node != nullptr && node->kind() == AstNodeKind::BlockStatement &&
-            node->children().size() == 2 &&
-            node->children()[0]->kind() == AstNodeKind::VariableDeclarationStatement &&
-            node->children()[1]->kind() == AstNodeKind::IfStatement &&
-            fixture.diagnostics().diagnostics().empty(),
-        "TP-PAR-334 condition declaration must lower to a scoped local followed by its conditional");
+    ParserFixture ifFixture("if (bool ready = source) { consume(ready); } else { wait(); }");
+    ParserFixture whileFixture("while (bool ready = next()) { consume(ready); continue; }");
+    ParserFixture switchFixture(
+        "switch (int value = source) { case 1: consume(value); break; default: break; }");
+    AstNode* const ifNode = parseStatement(ifFixture);
+    AstNode* const whileNode = parseStatement(whileFixture);
+    AstNode* const switchNode = parseStatement(switchFixture);
+    const AstNode* const whileBody = whileNode != nullptr ? whileNode->second() : nullptr;
+    context.expect(ifNode != nullptr && ifNode->kind() == AstNodeKind::BlockStatement &&
+            ifNode->children().size() == 2 &&
+            ifNode->children()[0]->kind() == AstNodeKind::VariableDeclarationStatement &&
+            ifNode->children()[1]->kind() == AstNodeKind::IfStatement &&
+            whileNode != nullptr && whileNode->kind() == AstNodeKind::WhileStatement &&
+            whileNode->first() != nullptr &&
+            whileNode->first()->kind() == AstNodeKind::BooleanLiteralExpression &&
+            whileBody != nullptr && whileBody->kind() == AstNodeKind::BlockStatement &&
+            whileBody->children().size() == 3 &&
+            whileBody->children()[0]->kind() == AstNodeKind::VariableDeclarationStatement &&
+            whileBody->children()[1]->kind() == AstNodeKind::IfStatement &&
+            whileBody->children()[2]->kind() == AstNodeKind::BlockStatement &&
+            switchNode != nullptr && switchNode->kind() == AstNodeKind::BlockStatement &&
+            switchNode->children().size() == 2 &&
+            switchNode->children()[0]->kind() == AstNodeKind::VariableDeclarationStatement &&
+            switchNode->children()[1]->kind() == AstNodeKind::SwitchStatement &&
+            ifFixture.diagnostics().diagnostics().empty() &&
+            whileFixture.diagnostics().diagnostics().empty() &&
+            switchFixture.diagnostics().diagnostics().empty(),
+        "TP-PAR-334 condition declarations must lower to edge-scoped if/while/switch shapes");
 }
 
 void testConditionalPattern(TestContext& context)

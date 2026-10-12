@@ -9790,6 +9790,36 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon, bool isStat
     return result;
 }
 
+namespace
+{
+const ast::AstNode* conditionDeclarationBinding(
+    ast::AstNode* declaration,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (declaration == nullptr)
+    {
+        return nullptr;
+    }
+
+    const ast::AstNode* binding = declaration;
+    if (declaration->kind() == ast::AstNodeKind::BlockStatement &&
+        declaration->auxiliaryText() == "declaration-list")
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCondition,
+            diagnostics::DiagnosticSeverity::Error,
+            declaration->range(),
+            "a condition declaration must declare exactly one local");
+        if (declaration->children().empty())
+        {
+            return nullptr;
+        }
+        binding = declaration->children().front();
+    }
+    return binding;
+}
+}
+
 // C7 "aggregate initializer". The C form, deliberately: `{}`, `{1, 2}`, a trailing comma, and
 // nested braces for a nested aggregate (`Matrix m = { {1, 0}, {0, 1} };`). Semantic analysis is
 // what decides whether the target type accepts one and how the elements line up with its fields
@@ -10117,12 +10147,11 @@ ast::AstNode* Parser::parseIfStatement()
     if (looksLikeConditionDeclaration())
     {
         conditionDeclaration = parseVariableDeclaration(false);
-        if (conditionDeclaration != nullptr)
+        const ast::AstNode* binding = conditionDeclarationBinding(
+            conditionDeclaration, diagnostics_);
+        if (binding != nullptr)
         {
-            condition = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::IdentifierExpression,
-                conditionDeclaration->range());
-            condition->setText(conditionDeclaration->text());
+            condition = makeIdentifierExpression(binding->range(), binding->text());
         }
     }
     else
@@ -10206,12 +10235,22 @@ ast::AstNode* Parser::parseWhileStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
+    ast::AstNode* conditionDeclaration = nullptr;
+    ast::AstNode* condition = nullptr;
     if (looksLikeConditionDeclaration())
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+        conditionDeclaration = parseVariableDeclaration(false);
+        const ast::AstNode* binding = conditionDeclarationBinding(
+            conditionDeclaration, diagnostics_);
+        if (binding != nullptr)
+        {
+            condition = makeIdentifierExpression(binding->range(), binding->text());
+        }
     }
-    ast::AstNode* condition = parseExpression();
+    else
+    {
+        condition = parseExpression();
+    }
     expect(TokenKind::RightParen, "')'");
     ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
     if (body == nullptr)
@@ -10219,9 +10258,45 @@ ast::AstNode* Parser::parseWhileStatement()
         expect(TokenKind::LeftBrace, "'{' after while condition");
     }
 
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::WhileStatement, tokenRangeFrom(beginIndex));
-    node->setFirst(condition);
-    node->setSecond(body);
+    const SourceRange statementRange = tokenRangeFrom(beginIndex);
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::WhileStatement, statementRange);
+    if (conditionDeclaration == nullptr)
+    {
+        node->setFirst(condition);
+        node->setSecond(body);
+        return node;
+    }
+
+    // A while condition declaration is evaluated once per iteration. Lowering it outside the
+    // loop would retain stale state and delay cleanup until after every iteration. This is the
+    // same canonical shape used by `while let`: an infinite loop whose iteration scope owns the
+    // declaration, exits when the declared bool is false, and then executes the original body.
+    ast::AstNode* iteration = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, statementRange);
+    iteration->setAuxiliaryText("condition-declaration-iteration");
+    iteration->addChild(conditionDeclaration);
+
+    ast::AstNode* stopCondition = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UnaryExpression, condition->range());
+    stopCondition->setTokenKind(TokenKind::Bang);
+    stopCondition->setFirst(condition);
+    ast::AstNode* stopBody = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, statementRange);
+    stopBody->addChild(arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BreakStatement, condition->range()));
+    ast::AstNode* stop = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, statementRange);
+    stop->setFirst(stopCondition);
+    stop->setSecond(stopBody);
+    iteration->addChild(stop);
+    if (body != nullptr)
+    {
+        iteration->addChild(body);
+    }
+
+    node->setFirst(makeBooleanLiteral(statementRange, true));
+    node->setSecond(iteration);
     return node;
 }
 
@@ -10287,12 +10362,22 @@ ast::AstNode* Parser::parseSwitchStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'(' after 'switch'");
+    ast::AstNode* conditionDeclaration = nullptr;
+    ast::AstNode* governing = nullptr;
     if (looksLikeConditionDeclaration())
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+        conditionDeclaration = parseVariableDeclaration(false);
+        const ast::AstNode* binding = conditionDeclarationBinding(
+            conditionDeclaration, diagnostics_);
+        if (binding != nullptr)
+        {
+            governing = makeIdentifierExpression(binding->range(), binding->text());
+        }
     }
-    ast::AstNode* governing = parseExpression();
+    else
+    {
+        governing = parseExpression();
+    }
     expect(TokenKind::RightParen, "')' after the switch governing expression");
     expect(TokenKind::LeftBrace, "'{' to open the switch body");
 
@@ -10370,6 +10455,15 @@ ast::AstNode* Parser::parseSwitchStatement()
 
     expect(TokenKind::RightBrace, "'}' to close the switch");
     node->setRange(tokenRangeFrom(beginIndex));
+    if (conditionDeclaration != nullptr)
+    {
+        ast::AstNode* lowered = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, node->range());
+        lowered->setAuxiliaryText("condition-declaration");
+        lowered->addChild(conditionDeclaration);
+        lowered->addChild(node);
+        return lowered;
+    }
     return node;
 }
 
