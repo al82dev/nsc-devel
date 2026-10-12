@@ -973,11 +973,11 @@ T00
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
 - [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(5/6 sustratos listos: arrays→Span/ReadOnlySpan, slices, spans, strings→StringView y protocolo usuario. Rest sobre inline/fixed array pendiente: error explícito en LLVM por layout sin cabecera de longitud.)*
-- [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos.
-- [ ] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos.
-- [ ] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern.
-- [ ] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal.
-- [ ] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido.
+- [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(3/4: relacionales `< <= > >=`, lógicos `not`(`!`)/`and`(`&`) y anidados listos. Posicional `T(a,b,...)` pendiente.)*
+- [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(3/3 + TL-LANG-312)*
+- [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(modos + TL-LANG-313)*
+- [x] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(satisfecho por F01–F06; cubierto por TL-LANG-308/310)*
+- [x] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(faltantes+redundancia de list y variante; escape por TL-LANG-309)*
 
 ### T04 — lambdas, callables y funciones locales
 
