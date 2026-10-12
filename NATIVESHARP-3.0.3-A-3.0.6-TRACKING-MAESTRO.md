@@ -972,7 +972,7 @@ T00
 
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
-- [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario.
+- [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(5/6 sustratos listos: arrays→Span/ReadOnlySpan, slices, spans, strings→StringView y protocolo usuario. Rest sobre inline/fixed array pendiente: error explícito en LLVM por layout sin cabecera de longitud.)*
 - [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos.
 - [ ] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos.
 - [ ] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern.
