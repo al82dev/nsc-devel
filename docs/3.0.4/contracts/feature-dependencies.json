@@ -1,0 +1,134 @@
+{
+  "schema": "NS304_FEATURE_DEPENDENCIES",
+  "schema_version": 1,
+  "release": "3.0.4",
+  "base_revision": "f26e51ff4",
+  "features": [
+    {
+      "id": "static-initialization",
+      "owners": ["T01"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "abi-conditional", "contracts": ["once-guard", "failure-state", "module-lifetime"]},
+      "stl": {"mode": "none", "dependencies": []}
+    },
+    {
+      "id": "condition-declarations",
+      "owners": ["T01"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "none", "dependencies": []}
+    },
+    {
+      "id": "default-trait-interface-bodies",
+      "owners": ["T02"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "consumer-rebuild", "dependencies": []}
+    },
+    {
+      "id": "list-slice-property-patterns",
+      "owners": ["T03"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "optional-adoption", "dependencies": [{"path": "lib/NativeSharp.Core/Span.ns", "state": "existing"}]}
+    },
+    {
+      "id": "modern-callables",
+      "owners": ["T04"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "optional-adoption", "dependencies": []}
+    },
+    {
+      "id": "async-await",
+      "owners": ["T05"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "required", "contracts": ["future-poll", "resume", "drop", "cancellation-hook"]},
+      "stl": {"mode": "planned", "dependencies": [{"name": "Future", "state": "planned"}, {"path": "lib/NativeSharp.Core.Threading/ThreadPool.ns", "state": "existing"}]}
+    },
+    {
+      "id": "synchronous-generators",
+      "owners": ["T06"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "planned", "dependencies": [{"name": "IteratorAdapters", "state": "planned"}]}
+    },
+    {
+      "id": "async-streams-structured-concurrency",
+      "owners": ["T07"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "required", "contracts": ["async-iterator", "backpressure", "cancellation-hook", "structured-task-scope"]},
+      "stl": {"mode": "planned", "dependencies": [{"name": "AsyncIterator", "state": "planned"}, {"path": "lib/NativeSharp.Core.Threading/ThreadPool.ns", "state": "existing"}]}
+    },
+    {
+      "id": "extension-members-operators",
+      "owners": ["T08"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "consumer-rebuild", "dependencies": []}
+    },
+    {
+      "id": "user-compound-assignment",
+      "owners": ["T08"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "none", "dependencies": []}
+    },
+    {
+      "id": "modern-construction-properties-events",
+      "owners": ["T09"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "abi-conditional", "contracts": ["partial-construction-cleanup", "event-storage-policy"]},
+      "stl": {"mode": "planned", "dependencies": [{"name": "EventStorage", "state": "planned"}]}
+    },
+    {
+      "id": "utf8-interpolation",
+      "owners": ["T10"],
+      "compiler": ["AST", "Lexer", "Parser", "Sema", "HIR", "MIR", "LLVM", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "required", "dependencies": [{"path": "lib/NativeSharp.Core/Utf8.ns", "state": "existing"}, {"path": "lib/NativeSharp.Core/StringBuilder.ns", "state": "existing"}]}
+    },
+    {
+      "id": "null-conditional-nameof",
+      "owners": ["T10"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "none", "dependencies": []}
+    },
+    {
+      "id": "first-class-spans-slices",
+      "owners": ["T11"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "required", "dependencies": [{"path": "lib/NativeSharp.Core/Span.ns", "state": "existing"}]}
+    },
+    {
+      "id": "partial-members-source-composition",
+      "owners": ["T12"],
+      "compiler": ["AST", "Parser", "Sema", "Frontend", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "optional-adoption", "dependencies": []}
+    },
+    {
+      "id": "allocator-scope-inplace-trailing-storage",
+      "owners": ["T13"],
+      "compiler": ["AST", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "required", "contracts": ["allocator-abi", "allocation-failure", "deallocator-provenance"]},
+      "stl": {"mode": "required", "dependencies": [{"path": "lib/NativeSharp.Core/Allocator.ns", "state": "existing"}, {"path": "lib/NativeSharp.Core/ArenaAllocator.ns", "state": "existing"}, {"path": "lib/NativeSharp.Core.Collections.Generic/List.ns", "state": "existing"}]}
+    },
+    {
+      "id": "comptime-derive-hygienic-generation",
+      "owners": ["T14"],
+      "compiler": ["AST", "Parser", "Sema", "Frontend", "HIR", "MIR", "Interop", "Diagnostics"],
+      "runtime": {"mode": "none", "contracts": []},
+      "stl": {"mode": "optional-adoption", "dependencies": [{"name": "GeneratedSerializersFormattersBindings", "state": "planned"}]}
+    },
+    {
+      "id": "decimal",
+      "owners": ["T15"],
+      "compiler": ["AST", "Lexer", "Parser", "Sema", "HIR", "MIR", "LLVM", "Interop", "Diagnostics"],
+      "runtime": {"mode": "required", "contracts": ["decimal-arithmetic-helpers", "decimal-conversion-helpers"]},
+      "stl": {"mode": "required", "dependencies": [{"path": "lib/NativeSharp.Core/Number.ns", "state": "existing"}, {"path": "lib/NativeSharp.Core/NumericParsing.ns", "state": "existing"}, {"path": "lib/NativeSharp.Core/DeterministicMath.ns", "state": "existing"}]}
+    }
+  ]
+}
