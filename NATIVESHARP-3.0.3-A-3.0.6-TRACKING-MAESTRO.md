@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 18 | 34.62 % | `EN_PROGRESO`; A03 7/21 |
+| A | 3.0.3 | 14 | 52 defectos | 19 | 36.54 % | `EN_PROGRESO`; A03 8/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G14, quedan 34 KPD abiertos y dieciocho casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G15, quedan 33 KPD abiertos y diecinueve casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -231,8 +231,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
   - Cierre: `CERRADO`; puntual G14 como KPD y Required `PASS`; commit de implementación G14: este commit.
 - **A03 · `TP-PAR-327` / `CP-PAR-029`**
   - Contrato: placeholders por índice/nombre resuelven al operando declarado exacto.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:1417; T:`ParserInlineAssemblyContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial/evidencia: `KNOWN_FAILURE`; M:1417; T:`ParserInlineAssemblyContinuationModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual G15 como KPD y Required `PASS`; commit de implementación G15: este commit.
 - **A03 · `TP-PAR-334` / `CP-PAR-030`**
   - Contrato: condition declaration baja a local con scope seguido de su condición.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1424; T:`ParserControlFlowContinuationModule.cpp`; `5dee730d`.
@@ -494,6 +494,7 @@ Resultado del inventario causal:
   - Causa: interpreta todo placeholder no `out` como ordinal; no resuelve nombres de operandos `in`.
   - Consumidores: diagnóstico y lowering de operandos asm.
   - Puntual: `ParserInlineAssemblyContinuationModule.cpp`; existe.
+  - Estado: `CERRADO` en A03; nombres se resuelven sólo contra inputs declarados y los ausentes se diagnostican.
 - **G16 — condition declaration sólo se reporta diferida: `TP-PAR-334`.**
   - Productores: `looksLikeConditionDeclaration` y `parseIfStatement`.
   - Causa: el lookahead reconoce la forma, pero `parseIfStatement` sólo reporta deferred y parsea expresión.
@@ -669,7 +670,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 7/21, 18/52 defectos corregidos y 34 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 8/21, 19/52 defectos corregidos y 33 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -696,7 +697,9 @@ Puertas previas a editar producto:
   en los bindings de deconstruction; `ParserProductTestShim` y el módulo puntual fueron reconstruidos con LLVM 23.1.0.
 - Evidencia G14: `TP-PAR-316` pasó como KPD (4,634 us) y como Required (4,007 us) tras conservar el modo raw del lexer,
   canonicalizar target/dialect y verificar metadata, body, línea y EOF; tres objetos reconstruidos con LLVM 23.1.0.
-- Próxima acción A03: G15.
+- Evidencia G15: `TP-PAR-327` pasó como KPD (20,290 us) y como Required (18,977 us) tras resolver placeholders nominales
+  exclusivamente contra inputs declarados y diagnosticar un nombre ausente; dos objetos reconstruidos con LLVM 23.1.0.
+- Próxima acción A03: G16.
 
 ---
 
@@ -1421,13 +1424,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G12 vertical | oráculo fortalecido + Parser-Sema-HIR KPD/Required | `PASS`; 36 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G13 | puntual KPD + Required | `PASS`; 35 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G14 | puntual KPD + Required | `PASS`; 34 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G15 | puntual KPD + Required | `PASS`; 33 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `18/52`; A03 7/21; siguiente acción vinculante: G15.
+- A: `19/52`; A03 8/21; siguiente acción vinculante: G16.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01, A02 y G09-G14 puntuales; ninguna batería completa.
+- Validación ejecutada: A00, A01, A02 y G09-G15 puntuales; ninguna batería completa.
 

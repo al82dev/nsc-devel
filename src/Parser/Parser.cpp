@@ -9206,19 +9206,40 @@ void Parser::validateInlineAssemblyPlaceholders(ast::AstNode* statement)
 
             const bool output = code.substr(index + 1, 3) == "out";
             std::size_t cursor = index + (output ? 4 : 1);
-            std::size_t ordinal = 0;
-            const std::size_t digitBegin = cursor;
-            while (cursor < code.size() &&
-                std::isdigit(static_cast<unsigned char>(code[cursor])))
+            bool resolved = false;
+            if (!output && cursor < code.size() &&
+                (std::isalpha(static_cast<unsigned char>(code[cursor])) || code[cursor] == '_'))
             {
-                ordinal = ordinal * 10 + static_cast<std::size_t>(code[cursor] - '0');
-                ++cursor;
+                const std::size_t nameBegin = cursor++;
+                while (cursor < code.size() &&
+                    (std::isalnum(static_cast<unsigned char>(code[cursor])) || code[cursor] == '_'))
+                {
+                    ++cursor;
+                }
+                const std::string_view name = code.substr(nameBegin, cursor - nameBegin);
+                resolved = std::any_of(statement->children().begin(), statement->children().end(),
+                    [name](const ast::AstNode* child)
+                    {
+                        return child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
+                            child->first() != nullptr && child->first()->text() == name;
+                    });
             }
-            const bool malformed = cursor == digitBegin ||
-                (cursor < code.size() &&
-                 (std::isalnum(static_cast<unsigned char>(code[cursor])) || code[cursor] == '_'));
-            const std::size_t bound = output ? outputCount : inputCount;
-            if (malformed || ordinal >= bound)
+            else
+            {
+                std::size_t ordinal = 0;
+                const std::size_t digitBegin = cursor;
+                while (cursor < code.size() &&
+                    std::isdigit(static_cast<unsigned char>(code[cursor])))
+                {
+                    ordinal = ordinal * 10 + static_cast<std::size_t>(code[cursor] - '0');
+                    ++cursor;
+                }
+                const std::size_t bound = output ? outputCount : inputCount;
+                resolved = cursor != digitBegin && ordinal < bound;
+            }
+            const bool malformedSuffix = cursor < code.size() &&
+                (std::isalnum(static_cast<unsigned char>(code[cursor])) || code[cursor] == '_');
+            if (!resolved || malformedSuffix)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::InvalidInlineAssemblyPlaceholder,

@@ -183,10 +183,13 @@ void testInvalidInputConstraint(TestContext& context)
 void testIndexAndNamedPlaceholders(TestContext& context)
 {
     ParserFixture fixture("asm { add $out0, $source } out(result) in(source);");
+    ParserFixture missing("asm { add $out0, $missing } out(result) in(source);");
     AstNode* const node = parseAsm(fixture);
+    parseAsm(missing);
     context.expect(node != nullptr && node->kind() == AstNodeKind::InlineAssemblyStatement &&
-            fixture.diagnostics().diagnostics().empty(),
-        "TP-PAR-327 valid indexed and named placeholders must resolve to declared operands");
+            fixture.diagnostics().diagnostics().empty() &&
+            diagnosticCount(missing.diagnostics(), DiagnosticId::InvalidInlineAssemblyPlaceholder) == 1,
+        "TP-PAR-327 indexed and named placeholders must resolve only to their declared operands");
 }
 
 void testMissingPlaceholder(TestContext& context)
@@ -262,8 +265,7 @@ void registerParserInlineAssemblyContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-324", testInvalidOutputConstraint);
     addCase(registry, "TP-PAR-325", testAllowedInputConstraints);
     addCase(registry, "TP-PAR-326", testInvalidInputConstraint);
-    addCase(registry, "TP-PAR-327", testIndexAndNamedPlaceholders,
-        TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-327", testIndexAndNamedPlaceholders);
     addCase(registry, "TP-PAR-328", testMissingPlaceholder);
     addCase(registry, "TP-PAR-329", testAllowedLocalControlFlow);
     addCase(registry, "TP-PAR-330", testForbiddenAssemblyControlFlow);
