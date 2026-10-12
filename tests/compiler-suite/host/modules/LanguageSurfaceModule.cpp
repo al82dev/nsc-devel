@@ -1999,6 +1999,39 @@ class Program
         }});
 }
 
+void registerLambdaNaturalTypeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-314", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "lambda", "callable", "inference", "natural"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04LambdaNaturalType", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        var f = (int x) => x + 1;
+        return f(41);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04LambdaNaturalType.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-314 a lambda must infer its natural callable type under var: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-314 a naturally-typed lambda must be invocable: " +
+                    result.error + result.output);
+        }});
+}
+
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -2030,5 +2063,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);
+    registerLambdaNaturalTypeCase(registry);
 }
 }
