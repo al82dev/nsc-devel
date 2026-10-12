@@ -11926,14 +11926,24 @@ ast::AstNode* Parser::parseForeachStatement()
         elementType = parseType();
     }
 
-    if (!at(TokenKind::Identifier))
+    const bool elementDeconstruction = at(TokenKind::LeftParen);
+    Pattern elementPattern;
+    std::string elementName;
+    if (elementDeconstruction)
+    {
+        elementPattern = parsePattern(true);
+        elementName = "$__foreach_element";
+    }
+    else if (!at(TokenKind::Identifier))
     {
         expect(TokenKind::Identifier, "foreach element name");
         synchronizeStatement();
         return nullptr;
     }
-    const lexer::Token& elementNameToken = consume();
-    const std::string elementName(elementNameToken.lexeme());
+    else
+    {
+        elementName = std::string(consume().lexeme());
+    }
 
     expect(TokenKind::KwIn, "'in'");
     // P0.2 of the closure review: the collection expression is parsed TWICE from the same token
@@ -11972,6 +11982,15 @@ ast::AstNode* Parser::parseForeachStatement()
         if (!elementByReference || declaration == nullptr) return;
         declaration->setAuxiliaryText(
             elementMutableReference ? "local:foreach-ref-mut" : "local:foreach-ref");
+    };
+    const auto emitElementBindings = [&](ast::AstNode* destination)
+    {
+        if (!elementDeconstruction || destination == nullptr) return;
+        PatternExpressionFactory source = [&]()
+        {
+            return makeIdentifierExpression(range, elementName);
+        };
+        emitPatternBindings(elementPattern, source, destination, "$__foreach_pattern");
     };
 
     // A bounded integer RangeExpression is a storage-free foreach source. Lower it immediately
@@ -12056,6 +12075,7 @@ ast::AstNode* Parser::parseForeachStatement()
         configureElementBinding(elementDecl);
         ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         forBody->addChild(elementDecl);
+        emitElementBindings(forBody);
         forBody->addChild(body);
         ast::AstNode* loop = arena_.make<ast::AstNode>(ast::AstNodeKind::ForStatement, range);
         loop->setFirst(cursorDecl);
@@ -12175,6 +12195,7 @@ ast::AstNode* Parser::parseForeachStatement()
 
         ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         forBody->addChild(elementDecl);
+        emitElementBindings(forBody);
         forBody->addChild(body);
 
         ast::AstNode* forNode = arena_.make<ast::AstNode>(ast::AstNodeKind::ForStatement, range);
@@ -12224,6 +12245,7 @@ ast::AstNode* Parser::parseForeachStatement()
         ast::AstNode* forBody = arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, range);
         forBody->addChild(elementDecl);
+        emitElementBindings(forBody);
         forBody->addChild(body);
         ast::AstNode* forNode = arena_.make<ast::AstNode>(
             ast::AstNodeKind::ForStatement, range);
@@ -12278,6 +12300,7 @@ ast::AstNode* Parser::parseForeachStatement()
 
         ast::AstNode* whileBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         whileBody->addChild(elementDecl);
+        emitElementBindings(whileBody);
         whileBody->addChild(body);
 
         ast::AstNode* whileNode = arena_.make<ast::AstNode>(ast::AstNodeKind::WhileStatement, range);

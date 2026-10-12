@@ -168,7 +168,6 @@ void registerParserForeachSemanticsModule(TestRegistry& registry)
     addForeachCase(registry, "TP-PAR-397", testSpanCandidate);
     addForeachCase(registry, "TP-PAR-398", testEnumeratorCandidate);
     addForeachCase(registry, "TP-PAR-399", testBindingModes);
-    addForeachCase(registry, "TP-PAR-400", testDeconstructionBinding,
-        TestDisposition::KnownProductDefect);
+    addForeachCase(registry, "TP-PAR-400", testDeconstructionBinding);
 }
 }
