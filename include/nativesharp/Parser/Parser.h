@@ -254,7 +254,9 @@ private:
         Not,
         And,
         List,
-        Or
+        Or,
+        // NS304-T03-F04. `T(a, b, c)` -- deconstruccion posicional de un nominal/tupla.
+        Positional
     };
     enum class PatternBindingMode
     {

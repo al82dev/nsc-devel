@@ -10785,18 +10785,19 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         }
         if (consumeIf(TokenKind::LeftParen))
         {
-            result.kind = PatternKind::Variant;
-            if (!at(TokenKind::RightParen)) result.children.push_back(parsePattern(true));
-            if (at(TokenKind::Comma))
+            // NS304-T03-F04: un payload es un variant tag; dos o mas son deconstruccion posicional.
+            std::vector<Pattern> payloads;
+            if (!at(TokenKind::RightParen))
             {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::InvalidArgumentCount,
-                    diagnostics::DiagnosticSeverity::Error,
-                    current().range(),
-                    "a tagged-variant pattern accepts exactly one payload pattern");
-                while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
+                while (true)
+                {
+                    payloads.push_back(parsePattern(true));
+                    if (!consumeIf(TokenKind::Comma)) break;
+                }
             }
-            expect(TokenKind::RightParen, "')' after variant payload pattern");
+            expect(TokenKind::RightParen, "')' after variant/positional payload pattern");
+            result.kind = payloads.size() <= 1U ? PatternKind::Variant : PatternKind::Positional;
+            result.children = std::move(payloads);
         }
         else
         {
@@ -10980,6 +10981,16 @@ ast::AstNode* Parser::makePatternCondition(
                     result,
                     makePatternCondition(pattern.children[index], source));
             return result;
+        }
+        case PatternKind::Positional:
+        {
+            // NS304-T03-F04: la deconstruccion posicional se baja en Sema (bindDeconstructionSource).
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                pattern.range,
+                "positional patterns require deconstruction lowering (NS304-T03-F04)");
+            return makeBooleanLiteral(pattern.range, false);
         }
         case PatternKind::List:
         {
