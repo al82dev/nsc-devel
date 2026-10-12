@@ -1658,6 +1658,10 @@ Estado: `CERRADO`.
   98 inputs; runner 69+2+2 aristas, LLVM/Clang 23 y sin regenerar CMake.
 - Gate: T03 queda 2/8 y Parte B 24/147, sin batería completa.
 - Siguiente ítem: `NS304-T03-F03`.
+- Corte de handover: Parte B queda `PAUSADA POR INSTRUCCIÓN DEL USUARIO` en
+  24/147. `NS304-T03-F03` no fue iniciado ni marcado; la reanudación exacta
+  comienza por su auditoría causal, sin cambiar configuración, toolchain o
+  Builder y sin ejecutar batería completa entre tandas.
 
 ---
 
