@@ -26,14 +26,15 @@ default de la lambda no puede entrar en conflicto con el del delegate.
   y `Add add = (int x = 5) => x + 1;` compila contra el delegate target.
 - Falta la **aplicación del default en el call-site**: `add()` (omitir el argumento) falla en
   `ProjectMethodBodyModel` (:15652-15661) con "delegate invocation argument count does not match".
-  Hay que leer los defaults del delegate (sus `ParameterDeclaration` con `first() != null`) y
-  sintetizar los argumentos omitidos. Es un feature general (delegados + métodos), no solo lambdas.
+- **Causa raíz**: sintetizar el default solo en `arguments` (Sema) NO basta: el codegen
+  (HIR/LLVM) lee los argumentos del AST (`expression->children()`), no del vector de Sema. Se
+  necesita bajar el default al AST (sintetizar un nodo) o guardarlo en `MethodDelegateBinding` y
+  que el lowerer lo materialice. Es un cambio que toca codegen, no un fix puntual.
 
 ## Plan
 
-1. En la invocación de delegate (:15642+), obtener los parámetros del delegate y, si
-   `arguments.size() < parameterTypes.size()`, verificar que cada faltante tenga default y
-   sintetizarlo (analyzeExpression sobre `first()`).
+1. Sintetizar el default como nodo AST (o almacenar el valor en `MethodDelegateBinding`) y hacer
+   que el HIR/LLVM lo emita como argumento real.
 2. Validar que el default del lambda no contradiga el del delegate.
 3. Prueba `TL-LANG-317` (ya redactada; se re-registra al pasar).
 
