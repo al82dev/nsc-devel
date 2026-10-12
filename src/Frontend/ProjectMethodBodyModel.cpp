@@ -6080,7 +6080,8 @@ void ProjectMethodBodyModel::analyzeVariable(
             variable->text().starts_with("$__nsc_match_") ||
             variable->text().starts_with("$__nsc_conditional_pattern_");
         const bool isCompilerGeneratedForeachViewSnapshot =
-            variable->text() == "$__foreach_source" && typeKeyIsViewLike(typeKey);
+            variable->text().starts_with("$__foreach_") &&
+            variable->text().ends_with("_source") && typeKeyIsViewLike(typeKey);
         if (isMoveOnly && initializer.valid && initializer.addressable &&
             !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression)
@@ -6863,7 +6864,7 @@ void ProjectMethodBodyModel::analyzeFor(
 // Parser::parseForeachStatement() cannot know the collection's type (parsing is a purely
 // syntactic pass), so it builds BOTH possible desugarings unconditionally and stores them on the
 // ForeachStatement node:
-//   first()  -- `var $__foreach_source = <collection>;` -- evaluates the collection expression
+//   first()  -- `var $__foreach_<id>_source = <collection>;` -- evaluates the collection expression
 //                exactly once, regardless of which candidate is chosen below. Whether this ends
 //                up `raii` is decided in this function (P0.2, see below), not by the parser.
 //   second() -- the array-mode candidate: an index/`.Length` while-loop.
@@ -6877,7 +6878,7 @@ void ProjectMethodBodyModel::analyzeFor(
 //                used below (P0.2) to decide first()'s raii-ness before it is analyzed for real.
 //
 // This function is the ONE place that decides which candidate is "real": it analyzes first() to
-// resolve $__foreach_source's typeKey (reusing analyzeVariable exactly as any other `var` local
+// resolve the synthesized foreach source's typeKey (reusing analyzeVariable exactly as any other `var` local
 // would), then dispatches on that typeKey (array types are `<element>[]`, see
 // ProjectGenericModel::canonicalTypeKey) to analyze ONLY the matching candidate via analyzeBlock.
 // The other candidate's AST subtree is left completely unanalyzed -- no locals are registered for
@@ -6901,10 +6902,10 @@ void ProjectMethodBodyModel::analyzeForeach(
         methodMemberOrdinal,
         scopeOrdinal);
 
-    // Captured BEFORE $__foreach_source is declared below, exactly like analyzeFor captures its
+    // Captured BEFORE the synthesized foreach source is declared below, exactly like analyzeFor captures its
     // own breakCleanupDepth before analyzing its init statement -- see the teardown block at the
     // end of this function for why this is needed (P0.2 fix, see comment there for the full
-    // story: $__foreach_source can now become `raii`, and its cleanup region must be popped by
+    // story: the foreach source can now become `raii`, and its cleanup region must be popped by
     // THIS function, the same way analyzeFor pops its own init-scope's cleanup regions, since
     // nothing else ever will).
     const std::size_t foreachCleanupDepth = activeCleanupRegions_.size();
@@ -6962,14 +6963,14 @@ void ProjectMethodBodyModel::analyzeForeach(
             statement->first()->typeSyntax() != nullptr)
         {
             // A named owner is observed by foreach; it is never copied into the synthesized
-            // `$__foreach_source`. Mark that hidden local as borrowed so its lifetime remains
+            // synthesized foreach source. Mark that hidden local as borrowed so its lifetime remains
             // rooted in the original RAII owner for both array and enumerator modes.
             statement->first()->typeSyntax()->setOwnershipQualifier(
                 ast::OwnershipQualifierSyntaxKind::Borrowed);
         }
     }
 
-    // Resolve __foreach_source's type by analyzing its declaration exactly like any other `var`
+    // Resolve the synthesized foreach source's type by analyzing its declaration exactly like any other `var`
     // local. On success this appends exactly one MethodLocalSymbol to locals_ (see
     // analyzeVariable); on failure (e.g. the collection expression itself doesn't type-check) it
     // reports its own diagnostic and appends nothing, and there is no reliable typeKey left to
@@ -7033,11 +7034,11 @@ void ProjectMethodBodyModel::analyzeForeach(
         if (borrowedSourcePlace.has_value()) activeIterationBorrows_.pop_back();
     }
 
-    // Teardown for $__foreach_source's OWN cleanup region, mirroring analyzeFor's end-of-forScope
+    // Teardown for the synthesized foreach source's OWN cleanup region, mirroring analyzeFor's end-of-forScope
     // teardown (see the last lines of analyzeFor above). This is genuinely new: before the P0.2
-    // fix, $__foreach_source was never `raii`, so it never created a cleanup region and this
+    // fix, the foreach source was never `raii`, so it never created a cleanup region and this
     // function never needed to pop one -- the gap was latent, not exercised by any existing test.
-    // Now that $__foreach_source CAN be raii (an owned-returning collection source), its cleanup
+    // Now that the foreach source CAN be raii (an owned-returning collection source), its cleanup
     // region -- pushed by analyzeVariable above as if it were any other raii local -- must be
     // popped from activeCleanupRegions_ here, once, after the whole foreach statement (source
     // declaration AND whichever candidate was chosen) has finished analysis. Without this, the

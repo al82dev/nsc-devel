@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 24 | 46.15 % | `EN_PROGRESO`; A03 13/21 |
+| A | 3.0.3 | 14 | 52 defectos | 26 | 50.00 % | `EN_PROGRESO`; A03 15/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G20, quedan 28 KPD abiertos y veinticuatro casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G21, quedan 26 KPD abiertos y veintiséis casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -256,11 +256,11 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A03 · `TP-PAR-405` / `CP-PAR-034`**
   - Contrato: dos `foreach` secuenciales reciben temporales sintéticos distintos.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1495; T:`ParserForeachContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; puntual G21 como KPD y Required `PASS`; commit de implementación G21: este commit.
 - **A03 · `TP-PAR-406` / `CP-PAR-034`**
   - Contrato: `foreach` anidados no colisionan en identidad temporal.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1496; T:`ParserForeachContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Cierre: `CERRADO`; puntual G21 como KPD y Required `PASS`; commit de implementación G21: este commit.
 - **A03 · `TP-PAR-422` / `CP-PAR-035`**
   - Contrato: `try` sin `catch` ni `finally` diagnostica constructo incompleto.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1512; T:`ParserCleanupContinuationModule.cpp`; `5dee730d`.
@@ -530,6 +530,7 @@ Resultado del inventario causal:
   - Causa: reutiliza nombres `$__foreach_*` constantes para instancias secuenciales y anidadas.
   - Consumidores: name binding, HIR/MIR y depuración de loops.
   - Puntuales: `ParserForeachContinuationModule.cpp`; existen.
+  - Estado: `CERRADO` en A03; cada instancia reserva un prefijo sintético antes de parsear su cuerpo.
 - **G22 — `try` no exige handler: `TP-PAR-422`.**
   - Productor: `Parser::parseTryStatement`.
   - Causa: retorna tras cero `catch` y ausencia de `finally` sin emitir diagnóstico.
@@ -675,7 +676,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 13/21, 24/52 defectos corregidos y 28 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 15/21, 26/52 defectos corregidos y 26 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -714,7 +715,10 @@ Puertas previas a editar producto:
   KPD (6,572 us) y Required (3,288 us) conservando `..`/`..=` en `Pattern::name` y bajando `<`/`<=`; dos objetos LLVM 23.1.0.
 - Evidencia G20: `TP-PAR-400` pasó como KPD (9,517 us) y como Required (6,422 us) tras parsear una vez el patrón y emitir
   ambos bindings en los candidatos array/span/enumerator; dos objetos reconstruidos con LLVM 23.1.0.
-- Próxima acción A03: G21.
+- Evidencia G21: `TP-PAR-405` (KPD 15,387 us; Required 18,201 us) y `TP-PAR-406` (KPD 841 us; Required 928 us) pasaron
+  tras reservar un prefijo único por instancia antes de parsear el cuerpo; cuatro objetos reconstruidos con LLVM 23.1.0
+  sin regenerar configuración.
+- Próxima acción A03: G22.
 
 ---
 
@@ -1445,10 +1449,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G18 | puntual KPD + Required | `PASS`; 30 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G19 | puntual KPD + Required | `PASS`; 29 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G20 | puntual KPD + Required | `PASS`; 28 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G21 | dos puntuales KPD + Required | `PASS`; 26 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `24/52`; A03 13/21; siguiente acción vinculante: G21.
+- A: `26/52`; A03 15/21; siguiente acción vinculante: G22.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

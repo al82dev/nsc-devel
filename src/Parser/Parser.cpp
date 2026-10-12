@@ -11865,6 +11865,19 @@ ast::AstNode* Parser::makeVariableDeclaration(
 ast::AstNode* Parser::parseForeachStatement()
 {
     const std::size_t beginIndex = index_;
+    // Reserve the identity before parsing the body so a nested foreach receives a different
+    // namespace without changing the names already chosen for its enclosing loop.
+    const std::string temporaryPrefix =
+        "$__foreach_" + std::to_string(nextMatchTemporary_++);
+    const std::string sourceName = temporaryPrefix + "_source";
+    const std::string indexName = temporaryPrefix + "_index";
+    const std::string enumeratorName = temporaryPrefix + "_enumerator";
+    const std::string rangeBeginName = temporaryPrefix + "_range_begin";
+    const std::string rangeEndName = temporaryPrefix + "_range_end";
+    const std::string rangeStepName = temporaryPrefix + "_range_step";
+    const std::string rangeCursorName = temporaryPrefix + "_range_cursor";
+    const std::string elementTemporaryName = temporaryPrefix + "_element";
+    const std::string patternTemporaryPrefix = temporaryPrefix + "_pattern";
     consume(); // foreach
     expect(TokenKind::LeftParen, "'('");
 
@@ -11932,7 +11945,7 @@ ast::AstNode* Parser::parseForeachStatement()
     if (elementDeconstruction)
     {
         elementPattern = parsePattern(true);
-        elementName = "$__foreach_element";
+        elementName = elementTemporaryName;
     }
     else if (!at(TokenKind::Identifier))
     {
@@ -11990,7 +12003,7 @@ ast::AstNode* Parser::parseForeachStatement()
         {
             return makeIdentifierExpression(range, elementName);
         };
-        emitPatternBindings(elementPattern, source, destination, "$__foreach_pattern");
+        emitPatternBindings(elementPattern, source, destination, patternTemporaryPrefix);
     };
 
     // A bounded integer RangeExpression is a storage-free foreach source. Lower it immediately
@@ -12034,14 +12047,14 @@ ast::AstNode* Parser::parseForeachStatement()
         if (step == nullptr) step = makeIntegerLiteralExpression(range, 1);
 
         ast::AstNode* beginDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_range_begin", begin, false, true);
+            varMarker(), rangeBeginName, begin, false, true);
         ast::AstNode* endDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_range_end", end, false, true);
+            varMarker(), rangeEndName, end, false, true);
         ast::AstNode* stepDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_range_step", step, false, true);
+            varMarker(), rangeStepName, step, false, true);
         ast::AstNode* cursorDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_range_cursor",
-            makeIdentifierExpression(range, "$__foreach_range_begin"), false);
+            varMarker(), rangeCursorName,
+            makeIdentifierExpression(range, rangeBeginName), false);
 
         const auto id = [&](std::string name)
         {
@@ -12049,27 +12062,27 @@ ast::AstNode* Parser::parseForeachStatement()
         };
         ast::AstNode* ascending = makeBinaryExpression(
             TokenKind::AmpAmp,
-            makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_step"),
+            makeBinaryExpression(TokenKind::Greater, id(rangeStepName),
                 makeIntegerLiteralExpression(range, 0)),
             makeBinaryExpression(collection->flag() ? TokenKind::LessEqual : TokenKind::Less,
-                id("$__foreach_range_cursor"), id("$__foreach_range_end")));
+                id(rangeCursorName), id(rangeEndName)));
         ast::AstNode* descending = makeBinaryExpression(
             TokenKind::AmpAmp,
-            makeBinaryExpression(TokenKind::Less, id("$__foreach_range_step"),
+            makeBinaryExpression(TokenKind::Less, id(rangeStepName),
                 makeIntegerLiteralExpression(range, 0)),
             makeBinaryExpression(collection->flag() ? TokenKind::GreaterEqual : TokenKind::Greater,
-                id("$__foreach_range_cursor"), id("$__foreach_range_end")));
+                id(rangeCursorName), id(rangeEndName)));
         ast::AstNode* condition = makeBinaryExpression(TokenKind::PipePipe, ascending, descending);
         ast::AstNode* increment = makeAssignmentExpression(
-            id("$__foreach_range_cursor"),
+            id(rangeCursorName),
             makeBinaryExpression(
                 TokenKind::Plus,
-                id("$__foreach_range_cursor"),
-                id("$__foreach_range_step")));
+                id(rangeCursorName),
+                id(rangeStepName)));
         ast::AstNode* elementDecl = makeVariableDeclaration(
             elementType,
             elementName,
-            makeIdentifierExpression(range, "$__foreach_range_cursor"),
+            makeIdentifierExpression(range, rangeCursorName),
             elementIsRaii,
             /*isConst=*/!elementMutableReference);
         configureElementBinding(elementDecl);
@@ -12096,22 +12109,22 @@ ast::AstNode* Parser::parseForeachStatement()
             TokenKind::PipePipe,
             makeBinaryExpression(
                 TokenKind::AmpAmp,
-                makeBinaryExpression(TokenKind::Less, id("$__foreach_range_begin"),
-                    id("$__foreach_range_end")),
-                makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_step"),
+                makeBinaryExpression(TokenKind::Less, id(rangeBeginName),
+                    id(rangeEndName)),
+                makeBinaryExpression(TokenKind::Greater, id(rangeStepName),
                     makeIntegerLiteralExpression(range, 0))),
             makeBinaryExpression(
                 TokenKind::PipePipe,
                 makeBinaryExpression(
                     TokenKind::AmpAmp,
-                    makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_begin"),
-                        id("$__foreach_range_end")),
-                    makeBinaryExpression(TokenKind::Less, id("$__foreach_range_step"),
+                    makeBinaryExpression(TokenKind::Greater, id(rangeBeginName),
+                        id(rangeEndName)),
+                    makeBinaryExpression(TokenKind::Less, id(rangeStepName),
                         makeIntegerLiteralExpression(range, 0))),
-                makeBinaryExpression(TokenKind::EqualEqual, id("$__foreach_range_begin"),
-                    id("$__foreach_range_end"))));
+                makeBinaryExpression(TokenKind::EqualEqual, id(rangeBeginName),
+                    id(rangeEndName))));
         ast::AstNode* nonZero = makeBinaryExpression(
-            TokenKind::BangEqual, id("$__foreach_range_step"),
+            TokenKind::BangEqual, id(rangeStepName),
             makeIntegerLiteralExpression(range, 0));
         ast::AstNode* assertion = makeZeroArgCallExpression(id("assert"));
         assertion->setAuxiliaryText("builtin-assert");
@@ -12121,7 +12134,7 @@ ast::AstNode* Parser::parseForeachStatement()
         return lowered;
     }
 
-    // first(): `var $__foreach_source = <collection>;` -- evaluates the collection expression
+    // first(): `var $__foreach_<id>_source = <collection>;` -- evaluates the collection expression
     // exactly once, regardless of which candidate below ends up chosen. Whether this ends up
     // `raii` is decided by ProjectMethodBodyModel::analyzeForeach (P0.2, see above) using the
     // `collectionProbe` copy stashed as this ForeachStatement node's own extra child below --
@@ -12139,7 +12152,7 @@ ast::AstNode* Parser::parseForeachStatement()
     // not merely an "unlikely enough" naming convention. `$` is also a legal, unquoted LLVM IR
     // identifier character, so this needs no companion change anywhere in HIR/MIR/LLVM lowering
     // or in the debug names those layers emit.
-    ast::AstNode* sourceDecl = makeVariableDeclaration(varMarker(), "$__foreach_source", collection, false);
+    ast::AstNode* sourceDecl = makeVariableDeclaration(varMarker(), sourceName, collection, false);
 
     // second(): the array-mode candidate.
     //   for (int __foreach_index = 0; __foreach_index < __foreach_source.Length; __foreach_index = __foreach_index + 1) {
@@ -12163,18 +12176,18 @@ ast::AstNode* Parser::parseForeachStatement()
     {
         ast::TypeSyntax* intType = arena_.make<ast::TypeSyntax>(range, TokenKind::KwInt, std::string("int"));
         ast::AstNode* indexDecl = makeVariableDeclaration(
-            intType, "$__foreach_index", makeIntegerLiteralExpression(range, 0), false);
+            intType, indexName, makeIntegerLiteralExpression(range, 0), false);
 
         ast::AstNode* condition = makeBinaryExpression(
             TokenKind::Less,
-            makeIdentifierExpression(range, "$__foreach_index"),
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "Length"));
+            makeIdentifierExpression(range, indexName),
+            makeMemberExpression(makeIdentifierExpression(range, sourceName), "Length"));
 
         ast::AstNode* increment = makeAssignmentExpression(
-            makeIdentifierExpression(range, "$__foreach_index"),
+            makeIdentifierExpression(range, indexName),
             makeBinaryExpression(
                 TokenKind::Plus,
-                makeIdentifierExpression(range, "$__foreach_index"),
+                makeIdentifierExpression(range, indexName),
                 makeIntegerLiteralExpression(range, 1)));
 
         // isConst=true (P0.3 of the closure review): the foreach element is unconditionally
@@ -12187,8 +12200,8 @@ ast::AstNode* Parser::parseForeachStatement()
             elementType,
             elementName,
             makeIndexExpression(
-                makeIdentifierExpression(range, "$__foreach_source"),
-                makeIdentifierExpression(range, "$__foreach_index")),
+                makeIdentifierExpression(range, sourceName),
+                makeIdentifierExpression(range, indexName)),
             elementIsRaii,
             /*isConst=*/!elementMutableReference);
         configureElementBinding(elementDecl);
@@ -12218,27 +12231,27 @@ ast::AstNode* Parser::parseForeachStatement()
         ast::TypeSyntax* intType = arena_.make<ast::TypeSyntax>(
             range, TokenKind::KwInt, std::string("int"));
         ast::AstNode* indexDecl = makeVariableDeclaration(
-            intType, "$__foreach_index", makeIntegerLiteralExpression(range, 0), false);
+            intType, indexName, makeIntegerLiteralExpression(range, 0), false);
         ast::AstNode* lengthCall = makeZeroArgCallExpression(
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "Length"));
+            makeMemberExpression(makeIdentifierExpression(range, sourceName), "Length"));
         ast::AstNode* condition = makeBinaryExpression(
             TokenKind::Less,
-            makeIdentifierExpression(range, "$__foreach_index"),
+            makeIdentifierExpression(range, indexName),
             lengthCall);
         ast::AstNode* increment = makeAssignmentExpression(
-            makeIdentifierExpression(range, "$__foreach_index"),
+            makeIdentifierExpression(range, indexName),
             makeBinaryExpression(
                 TokenKind::Plus,
-                makeIdentifierExpression(range, "$__foreach_index"),
+                makeIdentifierExpression(range, indexName),
                 makeIntegerLiteralExpression(range, 1)));
         ast::AstNode* dataCall = makeZeroArgCallExpression(
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "Data"));
+            makeMemberExpression(makeIdentifierExpression(range, sourceName), "Data"));
         ast::AstNode* elementDecl = makeVariableDeclaration(
             elementType,
             elementName,
             makeIndexExpression(
                 dataCall,
-                makeIdentifierExpression(range, "$__foreach_index")),
+                makeIdentifierExpression(range, indexName)),
             elementIsRaii,
             /*isConst=*/!elementMutableReference);
         configureElementBinding(elementDecl);
@@ -12259,9 +12272,9 @@ ast::AstNode* Parser::parseForeachStatement()
     }
 
     // third(): the enumerator-pattern candidate.
-    //   raii var $__foreach_enumerator = $__foreach_source.GetEnumerator();
-    //   while ($__foreach_enumerator.MoveNext()) {
-    //       <ElementType> <name> = $__foreach_enumerator.Current;
+    //   raii var $__foreach_<id>_enumerator = $__foreach_<id>_source.GetEnumerator();
+    //   while ($__foreach_<id>_enumerator.MoveNext()) {
+    //       <ElementType> <name> = $__foreach_<id>_enumerator.Current;
     //       { body }
     //   }
     //
@@ -12276,16 +12289,16 @@ ast::AstNode* Parser::parseForeachStatement()
     ast::AstNode* patternCandidate;
     {
         ast::AstNode* getEnumeratorCall = makeZeroArgCallExpression(
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "GetEnumerator"));
+            makeMemberExpression(makeIdentifierExpression(range, sourceName), "GetEnumerator"));
         ast::AstNode* enumeratorDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_enumerator", getEnumeratorCall, false);
+            varMarker(), enumeratorName, getEnumeratorCall, false);
         // This spelling cannot come from source: it is compiler-owned metadata on the synthetic
         // declaration. ProjectMethodBodyModel turns it into RAII only when the inferred type is
         // reference-shaped, avoiding a heap-only contract for value enumerators.
         enumeratorDecl->setAuxiliaryText("local:foreach-enumerator");
 
         ast::AstNode* condition = makeZeroArgCallExpression(
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_enumerator"), "MoveNext"));
+            makeMemberExpression(makeIdentifierExpression(range, enumeratorName), "MoveNext"));
 
         // isConst=true here too (P0.3) -- both candidates must agree on the element's
         // read-only-ness, since exactly one of them is the one actually analyzed/lowered and the
@@ -12293,7 +12306,7 @@ ast::AstNode* Parser::parseForeachStatement()
         ast::AstNode* elementDecl = makeVariableDeclaration(
             elementType,
             elementName,
-            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_enumerator"), "Current"),
+            makeMemberExpression(makeIdentifierExpression(range, enumeratorName), "Current"),
             elementIsRaii,
             /*isConst=*/!elementMutableReference);
         configureElementBinding(elementDecl);

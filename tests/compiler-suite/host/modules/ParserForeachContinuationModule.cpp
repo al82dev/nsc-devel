@@ -50,7 +50,7 @@ void testCollectionEvaluatedOnce(TestContext& context)
     const AstNode* const collection = sourceDeclaration != nullptr ? sourceDeclaration->first() : nullptr;
     const AstNode* const probe = node != nullptr && !node->children().empty() ? node->children()[0] : nullptr;
     context.expect(node != nullptr && node->kind() == AstNodeKind::ForeachStatement &&
-            sourceDeclaration != nullptr && sourceDeclaration->text() == "$__foreach_source" &&
+            sourceDeclaration != nullptr && sourceDeclaration->text() == "$__foreach_0_source" &&
             collection != nullptr && collection->kind() == AstNodeKind::CallExpression &&
             collection->first() != nullptr && collection->first()->text() == "MakeCollection" &&
             probe != nullptr && probe->kind() == AstNodeKind::CallExpression && probe != collection &&
@@ -197,8 +197,8 @@ void registerParserForeachContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-402", testEmptyAndNestedBodyPreserved);
     addCase(registry, "TP-PAR-403", testExplicitAndInferredElementTypes);
     addCase(registry, "TP-PAR-404", testInvalidSourceRecovery);
-    addCase(registry, "TP-PAR-405", testSequentialForeachTemporaries, TestDisposition::KnownProductDefect);
-    addCase(registry, "TP-PAR-406", testNestedForeachTemporaries, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-405", testSequentialForeachTemporaries);
+    addCase(registry, "TP-PAR-406", testNestedForeachTemporaries);
     addCase(registry, "TP-PAR-407", testForeachHelperShapes);
     addCase(registry, "TP-PAR-408", testDescendingRangeStep);
     addCase(registry, "TP-PAR-409", testProtocolCandidateOrder);

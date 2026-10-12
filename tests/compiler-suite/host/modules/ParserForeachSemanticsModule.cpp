@@ -93,9 +93,9 @@ void testArrayCandidate(TestContext& context)
     ParserFixture fixture("foreach (var item in array) { consume(item); }");
     AstNode* const node = fixture.parser().parseStatement();
     context.expect(node != nullptr && node->kind() == AstNodeKind::ForeachStatement &&
-            node->first() != nullptr && node->first()->text() == "$__foreach_source" &&
+            node->first() != nullptr && node->first()->text() == "$__foreach_0_source" &&
             node->second() != nullptr &&
-            countText(node->second(), "$__foreach_index") >= 4 &&
+            countText(node->second(), "$__foreach_0_index") >= 4 &&
             countText(node->second(), "Length") == 1 &&
             countText(node->second(), "item") >= 1,
         "TP-PAR-396 foreach array candidate must own source, length, index, and element local");
@@ -109,7 +109,7 @@ void testSpanCandidate(TestContext& context)
         node != nullptr && node->children().size() >= 2 ? node->children()[1] : nullptr;
     context.expect(candidate != nullptr && countText(candidate, "Length") == 1 &&
             countText(candidate, "Data") == 1 &&
-            countText(candidate, "$__foreach_index") >= 4 && countText(candidate, "item") >= 1,
+            countText(candidate, "$__foreach_0_index") >= 4 && countText(candidate, "item") >= 1,
         "TP-PAR-397 foreach span candidate must use Length and Data/index protocol");
 }
 
@@ -120,7 +120,7 @@ void testEnumeratorCandidate(TestContext& context)
     const AstNode* const candidate = node != nullptr ? node->third() : nullptr;
     context.expect(candidate != nullptr && countText(candidate, "GetEnumerator") == 1 &&
             countText(candidate, "MoveNext") == 1 && countText(candidate, "Current") == 1 &&
-            countText(candidate, "$__foreach_enumerator") >= 3 &&
+            countText(candidate, "$__foreach_0_enumerator") >= 3 &&
             countText(candidate, "item") >= 1,
         "TP-PAR-398 enumerator candidate must use GetEnumerator/MoveNext/Current exactly");
 }
