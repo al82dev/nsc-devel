@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 43 | 82.69 % | `EN_PROGRESO`; A09 cerrada 1/1 |
+| A | 3.0.3 | 14 | 52 defectos | 44 | 84.62 % | `EN_PROGRESO`; A10 cerrada 1/1 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar la mitad self-host de G05 y A09, quedan 9 KPD abiertos y 43 casos Required. `KPD`
+La unión inicial da 52 IDs únicos. Tras cerrar G37 y A10, quedan 8 KPD abiertos y 44 casos Required. `KPD`
 significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
@@ -149,11 +149,11 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A07 | Host.LanguageService | 1 | 1 | `CERRADA` |
 | A08 | SelfHost.Diagnostics | 2 | 2 | `CERRADA` |
 | A09 | SelfHost.Lexer | 1 | 1 | `CERRADA` |
-| A10 | SelfHost.Source | 1 | 0 | `PENDIENTE` |
+| A10 | SelfHost.Source | 1 | 1 | `CERRADA` |
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **43** | **82.69 %** |
+| **Total** |  | **52** | **44** | **84.62 %** |
 
 ## A.3 Inventario exacto
 
@@ -344,7 +344,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
 - **A10 · `TSH-00903` / `CSH-SRC-008`**
   - Contrato: archivo ausente no se publica como buffer vacío aceptado.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5666; C:`SelfHostSourceCaseClassifications.jsonl`.
-  - Procedencia: `dc3ee85f`. Cierre: `PENDIENTE`.
+  - Procedencia: `dc3ee85f`. Cierre: `CERRADO`; G37 pasó como KPD y Required y cerró A10 1/1;
+    commit G37: este commit.
 - **A11 · `TSH-01011` / `CSH-TYP-005`**
   - Contrato: count no numérico permanece descriptor Named, no Array de count cero.
   - Estado/evidencia: `KNOWN_FAILURE` lateral; M:5557; C:`SelfHostTypesCaseClassifications.jsonl`.
@@ -635,7 +636,8 @@ Resultado del inventario causal:
   - Productores: `File.ReadAllText` y `SourceBuffer.Load` self-host.
   - Causa: fallo devuelve `""` y Load construye buffer, indistinguible de archivo vacío válido.
   - Consumidores: Lexer, Parser, Bootstrap y Driver self-host.
-  - Puntual: `SelfHostSourceLoadingModule.ns`; existe.
+  - Puntual: `SelfHostSourceLoadingModule.ns`; pasó como KPD y Required, con archivos vacío y no vacío como guards.
+  - Estado: `CERRADO` en A10; `File.GetSize == -1` rechaza la carga antes de publicar y tamaño cero sigue válido.
 - **G38 — array count ignora TryParse: `TSH-01011`.**
   - Productor: `TypeTable.Intern` self-host.
   - Causa: ignora el bool de `Number.TryParseInt64`; count inválido queda cero y publica Array.
@@ -701,7 +703,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A09 cerrada 1/1, 43/52 defectos corregidos y 9 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A10 cerrada 1/1, 44/52 defectos corregidos y 8 KPD abiertos.
 - Inventario causal: 52 demostrados; no quedan casos por reconciliar en el inventario previo.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1, A02 3/3, A03 21/21, A04 5/5, A05 1/1 y A06 1/1 Required `PASS`.
@@ -793,7 +795,10 @@ Puertas previas a editar producto:
 - Evidencia G05 self-host: `TSH-00442` reprodujo el KPD con exit 44 (36.738 ms), pasó corregido como KPD
   (44.239 ms) y Required (17.087 ms); `TSH-00443` preservó las variantes (15.101 ms).
 - Consolidado A09 Required: una invocación `TSH-00442`, 1/1 `PASS`, 12.463 ms de pared.
-- Próxima acción de Parte A: A10 G37 (`TSH-00903`).
+- Evidencia G37: `TSH-00903` reprodujo exit 72 (37.255 ms), pasó corregido como KPD (41.944 ms) y Required
+  (17.235 ms); `TSH-00901` y `TSH-00902` preservaron archivo vacío y contenido (13.259/14.524 ms).
+- Consolidado A10 Required: una invocación `TSH-00903`, 1/1 `PASS`, 12.873 ms de pared.
+- Próxima acción de Parte A: A11 G38-G39 (`TSH-01011`, `TSH-01023`).
 
 ---
 
@@ -1541,10 +1546,11 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A08 G35 | puntual KPD + Required; A08 1/2 | `PASS`; 11 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A08 G36 y tanda | puntual KPD + Required; consolidado A08 2/2 | `PASS`; 10 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A09 G05 self-host y tanda | puntual KPD + Required; consolidado A09 1/1 | `PASS`; 9 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A10 G37 y tanda | puntual KPD + Required; consolidado A10 1/1 | `PASS`; 8 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `43/52`; A09 cerrada 1/1; siguiente acción vinculante: A10 G37 (`TSH-00903`).
+- A: `44/52`; A10 cerrada 1/1; siguiente acción vinculante: A11 G38-G39 (`TSH-01011`, `TSH-01023`).
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.

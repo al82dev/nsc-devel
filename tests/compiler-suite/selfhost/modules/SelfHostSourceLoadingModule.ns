@@ -3,9 +3,8 @@ using NativeSharp.Compiler.Source;
 
 namespace NativeSharp.CompilerSuite.SelfHost.Source
 {
-    // CSH-SRC-008 loads controller-owned files. The missing-file oracle intentionally remains
-    // red: the documented contract rejects publication, while the product currently publishes
-    // an empty SourceBuffer because File.ReadAllText collapses failure to an empty string.
+    // CSH-SRC-008 loads controller-owned files. The missing-file oracle requires rejection at
+    // the SourceBuffer owner boundary, while an existing zero-byte file remains a valid source.
     public class SelfHostSourceLoadingModule
     {
         public static int Run(string caseId, string sandbox)

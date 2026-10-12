@@ -83,12 +83,16 @@ namespace NativeSharp.Compiler.Source
 
         public static owned SourceBuffer Load(FileId file, string sourcePath)
         {
+            // GetSize has an unambiguous failure sentinel: -1 cannot be confused with a
+            // valid empty file. Do not publish a buffer when the source cannot be opened.
+            if (File.GetSize(sourcePath) < 0) { return null; }
             string contents = File.ReadAllText(sourcePath);
             return new SourceBuffer(file, sourcePath, contents);
         }
 
         public static owned SourceBuffer LoadFrontend(FileId file, string sourcePath)
         {
+            if (File.GetSize(sourcePath) < 0) { return null; }
             string contents = File.ReadAllText(sourcePath);
             raii string transformed = ComptimeProcessor.Transform(contents);
             return new SourceBuffer(file, sourcePath, transformed);
