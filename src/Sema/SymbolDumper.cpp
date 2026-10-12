@@ -1,5 +1,6 @@
 #include "nativesharp/Sema/SymbolDumper.h"
 
+#include "nativesharp/Sema/SemanticDumper.h"
 #include "nativesharp/Sema/Symbol.h"
 #include "nativesharp/Sema/Type.h"
 
@@ -28,6 +29,11 @@ void dumpSymbol(const Symbol* symbol, std::ostream& output, int depth)
     if (symbol->kind() == SymbolKind::Field && symbol->hasFieldOffset())
     {
         output << " offset=" << symbol->fieldOffset();
+    }
+    if (symbol->hasConstantValue())
+    {
+        output << " constant=";
+        SemanticDumper::dumpConstant(symbol->constantValue(), output);
     }
     output << '\n';
 

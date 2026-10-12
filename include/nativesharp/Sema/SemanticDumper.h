@@ -11,6 +11,7 @@ class SemanticDumper final
 {
 public:
     void dump(const ast::AstNode* root, const SemanticModel& model, std::ostream& output) const;
+    static void dumpConstant(const ConstantValue& value, std::ostream& output);
 
 private:
     void dumpNode(
@@ -19,6 +20,5 @@ private:
         std::ostream& output,
         int depth,
         const char* edge) const;
-    void dumpConstant(const ConstantValue& value, std::ostream& output) const;
 };
 }

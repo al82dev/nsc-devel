@@ -336,12 +336,12 @@ void testSymbolConditionalFields(TestContext& context)
     constant.setConstantValue(ConstantValue::signedInteger(42));
     std::vector<Symbol*> symbols{&function, &enumerator, &field, &constant};
     const std::string output = dumpSymbols(symbols);
-    context.expect(output.find("Function Run : int const extern-C defined\n") != std::string::npos &&
-            output.find("EnumMember Choice : int = -4\n") != std::string::npos &&
-            output.find("Field Value : int offset=8\n") != std::string::npos,
-        "TS-SEMA-317 flags, enum values and field offsets must appear only when present");
-    context.expect(output.find("constant=42") != std::string::npos,
-        "TS-SEMA-317 PRODUCT DEFECT: SymbolDumper must emit a symbol constant payload when present");
+    context.expect(output ==
+            "Function Run : int const extern-C defined\n"
+            "EnumMember Choice : int = -4\n"
+            "Field Value : int offset=8\n"
+            "GlobalVariable Answer : int constant=42\n",
+        "TS-SEMA-317 conditional symbol fields must appear exactly once and only when present");
 }
 
 void testSymbolMemberOrdering(TestContext& context)
@@ -420,8 +420,7 @@ void registerSemaFallthroughDump299To321Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-313", "CS-SEMA-029", "unit", testSemanticDumpTraversalAndOmission);
     addSemaCase(registry, "TS-SEMA-315", "CS-SEMA-030", "unit", testSymbolDumpEmpty);
     addSemaCase(registry, "TS-SEMA-316", "CS-SEMA-030", "unit", testSymbolDumpKinds);
-    addSemaCase(registry, "TS-SEMA-317", "CS-SEMA-030", "unit", testSymbolConditionalFields,
-        "PR", TestDisposition::KnownProductDefect, {"product-defect", "missing-constant-field"});
+    addSemaCase(registry, "TS-SEMA-317", "CS-SEMA-030", "unit", testSymbolConditionalFields);
     addSemaCase(registry, "TS-SEMA-318", "CS-SEMA-030", "unit", testSymbolMemberOrdering);
     addSemaCase(registry, "TS-SEMA-319", "CS-SEMA-030", "unit", testSymbolGlobalOrdering);
     addSemaCase(registry, "TS-SEMA-320", "CS-SEMA-030", "unit", testSymbolComplexNamesAndTypes);

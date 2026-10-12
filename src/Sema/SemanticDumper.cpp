@@ -120,7 +120,7 @@ void SemanticDumper::dumpNode(
     }
 }
 
-void SemanticDumper::dumpConstant(const ConstantValue& value, std::ostream& output) const
+void SemanticDumper::dumpConstant(const ConstantValue& value, std::ostream& output)
 {
     switch (value.kind())
     {
