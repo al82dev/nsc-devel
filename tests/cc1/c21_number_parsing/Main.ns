@@ -125,6 +125,49 @@ namespace cc1number
             return 1;
         }
 
+        // --- ergonomic facade -----------------------------------------------------------------
+        //
+        // Primitive keywords cannot carry methods, so the capitalized Core facade owns Parse.
+        // Valid direct parsing, non-throwing fallback and TryParse must all converge on Number.
+        static int FacadeParsing()
+        {
+            if (Byte.Parse("255") != 255) { return 0; }
+            if (SByte.Parse("-128") != -128) { return 0; }
+            if (Int16.Parse("-32768") != -32768) { return 0; }
+            if (UInt16.Parse("65535") != 65535) { return 0; }
+            if (Int32.Parse("-2147483648") != -2147483648) { return 0; }
+            if (UInt32.Parse("4294967295") != 4294967295) { return 0; }
+            if (Int64.Parse("-9223372036854775808") != -9223372036854775807L - 1L) { return 0; }
+            if (UInt64.Parse("18446744073709551615") != 18446744073709551615UL) { return 0; }
+            if (!Near((double)Float.Parse("1.5"), (double)3 / (double)2)) { return 0; }
+            if (!Near(Double.Parse("2.5"), (double)5 / (double)2)) { return 0; }
+
+            if (Byte.Parse("bad", (byte)17) != 17) { return 0; }
+            if (SByte.Parse("bad", (sbyte)-17) != -17) { return 0; }
+            if (Int16.Parse("bad", (short)-1700) != -1700) { return 0; }
+            if (UInt16.Parse("bad", (ushort)1700) != 1700) { return 0; }
+            if (Int32.Parse("bad", -170000) != -170000) { return 0; }
+            if (UInt32.Parse("bad", (uint)170000) != 170000) { return 0; }
+            if (Int64.Parse("bad", -170000L) != -170000L) { return 0; }
+            if (UInt64.Parse("bad", 170000UL) != 170000UL) { return 0; }
+            if (!Near((double)Float.Parse("bad", (float)1.25), (double)5 / (double)4)) { return 0; }
+            if (!Near(Double.Parse("bad", (double)1.25), (double)5 / (double)4)) { return 0; }
+
+            string missing = null;
+            if (Int32.Parse(missing, 73) != 73) { return 0; }
+            if (!Near(Double.Parse(missing, (double)7.5), (double)15 / (double)2)) { return 0; }
+
+            int parsedInt;
+            double parsedDouble;
+            if (!Int32.TryParse("42", out parsedInt) || parsedInt != 42) { return 0; }
+            if (Int32.TryParse(missing, out parsedInt)) { return 0; }
+            if (!Double.TryParse("3.25", out parsedDouble) ||
+                !Near(parsedDouble, (double)13 / (double)4)) { return 0; }
+            if (Double.TryParse(missing, out parsedDouble)) { return 0; }
+
+            return 1;
+        }
+
         // --- bases -----------------------------------------------------------------------------
         static int RadixParsing()
         {
@@ -337,11 +380,12 @@ namespace cc1number
             if (DecimalRoundTrip() != 1) { return 1; }
             if (LimitsAreExact() != 1) { return 2; }
             if (NarrowIntegerFamilies() != 1) { return 3; }
-            if (RadixParsing() != 1) { return 4; }
-            if (IntegerLiterals() != 1) { return 5; }
-            if (PositionAdvances() != 1) { return 6; }
-            if (FloatingPoint() != 1) { return 7; }
-            if (RejectsGarbage() != 1) { return 8; }
+            if (FacadeParsing() != 1) { return 4; }
+            if (RadixParsing() != 1) { return 5; }
+            if (IntegerLiterals() != 1) { return 6; }
+            if (PositionAdvances() != 1) { return 7; }
+            if (FloatingPoint() != 1) { return 8; }
+            if (RejectsGarbage() != 1) { return 9; }
 
             return 42;
         }

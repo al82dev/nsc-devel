@@ -1,0 +1,216 @@
+namespace NativeSharp.Core
+{
+    // Primitive spellings are language keywords and cannot own static members. These facade
+    // types provide the direct Type.Parse surface while Number remains the single parsing core.
+    // Parse(text) fails explicitly through the language panic boundary; the fallback overload
+    // and TryParse never panic for malformed or null input.
+    public class Byte
+    {
+        public static byte Parse(string text)
+        {
+            byte value;
+            if (!Number.TryParseByte(text, out value)) { panic("Byte.Parse invalid input"); }
+            return value;
+        }
+
+        public static byte Parse(string text, byte fallback)
+        {
+            byte value;
+            return Number.TryParseByte(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out byte value)
+        {
+            return Number.TryParseByte(text, out value);
+        }
+    }
+
+    public class SByte
+    {
+        public static sbyte Parse(string text)
+        {
+            sbyte value;
+            if (!Number.TryParseSByte(text, out value)) { panic("SByte.Parse invalid input"); }
+            return value;
+        }
+
+        public static sbyte Parse(string text, sbyte fallback)
+        {
+            sbyte value;
+            return Number.TryParseSByte(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out sbyte value)
+        {
+            return Number.TryParseSByte(text, out value);
+        }
+    }
+
+    public class Int16
+    {
+        public static short Parse(string text)
+        {
+            short value;
+            if (!Number.TryParseInt16(text, out value)) { panic("Int16.Parse invalid input"); }
+            return value;
+        }
+
+        public static short Parse(string text, short fallback)
+        {
+            short value;
+            return Number.TryParseInt16(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out short value)
+        {
+            return Number.TryParseInt16(text, out value);
+        }
+    }
+
+    public class UInt16
+    {
+        public static ushort Parse(string text)
+        {
+            ushort value;
+            if (!Number.TryParseUInt16(text, out value)) { panic("UInt16.Parse invalid input"); }
+            return value;
+        }
+
+        public static ushort Parse(string text, ushort fallback)
+        {
+            ushort value;
+            return Number.TryParseUInt16(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out ushort value)
+        {
+            return Number.TryParseUInt16(text, out value);
+        }
+    }
+
+    public class Int32
+    {
+        public static int Parse(string text)
+        {
+            int value;
+            if (!Number.TryParseInt32(text, out value)) { panic("Int32.Parse invalid input"); }
+            return value;
+        }
+
+        public static int Parse(string text, int fallback)
+        {
+            int value;
+            return Number.TryParseInt32(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out int value)
+        {
+            return Number.TryParseInt32(text, out value);
+        }
+    }
+
+    public class UInt32
+    {
+        public static uint Parse(string text)
+        {
+            uint value;
+            if (!Number.TryParseUInt32(text, out value)) { panic("UInt32.Parse invalid input"); }
+            return value;
+        }
+
+        public static uint Parse(string text, uint fallback)
+        {
+            uint value;
+            return Number.TryParseUInt32(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out uint value)
+        {
+            return Number.TryParseUInt32(text, out value);
+        }
+    }
+
+    public class Int64
+    {
+        public static long Parse(string text)
+        {
+            long value;
+            if (!Number.TryParseInt64(text, out value)) { panic("Int64.Parse invalid input"); }
+            return value;
+        }
+
+        public static long Parse(string text, long fallback)
+        {
+            long value;
+            return Number.TryParseInt64(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out long value)
+        {
+            return Number.TryParseInt64(text, out value);
+        }
+    }
+
+    public class UInt64
+    {
+        public static ulong Parse(string text)
+        {
+            ulong value;
+            if (!Number.TryParseUInt64(text, out value)) { panic("UInt64.Parse invalid input"); }
+            return value;
+        }
+
+        public static ulong Parse(string text, ulong fallback)
+        {
+            ulong value;
+            return Number.TryParseUInt64(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out ulong value)
+        {
+            return Number.TryParseUInt64(text, out value);
+        }
+    }
+
+    public class Float
+    {
+        public static float Parse(string text)
+        {
+            float value;
+            if (!Number.TryParseFloat(text, out value)) { panic("Float.Parse invalid input"); }
+            return value;
+        }
+
+        public static float Parse(string text, float fallback)
+        {
+            float value;
+            return Number.TryParseFloat(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out float value)
+        {
+            return Number.TryParseFloat(text, out value);
+        }
+    }
+
+    public class Double
+    {
+        public static double Parse(string text)
+        {
+            double value;
+            if (!Number.TryParseDouble(text, out value)) { panic("Double.Parse invalid input"); }
+            return value;
+        }
+
+        public static double Parse(string text, double fallback)
+        {
+            double value;
+            return Number.TryParseDouble(text, out value) ? value : fallback;
+        }
+
+        public static bool TryParse(string text, out double value)
+        {
+            return Number.TryParseDouble(text, out value);
+        }
+    }
+}

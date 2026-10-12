@@ -95,6 +95,10 @@ namespace NativeSharp.Core
         public static bool TryParseUInt64(string text, ref int index, int radix, out ulong value)
         {
             value = 0;
+            if (text == null)
+            {
+                return false;
+            }
             if (radix < 2 || radix > 16)
             {
                 return false;
@@ -150,6 +154,10 @@ namespace NativeSharp.Core
         public static bool TryParseInt64(string text, ref int index, int radix, out long value)
         {
             value = 0;
+            if (text == null)
+            {
+                return false;
+            }
             if (index < 0 || index >= text.Length)
             {
                 return false;
@@ -341,6 +349,10 @@ namespace NativeSharp.Core
         public static bool TryParseDouble(string text, ref int index, out double value)
         {
             value = (double)0;
+            if (text == null)
+            {
+                return false;
+            }
             if (index < 0 || index >= text.Length)
             {
                 return false;
