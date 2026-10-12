@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 3 | 2.04 % | `ACTIVA`; B00 reconciliada, T00-F01–F03 cerradas, T00-F04 activa |
+| B | 3.0.4 | 18 | 147 ítems | 4 | 2.72 % | `ACTIVA`; B00 reconciliada, T00-F01–F04 cerradas, T00-F05 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -915,7 +915,7 @@ T00
 
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
-| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 3 | 37.5 % |
+| T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 4 | 50 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 0 | 0 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
@@ -942,7 +942,7 @@ T00
 - [x] `NS304-T00-F01` — Inventariar cada feature declarada `TERMINADA` y localizar su vertical real.
 - [x] `NS304-T00-F02` — Clasificar evidencia por parser, semántica, MIR, LLVM, NSMETA, runtime y ejecución.
 - [x] `NS304-T00-F03` — Construir matriz C# 8-14: equivalente, alternativa, divergencia o gap obligatorio.
-- [ ] `NS304-T00-F04` — Construir matriz Beef: memoria, extensions, generics, comptime, interop y patterns.
+- [x] `NS304-T00-F04` — Construir matriz Beef: memoria, extensions, generics, comptime, interop y patterns.
 - [ ] `NS304-T00-F05` — Añadir disposición `PlannedFor304` sin presentar features pendientes como productivas.
 - [ ] `NS304-T00-F06` — Congelar versiones previstas de AST, HIR, MIR, NSMETA, ABI runtime y debug metadata.
 - [ ] `NS304-T00-F07` — Publicar manifest de dependencias compiler/runtime/STL por feature.
@@ -1267,6 +1267,23 @@ Estado: `CERRADO`.
 - Prueba puntual: parseo de 88 filas, distribución exacta por versión,
   vocabulario cerrado de cuatro disposiciones y vínculo NS304 en cada gap.
 - Siguiente ítem: `NS304-T00-F04`.
+
+### NS304-T00-F04 — matriz Beef por capacidad
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T00-F04-beef-capability-matrix.md`.
+- Cobertura: 69/69 capacidades materiales de memoria, extensions, generics,
+  comptime, interop y patterns, distribuidas 14/11/10/13/11/10.
+- Resultado: 19 `EQUIVALENTE`, 8 `ALTERNATIVA`, 10 `DIVERGENCIA` y
+  32 `GAP_OBLIGATORIO`, todos estos últimos ligados a dueño NS304.
+- Frontera: la paridad se mide por capacidad observable; no se adopta sintaxis,
+  heap/boxing implícito, mutación externa de layout/vtable ni mixins textuales.
+- Gate: omitidas=0, duplicadas=0, disposiciones_múltiples=0,
+  gaps_sin_dueño=0.
+- Prueba puntual: parseo de 69 filas, distribución exacta por área,
+  vocabulario cerrado de cuatro disposiciones y vínculo NS304 en cada gap.
+- Siguiente ítem: `NS304-T00-F05`.
 
 ---
 
@@ -1768,14 +1785,16 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00-F01 | Inventario de features 3.0 declaradas terminadas | 55 filas históricas contra expedientes, commits y rutas actuales | 55/55 trazadas; 54 ancladas; 1 implementación retirada registrada; 1/147 cerrado |
 | 2026-10-12 | B01/T00-F02 | Clasificación de evidencia por capas | 55 verticales contra parser/Sema/MIR/LLVM/NSMETA/runtime/ejecución | 55/55 clasificadas; historia separada de evidencia actual; 2/147 cerrados |
 | 2026-10-12 | B01/T00-F03 | Matriz C# 8.0–14 | 88 capacidades estables oficiales con disposición única | 88/88 clasificadas; 47 gaps con dueño; 3/147 cerrados |
+| 2026-10-12 | B01/T00-F04 | Matriz Beef por capacidad | 69 capacidades en seis áreas oficiales con disposición única | 69/69 clasificadas; 32 gaps con dueño; 4/147 cerrados |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `3/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
-  evidencia histórica, y T00-F03 clasificó 88/88 capacidades estables C# 8.0–14;
-  T00-F04 queda activa en `development`. La contradicción de `v.3.0.3`
+- B: `4/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+  evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
+  y T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas;
+  T00-F05 queda activa en `development`. La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
