@@ -849,12 +849,19 @@ bool ProjectOpaqueResultModel::build(
                 {
                     if (!forwardedAssociatedItems.insert(requirement->text()).second) continue;
                     const AstNode* definition = associatedDefinition(requirement->text());
-                    if (definition != nullptr)
-                        wrapper->addChild(cloneNode(arena, definition));
+                    const bool hasDefault =
+                        (requirement->kind() == AstNodeKind::AssociatedTypeDeclaration &&
+                         requirement->typeSyntax() != nullptr) ||
+                        (requirement->kind() == AstNodeKind::AssociatedConstantDeclaration &&
+                         requirement->first() != nullptr);
+                    if (definition != nullptr || hasDefault)
+                        wrapper->addChild(cloneNode(
+                            arena,
+                            definition != nullptr ? definition : requirement,
+                            substitutions));
                     continue;
                 }
-                if (requirement->kind() != AstNodeKind::MethodDeclaration ||
-                    requirement->first() != nullptr)
+                if (requirement->kind() != AstNodeKind::MethodDeclaration)
                     continue;
                 std::string signature = requirement->text() + "(";
                 for (const AstNode* parameter : requirement->children())
@@ -863,8 +870,10 @@ bool ProjectOpaqueResultModel::build(
                         signature += typeSpelling(parameter->typeSyntax()) + ";";
                 signature += ")";
                 if (!forwardedMethods.insert(signature).second) continue;
-                if (AstNode* forwarder = makeForwarder(
-                        arena, requirement, concreteType, substitutions))
+                if (requirement->first() != nullptr)
+                    wrapper->addChild(cloneNode(arena, requirement, substitutions));
+                else if (AstNode* forwarder = makeForwarder(
+                             arena, requirement, concreteType, substitutions))
                     wrapper->addChild(forwarder);
             }
         };

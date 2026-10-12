@@ -244,6 +244,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-302 | CL-LANG-012 | cuerpos default en metodos, propiedades e indexadores de trait e interface | dispatch dinamico/ordinario produce 42 y abstract explicito con cuerpo se rechaza | PR |
 | TL-LANG-303 | CL-LANG-012 | implementacion explicita, miembro nominal y defaults base/derivado en trait e interface | prioridad exacta produce 42 en cada ruta y el plan de tablas se obtiene sin error | PR |
 | TL-LANG-304 | CL-LANG-012 | diamante ambiguo/resuelto, duplicado impl y productor/consumidor separados | rechazos causales exactos; override e impl local coherente producen 42 | PR |
+| TL-LANG-305 | CL-LANG-012 | trait genérico con associated defaults, constraint, `some` y `dyn`; negativos object-safety | proyección estática, `dyn` y `some` producen 42; rechazos causales exactos | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

@@ -917,7 +917,7 @@ T00
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
-| T02 | Cuerpos default de traits e interfaces | 6 | 3 | 50 % |
+| T02 | Cuerpos default de traits e interfaces | 6 | 4 | 66.67 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
 | T05 | Async/await productivo | 10 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **19** | **12.93 %** |
+| **Total** |  | **147** | **20** | **13.61 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -964,7 +964,7 @@ T00
 - [x] `NS304-T02-F01` — Aceptar cuerpos default en métodos, propiedades e indexadores.
 - [x] `NS304-T02-F02` — Fijar prioridad: implementación explícita, miembro nominal, default más específico.
 - [x] `NS304-T02-F03` — Resolver diamantes, overrides, traits sellados, coherence y conflictos intermodulares.
-- [ ] `NS304-T02-F04` — Integrar genéricos, associated types, constraints, `some Trait` y `dyn Trait`.
+- [x] `NS304-T02-F04` — Integrar genéricos, associated types, constraints, `some Trait` y `dyn Trait`.
 - [ ] `NS304-T02-F05` — Transportar cuerpos y witnesses versionados por NSMETA sin requerir fuentes.
 - [ ] `NS304-T02-F06` — Cerrar vtables, ABI DLL, evolución binaria, MIR, LLVM y debug de thunks.
 
@@ -1564,6 +1564,28 @@ Estado: `CERRADO`.
 - Gate: T02 queda 3/6 y Parte B 19/147, sin batería completa.
 - Siguiente ítem: `NS304-T02-F04`.
 
+### NS304-T02-F04 — genéricos, asociados, `some` y `dyn`
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T02-F04-generic-associated-opaque-dyn.md`.
+- Contrato: un mismo default conserva identidad y resultado bajo constraint
+  genérico, associated defaults, `some Trait` y `dyn Trait`; object safety sigue
+  rechazando métodos genéricos e identidades asociadas sin default.
+- Implementación: el wrapper opaco clona cuerpos default y associated defaults
+  aplicando las sustituciones ya establecidas; los requisitos abstractos siguen
+  usando el forwarder existente.
+- Prueba puntual: `TL-LANG-305` `PASS`; repetición dirigida en 452122
+  microsegundos.
+- Consolidado parcial T02: `TL-LANG-302`..`TL-LANG-305`, 4/4 `PASS`.
+- Guards activos: `TL-LANG-271`..`TL-LANG-278`, 8/8 `PASS`; guards verticales
+  reconstruidos: associated items 16/16, opaque results 14/14 y trait objects
+  12/12 `PASS`.
+- Builds focales: compilador 6/6, runner 3/3 y guards 12/12 pasos con
+  LLVM/Clang 23, sin regenerar CMake.
+- Gate: T02 queda 4/6 y Parte B 20/147, sin batería completa.
+- Siguiente ítem: `NS304-T02-F05`.
+
 ---
 
 # Parte C — NativeSharp 3.0.5: reingeniería del proceso de compilación
@@ -2081,12 +2103,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B03/T02-F01 | Cuerpos default básicos | métodos y accessors de propiedad/indexador en trait e interface; `TL-LANG-302` + 22 guards | `PASS`; T02 1/6; 17/147 cerrados; T02-F02 activa |
 | 2026-10-12 | B03/T02-F02 | Precedencia de defaults | implementación explícita, miembro nominal y default más específico en trait/interface; `TL-LANG-303` + 9 guards | `PASS`; T02 2/6; 18/147 cerrados; T02-F03 activa |
 | 2026-10-12 | B03/T02-F03 | Diamantes y coherence | conflicto/redeclaración y ownership intermodular sellado; `TL-LANG-304` + consolidado T02/guards | `PASS`; T02 3/6; 19/147 cerrados; T02-F04 activa |
+| 2026-10-12 | B03/T02-F04 | Integración genérica de defaults | associated defaults, constraints, `some` y `dyn`; `TL-LANG-305` + guards verticales | `PASS`; T02 4/6; 20/147 cerrados; T02-F05 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `19/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `20/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2106,8 +2129,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   métodos, propiedades e indexadores de traits e interfaces mediante
   `TL-LANG-302`; T02-F02 fijó la precedencia explícita, nominal y default más
   específico mediante `TL-LANG-303`; T02-F03 unificó diamantes y coherence
-  sellada para trait/interface mediante `TL-LANG-304`, y T02 queda 3/6 con
-  T02-F04 activa.
+  sellada para trait/interface mediante `TL-LANG-304`; T02-F04 integró defaults
+  con genéricos, associated items, constraints, `some` y `dyn` mediante
+  `TL-LANG-305`, y T02 queda 4/6 con T02-F05 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.

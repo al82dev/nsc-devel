@@ -1370,6 +1370,99 @@ class Program { public static int Main() { return 0; } }
                     orphan.error + orphan.output);
         }});
 }
+
+void registerGenericDefaultIntegrationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-305", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "default-body", "generic", "associated-item", "some", "dyn"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T02GenericDefaults", "Exe", R"ns(
+trait IValue<TValue>
+{
+    type Item = TValue;
+    const int Expected = 42;
+    int Score() { return 42; }
+}
+class Number { }
+impl IValue<int> for Number { }
+class Factory
+{
+    public static some IValue<int> Make() { return new Number(); }
+}
+class Program
+{
+    private static T.Item Echo<T>(T.Item value) where T : IValue<int> { return value; }
+
+    public static int Main()
+    {
+        Number number = new Number();
+        dyn IValue<int> erased = number;
+        var opaque = Factory.Make();
+        if (Echo<Number>(42) != 42) return 11;
+        if (erased.Score() != 42) return 12;
+        return opaque.Score();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T02GenericDefaults.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-305 generic defaults, associated items, constraints, some and dyn "
+                "must compile together: " + emitted.error + emitted.output);
+            if (emitted.started && emitted.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    executable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                    "TL-LANG-305 static projection, dyn and some must observe the same default: " +
+                        result.error + result.output);
+            }
+
+            const std::filesystem::path genericMethod = products.writeProject(
+                "T02GenericMethodDyn", "Exe", R"ns(
+trait IMap { int Map<T>(T value) { return 42; } }
+class Program
+{
+    public static int Main()
+    {
+        dyn IMap value = null;
+        return value == null ? 0 : 1;
+    }
+}
+)ns");
+            const external_program_support::Result genericRejected = runT01Compiler(
+                {L"--check-project-interfaces", genericMethod.wstring()}, products.directory());
+            context.expect(genericRejected.started && genericRejected.exitCode != 0 &&
+                    genericRejected.output.find("not object-safe") != std::string::npos,
+                "TL-LANG-305 dyn must reject a generic default method: " +
+                    genericRejected.error + genericRejected.output);
+
+            const std::filesystem::path unboundAssociated = products.writeProject(
+                "T02UnboundAssociatedDyn", "Exe", R"ns(
+trait IItems { type Item; int Count() { return 42; } }
+class Program
+{
+    public static int Main()
+    {
+        dyn IItems value = null;
+        return value == null ? 0 : 1;
+    }
+}
+)ns");
+            const external_program_support::Result associatedRejected = runT01Compiler(
+                {L"--check-project-interfaces", unboundAssociated.wstring()},
+                products.directory());
+            context.expect(associatedRejected.started && associatedRejected.exitCode != 0 &&
+                    associatedRejected.output.find("fully defaulted associated items") !=
+                        std::string::npos,
+                "TL-LANG-305 dyn must reject an unbound associated identity: " +
+                    associatedRejected.error + associatedRejected.output);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1392,5 +1485,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultInterfaceBodyCase(registry);
     registerDefaultImplementationPrecedenceCase(registry);
     registerDefaultDiamondAndCoherenceCase(registry);
+    registerGenericDefaultIntegrationCase(registry);
 }
 }
