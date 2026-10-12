@@ -4412,7 +4412,12 @@ void ProjectMethodBodyModel::analyzeStatement(
     switch (statement->kind())
     {
         case ast::AstNodeKind::BlockStatement:
-            analyzeBlock(statement, methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+            analyzeBlock(
+                statement,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                statement->auxiliaryText() != "declaration-list",
+                diagnostics);
             break;
         case ast::AstNodeKind::VariableDeclarationStatement:
             analyzeVariable(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -6660,11 +6665,19 @@ void ProjectMethodBodyModel::analyzeFor(
         }
         else if (statement->first()->kind() == ast::AstNodeKind::BlockStatement)
         {
-            for (const ast::AstNode* expressionStatement : statement->first()->children())
+            if (statement->first()->auxiliaryText() == "declaration-list")
             {
-                if (expressionStatement != nullptr && expressionStatement->first() != nullptr)
-                    analyzeExpression(
-                        expressionStatement->first(), methodMemberOrdinal, forScope, diagnostics);
+                analyzeBlock(
+                    statement->first(), methodMemberOrdinal, forScope, false, diagnostics);
+            }
+            else
+            {
+                for (const ast::AstNode* expressionStatement : statement->first()->children())
+                {
+                    if (expressionStatement != nullptr && expressionStatement->first() != nullptr)
+                        analyzeExpression(
+                            expressionStatement->first(), methodMemberOrdinal, forScope, diagnostics);
+                }
             }
         }
         else

@@ -253,10 +253,17 @@ HirNode* HirBuilder::lowerStatement(ast::AstNode* node)
             HirNode* result = arena_.make(HirNodeKind::For, node->range());
             if (node->first() != nullptr)
             {
-                result->setFirst(
-                    node->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement
-                        ? lowerLocalVariable(node->first())
-                        : lowerExpression(node->first(), false));
+                if (node->first()->kind() == ast::AstNodeKind::BlockStatement)
+                {
+                    result->setFirst(lowerBlock(node->first()));
+                }
+                else
+                {
+                    result->setFirst(
+                        node->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement
+                            ? lowerLocalVariable(node->first())
+                            : lowerExpression(node->first(), false));
+                }
             }
             if (node->second() != nullptr)
             {

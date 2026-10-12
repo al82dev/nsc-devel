@@ -298,10 +298,11 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 verifyNode(node->second(), functionReturnType, loopDepth + 1);
 
         case HirNodeKind::For:
-            if (node->first() != nullptr && node->first()->kind() != HirNodeKind::LocalVariableDeclaration &&
+            if (node->first() != nullptr && node->first()->kind() != HirNodeKind::Block &&
+                node->first()->kind() != HirNodeKind::LocalVariableDeclaration &&
                 !isExpressionKind(node->first()->kind()))
             {
-                return fail(node, "for initializer must be a local declaration or HIR expression");
+                return fail(node, "for initializer must be a local declaration, declaration block, or HIR expression");
             }
             if (node->second() != nullptr &&
                 (!isExpressionKind(node->second()->kind()) || node->second()->type() == nullptr ||

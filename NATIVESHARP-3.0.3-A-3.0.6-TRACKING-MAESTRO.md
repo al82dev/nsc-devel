@@ -112,7 +112,7 @@ Bitácora mínima por ciclo:
 
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
-| A | 3.0.3 | 14 | 52 defectos | 15 | 28.85 % | `EN_PROGRESO`; A03 4/21 |
+| A | 3.0.3 | 14 | 52 defectos | 16 | 30.77 % | `EN_PROGRESO`; A03 5/21 |
 | B | 3.0.4 | 18 | 147 ítems | 0 | 0 % | `PENDIENTE` |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
@@ -129,7 +129,7 @@ El universo se calcula como unión por `case_id` de:
 2. 41 filas con tag `known-product-defect` o `known-failure`;
 3. cinco outcomes complementarios en `nsc-builder/metadata/expected-outcomes.json`.
 
-La unión inicial da 52 IDs únicos. Tras cerrar G11, quedan 37 KPD abiertos y quince casos Required. `KPD` significa
+La unión inicial da 52 IDs únicos. Tras cerrar G12, quedan 36 KPD abiertos y dieciséis casos Required. `KPD` significa
 que la prueba y su oráculo existen y el producto no los satisface; no
 significa que la causa de implementación esté completamente diagnosticada. Donde sólo existe contrato/oráculo, la
 causa se formula como “contrato no satisfecho” y no se inventa una causa interna.
@@ -141,7 +141,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A00 | Host.Language | 7 | 7 | `CERRADA` |
 | A01 | Host.Lexer | 1 | 1 | `CERRADA` |
 | A02 | Host.AST | 3 | 3 | `CERRADA` |
-| A03 | Host.Parser | 21 | 4 | `EN_PROGRESO` |
+| A03 | Host.Parser | 21 | 5 | `EN_PROGRESO` |
 | A04 | Host.Sema | 5 | 0 | `PENDIENTE` |
 | A05 | Host.CFG | 1 | 0 | `PENDIENTE` |
 | A06 | Host.Dominance | 1 | 0 | `PENDIENTE` |
@@ -152,7 +152,7 @@ causa se formula como “contrato no satisfecho” y no se inventa una causa int
 | A11 | SelfHost.Types | 2 | 0 | `PENDIENTE` |
 | A12 | BuildSystem | 2 | 0 | `PENDIENTE` |
 | A13 | Packaging | 4 | 0 | `PENDIENTE` |
-| **Total** |  | **52** | **15** | **28.85 %** |
+| **Total** |  | **52** | **16** | **30.77 %** |
 
 ## A.3 Inventario exacto
 
@@ -219,8 +219,8 @@ Cada ficha conserva tanda, identidad, contrato, estado inicial, procedencia de m
   - Cierre: `CERRADO`; puntual G11 como KPD y Required `PASS`; commit de implementación G11: este commit.
 - **A03 · `TP-PAR-306` / `CP-PAR-028`**
   - Contrato: declaración con múltiples declarators conserva nodos y orden fuente.
-  - Estado/evidencia: `KNOWN_FAILURE`; M:1396; T:`ParserStatementContinuationModule.cpp`; `5dee730d`.
-  - Cierre: `PENDIENTE`.
+  - Estado inicial: `KNOWN_FAILURE`; M:1396; T:`ParserStatementContinuationModule.cpp`; `5dee730d`.
+  - Cierre: `CERRADO`; puntual G12 fortalecido y E2E Parser-Sema-HIR como KPD y Required `PASS`; commit de implementación G12: este commit.
 - **A03 · `TP-PAR-309` / `CP-PAR-028`**
   - Contrato: deconstruction conserva binding `ref`, `move` y value exactos.
   - Estado/evidencia: `KNOWN_FAILURE`; M:1399; T:`ParserStatementContinuationModule.cpp`; `5dee730d`.
@@ -476,6 +476,7 @@ Resultado del inventario causal:
   - Causa: construye un nodo y espera `;`; no existe bucle de declarators separados por coma.
   - Consumidores: bloques, MethodBodyModel y lowering de locales.
   - Puntual: existe, pero no inspecciona el segundo nodo; debe reforzarse antes de cerrar.
+  - Estado: `CERRADO` en A03; `declaration-list` preserva ambos nodos sin introducir scope y ambos alcanzan Sema/HIR.
 - **G13 — deconstruction pierde modos: `TP-PAR-309`.**
   - Productor: `Parser::parseDeconstructionPattern`.
   - Causa: sólo acepta identificador o paréntesis; `ref` y `move` se consumen como error sin metadata.
@@ -666,7 +667,7 @@ Puertas previas a editar producto:
 
 ### A.5.5 Estado de la fase previa
 
-- Estado de Parte A: `EN_PROGRESO`; A03 4/21, 15/52 defectos corregidos y 37 KPD abiertos.
+- Estado de Parte A: `EN_PROGRESO`; A03 5/21, 16/52 defectos corregidos y 36 KPD abiertos.
 - Inventario causal: 51 demostrados, uno por reconciliar.
 - Productores/consumidores: 52 trazados en 41 familias.
 - Pruebas puntuales: A00 7/7, A01 1/1 y A02 3/3 `PASS`; quedan dos oráculos por fortalecer y `TP-PAR-524` por reconciliar.
@@ -687,7 +688,9 @@ Puertas previas a editar producto:
   `TP-PAR-069` y `TP-PAR-476` puntuales como KPD y Required `PASS`.
 - Evidencia G11: `ParserProductTestShim.cpp` y el registro GenericLookahead reconstruidos con LLVM 23.1.0;
   `TP-PAR-103` puntual como KPD y Required `PASS`; subbloque A03 G09-G11 cerrado 4/4.
-- Próxima acción A03: G12; fortalecer su oráculo antes de modificar producto.
+- Evidencia G12: el oráculo fortalecido falló contra el producto previo y después verificó topología, initializers,
+  orden y dos `LocalVariableDeclaration` a través de Parser-Sema-HIR; seis objetos reconstruidos con LLVM 23.1.0.
+- Próxima acción A03: G13.
 
 ---
 
@@ -1409,13 +1412,14 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | 1 | Cierre A03 G09 | puntual KPD + Required | 1/1 `PASS`; 40 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G10 | dos puntuales KPD + Required | 2/2 `PASS`; 38 KPD abiertos |
 | 2026-10-12 | 1 | Cierre A03 G11 y subbloque G09-G11 | puntual KPD + Required; subbloque 4/4 | `PASS`; 37 KPD abiertos |
+| 2026-10-12 | 1 | Cierre A03 G12 vertical | oráculo fortalecido + Parser-Sema-HIR KPD/Required | `PASS`; 36 KPD abiertos |
 
 ## 6. Estado al corte
 
-- A: `15/52`; A03 4/21; siguiente acción vinculante: G12 y fortalecimiento de oráculo.
+- A: `16/52`; A03 5/21; siguiente acción vinculante: G13.
 - B: `0/147`; bloqueada por cierre certificado de A.
 - C: `0/149`; bloqueada por cierre certificado de B.
 - D: `0/10`; bloqueada por cierre certificado de C.
 - Ramas `v.3.0.3` a `v.3.0.6`: no creadas; sólo se crean desde commits certificados futuros.
-- Validación ejecutada: A00, A01, A02 y G09-G11 puntuales; ninguna batería completa.
+- Validación ejecutada: A00, A01, A02 y G09-G12 puntuales; ninguna batería completa.
 

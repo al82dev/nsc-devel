@@ -9487,6 +9487,64 @@ std::string Parser::parseInlineAssemblyConstraint(
     return constraint;
 }
 
+ast::AstNode* Parser::parseVariableDeclarator(
+    ast::TypeSyntax* type,
+    bool cloneType,
+    bool isConst,
+    bool isRaii,
+    bool isVolatile,
+    bool isReferenceLocal,
+    bool isPinned)
+{
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier, "variable name");
+        return nullptr;
+    }
+
+    const std::size_t beginIndex = index_;
+    const lexer::Token& name = consume();
+    ast::AstNode* variable = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::VariableDeclarationStatement,
+        name.range());
+    variable->setTypeSyntax(cloneType ? cloneParsedType(arena_, type) : type);
+    variable->setText(std::string(name.lexeme()));
+    variable->setFlag(isConst);
+    if (isRaii) variable->addModifier(TokenKind::KwRaii);
+    if (isVolatile) variable->addModifier(TokenKind::KwVolatile);
+    if (isReferenceLocal)
+        variable->setAuxiliaryText(isPinned ? "local:pinned-ref" : "local:ref");
+    else if (isPinned) variable->setAuxiliaryText("local:pinned");
+
+    if (consumeIf(TokenKind::Equal))
+    {
+        if (isReferenceLocal)
+        {
+            expectContextualKeyword("ref", "'ref' before the reference-local initializer");
+        }
+        variable->setFirst(
+            at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
+    }
+    else if (isReferenceLocal)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "reference-local declaration requires '= ref <storage>'");
+    }
+    else if (isConst)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "const declaration requires an initializer");
+    }
+    variable->setRange(tokenRangeFrom(beginIndex));
+    return variable;
+}
+
 ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
 {
     const std::size_t beginIndex = index_;
@@ -9494,10 +9552,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
         peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref";
     const bool isPinned = isPinnedReferenceSyntax ||
         (atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii);
-    if (isPinned)
-    {
-        consume();
-    }
+    if (isPinned) consume();
     const bool isReferenceLocal = atContextualKeyword("ref") &&
         (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
          peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii);
@@ -9542,62 +9597,41 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
         type = parseType();
     }
 
-    if (!at(TokenKind::Identifier))
+    ast::AstNode* variable = parseVariableDeclarator(
+        type, false, isConst, isRaii, isVolatile, isReferenceLocal, isPinned);
+    if (variable == nullptr)
     {
-        expect(TokenKind::Identifier, "variable name");
         synchronizeStatement();
         return nullptr;
     }
-
-    const lexer::Token& name = consume();
-    ast::AstNode* variable = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::VariableDeclarationStatement,
-        name.range());
-    variable->setTypeSyntax(type);
-    variable->setText(std::string(name.lexeme()));
-    variable->setFlag(isConst);
-    if (isRaii) variable->addModifier(TokenKind::KwRaii);
-    if (isVolatile) variable->addModifier(TokenKind::KwVolatile);
-    if (isReferenceLocal)
-        variable->setAuxiliaryText(isPinned ? "local:pinned-ref" : "local:ref");
-    else if (isPinned) variable->setAuxiliaryText("local:pinned");
-
-    if (consumeIf(TokenKind::Equal))
+    ast::AstNode* declarationList = nullptr;
+    while (consumeIf(TokenKind::Comma))
     {
-        if (isReferenceLocal)
+        ast::AstNode* declarator = parseVariableDeclarator(
+            type, true, isConst, isRaii, isVolatile, isReferenceLocal, isPinned);
+        if (declarator == nullptr)
         {
-            // Reference creation stays explicit at both ends. Semantic analysis validates that
-            // the following expression is exact-type, mutable, addressable storage.
-            expectContextualKeyword("ref", "'ref' before the reference-local initializer");
+            synchronizeStatement();
+            break;
         }
-        // C7 "aggregate initializer": `V v = {1, 2};`. A brace can only start an initializer
-        // here, so there is nothing to disambiguate against a block statement.
-        variable->setFirst(
-            at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
-    }
-    else if (isReferenceLocal)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "reference-local declaration requires '= ref <storage>'");
-    }
-    else if (isConst)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "const declaration requires an initializer");
+        if (declarationList == nullptr)
+        {
+            declarationList = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement,
+                variable->range());
+            declarationList->setAuxiliaryText("declaration-list");
+            declarationList->addChild(variable);
+        }
+        declarationList->addChild(declarator);
     }
 
     if (expectSemicolon)
     {
         expect(TokenKind::Semicolon, "';'");
     }
-    variable->setRange(tokenRangeFrom(beginIndex));
-    return variable;
+    ast::AstNode* const result = declarationList == nullptr ? variable : declarationList;
+    result->setRange(tokenRangeFrom(beginIndex));
+    return result;
 }
 
 // C7 "aggregate initializer". The C form, deliberately: `{}`, `{1, 2}`, a trailing comma, and

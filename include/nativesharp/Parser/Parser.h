@@ -301,6 +301,14 @@ private:
     std::string parseInlineAssemblyConstraint(bool output, bool& explicitConstraint);
     void validateInlineAssemblyControlFlow(ast::AstNode* statement);
     void validateInlineAssemblyPlaceholders(ast::AstNode* statement);
+    ast::AstNode* parseVariableDeclarator(
+        ast::TypeSyntax* type,
+        bool cloneType,
+        bool isConst,
+        bool isRaii,
+        bool isVolatile,
+        bool isReferenceLocal,
+        bool isPinned);
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();

@@ -1,4 +1,5 @@
 #include "ParserFoundationTestSupport.h"
+#include "HIRContractSupport.h"
 
 #include <string>
 #include <utility>
@@ -88,11 +89,37 @@ void testInferredConstAndRaiiFlags(TestContext& context)
 void testMultipleDeclarators(TestContext& context)
 {
     ParserFixture fixture("int first = 1, second = 2;");
-    AstNode* const first = parseStatement(fixture);
-    context.expect(first != nullptr && first->kind() == AstNodeKind::VariableDeclarationStatement &&
-            first->text() == "first" && fixture.parser().current().kind() == TokenKind::EndOfFile &&
+    AstNode* const declarationList = parseStatement(fixture);
+    AstNode* const first = declarationList != nullptr && declarationList->children().size() == 2
+        ? declarationList->children()[0] : nullptr;
+    AstNode* const second = declarationList != nullptr && declarationList->children().size() == 2
+        ? declarationList->children()[1] : nullptr;
+    context.expect(declarationList != nullptr && declarationList->kind() == AstNodeKind::BlockStatement &&
+            declarationList->auxiliaryText() == "declaration-list" && first != nullptr &&
+            first->kind() == AstNodeKind::VariableDeclarationStatement &&
+            first->text() == "first" && first->typeSyntax() != nullptr &&
+            first->typeSyntax()->baseName() == "int" && first->first() != nullptr &&
+            first->first()->kind() == AstNodeKind::IntegerLiteralExpression &&
+            first->first()->integerValue() == 1 && second != nullptr &&
+            second->kind() == AstNodeKind::VariableDeclarationStatement &&
+            second->text() == "second" && second->typeSyntax() != nullptr &&
+            second->typeSyntax()->baseName() == "int" && second->first() != nullptr &&
+            second->first()->kind() == AstNodeKind::IntegerLiteralExpression &&
+            second->first()->integerValue() == 2 &&
+            first->range().begin().offset() < second->range().begin().offset() &&
+            fixture.parser().current().kind() == TokenKind::EndOfFile &&
             fixture.diagnostics().diagnostics().empty(),
         "TP-PAR-306 one declaration must preserve multiple declarators in source order");
+
+    auto compilation = hir_contract_support::compileHir(
+        context,
+        "TP-PAR-306",
+        "int F(){int first=1, second=2;return first+second;}");
+    context.expect(
+        hir_contract_support::countKind(
+            compilation->hirRoot(),
+            nativesharp::hir::HirNodeKind::LocalVariableDeclaration) == 2,
+        "TP-PAR-306 both declarators must reach HIR as independent local declarations");
 }
 
 void testTupleDeconstruction(TestContext& context)
@@ -215,7 +242,7 @@ void registerParserStatementContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-303", testExplicitVariableInitializer);
     addCase(registry, "TP-PAR-304", testVariableWithoutInitializer);
     addCase(registry, "TP-PAR-305", testInferredConstAndRaiiFlags);
-    addCase(registry, "TP-PAR-306", testMultipleDeclarators, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-306", testMultipleDeclarators);
     addCase(registry, "TP-PAR-307", testTupleDeconstruction);
     addCase(registry, "TP-PAR-308", testNestedDiscardDeconstruction);
     addCase(registry, "TP-PAR-309", testDeconstructionBindingModes, TestDisposition::KnownProductDefect);

@@ -673,7 +673,7 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
     switch (node->kind())
     {
         case ast::AstNodeKind::BlockStatement:
-            analyzeBlock(node, true);
+            analyzeBlock(node, node->auxiliaryText() != "declaration-list");
             break;
         case ast::AstNodeKind::VariableDeclarationStatement:
             analyzeVariable(node);
@@ -894,6 +894,11 @@ void SemanticAnalyzer::analyzeFor(ast::AstNode* node)
         if (node->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement)
         {
             analyzeVariable(node->first());
+        }
+        else if (node->first()->kind() == ast::AstNodeKind::BlockStatement &&
+                 node->first()->auxiliaryText() == "declaration-list")
+        {
+            analyzeBlock(node->first(), false);
         }
         else
         {
