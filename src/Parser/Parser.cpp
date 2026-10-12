@@ -3375,8 +3375,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
 
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
+        // el callable cuando el punto lo permite (follow-up para class/interface member).
         consume();
     }
 
@@ -5244,8 +5244,8 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
     const std::size_t beginIndex = index_;
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
+        // el callable cuando el punto lo permite (follow-up para class/interface member).
         consume();
     }
     TokenKind accessibility = TokenKind::KwPublic;
@@ -5318,8 +5318,8 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
 
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
+        // el callable cuando el punto lo permite (follow-up para class/interface member).
         consume();
     }
 
@@ -5642,8 +5642,8 @@ ast::AstNode* Parser::parseClassMember(
     const std::size_t beginIndex = index_;
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
+        // el callable cuando el punto lo permite (follow-up para class/interface member).
         consume();
     }
     TokenKind accessibility = TokenKind::Invalid;
@@ -6215,8 +6215,8 @@ ast::AstNode* Parser::parseClassMember(
 
     if (atContextualKeyword("async"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
+        // el callable cuando el punto lo permite (follow-up para class/interface member).
         consume();
     }
 
