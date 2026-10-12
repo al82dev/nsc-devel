@@ -250,6 +250,9 @@ private:
         Struct,
         Variant,
         Range,
+        Relational,
+        Not,
+        And,
         List,
         Or
     };

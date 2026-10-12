@@ -10585,6 +10585,27 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         result.range = tokenRangeFrom(patternBegin);
         return result;
     }
+    if (at(TokenKind::Less) || at(TokenKind::LessEqual) ||
+        at(TokenKind::Greater) || at(TokenKind::GreaterEqual))
+    {
+        result.kind = PatternKind::Relational;
+        result.name = std::string(consume().lexeme());
+        if (literalStartsHere() || at(TokenKind::Identifier))
+        {
+            result.firstValue = parsePrimaryExpression();
+        }
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "expected a literal or constant operand after a relational pattern operator");
+            result.firstValue = makeErrorExpression();
+        }
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
     if (literalStartsHere())
     {
         result.kind = PatternKind::Literal;
@@ -10861,6 +10882,14 @@ ast::AstNode* Parser::makePatternCondition(
                     pattern.name == "..=" ? TokenKind::LessEqual : TokenKind::Less,
                     source(),
                     pattern.secondValue));
+        case PatternKind::Relational:
+        {
+            TokenKind op = TokenKind::Less;
+            if (pattern.name == "<=") op = TokenKind::LessEqual;
+            else if (pattern.name == ">") op = TokenKind::Greater;
+            else if (pattern.name == ">=") op = TokenKind::GreaterEqual;
+            return makeBinaryExpression(op, source(), pattern.firstValue);
+        }
         case PatternKind::Struct:
         {
             ast::AstNode* result = makeBooleanLiteral(pattern.range, true);
@@ -10949,6 +10978,9 @@ ast::AstNode* Parser::makePatternCondition(
             return makeBooleanLiteral(pattern.range, true);
         case PatternKind::Tuple:
             return makeBooleanLiteral(pattern.range, false);
+        case PatternKind::Not:
+        case PatternKind::And:
+            return makeBooleanLiteral(pattern.range, false);  // NS304-T03-F04 pendiente
     }
     return makeBooleanLiteral(pattern.range, false);
 }
