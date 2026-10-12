@@ -265,8 +265,8 @@ void registerAstDestructiveModule(TestRegistry& registry)
 {
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-014", "CA-AST-002", "unit",
-        {"ast", "arena", "allocation-failure", "known-product-defect"},
-        testRegistrationFailure);
+        {"ast", "arena", "allocation-failure"},
+        testRegistrationFailure, TestDisposition::Required);
     addCase(registry, "TA-AST-016", "CA-AST-002", "unit",
         {"ast", "arena", "death-test", "known-product-defect"}, testThrowingDestructor);
 #endif

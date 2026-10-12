@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -16,9 +17,9 @@ public:
     template <typename T, typename... Args>
     T* make(Args&&... args)
     {
-        T* object = new T(std::forward<Args>(args)...);
-        entries_.push_back(Entry{object, &destroy<T>});
-        return object;
+        std::unique_ptr<T> object = std::make_unique<T>(std::forward<Args>(args)...);
+        entries_.push_back(Entry{object.get(), &destroy<T>});
+        return object.release();
     }
 
 private:
