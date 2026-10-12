@@ -10517,6 +10517,13 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         result.range = start;
         return result;
     }
+    if (consumeIf(TokenKind::Bang))
+    {
+        result.kind = PatternKind::Not;
+        result.children.push_back(parsePattern(true));
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
     if (consumeIf(TokenKind::LeftBracket))
     {
         result.kind = PatternKind::List;
@@ -10784,16 +10791,31 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
     return result;
 }
 
-Parser::Pattern Parser::parsePattern(bool implicitBinding)
+Parser::Pattern Parser::parseAndPattern(bool implicitBinding)
 {
     Pattern first = parsePatternPrimary(implicitBinding);
+    if (!at(TokenKind::Amp)) return first;
+    Pattern result;
+    result.kind = PatternKind::And;
+    result.range = first.range;
+    result.children.push_back(std::move(first));
+    while (consumeIf(TokenKind::Amp))
+        result.children.push_back(parsePatternPrimary(implicitBinding));
+    result.range = SourceRange(
+        result.children.front().range.begin(), result.children.back().range.end());
+    return result;
+}
+
+Parser::Pattern Parser::parsePattern(bool implicitBinding)
+{
+    Pattern first = parseAndPattern(implicitBinding);
     if (!at(TokenKind::Pipe)) return first;
     Pattern result;
     result.kind = PatternKind::Or;
     result.range = first.range;
     result.children.push_back(std::move(first));
     while (consumeIf(TokenKind::Pipe))
-        result.children.push_back(parsePatternPrimary(implicitBinding));
+        result.children.push_back(parseAndPattern(implicitBinding));
     result.range = SourceRange(
         result.children.front().range.begin(), result.children.back().range.end());
     return result;
@@ -10979,8 +11001,24 @@ ast::AstNode* Parser::makePatternCondition(
         case PatternKind::Tuple:
             return makeBooleanLiteral(pattern.range, false);
         case PatternKind::Not:
+        {
+            ast::AstNode* negated = makePatternCondition(pattern.children.front(), source);
+            ast::AstNode* unary = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::UnaryExpression, pattern.range);
+            unary->setTokenKind(TokenKind::Bang);
+            unary->setFirst(negated);
+            return unary;
+        }
         case PatternKind::And:
-            return makeBooleanLiteral(pattern.range, false);  // NS304-T03-F04 pendiente
+        {
+            ast::AstNode* result = makePatternCondition(pattern.children.front(), source);
+            for (std::size_t index = 1; index < pattern.children.size(); ++index)
+                result = makeBinaryExpression(
+                    TokenKind::AmpAmp,
+                    result,
+                    makePatternCondition(pattern.children[index], source));
+            return result;
+        }
     }
     return makeBooleanLiteral(pattern.range, false);
 }
