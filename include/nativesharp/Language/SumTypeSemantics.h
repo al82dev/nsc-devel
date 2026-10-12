@@ -67,7 +67,7 @@ struct MatchArmCoverage final
     bool hasGuard = false;
     // NS304-T03-F05: cobertura por LONGITUD de list pattern. `listLength` es la longitud
     // exacta; `listLengthRest` indica que el brazo cubre TODA longitud >= listLength (rest `..`).
-    std::optional<std::size_t> listLength;
+    std::optional<std::size_t> listLength = std::nullopt;
     bool listLengthRest = false;
 };
 
