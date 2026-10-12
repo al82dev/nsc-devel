@@ -1,0 +1,11 @@
+using NativeSharp.Core;
+
+public class Program
+{
+    public static int Main()
+    {
+        string missing = null;
+        Int32.Parse(missing);
+        return 1;
+    }
+}

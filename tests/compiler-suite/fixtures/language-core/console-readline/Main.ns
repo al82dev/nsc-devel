@@ -1,0 +1,22 @@
+using NativeSharp.Core;
+
+public class Program
+{
+    public static int Main()
+    {
+        int status = 0;
+        raii string first = Console.ReadLine(out status);
+        if (status != 0 || first != "alpha") { return 1; }
+
+        raii string empty = Console.ReadLine(out status);
+        if (status != 0 || empty == null || empty.Length != 0) { return 2; }
+
+        raii string longLine = Console.ReadLine(out status);
+        if (status != 0 || longLine == null || longLine.Length != 8192) { return 3; }
+        if (longLine[0] != 'x' || longLine[8191] != 'x') { return 4; }
+
+        raii string eof = Console.ReadLine(out status);
+        if (status != -1 || eof != null) { return 5; }
+        return 42;
+    }
+}

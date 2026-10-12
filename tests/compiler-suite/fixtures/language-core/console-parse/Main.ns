@@ -1,0 +1,21 @@
+using NativeSharp.Core;
+
+public class Program
+{
+    public static int Main()
+    {
+        if (Byte.Parse(Console.ReadLine(), (byte)0) != 255) { return 1; }
+        if (SByte.Parse(Console.ReadLine(), (sbyte)0) != -128) { return 2; }
+        if (Int16.Parse(Console.ReadLine(), (short)0) != -32768) { return 3; }
+        if (UInt16.Parse(Console.ReadLine(), (ushort)0) != 65535) { return 4; }
+        if (Int32.Parse(Console.ReadLine(), 0) != -2147483648) { return 5; }
+        if (UInt32.Parse(Console.ReadLine(), (uint)0) != 4294967295) { return 6; }
+        if (Int64.Parse(Console.ReadLine(), 0L) != -9223372036854775807L - 1L) { return 7; }
+        if (UInt64.Parse(Console.ReadLine(), 0UL) != 18446744073709551615UL) { return 8; }
+        if (Float.Parse(Console.ReadLine(), (float)0) != (float)1.5) { return 9; }
+        if (Double.Parse(Console.ReadLine(), (double)0) != (double)2.5) { return 10; }
+
+        if (Int32.Parse(Console.ReadLine(), 73) != 73) { return 11; }
+        return 42;
+    }
+}

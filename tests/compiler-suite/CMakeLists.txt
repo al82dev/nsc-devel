@@ -15,6 +15,7 @@ set(NSC_COMPILER_SUITE_NSC_EXECUTABLE "" CACHE FILEPATH "Explicit A:-drive NSC f
 set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second explicit NSC for build-identity comparison")
 set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
 set(NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE "" CACHE FILEPATH "Explicit archive executable for Packaging cases")
+set(NSC_NSLINK_EXECUTABLE "" CACHE FILEPATH "Explicit NSLink executable for compiler-suite product cases")
 set(NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY
     "${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     CACHE FILEPATH "Default Windows runtime library for compiler-suite product cases")
@@ -59,6 +60,16 @@ else()
     message(FATAL_ERROR
         "nsc_component_tests requires NSC_COMPILER_SUITE_NSC_EXECUTABLE or "
         "NSC_COMPILER_SUITE_BUILD_ID_HEADER to compile the real product identity")
+endif()
+
+if(NOT NSC_COMPILER_SUITE_NSC_EXECUTABLE)
+    message(FATAL_ERROR
+        "nsc_component_tests Language Core e2e cases require "
+        "NSC_COMPILER_SUITE_NSC_EXECUTABLE")
+endif()
+if(NOT NSC_NSLINK_EXECUTABLE)
+    message(FATAL_ERROR
+        "nsc_component_tests Language Core e2e cases require NSC_NSLINK_EXECUTABLE")
 endif()
 
 # WindowsLibraryBuilder is a real product surface. Its executable cases use
@@ -296,6 +307,7 @@ add_executable(
     host/modules/LanguageMetaprogrammingModule.cpp
     host/modules/LanguageModuleSemanticsModule.cpp
     host/modules/LanguageNumericCoreModule.cpp
+    host/modules/LanguageCoreLibraryE2eModule.cpp
     host/modules/LanguageNumericAdvancedModule.cpp
     host/modules/LanguageOwnershipStateModule.cpp
     host/modules/LanguageOwnershipLifetimeModule.cpp
@@ -624,7 +636,11 @@ target_include_directories(
 target_compile_definitions(
     nsc_component_tests
     PRIVATE
-        "NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
+        "NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\""
+        "NSC_SUITE_REPOSITORY_ROOT=\"${CMAKE_CURRENT_LIST_DIR}/../..\""
+        "NSC_SUITE_NSC_EXECUTABLE=\"${NSC_COMPILER_SUITE_NSC_EXECUTABLE}\""
+        "NSC_SUITE_NSLINK_EXECUTABLE=\"${NSC_NSLINK_EXECUTABLE}\""
+        "NSC_SUITE_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
 target_compile_features(nsc_component_tests PRIVATE cxx_std_20)
 target_link_libraries(
     nsc_component_tests

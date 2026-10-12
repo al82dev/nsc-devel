@@ -1,0 +1,31 @@
+using NativeSharp.Core;
+
+public class Program
+{
+    public static int Main()
+    {
+        if (Byte.Parse("255") != 255) { return 1; }
+        if (SByte.Parse("-128") != -128) { return 2; }
+        if (Int16.Parse("-32768") != -32768) { return 3; }
+        if (UInt16.Parse("65535") != 65535) { return 4; }
+        if (Int32.Parse("-2147483648") != -2147483648) { return 5; }
+        if (UInt32.Parse("4294967295") != 4294967295) { return 6; }
+        if (Int64.Parse("-9223372036854775808") != -9223372036854775807L - 1L) { return 7; }
+        if (UInt64.Parse("18446744073709551615") != 18446744073709551615UL) { return 8; }
+        if (Float.Parse("1.5") != (float)1.5) { return 9; }
+        if (Double.Parse("2.5") != (double)2.5) { return 10; }
+
+        if (Byte.Parse("256", (byte)11) != 11) { return 11; }
+        if (SByte.Parse("128", (sbyte)-12) != -12) { return 12; }
+        if (Int16.Parse("32768", (short)-13) != -13) { return 13; }
+        if (UInt16.Parse("65536", (ushort)14) != 14) { return 14; }
+        if (Int32.Parse("bad", 15) != 15) { return 15; }
+        if (UInt32.Parse("bad", (uint)16) != 16) { return 16; }
+        if (Int64.Parse("bad", 17L) != 17L) { return 17; }
+        if (UInt64.Parse("bad", 18UL) != 18UL) { return 18; }
+        if (Float.Parse("bad", (float)1.25) != (float)1.25) { return 19; }
+        if (Double.Parse("bad", (double)1.25) != (double)1.25) { return 20; }
+
+        return 42;
+    }
+}
