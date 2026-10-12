@@ -507,6 +507,9 @@ MirValue* MirBuilder::lowerExpression(const hir::HirNode* node)
                 return emitBinary(opcode, left, right, node->type(), node->range());
             }
 
+        case hir::HirNodeKind::Conditional:
+            return lowerConditional(node);
+
         case hir::HirNodeKind::Call:
         {
             std::vector<MirValue*> arguments;
@@ -657,6 +660,58 @@ MirValue* MirBuilder::lowerShortCircuit(const hir::HirNode* node)
     MirInstruction* copy = emit(MirOpcode::Copy, node->range());
     copy->setResult(result);
     copy->addOperand(right);
+    if (!emitJump(mergeBlock, node->range()))
+    {
+        return nullptr;
+    }
+
+    setCurrentBlock(mergeBlock);
+    return result;
+}
+
+MirValue* MirBuilder::lowerConditional(const hir::HirNode* node)
+{
+    MirValue* condition = lowerExpression(node->first());
+    if (condition == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Pre-SSA MIR represents a conditional result as one virtual value with one definition on
+    // each incoming path. The SSA builder then materializes the corresponding merge PHI, exactly
+    // as it already does for the two definitions produced by short-circuit expressions.
+    MirValue* result = arena_.makeValue(node->type());
+    MirBlock* trueBlock = createBlock("conditional.true");
+    MirBlock* falseBlock = createBlock("conditional.false");
+    MirBlock* mergeBlock = createBlock("conditional.end");
+    if (!emitBranch(condition, trueBlock, falseBlock, node->range()))
+    {
+        return nullptr;
+    }
+
+    setCurrentBlock(trueBlock);
+    MirValue* trueValue = lowerExpression(node->second());
+    if (trueValue == nullptr)
+    {
+        return nullptr;
+    }
+    MirInstruction* trueCopy = emit(MirOpcode::Copy, node->range());
+    trueCopy->setResult(result);
+    trueCopy->addOperand(trueValue);
+    if (!emitJump(mergeBlock, node->range()))
+    {
+        return nullptr;
+    }
+
+    setCurrentBlock(falseBlock);
+    MirValue* falseValue = lowerExpression(node->third());
+    if (falseValue == nullptr)
+    {
+        return nullptr;
+    }
+    MirInstruction* falseCopy = emit(MirOpcode::Copy, node->range());
+    falseCopy->setResult(result);
+    falseCopy->addOperand(falseValue);
     if (!emitJump(mergeBlock, node->range()))
     {
         return nullptr;
