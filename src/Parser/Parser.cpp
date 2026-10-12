@@ -10517,6 +10517,42 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         result.range = start;
         return result;
     }
+    if (consumeIf(TokenKind::LeftBracket))
+    {
+        result.kind = PatternKind::List;
+        while (!at(TokenKind::RightBracket) && !at(TokenKind::EndOfFile))
+        {
+            if (consumeIf(TokenKind::DotDot))
+            {
+                if (result.restIndex.has_value())
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        tokens_[index_ - 1].range(),
+                        "a list pattern accepts at most one rest element");
+                }
+                else
+                {
+                    result.restIndex = result.children.size();
+                }
+
+                Pattern rest;
+                rest.kind = PatternKind::Wildcard;
+                rest.range = tokens_[index_ - 1].range();
+                result.children.push_back(std::move(rest));
+            }
+            else
+            {
+                result.children.push_back(parsePattern(true));
+            }
+
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+        expect(TokenKind::RightBracket, "']' after list pattern");
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
     if (at(TokenKind::KwVar) || at(TokenKind::KwMove) ||
         (atContextualKeyword("ref") && peek().kind() == TokenKind::Identifier))
     {
@@ -10714,7 +10750,7 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         diagnostics::DiagnosticId::ExpectedToken,
         diagnostics::DiagnosticSeverity::Error,
         current().range(),
-        "expected wildcard, literal, binding, tuple, struct, variant, or range pattern");
+        "expected wildcard, literal, binding, tuple, struct, variant, range, or list pattern");
     if (!at(TokenKind::EndOfFile)) consume();
     result.range = start;
     return result;
@@ -10792,7 +10828,9 @@ ast::AstNode* Parser::makeBooleanLiteral(const SourceRange& range, bool value)
 
 bool Parser::patternIsConditionOnly(const Pattern& pattern) const
 {
-    if (pattern.kind == PatternKind::Binding || pattern.kind == PatternKind::Tuple) return false;
+    if (pattern.kind == PatternKind::Binding || pattern.kind == PatternKind::Tuple ||
+        pattern.kind == PatternKind::List)
+        return false;
     return std::ranges::all_of(
         pattern.children,
         [this](const Pattern& child) { return patternIsConditionOnly(child); });
@@ -10859,6 +10897,42 @@ ast::AstNode* Parser::makePatternCondition(
                     result,
                     makePatternCondition(pattern.children[index], source));
             return result;
+        }
+        case PatternKind::List:
+        {
+            const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
+            const std::size_t fixedCount = pattern.children.size() -
+                (pattern.restIndex.has_value() ? 1U : 0U);
+            ast::AstNode* condition = makeBinaryExpression(
+                pattern.restIndex.has_value() ? TokenKind::GreaterEqual : TokenKind::EqualEqual,
+                makeMemberExpression(source(), "Length"),
+                makeIntegerLiteralExpression(pattern.range, fixedCount));
+            for (std::size_t index = 0; index < pattern.children.size(); ++index)
+            {
+                if (pattern.restIndex == index) continue;
+                ast::AstNode* elementIndex = nullptr;
+                if (!pattern.restIndex.has_value() || index < restOffset)
+                {
+                    elementIndex = makeIntegerLiteralExpression(pattern.range, index);
+                }
+                else
+                {
+                    const std::size_t fromEnd = pattern.children.size() - index;
+                    elementIndex = makeBinaryExpression(
+                        TokenKind::Minus,
+                        makeMemberExpression(source(), "Length"),
+                        makeIntegerLiteralExpression(pattern.range, fromEnd));
+                }
+                PatternExpressionFactory element = [&, source, elementIndex]
+                {
+                    return makeIndexExpression(source(), cloneParsedNode(arena_, elementIndex));
+                };
+                condition = makeBinaryExpression(
+                    TokenKind::AmpAmp,
+                    condition,
+                    makePatternCondition(pattern.children[index], element));
+            }
+            return condition;
         }
         case PatternKind::Binding:
             return makeBooleanLiteral(pattern.range, true);
@@ -10984,6 +11058,19 @@ ast::AstNode* Parser::lowerPattern(
                 pattern.children[index - 1], member, next, temporaryPrefix, emitBindings);
         }
         return next;
+    }
+    if (pattern.kind == PatternKind::List)
+    {
+        ast::AstNode* thenBlock = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, pattern.range);
+        if (emitBindings)
+            emitPatternBindings(pattern, source, thenBlock, temporaryPrefix);
+        thenBlock->addChild(continuation);
+        ast::AstNode* decision = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, pattern.range);
+        decision->setFirst(makePatternCondition(pattern, source));
+        decision->setSecond(thenBlock);
+        return decision;
     }
     if (pattern.kind == PatternKind::Variant)
     {
@@ -11139,6 +11226,34 @@ void Parser::emitPatternBindings(
             };
             emitPatternBindings(
                 pattern.children[index], member, destination, temporaryPrefix);
+        }
+        return;
+    }
+    if (pattern.kind == PatternKind::List)
+    {
+        const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            if (pattern.restIndex == index) continue;
+            PatternExpressionFactory element = [&, source, index, restOffset]
+            {
+                ast::AstNode* elementIndex = nullptr;
+                if (!pattern.restIndex.has_value() || index < restOffset)
+                {
+                    elementIndex = makeIntegerLiteralExpression(pattern.range, index);
+                }
+                else
+                {
+                    const std::size_t fromEnd = pattern.children.size() - index;
+                    elementIndex = makeBinaryExpression(
+                        TokenKind::Minus,
+                        makeMemberExpression(source(), "Length"),
+                        makeIntegerLiteralExpression(pattern.range, fromEnd));
+                }
+                return makeIndexExpression(source(), elementIndex);
+            };
+            emitPatternBindings(
+                pattern.children[index], element, destination, temporaryPrefix);
         }
         return;
     }

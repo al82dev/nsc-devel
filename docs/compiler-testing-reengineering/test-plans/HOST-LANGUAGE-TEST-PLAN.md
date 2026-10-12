@@ -401,6 +401,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-268 | CL-LANG-020 | letElseGuaranteesInitialization false/true | igual a elseDiverges | PR |
 | TL-LANG-269 | CL-LANG-020 | canReadCUnionMember sobre cuatro combinaciones | true con proof o unsafe context | PR |
 | TL-LANG-270 | CL-LANG-020 | variantMetadataIdentity con 0,1,N cases y payloads distintos | qualified name y case names; payload no afecta identidad | PR |
+| TL-LANG-308 | CL-LANG-020 | array nativo con list patterns exacto, prefijo, sufijo y `_` | length-first, elementos ordenados y salida 42 | PR |
 
 ## Traits y operadores — `CL-LANG-021`
 

@@ -250,6 +250,7 @@ private:
         Struct,
         Variant,
         Range,
+        List,
         Or
     };
     enum class PatternBindingMode
@@ -268,6 +269,7 @@ private:
         ast::AstNode* secondValue = nullptr;
         std::optional<std::int64_t> firstInteger;
         std::optional<std::int64_t> secondInteger;
+        std::optional<std::size_t> restIndex;
         std::vector<std::string> fieldNames;
         std::vector<Pattern> children;
     };

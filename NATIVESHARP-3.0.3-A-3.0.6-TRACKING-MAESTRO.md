@@ -918,7 +918,7 @@ T00
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 6 | 100 % |
-| T03 | List, slice y property patterns | 8 | 0 | 0 % |
+| T03 | List, slice y property patterns | 8 | 1 | 12.5 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
 | T05 | Async/await productivo | 10 | 0 | 0 % |
 | T06 | Generadores síncronos | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **22** | **14.97 %** |
+| **Total** |  | **147** | **23** | **15.65 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -970,7 +970,7 @@ T00
 
 ### T03 — list, slice y property patterns
 
-- [ ] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
+- [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [ ] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
 - [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario.
 - [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos.
@@ -1624,6 +1624,23 @@ Estado: `CERRADO`.
 - Gate: T02 queda 6/6 y Parte B 22/147, sin batería completa.
 - Siguiente tanda habilitada: `T03`, empezando por `NS304-T03-F01`.
 
+### NS304-T03-F01 — list patterns exactos, prefijo, sufijo y descarte
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T03-F01-list-pattern-shapes.md`.
+- Contrato: longitud exacta sin rest; longitud mínima con rest; el prefijo y
+  sufijo conservan orden y `_` no crea binding.
+- Implementación: `PatternKind::List` se reduce tempranamente a `Length`,
+  índices y branches ordinarios con la comprobación de longitud primero.
+- Prueba puntual: `TL-LANG-308` `PASS` en 361243 microsegundos; el producto
+  O0/debug terminó con código 42.
+- Guards: `TL-LANG-261`..`TL-LANG-270`, 10/10 `PASS`.
+- Build focal: compilador 11/11 y runner 70/70 con LLVM/Clang 23, sin
+  regenerar CMake en la reconstrucción certificante.
+- Gate: T03 queda 1/8 y Parte B 23/147, sin batería completa.
+- Siguiente ítem: `NS304-T03-F02`.
+
 ---
 
 # Parte C — NativeSharp 3.0.5: reingeniería del proceso de compilación
@@ -2144,12 +2161,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B03/T02-F04 | Integración genérica de defaults | associated defaults, constraints, `some` y `dyn`; `TL-LANG-305` + guards verticales | `PASS`; T02 4/6; 20/147 cerrados; T02-F05 activa |
 | 2026-10-12 | B03/T02-F05 | Witnesses default por NSMETA | método, propiedad e indexador consumidos sin fuentes del productor; `TL-LANG-306` | `PASS`; T02 5/6; 21/147 cerrados; T02-F06 activa |
 | 2026-10-12 | B03/T02-F06 | Cierre ABI de defaults | lookup estático/dyn, DLL exports, slots, MIR, LLVM y PDB; `TL-LANG-307` | `PASS`; T02 6/6; 22/147 cerrados; T03-F01 habilitada |
+| 2026-10-12 | B04/T03-F01 | Formas base de list patterns | exacto, prefijo, sufijo y descarte bajados a Length+índices; `TL-LANG-308` | `PASS`; T03 1/8; 23/147 cerrados; T03-F02 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `22/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `23/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2174,7 +2192,8 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   `TL-LANG-305`; T02-F05 preservó witnesses default de método, propiedad e
   indexador por NSMETA mediante `TL-LANG-306`; T02-F06 cerró lookup estático,
   vtables, DLL exports, evolución, MIR/LLVM y PDB mediante `TL-LANG-307`. T02
-  queda 6/6 y T03-F01 queda habilitada.
+  queda 6/6. T03-F01 añadió list patterns exactos, prefijo, sufijo y descarte
+  con `TL-LANG-308`; T03 queda 1/8 y T03-F02 queda habilitada.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
