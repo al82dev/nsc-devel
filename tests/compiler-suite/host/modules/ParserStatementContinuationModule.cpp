@@ -245,7 +245,7 @@ void registerParserStatementContinuationModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-306", testMultipleDeclarators);
     addCase(registry, "TP-PAR-307", testTupleDeconstruction);
     addCase(registry, "TP-PAR-308", testNestedDiscardDeconstruction);
-    addCase(registry, "TP-PAR-309", testDeconstructionBindingModes, TestDisposition::KnownProductDefect);
+    addCase(registry, "TP-PAR-309", testDeconstructionBindingModes);
     addCase(registry, "TP-PAR-310", testMalformedDeconstructionProgress);
     addCase(registry, "TP-PAR-311", testPositionalAggregate);
     addCase(registry, "TP-PAR-312", testDesignatedAggregate);

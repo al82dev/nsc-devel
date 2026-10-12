@@ -8866,13 +8866,33 @@ ast::AstNode* Parser::parseStatement()
 
 ast::AstNode* Parser::parseDeconstructionPattern()
 {
+    const SourceRange bindingStart = current().range();
+    std::string bindingMode = "value";
+    if (atContextualKeyword("ref"))
+    {
+        consume();
+        bindingMode = "ref";
+    }
+    else if (consumeIf(TokenKind::KwMove))
+    {
+        bindingMode = "move";
+    }
+
     if (at(TokenKind::Identifier))
     {
         const lexer::Token& name = consume();
         ast::AstNode* binding = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::IdentifierExpression, name.range());
+            ast::AstNodeKind::IdentifierExpression,
+            bindingMode == "value" ? name.range() : join(bindingStart, name.range()));
         binding->setText(std::string(name.lexeme()));
+        binding->setAuxiliaryText(std::move(bindingMode));
         return binding;
+    }
+
+    if (bindingMode != "value")
+    {
+        expect(TokenKind::Identifier, "deconstruction binding name after binding mode");
+        return makeErrorExpression();
     }
 
     if (!at(TokenKind::LeftParen))
@@ -8892,7 +8912,7 @@ ast::AstNode* Parser::parseDeconstructionPattern()
 
     while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
     {
-        if (!at(TokenKind::Identifier) && !at(TokenKind::LeftParen))
+        if (!at(TokenKind::Identifier) && !at(TokenKind::KwMove) && !at(TokenKind::LeftParen))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedToken,
