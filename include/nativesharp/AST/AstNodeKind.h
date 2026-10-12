@@ -165,7 +165,10 @@ enum class AstNodeKind
     // NativeSharp 3.0 T07-F05. `loop [label] { ... }` is a value expression. first() is the
     // body block and text() is the optional label. BreakStatement::first() carries an optional
     // result value; BreakStatement/ContinueStatement::text() carries an optional target label.
-    LoopExpression
+    LoopExpression,
+    // NativeSharp 3.0 T05-F01. `await expr` is a first-class expression until the productive
+    // state-machine lowering (T05-F03) materializes it. first() is the awaited operand.
+    AwaitExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;
