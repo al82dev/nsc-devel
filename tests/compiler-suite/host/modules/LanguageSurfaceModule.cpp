@@ -1463,6 +1463,101 @@ class Program
                     associatedRejected.error + associatedRejected.output);
         }});
 }
+
+void registerMetadataDefaultWitnessCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-306", "CL-LANG-012", "Host.Language", "integration", "PR",
+        {"language", "trait", "default-body", "nsmeta", "library-reference", "witness"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T02MetadataDefaults", "Library", R"ns(
+namespace DefaultsApi
+{
+    public trait IDefaults
+    {
+        int Method() { return 13; }
+        int Value { get { return 14; } }
+        int this[int index] { get { return index + 14; } }
+    }
+}
+)ns");
+            const std::filesystem::path producerLibrary =
+                products.directory() / "T02MetadataDefaults.lib";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-lib", producerProject, producerLibrary,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-306 the default-body producer must build: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            nativesharp::interop::LibraryMetadata metadata;
+            std::string metadataError;
+            const bool metadataRead = nativesharp::interop::LibraryMetadataCodec{}.read(
+                products.directory() / "T02MetadataDefaults.nsmeta", metadata, metadataError);
+            const std::string traitKey = "type:T02MetadataDefaults::DefaultsApi.IDefaults";
+            const std::array<std::string_view, 3> witnessNames = {
+                "Method", "get_Value", "get_Item"};
+            const bool physicalWitnesses = std::ranges::all_of(
+                witnessNames, [&](std::string_view name) {
+                    return std::ranges::any_of(metadata.members, [&](const auto& member) {
+                        return member.declaringTypeKey == traitKey && member.name == name &&
+                            (member.flags & (1U << 5U)) == 0U && !member.mangledName.empty();
+                    });
+                });
+            context.expect(metadataRead &&
+                    metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+                    physicalWitnesses,
+                "TL-LANG-306 current NSMETA must version all three non-abstract physical "
+                "witnesses: " + metadataError);
+
+            std::error_code removalError;
+            std::filesystem::remove(producerProject, removalError);
+            context.expect(!removalError,
+                "TL-LANG-306 the producer project must be removable before consumption: " +
+                    removalError.message());
+            removalError.clear();
+            std::filesystem::remove(
+                products.directory() / "T02MetadataDefaults.ns", removalError);
+            context.expect(!removalError,
+                "TL-LANG-306 the producer source must be removable before consumption: " +
+                    removalError.message());
+
+            constexpr std::string_view libraryReference =
+                "<LibraryReference Include=\"T02MetadataDefaults.lib\"/>";
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T02MetadataConsumer", "Exe", R"ns(
+using DefaultsApi;
+class Local { }
+impl IDefaults for Local { }
+class Program
+{
+    public static int Main()
+    {
+        Local local = new Local();
+        dyn IDefaults value = local;
+        return value.Method() + value.Value + value[1];
+    }
+}
+)ns", libraryReference);
+            const std::filesystem::path consumerExecutable =
+                products.directory() / "T02MetadataConsumer.exe";
+            const external_program_support::Result consumer = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, consumerExecutable,
+                products.directory());
+            context.expect(consumer.started && consumer.exitCode == 0 && consumer.error.empty(),
+                "TL-LANG-306 a source-free consumer must reconstruct every default witness: " +
+                    consumer.error + consumer.output);
+            if (!consumer.started || consumer.exitCode != 0) return;
+
+            const auto result = external_program_support::run(
+                consumerExecutable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-306 imported method/property/indexer defaults must execute through "
+                "producer-owned witnesses: " + result.error + result.output);
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1486,5 +1581,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultImplementationPrecedenceCase(registry);
     registerDefaultDiamondAndCoherenceCase(registry);
     registerGenericDefaultIntegrationCase(registry);
+    registerMetadataDefaultWitnessCase(registry);
 }
 }

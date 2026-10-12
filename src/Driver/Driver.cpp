@@ -1934,7 +1934,12 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     generated << sourceAccessibility(accessor.accessibility) << ' ';
                 generated << keyword;
                 if (!emitThrowsContract(accessor.declaredErrorTypeKey)) return false;
-                generated << (((accessor.flags & kAbstract) != 0U || interfaceContext) ? ";\n" : " { }\n");
+                // Metadata-backed interface accessors follow the same physical contract as
+                // ordinary default methods: a non-abstract record owns a producer callee whose
+                // mangled identity is rebound after parsing this placeholder body. Emitting `;`
+                // here changed that record back into an abstract requirement and discarded the
+                // producer-owned property/indexer witness.
+                generated << (((accessor.flags & kAbstract) != 0U) ? ";\n" : " { }\n");
                 return true;
             };
             for (const interop::LibraryMetadataMember *accessor : contract.declarationOrder)
