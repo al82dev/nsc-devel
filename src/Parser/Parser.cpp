@@ -10910,9 +10910,11 @@ ast::AstNode* Parser::makePatternCondition(
             const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
             const std::size_t fixedCount = pattern.children.size() -
                 (pattern.restIndex.has_value() ? 1U : 0U);
+            ast::AstNode* lengthCall = makeZeroArgCallExpression(makeMemberExpression(source(), "Length"));
+            lengthCall->setAuxiliaryText("list-pattern-length");
             ast::AstNode* condition = makeBinaryExpression(
                 pattern.restIndex.has_value() ? TokenKind::GreaterEqual : TokenKind::EqualEqual,
-                makeMemberExpression(source(), "Length"),
+                lengthCall,
                 makeIntegerLiteralExpression(pattern.range, fixedCount));
             for (std::size_t index = 0; index < pattern.children.size(); ++index)
             {
@@ -10925,9 +10927,11 @@ ast::AstNode* Parser::makePatternCondition(
                 else
                 {
                     const std::size_t fromEnd = pattern.children.size() - index;
+                    ast::AstNode* lengthCall = makeZeroArgCallExpression(makeMemberExpression(source(), "Length"));
+                    lengthCall->setAuxiliaryText("list-pattern-length");
                     elementIndex = makeBinaryExpression(
                         TokenKind::Minus,
-                        makeMemberExpression(source(), "Length"),
+                        lengthCall,
                         makeIntegerLiteralExpression(pattern.range, fromEnd));
                 }
                 PatternExpressionFactory element = [&, source, elementIndex]
@@ -11249,10 +11253,13 @@ void Parser::emitPatternBindings(
                     ast::AstNode* call = arena_.make<ast::AstNode>(
                         ast::AstNodeKind::CallExpression, pattern.children[index].range);
                     call->setFirst(makeMemberExpression(source(), "Slice"));
+                    call->setAuxiliaryText("list-pattern-rest");
                     call->addChild(makeIntegerLiteralExpression(pattern.range, restOffset));
+                    ast::AstNode* lengthCall = makeZeroArgCallExpression(makeMemberExpression(source(), "Length"));
+                    lengthCall->setAuxiliaryText("list-pattern-length");
                     call->addChild(makeBinaryExpression(
                         TokenKind::Minus,
-                        makeMemberExpression(source(), "Length"),
+                        lengthCall,
                         makeIntegerLiteralExpression(pattern.range, fixedCount)));
                     return call;
                 };
@@ -11270,9 +11277,11 @@ void Parser::emitPatternBindings(
                 else
                 {
                     const std::size_t fromEnd = pattern.children.size() - index;
+                    ast::AstNode* lengthCall = makeZeroArgCallExpression(makeMemberExpression(source(), "Length"));
+                    lengthCall->setAuxiliaryText("list-pattern-length");
                     elementIndex = makeBinaryExpression(
                         TokenKind::Minus,
-                        makeMemberExpression(source(), "Length"),
+                        lengthCall,
                         makeIntegerLiteralExpression(pattern.range, fromEnd));
                 }
                 return makeIndexExpression(source(), elementIndex);

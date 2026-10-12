@@ -14887,6 +14887,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             : "<expression>";
     }
 
+    // F03 (T03-F03): the list-pattern lowering emits its length access as a marked
+    // zero-argument call `source.Length()`. For built-ins (array/string/inline) and a
+    // user field, the callee `.Length` already resolves to a VALUE through the member
+    // paths; the `()` is a no-op and we return that value directly. For a `Length()`
+    // method (Span<T>/ReadOnlySpan<T>/StringView, user protocol) the callee is a method
+    // group and falls through to ordinary call resolution below.
+    if (expression->auxiliaryText() == "list-pattern-length" &&
+        callee.valid && !callee.methodGroup)
+    {
+        return callee;
+    }
+
     if (callee.extensionMethodGroup && namespaceFunctionModel_ != nullptr)
     {
         if (const NamespaceFunctionReferenceBinding* extension =
