@@ -15027,31 +15027,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             {
                 const std::string& elementKey = arrayElement.has_value() ? *arrayElement : *fixedElement;
                 const bool readOnly = restReceiver.readonlyReceiver;
-                const MethodCoreOperationKind kind = arrayElement.has_value()
-                    ? (readOnly ? MethodCoreOperationKind::ReadOnlySpanFromArray
-                                : MethodCoreOperationKind::SpanFromArray)
-                    : (readOnly ? MethodCoreOperationKind::ReadOnlySpanFromFixedArray
-                                : MethodCoreOperationKind::SpanFromFixedArray);
                 std::string resultKey = genericModel_ != nullptr
                     ? genericModel_->closedTypeKeyForTemplate(
                           readOnly ? "ReadOnlySpan" : "Span", elementKey)
                     : std::string{};
                 if (!resultKey.empty())
                 {
-                    coreBindings_.push_back(MethodCoreBinding{
-                        kind,
-                        expression,
-                        methodMemberOrdinal,
-                        scopeOrdinal,
-                        resultKey,
-                        elementKey,
-                        !readOnly, std::nullopt, std::nullopt});
-                    ExpressionResult viewResult;
-                    viewResult.typeKey = std::move(resultKey);
-                    viewResult.valid = true;
-                    viewResult.assignable = !readOnly;
-                    viewResult.addressable = false;
-                    return viewResult;
+                    // NS304-T03-F03 (residual): la clave cerrada de Span<T>/ReadOnlySpan<T> es
+                    // correcta, pero el TIPO no queda materializado (named type) en la fase de
+                    // cuerpos de metodo: ensureTypeSpecialization es no-const y la materializacion
+                    // corre en la fase serial de resolucion de tipos, antes de las olas paralelas
+                    // de callables. Producir la clave sin materializar deja un tipo que el name
+                    // lookup no resuelve; se diagnostica en vez de bajar un tipo roto.
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "array/inline rest capture requires Span<T>/ReadOnlySpan<T> "
+                        "materialization, which is not yet available from method-body analysis");
+                    return result;
                 }
             }
         }

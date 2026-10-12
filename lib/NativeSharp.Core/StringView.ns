@@ -113,12 +113,12 @@ namespace NativeSharp.Core
             return new StringView(String.CharacterPointer(text, begin), take);
         }
 
-        public int Length()
+        public readonly int Length()
         {
             return count;
         }
 
-        public bool IsEmpty()
+        public readonly bool IsEmpty()
         {
             return count == 0;
         }
