@@ -20,23 +20,26 @@
 Permitir `(int x = 5) => ...` en lambdas (y defaults consteval) y validar contra el target: el
 default de la lambda no puede entrar en conflicto con el del delegate.
 
-## Hallazgo (validado con compilación real)
+## Causa raíz + precedente
 
-- El default del lambda YA se parsea y almacena (`parseParameter` :8651-8655 → `parameter->first()`),
-  y `Add add = (int x = 5) => x + 1;` compila contra el delegate target.
-- Falta la **aplicación del default en el call-site**: `add()` (omitir el argumento) falla en
-  `ProjectMethodBodyModel` (:15652-15661) con "delegate invocation argument count does not match".
-- **Causa raíz**: sintetizar el default solo en `arguments` (Sema) NO basta: el codegen
-  (HIR/LLVM) lee los argumentos del AST (`expression->children()`), no del vector de Sema. Se
-  necesita bajar el default al AST (sintetizar un nodo) o guardarlo en `MethodDelegateBinding` y
-  que el lowerer lo materialice. Es un cambio que toca codegen, no un fix puntual.
+- Sintetizar el default solo en `arguments` (Sema) NO basta: el codegen (HIR/LLVM) lee los
+  argumentos del AST (`expression->children()`), no del vector de Sema.
+- **Precedente**: las llamadas a MÉTODOS ya aplican defaults (`mapArgumentsToParameters` :276 →
+  `defaultedParameterOrdinals` (:330,:413) sobre `candidate.parameters[index].defaultValueSyntax`;
+  `evaluated.defaultedParameterOrdinals` :14554 y `defaultedParameterCount` :14576). El codegen de
+  método sintetiza el default desde `defaultValueSyntax`.
+- Falta replicar ese mecanismo en la invocación de DELEGATE (:15642+): leer los defaults del
+  delegate (`ParameterDeclaration.first()`), guardar `defaultedParameterOrdinals` en
+  `MethodDelegateBinding`, y que el lowerer de delegate emita el default.
 
 ## Plan
 
-1. Sintetizar el default como nodo AST (o almacenar el valor en `MethodDelegateBinding`) y hacer
-   que el HIR/LLVM lo emita como argumento real.
-2. Validar que el default del lambda no contradiga el del delegate.
-3. Prueba `TL-LANG-317` (ya redactada; se re-registra al pasar).
+1. En la invocación de delegate (:15642+), calcular los `defaultedParameterOrdinals` (parámetros
+   omitidos con `first() != null`) y guardarlos en `MethodDelegateBinding`.
+2. En el lowerer de delegate (HIR/LLVM), sintetizar el default como argumento real (como hace el
+   lowerer de método).
+3. Validar que el default del lambda no contradiga el del delegate.
+4. Prueba `TL-LANG-317` (ya redactada; se re-registra al pasar).
 
 ## Prueba puntual
 
