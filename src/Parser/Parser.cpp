@@ -10495,9 +10495,19 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
                     field.range(),
                     "duplicate field '" + fieldName + "' in struct pattern");
             }
-            expect(TokenKind::Colon, "':' after struct-pattern field name");
             pattern.fieldNames.push_back(fieldName);
-            pattern.children.push_back(parsePattern(true));
+            if (consumeIf(TokenKind::Colon))
+            {
+                pattern.children.push_back(parsePattern(true));
+            }
+            else
+            {
+                Pattern shorthand;
+                shorthand.kind = PatternKind::Binding;
+                shorthand.name = fieldName;
+                shorthand.range = field.range();
+                pattern.children.push_back(std::move(shorthand));
+            }
             if (!consumeIf(TokenKind::Comma)) break;
         }
         expect(TokenKind::RightBrace, "'}' after struct pattern");

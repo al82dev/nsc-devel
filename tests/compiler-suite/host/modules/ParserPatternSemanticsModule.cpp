@@ -337,8 +337,7 @@ void registerParserPatternSemanticsModule(TestRegistry& registry)
     addPatternCase(registry, "TP-PAR-353", testReferenceBinding);
     addPatternCase(registry, "TP-PAR-354", testMoveBinding);
     addPatternCase(registry, "TP-PAR-355", testEmptyAndNestedTuple);
-    addPatternCase(registry, "TP-PAR-356", testStructShorthandAndExplicitFields,
-        TestDisposition::KnownProductDefect);
+    addPatternCase(registry, "TP-PAR-356", testStructShorthandAndExplicitFields);
     addPatternCase(registry, "TP-PAR-357", testVariantPayloads);
     addPatternCase(registry, "TP-PAR-358", testExclusiveAndInclusiveRanges,
         TestDisposition::KnownProductDefect);
