@@ -115,9 +115,9 @@ int main()
         "int Work(int[] value) { switch (0) { case [1]: return 1; default: return 0; } }",
         "list-patterns"),
         "list patterns fail with NS3049 and an exhaustiveness rationale");
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "class C { static C() {} }", "static-constructors"),
-        "static constructors fail with NS3049 and an initialization rationale");
+        "static constructor grammar is productive even while its once/runtime protocol remains planned");
     tests.expect(hasDeferredDiagnostic(
         "decimal Work() { return 0; }", "decimal"),
         "decimal fails with NS3049 and an ABI rationale");

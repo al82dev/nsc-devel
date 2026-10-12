@@ -176,6 +176,7 @@ bool ProjectConstructionModel::build(
     {
         const ClassMemberSymbol& constructor = memberModel.members()[memberOrdinal];
         if (constructor.kind == ClassMemberKind::Constructor &&
+            !constructor.isStatic &&
             constructor.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
             !nameLookup.namedTypes()[constructor.declaringTypeOrdinal].isPrecompiled)
         {

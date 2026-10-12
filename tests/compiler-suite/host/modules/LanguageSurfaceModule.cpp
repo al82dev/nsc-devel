@@ -1,9 +1,13 @@
+#include "FrontendContractSupport.h"
 #include "nsc_suite/TestRegistry.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Language/Language3Surface.h"
 
 #include <array>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -13,6 +17,7 @@ namespace nsc::suite
 namespace
 {
 using namespace nativesharp::language;
+using namespace frontend_contract_support;
 
 struct ExpectedSurfaceEntry final
 {
@@ -255,6 +260,137 @@ void registerStaticInitializationStatesCase(TestRegistry& registry)
                 "TL-LANG-294 an external state value must remain explicitly unknown");
         }});
 }
+
+void registerStaticConstructorDeclarationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-295", "CL-LANG-012", "Host.Language", "component", "PR",
+        {"language", "static-initialization", "constructor"}, [](TestContext& context) {
+            const std::string source = R"ns(
+namespace Suite
+{
+    public class Gate
+    {
+        private static int Value;
+        static Gate() { Value = 7; }
+        public Gate() { }
+        public static int Read() { return Value; }
+    }
+}
+)ns";
+            TemporaryProject project("tl-lang-295-positive", source);
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Mir, project.projectFile(), error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-295 a static and an instance constructor must compile together through MIR: " +
+                    projectFailureEvidence(compilation, error));
+
+            const auto* lookup = compilation.nameLookup();
+            const auto* members = compilation.memberModel();
+            const auto* mir = compilation.oopMirModel();
+            if (!compiled || lookup == nullptr || members == nullptr || mir == nullptr)
+            {
+                return;
+            }
+
+            std::optional<std::size_t> gateType;
+            for (std::size_t typeOrdinal = 0; typeOrdinal < lookup->namedTypes().size(); ++typeOrdinal)
+            {
+                if (lookup->namedTypes()[typeOrdinal].identity.fullyQualifiedName().ends_with("Gate"))
+                {
+                    gateType = typeOrdinal;
+                    break;
+                }
+            }
+            context.expect(gateType.has_value(),
+                "TL-LANG-295 the containing type must retain its canonical identity");
+            if (!gateType.has_value())
+            {
+                return;
+            }
+
+            std::optional<std::size_t> staticConstructor;
+            std::size_t instanceConstructors = 0;
+            for (const std::size_t memberOrdinal : members->membersOfType(*gateType))
+            {
+                const auto& member = members->members()[memberOrdinal];
+                if (member.kind != nativesharp::frontend::ClassMemberKind::Constructor)
+                {
+                    continue;
+                }
+                if (member.isStatic)
+                {
+                    staticConstructor = memberOrdinal;
+                    context.expect(!member.hasImplicitThis && member.parameters.empty(),
+                        "TL-LANG-295 a static constructor has no implicit this or source parameters");
+                }
+                else
+                {
+                    ++instanceConstructors;
+                }
+            }
+            context.expect(staticConstructor.has_value() && instanceConstructors == 1U &&
+                    members->constructorsOfType(*gateType).size() == 1U,
+                "TL-LANG-295 static construction must remain outside new/base/this overload sets");
+
+            bool staticMir = false;
+            if (staticConstructor.has_value())
+            {
+                for (const auto& function : mir->functions())
+                {
+                    if (function.memberOrdinal == *staticConstructor)
+                    {
+                        staticMir = function.constructor && function.isStatic &&
+                            function.parameterTypeKeys.empty() && function.body != nullptr;
+                        break;
+                    }
+                }
+            }
+            context.expect(staticMir,
+                "TL-LANG-295 the static constructor body must lower as void static MIR without this");
+
+            const auto expectRejected = [&](std::string_view label, std::string invalidSource,
+                                            ProjectStage stage, std::string_view diagnostic) {
+                TemporaryProject invalidProject(label, std::move(invalidSource));
+                nativesharp::frontend::ProjectCompilation invalidCompilation;
+                std::string invalidError;
+                const bool accepted = compileTo(
+                    invalidCompilation, stage, invalidProject.projectFile(), invalidError);
+                const std::string evidence = projectFailureEvidence(
+                    invalidCompilation, invalidError);
+                context.expect(!accepted && evidence.find(diagnostic) != std::string::npos,
+                    "TL-LANG-295 invalid static constructor form must fail with its exact semantic cause: " +
+                        evidence);
+            };
+
+            expectRejected(
+                "tl-lang-295-accessibility",
+                "class Gate { public static Gate() { } }",
+                ProjectStage::Syntax,
+                "static constructors cannot declare accessibility");
+            expectRejected(
+                "tl-lang-295-parameters",
+                "class Gate { static Gate(int value) { } }",
+                ProjectStage::Syntax,
+                "static constructors cannot declare parameters");
+            expectRejected(
+                "tl-lang-295-initializer",
+                "class Gate { static Gate() : this() { } }",
+                ProjectStage::Syntax,
+                "static constructors cannot declare base(...) or this(...) initializers");
+            expectRejected(
+                "tl-lang-295-duplicate",
+                "class Gate { static Gate() { } static Gate() { } }",
+                ProjectStage::Members,
+                "duplicate constructor signature");
+            expectRejected(
+                "tl-lang-295-this",
+                "class Gate { int value; static Gate() { this.value = 1; } }",
+                ProjectStage::MethodBodies,
+                "this is not available in a static member or field initializer");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -267,5 +403,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerUnavailableDiagnosticCase(registry);
     registerSurfaceDeterminismCase(registry);
     registerStaticInitializationStatesCase(registry);
+    registerStaticConstructorDeclarationCase(registry);
 }
 }

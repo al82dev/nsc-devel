@@ -208,6 +208,7 @@ private:
     ast::AstNode* parseConstructorTail(
         std::string_view className,
         lexer::TokenKind accessibility,
+        bool isStatic,
         bool isNoHeap,
         std::size_t beginIndex);
     ast::AstNode* parseMethodTail(

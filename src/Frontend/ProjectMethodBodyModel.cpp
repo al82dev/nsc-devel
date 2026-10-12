@@ -805,7 +805,8 @@ void ProjectMethodBodyModel::analyzeConstructorInitializer(
     std::size_t rootScopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (callable.kind != ClassMemberKind::Constructor || callable.syntax->second() == nullptr)
+    if (callable.kind != ClassMemberKind::Constructor || callable.isStatic ||
+        callable.syntax->second() == nullptr)
         return;
     const ast::AstNode* initializer = callable.syntax->second();
     if (initializer->kind() != ast::AstNodeKind::BaseConstructorInitializer &&

@@ -6351,10 +6351,26 @@ ast::AstNode* Parser::parseClassMember(
         rejectControlledSpecialization("a constructor");
         if (isStatic)
         {
-            reportDeferredLanguage3(
-                diagnostics_, current().range(), language::Language3Feature::StaticConstructors);
+            if (accessibility != TokenKind::Invalid)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "static constructors cannot declare accessibility");
+            }
+            if (isNew || isVirtual || isOverride || isReadonly || isVolatile || isConst ||
+                isInline || isForceInline || isNoInline || isAbstract || isSealed ||
+                isExported || isExternC)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "static constructors accept only the static and optional noheap modifiers");
+            }
         }
-        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isVolatile || isConst ||
+        else if (isNew || isVirtual || isOverride || isReadonly || isVolatile || isConst ||
             isInline || isForceInline || isNoInline || isAbstract || isSealed ||
             isExported || isExternC)
         {
@@ -6362,9 +6378,9 @@ ast::AstNode* Parser::parseClassMember(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "constructors cannot be static, readonly, volatile, const, virtual, override, abstract or sealed");
+                "constructors cannot be readonly, volatile, const, virtual, override, abstract or sealed");
         }
-        return parseConstructorTail(className, accessibility, isNoHeap, beginIndex);
+        return parseConstructorTail(className, accessibility, isStatic, isNoHeap, beginIndex);
     }
 
     if (at(TokenKind::KwImplicit) || at(TokenKind::KwExplicit))
@@ -7840,6 +7856,7 @@ ast::AstNode* Parser::parseDestructorTail(
 ast::AstNode* Parser::parseConstructorTail(
     std::string_view className,
     TokenKind accessibility,
+    bool isStatic,
     bool isNoHeap,
     std::size_t beginIndex)
 {
@@ -7848,6 +7865,10 @@ ast::AstNode* Parser::parseConstructorTail(
         ast::AstNodeKind::ConstructorDeclaration,
         name.range());
     constructor->setText(std::string(className));
+    if (isStatic)
+    {
+        constructor->addModifier(TokenKind::KwStatic);
+    }
     if (accessibility != TokenKind::Invalid)
     {
         constructor->setTokenKind(accessibility);
@@ -7861,6 +7882,14 @@ ast::AstNode* Parser::parseConstructorTail(
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
     {
+        if (isStatic)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "static constructors cannot declare parameters");
+        }
         while (true)
         {
             ast::AstNode* parameter = parseParameter();
@@ -7879,6 +7908,14 @@ ast::AstNode* Parser::parseConstructorTail(
     if (consumeIf(TokenKind::Colon))
     {
         const SourceRange initializerBegin = tokens_[index_ - 1].range();
+        if (isStatic)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                initializerBegin,
+                "static constructors cannot declare base(...) or this(...) initializers");
+        }
         const bool baseInitializer = at(TokenKind::KwBase);
         const bool thisInitializer = at(TokenKind::KwThis);
         if (!baseInitializer && !thisInitializer)

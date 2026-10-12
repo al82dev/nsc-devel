@@ -234,6 +234,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-160 | CL-LANG-012 | language3SurfaceDiagnostic para PlannedFor304, DeferredTo4 y RejectedFor3 | texto exacto y estado no productivo por disposition | PR |
 | TL-LANG-161 | CL-LANG-012 | llamadas repetidas a surface/manifest/diagnostic | resultados deterministas y sin mutacion | PR |
 | TL-LANG-294 | CL-LANG-012 | cuatro estados de inicializacion estatica y enum externo | orden, nombres y unknown exactos | PR |
+| TL-LANG-295 | CL-LANG-012 | constructor estatico valido mas cinco formas invalidas | AST/simbolo/MIR static exactos y diagnosticos semanticos | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

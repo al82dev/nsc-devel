@@ -1238,7 +1238,7 @@ std::string ProjectOopHirModel::mangleCallable(
     const ClassMemberSymbol& member)
 {
     const std::string prefix = member.kind == ClassMemberKind::Constructor
-        ? "__nsc_ctor_"
+        ? (member.isStatic ? "__nsc_cctor_" : "__nsc_ctor_")
         : member.kind == ClassMemberKind::Destructor
             ? "__nsc_dtor_body_"
             : "__nsc_method_";
@@ -1691,7 +1691,7 @@ bool ProjectOopHirModel::buildImpl(
                 std::make_move_iterator(ownedParameterCleanupNodes.begin()),
                 std::make_move_iterator(ownedParameterCleanupNodes.end()));
         }
-        if (function.constructor)
+        if (function.constructor && !function.isStatic)
         {
             std::vector<std::unique_ptr<ProjectOopHirNode>> prefix;
             const ConstructorInitializerBinding* initializerBinding =

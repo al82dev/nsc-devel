@@ -1896,7 +1896,7 @@ bool ProjectMemberModel::collectTypeMembers(
             if (!symbol.declaredErrorTypeKey.empty())
                 symbol.effects = symbol.effects.with(sema::Effect::Throws);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
-                symbol.kind == ClassMemberKind::Method) &&
+                symbol.kind == ClassMemberKind::Method || symbol.kind == ClassMemberKind::Constructor) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);
             symbol.isNewSlot = memberNode->hasModifier(lexer::TokenKind::KwNew);
             const bool readonlyDeclaringStruct = type.kind == NamedTypeDeclarationKind::Struct &&
@@ -1969,7 +1969,7 @@ bool ProjectMemberModel::collectTypeMembers(
                         "discharged by the containing object's destruction");
             }
             symbol.declaringTypeIsStruct = type.kind == NamedTypeDeclarationKind::Struct;
-            symbol.hasImplicitThis = symbol.kind == ClassMemberKind::Constructor ||
+            symbol.hasImplicitThis = (symbol.kind == ClassMemberKind::Constructor && !symbol.isStatic) ||
                 symbol.kind == ClassMemberKind::Destructor ||
                 (symbol.kind == ClassMemberKind::Method && !symbol.isStatic);
             symbol.isAbstract = symbol.kind == ClassMemberKind::Method &&
@@ -2920,7 +2920,9 @@ bool ProjectMemberModel::collectTypeMembers(
                         duplicate = true;
                         break;
                     }
-                    if (symbol.kind == previous.kind && symbol.signatureKey == previous.signatureKey)
+                    if (symbol.kind == previous.kind && symbol.signatureKey == previous.signatureKey &&
+                        (symbol.kind != ClassMemberKind::Constructor ||
+                         symbol.isStatic == previous.isStatic))
                     {
                         const bool sameControlledFamily =
                             symbol.kind == ClassMemberKind::Method &&
@@ -2965,7 +2967,8 @@ bool ProjectMemberModel::collectTypeMembers(
             const std::size_t memberOrdinal = members_.size();
             members_.push_back(std::move(symbol));
             membersByType_[typeOrdinal].push_back(memberOrdinal);
-            if (members_[memberOrdinal].kind == ClassMemberKind::Constructor)
+            if (members_[memberOrdinal].kind == ClassMemberKind::Constructor &&
+                !members_[memberOrdinal].isStatic)
             {
                 constructorsByType_[typeOrdinal].push_back(memberOrdinal);
             }

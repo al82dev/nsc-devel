@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 9 | 6.12 % | `ACTIVA`; T00 cerrada; T01-F01 cerrada, T01-F02 activa |
+| B | 3.0.4 | 18 | 147 ítems | 10 | 6.80 % | `ACTIVA`; T00 cerrada; T01-F01/F02 cerradas, T01-F03 activa |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -916,7 +916,7 @@ T00
 | Tanda | Tema | Ítems | Cerrados | Progreso |
 |---|---|---:|---:|---:|
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
-| T01 | Inicialización estática y declaraciones en condiciones | 8 | 1 | 12.5 % |
+| T01 | Inicialización estática y declaraciones en condiciones | 8 | 2 | 25 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 0 | 0 % |
 | T03 | List, slice y property patterns | 8 | 0 | 0 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
@@ -951,7 +951,7 @@ T00
 ### T01 — inicialización estática y declaraciones en condiciones
 
 - [x] `NS304-T01-F01` — Definir estados `uninitialized`, `initializing`, `initialized` y `failed`.
-- [ ] `NS304-T01-F02` — Implementar gramática y semántica de constructores estáticos por tipo.
+- [x] `NS304-T01-F02` — Implementar gramática y semántica de constructores estáticos por tipo.
 - [ ] `NS304-T01-F03` — Implementar inicializadores de módulo con orden y dependencias explícitos.
 - [ ] `NS304-T01-F04` — Implementar once thread-safe, espera, reentrancia y detección de ciclos.
 - [ ] `NS304-T01-F05` — Hacer terminal el fallo de inicialización, sin retry; panic sigue el perfil del proceso.
@@ -1367,7 +1367,24 @@ Estado: `CERRADO`.
   Host.Language; productor `nsc_component_tests`.
 - Gate: modelo y prueba dirigidos `PASS`; T01 queda 1/8 y Parte B 9/147, sin
   batería completa.
-- Siguiente ítem: `NS304-T01-F02`.
+- Siguiente ítem: `NS304-T01-F02`, cerrado a continuación.
+
+### NS304-T01-F02 — constructores estáticos por tipo
+
+Estado: `CERRADO`.
+
+- Expediente: `docs/3.0.4/items/NS304-T01-F02-static-constructors.md`.
+- Contrato: `static Tipo()` sin accesibilidad, parámetros ni initializer;
+  único por tipo, sin `this` y separado de constructores invocables.
+- Implementación: Parser conserva `ConstructorDeclaration + KwStatic`;
+  member/construction separan el overload set; HIR/MIR usan función `void`
+  estática `__nsc_cctor_*` sin prólogo de instancia.
+- Prueba puntual: `TL-LANG-295` `PASS` en 102329 microsegundos, positivo hasta
+  MIR y cinco negativos exactos.
+- Guard de frontera: `TL-LANG-160` `PASS`; el manifest conserva
+  `static-constructors=planned-3.0.4` hasta cerrar triggers/once/runtime/F08.
+- Gate: T01 queda 2/8 y Parte B 10/147, sin batería completa.
+- Siguiente ítem: `NS304-T01-F03`.
 
 ---
 
@@ -1876,19 +1893,22 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B01/T00-F08 | Harness estructural 3.0.4 | unitarias y ejecución sobre fuentes canónicas | 4/4 unitarias PASS; gate real PASS; 8/147 cerrados |
 | 2026-10-12 | B01/T00 | Consolidado puntual de tanda | F01–F08, sólo gates documentales y TL-LANG-155..161 | `PASS`; T00 8/8; T01-F01 habilitada sin batería completa |
 | 2026-10-12 | B02/T01-F01 | Estados de inicialización estática | dominio cerrado, nombre estable y `TL-LANG-294` | `PASS`; T01 1/8; 9/147 cerrados; T01-F02 activa |
+| 2026-10-12 | B02/T01-F02 | Constructor estático por tipo | Parser, miembro, construction y HIR/MIR; `TL-LANG-295` + guard `TL-LANG-160` | `PASS`; T01 2/8; 10/147 cerrados; T01-F03 activa |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `9/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `10/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
   congeló seis ventanas de versión sin adelantar writers ni ABI, y T00-F07
   publicó las dependencias de 18 familias sin convertir planes en artefactos,
   y T00-F08 añadió el harness estructural; consolidado T00 `PASS`. T01-F01
-  fijó los cuatro estados de inicialización y `TL-LANG-294` pasó; T01-F02 activa.
+  fijó los cuatro estados de inicialización y `TL-LANG-294` pasó; T01-F02
+  cerró la declaración estática hasta MIR con `TL-LANG-295`, manteniendo la
+  promoción de superficie pendiente; T01-F03 activa.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
