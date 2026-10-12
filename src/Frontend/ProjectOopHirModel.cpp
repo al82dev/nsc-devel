@@ -5971,7 +5971,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     }
                     node->children.push_back(std::move(argument));
                 }
-                node->argumentCount = expression->children().size();
+                for (std::size_t index = 0; index < invoke->selectedDefaultArguments.size(); ++index)
+                {
+                    const std::string& targetTypeKey =
+                        index < invoke->selectedDefaultArgumentTypeKeys.size()
+                        ? invoke->selectedDefaultArgumentTypeKeys[index] : std::string{};
+                    auto argument = lowerDefaultArgument(
+                        invoke->selectedDefaultArguments[index], targetTypeKey, error);
+                    if (argument == nullptr) return nullptr;
+                    node->argumentTypeKeys.push_back(targetTypeKey);
+                    node->children.push_back(std::move(argument));
+                }
+                node->argumentCount =
+                    expression->children().size() + invoke->selectedDefaultArguments.size();
                 return node;
             }
 

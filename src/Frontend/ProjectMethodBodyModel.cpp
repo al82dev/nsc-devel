@@ -15649,7 +15649,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(callee.typeKey);
         const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
-        if ((!variadic && parameterTypes.size() != arguments.size()) ||
+        // NS304-T04-F04: aplicacion de defaults en el call-site de delegate. Cada parametro
+        // omitido debe tener un default consteval en la declaracion del delegate; su sintaxis se
+        // guarda para que el HIR lo emita como argumento real.
+        std::vector<const ast::AstNode*> defaultedSyntaxes;
+        std::vector<std::string> defaultedTypeKeys;
+        if (!variadic && arguments.size() < parameterTypes.size())
+        {
+            std::vector<const ast::AstNode*> delegateParameters;
+            if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+            {
+                const ast::AstNode* delegateSyntax = nameLookup_->namedTypes()[delegateOrdinal].syntax;
+                if (delegateSyntax != nullptr)
+                {
+                    for (const ast::AstNode* child : delegateSyntax->children())
+                    {
+                        if (child != nullptr &&
+                            child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                            delegateParameters.push_back(child);
+                    }
+                }
+            }
+            bool missingDefault = delegateParameters.size() != parameterTypes.size();
+            for (std::size_t index = arguments.size();
+                 index < parameterTypes.size() && !missingDefault; ++index)
+            {
+                if (index >= delegateParameters.size() || delegateParameters[index]->first() == nullptr)
+                    missingDefault = true;
+                else
+                {
+                    defaultedSyntaxes.push_back(delegateParameters[index]->first());
+                    defaultedTypeKeys.push_back(parameterTypes[index]);
+                }
+            }
+            if (missingDefault)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidArgumentCount,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "delegate invocation argument count does not match its signature");
+                return result;
+            }
+        }
+        if ((!variadic && parameterTypes.size() != arguments.size() + defaultedSyntaxes.size()) ||
             (variadic && arguments.size() < parameterTypes.size()))
         {
             diagnostics.report(
@@ -15752,6 +15795,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
+        binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
+        binding.selectedDefaultArgumentTypeKeys = std::move(defaultedTypeKeys);
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;

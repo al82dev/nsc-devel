@@ -1305,6 +1305,10 @@ struct MethodDelegateBinding final
     bool directLambdaUsesEnvironment = false;
     std::string resultTypeKey;
     std::vector<ProjectImplicitConversion> argumentConversions;
+    // NS304-T04-F04: valores default (sintaxis) de parametros omitidos en la invocacion, en orden
+    // de parametro. El HIR los baja como argumentos reales.
+    std::vector<const ast::AstNode*> selectedDefaultArguments;
+    std::vector<std::string> selectedDefaultArgumentTypeKeys;
 };
 
 enum class MethodEventOperationKind

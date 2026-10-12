@@ -2076,6 +2076,41 @@ class Program
 
 }
 
+void registerLambdaDefaultParamCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-317", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "lambda", "callable", "parameter", "default", "optional"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04LambdaDefaults", "Exe", R"ns(
+class Program
+{
+    public delegate int Add(int value = 5);
+
+    public static int Main()
+    {
+        Add add = (int x = 5) => x + 1;
+        return add();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04LambdaDefaults.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-317 a lambda with a default parameter must compile against the target: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-317 the default parameter must apply when the argument is omitted: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2107,5 +2142,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPatternBindingModeCase(registry);
     registerLambdaNaturalTypeCase(registry);
     registerLambdaParameterModifierCase(registry);
+    registerLambdaDefaultParamCase(registry);
 }
 }
