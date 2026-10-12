@@ -54,7 +54,7 @@ void registerRelationalExpressionCase(TestRegistry& registry)
         context.expect(expression != nullptr && expression->kind() == AstNodeKind::BinaryExpression,
             "TP-PAR-103 relational chain must remain a binary expression");
         context.expect(fixture.diagnostics().diagnostics().empty(), "TP-PAR-103 must parse without diagnostics");
-    }, TestDisposition::KnownProductDefect});
+    }});
 }
 
 // Registers a closed generic type used as a static member receiver. Complexity is O(n).

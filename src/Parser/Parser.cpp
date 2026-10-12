@@ -2377,12 +2377,26 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
     std::size_t cursor = index_ + 1;
     int genericDepth = 1;
     int parenthesisDepth = 0;
+    bool expectsArgument = true;
+    bool sawArgument = false;
     while (cursor < tokens_.size())
     {
         const TokenKind kind = tokens_[cursor].kind();
         if (!canAppearInTypeArgumentList(kind))
         {
             return false;
+        }
+        if (parenthesisDepth == 0 && genericDepth == 1 && expectsArgument &&
+            kind != TokenKind::Greater && kind != TokenKind::GreaterGreater)
+        {
+            const bool constantArgument = kind == TokenKind::LeftParen ||
+                kind == TokenKind::Plus || kind == TokenKind::Minus ||
+                kind == TokenKind::Tilde || kind == TokenKind::Bang ||
+                kind == TokenKind::IntegerLiteral || kind == TokenKind::KwTrue ||
+                kind == TokenKind::KwFalse;
+            if (!constantArgument && !canStartTypeAt(cursor)) return false;
+            expectsArgument = false;
+            sawArgument = true;
         }
         const bool functionReferenceCarrier = kind == TokenKind::Amp && cursor > 0 &&
             tokens_[cursor - 1U].kind() == TokenKind::Identifier &&
@@ -2408,12 +2422,17 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
             if (--parenthesisDepth < 0) return false;
         }
         else if (parenthesisDepth == 0 && kind == TokenKind::Less) ++genericDepth;
+        else if (parenthesisDepth == 0 && genericDepth == 1 && kind == TokenKind::Comma)
+        {
+            expectsArgument = true;
+        }
         else if (parenthesisDepth == 0 &&
                  (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater))
         {
             genericDepth -= kind == TokenKind::GreaterGreater ? 2 : 1;
             if (genericDepth == 0)
             {
+                if (expectsArgument && sawArgument) return false;
                 return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::LeftParen;
             }
             if (genericDepth < 0) return false;
