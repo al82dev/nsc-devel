@@ -1922,6 +1922,40 @@ class Program
         }});
 }
 
+void registerListExhaustivenessCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-312", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "exhaustiveness", "length"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T03ListExhaustiveness", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] values = new int[2];
+        values[0] = 1;
+        values[1] = 2;
+        return match(values)
+        {
+            [var x] => x,
+            [var x, var y] => x + y
+        };
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T03ListExhaustiveness.exe", products.directory());
+            const std::string diagnostics = emitted.error + emitted.output;
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    diagnostics.find("missing list length") != std::string::npos,
+                "TL-LANG-312 a list match without rest/wildcard must be non-exhaustive: " +
+                    diagnostics);
+        }});
+}
+
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -1951,5 +1985,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListPatternRestCaptureCase(registry);
     registerListPatternSubstratesCase(registry);
     registerPropertyPatternCase(registry);
+    registerListExhaustivenessCase(registry);
 }
 }

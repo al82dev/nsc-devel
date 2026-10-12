@@ -4376,11 +4376,19 @@ void ProjectMethodBodyModel::analyzeBlock(
                 if (!result.exhaustive)
                 {
                     std::string message = "non-exhaustive match; missing list length";
-                    message += result.missingCases.size() == 1 ? ": " : "s: ";
-                    for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                    if (result.missingCases.empty())
                     {
-                        if (index != 0) message += ", ";
-                        message += result.missingCases[index];
+                        message += ": a list pattern needs a rest or wildcard arm to cover "
+                            "unbounded lengths";
+                    }
+                    else
+                    {
+                        message += result.missingCases.size() == 1 ? ": " : "s: ";
+                        for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                        {
+                            if (index != 0) message += ", ";
+                            message += result.missingCases[index];
+                        }
                     }
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
