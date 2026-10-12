@@ -1,6 +1,6 @@
 # NS304-T04-F01 — Inferir tipo callable natural para lambda y method group
 
-- **Estado**: EN IMPLEMENTACIÓN
+- **Estado**: CERRADO (lambda natural) / residual menor (method group)
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `ProjectMethodBodyModel.cpp` (análisis de `LambdaExpression` y
   `AnonymousLambdaType`), `ProjectGenericModel.cpp` (`inferLambdaTypeArguments`), y la prueba
@@ -15,24 +15,21 @@ La infraestructura de callables ya es extensa (análisis por olas paralelas):
 - `analyzeExpression` con `case ast::AstNodeKind::LambdaExpression` (:9539).
 - `functionType` (ProjectMethodBodyModel.cpp:7545) — construye el tipo `fn` desde un callable.
 
-## Gap F01 (confirmado)
+## Resultado (validado)
 
 `bindLambdaToDelegate` (ProjectMethodBodyModel.cpp:22625) con `delegateTypeKey` vacío
-(`inferAnonymous = true`, :22642) YA infiere el tipo anónimo cuando:
-- todos los parámetros tienen tipo explícito (:22648-22670),
-- y el retorno es explícito (`syntax->typeSyntax()`, :22671-22672).
+(`inferAnonymous = true`, :22642) infiere el tipo callable natural COMPLETO:
 
-**Falta**: inferir el TIPO DE RETORNO desde el cuerpo cuando no hay `-> T` explícito
-(p.ej. `(int x) => x + 1` debe inferir `int`). Hoy `returnType` queda vacío en ese caso.
+- todos los parámetros deben tener tipo explícito (:22648-22670);
+- el cuerpo se analiza (:22896-22899) y, si el retorno NO es explícito, se **infiere del cuerpo**
+  (:22904-22908: `returnType = body.typeKey`);
+- la clave anónima se arma con ese retorno (:22954-22958).
 
-## Plan
+**Prueba `TL-LANG-314`** (exit 42): `var f = (int x) => x + 1; return f(41);` — **PASS**, valida la
+inferencia del retorno desde el cuerpo.
 
-1. Confirmar/implementar la inferencia de retorno desde el cuerpo del lambda anónimo
-   (analizar el cuerpo y tomar su tipo) cuando no hay `-> T`.
-2. Añadir/confirmar la inferencia de method group (rank único) a `fn*`/`fn&`.
-3. Prueba `TL-LANG-314` (retorno explícito, ya existe) + extenderla al retorno inferido.
+## Residual menor (a confirmar en testing final)
 
-## Prueba puntual
-
-`TL-LANG-314`: `var f = (int x) -> int => x + 1; return f(41);` (exit 42) — valida la
-inferencia actual. Se extiende a `(int x) => x + 1` cuando se implemente el retorno inferido.
+Inferencia de **method group** (rank único) a `fn*`/`fn&` sin destino tipado explícito. La
+conversión method group → delegate ya existe (`bindMethodGroupToDelegate`, :22974), pero la
+inferencia del tipo `fn` natural de un method group único sin contexto no se validó con prueba.
