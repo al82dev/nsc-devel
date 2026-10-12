@@ -20,6 +20,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Source/SourceManager.h"
 
@@ -3005,11 +3006,17 @@ private:
             // losing CAS whose owner is a DIFFERENT thread id is a genuine cross-thread race
             // (spin-wait as before).
             LLVMBasicBlockRef entry = appendBlock("cctor.entry");
+            LLVMBasicBlockRef fastFailureCheck = appendBlock("cctor.fast_failure_check");
             LLVMBasicBlockRef casAttempt = appendBlock("cctor.cas_attempt");
+            LLVMBasicBlockRef casInitializedCheck = appendBlock("cctor.cas_initialized_check");
             LLVMBasicBlockRef recursionCheck = appendBlock("cctor.recursion_check");
             LLVMBasicBlockRef spinWait = appendBlock("cctor.spin_wait");
+            LLVMBasicBlockRef spinTerminal = appendBlock("cctor.spin_terminal");
             LLVMBasicBlockRef initialize = appendBlock("cctor.initialize");
             LLVMBasicBlockRef done = appendBlock("cctor.done");
+            LLVMBasicBlockRef failed = appendBlock("cctor.failed");
+            LLVMBasicBlockRef failureUnwind = appendBlock("cctor.failure_unwind");
+            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
             LLVMPositionBuilderAtEnd(builder_, entry);
             ScopedDebugLocation generatedLocation(
                 builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
@@ -3017,16 +3024,30 @@ private:
             LLVMValueRef ownerGlobal = staticInitOwnerGlobals_[typeOrdinal];
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
             LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-            LLVMValueRef zero = LLVMConstInt(i8, 0, 0);
-            LLVMValueRef one = LLVMConstInt(i8, 1, 0);
-            LLVMValueRef two = LLVMConstInt(i8, 2, 0);
+            const auto stateValue = [](language::StaticInitializationState state) noexcept
+            {
+                return static_cast<std::uint64_t>(state);
+            };
+            LLVMValueRef zero = LLVMConstInt(
+                i8, stateValue(language::StaticInitializationState::Uninitialized), 0);
+            LLVMValueRef one = LLVMConstInt(
+                i8, stateValue(language::StaticInitializationState::Initializing), 0);
+            LLVMValueRef two = LLVMConstInt(
+                i8, stateValue(language::StaticInitializationState::Initialized), 0);
+            LLVMValueRef three = LLVMConstInt(
+                i8, stateValue(language::StaticInitializationState::Failed), 0);
             // Fast path: an atomic load lets an already-initialized class (the overwhelming
             // majority of calls -- this function runs on EVERY static-member access, not just the
             // first) skip straight to `done` without ever touching the CAS below.
             LLVMValueRef fastState = LLVMBuildLoad2(builder_, i8, stateGlobal, "cctor.state.fast");
             LLVMSetOrdering(fastState, LLVMAtomicOrderingSequentiallyConsistent);
             LLVMValueRef fastDone = LLVMBuildICmp(builder_, LLVMIntEQ, fastState, two, "cctor.fast_done");
-            LLVMBuildCondBr(builder_, fastDone, done, casAttempt);
+            LLVMBuildCondBr(builder_, fastDone, done, fastFailureCheck);
+
+            LLVMPositionBuilderAtEnd(builder_, fastFailureCheck);
+            LLVMValueRef fastFailed = LLVMBuildICmp(
+                builder_, LLVMIntEQ, fastState, three, "cctor.fast_failed");
+            LLVMBuildCondBr(builder_, fastFailed, failed, casAttempt);
 
             LLVMPositionBuilderAtEnd(builder_, casAttempt);
             // Computed here (in the block that dominates BOTH `initialize` -- the CAS-won path --
@@ -3042,8 +3063,20 @@ private:
             LLVMValueRef cas = LLVMBuildAtomicCmpXchg(
                 builder_, stateGlobal, zero, one,
                 LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
+            LLVMValueRef observedState = LLVMBuildExtractValue(builder_, cas, 0, "cctor.cas.observed");
             LLVMValueRef won = LLVMBuildExtractValue(builder_, cas, 1, "cctor.cas.won");
-            LLVMBuildCondBr(builder_, won, initialize, recursionCheck);
+            LLVMBuildCondBr(builder_, won, initialize, casInitializedCheck);
+
+            LLVMPositionBuilderAtEnd(builder_, casInitializedCheck);
+            LLVMValueRef observedInitialized = LLVMBuildICmp(
+                builder_, LLVMIntEQ, observedState, two, "cctor.cas_initialized");
+            LLVMBasicBlockRef casFailureCheck = appendBlock("cctor.cas_failure_check");
+            LLVMBuildCondBr(builder_, observedInitialized, done, casFailureCheck);
+
+            LLVMPositionBuilderAtEnd(builder_, casFailureCheck);
+            LLVMValueRef observedFailed = LLVMBuildICmp(
+                builder_, LLVMIntEQ, observedState, three, "cctor.cas_failed");
+            LLVMBuildCondBr(builder_, observedFailed, failed, recursionCheck);
 
             LLVMPositionBuilderAtEnd(builder_, recursionCheck);
             LLVMValueRef ownerTid = LLVMBuildLoad2(builder_, i32, ownerGlobal, "cctor.owner_tid");
@@ -3054,16 +3087,22 @@ private:
             LLVMPositionBuilderAtEnd(builder_, spinWait);
             // A losing thread (confirmed, via recursionCheck above, to be a genuinely DIFFERENT
             // thread from whichever one is initializing) spins on an atomic load until the winner
-            // publishes state == 2. This window is only ever hit by the (rare) small number of
-            // threads that race a class's FIRST static-field access at the same instant -- once
-            // state reaches 2 it never changes again, so every later call takes the fast path
-            // above instead. A busy spin (rather than a real OS wait) keeps this guard self-
+            // publishes terminal state 2 or 3. This window is only ever hit by the rare threads
+            // that race a class's FIRST static-field access at the same instant -- once
+            // state reaches a terminal value it never changes again, so every later call takes
+            // the fast path above instead. A busy spin (rather than a real OS wait) keeps this guard self-
             // contained: no risk of the guard itself needing to wait on a primitive (like Mutex)
             // that might not have finished constructing yet.
             LLVMValueRef spinState = LLVMBuildLoad2(builder_, i8, stateGlobal, "cctor.state.spin");
             LLVMSetOrdering(spinState, LLVMAtomicOrderingSequentiallyConsistent);
-            LLVMValueRef spinDone = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, two, "cctor.spin_done");
-            LLVMBuildCondBr(builder_, spinDone, done, spinWait);
+            LLVMValueRef spinPending = LLVMBuildICmp(
+                builder_, LLVMIntEQ, spinState, one, "cctor.spin_pending");
+            LLVMBuildCondBr(builder_, spinPending, spinWait, spinTerminal);
+
+            LLVMPositionBuilderAtEnd(builder_, spinTerminal);
+            LLVMValueRef spinDone = LLVMBuildICmp(
+                builder_, LLVMIntEQ, spinState, two, "cctor.spin_done");
+            LLVMBuildCondBr(builder_, spinDone, done, failed);
 
             LLVMPositionBuilderAtEnd(builder_, initialize);
             // Publish this thread's id BEFORE running any field initializer below -- a
@@ -3072,6 +3111,7 @@ private:
             // self-recursion rather than spin-waiting on itself forever.
             LLVMValueRef ownerStore = LLVMBuildStore(builder_, currentTid, ownerGlobal);
             LLVMSetOrdering(ownerStore, LLVMAtomicOrderingSequentiallyConsistent);
+            staticInitializationFailureUnwindBlock_ = failureUnwind;
             for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
             {
                 if (!initializer.isStatic || initializer.isConst ||
@@ -3082,11 +3122,13 @@ private:
                 const auto globalFound = staticFieldGlobals_.find(initializer.memberOrdinal);
                 if (globalFound == staticFieldGlobals_.end())
                 {
+                    staticInitializationFailureUnwindBlock_ = nullptr;
                     return fail(error, "Stage 37 runtime static initializer lost its field global");
                 }
                 LLVMValueRef value = lowerExpression(initializer.value.get(), error);
                 if (value == nullptr)
                 {
+                    staticInitializationFailureUnwindBlock_ = nullptr;
                     return false;
                 }
                 LLVMBuildStore(builder_, value, globalFound->second);
@@ -3102,15 +3144,53 @@ private:
                         "",
                         error) == nullptr && !error.empty())
                 {
+                    staticInitializationFailureUnwindBlock_ = nullptr;
                     return false;
                 }
             }
+            staticInitializationFailureUnwindBlock_ = nullptr;
             LLVMValueRef publish = LLVMBuildStore(builder_, two, stateGlobal);
             LLVMSetOrdering(publish, LLVMAtomicOrderingSequentiallyConsistent);
             if (!terminated()) LLVMBuildBr(builder_, done);
 
             LLVMPositionBuilderAtEnd(builder_, done);
             LLVMBuildRetVoid(builder_);
+
+            LLVMPositionBuilderAtEnd(builder_, failed);
+            if (mirModel_.panicProfile() == language::PanicProfile::Abort)
+            {
+                LLVMValueRef reason = LLVMConstInt(
+                    i32, static_cast<std::uint64_t>(LlvmTrapReason::Panic), 0);
+                LLVMValueRef arguments[] = {reason};
+                buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+            }
+            else
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef arguments[] = {
+                    LLVMConstInt(i32, kNativeSharpPanicExceptionCode, 0),
+                    LLVMConstInt(i32, 1, 0),
+                    LLVMConstInt(i32, 0, 0),
+                    LLVMConstNull(ptr)};
+                buildNoUnwindCall(
+                    raiseExceptionFunctionType_, raiseExceptionFunction_, arguments, 4, "");
+                LLVMValueRef reason = LLVMConstInt(
+                    i32, static_cast<std::uint64_t>(LlvmTrapReason::Panic), 0);
+                LLVMValueRef trapArguments[] = {reason};
+                buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+            }
+            LLVMBuildUnreachable(builder_);
+
+            LLVMPositionBuilderAtEnd(builder_, failureUnwind);
+            LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
+                builder_, nullptr, nullptr, 0, "cctor.failure.pad");
+            if (cleanupPad == nullptr)
+            {
+                return fail(error, "static initialization failed to create its terminal-state cleanuppad");
+            }
+            LLVMValueRef failurePublish = LLVMBuildStore(builder_, three, stateGlobal);
+            LLVMSetOrdering(failurePublish, LLVMAtomicOrderingSequentiallyConsistent);
+            LLVMBuildCleanupRet(builder_, cleanupPad, nullptr);
         }
         currentDebugSubprogram_ = nullptr;
         currentDebugScope_ = nullptr;
@@ -5551,6 +5631,10 @@ private:
                 activeCleanupRegions_.size());
             finalTarget = funcletStack_.back().unwindDestination;
         }
+        else if (staticInitializationFailureUnwindBlock_ != nullptr)
+        {
+            finalTarget = staticInitializationFailureUnwindBlock_;
+        }
 
         // A captured local/parameter has one reference owned by the creating activation. If an
         // invoke leaves that activation, normal return lowering never runs, so put that reference
@@ -6818,6 +6902,10 @@ private:
                     }),
                 cleanupPath.end());
             finalTarget = funcletStack_.back().unwindDestination;
+        }
+        else if (staticInitializationFailureUnwindBlock_ != nullptr)
+        {
+            finalTarget = staticInitializationFailureUnwindBlock_;
         }
         if (finalTarget == nullptr && !ownedCaptureCells_.empty())
         {
@@ -16920,6 +17008,10 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> staticInitOwnerGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
     std::unordered_map<std::size_t, FunctionInfo> staticConstructorBodies_;
+    // Non-null only while the generated body of one type-initialization guard is being lowered.
+    // Potentially throwing calls and native-unwind panic use this cleanuppad to publish the
+    // terminal Failed state before preserving the original unwind to the caller.
+    LLVMBasicBlockRef staticInitializationFailureUnwindBlock_ = nullptr;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
     // C8 "type root": one name constant per class, keyed by its global's name.

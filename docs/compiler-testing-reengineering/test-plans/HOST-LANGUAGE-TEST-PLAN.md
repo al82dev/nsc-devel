@@ -237,6 +237,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-295 | CL-LANG-012 | constructor estatico valido mas cinco formas invalidas | AST/simbolo/MIR static exactos y diagnosticos semanticos | PR |
 | TL-LANG-296 | CL-LANG-012 | Producer referenciado por Consumer, ambos con constructor estatico | plan dependency-first, dependencia directa explicita y ownership exacto sin ejecutar al importar | PR |
 | TL-LANG-297 | CL-LANG-012 | cctor explicito con campo estatico y grafo de modulos ciclico | CAS/body/publish, espera y reentrancia exactos; ciclo rechazado causalmente | PR |
+| TL-LANG-298 | CL-LANG-012 | estados de inicializacion y perfiles panic abort/unwind-native | failed terminal sin retry y perfil panic exacto | PR |
 
 ## Modelo de memoria — `CL-LANG-013`
 

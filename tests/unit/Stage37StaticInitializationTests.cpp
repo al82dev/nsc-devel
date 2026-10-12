@@ -39,12 +39,19 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
     stream << text;
 }
 
-void writeProject(const std::filesystem::path& directory, std::string_view name)
+void writeProject(
+    const std::filesystem::path& directory,
+    std::string_view name,
+    std::string_view panicProfile = {})
 {
+    const std::string panicProperty = panicProfile.empty()
+        ? std::string{}
+        : "<PanicProfile>" + std::string(panicProfile) + "</PanicProfile>";
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-            "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+            "</Name>" + panicProperty +
+            "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
 }
 
 std::size_t diagnosticCount(const ProjectCompilation& compilation, DiagnosticId id)
@@ -541,8 +548,12 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
     tests.expect(module->verify(verifyError), "Stage 37 initializer LLVM passes verifier before optimization");
     const std::string llvm = module->text();
     const std::size_t stateClaim = llvm.find("cmpxchg ptr @__nsc_cctor_state_");
-    const std::size_t bodyCall = llvm.find("call void @\"__nsc_cctor_body_");
+    const std::size_t bodyInvoke = llvm.find("invoke void @\"__nsc_cctor_body_");
+    const std::size_t bodyCall = bodyInvoke != std::string::npos
+        ? bodyInvoke
+        : llvm.find("call void @\"__nsc_cctor_body_");
     const std::size_t stateDone = llvm.find("store atomic i8 2", bodyCall);
+    const std::size_t stateFailed = llvm.find("store atomic i8 3");
     tests.expect(llvm.find("private global i8") != std::string::npos &&
             llvm.find("private global i32") != std::string::npos &&
             llvm.find("define private void") != std::string::npos &&
@@ -563,6 +574,11 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
             llvm.find("cctor.is_self") != std::string::npos &&
             llvm.find("define void @\"__nsc_cctor_body_") != std::string::npos,
         "losing threads wait while same-thread static-constructor reentrancy bypasses the wait");
+    tests.expect(stateFailed != std::string::npos &&
+            llvm.find("cctor.fast_failed") != std::string::npos &&
+            llvm.find("cctor.cas_failed") != std::string::npos &&
+            llvm.find("cleanupret from %cctor.failure.pad unwind to caller") != std::string::npos,
+        "a failed type initializer publishes terminal state=3, wakes waiters, and preserves unwind");
 
     std::string targetError;
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
@@ -583,6 +599,53 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
     tests.expect(verifier.verify(object) && verifier.info().machine == 0x8664,
         "Stage 37 object is structurally valid AMD64 COFF");
 }
+
+void testTerminalFailureUsesPanicProfile(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "TerminalFailure";
+    writeProject(directory, "Stage37TerminalFailure", "unwind-native");
+    writeFile(directory / "Main.ns",
+        "class Gate { private static int Value = 1; static Gate() { panic(\"broken\"); } "
+        "public static int Read() { return Value; } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(
+        directory / "Stage37TerminalFailure.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "terminal static-initialization failure compiles through MIR: " + error);
+    if (!ok || compilation.nameLookup() == nullptr || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "terminal static-initialization failure lowers to LLVM: " + lowerer.error());
+    if (module == nullptr) return;
+
+    std::string verifyError;
+    tests.expect(module->verify(verifyError),
+        "terminal static-initialization failure LLVM passes verification: " + verifyError);
+    const std::string llvm = module->text();
+    const std::size_t invokeBody = llvm.find("invoke void @\"__nsc_cctor_body_");
+    const std::size_t failurePad = llvm.find("cctor.failure_unwind", invokeBody);
+    const std::size_t failedState = llvm.find("store atomic i8 3", failurePad);
+    const std::size_t cleanupRet = llvm.find(
+        "cleanupret from %cctor.failure.pad unwind to caller", failedState);
+    tests.expect(invokeBody != std::string::npos && failurePad != std::string::npos &&
+            failedState != std::string::npos &&
+            cleanupRet != std::string::npos,
+        "cctor invokes its body through a failure pad that records state=3 before rethrowing");
+
+    const std::size_t failedBlock = llvm.find("cctor.failed", invokeBody);
+    const std::size_t failurePanic = llvm.find("@RaiseException", failedBlock);
+    const std::size_t unexpectedReturnTrap = llvm.find("@__nativesharp_trap", failurePanic);
+    const std::size_t cleanupBlock = llvm.find("cctor.failure_unwind", unexpectedReturnTrap);
+    tests.expect(failedBlock != std::string::npos && failurePanic != std::string::npos &&
+            unexpectedReturnTrap != std::string::npos && cleanupBlock != std::string::npos &&
+            failedBlock < failurePanic && failurePanic < unexpectedReturnTrap &&
+            unexpectedReturnTrap < cleanupBlock,
+        "reaccessing a failed type uses the configured native-unwind panic profile and traps if it returns");
+}
 }
 
 int main()
@@ -598,6 +661,7 @@ int main()
     testReadonlyRules(tests, root);
     testStaticAccessAndConstNegatives(tests, root);
     testInitializerOrderingAndTypeInit(tests, root);
+    testTerminalFailureUsesPanicProfile(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

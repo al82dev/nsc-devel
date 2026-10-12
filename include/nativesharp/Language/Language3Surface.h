@@ -55,6 +55,19 @@ constexpr std::string_view staticInitializationStateName(
     return "unknown";
 }
 
+constexpr bool staticInitializationStateIsTerminal(
+    StaticInitializationState state) noexcept
+{
+    return state == StaticInitializationState::Initialized ||
+        state == StaticInitializationState::Failed;
+}
+
+constexpr bool staticInitializationStateMayRetry(
+    StaticInitializationState state) noexcept
+{
+    return state == StaticInitializationState::Uninitialized;
+}
+
 struct Language3SurfaceEntry final
 {
     Language3Feature feature;

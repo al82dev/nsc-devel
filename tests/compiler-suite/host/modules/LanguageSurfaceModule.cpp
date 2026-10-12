@@ -2,6 +2,7 @@
 #include "nsc_suite/TestRegistry.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Language/ErrorSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
 
 #include <algorithm>
@@ -536,6 +537,35 @@ class Gate
                 "TL-LANG-297 module dependency cycles must fail with their explicit graph cycle");
         }});
 }
+
+void registerStaticInitializationFailureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-298", "CL-LANG-012", "Host.Language", "unit", "PR",
+        {"language", "static-initialization", "failure", "panic"}, [](TestContext& context) {
+            context.expect(staticInitializationStateIsTerminal(
+                    StaticInitializationState::Initialized) &&
+                    staticInitializationStateIsTerminal(StaticInitializationState::Failed) &&
+                    !staticInitializationStateIsTerminal(
+                        StaticInitializationState::Uninitialized) &&
+                    !staticInitializationStateIsTerminal(
+                        StaticInitializationState::Initializing),
+                "TL-LANG-298 only initialized and failed are terminal initialization states");
+            context.expect(staticInitializationStateMayRetry(
+                    StaticInitializationState::Uninitialized) &&
+                    !staticInitializationStateMayRetry(
+                        StaticInitializationState::Initializing) &&
+                    !staticInitializationStateMayRetry(
+                        StaticInitializationState::Initialized) &&
+                    !staticInitializationStateMayRetry(StaticInitializationState::Failed),
+                "TL-LANG-298 a failed initialization is terminal and never retries");
+
+            const PanicContract abort = panicContract(PanicProfile::Abort);
+            const PanicContract nativeUnwind = panicContract(PanicProfile::NativeUnwind);
+            context.expect(!abort.runsCleanup && nativeUnwind.runsCleanup &&
+                    !abort.mayCrossFfi && !nativeUnwind.mayCrossFfi,
+                "TL-LANG-298 initialization failure retains the configured process panic profile");
+        }});
+}
 }
 
 void registerLanguageSurfaceModule(TestRegistry& registry)
@@ -551,5 +581,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticConstructorDeclarationCase(registry);
     registerModuleInitializationPlanCase(registry);
     registerStaticInitializationOnceCase(registry);
+    registerStaticInitializationFailureCase(registry);
 }
 }
