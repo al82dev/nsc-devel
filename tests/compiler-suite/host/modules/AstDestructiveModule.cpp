@@ -272,7 +272,7 @@ void registerAstDestructiveModule(TestRegistry& registry)
 #endif
 #if defined(NSC_AST_DESTRUCTIVE_TESTS_ENABLED)
     addCase(registry, "TA-AST-215", "CA-AST-019", "component",
-        {"ast", "dumper", "death-test", "known-product-defect"}, testNullTypeArgument);
+        {"ast", "dumper", "death-test"}, testNullTypeArgument, TestDisposition::Required);
 #else
     static_cast<void>(registry);
 #endif

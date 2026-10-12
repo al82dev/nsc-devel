@@ -148,6 +148,12 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
 
 void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) const
 {
+    if (typeSyntax == nullptr)
+    {
+        output << "<missing>";
+        return;
+    }
+
     if (typeSyntax->ownershipQualifier() != OwnershipQualifierSyntaxKind::None)
     {
         output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier());
