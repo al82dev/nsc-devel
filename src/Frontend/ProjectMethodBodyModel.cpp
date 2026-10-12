@@ -14972,16 +14972,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
             if (argumentsValid)
             {
+                // La clave de tipo de un named type SIEMPRE lleva el modulo: `type:<modulo>::...`.
+                std::string stringViewKey;
+                if (nameLookup_ != nullptr)
+                {
+                    for (const NamedTypeDeclaration& candidate : nameLookup_->namedTypes())
+                    {
+                        if (candidate.identity.fullyQualifiedName() ==
+                            "NativeSharp.Core.StringView")
+                        {
+                            stringViewKey = "type:" + candidate.identity.key();
+                            break;
+                        }
+                    }
+                }
+                if (stringViewKey.empty()) return result;
                 coreBindings_.push_back(MethodCoreBinding{
                     MethodCoreOperationKind::StringViewFromString,
                     expression,
                     methodMemberOrdinal,
                     scopeOrdinal,
-                    "type:NativeSharp.Core.StringView",
+                    stringViewKey,
                     "builtin:string",
                     false, std::nullopt, std::nullopt});
                 ExpressionResult viewResult;
-                viewResult.typeKey = "type:NativeSharp.Core.StringView";
+                viewResult.typeKey = std::move(stringViewKey);
                 viewResult.valid = true;
                 viewResult.assignable = false;
                 viewResult.addressable = false;
