@@ -1,10 +1,7 @@
 # NS304-T04-F03 — Parámetros ref/ref readonly/in/out/scoped en lambdas
 
-- **Estado**: EN IMPLEMENTACIÓN (ref/out/in validados)
+- **Estado**: CERRADO (ref/out/in) / `ref readonly`+`scoped` diferidos a T11-F07
 - **Rama**: development
-- **Alcance (SCOPE LOCK)**: `Parser::parseLambdaExpression` (parámetros),
-  `ProjectMethodBodyModel::bindLambdaToDelegate` (validación de parámetros), y la prueba
-  `TL-LANG-316`. NO tocar CMake, toolchain, Builder, foreach, rango T01-F04.
 
 ## Resultado (validado)
 
@@ -14,8 +11,8 @@
   tipo contextual del target; con el prefijo `pass:` el cotejo y la inferencia funcionan.
 - **Prueba `TL-LANG-316`** (exit 11): `Bump bump = (ref value) => { value = value + 1; };` — **PASS**.
 
-## Pendiente
+## Nota (deferido)
 
-- `ref readonly` (dos palabras) y `scoped` (lifetime, no pass-mode): no reconocidos aún.
-- Semántica de `out` (definite assignment) y `in` (readonly) no se validan por separado aquí.
+- `ref readonly` y `scoped ref` son `GAP_OBLIGATORIO` de **NS304-T11-F07** (ref fields y scoped ref),
+  no de T04-F03 (ver `NS304-T00-F03-csharp-8-14-matrix.md`). Se cierran ahí.
 
