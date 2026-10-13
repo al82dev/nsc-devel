@@ -1028,7 +1028,7 @@ T00
 ### T08 — extension members y operadores
 
 - [x] `NS304-T08-F01` — Diseñar bloques `extension` canónicos sobre tipos y constraints. *(extension method en namespace + TL-LANG-323; global-namespace residual.)*
-- [ ] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter.
+- [x] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(getter (TL-LANG-324) via property→getter method + auto-invoke; setter/ref getter residual.)*
 - [ ] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión.
 - [ ] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos.
 - [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules.
