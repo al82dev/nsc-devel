@@ -748,6 +748,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::BitFieldAddress: return "bit-field-address";
         case ProjectOopMirNodeKind::FutureFieldAddress: return "future-field-address";
         case ProjectOopMirNodeKind::AwaitFuture: return "await-future";
+        case ProjectOopMirNodeKind::SuspendPoint: return "suspend-point";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
@@ -3160,6 +3161,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->integerValue = node->integerValue;
             break;
         }
+
+        case ProjectOopHirNodeKind::SuspendPoint:
+            result->kind = ProjectOopMirNodeKind::SuspendPoint;
+            result->typeKey = node->typeKey;
+            result->integerValue = node->integerValue;
+            break;
 
         case ProjectOopHirNodeKind::NullConditionalFieldStore:
         {

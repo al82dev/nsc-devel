@@ -9236,6 +9236,18 @@ ast::AstNode* Parser::parseStatement()
         return statement;
     }
 
+    if (atContextualKeyword("yield"))
+    {
+        // NS304-T05-F09: a bare `yield;` in an async body is an explicit suspension point. The
+        // poll suspends once and continues on the next poll (resume). No produced value.
+        const std::size_t beginIndex = index_;
+        consume(); // yield
+        ast::AstNode* statement = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SuspendStatement, tokenRangeFrom(beginIndex));
+        expect(TokenKind::Semicolon, "';' after 'yield'");
+        return statement;
+    }
+
     if (at(TokenKind::KwStatic))
     {
         // NS304-T04-F05: `static int name(...) { ... }` es una función local estática.

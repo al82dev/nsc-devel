@@ -177,6 +177,9 @@ enum class AstNodeKind
     // (nullptr for break). The productive frame lowering is T06-F03.
     YieldReturnStatement,
     YieldBreakStatement,
+    // NativeSharp 3.0 T05-F09. A bare `yield;` in an async body is an explicit suspension point:
+    // the poll suspends once (state = resume index) and continues on the next poll. No value.
+    SuspendStatement,
 
     // NativeSharp 3.0 T10-F07. first() preserves the source operand; typeSyntaxes() preserves
     // explicit generic arguments. Semantic analysis resolves that syntax without evaluating it

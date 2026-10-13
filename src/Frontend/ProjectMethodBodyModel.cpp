@@ -5207,6 +5207,21 @@ void ProjectMethodBodyModel::analyzeStatement(
                 statement->range(),
                 "yield requires the generator state machine lowering (NS304-T06-F03)");
             break;
+        case ast::AstNodeKind::SuspendStatement:
+        {
+            // NS304-T05-F09: a bare `yield;` is an explicit suspension point of the async poll.
+            const ClassMemberSymbol* suspendMethod = methodSymbol(methodMemberOrdinal);
+            if (suspendMethod == nullptr ||
+                !suspendMethod->effects.contains(sema::Effect::Async))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "yield requires an async function (NS304-T05-F09)");
+            }
+            break;
+        }
         default:
             break;
     }

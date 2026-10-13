@@ -151,6 +151,8 @@ enum class ProjectOopMirNodeKind
     // NS304-T05-F03: `await operand` over a synchronously-completing future. The single child is
     // the future value; `stringValue` is the poll mangled name; `elementTypeKey` the future key.
     AwaitFuture,
+    // NS304-T05-F09: a bare `yield;` suspension point. `integerValue` is the resume state index.
+    SuspendPoint,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

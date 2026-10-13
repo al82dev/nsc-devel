@@ -112,6 +112,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(AwaitExpression);
         NS_AST_KIND(YieldReturnStatement);
         NS_AST_KIND(YieldBreakStatement);
+        NS_AST_KIND(SuspendStatement);
         NS_AST_KIND(NameOfExpression);
 #undef NS_AST_KIND
     }

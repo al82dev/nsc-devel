@@ -1050,6 +1050,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::FieldAddress: return "field-address";
         case ProjectOopHirNodeKind::FutureFieldAddress: return "future-field-address";
         case ProjectOopHirNodeKind::AwaitFuture: return "await-future";
+        case ProjectOopHirNodeKind::SuspendPoint: return "suspend-point";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
@@ -3202,6 +3203,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::Continue, statement, "builtin:void");
             attachStructuredExit(*node);
             node->stringValue = statement->text();
+            return node;
+        }
+
+        case ast::AstNodeKind::SuspendStatement:
+        {
+            // NS304-T05-F09: a bare `yield;` suspends the poll once. integerValue is the resume
+            // state index (1 for the single-suspension case; multi-suspension generalizes like
+            // the await resume indices).
+            auto node = makeNode(ProjectOopHirNodeKind::SuspendPoint, statement, "builtin:void");
+            node->integerValue = 1;
             return node;
         }
 

@@ -148,6 +148,9 @@ enum class ProjectOopHirNodeKind
     // future type key; typeKey is the awaited inner type. MIR stores the future, calls the poll,
     // and loads the result field.
     AwaitFuture,
+    // NS304-T05-F09: a bare `yield;` suspension point. integerValue is the resume state index N
+    // (suspend writes self->state = N and returns; the next poll resumes here). No children.
+    SuspendPoint,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

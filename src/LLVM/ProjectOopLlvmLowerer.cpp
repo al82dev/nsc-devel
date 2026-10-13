@@ -7769,6 +7769,31 @@ private:
             case frontend::ProjectOopMirNodeKind::SwitchSection:
                 return fail(error, "a switch section must be lowered by its enclosing switch");
 
+            case frontend::ProjectOopMirNodeKind::SuspendPoint:
+            {
+                // NS304-T05-F09: a bare `yield;` suspends the poll once. self is parameter 0.
+                if (parameterStorage_.empty())
+                    return fail(error, "suspend point has no poll self parameter");
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "suspend.self");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return false;
+                LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "suspend.self.state");
+                LLVMValueRef prevState = LLVMConstInt(intType, node->integerValue - 1, 0);
+                LLVMBasicBlockRef suspendBlock = appendBlock("suspend.suspend");
+                LLVMBasicBlockRef resumeBlock = appendBlock("suspend.resume");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, selfState, prevState, "suspend.is.entry"),
+                    suspendBlock, resumeBlock);
+                LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+                LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
+                LLVMBuildRetVoid(builder_);
+                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                return true;
+            }
+
             default:
             {
                 LLVMValueRef value = lowerExpression(node, error);
@@ -11779,6 +11804,7 @@ private:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyOutput:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyClobber:
             case frontend::ProjectOopMirNodeKind::MatchArm:
+            case frontend::ProjectOopMirNodeKind::SuspendPoint:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }
