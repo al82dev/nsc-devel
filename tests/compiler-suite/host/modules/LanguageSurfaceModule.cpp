@@ -3283,6 +3283,37 @@ class Program
         }});
 }
 
+void registerNullConditionalStringConcatDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-346", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "null-conditional", "compound", "string", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NullCondStringConcat", "Exe", R"ns(
+class Box { public string Name; }
+class Program
+{
+    public static int Main()
+    {
+        Box b = new Box();
+        b?.Name += "x";
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NullCondStringConcat.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                (emitted.error + emitted.output).find("null-conditional string concatenation") !=
+                    std::string::npos,
+                "TL-LANG-346 obj?.Name += \"x\" must report a clear diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3342,6 +3373,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalCompoundCase(registry);
     registerNullConditionalIndexDiagnosticCase(registry);
     registerNullConditionalIndexReadCase(registry);
+    registerNullConditionalStringConcatDiagnosticCase(registry);
     registerClassPrimaryConstructorCase(registry);
 }
 }

@@ -14,5 +14,6 @@
 
 ## Residual
 
-- **String concat**: `obj?.Name += "x"` requiere el path RAII de concatenación (hoy sólo numérico).
+- **String concat**: `obj?.Name += "x"` requiere el path RAII de `StringConcat` (hoy sólo numérico;
+  diagnóstico claro `TL-LANG-346`).
 - **`++`/`--`**: postfix/prefijo sobre null-conditional sigue fuera (ambiguo, excluido por el ítem).
