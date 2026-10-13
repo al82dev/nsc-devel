@@ -1,6 +1,8 @@
 # NS304-T04-F05 — Lambdas y funciones locales estáticas + prohibición de captura
 
 - **Estado**: CERRADO
+- **Validación secuencial**: confirmado en campaña; `TL-LANG-318/351/352/355` PASS + guard
+  `TL-LANG-320/325/326` PASS (2026-10-13). Avanza a 35/147.
 - **Rama**: development
 
 ## Resultado (validado)
