@@ -11,6 +11,7 @@
 
 ## Residual
 
-- **Lookup Sema**: resolver `T.Miembro()` como función de namespace estática de extensión (la
-  invocación aún no está cableada). Propiedades y constantes estáticas: mismas rutas pendientes.
+- **Lookup Sema**: la función estática de extensión se registra en el namespace de la extensión pero
+  no es invocable (ni `Twice()` directo —fuera de scope— ni `T.Twice()`); falta resolver la
+  invocación `T.Miembro()`/directa. Propiedades y constantes estáticas: mismas rutas pendientes.
 
