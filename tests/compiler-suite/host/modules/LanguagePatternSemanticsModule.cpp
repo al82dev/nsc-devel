@@ -86,40 +86,67 @@ void registerClosedMatchCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-267", [](TestContext& context) {
         const std::array<std::string, 3> domain = {"Idle", "Ready", "Failed"};
-        const std::array<MatchArmCoverage, 3> exact = {{{{"Idle"}, false, false},
-            {{"Ready"}, false, false}, {{"Failed"}, false, false}}};
+        const std::array<MatchArmCoverage, 3> exact = {{{{"Idle"}, false, false, {}},
+            {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}}};
         const ExhaustivenessResult exactResult = analyzeClosedMatch(domain, exact);
         context.expect(exactResult.exhaustive && exactResult.missingCases.empty() &&
                 exactResult.unreachableArms.empty(),
             "TL-LANG-267 exact domain coverage must be exhaustive with no unreachable arms");
 
-        const std::array<MatchArmCoverage, 1> missing = {{{{"Ready"}, false, false}}};
+        const std::array<MatchArmCoverage, 1> missing = {{{{"Ready"}, false, false, {}}}};
         const ExhaustivenessResult missingResult = analyzeClosedMatch(domain, missing);
         context.expect(!missingResult.exhaustive &&
                 missingResult.missingCases == std::vector<std::string>({"Idle", "Failed"}) &&
                 missingResult.unreachableArms.empty(),
             "TL-LANG-267 missing cases must retain exact domain order");
 
-        const std::array<MatchArmCoverage, 2> wildcard = {{{{}, true, false},
-            {{"Ready"}, false, false}}};
+        const std::array<MatchArmCoverage, 2> wildcard = {{{{}, true, false, {}},
+            {{"Ready"}, false, false, {}}}};
         const ExhaustivenessResult wildcardResult = analyzeClosedMatch(domain, wildcard);
         context.expect(wildcardResult.exhaustive && wildcardResult.missingCases.empty() &&
                 wildcardResult.unreachableArms == std::vector<std::size_t>({1}),
             "TL-LANG-267 an unguarded wildcard must cover the domain and make later arms unreachable");
 
-        const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false},
-            {{"Ready", "Failed"}, false, true}}};
+        const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false, {}},
+            {{"Ready", "Failed"}, false, true, {}}}};
         const ExhaustivenessResult guardedResult = analyzeClosedMatch(domain, guarded);
         context.expect(!guardedResult.exhaustive &&
                 guardedResult.missingCases == std::vector<std::string>({"Ready", "Failed"}) &&
                 guardedResult.unreachableArms.empty(),
             "TL-LANG-267 guarded arms must remain useful but contribute no static coverage");
 
-        const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false},
-            {{"Ready"}, false, false}, {{"Failed"}, false, false}, {{}, true, false}}};
+        const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false, {}},
+            {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}, {{}, true, false, {}}}};
         context.expect(analyzeClosedMatch(domain, redundantWildcard).unreachableArms ==
                 std::vector<std::size_t>({3}),
             "TL-LANG-267 a wildcard after complete domain coverage must be unreachable");
+
+        MatchArmCoverage exactUnion;
+        exactUnion.listLengths = {{1, false}, {2, false}};
+        const std::array<MatchArmCoverage, 1> finiteListUnion = {exactUnion};
+        const ExhaustivenessResult finiteListResult = analyzeListMatch(finiteListUnion);
+        context.expect(!finiteListResult.exhaustive && finiteListResult.missingCases.empty() &&
+                finiteListResult.unreachableArms.empty(),
+            "TL-LANG-267 exact OR-list lengths must remain a useful finite union");
+
+        MatchArmCoverage exhaustiveUnion;
+        exhaustiveUnion.listLengths = {{0, false}, {1, true}};
+        const std::array<MatchArmCoverage, 1> exactAndRest = {exhaustiveUnion};
+        const ExhaustivenessResult exactAndRestResult = analyzeListMatch(exactAndRest);
+        context.expect(exactAndRestResult.exhaustive &&
+                exactAndRestResult.missingCases.empty() &&
+                exactAndRestResult.unreachableArms.empty(),
+            "TL-LANG-267 exact zero OR rest-from-one must cover every list length");
+
+        MatchArmCoverage coveredUnion;
+        coveredUnion.listLengths = {{1, false}, {2, true}};
+        MatchArmCoverage redundantUnion;
+        redundantUnion.listLengths = {{2, false}, {3, true}};
+        const std::array<MatchArmCoverage, 2> redundantLists = {
+            coveredUnion, redundantUnion};
+        context.expect(analyzeListMatch(redundantLists).unreachableArms ==
+                std::vector<std::size_t>({1}),
+            "TL-LANG-267 an OR-list arm is unreachable only when every length domain is covered");
     });
 }
 

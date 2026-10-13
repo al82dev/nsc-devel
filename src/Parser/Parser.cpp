@@ -12122,10 +12122,11 @@ ast::AstNode* Parser::parseMatchStatement()
     // the pattern shape. This compact bridge lets the canonical closed-domain algorithm combine
     // both facts without introducing a second match AST/backend representation.
     std::string coverage = "match-coverage:v1:";
+    using ListLengthDomain = std::pair<std::size_t, bool>;
     std::function<void(const Pattern&, std::vector<std::string>&, bool&, bool&,
-        std::optional<std::size_t>&, bool&)> coveredCases =
+        std::vector<ListLengthDomain>&)> coveredCases =
         [&](const Pattern& pattern, std::vector<std::string>& cases, bool& wildcard, bool& partial,
-            std::optional<std::size_t>& listLength, bool& listRest)
+            std::vector<ListLengthDomain>& listLengths)
     {
         if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding)
         {
@@ -12142,8 +12143,7 @@ ast::AstNode* Parser::parseMatchStatement()
         {
             const std::size_t fixedCount = pattern.children.size() -
                 (pattern.restIndex.has_value() ? 1U : 0U);
-            listLength = fixedCount;
-            listRest = pattern.restIndex.has_value();
+            listLengths.emplace_back(fixedCount, pattern.restIndex.has_value());
             for (std::size_t index = 0; index < pattern.children.size(); ++index)
             {
                 if (pattern.restIndex.has_value() && *pattern.restIndex == index) continue;
@@ -12153,7 +12153,7 @@ ast::AstNode* Parser::parseMatchStatement()
         }
         if (pattern.kind == PatternKind::Or)
             for (const Pattern& child : pattern.children)
-                coveredCases(child, cases, wildcard, partial, listLength, listRest);
+                coveredCases(child, cases, wildcard, partial, listLengths);
     };
     for (std::size_t armIndex = 0; armIndex < arms.size(); ++armIndex)
     {
@@ -12161,23 +12161,28 @@ ast::AstNode* Parser::parseMatchStatement()
         std::vector<std::string> cases;
         bool wildcard = false;
         bool partial = false;
-        std::optional<std::size_t> listLength;
-        bool listRest = false;
-        coveredCases(arms[armIndex].pattern, cases, wildcard, partial, listLength, listRest);
+        std::vector<ListLengthDomain> listLengths;
+        coveredCases(arms[armIndex].pattern, cases, wildcard, partial, listLengths);
         const bool guardRestrictsCoverage = arms[armIndex].guard != nullptr &&
             !(arms[armIndex].guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
               arms[armIndex].guard->tokenKind() == TokenKind::KwTrue);
-        if (listLength.has_value())
-        {
-            if (partial || guardRestrictsCoverage) coverage += '~';
-            coverage += '#' + std::to_string(*listLength);
-            if (listRest) coverage += '+';
-            continue;
-        }
         if (wildcard)
         {
             if (guardRestrictsCoverage) coverage += '~';
             coverage += '*';
+            continue;
+        }
+        if (!listLengths.empty())
+        {
+            std::ranges::sort(listLengths);
+            listLengths.erase(std::unique(listLengths.begin(), listLengths.end()), listLengths.end());
+            if (partial || guardRestrictsCoverage) coverage += '~';
+            for (std::size_t index = 0; index < listLengths.size(); ++index)
+            {
+                if (index != 0) coverage += '|';
+                coverage += '#' + std::to_string(listLengths[index].first);
+                if (listLengths[index].second) coverage += '+';
+            }
             continue;
         }
         std::ranges::sort(cases);
@@ -12385,8 +12390,7 @@ ast::AstNode* Parser::parseMatchExpression()
             std::vector<std::string> cases;
             bool wildcard = false;
             bool partial = false;
-            std::optional<std::size_t> listLength;
-            bool listRest = false;
+            std::vector<std::pair<std::size_t, bool>> listLengths;
             std::function<void(const Pattern&)> collectCoverage = [&](const Pattern& current)
             {
                 if (current.kind == PatternKind::Wildcard ||
@@ -12406,8 +12410,7 @@ ast::AstNode* Parser::parseMatchExpression()
                 {
                     const std::size_t fixedCount = current.children.size() -
                         (current.restIndex.has_value() ? 1U : 0U);
-                    listLength = fixedCount;
-                    listRest = current.restIndex.has_value();
+                    listLengths.emplace_back(fixedCount, current.restIndex.has_value());
                     for (std::size_t index = 0; index < current.children.size(); ++index)
                     {
                         if (current.restIndex.has_value() && *current.restIndex == index) continue;
@@ -12422,16 +12425,23 @@ ast::AstNode* Parser::parseMatchExpression()
             const bool guardRestrictsCoverage = guard != nullptr &&
                 !(guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
                   guard->tokenKind() == TokenKind::KwTrue);
-            if (listLength.has_value())
-            {
-                if (partial || guardRestrictsCoverage) coverage += '~';
-                coverage += '#' + std::to_string(*listLength);
-                if (listRest) coverage += '+';
-            }
-            else if (wildcard)
+            if (wildcard)
             {
                 if (guardRestrictsCoverage) coverage += '~';
                 coverage += '*';
+            }
+            else if (!listLengths.empty())
+            {
+                std::ranges::sort(listLengths);
+                listLengths.erase(
+                    std::unique(listLengths.begin(), listLengths.end()), listLengths.end());
+                if (partial || guardRestrictsCoverage) coverage += '~';
+                for (std::size_t index = 0; index < listLengths.size(); ++index)
+                {
+                    if (index != 0) coverage += '|';
+                    coverage += '#' + std::to_string(listLengths[index].first);
+                    if (listLengths[index].second) coverage += '+';
+                }
             }
             else if (cases.empty()) coverage += '?';
             else

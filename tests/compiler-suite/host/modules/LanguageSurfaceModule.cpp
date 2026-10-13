@@ -1958,6 +1958,81 @@ class Program
                     diagnostics.find("missing list length") != std::string::npos,
                 "TL-LANG-312 a list match without rest/wildcard must be non-exhaustive: " +
                     diagnostics);
+
+            const std::filesystem::path exhaustiveProject = products.writeProject(
+                "T03ListOrExactRest", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] values = new int[2];
+        return match(values)
+        {
+            [] | [_, ..] => 7
+        };
+    }
+}
+)ns");
+            const std::filesystem::path exhaustiveExecutable =
+                products.directory() / "T03ListOrExactRest.exe";
+            const external_program_support::Result exhaustive = emitT01Product(
+                L"--emit-project-oop-exe", exhaustiveProject, exhaustiveExecutable,
+                products.directory());
+            context.expect(exhaustive.started && exhaustive.exitCode == 0 &&
+                    exhaustive.error.empty(),
+                "TL-LANG-312 exact OR rest list domains must be exhaustive: " +
+                    exhaustive.error + exhaustive.output);
+            if (exhaustive.started && exhaustive.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    exhaustiveExecutable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                    "TL-LANG-312 exact OR rest list domains must select the rest alternative: " +
+                        result.error + result.output);
+            }
+
+            const auto expectRejected = [&](std::string_view projectName,
+                                            std::string_view source,
+                                            std::string_view diagnostic) {
+                const std::filesystem::path rejectedProject = products.writeProject(
+                    projectName, "Exe", source);
+                const external_program_support::Result rejected = emitT01Product(
+                    L"--emit-project-oop-exe", rejectedProject,
+                    products.directory() / (std::string(projectName) + ".exe"),
+                    products.directory());
+                const std::string rejectedDiagnostics = rejected.error + rejected.output;
+                context.expect(rejected.started && rejected.exitCode != 0 &&
+                        rejectedDiagnostics.find(diagnostic) != std::string::npos,
+                    "TL-LANG-312 expected diagnostic '" + std::string(diagnostic) + "': " +
+                        rejectedDiagnostics);
+            };
+
+            expectRejected("T03ListOrRedundancy", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] values = new int[2];
+        return match(values)
+        {
+            [_] | [_, _] => 1,
+            [_] => 2,
+            [..] => 3
+        };
+    }
+}
+)ns", "match arm #2 is unreachable for the list-length domain");
+
+            expectRejected("T03OpenDomain", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int value = 1;
+        return match(value) { 1 => 1 };
+    }
+}
+)ns", "match over an open or unresolved domain requires a final wildcard or binding arm");
         }});
 }
 

@@ -109,29 +109,48 @@ ExhaustivenessResult analyzeListMatch(std::span<const MatchArmCoverage> arms)
     for (std::size_t index = 0; index < arms.size(); ++index)
     {
         const MatchArmCoverage& arm = arms[index];
-        const bool coveredByWildcard = unguardedWildcard;
         bool useful = true;
         if (arm.wildcard)
         {
-            useful = !coveredByWildcard;
+            useful = !unguardedWildcard;
             if (!arm.hasGuard) unguardedWildcard = true;
         }
-        else if (arm.listLength.has_value() && !arm.hasGuard)
+        else if (!arm.listLengths.empty() && !arm.hasGuard)
         {
-            if (arm.listLengthRest)
+            const auto exactCovered = [&](std::size_t length)
             {
-                useful = !coveredByWildcard &&
-                    (!restMin.has_value() || *arm.listLength < *restMin);
-                if (!restMin.has_value() || *arm.listLength < *restMin)
-                    restMin = *arm.listLength;
-            }
-            else
+                return unguardedWildcard || exactLengths.contains(length) ||
+                    (restMin.has_value() && *restMin <= length);
+            };
+            const auto restCovered = [&](std::size_t minimum)
             {
-                const bool covered = coveredByWildcard ||
-                    exactLengths.contains(*arm.listLength) ||
-                    (restMin.has_value() && *restMin <= *arm.listLength);
-                useful = !covered;
-                exactLengths.insert(*arm.listLength);
+                if (unguardedWildcard) return true;
+                if (!restMin.has_value()) return false;
+                if (*restMin <= minimum) return true;
+                for (std::size_t length = minimum; length < *restMin; ++length)
+                    if (!exactLengths.contains(length)) return false;
+                return true;
+            };
+
+            useful = std::ranges::any_of(
+                arm.listLengths,
+                [&](const MatchArmCoverage::ListLengthDomain& domain)
+                {
+                    return domain.hasRest
+                        ? !restCovered(domain.length)
+                        : !exactCovered(domain.length);
+                });
+            for (const MatchArmCoverage::ListLengthDomain& domain : arm.listLengths)
+            {
+                if (domain.hasRest)
+                {
+                    if (!restMin.has_value() || domain.length < *restMin)
+                        restMin = domain.length;
+                }
+                else
+                {
+                    exactLengths.insert(domain.length);
+                }
             }
         }
         if (!useful) result.unreachableArms.push_back(index);

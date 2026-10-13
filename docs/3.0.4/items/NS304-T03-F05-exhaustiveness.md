@@ -1,6 +1,6 @@
 # NS304-T03-F05 — Usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos
 
-- **Estado**: EN IMPLEMENTACIÓN
+- **Estado**: CERRADO
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `Language/SumTypeSemantics.*`, `ProjectMethodBodyModel.cpp` (puntos
   de reporte en 4383/8591), y la prueba `TL-LANG-312`. NO tocar CMake, toolchain, Builder,
@@ -41,3 +41,14 @@ y 8591.
 
 `TL-LANG-312`: match no-exhaustivo sobre `int` (dominio abierto) debe diagnosticar; list
 `[a]`/`[a, b]` sin `_` debe diagnosticar missing length; OR-pattern útil/unreachable.
+
+## Evidencia de cierre
+
+- `TL-LANG-267` valida directamente el modelo: unión de longitudes exactas, unión
+  exacta+rest exhaustiva y redundancia cuando todos los dominios de un brazo OR ya están
+  cubiertos. `PASS`, 196 us, 2026-10-13.
+- `TL-LANG-312` valida la ruta Parser→Frontend→Sema: `[x] | [x, y]` conserva ambas
+  longitudes; `[] | [_, ..]` cubre el dominio; exacto|rest redundante se diagnostica; un
+  dominio abierto sin wildcard se rechaza. `PASS`, 468,431 us, 2026-10-13.
+- Construcción focal: `nsc` 7/7 pasos y `nsc_component_tests` 2/2 pasos. No se ejecutó la
+  batería completa.

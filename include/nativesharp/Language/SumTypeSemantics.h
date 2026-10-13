@@ -62,13 +62,20 @@ bool orPatternBindingsCompatible(
 
 struct MatchArmCoverage final
 {
+    struct ListLengthDomain final
+    {
+        std::size_t length = 0;
+        bool hasRest = false;
+
+        bool operator==(const ListLengthDomain&) const = default;
+    };
+
     std::vector<std::string> cases;
     bool wildcard = false;
     bool hasGuard = false;
-    // NS304-T03-F05: cobertura por LONGITUD de list pattern. `listLength` es la longitud
-    // exacta; `listLengthRest` indica que el brazo cubre TODA longitud >= listLength (rest `..`).
-    std::optional<std::size_t> listLength = std::nullopt;
-    bool listLengthRest = false;
+    // One source arm may join several list alternatives with OR. Each exact domain covers one
+    // length; a rest domain covers every length greater than or equal to its fixed prefix.
+    std::vector<ListLengthDomain> listLengths;
 };
 
 struct ExhaustivenessResult final

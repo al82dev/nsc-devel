@@ -4303,14 +4303,22 @@ void ProjectMethodBodyModel::analyzeBlock(
             arm.wildcard = casesText == "*";
             if (!arm.wildcard && casesText != "?" && !casesText.empty() && casesText.front() == '#')
             {
-                casesText.remove_prefix(1);
-                const std::size_t plus = casesText.find('+');
-                if (plus != std::string_view::npos)
+                std::size_t lengthBegin = 0;
+                while (lengthBegin <= casesText.size())
                 {
-                    arm.listLengthRest = true;
-                    casesText = casesText.substr(0, plus);
+                    const std::size_t lengthEnd = casesText.find('|', lengthBegin);
+                    std::string_view item = casesText.substr(
+                        lengthBegin,
+                        lengthEnd == std::string_view::npos
+                            ? casesText.size() - lengthBegin : lengthEnd - lengthBegin);
+                    if (!item.empty() && item.front() == '#') item.remove_prefix(1);
+                    const bool hasRest = !item.empty() && item.back() == '+';
+                    if (hasRest) item.remove_suffix(1);
+                    arm.listLengths.push_back({
+                        static_cast<std::size_t>(std::stoull(std::string(item))), hasRest});
+                    if (lengthEnd == std::string_view::npos) break;
+                    lengthBegin = lengthEnd + 1;
                 }
-                arm.listLength = static_cast<std::size_t>(std::stoull(std::string(casesText)));
             }
             else if (!arm.wildcard && casesText != "?")
             {
@@ -4397,7 +4405,7 @@ void ProjectMethodBodyModel::analyzeBlock(
             const bool hasListLength = std::ranges::any_of(
                 arms, [](const language::MatchArmCoverage& arm)
                 {
-                    return arm.listLength.has_value();
+                    return !arm.listLengths.empty();
                 });
             if (hasListLength)
             {
@@ -8619,14 +8627,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
             arm.wildcard = armText == "*";
             if (!arm.wildcard && armText != "?" && !armText.empty() && armText.front() == '#')
             {
-                armText.remove_prefix(1);
-                const std::size_t plus = armText.find('+');
-                if (plus != std::string_view::npos)
+                std::size_t lengthBegin = 0;
+                while (lengthBegin <= armText.size())
                 {
-                    arm.listLengthRest = true;
-                    armText = armText.substr(0, plus);
+                    const std::size_t lengthEnd = armText.find('|', lengthBegin);
+                    std::string_view item = armText.substr(
+                        lengthBegin,
+                        lengthEnd == std::string_view::npos
+                            ? armText.size() - lengthBegin : lengthEnd - lengthBegin);
+                    if (!item.empty() && item.front() == '#') item.remove_prefix(1);
+                    const bool hasRest = !item.empty() && item.back() == '+';
+                    if (hasRest) item.remove_suffix(1);
+                    arm.listLengths.push_back({
+                        static_cast<std::size_t>(std::stoull(std::string(item))), hasRest});
+                    if (lengthEnd == std::string_view::npos) break;
+                    lengthBegin = lengthEnd + 1;
                 }
-                arm.listLength = static_cast<std::size_t>(std::stoull(std::string(armText)));
             }
             else if (!arm.wildcard && armText != "?")
             {
@@ -8743,12 +8759,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
             const bool hasListLength = std::ranges::any_of(
                 coverageArms, [](const language::MatchArmCoverage& arm)
                 {
-                    return arm.listLength.has_value();
+                    return !arm.listLengths.empty();
                 });
             if (hasListLength)
             {
                 const language::ExhaustivenessResult result =
                     language::analyzeListMatch(coverageArms);
+                for (const std::size_t arm : result.unreachableArms)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "match arm #" + std::to_string(arm + 1) +
+                            " is unreachable for the list-length domain");
+                }
                 if (!result.exhaustive)
                 {
                     std::string message = "non-exhaustive match; missing list length";
