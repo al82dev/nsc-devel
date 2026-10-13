@@ -22020,6 +22020,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
 
     if (getterBinding != nullptr)
     {
+        // A readonly getter can expose a value through an `in` receiver, but that does not make
+        // the companion setter callable. Property/indexer assignment is rewritten from the
+        // recorded getter before the general `!left.assignable` guard below, so preserve the
+        // receiver capability explicitly at this boundary.
+        if (left.readonlyReceiver)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->first()->range(),
+                "readonly receiver cannot invoke a property/indexer setter");
+            return {};
+        }
         const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
         const ClassMemberSymbol& getter = memberModel_->members()[*getterBinding->selectedMemberOrdinal];
         const std::size_t accessingTypeOrdinal = caller != nullptr

@@ -166,7 +166,8 @@ private:
         bool isAbstract,
         bool isSealed,
         std::size_t beginIndex,
-        bool interfaceContext);
+        bool interfaceContext,
+        bool allowReadonlyGetter);
     ast::AstNode* parseIndexerTail(
         ast::TypeSyntax* elementType,
         lexer::TokenKind accessibility,
@@ -177,7 +178,8 @@ private:
         bool isSealed,
         bool isReferenceReturn,
         std::size_t beginIndex,
-        bool interfaceContext);
+        bool interfaceContext,
+        bool allowReadonlyGetter);
     ast::AstNode* parseOperatorTail(
         ast::TypeSyntax* returnType,
         lexer::TokenKind accessibility,

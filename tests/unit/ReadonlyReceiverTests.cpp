@@ -82,6 +82,49 @@ int main()
     }
 
     {
+        const auto directory = root / "ReadonlyGetterMutableSetterPositive";
+        writeProject(
+            directory,
+            "ReadonlyGetterMutableSetterPositive",
+            "public struct Buffer { public int Value; "
+            "public int this[int offset] { readonly get { return Value + offset; } "
+            "set { Value = value - offset; } } } "
+            "public class Use { "
+            "public static int Read(in Buffer value) { return value[2]; } "
+            "public static void Write(ref Buffer value) { value[2] = 9; } } ");
+        ProjectCompilation compilation;
+        std::string error;
+        tests.expect(
+            compilation.compileProjectMethodBodies(
+                directory / "ReadonlyGetterMutableSetterPositive.nsproj", error),
+            "a readonly getter remains callable through an in receiver while the mutable setter "
+            "remains callable through a ref receiver");
+    }
+
+    {
+        const auto directory = root / "ReadonlyGetterMutableSetterNegative";
+        writeProject(
+            directory,
+            "ReadonlyGetterMutableSetterNegative",
+            "public struct Buffer { public int Value; "
+            "public int this[int offset] { readonly get { return Value + offset; } "
+            "set { Value = value - offset; } } } "
+            "public class Use { "
+            "public static void Invalid(in Buffer value) { value[2] = 9; } } ");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool compiled = compilation.compileProjectMethodBodies(
+            directory / "ReadonlyGetterMutableSetterNegative.nsproj", error);
+        tests.expect(
+            !compiled,
+            "a mutable setter remains unavailable through an in receiver even when its getter "
+            "is readonly");
+        tests.expect(
+            hasDiagnostic(compilation, DiagnosticId::InvalidAssignmentTarget),
+            "writing through a readonly receiver reports InvalidAssignmentTarget");
+    }
+
+    {
         const auto directory = root / "DirectMutation";
         writeProject(
             directory,

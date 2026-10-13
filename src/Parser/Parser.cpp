@@ -5677,7 +5677,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
     {
         return parseIndexerTail(
             returnType, accessibility, false, false, false, sawAbstract, false,
-            isReferenceReturn, beginIndex, true);
+            isReferenceReturn, beginIndex, true, false);
     }
 
     if (!at(TokenKind::Identifier))
@@ -5726,7 +5726,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
         }
         return parsePropertyTail(
             returnType, name, accessibility,
-            false, sawStatic, false, false, sawAbstract, false, beginIndex, true);
+            false, sawStatic, false, false, sawAbstract, false, beginIndex, true, false);
     }
 
     diagnostics_.report(
@@ -7064,7 +7064,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* indexer = parseIndexerTail(
             type, accessibility, isNew, isVirtual, isOverride, isAbstract, isSealed,
-            isReferenceReturn, beginIndex, false);
+            isReferenceReturn, beginIndex, false, structContext);
         if (isReadonly && indexer != nullptr)
         {
             indexer->addModifier(TokenKind::KwReadonly);
@@ -7181,7 +7181,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* property = parsePropertyTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            beginIndex, false);
+            beginIndex, false, structContext && !isStatic);
         if (isReadonly && structContext && !isStatic && property != nullptr)
         {
             property->addModifier(TokenKind::KwReadonly);
@@ -7545,7 +7545,8 @@ ast::AstNode* Parser::parsePropertyTail(
     bool isAbstract,
     bool isSealed,
     std::size_t beginIndex,
-    bool interfaceContext)
+    bool interfaceContext,
+    bool allowReadonlyGetter)
 {
     ast::AstNode* property = arena_.make<ast::AstNode>(
         ast::AstNodeKind::PropertyDeclaration, name.range());
@@ -7597,6 +7598,7 @@ ast::AstNode* Parser::parsePropertyTail(
                     "interface property accessors cannot narrow accessibility in Stage 38");
             }
         }
+        const bool accessorReadonly = consumeIf(TokenKind::KwReadonly);
         const bool getter = at(TokenKind::KwGet);
         // NS304-T09-F02: `init` se reconoce como un setter contextual de solo-inicializacion y se
         // marca en el metadata `:init` para que Sema distinga el setter restringido del ordinario.
@@ -7612,6 +7614,16 @@ ast::AstNode* Parser::parsePropertyTail(
             synchronizeStatement();
             if (at(TokenKind::RightBrace)) break;
             continue;
+        }
+        if (accessorReadonly && (!getter || !allowReadonlyGetter))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[index_ - 1].range(),
+                getter
+                    ? "a readonly property getter is valid only on an instance struct property"
+                    : "readonly is valid only on a property get accessor");
         }
         const SourceRange accessorRange = consume().range();
         if ((getter && sawGet) || (setter && sawSet))
@@ -7643,6 +7655,8 @@ ast::AstNode* Parser::parsePropertyTail(
                 (initOnly ? ":init" : ""),
             accessorRange);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
+        if (accessorReadonly && getter && allowReadonlyGetter)
+            accessor->addModifier(TokenKind::KwReadonly);
         if (setter)
         {
             ast::AstNode* value = arena_.make<ast::AstNode>(
@@ -7797,7 +7811,8 @@ ast::AstNode* Parser::parseIndexerTail(
     bool isSealed,
     bool isReferenceReturn,
     std::size_t beginIndex,
-    bool interfaceContext)
+    bool interfaceContext,
+    bool allowReadonlyGetter)
 {
     const SourceRange thisRange = consume().range(); // this
     ast::AstNode* indexer = arena_.make<ast::AstNode>(
@@ -7857,6 +7872,7 @@ ast::AstNode* Parser::parseIndexerTail(
                     "interface indexer accessors cannot narrow accessibility in Stage 38");
             }
         }
+        const bool accessorReadonly = consumeIf(TokenKind::KwReadonly);
         const bool getter = at(TokenKind::KwGet);
         const bool initOnly = atContextualKeyword("init");
         const bool setter = at(TokenKind::KwSet) || initOnly;
@@ -7870,6 +7886,16 @@ ast::AstNode* Parser::parseIndexerTail(
             synchronizeStatement();
             if (at(TokenKind::RightBrace)) break;
             continue;
+        }
+        if (accessorReadonly && (!getter || !allowReadonlyGetter))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[index_ - 1].range(),
+                getter
+                    ? "a readonly indexer getter is valid only on an instance struct indexer"
+                    : "readonly is valid only on an indexer get accessor");
         }
         const SourceRange accessorRange = consume().range();
         if ((getter && sawGet) || (setter && sawSet))
@@ -7909,6 +7935,8 @@ ast::AstNode* Parser::parseIndexerTail(
             accessorRange);
         if (getter) accessor->setReference(isReferenceReturn);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
+        if (accessorReadonly && getter && allowReadonlyGetter)
+            accessor->addModifier(TokenKind::KwReadonly);
         for (ast::AstNode* parameter : indexParameters) accessor->addChild(parameter);
         if (setter)
         {
@@ -8705,7 +8733,7 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
         // NS304-T08-F02: extension property (`type Name { get/set }`).
         return parsePropertyTail(
             type, name, TokenKind::Invalid, false, false, false, false, false, false,
-            beginIndex, false);
+            beginIndex, false, false);
     }
 
     if (isReferenceReturn)
