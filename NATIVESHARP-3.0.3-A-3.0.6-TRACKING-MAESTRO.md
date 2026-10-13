@@ -1029,7 +1029,7 @@ T00
 
 - [x] `NS304-T08-F01` — Diseñar bloques `extension` canónicos sobre tipos y constraints. *(extension method en namespace + TL-LANG-323; global-namespace residual.)*
 - [x] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(getter (TL-LANG-324) + setter método (TL-LANG-330) + setter asignación `21.Doubled = x` (rama de asignación→setter vía namespace call); ref getter residual.)*
-- [ ] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión.
+- [ ] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(gap: `static` sobre función de namespace se rechaza en parseGlobalDeclaration; requiere permitirlo dentro de parsingExtensionBody_ + lookup Sema de `T.Miembro()`.)*
 - [ ] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos.
 - [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules.
 - [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental.
