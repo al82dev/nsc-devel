@@ -3407,6 +3407,42 @@ class Program
         }});
 }
 
+void registerNameOfGenericMethodCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-350", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "nameof", "generic", "method"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NameOfGenericMethod", "Exe", R"ns(
+class Program
+{
+    public static void Method<T>()
+    {
+    }
+
+    public static int Main()
+    {
+        string n = nameof(Method<int>);
+        return n.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NameOfGenericMethod.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-350 nameof(Method<int>) must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-350 nameof(Method<int>) must be \"Method\" (length 6): " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3471,5 +3507,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCollectionExpressionCase(registry);
     registerEmptyCollectionExpressionDiagnosticCase(registry);
     registerCollectionSpreadDiagnosticCase(registry);
+    registerNameOfGenericMethodCase(registry);
 }
 }
