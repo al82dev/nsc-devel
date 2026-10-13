@@ -15,7 +15,7 @@ Fuentes canónicas, en orden de autoridad:
 5. `A:\nsc-devel\docs\3.0.4\contracts\`.
 6. Código, manifiestos, pruebas y evidencia versionados por cada commit.
 
-Los lineamientos aplicables a este corte tienen 5,110 líneas y SHA-256
+Los lineamientos aplicables a este corte tienen 5,109 líneas lógicas y SHA-256
 `DE896530ED5D0F4DDB1D4DAA42635F921563C7C764060CEB2D781629C77C3D4F`.
 
 ## 2. SCOPE LOCK del handover

@@ -1,7 +1,9 @@
 # NS304-T03-F06 — Bindings `copy`, `move`, `ref` y `ref mut` en patterns
 
-- **Estado**: CERRADO con evidencia puntual.
+- **Estado**: EVIDENCIA TÉCNICA ADELANTADA COMPLETA; cierre secuencial pendiente.
 - **Rama**: development
+- **Contabilidad**: no incrementa el 25/147 vigente; requiere los cierres secuenciales F04–F05 y
+  luego su propio cierre en orden.
 - **Alcance (SCOPE LOCK)**: `Language/SumTypeSemantics.h` (`PatternBindingMode`),
   `Parser::parsePatternPrimary` (modos), `Parser::lowerPattern`/`emitPatternBindings` (modo→HIR),
   y la prueba `TL-LANG-313`. NO tocar CMake, toolchain, Builder, foreach, rango T01-F04.

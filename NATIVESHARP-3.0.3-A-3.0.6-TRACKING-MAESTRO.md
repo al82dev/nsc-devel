@@ -970,14 +970,18 @@ T00
 
 ### T03 — list, slice y property patterns
 
+Leyenda de secuencia: `[x]` significa cierre contabilizable alcanzado en orden.
+`[ ]` puede conservar evidencia técnica adelantada, pero no incrementa el avance
+oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
+
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
 - [x] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(Matriz de sustratos TL-LANG-310 y TL-LANG-357..362, 7/7 PASS. TL363 valida UTF-8 no ASCII; TL364 alias/no-copia observable y readonly; TL365 rechazo exacto del escape desde stackalloc. B1/B2 y guards permanecen cerrados. F03 satisface su expediente y avanza a 25/147.)*
-- [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(Relacionales, lógicos y anidados; precedencia `!` > `&` > `|` con agrupación explícita; posicional nominal/unario con condición real, validación de tipo, `Deconstruct` y aridad. Evidencia puntual 2026-10-13: TL-LANG-311 PASS, 364,823 us; TP-PAR-357 PASS, 13,545 us; TL-LANG-322 PASS, 802,361 us.)*
-- [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(Unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
-- [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(La mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
+- [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(EVIDENCIA TÉCNICA ADELANTADA, no contabilizable todavía: relacionales, lógicos y anidados; precedencia `!` > `&` > `|` con agrupación explícita; posicional nominal/unario con condición real, validación de tipo, `Deconstruct` y aridad. Evidencia puntual 2026-10-13: TL-LANG-311 PASS, 364,823 us; TP-PAR-357 PASS, 13,545 us; TL-LANG-322 PASS, 802,361 us. Es el siguiente cierre secuencial.)*
+- [ ] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(EVIDENCIA TÉCNICA ADELANTADA, no contabilizable todavía: unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
+- [ ] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(EVIDENCIA TÉCNICA ADELANTADA, no contabilizable todavía: la mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
 - [ ] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(PARCIAL: F01–F06 demuestran checks, branches y vistas prestadas; `TL-LANG-310` sólo cubre el sustrato string y no demuestra ausencia general de colección, boxing o asignación temporal. Falta evidencia puntual de IR/coste.)*
-- [x] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(faltantes+redundancia de list y variante; escape canónico por TL-LANG-365, con TL-LANG-309 como guard no escapante)*
+- [ ] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(EVIDENCIA TÉCNICA ADELANTADA Y PARCIAL, no contabilizable: faltantes+redundancia de list y variante; escape canónico por TL-LANG-365, con TL-LANG-309 como guard no escapante.)*
 
 ### T04 — lambdas, callables y funciones locales
 
@@ -1158,7 +1162,7 @@ helpers, parsing aislado ni pruebas internas en implementación terminada.
 
 Fuentes congeladas para este ciclo:
 
-- lineamientos: 5,110 líneas, SHA-256
+- lineamientos: 5,109 líneas, SHA-256
   `DE896530ED5D0F4DDB1D4DAA42635F921563C7C764060CEB2D781629C77C3D4F`;
 - plan 3.0.4: 606 líneas, SHA-256
   `7BD3EB2EA0779F6B5EC4D8BCA0B705C6391F031E9786F7997BC6316C6A86757F`;

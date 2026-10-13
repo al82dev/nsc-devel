@@ -1,7 +1,9 @@
 # NS304-T03-F05 — Usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos
 
-- **Estado**: CERRADO
+- **Estado**: EVIDENCIA TÉCNICA ADELANTADA COMPLETA; cierre secuencial pendiente.
 - **Rama**: development
+- **Contabilidad**: no incrementa el 25/147 vigente; requiere cierre de F04 y luego su propio
+  cierre en orden.
 - **Alcance (SCOPE LOCK)**: `Language/SumTypeSemantics.*`, `ProjectMethodBodyModel.cpp` (puntos
   de reporte en 4383/8591), y la prueba `TL-LANG-312`. NO tocar CMake, toolchain, Builder,
   foreach, rango T01-F04, ni los commits de F03/F04.

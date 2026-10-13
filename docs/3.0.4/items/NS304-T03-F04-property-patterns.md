@@ -1,7 +1,10 @@
 # NS304-T03-F04 — Completar property patterns anidados, posicionales, relacionales y lógicos
 
-- **Estado**: CERRADO con evidencia puntual.
+- **Estado**: EVIDENCIA TÉCNICA ADELANTADA COMPLETA; cierre secuencial pendiente.
 - **Rama**: development
+
+Este expediente conserva resultados focales PASS, pero no incrementa el conteo oficial: T03 está
+en 3/8 y F04 es el siguiente ítem que debe cerrarse en orden.
 
 ## Estado (validado)
 

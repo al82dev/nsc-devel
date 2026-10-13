@@ -45,7 +45,7 @@ Estado: `CERRADO` (matriz de sustratos, UTF-8 no ASCII, alias/no-copia observabl
 - Con TL-LANG-310, TL-LANG-357..365, B1/B2 y los guards versionados, todos los criterios de este
   expediente están satisfechos. F03 avanza de 24/147 a 25/147 sin batería completa intermedia.
 
-## Cierre parcial B1 — identidad de especializaciones
+## Checkpoint histórico B1 — identidad de especializaciones (superado)
 
 - `closedTypeKeyForTemplate` conserva la identidad canónica completa del argumento en la clave y
   el hash. El nombre terminal se usa únicamente para mantener legible el símbolo generado.
@@ -53,9 +53,10 @@ Estado: `CERRADO` (matriz de sustratos, UTF-8 no ASCII, alias/no-copia observabl
   ruta ordinaria de `ensureTypeSpecialization`; los builtins conservan su identidad histórica.
 - Evidencia puntual 2026-10-13: `TF-FRONT-167` PASS, 141,403 us. Verifica estabilidad y ausencia
   de colisión entre tipos `Item` homónimos de módulos o namespaces diferentes.
-- Este cierre no materializa Span/ReadOnlySpan desde cuerpos y no cierra `TL-LANG-310` ni F03.
+- En ese checkpoint, B1 todavía no materializaba Span/ReadOnlySpan desde cuerpos y por sí solo no
+  cerraba `TL-LANG-310` ni F03. B2 y la matriz posterior superaron esa frontera.
 
-## Cierre parcial B2 — materialización solicitada desde cuerpos
+## Checkpoint histórico B2 — materialización solicitada desde cuerpos (superado)
 
 - `ProjectGenericModel` recoge las demandas estructuradas `list-pattern-rest` durante su recorrido
   serial del AST y las procesa en olas ordenadas antes de name/member binding y Sema.
@@ -66,8 +67,9 @@ Estado: `CERRADO` (matriz de sustratos, UTF-8 no ASCII, alias/no-copia observabl
 - Evidencia puntual 2026-10-13: `TF-FRONT-167` PASS, 113,509 us. El fixture llega a
   `MethodBodies`, solicita ambas vistas desde cuerpos y demuestra una sola especialización de cada
   tipo aunque la captura rest se repita.
-- Este cierre no amplía `TL-LANG-310` a los seis sustratos ni certifica F03; el avance maestro se
-  conserva en 24/147.
+- En ese checkpoint, B2 todavía no ampliaba `TL-LANG-310` a los seis sustratos ni certificaba F03;
+  el avance maestro permanecía entonces en 24/147. La matriz y los gaps 1–3 posteriores cerraron
+  F03 y elevaron el estado vigente a 25/147.
 
 ## Progreso registrado
 
