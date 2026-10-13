@@ -2222,8 +2222,14 @@ private:
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.
     std::set<std::pair<std::size_t, std::size_t>> assignedOutParameters_;
+    // NS304-T09-F01: (constructor ordinal, field member ordinal) pairs a `required` field was
+    // assigned. See verifyRequiredFieldAssignments for the end-of-constructor check.
+    std::set<std::pair<std::size_t, std::size_t>> assignedRequiredFields_;
+    // NS304-T09-F07: tipo objetivo activo durante el análisis de un `new()` target-typed.
+    std::string activeTargetTypeKey_;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     // C7 "definite assignment". Three questions, one per helper:
     //
     //  - is this local's type one the analysis reports on at all? (see the definition: aggregates

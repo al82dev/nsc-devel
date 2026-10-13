@@ -1043,7 +1043,7 @@ T00
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record primary ctor + orden textual + TL-LANG-337; primary ctor de class residual.)*
 - [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito.
 - [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] con length literal + TL-LANG-308/309/310; length const genérico residual (sistema de tipos).)*
-- [ ] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection.
+- [ ] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() sin args vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; new(args) residual.)*
 - [ ] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + TL-LANG-338; storage explícito custom residual.)*
 - [ ] `NS304-T09-F09` — Integrar fallo parcial, drop order, inheritance, records, with y debug metadata.
 - [ ] `NS304-T09-F10` — Implementar constructores fallibles `throws E`, propagación, cleanup parcial, ABI,

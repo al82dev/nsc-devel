@@ -6228,9 +6228,13 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         else
         {
+            // NS304-T09-F07: expone el tipo declarado al `new()` target-typed del inicializador.
+            const std::string previousTargetTypeKey = activeTargetTypeKey_;
+            activeTargetTypeKey_ = typeKey;
             initializer = analyzeExpression(
                 variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
                 isDelegateTypeKey(typeKey), false, isRaii || isMoveOnly);
+            activeTargetTypeKey_ = previousTargetTypeKey;
             if (initializer.methodGroup && isDelegateTypeKey(typeKey))
             {
                 initializer = bindMethodGroupToDelegate(
@@ -12174,14 +12178,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::ObjectCreationExpression:
             if (memberModel_ != nullptr && nameLookup_ != nullptr)
             {
-                const std::string objectType = memberModel_->canonicalTypeKey(
-                    expression->typeSyntax(), *nameLookup_);
+                // NS304-T09-F07: `new()` target-typed toma el tipo objetivo activo (el del
+                // contexto que lo analiza); sin tipo objetivo reporta un error claro.
+                const bool targetTyped = expression->typeSyntax() == nullptr &&
+                    expression->auxiliaryText() == "target-typed";
+                if (targetTyped && activeTargetTypeKey_.empty())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "target-typed new() requires a typed target context");
+                    result.valid = false;
+                    break;
+                }
+                const std::string objectType = targetTyped
+                    ? activeTargetTypeKey_
+                    : memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
                 ProjectConstructionSite site;
                 site.syntax = expression;
                 site.callableOrdinal = methodMemberOrdinal;
                 site.kind = ProjectConstructionSiteKind::Object;
                 site.targetTypeKey = objectType;
-                site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+                site.targetTypeOrdinal = targetTyped
+                    ? namedTypeOrdinalForTypeKey(objectType)
+                    : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
                 site.argumentsTyped = true;
                 bool argumentsValid = true;
                 for (const ast::AstNode* argument : expression->children())
@@ -20679,6 +20700,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     }
 
     const bool delegateTarget = isDelegateTypeKey(left.typeKey);
+    // NS304-T09-F07: expone el tipo objetivo al `new()` target-typed del lado derecho.
+    const std::string previousTargetTypeKey = activeTargetTypeKey_;
+    activeTargetTypeKey_ = left.typeKey;
     ExpressionResult right;
     if (delegateTarget && expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
         right = bindLambdaToDelegate(
@@ -20690,6 +20714,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             raiiTargetLocal.has_value() || moveOnlyTargetLocal.has_value() ||
                 moveOnlyTargetParameter.has_value() || arrayElementMoveTarget ||
                 ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
+    activeTargetTypeKey_ = previousTargetTypeKey;
     if (right.methodGroup && delegateTarget)
     {
         right = bindMethodGroupToDelegate(

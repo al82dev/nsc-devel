@@ -3002,6 +3002,47 @@ class Program
         }});
 }
 
+void registerTargetTypedNewCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-339", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "target-typed", "new", "construction"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09TargetTypedNew", "Exe", R"ns(
+class Point
+{
+    public int X;
+    public int Y;
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Point p = new();
+        p.X = 3;
+        p.Y = 4;
+        return p.X + p.Y;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09TargetTypedNew.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-339 target-typed new() must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-339 new() must infer Point from the target: 3 + 4 = 7: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3055,5 +3096,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerConstInterpolationCase(registry);
     registerPrimaryConstructorCase(registry);
     registerEventCase(registry);
+    registerTargetTypedNewCase(registry);
 }
 }

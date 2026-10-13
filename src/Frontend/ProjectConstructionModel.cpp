@@ -956,14 +956,19 @@ void ProjectConstructionModel::bindConstruction(
     binding.syntax = expression;
     binding.callerMemberOrdinal = callerMemberOrdinal;
 
+    // NS304-T09-F07: `new()` target-typed llega sin TypeSyntax; el tipo ya está resuelto en
+    // site.targetTypeOrdinal. Se permite avanzar solo en ese caso.
+    const bool targetTyped = expression != nullptr && expression->typeSyntax() == nullptr &&
+        expression->auxiliaryText() == "target-typed";
     if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr ||
-        methodBodyModel_ == nullptr || expression == nullptr || expression->typeSyntax() == nullptr)
+        methodBodyModel_ == nullptr || expression == nullptr ||
+        (expression->typeSyntax() == nullptr && !targetTyped))
     {
         constructions_.push_back(std::move(binding));
         return;
     }
 
-    if (!expression->typeSyntax()->modifiers().empty())
+    if (!targetTyped && !expression->typeSyntax()->modifiers().empty())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAllocationType,

@@ -14197,6 +14197,19 @@ ast::AstNode* Parser::parseUnaryExpression()
     {
         const SourceRange start = consume().range();
 
+        // NS304-T09-F07: `new()` (target-typed) infiere el tipo del contexto objetivo. Se marca
+        // en auxiliaryText y Sema lo resuelve contra el tipo objetivo activo.
+        if (at(TokenKind::LeftParen) && peek().kind() == TokenKind::RightParen)
+        {
+            consume(); // '('
+            consume(); // ')'
+            ast::AstNode* creation = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ObjectCreationExpression, start);
+            creation->setAuxiliaryText("target-typed");
+            creation->setRange(join(start, tokens_[index_ - 1].range()));
+            return creation;
+        }
+
         // Item 317: placement construction follows the conventional unambiguous spelling
         // `new (storage) T(args)`. The placement expression is kept in first(), independently
         // from the ordered constructor arguments in children(), so item 318 can guarantee its
