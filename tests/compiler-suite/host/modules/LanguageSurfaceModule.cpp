@@ -2395,6 +2395,38 @@ class Program
         }});
 }
 
+void registerPatternDiagnosticsCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-315", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "diagnostic", "redundancy", "unreachable", "move"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-315")) return;
+
+            const std::filesystem::path redundantProject = products.writeProject(
+                "T03RedundantListArm", "Exe", R"ns(
+class Program
+{
+    public static int Read(int[] a)
+    {
+        return match(a)
+        {
+            [.. var r] => r.Length(),
+            [var x] => x
+        };
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const external_program_support::Result redundant = emitT01Product(
+                L"--emit-project-oop-exe", redundantProject,
+                products.directory() / "T03RedundantListArm.exe", products.directory());
+            context.expect(redundant.started && redundant.exitCode != 0 &&
+                    (redundant.error + redundant.output).find("unreachable") != std::string::npos,
+                "TL-LANG-315 a redundant list arm must be unreachable: " +
+                    redundant.error + redundant.output);
+        }});
+}
+
 void registerPatternBindingModeCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-313", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4589,6 +4621,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);
+    registerPatternDiagnosticsCase(registry);
     registerLambdaNaturalTypeCase(registry);
     registerLambdaParameterModifierCase(registry);
     registerLambdaDefaultParamCase(registry);
