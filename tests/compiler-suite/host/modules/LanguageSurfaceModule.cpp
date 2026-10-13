@@ -2915,6 +2915,43 @@ class Program
         }});
 }
 
+void registerPrimaryConstructorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-337", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "primary", "constructor", "struct"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09PrimaryConstructor", "Exe", R"ns(
+public struct Point(public int x, public int y)
+{
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Point p = new Point(3, 4);
+        return p.x + p.y;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09PrimaryConstructor.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-337 a struct primary constructor must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-337 promoted fields must dispatch: 3 + 4 = 7: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2966,5 +3003,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerInitAccessorCase(registry);
     registerRequiredMemberCase(registry);
     registerConstInterpolationCase(registry);
+    registerPrimaryConstructorCase(registry);
 }
 }

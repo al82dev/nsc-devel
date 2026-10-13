@@ -1040,7 +1040,7 @@ T00
 - [x] `NS304-T09-F01` — Implementar miembros `required` y definite initialization. *(parser `required` + flag isRequired + assignedRequiredFields_ + verifyRequiredFieldAssignments por constructor + TL-LANG-335.)*
 - [x] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser `init` + marcador `:init` + flag isInit + restricción en constructor + TL-LANG-334; congelamiento efectivo vía backing privado.)*
 - [x] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible. *(backing `__nsc_backing_<name>$stage38` determinista + layout de campo regular; ya satisfecho por síntesis existente.)*
-- [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo.
+- [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record primary ctor + orden textual + TL-LANG-337; primary ctor de class residual.)*
 - [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito.
 - [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico.
 - [ ] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection.
