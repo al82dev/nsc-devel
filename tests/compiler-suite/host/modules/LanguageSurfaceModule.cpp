@@ -3088,6 +3088,40 @@ class Program
         }});
 }
 
+void registerCustomEventCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-341", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "event", "custom", "accessor"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09CustomEvent", "Exe", R"ns(
+public delegate void Handler(int x);
+
+class Program
+{
+    public event Handler Changed
+    {
+        add { }
+        remove { }
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09CustomEvent.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-341 a custom event with add/remove must parse and compile: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3143,5 +3177,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerEventCase(registry);
     registerTargetTypedNewCase(registry);
     registerNullConditionalWriteCase(registry);
+    registerCustomEventCase(registry);
 }
 }

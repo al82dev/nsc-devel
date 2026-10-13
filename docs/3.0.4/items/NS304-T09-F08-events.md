@@ -6,11 +6,13 @@
 ## Resultado
 
 - **Parser** (`parseEventTail`): `event Handler Name;` declara el handler (delegate) explícito y
-  baja un backing field `__nsc_event_<name>$stage42` (storage sintetizado) + add/remove.
+  baja un backing field `__nsc_event_<name>$stage42` (storage sintetizado) + add/remove. Además
+  `event Handler Name { add { } remove { } }` baja los accessors custom como métodos
+  `add_<name>`/`remove_<name>` con metadata `event:add:`/`event:remove:`.
 - **Sema/HIR**: `p.Changed += Handle` (add), `Changed(42)` (invoke) resuelven y bajan a la storage.
-- Prueba `TL-LANG-338`: add handler + invoke → `Result` = 42 → **PASS**.
+- Pruebas: `TL-LANG-338` (add + invoke → 42) y `TL-LANG-341` (custom event parses/compiles) → **PASS**.
 
 ## Residual
 
-- **Storage explícito custom** (event con accessors `add`/`remove` sobre storage declarado por el
-  usuario): hoy la storage es siempre sintetizada.
+- **Invocación de accessors custom**: `+=`/`-=` aún bajan a la storage sintetizada, no a los
+  accessors `add`/`remove` custom (requiere cablear el flow de suscripción en Sema/HIR).

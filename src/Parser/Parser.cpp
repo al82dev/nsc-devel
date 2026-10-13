@@ -7209,7 +7209,49 @@ ast::AstNode* Parser::parseEventTail(
     if (isStatic) backing->addModifier(TokenKind::KwStatic);
     event->addChild(backing);
 
-    expect(TokenKind::Semicolon, "';'");
+    // NS304-T09-F08: un event puede declarar accessors custom `add`/`remove`; en ese caso el
+    // backing sintetizado sigue como storage y los accessors bajan como metodos que Sema invoca.
+    if (at(TokenKind::LeftBrace))
+    {
+        consume(); // '{'
+        while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+        {
+            const bool isAdd = atContextualKeyword("add");
+            const bool isRemove = atContextualKeyword("remove");
+            if (!isAdd && !isRemove)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "expected add or remove accessor in event declaration");
+                synchronizeStatement();
+                if (at(TokenKind::RightBrace)) break;
+                continue;
+            }
+            const SourceRange accessorRange = consume().range();
+            ast::AstNode* accessor = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MethodDeclaration, accessorRange);
+            accessor->setText((isAdd ? "add_" : "remove_") + std::string(name.lexeme()));
+            accessor->setAuxiliaryText(
+                (isAdd ? "event:add:" : "event:remove:") + std::string(name.lexeme()));
+            accessor->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+                accessorRange, TokenKind::KwVoid, "void"));
+            ast::AstNode* value = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ParameterDeclaration, accessorRange);
+            value->setText("value");
+            value->setTypeSyntax(eventType);
+            accessor->addChild(value);
+            accessor->setFirst(parseBlock());
+            accessor->setRange(tokenRangeFrom(beginIndex));
+            event->addChild(accessor);
+        }
+        expect(TokenKind::RightBrace, "'}' after event accessors");
+    }
+    else
+    {
+        expect(TokenKind::Semicolon, "';'");
+    }
     event->setRange(tokenRangeFrom(beginIndex));
     return event;
 }
