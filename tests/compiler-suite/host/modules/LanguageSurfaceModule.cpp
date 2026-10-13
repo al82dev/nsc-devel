@@ -3934,11 +3934,25 @@ void registerSingleSpreadCollectionCase(TestRegistry& registry)
                 "T09SingleSpread", "Exe", R"ns(
 class Program
 {
+    private static int Evaluations;
+
+    private static int[] Source(int[] value)
+    {
+        Evaluations += 1;
+        return value;
+    }
+
     public static int Main()
     {
         int[] a = [1, 2, 3];
-        int[] b = [..a];
-        return b[0] + b[1] + b[2];
+        int[] b = [..Source(a)];
+        b[0] = 9;
+        if (a[0] != 1) return 100;
+        a[1] = 8;
+        if (b[1] != 2) return 101;
+        if (Evaluations != 1) return 102;
+        if (a.Length != 3 || b.Length != 3) return 103;
+        return b[0] + b[1] + b[2] + a[0] + a[1] + a[2];
     }
 }
 )ns");
@@ -3951,8 +3965,9 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 6,
-                "TL-LANG-354 b[0]+b[1]+b[2] must be 6: " + result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 26,
+                "TL-LANG-354 single spread must evaluate once and copy independently: " +
+                    result.error + result.output);
         }});
 }
 

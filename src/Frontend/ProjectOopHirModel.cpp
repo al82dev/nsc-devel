@@ -7383,22 +7383,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         case ast::AstNodeKind::NewExpression:
         case ast::AstNodeKind::CollectionExpression:
         {
-            // NS304-T09-F05: `[..a]` (un único spread) se desuara a `a` por referencia; se baja la
-            // fuente directamente (el aplanado multi-elemento no llega aquí).
-            if (expression->kind() == ast::AstNodeKind::CollectionExpression &&
-                expression->children().size() == 1 &&
-                expression->children()[0] != nullptr &&
-                expression->children()[0]->kind() == ast::AstNodeKind::SpreadElementExpression &&
-                expression->children()[0]->first() != nullptr)
-            {
-                if (addressContext)
-                {
-                    error = "T09-F05 a collection expression spread is not addressable";
-                    return nullptr;
-                }
-                return lowerExpression(
-                    expression->children()[0]->first(), memberOrdinal, false, error);
-            }
             const MethodCoreBinding* core = coreBinding(expression);
             // CC1 fase 4C -- `new T` escalar. Hasta esta ronda el mensaje de abajo decia que el
             // raw new "remains outside this pipeline", y era cierto: el modelo semantico lo

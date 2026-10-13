@@ -13282,34 +13282,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         }
         case ast::AstNodeKind::CollectionExpression:
         {
-            // NS304-T09-F05: `[a, b, c]` target-typed a array nativo o, sin target, inferido del
-            // primer elemento (homogéneo). Spreads/builder residual.
+            // NS304-T09-F05: `[a, b, c]` targets a native array or infers one from the
+            // first homogeneous element. Every spread is materialized into fresh storage.
             const std::string explicitTarget = activeTargetTypeKey_;
-            // NS304-T09-F05: `[..a]` (un único spread, sin literales) se desuara a `a` por
-            // referencia (sin copia — simplificación documentada). El aplanado multi-elemento
-            // (`[..a, 1]`) sigue residual.
-            if (expression->children().size() == 1 &&
-                expression->children()[0] != nullptr &&
-                expression->children()[0]->kind() == ast::AstNodeKind::SpreadElementExpression &&
-                expression->children()[0]->first() != nullptr)
-            {
-                const ExpressionResult source = analyzeExpression(
-                    expression->children()[0]->first(),
-                    methodMemberOrdinal, scopeOrdinal, diagnostics);
-                if (source.valid && ProjectTypeConversion::isNativeArray(source.typeKey))
-                {
-                    result = source;
-                    result.assignable = false;
-                    break;
-                }
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->children()[0]->range(),
-                    "a collection expression spread requires a native array source");
-                result.valid = false;
-                break;
-            }
             // NS304-T09-F05: a materialized spread contributes its native-array element type.
             {
                 const bool hasSpread = std::ranges::any_of(
