@@ -14764,7 +14764,22 @@ private:
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.store.addr");
-        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        LLVMValueRef storedValue = value;
+        if (node->operation != lexer::TokenKind::Equal)
+        {
+            // NS304-T10-F06: compound — read-modify-write en la rama no nula. La aritmética se
+            // reutiliza de applyBinaryOperation para no duplicar las reglas de signo/redondeo.
+            LLVMTypeRef valueType = llvmType(node->typeKey, error);
+            if (valueType == nullptr) return nullptr;
+            LLVMValueRef current = LLVMBuildLoad2(
+                builder_, valueType, address, "nullcond.compound.load");
+            const lexer::TokenKind base =
+                lexer::compoundAssignmentBaseOperator(node->operation);
+            storedValue = applyBinaryOperation(
+                base, current, value, node->typeKey, error, false);
+            if (storedValue == nullptr) return nullptr;
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 

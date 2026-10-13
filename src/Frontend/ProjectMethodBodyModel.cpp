@@ -21613,18 +21613,49 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return assignmentResult;
     }
 
-    // NS304-T10-F06: el null-conditional compound (`obj?.Field += x`) todavía no se baja; un
-    // diagnóstico claro evita el "left side not assignable" genérico.
+    // NS304-T10-F06: null-conditional compound (`obj?.Field += x`) numérico. El RHS se evalúa
+    // incondicionalmente; el lowering de HIR/LLVM hace el read-modify-write condicional al null.
     if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "null-conditional compound assignment ('obj?.Field += x') is not yet supported; "
-            "use a temporary with an explicit null check");
-        return {};
+        const TokenKind compoundBase =
+            lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+        if (compoundBase == TokenKind::Invalid)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "unsupported compound assignment operator on a null-conditional target");
+            return {};
+        }
+        const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
+            left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+        if (!common.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "null-conditional compound assignment requires compatible numeric operands");
+            return {};
+        }
+        const ProjectImplicitConversion narrowing = classifyImplicit(
+            right.typeKey, left.typeKey, right.integerConstant);
+        if (!narrowing.exists())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "null-conditional compound assignment cannot implicitly convert its right-hand "
+                "side from '" + right.typeKey + "' to '" + left.typeKey + "'");
+            return {};
+        }
+        ExpressionResult assignmentResult = left;
+        assignmentResult.assignable = false;
+        assignmentResult.valid = true;
+        return assignmentResult;
     }
 
     if (!left.assignable)

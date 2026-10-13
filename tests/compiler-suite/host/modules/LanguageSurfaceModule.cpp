@@ -3136,10 +3136,10 @@ class Program
         }});
 }
 
-void registerNullConditionalCompoundDiagnosticCase(TestRegistry& registry)
+void registerNullConditionalCompoundCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-342", "CL-LANG-020", "Host.Language", "integration", "PR",
-        {"language", "null-conditional", "compound", "diagnostic"},
+        {"language", "null-conditional", "compound", "assignment"},
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
@@ -3149,9 +3149,12 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        Box b = null;
         b?.Value += 1;
-        return 0;
+        Box c = new Box();
+        c.Value = 10;
+        c?.Value += 5;
+        return c.Value;
     }
 }
 )ns");
@@ -3159,11 +3162,14 @@ class Program
                 products.directory() / "T10NullCondCompound.exe";
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
-            context.expect(
-                (emitted.error + emitted.output).find("null-conditional compound assignment") !=
-                    std::string::npos,
-                "TL-LANG-342 obj?.Field += x must report a clear diagnostic: " +
-                    emitted.error + emitted.output);
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-342 obj?.Field += x must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 15,
+                "TL-LANG-342 c?.Value += 5 must store (and b?.Value skip on null): " +
+                    result.error + result.output);
         }});
 }
 
@@ -3296,7 +3302,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTargetTypedNewCase(registry);
     registerNullConditionalWriteCase(registry);
     registerCustomEventCase(registry);
-    registerNullConditionalCompoundDiagnosticCase(registry);
+    registerNullConditionalCompoundCase(registry);
     registerNullConditionalIndexDiagnosticCase(registry);
     registerClassPrimaryConstructorCase(registry);
 }

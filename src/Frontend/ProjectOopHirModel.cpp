@@ -5529,9 +5529,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return node;
             }
 
-            // NS304-T10-F05: `obj?.Field = value` baja a un store condicional al null-check.
-            if (expression->tokenKind() == lexer::TokenKind::Equal &&
-                expression->first() != nullptr &&
+            // NS304-T10-F05/F06: `obj?.Field = value` y el compound numérico `obj?.Field += value`
+            // bajan a un store condicional al null-check. El compound lleva el operador en
+            // `operation` y el backend hace el read-modify-write en la rama no nula.
+            if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
             {
                 const MethodNameBinding* binding = nameBinding(expression->first());
@@ -5547,6 +5548,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 if (value == nullptr) return nullptr;
                 auto node = makeNode(
                     ProjectOopHirNodeKind::NullConditionalFieldStore, expression, resultType);
+                node->operation = expression->tokenKind();
                 node->memberOrdinal = binding->candidateMemberOrdinals.front();
                 node->volatileAccess = memberModel_ != nullptr &&
                     *node->memberOrdinal < memberModel_->members().size() &&
