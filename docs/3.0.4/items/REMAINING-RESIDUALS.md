@@ -9,8 +9,8 @@ Resumen honesto de lo que queda tras ~56 commits. Los ítems cerrados/avanzados 
   `ProjectNameLookup::predeclareNode` la predeclaración de funciones de namespace exige
   `!namespaceSegments.empty()`; la función estática de extensión en scope global cae en ese hueco
   (namespace vacío) y no se indexa como función global.
-- **T09-F05** — spread multi-elemento (`[..a, 1]`: el aplanado/copia aún no se baja; single-spread
-  `[..a]` sí) y builder protocol.
+- **T09-F05** — builder protocol y semántica de copia de single-spread (`[..a]` aún aliasa la
+  fuente en vez de materializar una copia independiente).
 
 ## Bloques duros (multi-capa grande)
 

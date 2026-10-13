@@ -7444,8 +7444,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 return node;
             }
-            // NS304-T09-F05: spread multi-elemento `[..a, 1]` — la fuente del spread es el primer
-            // hijo (array), los literales siguen; el backend calcula la cuenta y hace el memcpy.
+            // NS304-T09-F05: preserve every materialized segment in source order. A parallel
+            // kind vector makes spread position explicit through HIR and MIR.
             bool spreadSeen = false;
             for (const ast::AstNode* child : expression->children())
             {
@@ -7460,7 +7460,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(
                     ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
-                node->hasSpreadSource = true;
                 for (const ast::AstNode* initializer : expression->children())
                 {
                     if (initializer != nullptr &&
@@ -7470,6 +7469,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                             initializer->first(), memberOrdinal, false, error);
                         if (source == nullptr) return nullptr;
                         node->children.push_back(std::move(source));
+                        node->collectionSegments.push_back(ProjectCollectionSegmentKind::Spread);
                         continue;
                     }
                     auto value = lowerExpression(initializer, memberOrdinal, false, error);
@@ -7492,6 +7492,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         value = wrapImplicitConversion(std::move(value), conversion, initializer);
                     }
                     node->children.push_back(std::move(value));
+                    node->collectionSegments.push_back(ProjectCollectionSegmentKind::Element);
                 }
                 return node;
             }

@@ -112,6 +112,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->integerValue);
     output.scalar(std::bit_cast<std::uint64_t>(node->floatingValue));
     output.scalar(node->booleanValue);
+    output.scalars(node->collectionSegments);
     output.scalar(node->referenceLocal);
     output.scalar(node->staticLocal);
     output.scalar(node->pinnedStorage);

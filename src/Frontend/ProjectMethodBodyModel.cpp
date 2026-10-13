@@ -13310,15 +13310,34 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.valid = false;
                 break;
             }
-            // NS304-T09-F05: spread multi-elemento `[..a, 1]` — el spread aporta el tipo de elemento.
+            // NS304-T09-F05: a materialized spread contributes its native-array element type.
             {
-                bool hasSpread = false;
-                std::string spreadElementType;
+                const bool hasSpread = std::ranges::any_of(
+                    expression->children(),
+                    [](const ast::AstNode* child)
+                    {
+                        return child != nullptr &&
+                            child->kind() == ast::AstNodeKind::SpreadElementExpression;
+                    });
+                if (hasSpread)
+                {
+                struct CollectionSegmentAnalysis final
+                {
+                    const ast::AstNode* syntax = nullptr;
+                    bool spread = false;
+                    ExpressionResult value;
+                    std::string elementType;
+                };
+                std::vector<CollectionSegmentAnalysis> segments;
+                segments.reserve(expression->children().size());
                 for (const ast::AstNode* child : expression->children())
                 {
-                    if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+                    CollectionSegmentAnalysis segment;
+                    segment.syntax = child;
+                    segment.spread = child != nullptr &&
+                        child->kind() == ast::AstNodeKind::SpreadElementExpression;
+                    if (segment.spread)
                     {
-                        hasSpread = true;
                         if (child->first() == nullptr)
                         {
                             diagnostics.report(
@@ -13329,9 +13348,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             result.valid = false;
                             return result;
                         }
-                        const ExpressionResult spread = analyzeExpression(
+                        segment.value = analyzeExpression(
                             child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                        if (!spread.valid || !ProjectTypeConversion::isNativeArray(spread.typeKey))
+                        if (!segment.value.valid ||
+                            !ProjectTypeConversion::isNativeArray(segment.value.typeKey))
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidOperand,
@@ -13342,22 +13362,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             return result;
                         }
                         const std::optional<std::string> element =
-                            ProjectTypeConversion::nativeArrayElementType(spread.typeKey);
+                            ProjectTypeConversion::nativeArrayElementType(segment.value.typeKey);
                         if (!element.has_value())
                         {
                             result.valid = false;
                             return result;
                         }
-                        spreadElementType = *element;
+                        segment.elementType = *element;
                     }
+                    else if (child != nullptr)
+                    {
+                        segment.value = analyzeExpression(
+                            child, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                            false, false, true);
+                    }
+                    segments.push_back(std::move(segment));
                 }
-                if (hasSpread)
-                {
                     std::optional<std::string> element;
                     if (ProjectTypeConversion::isNativeArray(explicitTarget))
                         element = ProjectTypeConversion::nativeArrayElementType(explicitTarget);
-                    else if (!spreadElementType.empty())
-                        element = spreadElementType;
+                    else
+                    {
+                        for (const CollectionSegmentAnalysis& segment : segments)
+                        {
+                            if (segment.spread)
+                            {
+                                element = segment.elementType;
+                                break;
+                            }
+                        }
+                    }
                     if (!element.has_value() || *element == "builtin:void")
                     {
                         diagnostics.report(
@@ -13369,23 +13403,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         return result;
                     }
                     bool elementsValid = true;
-                    for (const ast::AstNode* initializer : expression->children())
+                    for (const CollectionSegmentAnalysis& segment : segments)
                     {
-                        if (initializer == nullptr ||
-                            initializer->kind() == ast::AstNodeKind::SpreadElementExpression)
+                        if (segment.spread)
                         {
+                            if (segment.elementType == *element) continue;
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidConversion,
+                                diagnostics::DiagnosticSeverity::Error,
+                                segment.syntax->range(),
+                                "collection expression spread element type '" +
+                                    segment.elementType +
+                                    "' must exactly match target element type '" + *element + "'");
+                            elementsValid = false;
                             continue;
                         }
-                        const ExpressionResult value = analyzeExpression(
-                            initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
-                            false, false, true);
-                        if (!value.valid || !classifyImplicit(
-                                value.typeKey, *element, value.integerConstant).exists())
+                        if (!segment.value.valid || !classifyImplicit(
+                                segment.value.typeKey, *element,
+                                segment.value.integerConstant).exists())
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidConversion,
                                 diagnostics::DiagnosticSeverity::Error,
-                                initializer->range(),
+                                segment.syntax != nullptr
+                                    ? segment.syntax->range() : expression->range(),
                                 "collection expression element is not implicitly convertible to '" +
                                     *element + "'");
                             elementsValid = false;

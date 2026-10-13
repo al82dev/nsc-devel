@@ -3669,11 +3669,26 @@ void registerCollectionSpreadCase(TestRegistry& registry)
                 "T09CollectionSpread", "Exe", R"ns(
 class Program
 {
+    private static int Steps;
+
+    private static int Mark(int digit, int value)
+    {
+        Steps = Steps * 10 + digit;
+        return value;
+    }
+
+    private static int[] MarkArray(int digit, int first, int second)
+    {
+        Steps = Steps * 10 + digit;
+        return [first, second];
+    }
+
     public static int Main()
     {
-        int[] a = [1, 2];
-        int[] b = [..a, 3, 4];
-        return b[0] + b[1] + b[2] + b[3];
+        int[] b = [Mark(1, 9), ..MarkArray(2, 1, 2), Mark(3, 8),
+                   ..MarkArray(4, 3, 4), Mark(5, 7)];
+        if (Steps != 12345 || b.Length != 7) { return 100; }
+        return b[0] + b[1] + b[2] + b[3] + b[4] + b[5] + b[6];
     }
 }
 )ns");
@@ -3682,12 +3697,38 @@ class Program
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
             context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
-                "TL-LANG-349 [..a, 3, 4] must compile: " + emitted.error + emitted.output);
+                "TL-LANG-349 ordered literal/spread segments must compile: " +
+                    emitted.error + emitted.output);
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 10,
-                "TL-LANG-349 b[0]+b[1]+b[2]+b[3] must be 10: " + result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 34,
+                "TL-LANG-349 segments must evaluate once in order and preserve all values: " +
+                    result.error + result.output);
+
+            const std::filesystem::path negativeProject = products.writeProject(
+                "T09CollectionSpreadTypeMismatch", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] integers = [1, 2];
+        long[] longs = [3, 4];
+        int[] invalid = [..integers, 5, ..longs];
+        return invalid.Length;
+    }
+}
+)ns");
+            const external_program_support::Result rejected = emitT01Product(
+                L"--emit-project-oop-exe", negativeProject,
+                products.directory() / "T09CollectionSpreadTypeMismatch.exe",
+                products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find(
+                        "spread element type 'builtin:long' must exactly match target element "
+                        "type 'builtin:int'") != std::string::npos,
+                "TL-LANG-349 incompatible spread element types must be rejected: " +
+                    rejected.error + rejected.output);
         }});
 }
 

@@ -454,8 +454,7 @@ struct ProjectOopMirNode final
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;
-    // NS304-T09-F05: array allocation spread — el primer hijo es la fuente del spread (array).
-    bool hasSpreadSource = false;
+    std::vector<ProjectCollectionSegmentKind> collectionSegments;
     // Item 312. Mirrors ProjectOopHirNode::referenceLocal for backend slot materialization.
     bool referenceLocal = false;
     // NativeSharp 3.0.4 T01-F06. Mirrors the HIR module-storage lifetime contract.

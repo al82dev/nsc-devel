@@ -13512,22 +13512,44 @@ private:
     {
         if (node->children.empty() || node->immediate == 0 || node->alignment == 0)
             return failValue(error, "Stage 41 array allocation has invalid MIR layout/count");
-        if (!node->booleanValue && !node->hasSpreadSource && node->children.size() != 1)
+        const bool hasCollectionSegments = !node->collectionSegments.empty();
+        if (!node->booleanValue && !hasCollectionSegments && node->children.size() != 1)
             return failValue(error, "Stage 41 counted array allocation cannot carry initializer elements");
+        if (hasCollectionSegments && node->collectionSegments.size() != node->children.size())
+            return failValue(error, "T09-F05 collection segment metadata does not match its children");
         LLVMValueRef count;
-        LLVMValueRef spreadSource = nullptr;
-        LLVMValueRef spreadLength = nullptr;
-        if (node->hasSpreadSource)
+        std::vector<LLVMValueRef> segmentValues;
+        std::vector<LLVMValueRef> segmentLengths;
+        if (hasCollectionSegments)
         {
-            // NS304-T09-F05: children[0] es la fuente del spread (array); la cuenta es su Length
-            // más los literales restantes.
-            spreadSource = lowerExpression(node->children[0].get(), error);
-            if (spreadSource == nullptr) return nullptr;
-            spreadLength = LLVMBuildLoad2(
-                builder_, LLVMInt64TypeInContext(context_), spreadSource, "array.spread.length");
-            LLVMValueRef literalCount = LLVMConstInt(
-                LLVMInt64TypeInContext(context_), node->children.size() - 1U, 0);
-            count = LLVMBuildAdd(builder_, spreadLength, literalCount, "array.spread.count");
+            // Evaluate every source segment exactly once and in source order before allocation.
+            count = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            segmentValues.reserve(node->children.size());
+            segmentLengths.reserve(node->children.size());
+            for (std::size_t index = 0; index < node->children.size(); ++index)
+            {
+                LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                if (value == nullptr) return nullptr;
+                segmentValues.push_back(value);
+                LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0);
+                if (node->collectionSegments[index] ==
+                    frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    length = LLVMBuildLoad2(
+                        builder_, LLVMInt64TypeInContext(context_), value,
+                        "array.spread.length");
+                }
+                segmentLengths.push_back(length);
+                LLVMValueRef nextCount = LLVMBuildAdd(
+                    builder_, count, length, "array.segment.count");
+                LLVMValueRef noOverflow = LLVMBuildICmp(
+                    builder_, LLVMIntUGE, nextCount, count, "array.segment.count.valid");
+                if (!emitGuard(
+                        noOverflow, LlvmTrapReason::AllocationSizeOverflow,
+                        "array.segment.count", error))
+                    return nullptr;
+                count = nextCount;
+            }
         }
         else
         {
@@ -13577,50 +13599,53 @@ private:
         // never dereferenced.
         LLVMTypeRef elementType = llvmType(node->elementTypeKey, error);
         if (elementType == nullptr) return nullptr;
-        std::vector<LLVMValueRef> sourceArguments;
-        std::vector<LLVMTypeRef> sourceParameterTypes;
-        sourceArguments.reserve(node->children.size() - 1);
-        sourceParameterTypes.reserve(node->children.size() - 1);
-        if (node->hasSpreadSource)
+        if (hasCollectionSegments)
         {
-            // NS304-T09-F05: copia la data del spread (children[0]) al inicio del nuevo array.
-            LLVMValueRef destData = byteOffset(memory, dataOffset, "array.spread.dest");
-            LLVMValueRef sourceData = byteOffset(spreadSource, dataOffset, "array.spread.source");
-            LLVMValueRef sourceBytes = LLVMBuildMul(
-                builder_, spreadLength,
-                LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
-                "array.spread.bytes");
-            if (!emitMemcpyBytes(destData, sourceData, sourceBytes, "array.spread.copy", error))
-                return nullptr;
-        }
-        for (std::size_t index = 1; index < node->children.size(); ++index)
-        {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
-            if (value == nullptr) return nullptr;
-            LLVMValueRef address;
-            if (node->hasSpreadSource)
+            LLVMValueRef cursor = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            for (std::size_t index = 0; index < segmentValues.size(); ++index)
             {
-                // El literal children[index] va al elemento spreadLength + (index-1).
-                LLVMValueRef literalIndex = LLVMConstInt(
-                    LLVMInt64TypeInContext(context_), index - 1U, 0);
-                LLVMValueRef elementIndex = LLVMBuildAdd(
-                    builder_, spreadLength, literalIndex, "array.literal.index");
                 LLVMValueRef byteBase = LLVMBuildMul(
-                    builder_, elementIndex,
+                    builder_, cursor,
                     LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
-                    "array.literal.bytebase");
+                    "array.segment.bytebase");
                 LLVMValueRef offset = LLVMBuildAdd(
                     builder_, byteBase,
                     LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
-                    "array.literal.offset");
-                address = dynamicByteOffset(memory, offset, "array.init.element.addr");
+                    "array.segment.offset");
+                LLVMValueRef destination =
+                    dynamicByteOffset(memory, offset, "array.segment.dest");
+                if (node->collectionSegments[index] ==
+                    frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    LLVMValueRef sourceData = byteOffset(
+                        segmentValues[index], dataOffset, "array.spread.source");
+                    LLVMValueRef sourceBytes = LLVMBuildMul(
+                        builder_, segmentLengths[index],
+                        LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                        "array.spread.bytes");
+                    if (!emitMemcpyBytes(
+                            destination, sourceData, sourceBytes, "array.spread.copy", error))
+                        return nullptr;
+                }
+                else
+                {
+                    LLVMBuildStore(builder_, segmentValues[index], destination);
+                }
+                cursor = LLVMBuildAdd(
+                    builder_, cursor, segmentLengths[index], "array.segment.cursor");
             }
-            else
+        }
+        else
+        {
+            for (std::size_t index = 1; index < node->children.size(); ++index)
             {
+                LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                if (value == nullptr) return nullptr;
                 const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
-                address = byteOffset(memory, bytePosition, "array.init.element.addr");
+                LLVMValueRef address =
+                    byteOffset(memory, bytePosition, "array.init.element.addr");
+                LLVMBuildStore(builder_, value, address);
             }
-            LLVMBuildStore(builder_, value, address);
         }
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);

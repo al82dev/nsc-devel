@@ -485,6 +485,12 @@ enum class ProjectOopHirNodeKind
     MatchValue
 };
 
+enum class ProjectCollectionSegmentKind : std::uint8_t
+{
+    Element,
+    Spread
+};
+
 struct ProjectOopHirNode final
 {
     ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::Block;
@@ -556,8 +562,9 @@ struct ProjectOopHirNode final
     std::uint64_t bitStorageAlignment = 1;
     double floatingValue = 0.0;
     bool booleanValue = false;
-    // NS304-T09-F05: array allocation spread — el primer hijo es la fuente del spread (array).
-    bool hasSpreadSource = false;
+    // One entry per materialized collection child, preserving literal/spread source order.
+    // Empty means this ArrayAllocation uses the ordinary count/initializer representation.
+    std::vector<ProjectCollectionSegmentKind> collectionSegments;
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;
