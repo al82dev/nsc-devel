@@ -17660,6 +17660,7 @@ private:
         if (typeKey.starts_with("type:") ||
             typeKey.starts_with("future:") ||
             typeKey.starts_with("iterator:") ||
+            typeKey.starts_with("async-iterator:") ||
             frontend::ProjectTypeConversion::isTuple(typeKey))
         {
             // El ancho del enum es el de su TIPO SUBYACENTE, no siempre 32. La regla esta en

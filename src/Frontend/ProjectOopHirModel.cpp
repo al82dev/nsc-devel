@@ -2028,18 +2028,14 @@ bool ProjectOopHirModel::buildImpl(
         std::unique_ptr<ProjectOopHirFunction> poll;
         std::unique_ptr<ProjectOopHirFunction> moveNext;
         std::unique_ptr<ProjectOopHirFunction> drop;
-        // NS304-T07-F02: an async generator is ONE machine (await + yield), not the async split and
-        // the generator split stacked. Until the single split exists, reject it explicitly instead of
-        // letting the two splits rewrite the body over each other.
-        if (!function.constructor && !function.destructor &&
+        // NS304-T07-F02 (first tramo): an async generator lowers through the generator split (the
+        // sync MoveNext/Current/Drop). The future-of-demand (MoveNextAsync) is the next tramo.
+        const bool asyncGenerator =
+            !function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator) &&
-            function.effects.contains(sema::Effect::Async))
-        {
-            error = "async generator state machine lowering is not yet implemented (NS304-T07-F02)";
-            return false;
-        }
+            function.effects.contains(sema::Effect::Async);
         if (!function.constructor && !function.destructor &&
-            function.effects.contains(sema::Effect::Async))
+            function.effects.contains(sema::Effect::Async) && !asyncGenerator)
         {
             poll = splitAsyncFunction(function, error);
             if (poll == nullptr) return false;
@@ -3865,7 +3861,8 @@ ProjectOopHirModel::splitGeneratorFunction(
         return {nullptr, nullptr};
     }
     const std::string iteratorKey = function.returnTypeKey;
-    const auto item = language::iteratorInnerTypeKey(iteratorKey);
+    auto item = language::iteratorInnerTypeKey(iteratorKey);
+    if (!item.has_value()) item = language::asyncIteratorInnerTypeKey(iteratorKey);
     if (!item.has_value())
     {
         error = "generator return type is not an iterator surface: " + iteratorKey;

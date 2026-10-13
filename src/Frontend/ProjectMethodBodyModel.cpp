@@ -14682,30 +14682,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
-    // NS304-T06-F08: `it.Current` reads the generator iterator's item (field 2).
-    if (!typeReceiver && expression->text() == "Current" &&
-        language::iteratorInnerTypeKey(receiver.typeKey).has_value())
+    // NS304-T06-F08 / NS304-T07-F02: `it.Current` reads the iterator's item (field 2).
+    if (!typeReceiver && expression->text() == "Current")
     {
-        result.typeKey = std::string(*language::iteratorInnerTypeKey(receiver.typeKey));
-        result.valid = true;
-        result.assignable = false;
-        coreBindings_.push_back(MethodCoreBinding{
-            MethodCoreOperationKind::IteratorCurrent,
-            expression,
-            methodMemberOrdinal,
-            scopeOrdinal,
-            result.typeKey,
-            receiver.typeKey,
-            false, std::nullopt, std::nullopt});
-        return result;
+        auto itemInner = language::iteratorInnerTypeKey(receiver.typeKey);
+        if (!itemInner.has_value())
+            itemInner = language::asyncIteratorInnerTypeKey(receiver.typeKey);
+        if (itemInner.has_value())
+        {
+            result.typeKey = std::string(*itemInner);
+            result.valid = true;
+            result.assignable = false;
+            coreBindings_.push_back(MethodCoreBinding{
+                MethodCoreOperationKind::IteratorCurrent,
+                expression,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                result.typeKey,
+                receiver.typeKey,
+                false, std::nullopt, std::nullopt});
+            return result;
+        }
     }
 
-    // NS304-T06-F08: `it.MoveNext()`/`it.GetEnumerator()` synthesize a method-group facade so the
-    // call resolves with zero arguments; analyzeCall records the core binding.
+    // NS304-T06-F08 / NS304-T07-F02: `it.MoveNext()`/`it.GetEnumerator()`/`it.Drop()` synthesize a
+    // method-group facade so the call resolves with zero arguments; analyzeCall records the binding.
     if (!typeReceiver &&
         (expression->text() == "MoveNext" || expression->text() == "GetEnumerator" ||
          expression->text() == "Drop") &&
-        language::iteratorInnerTypeKey(receiver.typeKey).has_value())
+        (language::iteratorInnerTypeKey(receiver.typeKey).has_value() ||
+         language::asyncIteratorInnerTypeKey(receiver.typeKey).has_value()))
     {
         result.methodGroup = true;
         result.methodCandidates.clear();
