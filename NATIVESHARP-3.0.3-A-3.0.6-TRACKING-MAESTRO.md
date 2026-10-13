@@ -973,7 +973,7 @@ T00
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
 - [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(4/6 sustratos listos: slices, spans, strings→StringView y protocolo usuario. Rest sobre array/inline→Span/ReadOnlySpan pendiente: la clave cerrada es correcta pero ensureTypeSpecialization no materializa el tipo desde cuerpos de metodo (no-const + fase serial); se diagnostica error claro.)*
-- [ ] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(3/4: relacionales `< <= > >=`, lógicos `not`(`!`)/`and`(`&`) y anidados listos. Posicional `T(a,b,...)` pendiente.)*
+- [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(relacionales, lógicos, anidados y posicional `T(a,b,...)` (TL-LANG-322).)*
 - [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(3/3 + TL-LANG-312)*
 - [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(modos + TL-LANG-313)*
 - [x] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(satisfecho por F01–F06; cubierto por TL-LANG-308/310)*
