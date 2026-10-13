@@ -1,6 +1,6 @@
 # NS304-T05-F03 — Transformación productiva a state machine HIR/MIR
 
-- **Estado**: ABIERTO (auditado; implementación pendiente)
+- **Estado**: CERRADO (state machine + run-pass "created → ready"; suspensión real = F04/F09)
 - **Rama**: development
 
 ## Auditoría (línea base)

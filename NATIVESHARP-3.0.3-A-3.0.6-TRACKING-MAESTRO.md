@@ -998,7 +998,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 - [x] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery. *(await→AwaitExpression; async consumido sin NS3049 + marcador en function global y en class/interface method (TL-LANG-328).)*
 - [x] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación. *(CERRADO sólo como modelo de protocolo: `wakerType` es metadata estructurada; superficie resoluble, runtime y lowering productivo pertenecen a T05-F03.)*
-- [ ] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR.
+- [x] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR. *(CERRADO: vertical future:<T> resoluble Sema→HIR/MIR/LLVM, constructor lazy, poll, state machine suspend/resume localizada y blocking await sync→async en bucle; TL-LANG-370 run-pass exit 6, guards TL-LANG-328/369, TL-LANG-369 reescrito. La ejecución de suspensión real (pending→ready) con primitiva pendiente pertenece a T05-F04/F09.)*
 - [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos.
 - [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones.
 - [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación.
