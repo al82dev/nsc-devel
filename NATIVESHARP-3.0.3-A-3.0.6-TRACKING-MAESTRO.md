@@ -999,12 +999,12 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery. *(await→AwaitExpression; async consumido sin NS3049 + marcador en function global y en class/interface method (TL-LANG-328).)*
 - [x] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación. *(CERRADO sólo como modelo de protocolo: `wakerType` es metadata estructurada; superficie resoluble, runtime y lowering productivo pertenecen a T05-F03.)*
 - [x] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR. *(CERRADO: vertical future:<T> resoluble Sema→HIR/MIR/LLVM, constructor lazy, poll, state machine suspend/resume localizada y blocking await sync→async en bucle; TL-LANG-370 run-pass exit 6, guards TL-LANG-328/369, TL-LANG-369 reescrito. La ejecución de suspensión real (pending→ready) con primitiva pendiente pertenece a T05-F04/F09.)*
-- [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos.
-- [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones.
-- [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación.
-- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async.
+- [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos. *(PARCIAL conservativo: frame layout + save-all-locals en la reanudación; liveness precisa def-use pendiente.)*
+- [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones. *(PARCIAL conservativo: rechazo de cualquier local borrowed/pinned en async con suspensión.)*
+- [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación. *(PARCIAL: drop en completion; drop en error/cancelación pendiente.)*
+- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async. *(PARCIAL: surface future:<T>\|<E> + ReadyError (throw→state=-2, señal determinista); Result/?/panic y rethrow SEH pendientes.)*
 - [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio. *(PARCIAL: caller-stack + nunca-heap cerrados; arena/allocator = decisión de surface para Alberto.)*
-- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(PARCIAL: bare `yield;` suspend point + pending→ready real + frame + liveness.)*
+- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(PARCIAL: poll virtual completo — pollFn + constructor + await sobre variable + Future<T> nombrable; resume/drop + intermodular pendientes.)*
 - [x] `NS304-T05-F10` — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames. *(CERRADO: subprogram distinguido F/F$poll + state@0 artificial; locals/sequence points heredados; logical frames opcional.)*
 
 ### T06 — generadores síncronos
