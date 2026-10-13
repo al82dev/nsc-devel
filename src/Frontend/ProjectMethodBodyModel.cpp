@@ -5268,11 +5268,8 @@ void ProjectMethodBodyModel::analyzeStatement(
                                 "' but its item type is '" + std::string(*itemInner) + "' (NS304-T06-F02)");
                     }
                 }
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->range(),
-                    "generator state machine lowering is not yet implemented (NS304-T06-F03)");
+                // NS304-T06-F03: the yield is valid; the productive state-machine lowering is the
+                // HIR split (splitGeneratorFunction), no longer a semantic rejection.
             }
             break;
         }

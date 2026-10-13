@@ -3219,6 +3219,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return node;
         }
 
+        case ast::AstNodeKind::YieldReturnStatement:
+        {
+            // NS304-T06-F03: `yield return v` becomes a YieldValue node. integerValue is the yield
+            // state index, assigned by splitGeneratorFunction (the MoveNext rewrite).
+            auto node = makeNode(ProjectOopHirNodeKind::YieldValue, statement, "builtin:void");
+            node->integerValue = 0;
+            if (statement->first() != nullptr)
+            {
+                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                node->children.push_back(std::move(value));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::YieldBreakStatement:
+        {
+            // NS304-T06-F03: `yield break` terminates the generator (state = completed).
+            return makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
+        }
+
         case ast::AstNodeKind::ReturnStatement:
         {
             auto node = makeNode(ProjectOopHirNodeKind::Return, statement, "builtin:void");
