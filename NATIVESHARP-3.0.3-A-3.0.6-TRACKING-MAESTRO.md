@@ -1005,7 +1005,7 @@ T00
 
 ### T06 — generadores síncronos
 
-- [ ] `NS304-T06-F01` — Retirar rechazo `NS3049` para `yield return` y `yield break`.
+- [x] `NS304-T06-F01` — Retirar rechazo `NS3049` para `yield return` y `yield break`. *(AST YieldReturnStatement/YieldBreakStatement; lowering T06-F03.)*
 - [ ] `NS304-T06-F02` — Implementar AST, semántica y restricciones de contexto de generator.
 - [ ] `NS304-T06-F03` — Transformar cuerpo en frame y state machine MIR verificable.
 - [ ] `NS304-T06-F04` — Calcular locals vivos, captures, ownership y drop flags por suspensión.
