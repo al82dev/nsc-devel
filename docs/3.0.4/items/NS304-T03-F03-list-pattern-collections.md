@@ -1,6 +1,7 @@
 # NS304-T03-F03 — list patterns sobre colecciones nativas y protocolo usuario
 
-Estado: `EN IMPLEMENTACIÓN` (longitud unificada por métodos; síntesis de vistas pendiente).
+Estado: `EN IMPLEMENTACIÓN` (longitud unificada y materialización previa a Sema para vistas de
+array; integración completa de los seis sustratos pendiente).
 
 ## Cierre parcial B1 — identidad de especializaciones
 
@@ -12,6 +13,20 @@ Estado: `EN IMPLEMENTACIÓN` (longitud unificada por métodos; síntesis de vist
   de colisión entre tipos `Item` homónimos de módulos o namespaces diferentes.
 - Este cierre no materializa Span/ReadOnlySpan desde cuerpos y no cierra `TL-LANG-310` ni F03.
 
+## Cierre parcial B2 — materialización solicitada desde cuerpos
+
+- `ProjectGenericModel` recoge las demandas estructuradas `list-pattern-rest` durante su recorrido
+  serial del AST y las procesa en olas ordenadas antes de name/member binding y Sema.
+- Cada demanda usa la clave canónica B1 y la caché ordinaria de especializaciones; solicitudes
+  repetidas no crean tipos cerrados duplicados ni materializan tipos ad hoc desde Sema.
+- Como la mutabilidad del receptor se decide en Sema, la fase previa materializa el conjunto finito
+  `Span<T>`/`ReadOnlySpan<T>` y el análisis del cuerpo enlaza únicamente la vista correspondiente.
+- Evidencia puntual 2026-10-13: `TF-FRONT-167` PASS, 113,509 us. El fixture llega a
+  `MethodBodies`, solicita ambas vistas desde cuerpos y demuestra una sola especialización de cada
+  tipo aunque la captura rest se repita.
+- Este cierre no amplía `TL-LANG-310` a los seis sustratos ni certifica F03; el avance maestro se
+  conserva en 24/147.
+
 ## Progreso registrado
 
 - **Hecho (Parser + Sema, longitud)**: el lowering emite `Length()` (llamada marcada
@@ -19,7 +34,9 @@ Estado: `EN IMPLEMENTACIÓN` (longitud unificada por métodos; síntesis de vist
   del miembro `.Length` para built-ins/campos y deja caer a resolución normal de método para
   Span/ReadOnlySpan/StringView. Esto habilita Span/ReadOnlySpan/StringView y el protocolo usuario
   (no-rest y rest), sin romper `TL-LANG-308`/`TL-LANG-309`.
-- **Pendiente (síntesis de vistas)**: rest sobre array/string/inline mediante nuevos
+- **Parcial (síntesis de vistas)**: rest sobre array/inline ya solicita y enlaza tipos
+  `Span<T>`/`ReadOnlySpan<T>` materializados antes de Sema. Sigue pendiente cerrar el lowering
+  ejecutable de todos los sustratos, incluido string, mediante nuevos
   `MethodCoreOperationKind` (`SpanFromArray`/`ReadOnlySpanFromArray`/`StringViewFromString` y
   variantes de inline), reutilizando el esqueleto de `StringCharacterPointer`/`ArrayLength`/
   `RawElement` a través de Sema→HIR→MIR→LLVM.

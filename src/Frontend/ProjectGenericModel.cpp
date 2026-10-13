@@ -828,6 +828,12 @@ bool ProjectGenericModel::build(
         processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
     }
 
+    if (!materializeBodyTypeSpecializationDemands(diagnostics))
+    {
+        built_ = true;
+        return false;
+    }
+
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -2337,6 +2343,8 @@ void ProjectGenericModel::processNode(
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }
 
+    collectBodyTypeSpecializationDemand(unit, node, currentNamespace, currentScope);
+
     bool specializedGenericLambda = false;
     if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
         node->first()->kind() == ast::AstNodeKind::IdentifierExpression)
@@ -2441,6 +2449,71 @@ void ProjectGenericModel::processNode(
         if (declaredLocalType != nullptr)
             sequentialScope.valueTypes[child->text()] = declaredLocalType;
     }
+}
+
+void ProjectGenericModel::collectBodyTypeSpecializationDemand(
+    ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    const std::string& namespaceName,
+    const GenericLookupScope& scope)
+{
+    if (node == nullptr || node->kind() != ast::AstNodeKind::CallExpression ||
+        node->auxiliaryText() != "list-pattern-rest" || node->first() == nullptr ||
+        node->first()->kind() != ast::AstNodeKind::MemberExpression ||
+        node->first()->first() == nullptr)
+    {
+        return;
+    }
+
+    ast::TypeSyntax* receiverType = inferExpressionType(unit, node->first()->first(), scope);
+    if (receiverType == nullptr || receiverType->modifiers().empty()) return;
+    const ast::TypeModifierSyntaxKind outer = receiverType->modifiers().back().kind;
+    if (outer != ast::TypeModifierSyntaxKind::DynamicArray &&
+        outer != ast::TypeModifierSyntaxKind::Array)
+    {
+        return;
+    }
+
+    ast::TypeSyntax* elementType = cloneType(
+        unit.arena(), receiverType, {}, receiverType->modifiers().size() - 1U);
+    if (elementType == nullptr) return;
+
+    // Readonly-ness is a semantic property of the receiver (in-parameter, readonly field, const
+    // local, and so on) and is deliberately not guessed by this pre-Sema pass. Materialize the
+    // finite pair of canonical views. The specialization cache collapses repeated body requests,
+    // while Sema selects the one that the actual receiver requires.
+    for (const std::string_view templateName : {"ReadOnlySpan", "Span"})
+    {
+        ast::TypeSyntax* demand = unit.arena().make<ast::TypeSyntax>(
+            node->range(), lexer::TokenKind::Identifier, std::string(templateName));
+        demand->addTypeArgument(cloneType(unit.arena(), elementType, {}));
+        std::string stableKey = std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
+            std::string(templateName) + "|" + typeSpelling(elementType) + "|" +
+            std::to_string(node->range().begin().offset());
+        bodyTypeSpecializationDemands_.push_back(BodyTypeSpecializationDemand{
+            &unit, demand, scope, namespaceName, std::move(stableKey)});
+    }
+}
+
+bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    while (!bodyTypeSpecializationDemands_.empty())
+    {
+        std::vector<BodyTypeSpecializationDemand> wave;
+        wave.swap(bodyTypeSpecializationDemands_);
+        std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
+        for (BodyTypeSpecializationDemand& demand : wave)
+        {
+            if (demand.unit == nullptr || demand.syntax == nullptr) continue;
+            if (!processTypeSyntax(
+                    *demand.unit, demand.syntax, demand.namespaceName, demand.scope, diagnostics))
+            {
+                return false;
+            }
+        }
+    }
+    return !diagnostics.hasErrors();
 }
 
 bool ProjectGenericModel::processTypeSyntax(
@@ -4324,7 +4397,8 @@ std::vector<ast::TypeSyntax*> ProjectGenericModel::cloneExpandedTypeArgument(
 ast::TypeSyntax* ProjectGenericModel::cloneType(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
-    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::size_t modifierLimit)
 {
     if (source == nullptr) return nullptr;
 
@@ -4409,8 +4483,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
             }
 
             ast::TypeSyntax* result = cloneType(arena, current, {});
-            for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+            const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
+            for (std::size_t index = 0; index < modifierCount; ++index)
             {
+                const ast::TypeModifierSyntax& modifier = source->modifiers()[index];
                 result->addModifier(ast::TypeModifierSyntax{
                     modifier.kind,
                     cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
@@ -4465,8 +4541,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
                     source->range(), lexer::TokenKind::KwInt, "int");
             }
             ast::TypeSyntax* selected = cloneType(arena, pack->second[index], substitutions);
-            for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+            const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
+            for (std::size_t modifierIndex = 0; modifierIndex < modifierCount; ++modifierIndex)
             {
+                const ast::TypeModifierSyntax& modifier = source->modifiers()[modifierIndex];
                 selected->addModifier(ast::TypeModifierSyntax{
                     modifier.kind,
                     cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
@@ -4573,8 +4651,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         }
     }
 
-    for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+    const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
+    for (std::size_t modifierIndex = 0; modifierIndex < modifierCount; ++modifierIndex)
     {
+        const ast::TypeModifierSyntax& modifier = source->modifiers()[modifierIndex];
         result->addModifier(ast::TypeModifierSyntax{
             modifier.kind,
             cloneNode(arena, modifier.arrayCount, substitutions, "", ""),

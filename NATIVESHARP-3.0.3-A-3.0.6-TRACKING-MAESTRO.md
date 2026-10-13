@@ -972,7 +972,7 @@ T00
 
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
-- [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(4/6 sustratos listos: slices, spans, strings→StringView y protocolo usuario. B1 cerrado: la clave Span/ReadOnlySpan conserva módulo/namespace del argumento; TF-FRONT-167 PASS, 141,403 us. Sigue pendiente materializar el tipo desde cuerpos de método y cerrar TL-LANG-310.)*
+- [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(4/6 sustratos listos: slices, spans, strings→StringView y protocolo usuario. B1 cerrado: la clave Span/ReadOnlySpan conserva módulo/namespace del argumento; TF-FRONT-167 PASS, 141,403 us. B2 cerrado: las demandas Span/ReadOnlySpan originadas en cuerpos se materializan en olas deterministas antes de Sema y se deduplican por la clave B1; TF-FRONT-167 PASS, 113,509 us. F03 y TL-LANG-310 permanecen abiertos.)*
 - [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(Relacionales, lógicos y anidados; precedencia `!` > `&` > `|` con agrupación explícita; posicional nominal/unario con condición real, validación de tipo, `Deconstruct` y aridad. Evidencia puntual 2026-10-13: TL-LANG-311 PASS, 364,823 us; TP-PAR-357 PASS, 13,545 us; TL-LANG-322 PASS, 802,361 us.)*
 - [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(Unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
 - [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(La mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
@@ -2187,6 +2187,7 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B04/T03-F02 | Captura rest/slice prestada | `.. var` baja a `Slice` sin copia y conserva lifetime; `TL-LANG-309` positivo+negativo | `PASS`; T03 2/8; 24/147 cerrados; T03-F03 activa |
 | 2026-10-13 | mantenimiento focal | Tipo función nullable con lifetime | `TP-PAR-053`; `QuestionBracket` se integra al carrier sin perder lifetime; oráculo separado en siete campos | `PASS` en 3,370 us; no altera 24/147 ni certifica una tanda de Parte B |
 | 2026-10-13 | mantenimiento focal | Placement construction | `TP-PAR-470`; fixture con `Item` nominal conocido y oráculo separado en siete campos | `PASS` en 5,504 us; corrección sólo de prueba; no altera 24/147 ni certifica una tanda de Parte B |
+| 2026-10-13 | B04/T03-F03 residual B2 | Materialización de vistas solicitadas desde cuerpos | cola serial y determinista previa a Sema para `Span<T>`/`ReadOnlySpan<T>`, deduplicada por la clave canónica B1; `TF-FRONT-167` | `PASS` en 113,509 us; F03 y `TL-LANG-310` permanecen abiertos; no altera 24/147 |
 
 ## 6. Estado al corte
 

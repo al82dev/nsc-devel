@@ -15912,22 +15912,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     ? genericModel_->closedTypeKeyForTemplate(
                           readOnly ? "ReadOnlySpan" : "Span", elementKey)
                     : std::string{};
-                if (!resultKey.empty())
+                const bool materialized = genericModel_ != nullptr && !resultKey.empty() &&
+                    genericModel_->specializationForTypeKey(resultKey) != nullptr;
+                if (materialized)
                 {
-                    // NS304-T03-F03 (residual): la clave cerrada de Span<T>/ReadOnlySpan<T> es
-                    // correcta, pero el TIPO no queda materializado (named type) en la fase de
-                    // cuerpos de metodo: ensureTypeSpecialization es no-const y la materializacion
-                    // corre en la fase serial de resolucion de tipos, antes de las olas paralelas
-                    // de callables. Producir la clave sin materializar deja un tipo que el name
-                    // lookup no resuelve; se diagnostica en vez de bajar un tipo roto.
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->range(),
-                        "array/inline rest capture requires Span<T>/ReadOnlySpan<T> "
-                        "materialization, which is not yet available from method-body analysis");
-                    return result;
+                    MethodCoreOperationKind kind = MethodCoreOperationKind::SpanFromArray;
+                    if (fixedElement.has_value())
+                        kind = readOnly ? MethodCoreOperationKind::ReadOnlySpanFromFixedArray
+                                        : MethodCoreOperationKind::SpanFromFixedArray;
+                    else if (readOnly)
+                        kind = MethodCoreOperationKind::ReadOnlySpanFromArray;
+                    coreBindings_.push_back(MethodCoreBinding{
+                        kind,
+                        expression,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        resultKey,
+                        elementKey,
+                        false,
+                        std::nullopt,
+                        std::nullopt});
+                    ExpressionResult viewResult;
+                    viewResult.typeKey = std::move(resultKey);
+                    viewResult.valid = true;
+                    viewResult.assignable = false;
+                    viewResult.addressable = false;
+                    return viewResult;
                 }
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "array/inline rest capture requires a materialized Span<T>/ReadOnlySpan<T>");
+                return result;
             }
         }
     }

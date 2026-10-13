@@ -324,14 +324,39 @@ void canonicalClosedTypeIdentityOracle(TestContext& context)
 namespace NativeSharp.Core
 {
     public borrowed struct Span<T> { public T Value; }
+    public borrowed struct ReadOnlySpan<T> { public T Value; }
+}
+namespace Suite
+{
+    public class Program
+    {
+        public static int First(int[] values)
+        {
+            match(values)
+            {
+                [.. var rest] => { },
+                _ => { }
+            }
+            return 1;
+        }
+        public static int Repeated(int[] values)
+        {
+            match(values)
+            {
+                [.. var rest] => { },
+                _ => { }
+            }
+            return 2;
+        }
+    }
 }
 )ns");
     ProjectCompilation compilation;
     std::string error;
     const bool completed = compileTo(
-        compilation, ProjectStage::Generics, fixture.projectFile(), error);
+        compilation, ProjectStage::MethodBodies, fixture.projectFile(), error);
     context.expect(completed,
-        "closed-type identity fixture must reach generic discovery; " +
+        "closed-type identity fixture must reach method-body analysis; " +
             projectFailureEvidence(compilation, error));
     const ProjectGenericModel* model = compilation.genericModel();
     if (!completed || model == nullptr) return;
@@ -351,6 +376,45 @@ namespace NativeSharp.Core
         "Span identity");
     context.expect(first == repeated,
         "the same canonical argument identity must produce a stable closed Span key");
+
+    const auto templateKey = [&](std::string_view name) -> std::string
+    {
+        const auto found = std::ranges::find_if(model->templates(), [&](const auto& record)
+        {
+            return record.name == name;
+        });
+        return found == model->templates().end() ? std::string{} : found->canonicalKey;
+    };
+    const std::string spanTemplate = templateKey("Span");
+    const std::string readOnlySpanTemplate = templateKey("ReadOnlySpan");
+    const auto materializationCount = [&](const std::string& key)
+    {
+        return std::ranges::count_if(model->specializations(), [&](const auto& record)
+        {
+            return record.templateKey == key && record.typeArguments.size() == 1U &&
+                record.typeArguments.front() == "int";
+        });
+    };
+    context.expect(!spanTemplate.empty() && !readOnlySpanTemplate.empty(),
+        "body-demand fixture must discover both canonical view templates");
+    context.expect(materializationCount(spanTemplate) == 1,
+        "repeated array rest captures must materialize Span<int> exactly once before Sema");
+    context.expect(materializationCount(readOnlySpanTemplate) == 1,
+        "array rest capture must pre-materialize ReadOnlySpan<int> for readonly receivers");
+    const ProjectMethodBodyModel* methodModel = compilation.methodBodyModel();
+    context.expect(methodModel != nullptr,
+        "body-demand fixture must publish method-body bindings");
+    if (methodModel != nullptr)
+    {
+        const auto arrayViews = std::ranges::count_if(
+            methodModel->coreBindings(), [](const MethodCoreBinding& binding)
+            {
+                return binding.kind == MethodCoreOperationKind::SpanFromArray ||
+                    binding.kind == MethodCoreOperationKind::ReadOnlySpanFromArray;
+            });
+        context.expect(arrayViews == 2,
+            "both body requests must consume a pre-materialized Span<int>/ReadOnlySpan<int> binding");
+    }
 }
 
 // Proves that generic discovery completed without synthesizing templates or

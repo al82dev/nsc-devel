@@ -9,6 +9,7 @@
 #include "nativesharp/Language/GenericSemantics.h"
 
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -312,6 +313,15 @@ private:
         const ast::TypeSyntax* expectedReturnType = nullptr;
     };
 
+    struct BodyTypeSpecializationDemand final
+    {
+        ProjectSyntaxUnit* unit = nullptr;
+        ast::TypeSyntax* syntax = nullptr;
+        GenericLookupScope scope;
+        std::string namespaceName;
+        std::string stableKey;
+    };
+
     bool specializeGenericLambdaCall(
         ProjectSyntaxUnit& unit,
         ast::AstNode* call,
@@ -346,6 +356,14 @@ private:
         const std::string& ownerName,
         const GenericLookupScope& scope,
         bool insideTemplate,
+        diagnostics::DiagnosticEngine& diagnostics);
+
+    void collectBodyTypeSpecializationDemand(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope);
+    bool materializeBodyTypeSpecializationDemands(
         diagnostics::DiagnosticEngine& diagnostics);
 
     bool processTypeSyntax(
@@ -484,7 +502,8 @@ private:
     ast::TypeSyntax* cloneType(
         ast::AstArena& arena,
         const ast::TypeSyntax* source,
-        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit = std::numeric_limits<std::size_t>::max());
 
     std::vector<ast::TypeSyntax*> cloneExpandedTypeArgument(
         ast::AstArena& arena,
@@ -526,6 +545,11 @@ private:
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
+    // Body-only syntax may request a closed type whose concrete receiver is known by the generic
+    // prepass but not written as a TypeSyntax (list-pattern rest over an array is the first case).
+    // Demands are collected during the serial AST walk and materialized in deterministic waves,
+    // before name/member binding and before parallel method-body analysis.
+    std::vector<BodyTypeSpecializationDemand> bodyTypeSpecializationDemands_;
     // Available before the ordinary member/body model. Only an unambiguous common return for a
     // non-generic callable name is retained; this lets an unnamed `some Trait` identity provide
     // evidence to generic inference without writing semantic state onto CallExpression AST nodes.
