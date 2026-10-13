@@ -292,6 +292,24 @@ Verificado en LLVM IR: `%await.is.entry = icmp eq i32 %await.self.state, 0` → 
 (ready path). El suspend path está generado y es estructuralmente correcto; aún no se EJECUTA en
 runtime porque falta el frame alocado por el caller y un future pendiente (F02/F09 + entry-point).
 
+### Avance (entry-point sync→async) — blocking await (verificado 2026-10-13)
+
+`await` en contexto **sync** baja a `AwaitFuture` con `integerValue=0`: constructor + `$poll` (una
+vez) + leer `result` (sin suspensión). En contexto async mantiene `integerValue=1` (suspend/resume).
+La guarda ahora es **transitiva** (`canSuspend`): permite `await` sobre un productor que solo espera
+futures que completan sincrónicamente (nunca suspende). Fix: el poll leía `self` como
+`parameterStorage_[0]` (slot de dirección); ahora carga el puntero del future antes de dereferenciar
+campos.
+
+Verificado (run): `async F(){ int x = await G(); return x+1; }` + `Main(){ return await F(); }`
+ejecuta exit 6; `async A(){ return 42; }` + `await A()` ejecuta exit 42. Commit `d664b0f3`.
+
+### Queda (pending→ready real)
+
+El frame alocado por el caller (guardar el hijo en suspensión) + una primitiva de future pendiente
+para EJERCER el suspend. Con solo futures sincrónicos, `canSuspend` nunca se dispara (no hay base
+pendiente), así que el camino suspend sigue sin ejecutarse.
+
 ### Guarda anti-fallback (verificado 2026-10-13)
 
 El `AwaitFuture` anterior cargaba el `result` del hijo SIN comprobar su estado: si el productor
