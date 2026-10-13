@@ -13539,14 +13539,28 @@ ast::AstNode* Parser::parseLambdaExpression()
         consume();
     }
     std::string captureContract;
+    std::string attributeContract;
     if (consumeIf(TokenKind::LeftBracket))
     {
-        captureContract = "captures:";
-        std::unordered_set<std::string> captureNames;
-        if (!at(TokenKind::RightBracket))
+        if (!at(TokenKind::RightBracket) && !atContextualKeyword("copy") &&
+            !atContextualKeyword("move") && !at(TokenKind::KwMove) &&
+            !atContextualKeyword("ref"))
         {
-            while (true)
+            // NS304-T04-F02: attribute [Attr] on a lambda (not a capture list).
+            std::string attributeName;
+            if (at(TokenKind::Identifier))
+                attributeName = std::string(consume().lexeme());
+            expect(TokenKind::RightBracket, "']' after lambda attribute");
+            attributeContract = "attribute:" + attributeName;
+        }
+        else
+        {
+            captureContract = "captures:";
+            std::unordered_set<std::string> captureNames;
+            if (!at(TokenKind::RightBracket))
             {
+                while (true)
+                {
                 std::string mode;
                 if (atContextualKeyword("copy"))
                 {
@@ -13619,9 +13633,10 @@ ast::AstNode* Parser::parseLambdaExpression()
                     captureContract += mode + "=" + name;
                 }
                 if (!consumeIf(TokenKind::Comma)) break;
+                }
             }
+            expect(TokenKind::RightBracket, "']' after lambda capture list");
         }
-        expect(TokenKind::RightBracket, "']' after lambda capture list");
     }
     if (at(TokenKind::Less))
     {
@@ -13720,6 +13735,11 @@ ast::AstNode* Parser::parseLambdaExpression()
     {
         if (!auxiliary.empty()) auxiliary += ';';
         auxiliary += "calling-convention:" + callingConvention;
+    }
+    if (!attributeContract.empty())
+    {
+        if (!auxiliary.empty()) auxiliary += ';';
+        auxiliary += attributeContract;
     }
     lambda->setAuxiliaryText(std::move(auxiliary));
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);

@@ -2411,6 +2411,39 @@ class Program
         }});
 }
 
+void registerLambdaAttributeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-327", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "lambda", "attribute"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04LambdaAttribute", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        var f = [Attr] (int x) => x * 2;
+        return f(21);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04LambdaAttribute.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-327 an attributed lambda must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-327 an attributed lambda must dispatch: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2450,5 +2483,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionMethodCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
+    registerLambdaAttributeCase(registry);
 }
 }
