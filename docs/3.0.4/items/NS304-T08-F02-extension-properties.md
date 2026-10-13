@@ -14,5 +14,6 @@
 
 ## Residual
 
-- **Setter/ref getter**: la asignación `21.Doubled = x` y el getter por referencia no están
-  cableados (el setter `set_Doubled` no se baja ni se resuelve en asignación).
+- **Setter**: el accessor `set_` ya se baja a `FunctionDeclaration` con receptor + value (`f6916a13`).
+  Falta la RESOLUCION de asignacion `21.Doubled = x` → setter (el camino de `analyzeAssignment`
+  debe derivar `set_Doubled` y ligar la llamada). El getter por referencia tambien queda pendiente.
