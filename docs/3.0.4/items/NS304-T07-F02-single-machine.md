@@ -1,6 +1,6 @@
 # NS304-T07-F02 — Máquina única para await + yield
 
-- **Estado**: PARCIAL (marcación + layout + tramo síncrono MoveNext/Current cerrados; future-de-demanda + await pendientes)
+- **Estado**: PARCIAL (MoveNextAsync ready-future + tramo síncrono cerrados; await dentro del cuerpo generator pendiente)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -58,6 +58,16 @@ Queda: **el split único** (`MoveNextAsync` → future de la siguiente demanda) 
   Registrado `TL-LANG-385` (PASS). Commits `3af99a2d`, `05963358`.
 
 Queda: **`MoveNextAsync`** (el future de la demanda) + el `await` en la misma máquina.
+
+### MoveNextAsync ready-future cerrado — verificado 2026-10-13
+
+- `MoveNextAsync()` (core-op + facade) devuelve `future:<bool>`; el LLVM ejecuta el MoveNext síncrono
+  eager, `state=-1` + `result=hasNext`.
+- El blocking await comprueba el state ANTES de hacer poll (el future listo salta el poll).
+- Verificado: `await it.MoveNextAsync()` impulsa el generator (sum=3). Registrado `TL-LANG-386` (PASS).
+  Commit `6639b4db`.
+
+Queda: **`await` dentro del cuerpo generator** (la máquina única await+yield con suspend/resume).
 
 ### ABI del future-de-demanda (recomendado)
 
