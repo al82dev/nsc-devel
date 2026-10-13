@@ -3883,11 +3883,35 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitGeneratorFunctio
     wrapped->children.push_back(std::move(retFalse));
     moveNext->body = std::move(wrapped);
 
-    // Constructor: `return default(iterator:<T>);` -- lazy, never runs the body.
+    // Constructor: `iterator<T> self = default; self.moveNextFn = Gen$moveNext; return self;` --
+    // lazy, never runs the body, but carries the MoveNext pointer so `it.MoveNext()` works.
     auto constructorBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
-    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, iteratorKey);
-    ret->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, iteratorKey));
-    constructorBody->children.push_back(std::move(ret));
+    const std::size_t selfOrdinal = nextSyntheticLocalOrdinal_++;
+    auto selfDecl = makeNode(ProjectOopHirNodeKind::LocalDeclaration, syntax, iteratorKey);
+    selfDecl->localOrdinal = selfOrdinal;
+    selfDecl->stringValue = "self";
+    selfDecl->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, iteratorKey));
+    constructorBody->children.push_back(std::move(selfDecl));
+
+    auto moveNextField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    moveNextField->memberOrdinal = 3; // moveNextFn
+    moveNextField->elementTypeKey = iteratorKey;
+    auto selfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, iteratorKey + "*");
+    selfAddress->localOrdinal = selfOrdinal;
+    moveNextField->children.push_back(std::move(selfAddress));
+    auto moveNextAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    moveNextAddress->stringValue = function.mangledName + "$moveNext";
+    auto moveNextStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    moveNextStore->operation = lexer::TokenKind::Equal;
+    moveNextStore->children.push_back(std::move(moveNextField));
+    moveNextStore->children.push_back(std::move(moveNextAddress));
+    constructorBody->children.push_back(std::move(moveNextStore));
+
+    auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, iteratorKey);
+    auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, iteratorKey);
+    selfReturn->localOrdinal = selfOrdinal;
+    retSelf->children.push_back(std::move(selfReturn));
+    constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
     return moveNext;
 }

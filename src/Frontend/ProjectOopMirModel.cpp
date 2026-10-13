@@ -1245,9 +1245,14 @@ bool ProjectOopMirModel::build(
         constexpr std::uint64_t frameAlignment = 8;
         const std::uint64_t frameOffset = alignUp(stateSize, frameAlignment);
         const std::uint64_t itemOffset = alignUp(frameOffset + frameSize, itemLayout->second);
+        // NS304-T06-F08: the iterator carries its MoveNext function pointer (field 3) so `it.MoveNext()`
+        // over a variable can resolve the state machine without a direct call site.
+        constexpr std::uint64_t moveNextFnSize = 8;
+        constexpr std::uint64_t moveNextFnAlignment = 8;
+        const std::uint64_t moveNextFnOffset = alignUp(itemOffset + itemLayout->first, moveNextFnAlignment);
         const std::uint64_t totalAlignment =
-            std::max({stateAlignment, frameAlignment, itemLayout->second});
-        const std::uint64_t totalSize = alignUp(itemOffset + itemLayout->first, totalAlignment);
+            std::max({stateAlignment, frameAlignment, itemLayout->second, moveNextFnAlignment});
+        const std::uint64_t totalSize = alignUp(moveNextFnOffset + moveNextFnSize, totalAlignment);
         std::vector<ObjectFieldLayout> fields;
         fields.push_back(ObjectFieldLayout{
             0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
@@ -1256,6 +1261,9 @@ bool ProjectOopMirModel::build(
         fields.push_back(ObjectFieldLayout{
             2, itemOffset, itemLayout->first, itemLayout->second,
             std::string(*item), std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            3, moveNextFnOffset, moveNextFnSize, moveNextFnAlignment, "builtin:void*",
+            std::nullopt, std::nullopt});
         structLayouts_.push_back(ProjectOopMirStructLayout{
             (std::numeric_limits<std::size_t>::max)(),
             key,
