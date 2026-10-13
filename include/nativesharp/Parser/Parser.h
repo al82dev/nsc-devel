@@ -336,6 +336,7 @@ private:
     ast::AstNode* parseMatchStatement();
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
+    ast::AstNode* parseNameOfExpression();
     ast::AstNode* parseComprehensionExpression();
     ast::AstNode* parseComprehensionYieldStatement();
     // True when the cursor sits on `case` or on the `default` OF A LABEL. `default` is also an

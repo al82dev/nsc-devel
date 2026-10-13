@@ -2654,6 +2654,39 @@ class Program
         }});
 }
 
+void registerNameOfCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-331", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "nameof", "compile-time", "string"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NameOf", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        string s = nameof(Program);
+        string m = nameof(Program.Main);
+        return s.Length + m.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NameOf.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-331 nameof must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 11,
+                "TL-LANG-331 nameof(Program)=\"Program\" + nameof(Program.Main)=\"Main\" must be 7+4=11: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2699,5 +2732,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
     registerExtensionSetterMethodCase(registry);
+    registerNameOfCase(registry);
 }
 }

@@ -14731,6 +14731,47 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
     return node;
 }
 
+ast::AstNode* Parser::parseNameOfExpression()
+{
+    // NS304-T10-F07: `nameof(x)` es una constante de cadena de tiempo de compilación igual al
+    // nombre del último identificador/miembro de `x`. Se baja a un StringLiteralExpression en el
+    // parser, de modo que reutiliza toda la maquinaria existente de literales de cadena.
+    const SourceRange begin = current().range();
+    consume(); // `nameof`
+    expect(TokenKind::LeftParen, "'(' after 'nameof'");
+    ast::AstNode* argument = parseExpression();
+    const SourceRange end = current().range();
+    expect(TokenKind::RightParen, "')' after 'nameof' argument");
+
+    std::string name;
+    const ast::AstNode* cursor = argument;
+    while (cursor != nullptr && name.empty())
+    {
+        switch (cursor->kind())
+        {
+            case ast::AstNodeKind::IdentifierExpression:
+                name = cursor->text();
+                break;
+            case ast::AstNodeKind::MemberExpression:
+            case ast::AstNodeKind::PointerMemberExpression:
+            case ast::AstNodeKind::NullConditionalMemberExpression:
+                name = cursor->text();
+                break;
+            case ast::AstNodeKind::CallExpression:
+            case ast::AstNodeKind::IndexExpression:
+                cursor = cursor->first();
+                continue;
+            default:
+                break;
+        }
+    }
+
+    ast::AstNode* literal = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::StringLiteralExpression, join(begin, end));
+    literal->setText(std::move(name));
+    return literal;
+}
+
 ast::AstNode* Parser::parsePrimaryExpression()
 {
     if (startsParenthesizedBlock("match"))
@@ -14754,6 +14795,8 @@ ast::AstNode* Parser::parsePrimaryExpression()
         if (cursor + 1U < tokens_.size() && tokens_[cursor + 1U].kind() == TokenKind::LeftBrace)
             return parseComprehensionExpression();
     }
+    if (atContextualKeyword("nameof") && peek().kind() == TokenKind::LeftParen)
+        return parseNameOfExpression();
     const lexer::Token& token = current();
     ast::AstNodeKind kind = ast::AstNodeKind::IdentifierExpression;
 
