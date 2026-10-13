@@ -22,8 +22,11 @@ NO soporta (TP-PAR-451 lo confirma: "no async/unsafe/noheap prefix flags"):
 
 1. **Efectos `noheap`/`unsafe`** ✅ HECHO: prefijos reconocidos (`KwNoHeap` + `unsafe` contextual) y
    propagados a `AnonymousLambdaType.signature.isNoHeap/isUnsafe` (`9dbd5ba2`). TP-PAR-451 actualizado.
-2. **Atributos** sobre lambda: pendiente (parsear `[...]` delante y adjuntar al `LambdaExpression`).
-3. **Calling convention** `extern C` sobre lambda: pendiente (propagar a `signature.callingConvention`).
+2. **Calling convention** `extern C` ✅ HECHO: prefijo `extern C` reconocido (`callingConvention="C"`
+   en Parser, `signature.callingConvention` en Sema).
+3. **Atributos** sobre lambda: pendiente (desambiguar `[...]` de la lista de captura y adjuntar al
+   `LambdaExpression`). El `[Attr] (x) => ...` hoy se confunde con `[copy x] => ...` y da
+   "expected capture mode".
 
 ## Plan
 
