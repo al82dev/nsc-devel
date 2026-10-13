@@ -3582,6 +3582,39 @@ class Program
         }});
 }
 
+void registerStaticLocalCaptureRejectionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-355", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "local", "function", "static", "capture", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04StaticLocalCapture", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int x = 42;
+        static int Get()
+        {
+            return x;
+        }
+        return Get();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04StaticLocalCapture.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                (emitted.error + emitted.output).find("capture") != std::string::npos ||
+                    (emitted.error + emitted.output).find("x") != std::string::npos,
+                "TL-LANG-355 a static local function must reject capture: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3651,5 +3684,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGenericLocalFunctionCase(registry);
     registerNameOfQualifiedGenericCase(registry);
     registerSingleSpreadCollectionCase(registry);
+    registerStaticLocalCaptureRejectionCase(registry);
 }
 }
