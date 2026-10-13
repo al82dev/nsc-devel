@@ -166,9 +166,35 @@ void registerUnvalidatedTemplateBytesCase(TestRegistry& registry)
             "TL-LEX-091 byte preservation must not invent UTF-8 or control diagnostics");
     });
 }
+
+// Builds a raw interpolated spelling `$"""..."""` (or more quotes) without interpreting bytes.
+// Complexity is O(n).
+std::string rawInterpolated(std::string content, std::uint32_t quotes = 3)
+{
+    std::string source = "$";
+    source.append(quotes, '"');
+    source += content;
+    source.append(quotes, '"');
+    return source;
 }
 
-// Registers CL-LEX-011 cases TL-LEX-083 through TL-LEX-091 in deterministic ID order.
+// Verifies `$"""..."""` emits one interpolated token with raw (unescaped) content. Complexity is O(1).
+void registerRawInterpolatedCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LEX-111", [](TestContext& context) {
+        const LexerFixture fixture(rawInterpolated("a\\n{hole}b"));
+        context.expect(fixture.tokens().size() == 2 &&
+                fixture.tokens()[0].kind() == TokenKind::InterpolatedStringLiteral,
+            "TL-LEX-111 raw interpolated must emit one interpolated token plus EOF");
+        const std::string expected = "a\\n{hole}b";
+        lexer_test::expectStringValue(context, fixture.tokens()[0], expected, "TL-LEX-111");
+        context.expect(fixture.diagnostics().diagnostics().empty(),
+            "TL-LEX-111 raw interpolated content must not decode escapes");
+    });
+}
+}
+
+// Registers CL-LEX-011 cases TL-LEX-083 through TL-LEX-091 plus TL-LEX-111 in deterministic order.
 void registerLexerInterpolatedStringModule(TestRegistry& registry)
 {
     registerTextCase(registry);
@@ -180,5 +206,6 @@ void registerLexerInterpolatedStringModule(TestRegistry& registry)
     registerUnclosedHoleCase(registry);
     registerUnterminatedTemplateCase(registry);
     registerUnvalidatedTemplateBytesCase(registry);
+    registerRawInterpolatedCase(registry);
 }
 }

@@ -1052,7 +1052,7 @@ T00
 ### T10 — strings, null-awareness y nombres estáticos
 
 - [ ] `NS304-T10-F01` — Implementar literales UTF-8 tipados y forma allocation-free.
-- [ ] `NS304-T10-F02` — Completar raw interpolated strings y delimitadores anidados.
+- [x] `NS304-T10-F02` — Completar raw interpolated strings y delimitadores anidados. *(lexRawInterpolatedString con delimitador dinámico 3+ comillas, contenido crudo + huecos; TL-LEX-111 + TL-LANG-332.)*
 - [ ] `NS304-T10-F03` — Hacer productivos interpolation handlers con stack/writer/custom sink.
 - [ ] `NS304-T10-F04` — Validar formato consteval e interpolación constante pura.
 - [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS.

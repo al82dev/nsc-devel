@@ -226,7 +226,10 @@ Token Lexer::nextToken()
     }
     else if (current() == '$' && peek() == '"')
     {
-        token = lexInterpolatedString(begin);
+        // NS304-T10-F02: `$"""..."""` (tres o mas comillas) es un raw interpolated string.
+        token = peek(2) == '"' && peek(3) == '"'
+            ? lexRawInterpolatedString(begin)
+            : lexInterpolatedString(begin);
     }
     else
     {
@@ -928,6 +931,84 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
         diagnostics::DiagnosticSeverity::Error,
         range(begin, offset_),
         "invalid or unterminated interpolated string literal");
+    return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
+}
+
+Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
+{
+    // NS304-T10-F02: raw interpolated string `$"""..."""` (o mas comillas). El contenido es crudo
+    // (sin escapes) y conserva los huecos `{expr}` / las llaves literales `{{`/`}}`, igual que
+    // lexInterpolatedString; la unica diferencia es el delimitador de comillas y la ausencia de
+    // decodificacion de escapes.
+    advance(); // '$'
+    std::uint32_t delimiterWidth = 0;
+    while (peek(delimiterWidth) == '"') ++delimiterWidth;
+    for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
+
+    std::string decoded;
+    bool valid = true;
+    std::uint32_t braceDepth = 0;
+    while (!isAtEnd())
+    {
+        if (current() == '"' && braceDepth == 0)
+        {
+            std::uint32_t quoteCount = 0;
+            while (peek(quoteCount) == '"') ++quoteCount;
+            if (quoteCount >= delimiterWidth)
+            {
+                for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
+                if (!valid)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidStringLiteral,
+                        diagnostics::DiagnosticSeverity::Error,
+                        range(begin, offset_),
+                        "raw interpolated string literal contains an invalid control byte");
+                    return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
+                }
+                return Token(
+                    TokenKind::InterpolatedStringLiteral,
+                    range(begin, offset_),
+                    text(begin, offset_),
+                    std::move(decoded));
+            }
+        }
+        if (current() == '{')
+        {
+            if (peek() == '{')
+            {
+                advance();
+                advance();
+                decoded += "{{";
+                continue;
+            }
+            ++braceDepth;
+            decoded.push_back(advance());
+            continue;
+        }
+        if (current() == '}')
+        {
+            if (peek() == '}' && braceDepth == 0)
+            {
+                advance();
+                advance();
+                decoded += "}}";
+                continue;
+            }
+            if (braceDepth == 0) valid = false;
+            else --braceDepth;
+            decoded.push_back(advance());
+            continue;
+        }
+        const unsigned char raw = static_cast<unsigned char>(advance());
+        if (raw < 0x20 && raw != '\t' && raw != '\n' && raw != '\r') valid = false;
+        decoded.push_back(static_cast<char>(raw));
+    }
+    diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidStringLiteral,
+        diagnostics::DiagnosticSeverity::Error,
+        range(begin, offset_),
+        "invalid or unterminated raw interpolated string literal");
     return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
 }
 
