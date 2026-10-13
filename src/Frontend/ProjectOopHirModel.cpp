@@ -1038,6 +1038,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::LocalValue: return "local-value";
         case ProjectOopHirNodeKind::FieldValue: return "field-value";
         case ProjectOopHirNodeKind::NullConditionalFieldValue: return "null-conditional-field-value";
+        case ProjectOopHirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
         case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
@@ -5500,6 +5501,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(value));
                 node->argumentParameterOrdinals.push_back(valueParameterOrdinal);
                 node->argumentTypeKeys.push_back(target.parameters[valueParameterOrdinal].typeKey);
+                return node;
+            }
+
+            // NS304-T10-F05: `obj?.Field = value` baja a un store condicional al null-check.
+            if (expression->tokenKind() == lexer::TokenKind::Equal &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+            {
+                const MethodNameBinding* binding = nameBinding(expression->first());
+                if (binding == nullptr || binding->candidateMemberOrdinals.size() != 1 ||
+                    binding->kind != MethodNameBindingKind::ExplicitObjectField)
+                {
+                    error = "T10-F05 null-conditional assignment has no unique instance-field binding";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first()->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::NullConditionalFieldStore, expression, resultType);
+                node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                node->volatileAccess = memberModel_ != nullptr &&
+                    *node->memberOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[*node->memberOrdinal].isVolatile;
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(value));
                 return node;
             }
 

@@ -127,6 +127,8 @@ enum class ProjectOopHirNodeKind
     // T01-F03 `receiver?.field` for a nullable field carrier. The receiver child is lowered once;
     // memberOrdinal identifies the ordinary instance field selected by semantic analysis.
     NullConditionalFieldValue,
+    // NS304-T10-F05: `receiver?.field = value` — store condicional al null-check del receptor.
+    NullConditionalFieldStore,
     StaticFieldValue,
     NamespaceStateValue,
     ParameterAddress,

@@ -735,6 +735,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::LocalValue: return "local-value";
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
         case ProjectOopMirNodeKind::NullConditionalFieldLoad: return "null-conditional-field-load";
+        case ProjectOopMirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
         case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
@@ -2952,6 +2953,31 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 error = "T01-F03 null-conditional access to a bit field has no nullable value carrier";
                 return nullptr;
             }
+            break;
+        }
+
+        case ProjectOopHirNodeKind::NullConditionalFieldStore:
+        {
+            if (!node->memberOrdinal.has_value())
+            {
+                error = "Stage 34 null-conditional store HIR node has no member ordinal";
+                return nullptr;
+            }
+            const ObjectFieldLayout* layout = fieldLayout(*node->memberOrdinal);
+            if (layout == nullptr)
+            {
+                error = "Stage 34 cannot find Stage 29 field offset for member #" +
+                    std::to_string(*node->memberOrdinal);
+                return nullptr;
+            }
+            if (layout->bitOffset.has_value() || layout->bitWidth.has_value())
+            {
+                error = "T10-F05 null-conditional store to a bit field is not supported";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::NullConditionalFieldStore;
+            result->immediate = layout->offset;
+            result->alignment = layout->alignment;
             break;
         }
 

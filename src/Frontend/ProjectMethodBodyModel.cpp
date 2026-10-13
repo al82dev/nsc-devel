@@ -21571,6 +21571,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
     }
 
+    // NS304-T10-F05: `obj?.Field = value` — el store es condicional al null-check del receptor.
+    // El RHS se evalúa incondicionalmente (simplificación documentada); el lowering de HIR emite
+    // el null check + store condicional.
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+    {
+        ExpressionResult assignmentResult = right;
+        assignmentResult.assignable = false;
+        assignmentResult.valid = true;
+        return assignmentResult;
+    }
+
     if (!left.assignable)
     {
         diagnostics.report(

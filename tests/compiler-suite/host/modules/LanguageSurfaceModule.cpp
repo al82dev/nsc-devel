@@ -3047,6 +3047,47 @@ class Program
         }});
 }
 
+void registerNullConditionalWriteCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-340", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "null-conditional", "assignment", "write"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NullConditionalWrite", "Exe", R"ns(
+class Box
+{
+    public string Name;
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Box b = null;
+        b?.Name = "x";
+        Box c = new Box();
+        c?.Name = "hello";
+        return c.Name.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NullConditionalWrite.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-340 null-conditional write must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-340 c?.Name = \"hello\" must store (and b?.Name skip on null): " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3101,5 +3142,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPrimaryConstructorCase(registry);
     registerEventCase(registry);
     registerTargetTypedNewCase(registry);
+    registerNullConditionalWriteCase(registry);
 }
 }
