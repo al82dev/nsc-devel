@@ -3300,6 +3300,42 @@ class Program
         }});
 }
 
+void registerAsyncBorrowRejectCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-374", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "borrow", "suspend", "reject", "pinning"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncBorrowReject", "Exe", R"ns(
+class Box { public int Value; public Box() { Value = 10; } }
+class Program
+{
+    public static async int Read()
+    {
+        raii Box box = new Box();
+        borrowed Box view = box;
+        yield;
+        return view.Value;
+    }
+
+    public static int Main()
+    {
+        return 42;
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T05AsyncBorrowReject.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error + emitted.output).find(
+                        "borrowed or pinned local across a suspension") != std::string::npos,
+                "TL-LANG-374 a borrowed local across a suspension must be rejected: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerAsyncMethodMarkerCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-328", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4998,6 +5034,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncYieldRunCase(registry);
     registerAsyncDropCase(registry);
     registerAsyncLivenessCase(registry);
+    registerAsyncBorrowRejectCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
