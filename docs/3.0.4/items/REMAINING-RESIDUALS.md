@@ -1,6 +1,6 @@
 # Parte B 3.0.4 — residuales pendientes (estado de sesión)
 
-Resumen honesto de lo que queda tras ~51 commits. Los ítems cerrados/avanzados están en el
+Resumen honesto de lo que queda tras ~56 commits. Los ítems cerrados/avanzados están en el
 `NATIVESHARP-3.0.3-A-3.0.6-TRACKING-MAESTRO.md` (marcas `[x]`).
 
 ## Residuos acotados (multi-capa media)
@@ -9,8 +9,8 @@ Resumen honesto de lo que queda tras ~51 commits. Los ítems cerrados/avanzados 
   `ProjectNameLookup::predeclareNode` la predeclaración de funciones de namespace exige
   `!namespaceSegments.empty()`; la función estática de extensión en scope global cae en ese hueco
   (namespace vacío) y no se indexa como función global.
-- **T09-F05** — spread flattening (`..x` se parsea/diagnostica pero no se baja) y builder protocol.
-- **T10-F06** — string concat null-conditional (`obj?.Name += "x"`, path RAII de `StringConcat`).
+- **T09-F05** — spread multi-elemento (`[..a, 1]`: el aplanado/copia aún no se baja; single-spread
+  `[..a]` sí) y builder protocol.
 
 ## Bloques duros (multi-capa grande)
 
@@ -27,4 +27,4 @@ Resumen honesto de lo que queda tras ~51 commits. Los ítems cerrados/avanzados 
 ## Nota
 
 Los commits aislados por ítem (`deepseek - ...`) y las pruebas puntuales (`TL-LANG-*`, `TP-PAR-*`,
-`TL-LEX-*`, `TA-AST-*`) se mantienen verdes: `TL-LANG-300..353` sin fallos a la fecha.
+`TL-LEX-*`, `TA-AST-*`) se mantienen verdes: `TL-LANG-300..356` sin fallos a la fecha.
