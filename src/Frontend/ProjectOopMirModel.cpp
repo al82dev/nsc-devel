@@ -755,6 +755,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::IteratorCurrent: return "iterator-current";
         case ProjectOopMirNodeKind::IteratorMoveNext: return "iterator-move-next";
         case ProjectOopMirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
+        case ProjectOopMirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
@@ -1747,6 +1748,24 @@ bool ProjectOopMirModel::build(
             functionByMember_[function.memberOrdinal] = functions_.size();
         }
         functions_.push_back(std::move(function));
+    }
+
+    // NS304-T06-F07: the $drop function inherits the $moveNext's frame layout so it can drop the
+    // same live locals on early stop.
+    for (ProjectOopMirFunction& function : functions_)
+    {
+        if (!function.mangledName.ends_with("$moveNext")) continue;
+        const std::string dropName =
+            function.mangledName.substr(0, function.mangledName.size() - 9) + "$drop";
+        for (ProjectOopMirFunction& candidate : functions_)
+        {
+            if (candidate.mangledName == dropName)
+            {
+                candidate.asyncFrameLocals = function.asyncFrameLocals;
+                candidate.asyncFrameSize = function.asyncFrameSize;
+                break;
+            }
+        }
     }
 
     for (const ProjectOopHirFieldInitializer& source : hirModel.fieldInitializers())
@@ -3383,6 +3402,11 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::IteratorGetEnumerator;
             result->typeKey = node->typeKey;
             result->elementTypeKey = node->elementTypeKey;
+            break;
+
+        case ProjectOopHirNodeKind::DropFrame:
+            result->kind = ProjectOopMirNodeKind::DropFrame;
+            result->typeKey = node->typeKey;
             break;
 
         case ProjectOopHirNodeKind::NullConditionalFieldStore:

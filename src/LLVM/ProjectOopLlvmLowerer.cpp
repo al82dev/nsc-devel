@@ -7985,6 +7985,46 @@ private:
                 return true;
             }
 
+            case frontend::ProjectOopMirNodeKind::DropFrame:
+            {
+                // NS304-T06-F07: `Gen$drop` destroys the frame's live locals (reverse order) via
+                // the drop glue.
+                if (parameterStorage_.empty())
+                    return fail(error, "drop frame has no self parameter");
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "drop.self");
+                LLVMValueRef frame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "drop.frame.addr"), "drop.frame");
+                LLVMBasicBlockRef noFrame = appendBlock("drop.no.frame");
+                LLVMBasicBlockRef doDrop = appendBlock("drop.do");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(
+                        builder_, LLVMIntEQ, frame,
+                        LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.frame.null"),
+                    noFrame, doDrop);
+                LLVMPositionBuilderAtEnd(builder_, doDrop);
+                const auto& frameLocals = currentMirFunction_ != nullptr
+                    ? currentMirFunction_->asyncFrameLocals
+                    : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
+                for (std::size_t index = frameLocals.size(); index > 0; --index)
+                {
+                    const auto& [localOrdinal, offset, typeKey] = frameLocals[index - 1];
+                    const auto glue = valueDropEntries_.find(typeKey);
+                    if (glue == valueDropEntries_.end()) continue;
+                    LLVMValueRef args[] = { byteOffset(frame, offset, "drop.slot") };
+                    if (LLVMBuildCall2(
+                            builder_, glue->second.functionType, glue->second.function,
+                            args, 1U, "drop.glue") == nullptr)
+                        return fail(error, "drop glue call failed");
+                }
+                LLVMBuildBr(builder_, noFrame);
+                LLVMPositionBuilderAtEnd(builder_, noFrame);
+                return true;
+            }
+
             default:
             {
                 LLVMValueRef value = lowerExpression(node, error);
@@ -12123,6 +12163,7 @@ private:
             case frontend::ProjectOopMirNodeKind::SuspendPoint:
             case frontend::ProjectOopMirNodeKind::YieldValue:
             case frontend::ProjectOopMirNodeKind::YieldBreak:
+            case frontend::ProjectOopMirNodeKind::DropFrame:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }

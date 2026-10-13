@@ -163,6 +163,8 @@ enum class ProjectOopMirNodeKind
     IteratorCurrent,
     IteratorMoveNext,
     IteratorGetEnumerator,
+    // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
+    DropFrame,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

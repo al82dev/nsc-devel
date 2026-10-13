@@ -1063,6 +1063,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::IteratorCurrent: return "iterator-current";
         case ProjectOopHirNodeKind::IteratorMoveNext: return "iterator-move-next";
         case ProjectOopHirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
+        case ProjectOopHirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
@@ -3966,7 +3967,11 @@ ProjectOopHirModel::splitGeneratorFunction(
     drop->parameterPassKinds.push_back(ParameterPassKind::Value);
     drop->parameterOwnerships.push_back(sema::OwnershipKind::None);
     auto dropBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
-    dropBody->children.push_back(makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:void"));
+    auto dropFrame = makeNode(ProjectOopHirNodeKind::DropFrame, syntax, "builtin:void");
+    auto dropSelf = makeNode(ProjectOopHirNodeKind::ParameterValue, syntax, iteratorKey + "*");
+    dropSelf->parameterOrdinal = 0;
+    dropFrame->children.push_back(std::move(dropSelf));
+    dropBody->children.push_back(std::move(dropFrame));
     drop->body = std::move(dropBody);
 
     return {std::move(moveNext), std::move(drop)};
