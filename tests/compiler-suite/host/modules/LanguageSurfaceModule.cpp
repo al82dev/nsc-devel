@@ -2444,6 +2444,42 @@ class Program
         }});
 }
 
+void registerAsyncMethodMarkerCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-328", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "method", "marker"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncMethodMarker", "Exe", R"ns(
+class Program
+{
+    public static async void Pump()
+    {
+    }
+
+    public static int Main()
+    {
+        return 42;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncMethodMarker.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-328 an async class method must compile without NS3049: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-328 an async method marker must not alter execution: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2484,5 +2520,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
+    registerAsyncMethodMarkerCase(registry);
 }
 }

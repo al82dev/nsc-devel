@@ -3434,10 +3434,11 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         break;
     }
 
+    bool isAsyncMethod = false;
     if (atContextualKeyword("async"))
     {
-        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
-        // el callable cuando el punto lo permite (follow-up para class/interface member).
+        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador se baja al callable.
+        isAsyncMethod = true;
         consume();
     }
 
@@ -3911,6 +3912,14 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         {
             declaration->setRange(join(tokens_[declarationBeginIndex].range(), declaration->range()));
         }
+    }
+    if (isAsyncMethod && declaration != nullptr &&
+        declaration->kind() == ast::AstNodeKind::FunctionDeclaration)
+    {
+        std::string marker = declaration->auxiliaryText();
+        if (!marker.empty()) marker += ';';
+        marker += "async";
+        declaration->setAuxiliaryText(std::move(marker));
     }
     return declaration;
 }
