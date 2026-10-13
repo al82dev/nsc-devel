@@ -1,6 +1,6 @@
 # NS304-T05-F10 — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames
 
-- **Estado**: ABIERTO (auditado; identidad de poll y discriminante no emitidos)
+- **Estado**: PARCIAL (identidad del poll distinguida; state@0 y logical frames pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -52,3 +52,12 @@ deben persistir.
 
 F10 es independiente de la suspensión runtime (F09): la metadata de debug se emite con `-g` aunque
 el poll complete sincrónicamente. No depende de la primitiva pendiente.
+
+### Cierre parcial (identidad del poll) — verificado 2026-10-13
+
+`createDebugSubprogram` (camino de miembro) ahora apende `$poll` al display name cuando
+`mangledName` termina en `$poll`. Verificado: `--emit-project-oop-exe -g` produce `probe.pdb` que
+contiene `Program.F$poll` (poll) distinto de `Program.F` (constructor). Commit `4f3f70fd`.
+
+Queda: emitir `state@0` como variable de debug (offset 0, `DIFlagArtificial`) y "logical frames"
+(opcional).
