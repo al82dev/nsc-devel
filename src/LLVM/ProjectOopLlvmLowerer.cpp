@@ -9088,10 +9088,27 @@ private:
                             return failValue(error, "await future could not reserve frame storage");
                         LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
                     }
+                    // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
+                    // ready (state == -1). For a synchronously-completing producer this runs once.
+                    LLVMTypeRef blockingIntType = llvmType("builtin:int", error);
+                    if (blockingIntType == nullptr) return nullptr;
+                    LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
+                    LLVMBasicBlockRef loopDone = appendBlock("await.poll.done");
+                    LLVMBuildBr(builder_, pollLoop);
+                    LLVMPositionBuilderAtEnd(builder_, pollLoop);
                     LLVMValueRef blockingArgs[] = { slot };
                     if (LLVMBuildCall2(builder_, blockingFound->second.functionType,
                                        blockingFound->second.function, blockingArgs, 1U, "") == nullptr)
                         return failValue(error, "async poll call failed");
+                    LLVMValueRef blockingState = LLVMBuildLoad2(
+                        builder_, blockingIntType, slot, "await.state");
+                    LLVMValueRef blockingReady = LLVMConstInt(
+                        blockingIntType, static_cast<unsigned long long>(-1), 1);
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingReady, "await.ready"),
+                        loopDone, pollLoop);
+                    LLVMPositionBuilderAtEnd(builder_, loopDone);
                     LLVMTypeRef blockingResultType = llvmType(node->typeKey, error);
                     if (blockingResultType == nullptr) return nullptr;
                     return LLVMBuildLoad2(
