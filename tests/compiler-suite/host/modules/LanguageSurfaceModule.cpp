@@ -3489,11 +3489,11 @@ class Program
 {
     public static int Main()
     {
-        static int Value<T>()
+        static T Identity<T>(T x)
         {
-            return 42;
+            return x;
         }
-        return Value<int>();
+        return Identity<int>(42);
     }
 }
 )ns");
@@ -3507,7 +3507,7 @@ class Program
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
-                "TL-LANG-352 Value<int>() must be 42: " + result.error + result.output);
+                "TL-LANG-352 Identity<int>(42) must be 42: " + result.error + result.output);
         }});
 }
 

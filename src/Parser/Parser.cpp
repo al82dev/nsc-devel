@@ -918,7 +918,14 @@ bool Parser::looksLikeLocalFunction() const noexcept
     std::size_t afterType = cursor;
     // NS304-T04-F05: `static` local function — el modificador no participa en el escaneo del tipo.
     if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwStatic) ++cursor;
-    if (!scanTypeAt(cursor, afterType)) return false;
+    // NS304-T04-F06: un identificador suelto (posible parámetro genérico) es un tipo de retorno
+    // plausible; scanTypeAt rechaza nombres desconocidos, así que se acepta `T name (...)`.
+    if (!scanTypeAt(cursor, afterType))
+    {
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier)
+            return false;
+        afterType = cursor + 1;
+    }
     cursor = afterType;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier) return false;
     ++cursor;
