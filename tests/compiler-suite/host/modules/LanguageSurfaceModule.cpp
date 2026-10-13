@@ -3336,6 +3336,56 @@ class Program
         }});
 }
 
+void registerAsyncThrowsCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-375", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "throws", "future", "error-type"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            std::error_code copyError;
+            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                     "NumericParsing.ns", "String.ns", "Exception.ns"})
+            {
+                copyError.clear();
+                std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                    std::filesystem::copy_options::overwrite_existing, copyError);
+            }
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncThrows", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static async int Read() throws Exception
+    {
+        return 42;
+    }
+
+    public static int Main()
+    {
+        int result = await Read();
+        return result;
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncThrows.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-375 a throwing async function must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-375 a throwing async future must carry its error type and run: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncMethodMarkerCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-328", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5035,6 +5085,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncDropCase(registry);
     registerAsyncLivenessCase(registry);
     registerAsyncBorrowRejectCase(registry);
+    registerAsyncThrowsCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
