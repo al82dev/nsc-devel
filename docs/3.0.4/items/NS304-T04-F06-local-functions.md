@@ -15,6 +15,10 @@
 
 ## Plan (recursion)
 
-1. Hacer que el lambda natural pueda referirse a si mismo (su propio `fn*` como constante), o
-   permitir la captura del propio nombre sin closure.
-2. Prueba `TL-LANG-326` (ya redactada; se re-registra al pasar).
+1. ✅ Sema: `bindLambdaToDelegate` registra `local-function:<name>` en el scope del lambda con su
+   `fn*` + `lambdaOrdinal`, y el cuerpo ya se auto-referencia SIN captura (`4dfcbc1f`).
+2. **Falta HIR**: el local auto-referencial no tiene valor. El lowering debe emitir el puntero
+   propio del lambda (una `FunctionAddress`/`LambdaFunction`) para ese local cuando
+   `local.lambdaOrdinal == currentLambda.lambdaOrdinal`. Hoy el local es un `MethodNameBinding`
+   sin valor → "LLVM code unit #1 failed: lowering failed".
+3. Prueba `TL-LANG-326` (ya redactada; se re-registra al pasar).
