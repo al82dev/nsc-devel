@@ -1862,12 +1862,17 @@ bool ProjectMemberModel::collectTypeMembers(
                 : symbol.kind == ClassMemberKind::Destructor
                     ? "builtin:void"
                     : canonicalTypeKey(memberNode->typeSyntax(), nameLookup);
-            if (isAsyncMethod)
-                symbol.declaredTypeKey = language::futureTypeKey(symbol.declaredTypeKey);
             symbol.declaredErrorTypeSyntax = memberNode->throwsTypeSyntax();
             symbol.declaredErrorTypeKey = memberNode->throwsTypeSyntax() == nullptr
                 ? std::string{}
                 : canonicalTypeKey(memberNode->throwsTypeSyntax(), nameLookup);
+            if (isAsyncMethod)
+            {
+                // NS304-T05-F07: a throwing async future carries its error in the type key
+                // (`future:<T>|<E>`), so the error is not silently discarded.
+                symbol.declaredTypeKey = language::futureTypeKey(
+                    symbol.declaredTypeKey, symbol.declaredErrorTypeKey);
+            }
             symbol.ffiUnwindPolicy = memberNode->ffiUnwindPolicy();
             symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
                 memberNode->typeSyntax()->isPointeeConst();

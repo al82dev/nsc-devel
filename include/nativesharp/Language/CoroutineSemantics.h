@@ -31,6 +31,19 @@ inline std::string futureTypeKey(std::string_view innerTypeKey)
     return key;
 }
 
+// NS304-T05-F07: an async function that throws carries its error type in the future key as
+// `future:<T>|<E>` (the pipe separates value from error; absent for non-throwing async).
+inline std::string futureTypeKey(std::string_view innerTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = futureTypeKey(innerTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
 inline std::optional<std::string_view> futureInnerTypeKey(std::string_view typeKey) noexcept
 {
     constexpr std::string_view prefix = "future:";
@@ -38,7 +51,20 @@ inline std::optional<std::string_view> futureInnerTypeKey(std::string_view typeK
     // A trailing `*` is the pointer-to-future form (`future:<T>*`, the poll's `self` parameter),
     // not a future surface. Future-of-pointer is not representable with this spelling.
     if (typeKey.ends_with('*')) return std::nullopt;
-    return typeKey.substr(prefix.size());
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
+// NS304-T05-F07: the error type carried by a throwing async future (`future:<T>|<E>`), if any.
+inline std::optional<std::string_view> futureErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "future:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? std::nullopt
+        : std::optional<std::string_view>(rest.substr(pipe + 1));
 }
 
 struct AwaitSuspension final
