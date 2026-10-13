@@ -1,6 +1,6 @@
 # NS304-T08-F02 — Extension properties con getter/setter/ref getter
 
-- **Estado**: CERRADO (getter/setter) / residual (ref getter)
+- **Estado**: PARCIAL; ABIERTO (getter por referencia)
 - **Rama**: development
 
 ## Resultado
@@ -23,3 +23,4 @@
 - **Getter por referencia** (`ref` en extension property): pendiente. Requiere que el accessor
   `get_` retorne por referencia y que la asignación reescrita mantenga la dirección del receptor
   mutable (hoy el receptor viaja por valor).
+- La evidencia de getter/setter por valor no cierra el contrato completo de F02.

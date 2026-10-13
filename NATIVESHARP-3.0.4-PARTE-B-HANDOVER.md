@@ -3,7 +3,7 @@
 ## 1. Propósito y autoridad
 
 Este documento conserva el punto de reanudación autosuficiente de la Parte B,
-NativeSharp 3.0.4, después de cerrar `NS304-T03-F02`. No certifica la Parte B,
+NativeSharp 3.0.4, después de cerrar `NS304-T03-F03`. No certifica la Parte B,
 no sustituye el tracking maestro y no autoriza adelantar trabajo posterior.
 
 Fuentes canónicas, en orden de autoridad:
@@ -15,30 +15,30 @@ Fuentes canónicas, en orden de autoridad:
 5. `A:\nsc-devel\docs\3.0.4\contracts\`.
 6. Código, manifiestos, pruebas y evidencia versionados por cada commit.
 
-Los lineamientos aplicables a este corte tienen 5,109 líneas y SHA-256
+Los lineamientos aplicables a este corte tienen 5,110 líneas y SHA-256
 `DE896530ED5D0F4DDB1D4DAA42635F921563C7C764060CEB2D781629C77C3D4F`.
 
 ## 2. SCOPE LOCK del handover
 
-Objetivo autorizado: preservar el estado verificable de Parte B en 24/147,
-retirar cualquier cambio parcial no validado de F03, crear esta transferencia y
-dejar una frontera Git explícita para reanudación.
+Objetivo: preservar el estado verificable de Parte B en 25/147, reconciliar el
+handover original con el cierre posterior de F03 y dejar una reanudación
+inequívoca desde F04.
 
-Naturaleza: documentación y restauración exacta del último estado comprometido.
+Naturaleza: documentación del último estado comprometido y de su evidencia.
 
 Invariantes:
 
-- `T00`, `T01`, `T02`, `T03-F01` y `T03-F02` permanecen cerrados.
-- `T03-F03` permanece pendiente y sin implementación parcial.
+- `T00`, `T01`, `T02` y `T03-F01..F03` permanecen cerrados.
+- `T03-F04` es el siguiente ítem secuencial; ningún resultado posterior se usa
+  para aumentar el conteo oficial antes de cerrar su orden de campaña.
 - No se cambia compilador, CMake, toolchain, Builder ni configuración.
 - No se ejecuta build, prueba ni batería como parte del handover.
 - No se modifica, incluye ni revierte trabajo ajeno.
 - La rama activa de trabajo continúa siendo `development`.
 - `development-ChatGPT` es una frontera de handover, no una rama de versión.
 
-Criterio de cierre de este handover: documento y nota de pausa comprometidos,
-frontera `development-ChatGPT` apuntando al commit de handover, retorno a
-`development` y worktree ajeno preservado.
+Criterio de consistencia de este handover: conteo 25/147, T03 3/8, evidencia de
+F03 trazada y siguiente acción T03-F04 sin afirmar certificación global.
 
 ## 3. Estado ejecutivo
 
@@ -46,19 +46,19 @@ frontera `development-ChatGPT` apuntando al commit de handover, retorno a
 |---|---|
 | Parte B | `PAUSADA POR INSTRUCCIÓN DEL USUARIO` |
 | Plan completo | 147 ítems, T00–T17 |
-| Cerrados | 24/147 |
-| Pendientes | 123/147 |
+| Cerrados | 25/147 |
+| Pendientes | 122/147 |
 | T00 | 8/8, cerrado |
 | T01 | 8/8, cerrado |
 | T02 | 6/6, cerrado |
-| T03 | 2/8, F01–F02 cerrados |
-| Siguiente ítem | `NS304-T03-F03` |
+| T03 | 3/8, F01–F03 cerrados |
+| Siguiente ítem | `NS304-T03-F04` |
 | Batería completa de Parte B | No ejecutada; reservada para después de T17 |
 | Rama de trabajo | `development` |
-| HEAD funcional anterior al handover | `fe6b36eddd7d28d7d2ca049d27e085f556de6778` |
+| Último cierre secuencial | `691661767ce15a158492ff36eb65335654c8f0ab` (`NS304-T03-F03`) |
 
 El conteo se obtiene exclusivamente de los estados cerrados del tracking:
-T00 8 + T01 8 + T02 6 + T03 2 = 24. No se atribuye avance a documentación,
+T00 8 + T01 8 + T02 6 + T03 3 = 25. No se atribuye avance a documentación,
 auditorías o propuestas pendientes.
 
 ## 4. Metodología persistente de reanudación
@@ -135,7 +135,7 @@ Consolidado T02: `TL-LANG-302..307`, 6/6 PASS; guards
 `TL-LANG-271..278`, 8/8 PASS. Los builds fueron focales con LLVM/Clang 23,
 sin regenerar CMake y sin batería completa.
 
-## 8. T03 — patterns, 2/8
+## 8. T03 — patterns, 3/8
 
 ### T03-F01 — formas base
 
@@ -153,31 +153,28 @@ sin regenerar CMake y sin batería completa.
 - Contrato: `.. <pattern>` produce `Slice(prefix, Length-fixed)` sin copia y
   conserva lifetime prestado.
 - Prueba: `TL-LANG-309` PASS en 388498 microsegundos; positivo exit 52.
-- Negativo: escape desde `stackalloc` rechazado con el diagnóstico de préstamo
-  local exacto.
+- El positivo permanece en `TL-LANG-309`; el negativo de escape se aisló
+  posteriormente como `TL-LANG-365` dentro del cierre F03.
 - Guards: `TL-LANG-308` y `TL-LANG-261..270`, 11/11 PASS.
 - Build focal: `Parser.cpp`, frontend de 142 objetos, enlace nsc de 98 inputs;
   runner 69+2+2 aristas con LLVM/Clang 23, sin regenerar CMake.
 
-### Estado de T03-F03
+### T03-F03 — sustratos y vistas rest
 
-`NS304-T03-F03` no está implementado, probado, documentado ni marcado. Todos
-los cambios parciales exploratorios fueron retirados antes de este handover.
-No existe `TL-LANG-310` registrado por este trabajo.
+- Estado: cerrado y contabilizado como el ítem 25/147.
+- Expediente: `docs/3.0.4/items/NS304-T03-F03-list-pattern-collections.md`.
+- Matriz base: `TL-LANG-310` y `TL-LANG-357..362`, 7/7 PASS, para string,
+  arrays, inline arrays, Span, ReadOnlySpan, StringView y protocolo usuario.
+- Bordes de cierre: `TL-LANG-363` cubre UTF-8 no ASCII; `TL-LANG-364`
+  demuestra alias/no-copia observable y readonly; `TL-LANG-365` rechaza el
+  escape de una vista rest derivada de `stackalloc` con diagnóstico exacto.
+- Infraestructura causal: claves de especialización cualificadas, cola
+  determinista de materialización desde cuerpos, accessors `readonly get` y
+  lowering de vistas de fixed arrays quedaron cubiertos por pruebas focales.
+- Cierre: `691661767ce15a158492ff36eb65335654c8f0ab`; no hubo batería completa.
 
-La siguiente acción exacta es auditar primero el contrato de:
-
-- arrays nativos;
-- inline arrays;
-- slices;
-- `Span<T>` y `ReadOnlySpan<T>`;
-- strings UTF-8;
-- protocolo de colección definido por usuario.
-
-La auditoría debe comprobar las fronteras reales de longitud, indexación y
-`Slice`, y todos sus consumidores Parser/Sema/HIR/MIR, antes de elegir una
-representación. No debe reintroducirse el parche exploratorio retirado ni
-suponerse que una propiedad `Length` y un método `Length()` son intercambiables.
+La siguiente acción exacta es `NS304-T03-F04`. Los resultados adelantados o
+auditorías de F04 en adelante no aumentan por sí solos el conteo secuencial.
 
 ## 9. Configuración y toolchain congelados
 
@@ -194,10 +191,10 @@ suponerse que una propiedad `Length` y un método `Length()` son intercambiables
 - Las pruebas de Parte B usan el productor y target canónicos del catálogo. Un
   artefacto stale no demuestra PASS.
 
-## 10. Trabajo ajeno que debe preservarse
+## 10. Contexto histórico del worktree original
 
-Al crear este handover existían cambios ajenos que no se editaron ni se deben
-incorporar a commits de Parte B:
+Al crear la primera versión de este handover existían cambios ajenos que no se
+editaron en aquel corte:
 
 - `docs/compiler-optimization/test-infrastructure/test-execution-parity.csv`;
 - `docs/compiler-optimization/test-infrastructure/test-execution-parity.json`;
@@ -205,9 +202,9 @@ incorporar a commits de Parte B:
 - `docs/DEVELOPMENT-COMMITS.md`, sin seguimiento;
 - `docs/porting/`, sin seguimiento.
 
-Antes de reanudar se debe volver a consultar `git status` y atribuir cualquier
-cambio nuevo. Está prohibido limpiar, restaurar, mover, incluir o reformatear
-estos archivos como parte de T03-F03.
+Esta lista conserva provenance histórica y no afirma que esos paths sigan
+dirty. Antes de reanudar se debe consultar `git status`, atribuir cualquier
+cambio actual y preservarlo; no se debe inferir estado vigente desde esta lista.
 
 ## 11. Protocolo de ramas
 
@@ -226,12 +223,13 @@ estos archivos como parte de T03-F03.
 1. Cambiar a `development` sin alterar el worktree ajeno.
 2. Leer completos los lineamientos, el plan 3.0.4, el tracking maestro y este
    handover.
-3. Confirmar que el conteo continúa en 24/147 y que F03 no está marcado.
-4. Confirmar que `fe6b36edd` y este commit de handover son ancestros de HEAD.
-5. Congelar el alcance exclusivo de `NS304-T03-F03`.
+3. Confirmar que el conteo continúa en 25/147 y que T03 está en 3/8.
+4. Confirmar que `691661767` es ancestro de HEAD.
+5. Congelar el alcance exclusivo de `NS304-T03-F04`.
 6. Auditar sus productores y consumidores antes de editar.
-7. Implementar, ejecutar únicamente `TL-LANG-310` y guards causales, actualizar
-   tracking y expediente, y crear un commit detallado sólo si todo pasa.
-8. Actualizar el conteo a 25/147 únicamente después de esa evidencia.
+7. Implementar y ejecutar únicamente la prueba puntual y guards causales de
+   F04; actualizar tracking y expediente sólo con evidencia real.
+8. Actualizar el conteo a 26/147 únicamente después del cierre secuencial de
+   F04.
 
-No se debe iniciar `NS304-T03-F04` antes del cierre verificable de F03.
+No se debe iniciar `NS304-T03-F05` antes del cierre verificable de F04.

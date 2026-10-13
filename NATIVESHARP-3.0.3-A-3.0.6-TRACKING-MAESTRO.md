@@ -976,7 +976,7 @@ T00
 - [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(Relacionales, lógicos y anidados; precedencia `!` > `&` > `|` con agrupación explícita; posicional nominal/unario con condición real, validación de tipo, `Deconstruct` y aridad. Evidencia puntual 2026-10-13: TL-LANG-311 PASS, 364,823 us; TP-PAR-357 PASS, 13,545 us; TL-LANG-322 PASS, 802,361 us.)*
 - [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(Unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
 - [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(La mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
-- [x] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(satisfecho por F01–F06; cubierto por TL-LANG-308/310)*
+- [ ] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(PARCIAL: F01–F06 demuestran checks, branches y vistas prestadas; `TL-LANG-310` sólo cubre el sustrato string y no demuestra ausencia general de colección, boxing o asignación temporal. Falta evidencia puntual de IR/coste.)*
 - [x] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(faltantes+redundancia de list y variante; escape canónico por TL-LANG-365, con TL-LANG-309 como guard no escapante)*
 
 ### T04 — lambdas, callables y funciones locales
@@ -987,13 +987,13 @@ T00
 - [x] `NS304-T04-F04` — Implementar parámetros opcionales y defaults consteval en lambdas. *(call-site default application en delegate + TL-LANG-317.)*
 - [x] `NS304-T04-F05` — Completar lambdas y funciones locales estáticas y prohibición de captura. *(2026-10-13: `KwStatic` estructurado y preservado por clones; Sema ya no busca texto auxiliar. TL-LANG-318/351/352/355 + guard TL-LANG-320 PASS; TL-LANG-355 exige fallo y diagnóstico exacto.)*
 - [x] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura. *(funcion local + recursion Fact(5)=120 (TL-LANG-325/326) + generic local con retorno genérico `T Identity<T>(T x)` (TL-LANG-352; looksLikeLocalFunction acepta identificador como tipo).)*
-- [x] `NS304-T04-F07` — Congelar ranking de method groups, overload priority y conversiones a `fn*`/`fn&`. *(tipo natural de method group unico + TL-LANG-319.)*
-- [x] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(layout+drop+ejecucion TL-LANG-320 y closure+throws Exception TL-LANG-321.)*
+- [ ] `NS304-T04-F07` — Congelar ranking de method groups, overload priority y conversiones a `fn*`/`fn&`. *(PARCIAL: `TL-LANG-319` demuestra tipo natural para un único overload; faltan ranking multi-overload, prioridades y conversiones `fn*`/`fn&`.)*
+- [ ] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(PARCIAL: `TL-LANG-320/321` demuestran ejecución; no observan de forma independiente drop, escape ni contenido PDB.)*
 
 ### T05 — async/await productivo
 
 - [x] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery. *(await→AwaitExpression; async consumido sin NS3049 + marcador en function global y en class/interface method (TL-LANG-328).)*
-- [x] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación. *(modelo completo + wakerType; surface/lowering T05-F03.)*
+- [x] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación. *(CERRADO sólo como modelo de protocolo: `wakerType` es metadata estructurada; superficie resoluble, runtime y lowering productivo pertenecen a T05-F03.)*
 - [ ] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR.
 - [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos.
 - [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones.
@@ -1028,7 +1028,7 @@ T00
 ### T08 — extension members y operadores
 
 - [x] `NS304-T08-F01` — Diseñar bloques `extension` canónicos sobre tipos y constraints. *(extension method en namespace + TL-LANG-323; global-namespace residual.)*
-- [x] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(getter (TL-LANG-324) + setter método (TL-LANG-330) + setter asignación `21.Doubled = x` (rama de asignación→setter vía namespace call); ref getter residual.)*
+- [ ] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(PARCIAL: getter (`TL-LANG-324`), setter método (`TL-LANG-330`) y setter por asignación están demostrados; getter por referencia sigue pendiente.)*
 - [ ] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(parser: `static` dentro de extension no recibe receptor (ns3-extension-static) + TP-PAR-538; lookup Sema de `T.Miembro()` residual.)*
 - [ ] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos.
 - [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules.
@@ -1656,12 +1656,12 @@ Estado: `CERRADO`.
 - Guards: `TL-LANG-308` y `TL-LANG-261`..`TL-LANG-270`, 11/11 `PASS`.
 - Build focal: `Parser.cpp`, archivo frontend de 142 objetos y enlace nsc de
   98 inputs; runner 69+2+2 aristas, LLVM/Clang 23 y sin regenerar CMake.
-- Gate: T03 queda 2/8 y Parte B 24/147, sin batería completa.
-- Siguiente ítem: `NS304-T03-F03`.
-- Corte de handover: Parte B queda `PAUSADA POR INSTRUCCIÓN DEL USUARIO` en
-  24/147. `NS304-T03-F03` no fue iniciado ni marcado; la reanudación exacta
-  comienza por su auditoría causal, sin cambiar configuración, toolchain o
-  Builder y sin ejecutar batería completa entre tandas.
+- Gate histórico de ese commit: T03 quedó 2/8 y Parte B 24/147, sin batería
+  completa.
+- Ese corte de handover fue superado por el cierre posterior de
+  `NS304-T03-F03`: el estado vigente es T03 3/8 y Parte B 25/147; la
+  reanudación exacta comienza en `NS304-T03-F04`, sin cambiar configuración,
+  toolchain o Builder y sin ejecutar batería completa entre tandas.
 
 ---
 

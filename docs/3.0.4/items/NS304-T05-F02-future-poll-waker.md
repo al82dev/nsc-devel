@@ -1,11 +1,13 @@
 # NS304-T05-F02 — Integrar Future lazy, Poll, Waker, resultado, error y cancelación
 
-- **Estado**: CERRADO (modelo) / residual (surface/lowering T05-F03)
+- **Estado**: CERRADO sólo como modelo de protocolo / residual (surface/runtime/lowering T05-F03)
 - **Rama**: development
 
 ## Resultado
 
-- El MODELO semántico está completo: `FutureStart` (Lazy/Eager), `FutureProtocol` (valueType,
-  errorType, cancellationType, **wakerType** + flags), `PollOutcome`, `FutureState`
-  (poll/consume/cancel), `AsyncGeneratorPollOutcome`. `Waker` añadido (`94db6b58`).
-- El `Future<T,E,C>`/`Waker` como tipos resolubles y el lowering productivo son T05-F03.
+- El modelo de datos del protocolo contiene `FutureStart` (Lazy/Eager), `FutureProtocol`
+  (`valueType`, `errorType`, `cancellationType`, `wakerType` + flags), `PollOutcome`,
+  `FutureState` (poll/consume/cancel) y `AsyncGeneratorPollOutcome` (`94db6b58`).
+- `wakerType` es metadata estructurada del modelo. No demuestra que `Waker` exista como tipo
+  público resoluble ni que polling, wake/cancel o la máquina de estados tengan lowering/runtime.
+- La superficie `Future<T,E,C>`/`Waker` y el lowering productivo pertenecen a T05-F03.
