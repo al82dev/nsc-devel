@@ -4036,6 +4036,48 @@ class Program
         }});
 }
 
+void registerAsyncGeneratorDemandCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-386", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "MoveNextAsync", "await", "demand"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGeneratorDemand", "Exe", R"ns(
+class Program
+{
+    public static AsyncIterator<int, int> Generate()
+    {
+        yield return 1;
+        yield return 2;
+    }
+
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Generate();
+        int sum = 0;
+        bool has = await it.MoveNextAsync();
+        while (has) { sum += it.Current; has = await it.MoveNextAsync(); }
+        return sum;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGeneratorDemand.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-386 await MoveNextAsync must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-386 the demand future must drive the generator (sum=3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerExtensionSetterMethodCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-330", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5496,6 +5538,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
+    registerAsyncGeneratorDemandCase(registry);
     registerExtensionSetterMethodCase(registry);
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
