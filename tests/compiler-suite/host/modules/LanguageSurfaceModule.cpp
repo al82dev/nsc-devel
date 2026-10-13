@@ -2952,6 +2952,56 @@ class Program
         }});
 }
 
+void registerEventCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-338", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "event", "delegate", "handler"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09Event", "Exe", R"ns(
+public delegate void Handler(int x);
+
+class Program
+{
+    public static int Result = 0;
+    public event Handler Changed;
+
+    public void Fire()
+    {
+        Changed(42);
+    }
+
+    public static void Handle(int x)
+    {
+        Result = x;
+    }
+
+    public static int Main()
+    {
+        Program p = new Program();
+        p.Changed += Handle;
+        p.Fire();
+        return Result;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09Event.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-338 an event with add/remove and invocation must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-338 the event handler must dispatch through add/invoke: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3004,5 +3054,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerRequiredMemberCase(registry);
     registerConstInterpolationCase(registry);
     registerPrimaryConstructorCase(registry);
+    registerEventCase(registry);
 }
 }
