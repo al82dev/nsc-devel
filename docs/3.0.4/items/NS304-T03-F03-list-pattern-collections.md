@@ -2,6 +2,16 @@
 
 Estado: `EN IMPLEMENTACIÓN` (longitud unificada por métodos; síntesis de vistas pendiente).
 
+## Cierre parcial B1 — identidad de especializaciones
+
+- `closedTypeKeyForTemplate` conserva la identidad canónica completa del argumento en la clave y
+  el hash. El nombre terminal se usa únicamente para mantener legible el símbolo generado.
+- Los argumentos que ya son especializaciones usan `generic:<specializationKey>`, igual que la
+  ruta ordinaria de `ensureTypeSpecialization`; los builtins conservan su identidad histórica.
+- Evidencia puntual 2026-10-13: `TF-FRONT-167` PASS, 141,403 us. Verifica estabilidad y ausencia
+  de colisión entre tipos `Item` homónimos de módulos o namespaces diferentes.
+- Este cierre no materializa Span/ReadOnlySpan desde cuerpos y no cierra `TL-LANG-310` ni F03.
+
 ## Progreso registrado
 
 - **Hecho (Parser + Sema, longitud)**: el lowering emite `Length()` (llamada marcada

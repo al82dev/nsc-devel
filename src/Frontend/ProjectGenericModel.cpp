@@ -1627,14 +1627,30 @@ std::string ProjectGenericModel::closedTypeKeyForTemplate(
     }
     if (templateRecord == nullptr) return {};
 
-    // Identidad del elemento. Para un tipo builtin/nativo es su spelling terminal; para un tipo de
-    // usuario se limita al spelling (T11 completa la identidad de origen `@origin-module...`).
+    // Keep the terminal spelling only for the readable generated symbol. The hash must use the
+    // same declaration-qualified identity as ordinary generic specialization; otherwise two
+    // modules or namespaces that both declare `Item` synthesize the same Span<Item> type key.
     std::string spelling = std::string(elementTypeKey);
-    if (spelling.starts_with("builtin:")) spelling.erase(0, 8U);
+    const bool builtin = spelling.starts_with("builtin:");
+    if (builtin) spelling.erase(0, 8U);
     if (spelling.starts_with("type:")) spelling.erase(0, 5U);
     const std::size_t separator = spelling.find_last_of(".+:");
     if (separator != std::string::npos) spelling.erase(0, separator + 1U);
-    const std::string identity = spelling;
+    std::string identity;
+    if (builtin)
+    {
+        identity = spelling;
+    }
+    else if (const GenericSpecializationRecord* specialization =
+                 specializationForTypeKey(elementTypeKey);
+             specialization != nullptr)
+    {
+        identity = "generic:" + specialization->specializationKey;
+    }
+    else
+    {
+        identity = std::string(elementTypeKey);
+    }
 
     const std::string key = templateRecord->canonicalKey + "<" + identity + ">";
     const std::string specializedName = templateRecord->name + "__g1__" + sanitize(spelling) +

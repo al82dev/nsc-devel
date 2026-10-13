@@ -316,6 +316,43 @@ std::string deterministicGenericInferenceSource(bool permuted)
         "}\n";
 }
 
+void canonicalClosedTypeIdentityOracle(TestContext& context)
+{
+    TemporaryProject fixture(
+        "front-21-6-closed-type-identity",
+        R"ns(
+namespace NativeSharp.Core
+{
+    public borrowed struct Span<T> { public T Value; }
+}
+)ns");
+    ProjectCompilation compilation;
+    std::string error;
+    const bool completed = compileTo(
+        compilation, ProjectStage::Generics, fixture.projectFile(), error);
+    context.expect(completed,
+        "closed-type identity fixture must reach generic discovery; " +
+            projectFailureEvidence(compilation, error));
+    const ProjectGenericModel* model = compilation.genericModel();
+    if (!completed || model == nullptr) return;
+
+    const std::string first = model->closedTypeKeyForTemplate(
+        "Span", "type:FirstModule::Shared.Item");
+    const std::string second = model->closedTypeKeyForTemplate(
+        "Span", "type:SecondModule::Shared.Item");
+    const std::string third = model->closedTypeKeyForTemplate(
+        "Span", "type:FirstModule::Other.Item");
+    const std::string repeated = model->closedTypeKeyForTemplate(
+        "Span", "type:FirstModule::Shared.Item");
+    context.expect(!first.empty() && !second.empty() && !third.empty(),
+        "closed Span identities must be available for canonical named arguments");
+    context.expect(first != second && first != third && second != third,
+        "homonymous argument types from different modules or namespaces must not collide in "
+        "Span identity");
+    context.expect(first == repeated,
+        "the same canonical argument identity must produce a stable closed Span key");
+}
+
 // Proves that generic discovery completed without synthesizing templates or
 // specializations for an empty translation unit.
 void emptyGenericOracle(TestContext& context, const ProjectCompilation& compilation)
@@ -383,6 +420,7 @@ void genericInferenceOracle(TestContext& context, std::size_t variant)
             context.expect(first.signatures == permuted.signatures,
                 "permuting independent generic calls must preserve normalized specialization identities");
         }
+        canonicalClosedTypeIdentityOracle(context);
         return;
     }
 
