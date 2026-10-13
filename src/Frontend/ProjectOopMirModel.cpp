@@ -1201,6 +1201,76 @@ bool ProjectOopMirModel::build(
             {},
             std::move(fields)});
     }
+    // NS304-T06-F03: `iterator:<T>` es la superficie resoluble del iterator opaco de un generator
+    // sincrono. Layout uniforme { i32 state; void* frame; T item }, sin heap implicito.
+    std::vector<std::string> iteratorKeys;
+    const auto collectIteratorKey = [&](std::string_view key)
+    {
+        if (language::iteratorInnerTypeKey(key).has_value()) iteratorKeys.emplace_back(key);
+    };
+    const auto collectIteratorNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
+    {
+        if (node == nullptr) return;
+        collectIteratorKey(node->typeKey);
+        collectIteratorKey(node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys) collectIteratorKey(key);
+        for (const auto& child : node->children) self(self, child.get());
+    };
+    for (const ProjectOopHirFunction& function : hirModel.functions())
+    {
+        collectIteratorKey(function.returnTypeKey);
+        for (const std::string& key : function.parameterTypeKeys) collectIteratorKey(key);
+        for (const std::string& key : function.captureTypeKeys) collectIteratorKey(key);
+        collectIteratorNode(collectIteratorNode, function.body.get());
+    }
+    std::ranges::sort(iteratorKeys);
+    iteratorKeys.erase(std::unique(iteratorKeys.begin(), iteratorKeys.end()), iteratorKeys.end());
+    for (const std::string& key : iteratorKeys)
+    {
+        const std::optional<std::string_view> item = language::iteratorInnerTypeKey(key);
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> itemLayout =
+            (item.has_value() && *item == "builtin:void")
+                ? std::optional<std::pair<std::uint64_t, std::uint64_t>>(
+                      std::pair<std::uint64_t, std::uint64_t>{0U, 1U})
+                : objectLayoutModel.valueLayoutForTypeKey(
+                      nameLookup, item.has_value() ? std::string(*item) : std::string{});
+        if (!item.has_value() || !itemLayout.has_value())
+        {
+            error = "NativeSharp generator iterator has no physical layout: " + key;
+            return false;
+        }
+        constexpr std::uint64_t stateSize = 4;
+        constexpr std::uint64_t stateAlignment = 4;
+        constexpr std::uint64_t frameSize = 8;
+        constexpr std::uint64_t frameAlignment = 8;
+        const std::uint64_t frameOffset = alignUp(stateSize, frameAlignment);
+        const std::uint64_t itemOffset = alignUp(frameOffset + frameSize, itemLayout->second);
+        const std::uint64_t totalAlignment =
+            std::max({stateAlignment, frameAlignment, itemLayout->second});
+        const std::uint64_t totalSize = alignUp(itemOffset + itemLayout->first, totalAlignment);
+        std::vector<ObjectFieldLayout> fields;
+        fields.push_back(ObjectFieldLayout{
+            0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            1, frameOffset, frameSize, frameAlignment, "builtin:void*", std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            2, itemOffset, itemLayout->first, itemLayout->second,
+            std::string(*item), std::nullopt, std::nullopt});
+        structLayouts_.push_back(ProjectOopMirStructLayout{
+            (std::numeric_limits<std::size_t>::max)(),
+            key,
+            totalSize,
+            totalAlignment,
+            false,
+            0,
+            0,
+            false,
+            abiPassingForSize(totalSize),
+            false,
+            false,
+            {},
+            std::move(fields)});
+    }
     functionByMember_.resize(memberModel.members().size());
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
