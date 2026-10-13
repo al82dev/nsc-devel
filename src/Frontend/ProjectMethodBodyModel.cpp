@@ -18460,8 +18460,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     {
         for (const std::size_t candidateOrdinal : call.candidateMemberOrdinals)
         {
-            if (candidateOrdinal >= memberModel_->members().size()) continue;
-            const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+            const ClassMemberSymbol* candidatePtr = methodSymbol(candidateOrdinal);
+            if (candidatePtr == nullptr) continue;
+            const ClassMemberSymbol& candidate = *candidatePtr;
             if (candidate.kind != ClassMemberKind::Method) continue;
 
             MethodCallCandidate candidateBinding;
