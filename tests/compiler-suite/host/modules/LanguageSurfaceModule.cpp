@@ -2169,6 +2169,74 @@ class Program
         }});
 }
 
+void registerListPatternNoHeapCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-366", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "noheap", "no-copy", "mir", "borrow"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-366")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T03ListNoHeap", "Exe", R"ns(
+class Program
+{
+    public static int Read(int[] values)
+    {
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const bool compiled = compileTo(
+                compilation, ProjectStage::Mir, project, error);
+            context.expect(compiled && error.empty(),
+                "TL-LANG-366 list rest must compile through MIR: " +
+                    projectFailureEvidence(compilation, error));
+            if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+            std::size_t allocationNodes = 0;
+            std::size_t restBorrows = 0;
+            bool inspectedRead = false;
+            const auto countKind = [&](const nativesharp::frontend::ProjectOopMirNode* body,
+                                       nativesharp::frontend::ProjectOopMirNodeKind kind)
+            {
+                std::vector<const nativesharp::frontend::ProjectOopMirNode*> found;
+                collectMirKind(body, kind, found);
+                return found.size();
+            };
+            const auto* memberModel = compilation.memberModel();
+            for (const auto& function : compilation.oopMirModel()->functions())
+            {
+                if (memberModel == nullptr || function.memberOrdinal >= memberModel->members().size() ||
+                    memberModel->members()[function.memberOrdinal].name != "Read")
+                {
+                    continue;
+                }
+                inspectedRead = true;
+                const auto* body = function.body.get();
+                allocationNodes += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::ArrayAllocate);
+                allocationNodes += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::StackAllocation);
+                allocationNodes += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::RawAllocation);
+                allocationNodes += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::RangeArrayAllocate);
+                allocationNodes += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::AllocateAndConstruct);
+                restBorrows += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::SpanFromArray);
+                restBorrows += countKind(body, nativesharp::frontend::ProjectOopMirNodeKind::ReadOnlySpanFromArray);
+            }
+            context.expect(inspectedRead,
+                "TL-LANG-366 the Read function must be present in MIR");
+            context.expect(allocationNodes == 0,
+                "TL-LANG-366 the list rest path must not allocate: " +
+                    std::to_string(allocationNodes) + " allocation node(s) found");
+            context.expect(restBorrows >= 1,
+                "TL-LANG-366 the list rest capture must be a borrow (SpanFromArray), not a copy");
+        }});
+}
+
 void registerPropertyPatternCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-311", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4517,6 +4585,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListPatternProtocolCase(registry);
     registerListPatternUtf8StringCase(registry);
     registerListPatternAliasingCase(registry);
+    registerListPatternNoHeapCase(registry);
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);

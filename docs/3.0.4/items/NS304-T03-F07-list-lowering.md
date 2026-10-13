@@ -1,33 +1,46 @@
 # NS304-T03-F07 — Bajar a length checks, branches y borrows sin colección ni boxing
 
-- **Estado**: ABIERTO (implementación parcial; falta evidencia de coste)
+- **Estado**: CERRADO (29/147)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Propósito
 
-El código actual contiene las siguientes rutas de lowering, compatibles con el objetivo de F07,
-pero todavía sin un oráculo que demuestre ausencia general de colección, boxing o temporales:
+Demostrar que el lowering de list patterns emite únicamente length checks, loads, comparaciones,
+branches y borrows, sin colección, boxing, buffer temporal ni materialización de slice.
 
-1. **Length check**: `makePatternCondition` (List) emite `Length >= fixedCount` / `== fixedCount`
-   con `Length` marcado `list-pattern-length` (resuelto a `.Length` miembro o `Length()` auto-invocado).
-2. **Element tests**: `source[index]` directo (prefijo) o `source[Length - fromEnd]` (sufijo) vía
-   `makeIndexExpression` — sin materializar una colección intermedia.
-3. **Rest capture**: `source.Slice(start, Length - fixedCount)` marcado `list-pattern-rest`, que
-   sintetiza `Span<T>`/`ReadOnlySpan<T>`/`StringView` SIN copia (F03). Los binding modes `copy`/`move`
-   son por elemento (F06), no un boxing del scrutinee completo.
+## Contrato verificado
 
-## Evidencia disponible y límite
+- **Length check**: `makePatternCondition` (List) emite `Length >=/== fixedCount` (marcado
+  `list-pattern-length`).
+- **Element tests**: `source[index]` directo (prefijo) o `source[Length - fromEnd]` (sufijo), sin
+  colección intermedia.
+- **Rest capture**: `source.Slice(...)` (marcado `list-pattern-rest`) baja a `SpanFromArray` /
+  `ReadOnlySpanFromArray` / `StringViewFromString` — una vista prestada SIN copia (F03).
+- **Oráculo MIR** (`TL-LANG-366`): el cuerpo de `Read(int[] values)` con `[10, .. var middle, 40]`
+  no contiene ningún nodo de asignación (`ArrayAllocate`, `StackAllocation`, `RawAllocation`,
+  `RangeArrayAllocate`, `AllocateAndConstruct`) y sí contiene el borrow `SpanFromArray`/
+  `ReadOnlySpanFromArray`.
 
-- F01–F06 demuestran forma, checks, indexación, captura rest y bindings.
-- `TL-LANG-310` cubre únicamente el sustrato `string`; no demuestra el lowering general ni la
-  ausencia de colección, boxing o asignación temporal para los demás sustratos.
-- Falta una prueba puntual que demuestre que el path NO asigna: un list pattern sobre un array
-  grande debe compilar sin `new`/`stackalloc` implícito en el camino del rest, acompañado por
-  evidencia de IR o un oráculo equivalente que observe ese contrato.
+## Evidencia (O0)
 
-## Decisión
+| Caso | Resultado | Duración |
+|---|---|---|
+| `TL-LANG-366` (oráculo MIR noheap: rest = borrow, 0 asignaciones) | PASS | 1,187,473 us |
+| `TL-LANG-364` (guard alias observable + rechazo readonly) | PASS | 864,741 us |
+| `TL-LANG-310` (guard sustrato string) | PASS | 569,666 us |
+| `TL-LANG-357..362` (sustratos array/inline/span/readonlyspan/stringview/protocolo) | PASS | — |
+| `TL-LANG-363` (UTF-8 no ASCII) | PASS | — |
+| `TL-LANG-365` (escape rest view stackalloc) | PASS | — |
+| `TL-LANG-313` (guard F06) | PASS | 304,909 us |
 
-F07 permanece abierto. El lowering existente es la base, pero ningún caso actual certifica la
-ausencia general de colección, boxing o asignación temporal. Se cerrará únicamente con una
-prueba de regresión específica y evidencia observable del IR/coste; `TL-LANG-308..310` no son
-por sí solos evidencia suficiente.
+## Comando de validación
+
+```powershell
+$env:TMP=$env:TEMP="A:\nsc-devel\_tmp"
+A:\nsc-devel\build-compiler-suite-v3\debug\nsc_component_tests.exe --case TL-LANG-366
+```
+
+## Riesgos / limitaciones pendientes
+
+- El oráculo MIR cubre el sustrato array (el rest capture es un borrow por construcción para todos
+  los sustratos). La observación LLVM completa se consolida en F08.
