@@ -1,6 +1,8 @@
 # NS304-T04-F03 — Parámetros ref/ref readonly/in/out/scoped en lambdas
 
 - **Estado**: CERRADO (ref/out/in) / `ref readonly`+`scoped` diferidos a T11-F07
+- **Validación secuencial**: confirmado en campaña; `TL-LANG-316` PASS + guards
+  `TL-LANG-314/317/318/319/320/327` PASS (2026-10-13). Avanza a 33/147.
 - **Rama**: development
 
 ## Resultado (validado)
