@@ -7792,10 +7792,48 @@ private:
                     builder_,
                     LLVMBuildICmp(builder_, LLVMIntEQ, selfState, prevState, "suspend.is.entry"),
                     suspendBlock, resumeBlock);
+
+                const auto& frameLocals = currentMirFunction_ != nullptr
+                    ? currentMirFunction_->asyncFrameLocals
+                    : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
+
+                // Suspend: save the live locals into the frame, then state = N and return.
                 LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+                LLVMValueRef suspendFrame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "suspend.self.frame.addr"), "suspend.self.frame");
+                for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
+                {
+                    const auto localFound = localStorage_.find(localOrdinal);
+                    if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
+                    LLVMTypeRef localType = llvmType(typeKey, error);
+                    if (localType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_,
+                        LLVMBuildLoad2(builder_, localType, localFound->second, "suspend.local"),
+                        byteOffset(suspendFrame, offset, "suspend.frame.slot"));
+                }
                 LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
                 LLVMBuildRetVoid(builder_);
+
+                // Resume: restore the live locals from the frame and continue.
                 LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                LLVMValueRef resumeFrame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "suspend.self.frame.addr2"), "suspend.self.frame");
+                for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
+                {
+                    const auto localFound = localStorage_.find(localOrdinal);
+                    if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
+                    LLVMTypeRef localType = llvmType(typeKey, error);
+                    if (localType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_,
+                        LLVMBuildLoad2(
+                            builder_, localType, byteOffset(resumeFrame, offset, "suspend.frame.slot"),
+                            "suspend.saved"),
+                        localFound->second);
+                }
                 return true;
             }
 

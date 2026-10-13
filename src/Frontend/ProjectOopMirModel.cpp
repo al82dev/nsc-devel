@@ -1465,7 +1465,8 @@ bool ProjectOopMirModel::build(
             return function;
         }
         function.body = lowerer.lowerNode(source.body.get(), functionError);
-        // NS304-T05-F04: frame size for poll functions = sum of the awaited future struct sizes.
+        // NS304-T05-F04: frame size for poll functions = sum of the awaited future struct sizes
+        // plus the locals that must survive a suspension (their sizes/offsets recorded).
         if (function.mangledName.ends_with("$poll"))
         {
             std::uint64_t frameSize = 0;
@@ -1487,6 +1488,36 @@ bool ProjectOopMirModel::build(
                     self(self, child.get());
             };
             sumAwaited(sumAwaited, function.body.get());
+
+            // Locals that cross a suspension: every declared local is kept alive conservatively
+            // (the precise liveness refinement can shrink this later). Offsets follow the awaited
+            // futures and are aligned to each local's natural alignment.
+            const auto alignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
+            {
+                if (alignment <= 1) return value;
+                return (value + alignment - 1) / alignment * alignment;
+            };
+            const auto sumLocals = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value() && !node->typeKey.empty())
+                {
+                    const auto layout =
+                        objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
+                    if (layout.has_value())
+                    {
+                        frameSize = alignUp(frameSize, layout->second);
+                        function.asyncFrameLocals.emplace_back(
+                            *node->localOrdinal, frameSize, node->typeKey);
+                        frameSize += layout->first;
+                    }
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            sumLocals(sumLocals, function.body.get());
+            frameSize = alignUp(frameSize, 8);
             function.asyncFrameSize = frameSize;
         }
         if (function.body == nullptr)
