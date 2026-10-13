@@ -3327,7 +3327,8 @@ class Program
     public static int Main()
     {
         int[] a = [1, 2, 3];
-        return a[0] + a[1] + a[2];
+        var b = [4, 5];
+        return a[0] + a[1] + a[2] + b[0] + b[1];
     }
 }
 )ns");
@@ -3340,8 +3341,8 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 6,
-                "TL-LANG-347 a[0]+a[1]+a[2] must be 6: " + result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 15,
+                "TL-LANG-347 a[0]+a[1]+a[2]+b[0]+b[1] must be 15: " + result.error + result.output);
         }});
 }
 

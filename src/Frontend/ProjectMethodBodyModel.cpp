@@ -12894,50 +12894,60 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         }
         case ast::AstNodeKind::CollectionExpression:
         {
-            // NS304-T09-F05: `[a, b, c]` target-typed a array nativo. La inferencia del tipo de
-            // colección objetivo se limita al array nativo (spread/builder residual).
-            const std::string targetTypeKey = activeTargetTypeKey_;
-            if (!ProjectTypeConversion::isNativeArray(targetTypeKey))
+            // NS304-T09-F05: `[a, b, c]` target-typed a array nativo o, sin target, inferido del
+            // primer elemento (homogéneo). Spreads/builder residual.
+            const std::string explicitTarget = activeTargetTypeKey_;
+            std::vector<ExpressionResult> elementValues;
+            std::vector<const ast::AstNode*> elementSyntaxes;
+            elementValues.reserve(expression->children().size());
+            elementSyntaxes.reserve(expression->children().size());
+            for (const ast::AstNode* initializer : expression->children())
+            {
+                ExpressionResult value = analyzeExpression(
+                    initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    false, false, true);
+                if (value.valid)
+                {
+                    elementValues.push_back(std::move(value));
+                    elementSyntaxes.push_back(initializer);
+                }
+            }
+            std::optional<std::string> element;
+            if (ProjectTypeConversion::isNativeArray(explicitTarget))
+            {
+                element = ProjectTypeConversion::nativeArrayElementType(explicitTarget);
+            }
+            else if (!elementValues.empty())
+            {
+                element = elementValues.front().typeKey;
+            }
+            if (!element.has_value() || *element == "builtin:void")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "a collection expression requires a native array target type");
+                    "a collection expression requires a native array target type or a non-empty "
+                    "homogeneous element list");
                 result.valid = false;
                 break;
             }
-            const std::optional<std::string> element =
-                ProjectTypeConversion::nativeArrayElementType(targetTypeKey);
-            if (!element.has_value() || *element == "builtin:void")
+            bool elementsValid = elementValues.size() == expression->children().size();
+            for (std::size_t index = 0; index < elementValues.size(); ++index)
             {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidAllocationType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "native arrays cannot have void elements");
-                result.valid = false;
-                break;
-            }
-            bool elementsValid = true;
-            for (const ast::AstNode* initializer : expression->children())
-            {
-                const ExpressionResult value = analyzeExpression(
-                    initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
-                    false, false, true);
-                if (!value.valid || !classifyImplicit(
-                        value.typeKey, *element, value.integerConstant).exists())
+                const ExpressionResult& value = elementValues[index];
+                if (!classifyImplicit(value.typeKey, *element, value.integerConstant).exists())
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidConversion,
                         diagnostics::DiagnosticSeverity::Error,
-                        initializer->range(),
+                        elementSyntaxes[index]->range(),
                         "collection expression element is not implicitly convertible to '" +
                             *element + "'");
                     elementsValid = false;
                 }
             }
-            result.typeKey = targetTypeKey;
+            result.typeKey = *element + "[]";
             result.valid = elementsValid;
             if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
             if (result.valid)
