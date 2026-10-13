@@ -3758,10 +3758,8 @@ class Program
                 products.directory() / "T06YieldDiagnostic.exe";
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
-            context.expect(emitted.started && emitted.exitCode != 0 &&
-                    (emitted.error + emitted.output).find("non-expression Stage 34 MIR node") !=
-                        std::string::npos,
-                "TL-LANG-329 generator yield must reach the LLVM (MoveNext lowering pending): " +
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-329 a generator must now compile (MoveNext emitted): " +
                     emitted.error + emitted.output);
         }});
 }
