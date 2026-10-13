@@ -40,3 +40,12 @@ ejecutar con lazy start, pending→ready y cleanup.
 
 F03 es la primera transformación productiva desde cero de T05 (F01/F02 son modelo/AST). Requiere
 vertical completa Sema→HIR→MIR→LLVM; no se introducen superficies desconectadas.
+
+## Hallazgo adicional (2026-10-13)
+
+El Sema **no tiene ninguna ruta para `AwaitExpression`** (`analyzeExpression` no lo contempla), y
+el tipo de superficie `Future<T,E,C>` **no existe** (F02 es sólo modelo: `FutureProtocol` con claves
+de tipo en string, no un tipo resoluble). Por tanto el operando de `await` no tiene tipo público que
+resolver. La vertical F03 debe construir primero la superficie `Future` resoluble y después el
+estado de la máquina; el plan builder (`buildAsyncFunctionPlan`) ya está unit-tested
+(`TL-LANG-054..056`), pero nunca se invoca desde el pipeline productivo.
