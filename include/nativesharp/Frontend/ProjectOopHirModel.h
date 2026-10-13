@@ -171,6 +171,8 @@ enum class ProjectOopHirNodeKind
     IteratorDrop,
     // NS304-T07-F02: `it.MoveNextAsync()` — returns the future of the next demand. One child: address.
     IteratorMoveNextAsync,
+    // NS304-T07-F02: the async-generator poll's `yield return v`. One child: the item value.
+    AsyncYieldValue,
     // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
     DropFrame,
     StaticFieldAddress,
@@ -841,6 +843,13 @@ private:
     // frame's live locals). Returns {nullptr, nullptr} and sets error on failure.
     std::pair<std::unique_ptr<ProjectOopHirFunction>, std::unique_ptr<ProjectOopHirFunction>>
     splitGeneratorFunction(
+        ProjectOopHirFunction& function,
+        std::string& error);
+
+    // NS304-T07-F02: splits an async generator into (in order) the MoveNext (future<bool>), its
+    // poll (void) and the drop (void). The original function becomes the constructor
+    // (async-iterator + moveNextFn + dropFn). Returns empty + error on failure.
+    std::vector<std::unique_ptr<ProjectOopHirFunction>> splitAsyncGeneratorFunction(
         ProjectOopHirFunction& function,
         std::string& error);
 

@@ -7985,6 +7985,50 @@ private:
                 return true;
             }
 
+            case frontend::ProjectOopMirNodeKind::AsyncYieldValue:
+            {
+                // NS304-T07-F02: the async-generator poll's yield. Entry: write the item + the demand
+                // future's result/state and return; resume: fall through to the next yield.
+                if (parameterStorage_.empty())
+                    return fail(error, "async yield has no poll self parameter");
+                LLVMValueRef future = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "ayield.future");
+                LLVMValueRef asyncIter = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(future, 8, "ayield.frame.addr"), "ayield.iter");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return false;
+                LLVMValueRef iterState = LLVMBuildLoad2(
+                    builder_, intType, asyncIter, "ayield.iter.state");
+                LLVMValueRef prevState = LLVMConstInt(intType, node->integerValue - 1, 0);
+                LLVMBasicBlockRef entryBlock = appendBlock("ayield.entry");
+                LLVMBasicBlockRef resumeBlock = appendBlock("ayield.resume");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, iterState, prevState, "ayield.is.entry"),
+                    entryBlock, resumeBlock);
+
+                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                LLVMValueRef item = node->children.empty()
+                    ? nullptr : lowerExpression(node->children.front().get(), error);
+                if (!node->children.empty() && item == nullptr) return false;
+                if (item != nullptr)
+                    LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                    byteOffset(future, 16, "ayield.result.addr"));
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1),
+                    byteOffset(future, 0, "ayield.state.addr"));
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, node->integerValue, 0), asyncIter);
+                LLVMBuildRetVoid(builder_);
+
+                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                return true;
+            }
+
             case frontend::ProjectOopMirNodeKind::DropFrame:
             {
                 // NS304-T06-F07: `Gen$drop` destroys the frame's live locals (reverse order) via
@@ -9629,9 +9673,8 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::IteratorMoveNextAsync:
             {
-                // NS304-T07-F02: MoveNextAsync runs the sync MoveNext eagerly and returns a ready
-                // future<bool> (state=1, result=hasNext). The await-on-demand (suspend/resume) is
-                // the next tramo.
+                // NS304-T07-F02: MoveNextAsync calls the iterator's moveNextFn (field 3), which
+                // returns the demand future (future<bool>) through a leading sret slot.
                 if (node->children.size() != 1U)
                     return failValue(error, "iterator MoveNextAsync requires one operand");
                 LLVMValueRef self = lowerExpression(node->children.front().get(), error);
@@ -9639,21 +9682,18 @@ private:
                 LLVMValueRef moveNextFn = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(self, 24, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
-                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
-                LLVMTypeRef fnType = LLVMFunctionType(LLVMInt1TypeInContext(context_), fnParams, 1, 0);
-                LLVMValueRef args[] = { self };
-                LLVMValueRef hasNext = LLVMBuildCall2(
-                    builder_, fnType, moveNextFn, args, 1U, "moveNextAsync.hasNext");
                 LLVMTypeRef futureType = llvmType(node->typeKey, error);
                 if (futureType == nullptr) return nullptr;
-                LLVMValueRef future = entryBlockAlloca(futureType, 8, "moveNextAsync.future");
-                LLVMTypeRef intType = llvmType("builtin:int", error);
-                if (intType == nullptr) return nullptr;
-                LLVMBuildStore(
-                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1),
-                    byteOffset(future, 0, "moveNextAsync.state.addr"));
-                LLVMBuildStore(builder_, hasNext, byteOffset(future, 16, "moveNextAsync.result.addr"));
-                return LLVMBuildLoad2(builder_, futureType, future, "moveNextAsync.future.load");
+                LLVMValueRef sretSlot = entryBlockAlloca(
+                    futureType, 8, "moveNextAsync.sret");
+                LLVMTypeRef fnParams[] = {
+                    LLVMPointerTypeInContext(context_, 0),
+                    LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 2, 0);
+                LLVMValueRef args[] = { sretSlot, self };
+                if (LLVMBuildCall2(builder_, fnType, moveNextFn, args, 2U, "") == nullptr)
+                    return failValue(error, "iterator MoveNextAsync call failed");
+                return LLVMBuildLoad2(builder_, futureType, sretSlot, "moveNextAsync.future.load");
             }
 
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
@@ -12220,6 +12260,7 @@ private:
             case frontend::ProjectOopMirNodeKind::YieldValue:
             case frontend::ProjectOopMirNodeKind::YieldBreak:
             case frontend::ProjectOopMirNodeKind::DropFrame:
+            case frontend::ProjectOopMirNodeKind::AsyncYieldValue:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }

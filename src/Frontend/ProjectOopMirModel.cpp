@@ -757,6 +757,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopMirNodeKind::IteratorDrop: return "iterator-drop";
         case ProjectOopMirNodeKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case ProjectOopMirNodeKind::AsyncYieldValue: return "async-yield-value";
         case ProjectOopMirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
@@ -3417,6 +3418,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
 
         case ProjectOopHirNodeKind::IteratorMoveNextAsync:
             result->kind = ProjectOopMirNodeKind::IteratorMoveNextAsync;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            break;
+
+        case ProjectOopHirNodeKind::AsyncYieldValue:
+            result->kind = ProjectOopMirNodeKind::AsyncYieldValue;
             result->typeKey = node->typeKey;
             result->elementTypeKey = node->elementTypeKey;
             break;

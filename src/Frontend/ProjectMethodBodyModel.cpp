@@ -14733,13 +14733,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
-    // NS304-T06-F08 / NS304-T07-F02: `it.MoveNext()`/`it.GetEnumerator()`/`it.Drop()` synthesize a
-    // method-group facade so the call resolves with zero arguments; analyzeCall records the binding.
+    // NS304-T06-F08 / NS304-T07-F02: `MoveNext`/`GetEnumerator` are sync-iterator-only; `Drop` is on
+    // both (the async-iterator consumes via MoveNextAsync, not a sync MoveNext).
+    const bool syncIterator = language::iteratorInnerTypeKey(receiver.typeKey).has_value();
+    const bool asyncIterator = language::asyncIteratorInnerTypeKey(receiver.typeKey).has_value();
     if (!typeReceiver &&
-        (expression->text() == "MoveNext" || expression->text() == "GetEnumerator" ||
-         expression->text() == "Drop") &&
-        (language::iteratorInnerTypeKey(receiver.typeKey).has_value() ||
-         language::asyncIteratorInnerTypeKey(receiver.typeKey).has_value()))
+        (((expression->text() == "MoveNext" || expression->text() == "GetEnumerator") && syncIterator) ||
+         (expression->text() == "Drop" && (syncIterator || asyncIterator))))
     {
         result.methodGroup = true;
         result.methodCandidates.clear();

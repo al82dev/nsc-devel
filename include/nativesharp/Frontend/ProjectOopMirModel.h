@@ -167,6 +167,8 @@ enum class ProjectOopMirNodeKind
     IteratorDrop,
     // NS304-T07-F02: `it.MoveNextAsync()` — returns the future of the next demand. One child: address.
     IteratorMoveNextAsync,
+    // NS304-T07-F02: the async-generator poll's `yield return v`. One child: the item value.
+    AsyncYieldValue,
     // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
     DropFrame,
     StaticFieldAddress,

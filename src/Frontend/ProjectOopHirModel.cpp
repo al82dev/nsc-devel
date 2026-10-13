@@ -1067,6 +1067,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopHirNodeKind::IteratorDrop: return "iterator-drop";
         case ProjectOopHirNodeKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case ProjectOopHirNodeKind::AsyncYieldValue: return "async-yield-value";
         case ProjectOopHirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
@@ -2030,25 +2031,36 @@ bool ProjectOopHirModel::buildImpl(
         std::unique_ptr<ProjectOopHirFunction> poll;
         std::unique_ptr<ProjectOopHirFunction> moveNext;
         std::unique_ptr<ProjectOopHirFunction> drop;
-        // NS304-T07-F02 (first tramo): an async generator lowers through the generator split (the
-        // sync MoveNext/Current/Drop). The future-of-demand (MoveNextAsync) is the next tramo.
+        // NS304-T07-F02: an async generator is ONE machine (await + yield) — the async-generator
+        // split produces MoveNext (future) + poll + drop.
         const bool asyncGenerator =
             !function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator) &&
             function.effects.contains(sema::Effect::Async);
-        if (!function.constructor && !function.destructor &&
-            function.effects.contains(sema::Effect::Async) && !asyncGenerator)
+        if (asyncGenerator)
         {
-            poll = splitAsyncFunction(function, error);
-            if (poll == nullptr) return false;
+            auto split = splitAsyncGeneratorFunction(function, error);
+            if (split.size() != 3U) return false;
+            moveNext = std::move(split[0]);
+            poll = std::move(split[1]);
+            drop = std::move(split[2]);
         }
-        if (!function.constructor && !function.destructor &&
-            function.effects.contains(sema::Effect::Generator))
+        else
         {
-            auto split = splitGeneratorFunction(function, error);
-            if (split.first == nullptr) return false;
-            moveNext = std::move(split.first);
-            drop = std::move(split.second);
+            if (!function.constructor && !function.destructor &&
+                function.effects.contains(sema::Effect::Async))
+            {
+                poll = splitAsyncFunction(function, error);
+                if (poll == nullptr) return false;
+            }
+            if (!function.constructor && !function.destructor &&
+                function.effects.contains(sema::Effect::Generator))
+            {
+                auto split = splitGeneratorFunction(function, error);
+                if (split.first == nullptr) return false;
+                moveNext = std::move(split.first);
+                drop = std::move(split.second);
+            }
         }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
@@ -3764,6 +3776,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         block->children.push_back(std::move(synthesizedReturn));
         return block;
     }
+    if (body->kind == ProjectOopHirNodeKind::YieldValue)
+    {
+        // NS304-T07-F02: `yield return v;` in the async-generator poll -> AsyncYieldValue(v). The
+        // poll stores the item + the demand future's result/state; integerValue is the resume state.
+        auto node = makeNode(ProjectOopHirNodeKind::AsyncYieldValue, body->syntax, "builtin:void");
+        node->integerValue = body->integerValue;
+        if (!body->children.empty() && body->children[0] != nullptr)
+            node->children.push_back(std::move(body->children[0]));
+        return node;
+    }
     for (auto& child : body->children)
     {
         child = rewriteAsyncPollReturns(
@@ -3986,6 +4008,203 @@ ProjectOopHirModel::splitGeneratorFunction(
     drop->body = std::move(dropBody);
 
     return {std::move(moveNext), std::move(drop)};
+}
+
+std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsyncGeneratorFunction(
+    ProjectOopHirFunction& function,
+    std::string& error)
+{
+    if (function.body == nullptr)
+    {
+        error = "async generator has no lowered body to split";
+        return {};
+    }
+    const std::string iteratorKey = function.returnTypeKey;
+    const auto item = language::asyncIteratorInnerTypeKey(iteratorKey);
+    if (!item.has_value())
+    {
+        error = "async generator return type is not an async-iterator surface: " + iteratorKey;
+        return {};
+    }
+    const std::string futureKey = language::futureTypeKey("builtin:bool");
+    const ast::AstNode* syntax = function.body->syntax;
+
+    // NS304-T07-F02: number the yields 1..N (state after each yield) and append the terminal
+    // `return false` (no more items), exactly like splitGeneratorFunction.
+    std::size_t nextYieldState = 0;
+    const auto assignStates = [&](const auto& self, ProjectOopHirNode* node) -> void
+    {
+        if (node == nullptr) return;
+        if (node->kind == ProjectOopHirNodeKind::YieldValue)
+            node->integerValue = ++nextYieldState;
+        for (auto& child : node->children) self(self, child.get());
+    };
+    assignStates(assignStates, function.body.get());
+    auto wrapped = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    wrapped->children.push_back(std::move(function.body));
+    auto retFalse = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:bool");
+    auto falseValue = makeNode(ProjectOopHirNodeKind::BooleanConstant, syntax, "builtin:bool");
+    falseValue->booleanValue = false;
+    retFalse->children.push_back(std::move(falseValue));
+    wrapped->children.push_back(std::move(retFalse));
+    function.body = std::move(wrapped);
+
+    // 1. The poll: `void Gen$moveNext$poll(future<bool>* self)` — runs the body to the next yield
+    //    or await. rewriteAsyncPollReturns maps `return` -> result/state and `yield` -> AsyncYieldValue.
+    auto poll = std::make_unique<ProjectOopHirFunction>();
+    poll->memberOrdinal = function.memberOrdinal;
+    poll->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    poll->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    poll->isStatic = true;
+    poll->isAsyncPoll = true;
+    poll->inliningPolicy = function.inliningPolicy;
+    poll->mangledName = function.mangledName + "$moveNext$poll";
+    poll->debugDisplayName = function.debugDisplayName + "$moveNext$poll";
+    poll->returnTypeKey = "builtin:void";
+    poll->errorTypeKey = function.errorTypeKey;
+    poll->effects = function.effects;
+    poll->returnOwnership = sema::OwnershipKind::None;
+    poll->parameterNames.push_back("self");
+    poll->parameterTypeKeys.push_back(futureKey + "*");
+    poll->parameterPassKinds.push_back(ParameterPassKind::Value);
+    poll->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    poll->body = rewriteAsyncPollReturns(
+        std::move(function.body), 0, "builtin:bool", futureKey, error);
+    if (poll->body == nullptr) return {};
+
+    // 2. The MoveNext: `future<bool> Gen$moveNext(async-iterator* self)` — creates the demand future,
+    //    carries the async-iterator in future.frame, and points future.pollFn at the poll.
+    auto moveNext = std::make_unique<ProjectOopHirFunction>();
+    moveNext->memberOrdinal = function.memberOrdinal;
+    moveNext->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    moveNext->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    moveNext->isStatic = true;
+    moveNext->inliningPolicy = function.inliningPolicy;
+    moveNext->mangledName = function.mangledName + "$moveNext";
+    moveNext->debugDisplayName = function.debugDisplayName + "$moveNext";
+    moveNext->returnTypeKey = futureKey;
+    moveNext->errorTypeKey = function.errorTypeKey;
+    moveNext->effects = function.effects;
+    moveNext->returnOwnership = sema::OwnershipKind::None;
+    moveNext->parameterNames.push_back("self");
+    moveNext->parameterTypeKeys.push_back(iteratorKey + "*");
+    moveNext->parameterPassKinds.push_back(ParameterPassKind::Value);
+    moveNext->parameterOwnerships.push_back(sema::OwnershipKind::None);
+
+    auto moveNextBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    const std::size_t futureOrdinal = nextSyntheticLocalOrdinal_++;
+    auto futureDecl = makeNode(ProjectOopHirNodeKind::LocalDeclaration, syntax, futureKey);
+    futureDecl->localOrdinal = futureOrdinal;
+    futureDecl->stringValue = "f";
+    futureDecl->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, futureKey));
+    moveNextBody->children.push_back(std::move(futureDecl));
+    // future.frame = self (the async-iterator).
+    auto frameField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    frameField->memberOrdinal = 1;
+    frameField->elementTypeKey = futureKey;
+    auto futureAddr = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, futureKey + "*");
+    futureAddr->localOrdinal = futureOrdinal;
+    frameField->children.push_back(std::move(futureAddr));
+    auto selfParam = makeNode(ProjectOopHirNodeKind::ParameterValue, syntax, iteratorKey + "*");
+    selfParam->parameterOrdinal = 0;
+    auto frameStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    frameStore->operation = lexer::TokenKind::Equal;
+    frameStore->children.push_back(std::move(frameField));
+    frameStore->children.push_back(std::move(selfParam));
+    moveNextBody->children.push_back(std::move(frameStore));
+    // future.pollFn = Gen$moveNext$poll.
+    auto pollField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    pollField->memberOrdinal = 3;
+    pollField->elementTypeKey = futureKey;
+    auto futureAddr2 = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, futureKey + "*");
+    futureAddr2->localOrdinal = futureOrdinal;
+    pollField->children.push_back(std::move(futureAddr2));
+    auto pollAddr = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    pollAddr->stringValue = function.mangledName + "$moveNext$poll";
+    auto pollStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    pollStore->operation = lexer::TokenKind::Equal;
+    pollStore->children.push_back(std::move(pollField));
+    pollStore->children.push_back(std::move(pollAddr));
+    moveNextBody->children.push_back(std::move(pollStore));
+    // return future.
+    auto retFuture = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
+    auto futureValue = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, futureKey);
+    futureValue->localOrdinal = futureOrdinal;
+    retFuture->children.push_back(std::move(futureValue));
+    moveNextBody->children.push_back(std::move(retFuture));
+    moveNext->body = std::move(moveNextBody);
+
+    // 3. The drop: `void Gen$drop(async-iterator* self)` — destroys the frame's live locals.
+    auto drop = std::make_unique<ProjectOopHirFunction>();
+    drop->memberOrdinal = function.memberOrdinal;
+    drop->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    drop->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    drop->isStatic = true;
+    drop->inliningPolicy = function.inliningPolicy;
+    drop->mangledName = function.mangledName + "$drop";
+    drop->debugDisplayName = function.debugDisplayName + "$drop";
+    drop->returnTypeKey = "builtin:void";
+    drop->errorTypeKey = function.errorTypeKey;
+    drop->effects = function.effects;
+    drop->returnOwnership = sema::OwnershipKind::None;
+    drop->parameterNames.push_back("self");
+    drop->parameterTypeKeys.push_back(iteratorKey + "*");
+    drop->parameterPassKinds.push_back(ParameterPassKind::Value);
+    drop->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    auto dropBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    auto dropFrame = makeNode(ProjectOopHirNodeKind::DropFrame, syntax, "builtin:void");
+    auto dropSelf = makeNode(ProjectOopHirNodeKind::ParameterValue, syntax, iteratorKey + "*");
+    dropSelf->parameterOrdinal = 0;
+    dropFrame->children.push_back(std::move(dropSelf));
+    dropBody->children.push_back(std::move(dropFrame));
+    drop->body = std::move(dropBody);
+
+    // 4. The constructor (the original function): async-iterator + moveNextFn + dropFn.
+    auto constructorBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    const std::size_t selfOrdinal = nextSyntheticLocalOrdinal_++;
+    auto selfDecl = makeNode(ProjectOopHirNodeKind::LocalDeclaration, syntax, iteratorKey);
+    selfDecl->localOrdinal = selfOrdinal;
+    selfDecl->stringValue = "self";
+    selfDecl->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, iteratorKey));
+    constructorBody->children.push_back(std::move(selfDecl));
+    auto moveNextField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    moveNextField->memberOrdinal = 3; // moveNextFn
+    moveNextField->elementTypeKey = iteratorKey;
+    auto selfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, iteratorKey + "*");
+    selfAddress->localOrdinal = selfOrdinal;
+    moveNextField->children.push_back(std::move(selfAddress));
+    auto moveNextAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    moveNextAddress->stringValue = function.mangledName + "$moveNext";
+    auto moveNextStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    moveNextStore->operation = lexer::TokenKind::Equal;
+    moveNextStore->children.push_back(std::move(moveNextField));
+    moveNextStore->children.push_back(std::move(moveNextAddress));
+    constructorBody->children.push_back(std::move(moveNextStore));
+    auto dropField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    dropField->memberOrdinal = 4; // dropFn
+    dropField->elementTypeKey = iteratorKey;
+    auto dropSelfAddr = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, iteratorKey + "*");
+    dropSelfAddr->localOrdinal = selfOrdinal;
+    dropField->children.push_back(std::move(dropSelfAddr));
+    auto dropAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    dropAddress->stringValue = function.mangledName + "$drop";
+    auto dropStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    dropStore->operation = lexer::TokenKind::Equal;
+    dropStore->children.push_back(std::move(dropField));
+    dropStore->children.push_back(std::move(dropAddress));
+    constructorBody->children.push_back(std::move(dropStore));
+    auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, iteratorKey);
+    auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, iteratorKey);
+    selfReturn->localOrdinal = selfOrdinal;
+    retSelf->children.push_back(std::move(selfReturn));
+    constructorBody->children.push_back(std::move(retSelf));
+    function.body = std::move(constructorBody);
+
+    std::vector<std::unique_ptr<ProjectOopHirFunction>> result;
+    result.push_back(std::move(moveNext));
+    result.push_back(std::move(poll));
+    result.push_back(std::move(drop));
+    return result;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
