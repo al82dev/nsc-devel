@@ -10,13 +10,14 @@
   (`parseCollectionExpression`, marker `inferred-array-initializer`); `..x` baja como
   `SpreadElementExpression`.
 - **Sema/HIR/LLVM**: `int[] a = [1, 2, 3]` target-typed, `var b = [4, 5]` y `var d = [1, 2.0]`
-  (tipo numérico común → `double[]`) reutilizan `ArrayAllocation` (inferencia de cuenta).
-- Pruebas: `TP-PAR-539/540` (parser), `TA-AST-019..025`, `TL-LANG-347/348/349` → **PASS**.
+  (tipo numérico común → `double[]`) reutilizan `ArrayAllocation`; `int[] b = [..a]` (un único
+  spread) se desuara a `a` por referencia (sin copia — simplificación documentada).
+- Pruebas: `TP-PAR-539/540` (parser), `TA-AST-019..025`, `TL-LANG-347/348/349/354` → **PASS**.
 
 ## Residual
 
-- **Spread flattening en Sema/HIR**: `..x` se parsea y diagnostica claro, pero el aplanado/baja
-  (copiar los elementos del spread en la asignación) aún no está cableado.
+- **Spread multi-elemento** (`[..a, 1]`): el aplanado (copiar los elementos + literales) aún no se
+  baja; sigue con diagnóstico claro.
 - **Builder protocol**: fuera de esta base.
 
 

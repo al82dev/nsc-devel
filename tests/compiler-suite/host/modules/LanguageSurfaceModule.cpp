@@ -3550,6 +3550,38 @@ class Program
         }});
 }
 
+void registerSingleSpreadCollectionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-354", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "expression", "spread", "single"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09SingleSpread", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] a = [1, 2, 3];
+        int[] b = [..a];
+        return b[0] + b[1] + b[2];
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09SingleSpread.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-354 [..a] single spread must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-354 b[0]+b[1]+b[2] must be 6: " + result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3618,5 +3650,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticLocalFunctionCase(registry);
     registerGenericLocalFunctionCase(registry);
     registerNameOfQualifiedGenericCase(registry);
+    registerSingleSpreadCollectionCase(registry);
 }
 }
