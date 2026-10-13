@@ -923,6 +923,11 @@ private:
         std::string displayName =
             nameLookup_.namedTypes()[function.declaringTypeOrdinal].identity.fullyQualifiedName() +
             "." + member.name;
+        // NS304-T05-F10: the async poll shares the memberOrdinal with the constructor; its
+        // mangled name ends with "$poll". Distinguish the DISubprogram so the poll does not
+        // collide with the constructor in the PDB.
+        if (function.mangledName.ends_with("$poll"))
+            displayName += "$poll";
         if (function.isLambda)
             displayName += ".lambda#" + std::to_string(function.lambdaOrdinal.value_or(0));
         std::vector<LLVMMetadataRef> signatureTypes;
