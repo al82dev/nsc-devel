@@ -2841,24 +2841,30 @@ ast::AstNode* Parser::parseExtensionDeclaration()
         else if (member != nullptr &&
                  member->kind() == ast::AstNodeKind::PropertyDeclaration)
         {
-            // NS304-T08-F02: baja la property a su getter (function top-level con el nombre de la
-            // property) para que se registre como funcion de extension.
+            // NS304-T08-F02: baja la property a sus accessors (functions top-level). El getter
+            // toma el nombre de la property; el setter conserva el prefijo `set_`.
             const std::string propertyName = member->text();
             for (ast::AstNode* accessor : member->children())
             {
                 if (accessor == nullptr ||
-                    accessor->kind() != ast::AstNodeKind::MethodDeclaration ||
-                    accessor->text() != "get_" + propertyName)
+                    accessor->kind() != ast::AstNodeKind::MethodDeclaration)
                 {
                     continue;
                 }
+                const bool isGetter = accessor->text() == "get_" + propertyName;
+                const bool isSetter = accessor->text() == "set_" + propertyName;
+                if (!isGetter && !isSetter) continue;
                 ast::AstNode* function = arena_.make<ast::AstNode>(
                     ast::AstNodeKind::FunctionDeclaration, accessor->range());
-                function->setText(propertyName);
+                function->setText(isGetter ? propertyName : accessor->text());
                 function->setTypeSyntax(cloneParsedType(arena_, accessor->typeSyntax()));
                 function->setFirst(accessor->first());
                 function->setTokenKind(accessor->tokenKind());
                 function->prependChild(makeReceiver());
+                for (ast::AstNode* parameter : accessor->children())
+                {
+                    function->addChild(cloneParsedNode(arena_, parameter));
+                }
                 function->setAuxiliaryText("ns3-extension");
                 extension->addChild(function);
             }
