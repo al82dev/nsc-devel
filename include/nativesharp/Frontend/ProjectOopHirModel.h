@@ -981,6 +981,7 @@ private:
     std::size_t nextHirRegionOrdinal_ = 0;
     std::size_t nextSyntheticLocalOrdinal_ = 0;
     std::size_t nextSyntheticCleanupRegionOrdinal_ = 0;
+    bool loweringAsyncBody_ = false;
     bool built_ = false;
 };
 

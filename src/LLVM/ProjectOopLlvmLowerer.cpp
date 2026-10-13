@@ -9057,13 +9057,46 @@ private:
 
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
             {
+                // NS304-T05-F03 sync context: blocking await. Poll once and read the result; no
+                // suspension (the producer cannot suspend, enforced by the Stage 34 guard).
+                if (node->integerValue == 0)
+                {
+                    if (node->children.size() != 1U)
+                        return failValue(error, "await future requires one operand");
+                    LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                    if (value == nullptr) return nullptr;
+                    LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                    if (carrier == nullptr) return nullptr;
+                    LLVMValueRef slot = entryBlockAlloca(
+                        carrier, structAlignmentFor(node->elementTypeKey), "await.future");
+                    if (slot == nullptr)
+                        return failValue(error, "await future could not reserve temporary storage");
+                    LLVMBuildStore(builder_, value, slot);
+                    const auto blockingFound = functions_.find(node->calleeName);
+                    if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
+                        return failValue(error, "async poll target was not declared: " + node->calleeName);
+                    LLVMValueRef blockingArgs[] = { slot };
+                    if (LLVMBuildCall2(builder_, blockingFound->second.functionType,
+                                       blockingFound->second.function, blockingArgs, 1U, "") == nullptr)
+                        return failValue(error, "async poll call failed");
+                    LLVMTypeRef blockingResultType = llvmType(node->typeKey, error);
+                    if (blockingResultType == nullptr) return nullptr;
+                    return LLVMBuildLoad2(
+                        builder_, blockingResultType,
+                        byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
+                }
+
                 // NS304-T05-F03 suspend/resume. `self` is the poll's parameter 0 (future:<T>*);
                 // the future layout is { i32 state@0, void* frame@8, T result@16 }.
                 if (node->children.size() != 1U)
                     return failValue(error, "await future requires one operand");
                 if (parameterStorage_.empty())
                     return failValue(error, "await future has no poll self parameter");
-                LLVMValueRef self = parameterStorage_[0];
+                // parameterStorage_[0] is the address of the self parameter slot; load the future
+                // pointer out of it before dereferencing the future's fields.
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "await.self");
                 LLVMTypeRef intType = llvmType("builtin:int", error);
                 LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
                 if (intType == nullptr || carrier == nullptr) return nullptr;

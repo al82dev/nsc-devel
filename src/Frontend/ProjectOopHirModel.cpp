@@ -1702,6 +1702,7 @@ bool ProjectOopHirModel::buildImpl(
             ownedParameterCleanupNodes.push_back(std::move(cleanup));
         }
 
+        loweringAsyncBody_ = function.effects.contains(sema::Effect::Async);
         function.body = lowerBlock(member.syntax->first(), memberOrdinal, error);
         activeHirCleanupRegions_.clear();
         if (function.body == nullptr)
@@ -2134,6 +2135,7 @@ bool ProjectOopHirModel::buildImpl(
                 ownedParameterCleanupNodes.push_back(std::move(cleanup));
             }
 
+            loweringAsyncBody_ = function.effects.contains(sema::Effect::Async);
             function.body = lowerBlock(symbol.definitionSyntax->first(), callableOrdinal, error);
             activeHirCleanupRegions_.clear();
             if (function.body == nullptr) return false;
@@ -8193,20 +8195,38 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return nullptr;
             }
             const ClassMemberSymbol& callee = memberModel_->members()[*binding->selectedMemberOrdinal];
-            // NS304-T05-F03: the productive suspend/resume state machine is not wired yet, so an
-            // await over a future whose producer can suspend would otherwise silently read a stale
-            // result. Reject it explicitly instead of a silent fallback.
-            const auto containsAwait = [](const auto& self, const ast::AstNode* node) -> bool
+            // NS304-T05-F03: reject an await over a producer that can actually suspend
+            // (transitively awaits a suspend-capable future), which the caller cannot complete
+            // synchronously. A producer that only awaits synchronously-completing futures never
+            // suspends and is safe to await.
+            std::unordered_set<std::size_t> visitedSuspendMembers;
+            const auto canSuspend = [&](const auto& self, std::size_t memberIdx) -> bool
             {
-                if (node == nullptr) return false;
-                if (node->kind() == ast::AstNodeKind::AwaitExpression) return true;
-                if (self(self, node->first())) return true;
-                if (self(self, node->second())) return true;
-                for (const ast::AstNode* child : node->children())
-                    if (self(self, child)) return true;
-                return false;
+                if (!visitedSuspendMembers.insert(memberIdx).second) return false;
+                if (memberIdx >= memberModel_->members().size()) return false;
+                const ClassMemberSymbol& awaitedMember = memberModel_->members()[memberIdx];
+                if (awaitedMember.syntax == nullptr) return false;
+                const auto scan = [&](const auto& scanSelf, const ast::AstNode* node) -> bool
+                {
+                    if (node == nullptr) return false;
+                    if (node->kind() == ast::AstNodeKind::AwaitExpression)
+                    {
+                        const MethodCallBinding* awaitedBinding = callBinding(node->first());
+                        if (awaitedBinding != nullptr &&
+                            awaitedBinding->selectedMemberOrdinal.has_value() &&
+                            *awaitedBinding->selectedMemberOrdinal < memberModel_->members().size())
+                            return self(self, *awaitedBinding->selectedMemberOrdinal);
+                        return false;
+                    }
+                    if (scanSelf(scanSelf, node->first())) return true;
+                    if (scanSelf(scanSelf, node->second())) return true;
+                    for (const ast::AstNode* child : node->children())
+                        if (scanSelf(scanSelf, child)) return true;
+                    return false;
+                };
+                return scan(scan, awaitedMember.syntax->first());
             };
-            if (callee.syntax != nullptr && containsAwait(containsAwait, callee.syntax->first()))
+            if (canSuspend(canSuspend, *binding->selectedMemberOrdinal))
             {
                 error = "await on an async function that can suspend requires the state machine "
                         "lowering (NS304-T05-F03)";
@@ -8224,9 +8244,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             await->elementTypeKey = call->typeKey;
             await->stringValue = mangleCallable(
                 nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
-            // NS304-T05-F03: resume state index (single await = 1; multi-await generalizes). The
-            // frame slot is fixed at offset 0 for the single-await frame { child }.
-            await->integerValue = 1;
+            // NS304-T05-F03: async context -> resume state index (single await = 1); sync context
+            // -> blocking await (integerValue = 0, poll once and read the result).
+            await->integerValue = loweringAsyncBody_ ? 1 : 0;
             await->children.push_back(std::move(call));
             return await;
         }
