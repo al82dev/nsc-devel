@@ -116,6 +116,18 @@ void testCollectionExpression(TestContext& context)
         "TP-PAR-539 a collection expression must retain its elements in source order");
 }
 
+// Verifies a collection expression spread element retains its marker and value. Complexity is O(n).
+void testCollectionExpressionSpread(TestContext& context)
+{
+    ParserFixture fixture("[..a, 1]");
+    AstNode* node = parse(fixture);
+    context.expect(node != nullptr && node->kind() == AstNodeKind::CollectionExpression &&
+            node->children().size() == 2 &&
+            node->children()[0]->kind() == AstNodeKind::SpreadElementExpression &&
+            node->children()[0]->first() != nullptr,
+        "TP-PAR-540 a collection expression spread must retain its spread element");
+}
+
 // Verifies ordinary dot access produces MemberExpression. Complexity is O(n).
 void testDotMember(TestContext& context)
 {
@@ -295,5 +307,6 @@ void registerParserPostfixExpressionModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-494", "CP-PAR-039", testDeepChain, "NIGHTLY");
     addCase(registry, "TP-PAR-537", "CP-PAR-039", testNullConditionalIndex);
     addCase(registry, "TP-PAR-539", "CP-PAR-039", testCollectionExpression);
+    addCase(registry, "TP-PAR-540", "CP-PAR-039", testCollectionExpressionSpread);
 }
 }

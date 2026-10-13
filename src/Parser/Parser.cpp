@@ -15042,8 +15042,23 @@ ast::AstNode* Parser::parseCollectionExpression()
     {
         while (true)
         {
-            ast::AstNode* element = parseAssignmentExpression();
-            if (element != nullptr) collection->addChild(element);
+            if (at(TokenKind::DotDot))
+            {
+                // NS304-T09-F05: `..x` — spread element (igual que en aggregate initializers).
+                const SourceRange spread = consume().range();
+                ast::AstNode* value = parseAssignmentExpression();
+                ast::AstNode* element = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::SpreadElementExpression,
+                    join(spread, value != nullptr ? value->range() : spread));
+                element->setTokenKind(TokenKind::DotDot);
+                element->setFirst(value);
+                collection->addChild(element);
+            }
+            else
+            {
+                ast::AstNode* element = parseAssignmentExpression();
+                if (element != nullptr) collection->addChild(element);
+            }
             if (!consumeIf(TokenKind::Comma)) break;
         }
     }
