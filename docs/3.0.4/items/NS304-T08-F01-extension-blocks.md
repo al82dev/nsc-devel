@@ -5,15 +5,12 @@
 
 ## Auditoría (hallazgo validado)
 
-- El parser YA acepta `extension <Type> { ... }` (`parseExtensionDeclaration`, Parser.cpp:2716)
-  y sintetiza el receptor `__nsc_extension_this`.
-- **Infraestructura parcialmente cableada**: `ProjectMethodBodyModel::bindExtension` (13850) YA
-  resuelve extensiones (receiver conversion + pass), y `ProjectNamespaceFunctionModel` crea
-  `extensionBindingBySyntax_` para `MemberExpression` con candidatos `isExtension` (955-983).
-- **Falta el eslabón**: `21.Double()` falla ("member access ... receiver type builtin:int"), es
-  decir que el `extensionBinding` no se crea/encuentra para este caso — probablemente la
-  `candidatesInNamespace` no registra el extension de `int` o el walk no lo visita con el nombre
-  correcto. Es un gap de registro/lookup, no de sintaxis.
+- El parser YA acepta `extension <Type> { ... }` y sintetiza el receptor `__nsc_extension_this`.
+- **Causa raíz (hipótesis fuerte)**: `ProjectNameLookup::predeclareNode` solo registra un
+  `FunctionDeclaration` como namespace function si `!namespaceSegments.empty()` (línea 613-614).
+  Un `extension int { ... }` en el NAMESPACE GLOBAL tiene `namespaceSegments` vacío, así que su
+  `Double()` NO se registra y `extensionCandidatesInNamespace` no lo encuentra. Se confirmaría
+  registrando global-namespace functions (o probando el extension dentro de un `namespace`).
 
 ## Gap F01
 
