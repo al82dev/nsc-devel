@@ -5434,6 +5434,75 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     return lowerResolvedCall(setterCall, arguments);
                 }
             }
+
+            // NS304-T08-F02: an extension-property assignment is a synthetic namespace setter call
+            // recorded under the assignment node (`set_Name(receiver, value)`). Emit it as a
+            // StaticCall whose first argument is the receiver and whose last argument is the RHS.
+            const NamespaceFunctionCallBinding* namespaceSetter =
+                namespaceFunctionCallBinding(expression);
+            if (namespaceSetter != nullptr &&
+                namespaceSetter->resolution == MethodCallResolutionKind::Resolved &&
+                namespaceSetter->selectedFunctionOrdinal.has_value() &&
+                namespaceFunctionModel_ != nullptr &&
+                *namespaceSetter->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
+            {
+                if (addressContext)
+                {
+                    error = "the result of an extension-property assignment is a value, not addressable storage";
+                    return nullptr;
+                }
+                const std::size_t functionOrdinal = *namespaceSetter->selectedFunctionOrdinal;
+                const NamespaceFunctionSymbol& target =
+                    namespaceFunctionModel_->functions()[functionOrdinal];
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::StaticCall, expression, namespaceSetter->resultTypeKey);
+                node->namespaceFunctionOrdinal = functionOrdinal;
+                node->stringValue = target.mangledName;
+                if (namespaceSetter->forwardedReceiver)
+                {
+                    if (namespaceSetter->receiverSyntax == nullptr || target.parameters.empty())
+                    {
+                        error = "extension setter lost its synthetic receiver contract";
+                        return nullptr;
+                    }
+                    auto receiver = lowerExpression(
+                        namespaceSetter->receiverSyntax, memberOrdinal, false, error);
+                    if (receiver == nullptr) return nullptr;
+                    if (!namespaceSetter->selectedConversions.empty() &&
+                        namespaceSetter->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        receiver = wrapImplicitConversion(
+                            std::move(receiver), namespaceSetter->selectedConversions.front(),
+                            namespaceSetter->receiverSyntax);
+                    }
+                    node->children.push_back(std::move(receiver));
+                    node->argumentParameterOrdinals.push_back(0);
+                    node->argumentTypeKeys.push_back(target.parameters[0].typeKey);
+                }
+                auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                const std::size_t valueParameterOrdinal = namespaceSetter->forwardedReceiver ? 1 : 0;
+                if (valueParameterOrdinal >= target.parameters.size())
+                {
+                    error = "extension setter has no value parameter";
+                    return nullptr;
+                }
+                if (valueParameterOrdinal < namespaceSetter->selectedConversions.size() &&
+                    namespaceSetter->selectedConversions[valueParameterOrdinal].kind !=
+                        ProjectConversionKind::Identity)
+                {
+                    value = wrapImplicitConversion(
+                        std::move(value),
+                        namespaceSetter->selectedConversions[valueParameterOrdinal],
+                        expression->second());
+                }
+                node->children.push_back(std::move(value));
+                node->argumentParameterOrdinals.push_back(valueParameterOrdinal);
+                node->argumentTypeKeys.push_back(target.parameters[valueParameterOrdinal].typeKey);
+                return node;
+            }
+
             auto node = makeNode(ProjectOopHirNodeKind::Assignment, expression, resultType);
             node->operation = expression->tokenKind();
             if (node->operation == lexer::TokenKind::Equal &&

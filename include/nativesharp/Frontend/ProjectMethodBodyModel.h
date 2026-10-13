@@ -2038,7 +2038,8 @@ private:
         std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
-        const ExpressionResult* forwardedReceiver = nullptr);
+        const ExpressionResult* forwardedReceiver = nullptr,
+        const ast::AstNode* extraArgumentSyntax = nullptr);
     ExpressionResult analyzeNamespaceFunctionGroup(
         const ast::AstNode* expression,
         const NamespaceFunctionReferenceBinding& reference,

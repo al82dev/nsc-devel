@@ -2633,6 +2633,7 @@ class Program
     public static int Main()
     {
         21.set_Doubled(42);
+        21.Doubled = 42;
         return 21.Doubled;
     }
 }

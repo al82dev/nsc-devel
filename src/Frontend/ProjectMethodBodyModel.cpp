@@ -14527,7 +14527,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     std::size_t callerCallableOrdinal,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics,
-    const ExpressionResult* forwardedReceiver)
+    const ExpressionResult* forwardedReceiver,
+    const ast::AstNode* extraArgumentSyntax)
 {
     ExpressionResult result;
     NamespaceFunctionCallBinding call;
@@ -14544,12 +14545,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         namespaceFunctionCalls_.push_back(call);
     };
 
+    // NS304-T08-F02: a synthetic call (e.g. an extension-property assignment lowered to its
+    // `set_` accessor) may carry one explicit argument that is NOT a child of `expression`.
+    // `extraArgumentSyntax` replaces the expression children as the explicit argument list.
+    const bool usesExtraArgument = extraArgumentSyntax != nullptr;
+    const std::size_t explicitArgumentCount =
+        usesExtraArgument ? 1U : expression->children().size();
     std::vector<ast::AstNode*> argumentSyntaxes;
-    argumentSyntaxes.reserve(expression->children().size() + (forwardedReceiver != nullptr ? 1U : 0U));
+    argumentSyntaxes.reserve(explicitArgumentCount + (forwardedReceiver != nullptr ? 1U : 0U));
     if (forwardedReceiver != nullptr)
         argumentSyntaxes.push_back(const_cast<ast::AstNode*>(reference.receiverSyntax));
-    argumentSyntaxes.insert(
-        argumentSyntaxes.end(), expression->children().begin(), expression->children().end());
+    if (usesExtraArgument)
+        argumentSyntaxes.push_back(const_cast<ast::AstNode*>(extraArgumentSyntax));
+    else
+        argumentSyntaxes.insert(
+            argumentSyntaxes.end(), expression->children().begin(), expression->children().end());
 
     std::vector<ExpressionResult> arguments;
     arguments.reserve(argumentSyntaxes.size());
@@ -14564,9 +14574,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     }
     bool argumentsValid = true;
     for (std::size_t argumentOrdinal = 0;
-         argumentOrdinal < expression->children().size(); ++argumentOrdinal)
+         argumentOrdinal < explicitArgumentCount; ++argumentOrdinal)
     {
-        const ast::AstNode* argument = expression->children()[argumentOrdinal];
+        const ast::AstNode* argument = usesExtraArgument
+            ? extraArgumentSyntax : expression->children()[argumentOrdinal];
         ExpressionResult analyzed = analyzeExpression(
             argument, callerCallableOrdinal, scopeOrdinal, diagnostics,
             true, false, true);
@@ -14784,7 +14795,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "no overload of namespace function '" + reference.writtenName + "' accepts " +
-                std::to_string(expression->children().size()) + " argument(s)");
+                std::to_string(explicitArgumentCount) + " argument(s)");
         store();
         return result;
     }
@@ -21410,6 +21421,67 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         assignmentResult.valid = true;
         invalidateAssignedStorage();
         return assignmentResult;
+    }
+
+    // NS304-T08-F02 (residual): `receiver.ExtensionProperty = value` lowers to a namespace call
+    // `set_ExtensionProperty(receiver, value)`. The getter was auto-invoked while analyzing the
+    // left side; the member's extension binding is re-detected here and re-routed to the setter.
+    if (expression->tokenKind() == TokenKind::Equal && namespaceFunctionModel_ != nullptr &&
+        expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        const NamespaceFunctionReferenceBinding* extension =
+            namespaceFunctionModel_->extensionBinding(expression->first());
+        if (extension != nullptr && !extension->candidateFunctionOrdinals.empty())
+        {
+            const std::size_t getterOrdinal = extension->candidateFunctionOrdinals.front();
+            if (getterOrdinal < namespaceCallableAdapters().size() &&
+                namespaceCallableAdapters()[getterOrdinal].parameters.size() == 1U)
+            {
+                // The setter lives in the same namespace as the getter, not in the call site's
+                // namespace (which may merely import it via `using`).
+                std::string extensionNamespace;
+                if (getterOrdinal < namespaceFunctionModel_->functions().size())
+                    extensionNamespace =
+                        namespaceFunctionModel_->functions()[getterOrdinal].namespaceName;
+                const std::span<const std::size_t> setterOrdinals =
+                    namespaceFunctionModel_->findFunctions(
+                        extension->projectOrdinal, extensionNamespace,
+                        "set_" + extension->writtenName);
+                if (!setterOrdinals.empty())
+                {
+                    NamespaceFunctionReferenceBinding setterReference;
+                    setterReference.calleeSyntax = expression->first();
+                    setterReference.projectOrdinal = extension->projectOrdinal;
+                    setterReference.fileId = extension->fileId;
+                    setterReference.lexicalNamespace = extensionNamespace;
+                    setterReference.writtenName = "set_" + extension->writtenName;
+                    setterReference.qualified = false;
+                    setterReference.extension = true;
+                    setterReference.receiverSyntax = extension->receiverSyntax;
+                    setterReference.candidateFunctionOrdinals.assign(
+                        setterOrdinals.begin(), setterOrdinals.end());
+
+                    ExpressionResult receiver = analyzeExpression(
+                        expression->first()->first(), methodMemberOrdinal, scopeOrdinal,
+                        diagnostics);
+                    receiver.receiverTypeKey = receiver.typeKey;
+                    if (receiver.valid)
+                    {
+                        ExpressionResult setterResult = analyzeNamespaceFunctionCall(
+                            expression, setterReference, methodMemberOrdinal, scopeOrdinal,
+                            diagnostics, &receiver, expression->second());
+                        if (!setterResult.valid && setterResult.typeKey != "builtin:void")
+                            return {};
+                        ExpressionResult assignmentResult = left;
+                        assignmentResult.assignable = false;
+                        assignmentResult.valid = true;
+                        invalidateAssignedStorage();
+                        return assignmentResult;
+                    }
+                }
+            }
+        }
     }
 
     if (!left.assignable)
