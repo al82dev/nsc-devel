@@ -940,6 +940,8 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     {
         lambda->addChild(cloneParsedNode(arena_, parameter));
     }
+    // Conserva el tipo de retorno explicito para que el Sema construya el fn* (recursion).
+    lambda->setTypeSyntax(cloneParsedType(arena_, function->typeSyntax()));
     // Un lambda natural no-convertido exige cuerpo de EXPRESION (el retorno se infiere del
     // cuerpo). Si el cuerpo es `{ return expr; }` (un solo return), se usa `expr` como cuerpo.
     ast::AstNode* body = function->first();
@@ -961,6 +963,7 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
         function->range(), TokenKind::KwVar, "var");
     ast::AstNode* declaration = makeVariableDeclaration(
         varType, function->text(), lambda, false, false);
+    declaration->setAuxiliaryText("local-function");
     declaration->setRange(tokenRangeFrom(beginIndex));
     return declaration;
 }
