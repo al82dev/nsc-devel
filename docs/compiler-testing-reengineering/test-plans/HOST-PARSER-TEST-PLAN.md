@@ -73,7 +73,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-050 | CP-PAR-006 | calling conventions soportadas | enum/string contractual exacto | PR |
 | TP-PAR-051 | CP-PAR-006 | variadic function type | variadic true y posición válida | PR |
 | TP-PAR-052 | CP-PAR-006 | unsafe/noheap/async | flags independientes | PR |
-| TP-PAR-053 | CP-PAR-006 | nullable y lifetime de función | campos exactos | PR |
+| TP-PAR-053 | CP-PAR-006 | nullable y lifetime de función | kind/carrier/nullability/lifetime/arity/return/cursor EOF exactos | PR |
 | TP-PAR-054 | CP-PAR-006 | función con error type | throws/error type clonado | PR |
 | TP-PAR-055 | CP-PAR-006 | `dyn`/`some` sin trait | diagnóstico y progreso | PR |
 | TP-PAR-056 | CP-PAR-006 | SIMD portable lane type/count | base y argumentos exactos | PR |

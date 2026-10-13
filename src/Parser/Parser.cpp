@@ -637,17 +637,33 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
              tokens_[cursor].kind() != TokenKind::Amp))
             return false;
         ++cursor;
-        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Question)
-            ++cursor;
-        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftBracket)
+        const bool combinedNullableLifetime =
+            cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::QuestionBracket;
+        if (combinedNullableLifetime)
         {
-            if (cursor + 2U >= tokens_.size() ||
-                (tokens_[cursor + 1U].kind() != TokenKind::Identifier &&
-                 tokens_[cursor + 1U].kind() != TokenKind::KwThis &&
-                 tokens_[cursor + 1U].kind() != TokenKind::KwStatic) ||
-                tokens_[cursor + 2U].kind() != TokenKind::RightBracket)
+            ++cursor;
+            if (cursor + 1U >= tokens_.size() ||
+                (tokens_[cursor].kind() != TokenKind::Identifier &&
+                 tokens_[cursor].kind() != TokenKind::KwThis &&
+                 tokens_[cursor].kind() != TokenKind::KwStatic) ||
+                tokens_[cursor + 1U].kind() != TokenKind::RightBracket)
                 return false;
-            cursor += 3U;
+            cursor += 2U;
+        }
+        else
+        {
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Question)
+                ++cursor;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftBracket)
+            {
+                if (cursor + 2U >= tokens_.size() ||
+                    (tokens_[cursor + 1U].kind() != TokenKind::Identifier &&
+                     tokens_[cursor + 1U].kind() != TokenKind::KwThis &&
+                     tokens_[cursor + 1U].kind() != TokenKind::KwStatic) ||
+                    tokens_[cursor + 2U].kind() != TokenKind::RightBracket)
+                    return false;
+                cursor += 3U;
+            }
         }
         if (cursor < tokens_.size() &&
             ((tokens_[cursor].kind() == TokenKind::Identifier &&
@@ -1189,10 +1205,23 @@ ast::TypeSyntax* Parser::parseType()
             return nullptr;
         }
 
-        const bool nullable = consumeIf(TokenKind::Question);
+        bool nullable = false;
         std::string functionLifetime;
-        if (at(TokenKind::LeftBracket))
-            functionLifetime = parseOptionalLifetimeAnnotation("function reference");
+        if (consumeIf(TokenKind::QuestionBracket))
+        {
+            nullable = true;
+            if (at(TokenKind::Identifier) || at(TokenKind::KwThis) || at(TokenKind::KwStatic))
+                functionLifetime = std::string(consume().lexeme());
+            else
+                expect(TokenKind::Identifier, "lifetime name in function reference");
+            expect(TokenKind::RightBracket, "']' after lifetime name");
+        }
+        else
+        {
+            nullable = consumeIf(TokenKind::Question);
+            if (at(TokenKind::LeftBracket))
+                functionLifetime = parseOptionalLifetimeAnnotation("function reference");
+        }
         if (!functionLifetime.empty() && carrier != ast::FunctionTypeCarrierSyntaxKind::Reference)
         {
             diagnostics_.report(

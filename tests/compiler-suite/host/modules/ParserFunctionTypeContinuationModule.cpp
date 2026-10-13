@@ -56,13 +56,27 @@ void testNullableLifetimeFunctionReference(TestContext& context)
 {
     ParserFixture fixture("fn&?[scope](int)->bool");
     TypeSyntax* const type = fixture.parser().parseType();
-    context.expect(type != nullptr && type->isFunction() &&
-            type->functionCarrier() == FunctionTypeCarrierSyntaxKind::Reference &&
-            type->functionIsNullable() && type->functionLifetimeName() == "scope" &&
-            type->typeArguments().size() == 1 &&
-            type->functionReturnType() != nullptr && type->functionReturnType()->baseName() == "bool" &&
-            fixture.parser().current().kind() == TokenKind::EndOfFile,
-        "TP-PAR-053 nullable function reference and named lifetime must be retained exactly");
+    const auto& diagnostics = fixture.diagnostics().diagnostics();
+    const std::string observation = " (cursor='" +
+        std::string(fixture.parser().current().lexeme()) + "', diagnostics=" +
+        std::to_string(diagnostics.size()) +
+        (diagnostics.empty() ? ")" : ", first='" + diagnostics.front().message() + "')");
+    context.expect(type != nullptr && type->isFunction(),
+        "TP-PAR-053 kind must be a function type" + observation);
+    context.expect(type != nullptr &&
+            type->functionCarrier() == FunctionTypeCarrierSyntaxKind::Reference,
+        "TP-PAR-053 carrier must be a function reference");
+    context.expect(type != nullptr && type->functionIsNullable(),
+        "TP-PAR-053 nullability must be retained");
+    context.expect(type != nullptr && type->functionLifetimeName() == "scope",
+        "TP-PAR-053 named lifetime must be retained exactly");
+    context.expect(type != nullptr && type->typeArguments().size() == 1,
+        "TP-PAR-053 parameter arity must be one");
+    context.expect(type != nullptr && type->functionReturnType() != nullptr &&
+            type->functionReturnType()->baseName() == "bool",
+        "TP-PAR-053 return type must be bool");
+    context.expect(fixture.parser().current().kind() == TokenKind::EndOfFile,
+        "TP-PAR-053 parser cursor must finish at EOF" + observation);
 }
 
 void testFunctionErrorType(TestContext& context)
