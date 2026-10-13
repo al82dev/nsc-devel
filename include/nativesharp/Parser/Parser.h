@@ -47,6 +47,7 @@ private:
     bool scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool looksLikeVariableDeclaration() const noexcept;
     bool looksLikeLocalFunction() const noexcept;
+    ast::AstNode* parseLocalFunctionAsLambda();
     bool looksLikeConditionDeclaration() const noexcept;
     bool looksLikeParenthesizedType() const noexcept;
     bool parseQualifiedName(std::string& name, SourceRange& range);

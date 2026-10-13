@@ -923,6 +923,48 @@ bool Parser::looksLikeLocalFunction() const noexcept
     return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftParen;
 }
 
+ast::AstNode* Parser::parseLocalFunctionAsLambda()
+{
+    // NS304-T04-F06: baja `int name(params) { body }` a `var name = (params) => body;` para
+    // reutilizar la inferencia de tipo callable natural de lambda (T04-F07). La recursion
+    // (autoreferencia) es follow-up.
+    const std::size_t beginIndex = index_;
+    ast::AstNode* function = parseFunctionOrGlobalVariable();
+    if (function == nullptr || function->kind() != ast::AstNodeKind::FunctionDeclaration)
+    {
+        return function;
+    }
+    ast::AstNode* lambda = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::LambdaExpression, function->range());
+    for (ast::AstNode* parameter : function->children())
+    {
+        lambda->addChild(cloneParsedNode(arena_, parameter));
+    }
+    // Un lambda natural no-convertido exige cuerpo de EXPRESION (el retorno se infiere del
+    // cuerpo). Si el cuerpo es `{ return expr; }` (un solo return), se usa `expr` como cuerpo.
+    ast::AstNode* body = function->first();
+    if (body != nullptr && body->kind() == ast::AstNodeKind::BlockStatement &&
+        body->children().size() == 1U && body->children()[0] != nullptr &&
+        body->children()[0]->kind() == ast::AstNodeKind::ReturnStatement)
+    {
+        lambda->setFirst(cloneParsedNode(arena_, body->children()[0]->first()));
+        lambda->setFlag(false);
+    }
+    else
+    {
+        lambda->setFirst(cloneParsedNode(arena_, body));
+        lambda->setFlag(body != nullptr &&
+            body->kind() == ast::AstNodeKind::BlockStatement);
+    }
+
+    ast::TypeSyntax* varType = arena_.make<ast::TypeSyntax>(
+        function->range(), TokenKind::KwVar, "var");
+    ast::AstNode* declaration = makeVariableDeclaration(
+        varType, function->text(), lambda, false, false);
+    declaration->setRange(tokenRangeFrom(beginIndex));
+    return declaration;
+}
+
 // A declaration used as a condition must initialize the declared name.  Reusing the broader
 // statement lookahead here made `if (left * right >= limit)` look like `Type* name` whenever the
 // first identifier happened to be type-shaped.  Requiring the initializer token both models the
@@ -8943,8 +8985,8 @@ ast::AstNode* Parser::parseStatement()
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
     if (looksLikeLocalFunction())
     {
-        // NS304-T04-F06: funcion local `type name (...)`.
-        return parseFunctionOrGlobalVariable();
+        // NS304-T04-F06: funcion local `type name (...)` baja a lambda con tipo natural.
+        return parseLocalFunctionAsLambda();
     }
     if ((atContextualKeyword("pin") &&
          (peek().kind() == TokenKind::KwRaii ||
