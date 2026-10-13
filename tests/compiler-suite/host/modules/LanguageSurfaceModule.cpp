@@ -4015,7 +4015,8 @@ class Program
     {
         AsyncIterator<int, int> it = Generate();
         int sum = 0;
-        while (it.MoveNext()) { sum += it.Current; }
+        bool has = await it.MoveNextAsync();
+        while (has) { sum += it.Current; has = await it.MoveNextAsync(); }
         return sum;
     }
 }
@@ -4074,6 +4075,53 @@ class Program
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 3,
                 "TL-LANG-386 the demand future must drive the generator (sum=3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerAsyncGeneratorAwaitBodyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-387", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "await", "single-machine"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGeneratorAwaitBody", "Exe", R"ns(
+class Program
+{
+    public static async int Fetch()
+    {
+        return 42;
+    }
+
+    public static AsyncIterator<int, int> Generate()
+    {
+        int v = await Fetch();
+        yield return v;
+    }
+
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Generate();
+        int sum = 0;
+        bool has = await it.MoveNextAsync();
+        while (has) { sum += it.Current; has = await it.MoveNextAsync(); }
+        return sum;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGeneratorAwaitBody.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-387 await inside the generator body must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-387 the single await+yield machine must yield 42 (sum=42): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
 }
@@ -5539,6 +5587,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
     registerAsyncGeneratorDemandCase(registry);
+    registerAsyncGeneratorAwaitBodyCase(registry);
     registerExtensionSetterMethodCase(registry);
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
