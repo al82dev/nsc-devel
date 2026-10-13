@@ -1,6 +1,6 @@
 # NS304-T05-F04 — Frame layout, discriminante, liveness y storage de locals suspendidos
 
-- **Estado**: ABIERTO (auditado; liveness pendiente)
+- **Estado**: PARCIAL (liveness conservativa cerrada; liveness precisa = refinamiento)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -49,3 +49,13 @@ ejercer el camino).
 F04 depende de F09 para la ejecución runtime (la suspensión real); sin F09 el liveness es un
 transform no ejercido. Se implementará el transform aquí y se validará la ejecución cuando F09
 aporte la primitiva pendiente.
+
+### Avance (liveness conservativa) — verificado 2026-10-13
+
+- MIR: `asyncFrameLocals = {localOrdinal, offset, typeKey}` por cada local declarado del poll;
+  `asyncFrameSize` ahora incluye sus tamaños (tras los futures esperados).
+- LLVM `SuspendPoint`: guarda cada local vivo en el frame al suspender y lo restaura al reanudar.
+- Verificado: `async Read(){ int value=10; yield; return value; }` + `Main(){ return await Read(); }`
+  ejecuta exit 10 (el local sobrevive). Registrado `TL-LANG-373` (PASS). Commit `62692eec`.
+- **Nota de precisión**: es conservativa (guarda TODOS los locals, no sólo los vivos por def-use).
+  El refinamiento a liveness precisa (encoger el frame) queda como mejora.
