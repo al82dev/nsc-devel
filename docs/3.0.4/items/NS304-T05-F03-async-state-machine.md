@@ -319,3 +319,14 @@ builder (`lowerExpressionImpl`, case `AwaitExpression`) rechaza explícitamente:
 cuando el callee contiene un `await` (recorrido `first`/`second`/`children` del body). Verificado:
 `await G()` con `G` sin await → compila; con `G` que contiene `await` → rechazo explícito. Esto
 elimina el fallback silencioso y delimita exactamente lo que falta: el estado de máquina.
+
+### Pruebas externas registradas (verificado 2026-10-13)
+
+- **TL-LANG-370** (nuevo, run-pass): `async Inner(){return 5;} async Read(){int v=await Inner();return v+1;} int Main(){return await Read();}` → exit 6. Cubre constructor + poll + `await` sync y async.
+- **TL-LANG-369** (actualizado): `await` sobre operando no-Future ahora rechaza
+  `await operand must be a Future value` (era el placeholder de state machine, ya obsoleto).
+- Registrados en `cases.jsonl` + `test-case-design.csv` + `suite-case-allocation.csv`
+  (`expected_outcome` REQUIRED). Verificado con `nsc_component_tests`: TL-LANG-328/369/370 pasan.
+- **Fix**: `future:builtin:void` (async void) no tenía layout físico (void sin tamaño) → regresión
+  en el guard TL-LANG-328; ahora el resultado void es zero-size/unit-aligned. Commits `48e2846f`,
+  `558f8967`.
