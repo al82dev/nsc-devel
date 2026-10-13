@@ -1,6 +1,6 @@
 # NS304-T07-F02 — Máquina única para await + yield
 
-- **Estado**: PARCIAL (marcación del doble efecto + guard + yield válido cerrados; split único pendiente)
+- **Estado**: PARCIAL (marcación + layout + tramo síncrono MoveNext/Current cerrados; future-de-demanda + await pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -48,6 +48,16 @@ productivo.
 - Verificado: `AsyncIterator<int,object> Gen(){ yield 1; }` → error claro. Commit `cf188c1`.
 
 Queda: **el split único** (`MoveNextAsync` → future de la siguiente demanda) y el MIR de estados/aristas.
+
+### Tramo síncrono cerrado — verificado 2026-10-13
+
+- `splitGeneratorFunction` acepta `async-iterator:<T>|<E>` (item = T); el async-generator baja por el
+  split generator (MoveNext/Current/GetEnumerator/Drop síncronos).
+- facade + `llvmType` aceptan el receiver/layout `async-iterator:`.
+- Verificado: `AsyncIterator<int,int> Gen(){ yield 1; yield 2; }` → MoveNext/Current sum=3 (exit 3).
+  Registrado `TL-LANG-385` (PASS). Commits `3af99a2d`, `05963358`.
+
+Queda: **`MoveNextAsync`** (el future de la demanda) + el `await` en la misma máquina.
 
 ### ABI del future-de-demanda (recomendado)
 
