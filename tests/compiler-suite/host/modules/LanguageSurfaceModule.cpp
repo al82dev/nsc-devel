@@ -2721,6 +2721,38 @@ class Program
         }});
 }
 
+void registerNoHeapEscapeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-333", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "noheap", "escape", "string"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NoHeapEscape", "Exe", R"ns(
+class Program
+{
+    public static noheap int Main()
+    {
+        return "A\u0041\eB".Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NoHeapEscape.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-333 escapes in a noheap string literal must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 4,
+                "TL-LANG-333 \"A\\u0041\\eB\" must decode to 4 bytes: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2768,5 +2800,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionSetterMethodCase(registry);
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
+    registerNoHeapEscapeCase(registry);
 }
 }

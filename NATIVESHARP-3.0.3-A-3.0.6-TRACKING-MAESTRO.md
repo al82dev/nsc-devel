@@ -1058,7 +1058,7 @@ T00
 - [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS.
 - [ ] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos.
 - [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(lowering parser→StringLiteralExpression: ident/alias, miembro, callee/receptor y `Generic<int>`→baseName; TL-LANG-331.)*
-- [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` (0x1B) en decodeEscapeByte + TL-LEX-057/066; Unicode/noheap residual.)*
+- [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; no-culture residual bloqueado en la feature.)*
 
 ### T11 — spans, referencias y genéricos modernos
 
