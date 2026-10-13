@@ -3101,7 +3101,7 @@ class Program
 void registerAwaitDiagnosticCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-369", "CL-LANG-020", "Host.Language", "integration", "PR",
-        {"language", "async", "await", "diagnostic", "state-machine"},
+        {"language", "async", "await", "diagnostic", "future-surface"},
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
@@ -3124,9 +3124,52 @@ class Program
                 products.directory() / "T05AwaitDiagnostic.exe", products.directory());
             context.expect(emitted.started && emitted.exitCode != 0 &&
                     (emitted.error + emitted.output).find(
-                        "await requires the async state machine lowering") != std::string::npos,
-                "TL-LANG-369 await must report the causal state-machine diagnostic: " +
+                        "await operand must be a Future value") != std::string::npos,
+                "TL-LANG-369 await over a non-Future operand must reject: " +
                     emitted.error + emitted.output);
+        }});
+}
+
+void registerAsyncAwaitRunCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-370", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "await", "constructor", "poll", "run"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncAwaitRun", "Exe", R"ns(
+class Program
+{
+    public static async int Inner()
+    {
+        return 5;
+    }
+
+    public static async int Read()
+    {
+        int value = await Inner();
+        return value + 1;
+    }
+
+    public static int Main()
+    {
+        int result = await Read();
+        return result;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncAwaitRun.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-370 async await must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-370 async await must run through constructor+poll: " +
+                    result.error + result.output);
         }});
 }
 
@@ -4824,6 +4867,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLambdaAttributeCase(registry);
     registerAsyncMethodMarkerCase(registry);
     registerAwaitDiagnosticCase(registry);
+    registerAsyncAwaitRunCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
