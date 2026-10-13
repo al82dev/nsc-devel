@@ -910,6 +910,19 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
         tokens_[cursor].kind() == TokenKind::Identifier;
 }
 
+// NS304-T04-F06: `type name (...)` al principio de una sentencia es una funcion local. Se
+// distingue de una declaracion de variable (`type name ;`/`=`) por el `(` tras el nombre.
+bool Parser::looksLikeLocalFunction() const noexcept
+{
+    std::size_t cursor = index_;
+    std::size_t afterType = cursor;
+    if (!scanTypeAt(cursor, afterType)) return false;
+    cursor = afterType;
+    if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier) return false;
+    ++cursor;
+    return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftParen;
+}
+
 // A declaration used as a condition must initialize the declared name.  Reusing the broader
 // statement lookahead here made `if (left * right >= limit)` look like `Type* name` whenever the
 // first identifier happened to be type-shaped.  Requiring the initializer token both models the
@@ -8928,6 +8941,11 @@ ast::AstNode* Parser::parseStatement()
     // Sin esto, `canStartTypeAt` decia "declaracion", `parseVariableDeclaration` leia el tipo y
     // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
+    if (looksLikeLocalFunction())
+    {
+        // NS304-T04-F06: funcion local `type name (...)`.
+        return parseFunctionOrGlobalVariable();
+    }
     if ((atContextualKeyword("pin") &&
          (peek().kind() == TokenKind::KwRaii ||
           (peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref"))) ||
