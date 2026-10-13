@@ -1629,6 +1629,39 @@ bool ProjectOopMirModel::build(
             frameSize = alignUp(frameSize, 8);
             function.asyncFrameSize = frameSize;
         }
+        // NS304-T06-F04: frame size for MoveNext = the locals that must survive a yield
+        // (conservatively every declared local; offsets recorded).
+        if (function.mangledName.ends_with("$moveNext"))
+        {
+            const auto frameAlignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
+            {
+                if (alignment <= 1) return value;
+                return (value + alignment - 1) / alignment * alignment;
+            };
+            std::uint64_t frameSize = 0;
+            const auto sumLocals = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value() && !node->typeKey.empty())
+                {
+                    const auto layout =
+                        objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
+                    if (layout.has_value())
+                    {
+                        frameSize = frameAlignUp(frameSize, layout->second);
+                        function.asyncFrameLocals.emplace_back(
+                            *node->localOrdinal, frameSize, node->typeKey);
+                        frameSize += layout->first;
+                    }
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            sumLocals(sumLocals, function.body.get());
+            frameSize = frameAlignUp(frameSize, 8);
+            function.asyncFrameSize = frameSize;
+        }
         if (function.body == nullptr)
         {
             // Say WHERE. An internal error from this pipeline used to arrive as a bare sentence --
