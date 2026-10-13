@@ -2026,14 +2026,24 @@ bool ProjectOopHirModel::buildImpl(
             }
         }
         std::unique_ptr<ProjectOopHirFunction> poll;
+        std::unique_ptr<ProjectOopHirFunction> moveNext;
+        std::unique_ptr<ProjectOopHirFunction> drop;
+        // NS304-T07-F02: an async generator is ONE machine (await + yield), not the async split and
+        // the generator split stacked. Until the single split exists, reject it explicitly instead of
+        // letting the two splits rewrite the body over each other.
+        if (!function.constructor && !function.destructor &&
+            function.effects.contains(sema::Effect::Generator) &&
+            function.effects.contains(sema::Effect::Async))
+        {
+            error = "async generator state machine lowering is not yet implemented (NS304-T07-F02)";
+            return false;
+        }
         if (!function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Async))
         {
             poll = splitAsyncFunction(function, error);
             if (poll == nullptr) return false;
         }
-        std::unique_ptr<ProjectOopHirFunction> moveNext;
-        std::unique_ptr<ProjectOopHirFunction> drop;
         if (!function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator))
         {

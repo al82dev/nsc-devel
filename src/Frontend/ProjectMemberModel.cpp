@@ -2026,6 +2026,11 @@ bool ProjectMemberModel::collectTypeMembers(
             // (`Iterator<T>` -> `iterator:<T>`), not by a textual scan for `yield`.
             if (language::iteratorInnerTypeKey(symbol.declaredTypeKey).has_value())
                 symbol.effects = symbol.effects.with(sema::Effect::Generator);
+            // NS304-T07-F02: an async generator carries BOTH effects (await + yield in one machine).
+            if (language::asyncIteratorInnerTypeKey(symbol.declaredTypeKey).has_value())
+            {
+                symbol.effects = symbol.effects.with(sema::Effect::Generator).with(sema::Effect::Async);
+            }
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method || symbol.kind == ClassMemberKind::Constructor) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);

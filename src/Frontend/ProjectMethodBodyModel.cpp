@@ -5241,9 +5241,12 @@ void ProjectMethodBodyModel::analyzeStatement(
             // from a yield in an ordinary callable (context error). The productive lowering to a
             // frame/state machine is still T06-F03.
             const ClassMemberSymbol* yieldMethod = methodSymbol(methodMemberOrdinal);
-            const auto itemInner = yieldMethod != nullptr
+            auto itemInner = yieldMethod != nullptr
                 ? language::iteratorInnerTypeKey(yieldMethod->declaredTypeKey)
                 : std::optional<std::string_view>{};
+            // NS304-T07-F02: an async generator (`AsyncIterator<T,E>`) also yields; the item is T.
+            if (!itemInner.has_value() && yieldMethod != nullptr)
+                itemInner = language::asyncIteratorInnerTypeKey(yieldMethod->declaredTypeKey);
             if (!itemInner.has_value())
             {
                 diagnostics.report(
