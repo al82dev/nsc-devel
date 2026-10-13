@@ -1,16 +1,15 @@
 # NS304-T08-F01 — Bloques extension canónicos sobre tipos y constraints
 
-- **Estado**: EN IMPLEMENTACIÓN (auditado)
+- **Estado**: CERRADO (extension method en namespace) / residual (namespace global)
 - **Rama**: development
 
-## Auditoría (hallazgo validado)
+## Resultado (validado)
 
-- El parser YA acepta `extension <Type> { ... }` y sintetiza el receptor `__nsc_extension_this`.
-- **Causa raíz (hipótesis fuerte)**: `ProjectNameLookup::predeclareNode` solo registra un
-  `FunctionDeclaration` como namespace function si `!namespaceSegments.empty()` (línea 613-614).
-  Un `extension int { ... }` en el NAMESPACE GLOBAL tiene `namespaceSegments` vacío, así que su
-  `Double()` NO se registra y `extensionCandidatesInNamespace` no lo encuentra. Se confirmaría
-  registrando global-namespace functions (o probando el extension dentro de un `namespace`).
+- `extension int { int Double() {...} }` dentro de un `namespace` + `using` funciona: **`TL-LANG-323` PASS**
+  (exit 42). El receptor sintético + `bindExtension` + lookup están cableados.
+- **Residual**: el extension en el NAMESPACE GLOBAL no se registra (`predeclareNode` exige
+  `!namespaceSegments.empty()`, ProjectNameLookup.cpp:613-614). Se confirma relajando esa
+  condición o documentando que el extension global requiere namespace.
 
 ## Gap F01
 
