@@ -3200,6 +3200,46 @@ class Program
         }});
 }
 
+void registerClassPrimaryConstructorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-344", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "class", "primary", "constructor"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09ClassPrimaryCtor", "Exe", R"ns(
+class Point(int x, int y)
+{
+    public int Sum()
+    {
+        return x + y;
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Point p = new Point(3, 4);
+        return p.Sum();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09ClassPrimaryCtor.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-344 a class primary constructor must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-344 Point(3, 4).Sum() must be 7: " + result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3258,5 +3298,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCustomEventCase(registry);
     registerNullConditionalCompoundDiagnosticCase(registry);
     registerNullConditionalIndexDiagnosticCase(registry);
+    registerClassPrimaryConstructorCase(registry);
 }
 }

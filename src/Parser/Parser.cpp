@@ -4980,6 +4980,119 @@ ast::AstNode* Parser::parseClassDeclaration(
         node->addModifier(TokenKind::KwStatic);
     }
 
+    // NS304-T09-F04: primary constructor de clase desuarado a campos + constructor (misma
+    // semántica promote-to-fields que el struct/record primario de T02-F05). No hay captura
+    // oculta ni ABI alternativo: los campos generados son el layout físico.
+    if (at(TokenKind::LeftParen))
+    {
+        consume();
+        std::vector<ast::AstNode*> parameters;
+        std::unordered_set<std::string> names;
+        if (!at(TokenKind::RightParen))
+        {
+            while (true)
+            {
+                TokenKind accessibility = TokenKind::Invalid;
+                bool readonlyField = false;
+                while (isAccessibilityToken(current().kind()) || at(TokenKind::KwReadonly))
+                {
+                    const lexer::Token& modifier = consume();
+                    if (modifier.kind() == TokenKind::KwReadonly)
+                    {
+                        if (readonlyField)
+                        {
+                            diagnostics_.report(
+                                diagnostics::DiagnosticId::ExpectedDeclaration,
+                                diagnostics::DiagnosticSeverity::Error,
+                                modifier.range(),
+                                "duplicate readonly modifier on promoted field");
+                        }
+                        readonlyField = true;
+                        continue;
+                    }
+                    if (accessibility != TokenKind::Invalid)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            modifier.range(),
+                            "conflicting accessibility modifiers on promoted field");
+                    }
+                    else
+                    {
+                        accessibility = modifier.kind();
+                    }
+                }
+                ast::AstNode* parameter = parseParameter();
+                if (parameter != nullptr)
+                {
+                    if (!names.insert(parameter->text()).second)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::DuplicateSymbol,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "duplicate promoted field '" + parameter->text() + "'");
+                    }
+                    if (!parameter->auxiliaryText().empty())
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "a promoted parameter cannot be params, ref, out, or in");
+                    }
+                    const TokenKind fieldAccessibility = accessibility == TokenKind::Invalid
+                        ? TokenKind::KwPrivate : accessibility;
+                    ast::AstNode* field = arena_.make<ast::AstNode>(
+                        ast::AstNodeKind::FieldDeclaration, parameter->range());
+                    field->setText(parameter->text());
+                    field->setTypeSyntax(parameter->typeSyntax());
+                    field->setAuxiliaryText("promoted-primary-field");
+                    field->setTokenKind(fieldAccessibility);
+                    field->addModifier(fieldAccessibility);
+                    if (readonlyField) field->addModifier(TokenKind::KwReadonly);
+                    node->addChild(field);
+                    parameters.push_back(parameter);
+                }
+                if (!consumeIf(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RightParen, "')'");
+
+        ast::AstNode* constructor = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ConstructorDeclaration,
+            SourceRange(name.range().begin(), tokens_[index_ - 1].range().end()));
+        constructor->setText(className);
+        constructor->setAuxiliaryText("promoted-primary-constructor");
+        constructor->setTokenKind(TokenKind::KwPublic);
+        constructor->addModifier(TokenKind::KwPublic);
+        ast::AstNode* body = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, constructor->range());
+        for (ast::AstNode* parameter : parameters)
+        {
+            constructor->addChild(parameter);
+            ast::AstNode* receiver = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ThisExpression, parameter->range());
+            ast::AstNode* field = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MemberExpression, parameter->range());
+            field->setText(parameter->text());
+            field->setFirst(receiver);
+            ast::AstNode* value = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IdentifierExpression, parameter->range());
+            value->setText(parameter->text());
+            ast::AstNode* assignment = makeAssignmentExpression(field, value);
+            body->addChild(makeExpressionStatement(assignment));
+        }
+        constructor->setFirst(body);
+        node->addChild(constructor);
+
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += "primary-fields=" + std::to_string(parameters.size());
+        node->setAuxiliaryText(std::move(markers));
+    }
+
     if (consumeIf(TokenKind::Colon))
     {
         if (isStatic)
