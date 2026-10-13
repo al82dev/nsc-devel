@@ -1,6 +1,6 @@
 # NS304-T05-F09 — ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular
 
-- **Estado**: PARCIAL (Opción A cerrada en su núcleo: pollFn + constructor + await sobre variable; Future<T> nombrable + resume/drop + intermodular pendientes)
+- **Estado**: PARCIAL (Opción A cerrada: pollFn + constructor + await sobre variable + Future<T>; resume/drop + intermodular pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -63,6 +63,18 @@ pollFn.
 
 Queda: `Future<T>` **nombrable** (map en name lookup a `future:<T>`), el runtime **resume/drop**
 explícito y el **consumo intermodular** (future opaco cruzando módulos). Esos son la "cola" del ABI.
+
+### Cierre parcial (Future<T> nombrable) — verificado 2026-10-13
+
+- Parser: `Future` es un nombre de tipo conocido (`Future<int> f = ...` parsea como declaración).
+- Generic model: `Future<T>` es estructural (no se especializa como template nominal).
+- Name lookup: `Future<T>` enlaza como surface builtin; `canonicalTypeKey` mapea `Future<T>` →
+  `future:<T>`.
+- Verificado: `Future<int> f = Read(); await f` → exit 5. Registrado `TL-LANG-378` (PASS).
+  Commit `5cbe0c41`.
+
+Queda (cola del ABI): runtime **resume/drop** explícito y **consumo intermodular** de un future
+opaco.
 
 ## Prueba puntual
 
