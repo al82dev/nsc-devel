@@ -3793,6 +3793,42 @@ class Program
         }});
 }
 
+void registerGeneratorRulesCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-380", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "item", "return", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06GeneratorRules", "Exe", R"ns(
+class Program
+{
+    public static Iterator<int> WithReturn()
+    {
+        yield return 1;
+        return 2;
+    }
+
+    public static Iterator<int> BadItem()
+    {
+        yield return "not-an-int";
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06GeneratorRules.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            const std::string diagnostic = emitted.error + emitted.output;
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    diagnostic.find("a generator cannot return a value") != std::string::npos &&
+                    diagnostic.find("generator yields") != std::string::npos &&
+                    diagnostic.find("item type is") != std::string::npos,
+                "TL-LANG-380 a generator must reject return v and unify yields to the item type: " +
+                    diagnostic);
+        }});
+}
+
 void registerExtensionSetterMethodCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-330", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5247,6 +5283,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
     registerYieldContextCase(registry);
+    registerGeneratorRulesCase(registry);
     registerExtensionSetterMethodCase(registry);
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
