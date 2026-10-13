@@ -2882,6 +2882,39 @@ class Program
         }});
 }
 
+void registerConstInterpolationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-336", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "interpolation", "const", "string"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10ConstInterpolation", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        string s = $"answer={42}";
+        return s.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10ConstInterpolation.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-336 a consteval interpolation must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 9,
+                "TL-LANG-336 $\"answer={42}\" must be \"answer=42\" (length 9): " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2932,5 +2965,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNoHeapEscapeCase(registry);
     registerInitAccessorCase(registry);
     registerRequiredMemberCase(registry);
+    registerConstInterpolationCase(registry);
 }
 }
