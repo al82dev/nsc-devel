@@ -1,6 +1,8 @@
 # NS304-T04-F02 — Retorno explícito, atributos, calling convention y efectos en lambdas
 
 - **Estado**: CERRADO
+- **Validación secuencial**: confirmado en campaña; `TL-LANG-327` PASS + guards
+  `TL-LANG-314/316/317/318/319/320` PASS (2026-10-13). Avanza a 32/147.
 - **Rama**: development
 
 ## Resultado
