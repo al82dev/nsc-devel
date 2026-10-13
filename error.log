@@ -1,0 +1,12 @@
+NativeSharp compilation log v1
+exit_code=2
+arguments= --emit-project-oop-exe A:\nsc-devel\_tmp\recurtest\recur.ns A:\nsc-devel\_tmp\recurtest\recur.exe --progress
+--- stdout ---
+NativeSharp Compiler 3.0.0 (nsc)
+Copyright (c) 2026 Alberto Huerta Luna. All rights reserved.
+Build hash: 42ffe3feeba8b827
+
+-- NSC: target --emit-project-oop-exe
+-- NSC: failed target --emit-project-oop-exe
+--- stderr ---
+nsc: error: invalid command line; use --help for supported options (stage 70)

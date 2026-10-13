@@ -2375,6 +2375,42 @@ class Program
         }});
 }
 
+void registerLocalFunctionRecursionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-326", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "local-function", "recursion"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04LocalFunctionRecursion", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int Fact(int n)
+        {
+            return n <= 1 ? 1 : n * Fact(n - 1);
+        }
+        return Fact(5);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04LocalFunctionRecursion.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-326 a recursive local function must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 120,
+                "TL-LANG-326 a recursive local function must self-invoke: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2413,5 +2449,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerClosureErrorThrowCase(registry);
     registerExtensionMethodCase(registry);
     registerLocalFunctionCase(registry);
+    registerLocalFunctionRecursionCase(registry);
 }
 }

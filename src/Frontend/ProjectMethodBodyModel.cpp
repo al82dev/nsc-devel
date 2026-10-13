@@ -22969,16 +22969,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             std::string_view("local-function:").size());
         if (!selfName.empty() && !returnType.empty())
         {
-            language::FunctionType signature;
-            signature.parameters = binding.parameterTypeKeys;
-            signature.result = returnType;
-            signature.carrier = language::FunctionCarrier::Pointer;
-            const std::string fnTypeKey = language::functionTypeIdentity(signature);
+            language::AnonymousLambdaType selfType;
+            selfType.ownerOrdinal = methodMemberOrdinal;
+            selfType.lambdaOrdinal = binding.lambdaOrdinal;
+            selfType.signature.parameters = parameterTypes;
+            selfType.signature.result = returnType;
+            selfType.signature.carrier = language::FunctionCarrier::Pointer;
+            const std::string selfTypeKey = language::anonymousLambdaTypeIdentity(selfType);
             MethodLocalSymbol selfLocal;
             selfLocal.methodMemberOrdinal = methodMemberOrdinal;
             selfLocal.scopeOrdinal = lambdaScope;
             selfLocal.name = selfName;
-            selfLocal.typeKey = fnTypeKey;
+            selfLocal.typeKey = selfTypeKey;
             selfLocal.range = syntax->range();
             selfLocal.syntax = syntax;
             selfLocal.lambdaOrdinal = binding.lambdaOrdinal;
