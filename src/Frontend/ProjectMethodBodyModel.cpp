@@ -21830,18 +21830,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 "unsupported compound assignment operator on a null-conditional target");
             return {};
         }
-        // NS304-T10-F06 residual: la concatenación de cadena sobre target null-conditional
-        // necesita el path RAII de `StringConcat`; un diagnóstico claro evita el genérico.
+        // NS304-T10-F06: string concat compound — el lowering hace load + concat + store
+        // condicional (la propiedad del string viejo se libera en la ruta normal del backend).
         if (compoundBase == TokenKind::Plus && left.typeKey == "builtin:string" &&
             (right.typeKey == "builtin:string" || right.typeKey == "string-literal"))
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "null-conditional string concatenation ('obj?.Name += \"x\"') is not yet "
-                "supported; use a temporary with an explicit null check");
-            return {};
+            ExpressionResult assignmentResult = left;
+            assignmentResult.typeKey = "builtin:string";
+            assignmentResult.assignable = false;
+            assignmentResult.valid = true;
+            return assignmentResult;
         }
         const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
             left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);

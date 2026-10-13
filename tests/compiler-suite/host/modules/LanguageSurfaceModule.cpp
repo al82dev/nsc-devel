@@ -3283,10 +3283,10 @@ class Program
         }});
 }
 
-void registerNullConditionalStringConcatDiagnosticCase(TestRegistry& registry)
+void registerNullConditionalStringConcatCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-346", "CL-LANG-020", "Host.Language", "integration", "PR",
-        {"language", "null-conditional", "compound", "string", "diagnostic"},
+        {"language", "null-conditional", "compound", "string", "assignment"},
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
@@ -3296,9 +3296,12 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        Box b = null;
         b?.Name += "x";
-        return 0;
+        Box c = new Box();
+        c.Name = "hello";
+        c?.Name += " world";
+        return c.Name.Length;
     }
 }
 )ns");
@@ -3306,11 +3309,14 @@ class Program
                 products.directory() / "T10NullCondStringConcat.exe";
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
-            context.expect(
-                (emitted.error + emitted.output).find("null-conditional string concatenation") !=
-                    std::string::npos,
-                "TL-LANG-346 obj?.Name += \"x\" must report a clear diagnostic: " +
-                    emitted.error + emitted.output);
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-346 obj?.Name += \"x\" must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 11,
+                "TL-LANG-346 c.Name += \" world\" must be \"hello world\" (length 11): " +
+                    result.error + result.output);
         }});
 }
 
@@ -3716,7 +3722,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalCompoundCase(registry);
     registerNullConditionalIndexDiagnosticCase(registry);
     registerNullConditionalIndexReadCase(registry);
-    registerNullConditionalStringConcatDiagnosticCase(registry);
+    registerNullConditionalStringConcatCase(registry);
     registerClassPrimaryConstructorCase(registry);
     registerCollectionExpressionCase(registry);
     registerEmptyCollectionExpressionDiagnosticCase(registry);

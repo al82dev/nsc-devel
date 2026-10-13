@@ -14777,11 +14777,35 @@ private:
             if (valueType == nullptr) return nullptr;
             LLVMValueRef current = LLVMBuildLoad2(
                 builder_, valueType, address, "nullcond.compound.load");
-            const lexer::TokenKind base =
-                lexer::compoundAssignmentBaseOperator(node->operation);
-            storedValue = applyBinaryOperation(
-                base, current, value, node->typeKey, error, false);
-            if (storedValue == nullptr) return nullptr;
+            if (node->typeKey == "builtin:string")
+            {
+                // NS304-T10-F06: concatenación de cadena — asigna una cadena nueva (la propiedad
+                // de la vieja queda sin liberar: simplificación documentada del compound).
+                LLVMValueRef leftLength = nullableStringLength(current, "nullcond.concat.left");
+                LLVMValueRef rightLength = nullableStringLength(value, "nullcond.concat.right");
+                LLVMValueRef total = LLVMBuildAdd(
+                    builder_, leftLength, rightLength, "nullcond.concat.length");
+                LLVMValueRef result = allocateNativeString(total, "nullcond.concat", error);
+                if (result == nullptr) return nullptr;
+                LLVMValueRef resultData = byteOffset(result, 8, "nullcond.concat.result.data");
+                LLVMValueRef leftData = byteOffset(current, 8, "nullcond.concat.left.data");
+                if (!emitMemcpyBytes(resultData, leftData, leftLength, "nullcond.concat.copy.left", error))
+                    return nullptr;
+                LLVMValueRef rightDestination = dynamicByteOffset(
+                    resultData, leftLength, "nullcond.concat.right.dest");
+                LLVMValueRef rightData = byteOffset(value, 8, "nullcond.concat.right.data");
+                if (!emitMemcpyBytes(rightDestination, rightData, rightLength, "nullcond.concat.copy.right", error))
+                    return nullptr;
+                storedValue = result;
+            }
+            else
+            {
+                const lexer::TokenKind base =
+                    lexer::compoundAssignmentBaseOperator(node->operation);
+                storedValue = applyBinaryOperation(
+                    base, current, value, node->typeKey, error, false);
+                if (storedValue == nullptr) return nullptr;
+            }
         }
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
