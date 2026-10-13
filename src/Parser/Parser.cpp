@@ -2816,7 +2816,7 @@ ast::AstNode* Parser::parseExtensionDeclaration()
     {
         const std::size_t before = index_;
         ast::AstNode* member = parseGlobalDeclaration();
-        if (member != nullptr && member->kind() == ast::AstNodeKind::FunctionDeclaration)
+        const auto makeReceiver = [&]() -> ast::AstNode*
         {
             ast::AstNode* receiver = arena_.make<ast::AstNode>(
                 ast::AstNodeKind::ParameterDeclaration, receiverType->range());
@@ -2830,9 +2830,33 @@ ast::AstNode* Parser::parseExtensionDeclaration()
                     receiverPass == TokenKind::KwIn ? "pass:in" : "pass:ref");
             }
             receiver->setTypeSyntax(parameterType);
-            member->prependChild(receiver);
+            return receiver;
+        };
+        if (member != nullptr && member->kind() == ast::AstNodeKind::FunctionDeclaration)
+        {
+            member->prependChild(makeReceiver());
             member->setAuxiliaryText("ns3-extension");
             extension->addChild(member);
+        }
+        else if (member != nullptr &&
+                 member->kind() == ast::AstNodeKind::PropertyDeclaration)
+        {
+            // NS304-T08-F02: baja la property a su getter (metodo top-level con el nombre de la
+            // property) para que se registre como funcion de extension.
+            const std::string propertyName = member->text();
+            for (ast::AstNode* accessor : member->children())
+            {
+                if (accessor == nullptr ||
+                    accessor->kind() != ast::AstNodeKind::FunctionDeclaration ||
+                    accessor->text() != "get_" + propertyName)
+                {
+                    continue;
+                }
+                accessor->setText(propertyName);
+                accessor->prependChild(makeReceiver());
+                accessor->setAuxiliaryText("ns3-extension");
+                extension->addChild(accessor);
+            }
         }
         else if (member != nullptr)
         {
@@ -8395,6 +8419,13 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
             function->setLifetimeName(std::move(returnLifetime));
         }
         return function;
+    }
+    if (!isConst && parsingExtensionBody_ && at(TokenKind::LeftBrace))
+    {
+        // NS304-T08-F02: extension property (`type Name { get/set }`).
+        return parsePropertyTail(
+            type, name, TokenKind::Invalid, false, false, false, false, false, false,
+            beginIndex, false);
     }
 
     if (isReferenceReturn)
