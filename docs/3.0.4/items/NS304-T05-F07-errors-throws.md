@@ -1,6 +1,6 @@
 # NS304-T05-F07 — Integrar throws E, Result, ?, panic y unwind nativo con async
 
-- **Estado**: ABIERTO (auditado; superficie future sin error + sin ReadyError)
+- **Estado**: PARCIAL (superficie future lleva E; slot de error + ReadyError + ?/Result pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -62,3 +62,15 @@ través del `await`. (La ejecución real depende de F09 para el suspend.)
 F07 depende de F09 (suspensión real) para la ejecución runtime del camino de error; pero el gap de
 superficie (`future:<T>` sin `E`) es estático y ya demostrable. El `errorType`/`cancellationType`
 de F02 está listo como modelo y es el contrato a cablear.
+
+### Cierre parcial (superficie con E) — verificado 2026-10-13
+
+- `futureTypeKey(inner, error)` → `future:<inner>|<error>`; `futureErrorTypeKey` desenvuelve `E`;
+  `futureInnerTypeKey` ignora el sufijo `|<error>`.
+- Member model envuelve `declaredTypeKey` con `declaredErrorTypeKey` para `async throws E`.
+- Verificado: `async int F() throws Exception` produce
+  `future:builtin:int|type:NativeSharpCore::NativeSharp.Core.Exception` (HIR dump) y ejecuta exit 42.
+  Registrado `TL-LANG-375` (PASS). Commit `1c07d46a`.
+
+Queda: slot de error en el struct + camino `ReadyError` en `AwaitFuture` (un `throw` en el cuerpo
+aún unwindea nativo SEH) y `?`/`Result` a través del await. Esos son el runtime, acoplados a F09.
