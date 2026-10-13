@@ -3098,6 +3098,38 @@ class Program
         }});
 }
 
+void registerAwaitDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-369", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "await", "diagnostic", "state-machine"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AwaitDiagnostic", "Exe", R"ns(
+class Program
+{
+    public static int Other()
+    {
+        return 1;
+    }
+
+    public static async int Read()
+    {
+        return await Other();
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T05AwaitDiagnostic.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error + emitted.output).find(
+                        "await requires the async state machine lowering") != std::string::npos,
+                "TL-LANG-369 await must report the causal state-machine diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerAsyncMethodMarkerCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-328", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4791,6 +4823,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
     registerAsyncMethodMarkerCase(registry);
+    registerAwaitDiagnosticCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);

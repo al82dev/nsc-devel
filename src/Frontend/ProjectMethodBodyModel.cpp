@@ -9700,6 +9700,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->range(),
                 "a match arm cannot be used as a standalone expression");
             break;
+        case ast::AstNodeKind::AwaitExpression:
+            // NS304-T05-F03: el AST de await esta (T05-F01); el lowering a state machine async es
+            // T05-F03. Hasta cablear la vertical, el await se diagnostica causalmente (igual que el
+            // yield en T06-F03) en lugar de caer silenciosamente al default.
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "await requires the async state machine lowering (NS304-T05-F03)");
+            break;
         case ast::AstNodeKind::IdentifierExpression:
             if (expression->auxiliaryText() == "generic-lambda-self" &&
                 !activeLambdaBindings_.empty())

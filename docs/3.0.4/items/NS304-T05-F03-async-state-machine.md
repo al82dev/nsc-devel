@@ -49,3 +49,11 @@ de tipo en string, no un tipo resoluble). Por tanto el operando de `await` no ti
 resolver. La vertical F03 debe construir primero la superficie `Future` resoluble y después el
 estado de la máquina; el plan builder (`buildAsyncFunctionPlan`) ya está unit-tested
 (`TL-LANG-054..056`), pero nunca se invoca desde el pipeline productivo.
+
+## Avance parcial (2026-10-13)
+
+`analyzeExpressionCore` ahora reconoce `AwaitExpression` y diagnostica causalmente
+`await requires the async state machine lowering (NS304-T05-F03)` (`TL-LANG-369`), reemplazando el
+fallthrough silencioso que terminaba en el HIR con `unsupported Stage 34 OOP expression kind`.
+Esto iguala el patrón de `yield` (T06-F03) y elimina un fallback silencioso. F03 sigue abierto:
+falta la superficie `Future` + la state machine productiva.
