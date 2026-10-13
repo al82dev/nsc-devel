@@ -1,6 +1,6 @@
 # NS304-T06-F02 — AST y semántica de contexto de generator
 
-- **Estado**: PARCIAL (surface `Iterator<T>` + contexto yield resueltos; marcado Effect::Generator + unificar item + rechazo return/yield pendientes)
+- **Estado**: CERRADO (surface `Iterator<T>`, contexto, marcado Effect::Generator, unificar item, rechazar return)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -81,3 +81,12 @@ demostrable de F02 sin tocar el lowering.
 
 Queda: **marcar** el callable con `Effect::Generator` (el flag está, no se setea), **unificar** todos
 los yields a un item-type y **rechazar** `return v;` en un generator.
+
+### Cierre (marcado + item + return) — verificado 2026-10-13
+
+- Member registration setea `Effect::Generator` cuando el return type declarado es `iterator:<T>`.
+- `yield return` valida el operando contra el item type (unifica todos los yields).
+- `return v;` en un generator se rechaza (`return;` sin valor = `yield break`, permitido).
+- Verificado: `Iterator<int> G(){yield return 1; return 2;}` → `a generator cannot return a value`;
+  `Iterator<int> B(){yield return "x";}` → `generator yields ... item type is builtin:int`.
+  Registrado `TL-LANG-380` (PASS). Commit `b89900e4`.
