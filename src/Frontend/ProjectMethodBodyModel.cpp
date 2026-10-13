@@ -5040,6 +5040,16 @@ void ProjectMethodBodyModel::analyzeStatement(
                 ownershipFlowReachable_ = false;
             }
             break;
+        case ast::AstNodeKind::FunctionDeclaration:
+            // NS304-T04-F06: el parser ya produce la funcion local, pero el registro de su nombre
+            // en el scope y el analisis de su cuerpo (como callable) estan pendientes.
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "local functions are parsed but their callable registration is not yet "
+                "implemented (NS304-T04-F06)");
+            break;
         default:
             break;
     }
