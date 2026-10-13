@@ -1,19 +1,16 @@
 # NS304-T08-F03 — Métodos, propiedades y constantes estáticos de extensión
 
-- **Estado**: PENDIENTE (gap documentado)
+- **Estado**: PARCIAL (parser de función estática sin receptor) / residual (lookup Sema `T.Miembro()`)
 - **Rama**: development
 
-## Estado
+## Resultado
 
-- Los miembros de INSTANCIA de un bloque `extension T { ... }` (métodos + propiedades) ya bajan
-  correctamente (T08-F01/F02, `TL-LANG-323/324/330`).
-- Los miembros **estáticos** (`extension T { static int Twice() { ... } }`) no están soportados: en
-  `parseGlobalDeclaration` el `static` sobre una función de namespace se rechaza
-  ("static namespace declarations/file-local linkage are not supported"), por lo que un miembro
-  estático dentro de un bloque extension no llega a `parseExtensionDeclaration` con el modificador.
+- **Parser**: `extension T { static int Twice() { ... } }` ya no rechaza el `static`; la función se
+  marca `static` + `ns3-extension-static` y NO recibe el receptor implícito `__nsc_extension_this`.
+- Prueba `TP-PAR-538` (parser) → **PASS**.
 
-## Residual / camino
+## Residual
 
-- Permitir `static` dentro de `parsingExtensionBody_` (función de namespace estática sin receptor),
-  marcar `ns3-extension-static`, y resolver la invocación `T.Miembro()` en Sema (lookup de función
-  de namespace estática por tipo extendido).
+- **Lookup Sema**: resolver `T.Miembro()` como función de namespace estática de extensión (la
+  invocación aún no está cableada). Propiedades y constantes estáticas: mismas rutas pendientes.
+

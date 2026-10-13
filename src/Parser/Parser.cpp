@@ -2834,8 +2834,16 @@ ast::AstNode* Parser::parseExtensionDeclaration()
         };
         if (member != nullptr && member->kind() == ast::AstNodeKind::FunctionDeclaration)
         {
-            member->prependChild(makeReceiver());
-            member->setAuxiliaryText("ns3-extension");
+            // NS304-T08-F03: un miembro `static` no recibe el receptor implícito.
+            if (member->hasModifier(TokenKind::KwStatic))
+            {
+                member->setAuxiliaryText("ns3-extension-static");
+            }
+            else
+            {
+                member->prependChild(makeReceiver());
+                member->setAuxiliaryText("ns3-extension");
+            }
             extension->addChild(member);
         }
         else if (member != nullptr &&
@@ -3684,7 +3692,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         synchronizeGlobal();
         return nullptr;
     }
-    else if (isAbstract || isSealed || isStatic)
+    else if (isAbstract || isSealed || (isStatic && !parsingExtensionBody_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3715,6 +3723,12 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         {
             declaration->setTokenKind(accessibility);
             declaration->addModifier(accessibility);
+        }
+        // NS304-T08-F03: `static` dentro de un bloque extension marca una función de namespace
+        // estática (sin receptor implícito); fuera de extensiones sigue rechazado arriba.
+        if (declaration != nullptr && isStatic && parsingExtensionBody_)
+        {
+            declaration->addModifier(TokenKind::KwStatic);
         }
     }
     else

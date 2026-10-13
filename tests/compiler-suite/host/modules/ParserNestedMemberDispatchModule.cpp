@@ -294,6 +294,20 @@ void testInvalidMemberRecovery(TestContext& context)
         "TP-PAR-221 invalid member must diagnose and preserve the following declaration");
 }
 
+// Verifies a `static` extension member does not receive an implicit receiver. Complexity is O(n).
+void testStaticExtensionMember(TestContext& context)
+{
+    ParserFixture fixture("extension int { static int Twice() { return 7; } }");
+    AstNode* root = fixture.parse();
+    AstNode* extension = root != nullptr && !root->children().empty() ? root->children()[0] : nullptr;
+    AstNode* function = extension != nullptr && !extension->children().empty() ? extension->children()[0] : nullptr;
+    context.expect(extension != nullptr && function != nullptr &&
+            function->hasModifier(TokenKind::KwStatic) &&
+            (function->children().empty() ||
+             function->children()[0]->text() != "__nsc_extension_this"),
+        "TP-PAR-538 a static extension member must not receive an implicit receiver");
+}
+
 // Verifies the enclosing right brace is consumed by its owner, never as a member. Complexity is O(n).
 void testTypeClose(TestContext& context)
 {
@@ -332,5 +346,6 @@ void registerParserNestedMemberDispatchModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-220", "CP-PAR-021", testExtensionMember);
     addCase(registry, "TP-PAR-221", "CP-PAR-021", testInvalidMemberRecovery);
     addCase(registry, "TP-PAR-222", "CP-PAR-021", testTypeClose);
+    addCase(registry, "TP-PAR-538", "CP-PAR-021", testStaticExtensionMember);
 }
 }
