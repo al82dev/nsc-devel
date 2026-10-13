@@ -1,6 +1,6 @@
 # NS304-T07-F02 — Máquina única para await + yield
 
-- **Estado**: PARCIAL (MoveNextAsync ready-future + tramo síncrono cerrados; await dentro del cuerpo generator pendiente)
+- **Estado**: CERRADO (máquina única await+yield productiva end-to-end)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -68,6 +68,18 @@ Queda: **`MoveNextAsync`** (el future de la demanda) + el `await` en la misma m�
   Commit `6639b4db`.
 
 Queda: **`await` dentro del cuerpo generator** (la máquina única await+yield con suspend/resume).
+
+### Máquina única cerrada — verificado 2026-10-13
+
+- `splitAsyncGeneratorFunction`: constructor + `Gen$moveNext` (future, `frame=self`) +
+  `Gen$moveNext$poll` (void) + `Gen$drop`.
+- `AsyncYieldValue` (nodo + LLVM): el poll escribe item + `result`/`state` del future de demanda +
+  el estado de resume; suspende/reanuda en cada yield.
+- `MoveNextAsync` llama `moveNextFn` por el slot sret (retorno future).
+- facade: `MoveNext`/`GetEnumerator` sólo en el iterator síncrono; el async-iterator consume por
+  `MoveNextAsync`.
+- Verificado: `{ int v = await Fetch(); yield return v; }` → sum=42 (máquina única). Registrado
+  `TL-LANG-387` (PASS). Commits `6178c5d1`, `09e0f56b`.
 
 ### ABI del future-de-demanda (recomendado)
 
