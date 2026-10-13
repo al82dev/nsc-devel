@@ -2267,6 +2267,15 @@ void ProjectGenericModel::processNode(
             cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict);
     }
 
+    // MatchExpression arm conditions and bindings use MatchValueExpression to read the one-time
+    // governing value. Preserve its structural source type lexically so body-only demands can
+    // materialize closed view types before Sema. Match statements expose an ordinary hidden local.
+    if (node->kind() == ast::AstNodeKind::MatchExpression && node->first() != nullptr)
+    {
+        if (ast::TypeSyntax* governingType = inferExpressionType(unit, node->first(), currentScope))
+            currentScope.matchValueType = governingType;
+    }
+
     // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
     // normalized target was handled by expandAliasesInNode; materializing it here would create
     // e.g. Box<T> and leak the alias parameter T into the concrete program.
@@ -2677,6 +2686,8 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
             const auto found = scope.valueTypes.find(expression->text());
             return found == scope.valueTypes.end() ? nullptr : clone(found->second);
         }
+        case ast::AstNodeKind::MatchValueExpression:
+            return clone(scope.matchValueType);
         case ast::AstNodeKind::MemberExpression:
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::ThisExpression)

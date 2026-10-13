@@ -303,6 +303,10 @@ private:
         // Item 277. Types written on parameters, fields, and preceding locals are sufficient for
         // local generic inference without running a second semantic pipeline before Stage 44.
         std::unordered_map<std::string, const ast::TypeSyntax*> valueTypes;
+        // MatchExpression lowers every arm receiver to MatchValueExpression. The generic prepass
+        // carries the governing source type lexically so those synthetic receivers remain typed
+        // before the definitive body model creates its single-evaluation storage.
+        const ast::TypeSyntax* matchValueType = nullptr;
         // T08-F04. Generic lambdas are lexical templates, not members and therefore not entries
         // in the project-wide template catalogue. The generic pass closes each invocation in
         // the lexical scope where the `var` binding was introduced.
