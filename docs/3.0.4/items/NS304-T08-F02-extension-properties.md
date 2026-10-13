@@ -14,6 +14,6 @@
 
 ## Residual
 
-- **Setter**: el accessor `set_` ya se baja a `FunctionDeclaration` con receptor + value (`f6916a13`).
-  Falta la RESOLUCION de asignacion `21.Doubled = x` → setter (el camino de `analyzeAssignment`
-  debe derivar `set_Doubled` y ligar la llamada). El getter por referencia tambien queda pendiente.
+- **Setter (método)**: el accessor `set_` ya se baja a `FunctionDeclaration` y es invocable como
+  método `21.set_Doubled(42)` (`TL-LANG-330`). La sintaxis de asignación `21.Doubled = x` y el
+  getter por referencia quedan pendientes (requieren la rama de asignación→setter).
