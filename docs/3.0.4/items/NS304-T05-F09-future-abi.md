@@ -1,6 +1,6 @@
 # NS304-T05-F09 — ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular
 
-- **Estado**: PARCIAL (Opción A en curso: future lleva pollFn + constructor lo fija; await sobre variable pendiente)
+- **Estado**: PARCIAL (Opción A cerrada en su núcleo: pollFn + constructor + await sobre variable; Future<T> nombrable + resume/drop + intermodular pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -51,6 +51,18 @@ primitiva pendiente. Es una decisión de ABI material (F09); se registra para Al
 Queda (Opción A, consumidor): el `await` debe **llamar `pollFn`** (hoy usa `calleeName`), `Future<T>`
 nombrable (map a `future:<T>`) y `await` sobre **variable** — el hueco demostrado que consume el
 pollFn.
+
+### Cierre parcial (consumidor) — verificado 2026-10-13
+
+- El HIR de `await` acepta un operando **variable** con tipo future (no sólo call directo);
+  `calleeName` vacío marca el camino `pollFn`.
+- El blocking await y el suspend/resume await cargan el poll desde `pollFn` (campo 3) y lo llaman
+  con la firma reconstruida `void(ptr)`.
+- Verificado: `var f = Read(); await f` resuelve por `pollFn` (exit 5/6). Registrado `TL-LANG-377`
+  (PASS). Commit `f2f38892`.
+
+Queda: `Future<T>` **nombrable** (map en name lookup a `future:<T>`), el runtime **resume/drop**
+explícito y el **consumo intermodular** (future opaco cruzando módulos). Esos son la "cola" del ABI.
 
 ## Prueba puntual
 
