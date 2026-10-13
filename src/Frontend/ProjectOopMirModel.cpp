@@ -1211,7 +1211,9 @@ bool ProjectOopMirModel::build(
     std::vector<std::string> iteratorKeys;
     const auto collectIteratorKey = [&](std::string_view key)
     {
-        if (language::iteratorInnerTypeKey(key).has_value()) iteratorKeys.emplace_back(key);
+        if (language::iteratorInnerTypeKey(key).has_value() ||
+            language::asyncIteratorInnerTypeKey(key).has_value())
+            iteratorKeys.emplace_back(key);
     };
     const auto collectIteratorNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
     {
@@ -1232,7 +1234,8 @@ bool ProjectOopMirModel::build(
     iteratorKeys.erase(std::unique(iteratorKeys.begin(), iteratorKeys.end()), iteratorKeys.end());
     for (const std::string& key : iteratorKeys)
     {
-        const std::optional<std::string_view> item = language::iteratorInnerTypeKey(key);
+        auto item = language::iteratorInnerTypeKey(key);
+        if (!item.has_value()) item = language::asyncIteratorInnerTypeKey(key);
         const std::optional<std::pair<std::uint64_t, std::uint64_t>> itemLayout =
             (item.has_value() && *item == "builtin:void")
                 ? std::optional<std::pair<std::uint64_t, std::uint64_t>>(
