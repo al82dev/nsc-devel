@@ -1,6 +1,6 @@
 # NS304-T06-F02 — AST y semántica de contexto de generator
 
-- **Estado**: AUDITADO (pendiente: marcar generator, inferir item, rechazar return+yield; decisión de surface)
+- **Estado**: PARCIAL (surface `Iterator<T>` + contexto yield resueltos; marcado Effect::Generator + unificar item + rechazo return/yield pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -67,3 +67,17 @@ yield return 1; return 2; }` debe rechazar el return ordinario.
 
 F02 es la base semántica; el state machine productivo es F03. El item-type y el marcado son el hueco
 demostrable de F02 sin tocar el lowering.
+
+### Cierre parcial (surface + contexto) — verificado 2026-10-13
+
+- `IterationSemantics`: `iteratorTypeKey(T)` → `iterator:<T>` + `iteratorInnerTypeKey` inverso.
+- `Effect::Generator` añadido (enum + `effectName`).
+- `Iterator<T>` es surface estructural (parser known-type, `canonicalTypeKey`, generic model, name
+  lookup) — mismo patrón que `Future<T>`.
+- El handling de `yield` distingue: return type `Iterator<T>` → diagnostic F03 (`generator state
+  machine lowering`); callable ordinario → diagnostic de contexto (`yield requires a generator`).
+- Verificado: `int M(){yield return 1;}` → contexto; `Iterator<int> Gen(){yield return 42;}` → F03.
+  Registrado `TL-LANG-379` (PASS) + `TL-LANG-329` actualizado. Commit `e8eca146`.
+
+Queda: **marcar** el callable con `Effect::Generator` (el flag está, no se setea), **unificar** todos
+los yields a un item-type y **rechazar** `return v;` en un generator.
