@@ -3328,7 +3328,8 @@ class Program
     {
         int[] a = [1, 2, 3];
         var b = [4, 5];
-        return a[0] + a[1] + a[2] + b[0] + b[1];
+        var d = [1, 2.0];
+        return a[0] + a[1] + a[2] + b[0] + b[1] + (int)(d[0] + d[1]);
     }
 }
 )ns");
@@ -3341,8 +3342,9 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 15,
-                "TL-LANG-347 a[0]+a[1]+a[2]+b[0]+b[1] must be 15: " + result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 18,
+                "TL-LANG-347 sum with heterogeneous [1,2.0] (common type) must be 18: " +
+                    result.error + result.output);
         }});
 }
 

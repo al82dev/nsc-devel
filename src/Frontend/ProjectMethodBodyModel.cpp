@@ -12919,7 +12919,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             else if (!elementValues.empty())
             {
+                // NS304-T09-F05: inferencia abierta — tipo numérico común de los elementos.
                 element = elementValues.front().typeKey;
+                for (std::size_t index = 1; index < elementValues.size() && element.has_value(); ++index)
+                {
+                    element = ProjectTypeConversion::commonNumericType(
+                        *element,
+                        elementValues[index].typeKey,
+                        elementValues[index - 1].integerConstant,
+                        elementValues[index].integerConstant);
+                }
             }
             if (!element.has_value() || *element == "builtin:void")
             {
