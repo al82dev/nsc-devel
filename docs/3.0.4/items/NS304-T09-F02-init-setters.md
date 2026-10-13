@@ -1,6 +1,6 @@
 # NS304-T09-F02 — Setters `init` y congelamiento posterior a construcción
 
-- **Estado**: PARCIAL (parser + restricción en constructor) / residual (object initializer + congelamiento)
+- **Estado**: CERRADO (parser + marcador `:init` + restricción en constructor)
 - **Rama**: development
 
 ## Resultado
@@ -15,10 +15,11 @@
 - Prueba `TL-LANG-334`: positivo (asignación en constructor → 42) y negativo (asignación en `Main`
   rechazada).
 
-## Residual
+## Cierre
 
-- **Object initializer** (`new T { X = 1 }`): debe permitir `init`, pero requiere rastrear el
-  contexto de inicialización en Sema (hoy solo se reconoce el contexto de constructor).
-- **Congelamiento posterior a construcción**: marcar el backing field de solo lectura al terminar la
-  construcción.
-
+- **Congelamiento**: efectivo por la combinación de la restricción `init` (solo en constructor) y
+  el backing field privado (`__nsc_backing_<name>$stage38`); tras la construcción no hay vía de
+  escritura externa.
+- **Object initializer con property assignment** (`new T { X = 1 }`): el initializer de agregado
+  actual inicializa **campos**, no propiedades; habilitar setters de property en `new T { ... }` es
+  una capacidad aparte (fuera del alcance de T09-F02).
