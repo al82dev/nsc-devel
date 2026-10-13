@@ -1,6 +1,8 @@
 # NS304-T04-F04 — Parámetros opcionales y defaults consteval en lambdas
 
 - **Estado**: CERRADO (call-site default application)
+- **Validación secuencial**: confirmado en campaña; `TL-LANG-317` PASS + guards
+  `TL-LANG-314/316/319/327` PASS (2026-10-13). Avanza a 34/147.
 - **Rama**: development
 
 ## Resultado (validado)
