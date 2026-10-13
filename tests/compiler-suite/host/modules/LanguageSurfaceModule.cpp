@@ -2550,14 +2550,18 @@ class Program
         }
     }
 
-    public static int Main()
+    private static int Score(Point p)
     {
-        Point p = new Point(3, 4);
         return match(p)
         {
-            Point(x, y) => x + y,
+            Point(3, y) => 3 + y,
             _ => 0
         };
+    }
+
+    public static int Main()
+    {
+        return Score(new Point(3, 4)) + Score(new Point(2, 4));
     }
 }
 )ns");
@@ -2574,6 +2578,93 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 7,
                 "TL-LANG-322 positional deconstruction must bind elements: " +
                     result.error + result.output);
+
+            const std::filesystem::path unaryProject = products.writeProject(
+                "T03UnaryPositional", "Exe", R"ns(
+class Program
+{
+    public struct Scalar
+    {
+        public int Value;
+        public Scalar(int value) { Value = value; }
+        public (int,) Deconstruct() { return (Value,); }
+    }
+
+    public static int Main()
+    {
+        Scalar value = new Scalar(42);
+        return match(value) { Scalar(item) => item, _ => 0 };
+    }
+}
+)ns");
+            const std::filesystem::path unaryExecutable =
+                products.directory() / "T03UnaryPositional.exe";
+            const external_program_support::Result unaryEmitted = emitT01Product(
+                L"--emit-project-oop-exe", unaryProject, unaryExecutable, products.directory());
+            context.expect(unaryEmitted.started && unaryEmitted.exitCode == 0 &&
+                    unaryEmitted.error.empty(),
+                "TL-LANG-322 a unary positional pattern must compile: " +
+                    unaryEmitted.error + unaryEmitted.output);
+            if (unaryEmitted.started && unaryEmitted.exitCode == 0)
+            {
+                const auto unaryResult = external_program_support::run(
+                    unaryExecutable, {}, {}, products.directory());
+                context.expect(unaryResult.started && unaryResult.error.empty() &&
+                        unaryResult.exitCode == 42,
+                    "TL-LANG-322 a unary positional pattern must bind its element: " +
+                        unaryResult.error + unaryResult.output);
+            }
+
+            const auto expectRejected = [&](std::string_view projectName,
+                                            std::string_view source,
+                                            std::string_view diagnostic) {
+                const std::filesystem::path rejectedProject = products.writeProject(
+                    projectName, "Exe", source);
+                const external_program_support::Result rejected = runT01Compiler(
+                    {L"--check-project-method-bodies", rejectedProject.wstring()},
+                    products.directory());
+                context.expect(rejected.started && rejected.exitCode != 0 &&
+                        rejected.output.find(diagnostic) != std::string::npos,
+                    "TL-LANG-322 invalid positional pattern must fail with '" +
+                        std::string(diagnostic) + "': " + rejected.error + rejected.output);
+            };
+
+            expectRejected("T03WrongPositionalType", R"ns(
+struct Point { public (int, int) Deconstruct() { return (1, 2); } }
+struct Other { public (int, int) Deconstruct() { return (1, 2); } }
+class Program
+{
+    public static int Main()
+    {
+        Point value;
+        return match(value) { Other(x, y) => x + y, _ => 0 };
+    }
+}
+)ns", "does not match governing value type");
+
+            expectRejected("T03MissingDeconstruct", R"ns(
+struct Plain { public int Value; }
+class Program
+{
+    public static int Main()
+    {
+        Plain value;
+        return match(value) { Plain(x) => x, _ => 0 };
+    }
+}
+)ns", "requires one non-static, non-virtual, parameterless Deconstruct() method");
+
+            expectRejected("T03WrongPositionalArity", R"ns(
+struct Point { public (int, int) Deconstruct() { return (1, 2); } }
+class Program
+{
+    public static int Main()
+    {
+        Point value;
+        return match(value) { Point(x) => x, _ => 0 };
+    }
+}
+)ns", "has 1 binding(s), but the tuple has 2");
         }});
 }
 

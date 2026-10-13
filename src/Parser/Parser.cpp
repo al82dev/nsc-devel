@@ -11159,7 +11159,8 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
         }
         if (consumeIf(TokenKind::LeftParen))
         {
-            // NS304-T03-F04: un payload es un variant tag; dos o mas son deconstruccion posicional.
+            // NS304-T03-F04: a known type name introduces positional deconstruction even when it
+            // has one element. Variant case names are not types and keep the tagged-union path.
             std::vector<Pattern> payloads;
             if (!at(TokenKind::RightParen))
             {
@@ -11170,7 +11171,9 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
                 }
             }
             expect(TokenKind::RightParen, "')' after variant/positional payload pattern");
-            result.kind = payloads.size() <= 1U ? PatternKind::Variant : PatternKind::Positional;
+            result.kind = knownTypeNames_.contains(result.name)
+                ? PatternKind::Positional
+                : PatternKind::Variant;
             result.children = std::move(payloads);
         }
         else
@@ -11563,17 +11566,40 @@ ast::AstNode* Parser::lowerPattern(
     }
     if (pattern.kind == PatternKind::Positional)
     {
-        // NS304-T03-F04: como el patron Tuple/List, la deconstruccion + binding van en el thenBlock.
-        ast::AstNode* thenBlock = arena_.make<ast::AstNode>(
+        // The nominal source is deconstructed exactly once. Each child is then lowered through
+        // the ordinary pattern path, so literals, relational patterns and nested patterns produce
+        // real predicates instead of an unconditional `true` arm.
+        ast::AstNode* block = arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, pattern.range);
-        if (emitBindings)
-            emitPatternBindings(pattern, source, thenBlock, temporaryPrefix);
-        thenBlock->addChild(continuation);
-        ast::AstNode* decision = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::IfStatement, pattern.range);
-        decision->setFirst(makePatternCondition(pattern, source));
-        decision->setSecond(thenBlock);
-        return decision;
+        ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
+        deconstruction->setFirst(source());
+        deconstruction->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+            pattern.range, TokenKind::Identifier, pattern.name));
+        std::vector<std::string> elementNames;
+        elementNames.reserve(pattern.children.size());
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = std::string(temporaryPrefix) + "_pos_" +
+                std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
+            elementNames.push_back(name);
+            deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        }
+        block->addChild(deconstruction);
+
+        ast::AstNode* next = continuation;
+        for (std::size_t index = pattern.children.size(); index > 0; --index)
+        {
+            const std::string name = elementNames[index - 1];
+            PatternExpressionFactory element = [&, name]
+            {
+                return makeIdentifierExpression(pattern.range, name);
+            };
+            next = lowerPattern(
+                pattern.children[index - 1], element, next, temporaryPrefix, emitBindings);
+        }
+        block->addChild(next);
+        return block;
     }
     if (pattern.kind == PatternKind::Variant)
     {
@@ -11724,11 +11750,13 @@ void Parser::emitPatternBindings(
     }
     if (pattern.kind == PatternKind::Positional)
     {
-        // NS304-T03-F04: deconstruye el valor nominal via Deconstruct() (bindDeconstructionSource
-        // resuelve el Deconstruct y devuelve la tupla).
+        // Deconstruct once inside the selected arm. The arm guard runs after its declarations, so
+        // child predicates can consume these temporaries without repeating a stateful Deconstruct.
         ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
             ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
         deconstruction->setFirst(source());
+        deconstruction->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+            pattern.range, TokenKind::Identifier, pattern.name));
         std::vector<std::string> elementNames;
         for (std::size_t index = 0; index < pattern.children.size(); ++index)
         {
@@ -11738,6 +11766,7 @@ void Parser::emitPatternBindings(
             deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
         }
         destination->addChild(deconstruction);
+        ast::AstNode* positionalCondition = makeBooleanLiteral(pattern.range, true);
         for (std::size_t index = 0; index < pattern.children.size(); ++index)
         {
             const std::string name = elementNames[index];
@@ -11747,6 +11776,19 @@ void Parser::emitPatternBindings(
             };
             emitPatternBindings(
                 pattern.children[index], element, destination, temporaryPrefix);
+            positionalCondition = makeBinaryExpression(
+                TokenKind::AmpAmp,
+                positionalCondition,
+                makePatternCondition(pattern.children[index], element));
+        }
+        if (destination->kind() == ast::AstNodeKind::MatchArmExpression)
+        {
+            if (ast::AstNode* guard = destination->second(); guard != nullptr)
+            {
+                positionalCondition = makeBinaryExpression(
+                    TokenKind::AmpAmp, positionalCondition, guard);
+            }
+            destination->setSecond(positionalCondition);
         }
         return;
     }

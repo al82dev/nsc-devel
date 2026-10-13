@@ -128,14 +128,19 @@ void testVariantPayloads(TestContext& context)
 {
     ParserFixture empty("None");
     ParserFixture payload("Some(var value)");
+    ParserFixture positional("Point(var value)", {"Point"});
     const Parser::Pattern first = empty.parser().parsePattern(false);
     const Parser::Pattern second = payload.parser().parsePattern(false);
+    const Parser::Pattern third = positional.parser().parsePattern(false);
     context.expect(first.kind == Parser::PatternKind::Variant && first.name == "None" &&
             first.children.empty() && second.kind == Parser::PatternKind::Variant &&
             second.name == "Some" && second.children.size() == 1 &&
             second.children[0].kind == Parser::PatternKind::Binding &&
-            second.children[0].name == "value",
-        "TP-PAR-357 variant patterns must preserve case name and optional payload");
+            second.children[0].name == "value" &&
+            third.kind == Parser::PatternKind::Positional && third.name == "Point" &&
+            third.children.size() == 1 &&
+            third.children[0].kind == Parser::PatternKind::Binding,
+        "TP-PAR-357 variant and unary positional patterns must remain unambiguous");
 }
 
 void testExclusiveAndInclusiveRanges(TestContext& context)

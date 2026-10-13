@@ -4509,6 +4509,22 @@ void ProjectMethodBodyModel::analyzeStatement(
             const ExpressionResult source = analyzeExpression(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (!source.valid) break;
+            if (statement->typeSyntax() != nullptr)
+            {
+                if (memberModel_ == nullptr || nameLookup_ == nullptr) break;
+                const std::string positionalTypeKey =
+                    memberModel_->canonicalTypeKey(statement->typeSyntax(), *nameLookup_);
+                if (positionalTypeKey != source.typeKey)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->range(),
+                        "positional pattern type '" + positionalTypeKey +
+                            "' does not match governing value type '" + source.typeKey + "'");
+                    break;
+                }
+            }
             const std::optional<MethodDeconstructionBinding> deconstruction =
                 bindDeconstructionSource(
                     statement, statement->first(), source, methodMemberOrdinal, diagnostics);
