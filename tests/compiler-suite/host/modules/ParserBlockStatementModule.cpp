@@ -83,7 +83,7 @@ constexpr std::array<StatementExpectation, 24> kStatements{{
     {"must_tail return 0;", AstNodeKind::ReturnStatement},
     {"defer [] { }", AstNodeKind::TryStatement},
     {"match (0) { _ => { } }", AstNodeKind::BlockStatement},
-    {"yield return 1;", AstNodeKind::BlockStatement},
+    {"yield return 1;", AstNodeKind::YieldReturnStatement},
 }};
 
 void testStatementKeywordDispatch(TestContext& context)

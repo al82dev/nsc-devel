@@ -114,10 +114,10 @@ void testYieldOutsideComprehension(TestContext& context)
 {
     ParserFixture fixture("yield return value;");
     AstNode* const node = fixture.parser().parseStatement();
-    context.expect(node != nullptr && node->kind() == AstNodeKind::BlockStatement &&
-            diagnosticCount(
-                fixture.diagnostics(), DiagnosticId::NS3049DeferredLanguageSurface) == 1,
-        "TP-PAR-389 yield outside comprehension must diagnose the deferred generator surface");
+    context.expect(node != nullptr && node->kind() == AstNodeKind::YieldReturnStatement &&
+            node->first() != nullptr && node->first()->text() == "value" &&
+            fixture.diagnostics().diagnostics().empty(),
+        "TP-PAR-389 yield outside a comprehension must parse as a YieldReturnStatement");
 }
 
 void testNestedComprehensionContexts(TestContext& context)

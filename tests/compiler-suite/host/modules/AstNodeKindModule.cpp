@@ -25,7 +25,7 @@ struct ExpectedAstKind final
 
 // Independent CA-AST-003 oracle: order and spelling are intentionally explicit so a product-side
 // reorder, insertion, or rename cannot update the expected values implicitly.
-constexpr std::array<ExpectedAstKind, 100> ExpectedAstKinds = {{
+constexpr std::array<ExpectedAstKind, 103> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -126,6 +126,9 @@ constexpr std::array<ExpectedAstKind, 100> ExpectedAstKinds = {{
     {AstNodeKind::MatchArmExpression, "MatchArmExpression"},
     {AstNodeKind::MatchValueExpression, "MatchValueExpression"},
     {AstNodeKind::LoopExpression, "LoopExpression"},
+    {AstNodeKind::AwaitExpression, "AwaitExpression"},
+    {AstNodeKind::YieldReturnStatement, "YieldReturnStatement"},
+    {AstNodeKind::YieldBreakStatement, "YieldBreakStatement"},
 }};
 
 constexpr std::size_t HistoricalKindCount = 83;
@@ -187,7 +190,7 @@ void testUpperUnknownValues(TestContext& context)
     const auto maximumValue = static_cast<AstNodeKind>(std::numeric_limits<Underlying>::max());
     context.expect(nativesharp::ast::astNodeKindName(immediateUpper) == "UnknownAstNode" &&
             nativesharp::ast::astNodeKindName(maximumValue) == "UnknownAstNode",
-        "TA-AST-023 ordinals 100 and underlying maximum must map to UnknownAstNode");
+        "TA-AST-023 the first out-of-domain ordinal and underlying maximum must map to UnknownAstNode");
 }
 
 // Separately freezes every pre-null-coalescing identity preserved from the historical catalog.
@@ -210,8 +213,8 @@ void testAppendedKindOrder(TestContext& context)
 {
     using Underlying = std::underlying_type_t<AstNodeKind>;
     context.expect(ExpectedAstKinds[HistoricalKindCount].kind == AstNodeKind::NullCoalescingExpression &&
-            ExpectedAstKinds.back().kind == AstNodeKind::LoopExpression,
-        "TA-AST-025 appended range must remain NullCoalescingExpression through LoopExpression");
+            ExpectedAstKinds.back().kind == AstNodeKind::YieldBreakStatement,
+        "TA-AST-025 appended range must remain NullCoalescingExpression through YieldBreakStatement");
     for (std::size_t index = HistoricalKindCount; index < ExpectedAstKinds.size(); ++index)
     {
         context.expect(static_cast<Underlying>(ExpectedAstKinds[index].kind) ==
