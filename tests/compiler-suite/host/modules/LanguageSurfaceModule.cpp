@@ -3478,6 +3478,40 @@ class Program
         }});
 }
 
+void registerAsyncFutureTypeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-378", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "future", "type", "opaque", "nameable"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncFutureType", "Exe", R"ns(
+class Program
+{
+    public static async int Read() { return 5; }
+
+    public static int Main()
+    {
+        Future<int> future = Read();
+        return await future;
+    }
+}
+)ns", "");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncFutureType.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-378 Future<T> must name the opaque future surface: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-378 Future<T> must map to future:<T> and be awaitable: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncMethodMarkerCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-328", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5180,6 +5214,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncThrowsCase(registry);
     registerAsyncThrowErrorCase(registry);
     registerAsyncAwaitVariableCase(registry);
+    registerAsyncFutureTypeCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
