@@ -7443,6 +7443,57 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 return node;
             }
+            // NS304-T09-F05: spread multi-elemento `[..a, 1]` — la fuente del spread es el primer
+            // hijo (array), los literales siguen; el backend calcula la cuenta y hace el memcpy.
+            bool spreadSeen = false;
+            for (const ast::AstNode* child : expression->children())
+            {
+                if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+                {
+                    spreadSeen = true;
+                    break;
+                }
+            }
+            if (spreadSeen)
+            {
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->hasSpreadSource = true;
+                for (const ast::AstNode* initializer : expression->children())
+                {
+                    if (initializer != nullptr &&
+                        initializer->kind() == ast::AstNodeKind::SpreadElementExpression)
+                    {
+                        auto source = lowerExpression(
+                            initializer->first(), memberOrdinal, false, error);
+                        if (source == nullptr) return nullptr;
+                        node->children.push_back(std::move(source));
+                        continue;
+                    }
+                    auto value = lowerExpression(initializer, memberOrdinal, false, error);
+                    if (value == nullptr) return nullptr;
+                    const MethodExpressionTypeBinding* valueType = expressionType(initializer);
+                    if (valueType == nullptr)
+                    {
+                        error = "NSC-LIMIT-017 array spread element has no semantic type";
+                        return nullptr;
+                    }
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        valueType->typeKey, core->elementTypeKey, valueType->integerConstant);
+                    if (!conversion.exists())
+                    {
+                        error = "NSC-LIMIT-017 array spread element lost its validated conversion";
+                        return nullptr;
+                    }
+                    if (conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        value = wrapImplicitConversion(std::move(value), conversion, initializer);
+                    }
+                    node->children.push_back(std::move(value));
+                }
+                return node;
+            }
             const bool inferredInitializer =
                 expression->auxiliaryText() == "inferred-array-initializer";
             std::unique_ptr<ProjectOopHirNode> count;

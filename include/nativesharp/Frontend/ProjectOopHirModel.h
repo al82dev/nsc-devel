@@ -556,6 +556,8 @@ struct ProjectOopHirNode final
     std::uint64_t bitStorageAlignment = 1;
     double floatingValue = 0.0;
     bool booleanValue = false;
+    // NS304-T09-F05: array allocation spread — el primer hijo es la fuente del spread (array).
+    bool hasSpreadSource = false;
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;

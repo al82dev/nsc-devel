@@ -1936,6 +1936,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->bitStorageSize = node->bitStorageSize;
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
+    result->hasSpreadSource = node->hasSpreadSource;
     result->referenceLocal = node->referenceLocal;
     result->staticLocal = node->staticLocal;
     result->pinnedStorage = node->pinnedStorage;

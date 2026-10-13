@@ -12922,18 +12922,102 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.valid = false;
                 break;
             }
-            // NS304-T09-F05 residual: el spread multi-elemento se parsea pero su aplanado aún no se baja.
-            for (const ast::AstNode* child : expression->children())
+            // NS304-T09-F05: spread multi-elemento `[..a, 1]` — el spread aporta el tipo de elemento.
             {
-                if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+                bool hasSpread = false;
+                std::string spreadElementType;
+                for (const ast::AstNode* child : expression->children())
                 {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        child->range(),
-                        "spread elements in collection expressions are not yet supported");
-                    result.valid = false;
-                    return result;
+                    if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+                    {
+                        hasSpread = true;
+                        if (child->first() == nullptr)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                child->range(),
+                                "a collection expression spread requires a source expression");
+                            result.valid = false;
+                            return result;
+                        }
+                        const ExpressionResult spread = analyzeExpression(
+                            child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        if (!spread.valid || !ProjectTypeConversion::isNativeArray(spread.typeKey))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                child->range(),
+                                "a collection expression spread requires a native array source");
+                            result.valid = false;
+                            return result;
+                        }
+                        const std::optional<std::string> element =
+                            ProjectTypeConversion::nativeArrayElementType(spread.typeKey);
+                        if (!element.has_value())
+                        {
+                            result.valid = false;
+                            return result;
+                        }
+                        spreadElementType = *element;
+                    }
+                }
+                if (hasSpread)
+                {
+                    std::optional<std::string> element;
+                    if (ProjectTypeConversion::isNativeArray(explicitTarget))
+                        element = ProjectTypeConversion::nativeArrayElementType(explicitTarget);
+                    else if (!spreadElementType.empty())
+                        element = spreadElementType;
+                    if (!element.has_value() || *element == "builtin:void")
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "a collection expression spread requires a native array target or element type");
+                        result.valid = false;
+                        return result;
+                    }
+                    bool elementsValid = true;
+                    for (const ast::AstNode* initializer : expression->children())
+                    {
+                        if (initializer == nullptr ||
+                            initializer->kind() == ast::AstNodeKind::SpreadElementExpression)
+                        {
+                            continue;
+                        }
+                        const ExpressionResult value = analyzeExpression(
+                            initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                            false, false, true);
+                        if (!value.valid || !classifyImplicit(
+                                value.typeKey, *element, value.integerConstant).exists())
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidConversion,
+                                diagnostics::DiagnosticSeverity::Error,
+                                initializer->range(),
+                                "collection expression element is not implicitly convertible to '" +
+                                    *element + "'");
+                            elementsValid = false;
+                        }
+                    }
+                    result.typeKey = *element + "[]";
+                    result.valid = elementsValid;
+                    if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
+                    if (result.valid)
+                    {
+                        coreBindings_.push_back(MethodCoreBinding{
+                            MethodCoreOperationKind::ArrayAllocation,
+                            expression,
+                            methodMemberOrdinal,
+                            scopeOrdinal,
+                            result.typeKey,
+                            *element,
+                            false, std::nullopt, std::nullopt});
+                    }
+                    break;
                 }
             }
             std::vector<ExpressionResult> elementValues;

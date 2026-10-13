@@ -13512,15 +13512,33 @@ private:
     {
         if (node->children.empty() || node->immediate == 0 || node->alignment == 0)
             return failValue(error, "Stage 41 array allocation has invalid MIR layout/count");
-        if (!node->booleanValue && node->children.size() != 1)
+        if (!node->booleanValue && !node->hasSpreadSource && node->children.size() != 1)
             return failValue(error, "Stage 41 counted array allocation cannot carry initializer elements");
-        LLVMValueRef count = normalizeNativeIndex(node->children.front().get(), error);
-        if (count == nullptr) return nullptr;
-        if (isSignedInteger(node->children.front()->typeKey))
+        LLVMValueRef count;
+        LLVMValueRef spreadSource = nullptr;
+        LLVMValueRef spreadLength = nullptr;
+        if (node->hasSpreadSource)
         {
-            LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
-            LLVMValueRef nonNegative = LLVMBuildICmp(builder_, LLVMIntSGE, count, zero, "array.count.nonnegative");
-            if (!emitGuard(nonNegative, LlvmTrapReason::AllocationSizeOverflow, "array.count", error)) return nullptr;
+            // NS304-T09-F05: children[0] es la fuente del spread (array); la cuenta es su Length
+            // más los literales restantes.
+            spreadSource = lowerExpression(node->children[0].get(), error);
+            if (spreadSource == nullptr) return nullptr;
+            spreadLength = LLVMBuildLoad2(
+                builder_, LLVMInt64TypeInContext(context_), spreadSource, "array.spread.length");
+            LLVMValueRef literalCount = LLVMConstInt(
+                LLVMInt64TypeInContext(context_), node->children.size() - 1U, 0);
+            count = LLVMBuildAdd(builder_, spreadLength, literalCount, "array.spread.count");
+        }
+        else
+        {
+            count = normalizeNativeIndex(node->children.front().get(), error);
+            if (count == nullptr) return nullptr;
+            if (isSignedInteger(node->children.front()->typeKey))
+            {
+                LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                LLVMValueRef nonNegative = LLVMBuildICmp(builder_, LLVMIntSGE, count, zero, "array.count.nonnegative");
+                if (!emitGuard(nonNegative, LlvmTrapReason::AllocationSizeOverflow, "array.count", error)) return nullptr;
+            }
         }
         const std::uint64_t dataOffset = (8U + node->alignment - 1U) / node->alignment * node->alignment;
         const std::uint64_t storageMaxCount = (UINT64_MAX - dataOffset) / node->immediate;
@@ -13563,12 +13581,45 @@ private:
         std::vector<LLVMTypeRef> sourceParameterTypes;
         sourceArguments.reserve(node->children.size() - 1);
         sourceParameterTypes.reserve(node->children.size() - 1);
+        if (node->hasSpreadSource)
+        {
+            // NS304-T09-F05: copia la data del spread (children[0]) al inicio del nuevo array.
+            LLVMValueRef destData = byteOffset(memory, dataOffset, "array.spread.dest");
+            LLVMValueRef sourceData = byteOffset(spreadSource, dataOffset, "array.spread.source");
+            LLVMValueRef sourceBytes = LLVMBuildMul(
+                builder_, spreadLength,
+                LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                "array.spread.bytes");
+            if (!emitMemcpyBytes(destData, sourceData, sourceBytes, "array.spread.copy", error))
+                return nullptr;
+        }
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
-            const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
-            LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
+            LLVMValueRef address;
+            if (node->hasSpreadSource)
+            {
+                // El literal children[index] va al elemento spreadLength + (index-1).
+                LLVMValueRef literalIndex = LLVMConstInt(
+                    LLVMInt64TypeInContext(context_), index - 1U, 0);
+                LLVMValueRef elementIndex = LLVMBuildAdd(
+                    builder_, spreadLength, literalIndex, "array.literal.index");
+                LLVMValueRef byteBase = LLVMBuildMul(
+                    builder_, elementIndex,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                    "array.literal.bytebase");
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, byteBase,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
+                    "array.literal.offset");
+                address = dynamicByteOffset(memory, offset, "array.init.element.addr");
+            }
+            else
+            {
+                const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
+                address = byteOffset(memory, bytePosition, "array.init.element.addr");
+            }
             LLVMBuildStore(builder_, value, address);
         }
         LLVMBuildBr(builder_, mergeBlock);
