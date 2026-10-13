@@ -22,6 +22,9 @@ struct OwnershipFlowSnapshot final
     std::vector<std::uint8_t> parameterFlags;
     std::unordered_set<std::string> partiallyMovedPlaces;
     std::unordered_set<std::string> maybePartiallyMovedPlaces;
+    std::unordered_set<std::size_t> assignedRequiredFields;
+    bool hasRequiredConstructorExit = false;
+    std::unordered_set<std::size_t> requiredConstructorExitAssignments;
     std::vector<OwnershipFlowStorageFacts> storageFacts;
 };
 }

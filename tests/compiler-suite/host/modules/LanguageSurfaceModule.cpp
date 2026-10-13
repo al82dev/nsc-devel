@@ -3005,6 +3005,93 @@ class Program
         }});
 }
 
+void verifyRequiredMemberFlowCases(
+    TestContext& context,
+    TemporaryT01Products& products)
+{
+    const auto compile = [&](std::string_view name, std::string_view source)
+    {
+        const std::filesystem::path project = products.writeProject(
+            std::string(name), "Exe", std::string(source));
+        return emitT01Product(
+            L"--emit-project-oop-exe", project,
+            products.directory() / (std::string(name) + ".exe"), products.directory());
+    };
+    const auto expectRequiredFailure = [&](std::string_view name, std::string_view source)
+    {
+        const external_program_support::Result result = compile(name, source);
+        context.expect(result.started && result.exitCode != 0 &&
+                (result.error + result.output).find(
+                    "required field 'Value' is never assigned") != std::string::npos,
+            "TL-LANG-335 " + std::string(name) +
+                " must reject a normal exit missing Value: " + result.error + result.output);
+    };
+
+    expectRequiredFailure("T09RequiredOneBranch", R"ns(
+class Program
+{
+    public required int Value;
+    public Program(bool assign) { if (assign) { Value = 42; } }
+    public static int Main() { return 0; }
+}
+)ns");
+
+    const external_program_support::Result bothBranches = compile(
+        "T09RequiredBothBranches", R"ns(
+class Program
+{
+    public required int Value;
+    public Program(bool first)
+    {
+        if (first) { Value = 42; } else { Value = 7; }
+    }
+    public static int Main() { Program p = new Program(true); return p.Value; }
+}
+)ns");
+    context.expect(
+        bothBranches.started && bothBranches.exitCode == 0 && bothBranches.error.empty(),
+        "TL-LANG-335 both constructor branches must assign Value: " +
+            bothBranches.error + bothBranches.output);
+
+    const external_program_support::Result terminatingBranch = compile(
+        "T09RequiredTerminatingBranch", R"ns(
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+namespace RequiredFlow
+{
+    public class ConstructionFailure : Exception { }
+    public class Program
+    {
+        public required int Value;
+        public Program(bool fail)
+        {
+            if (fail) { throw new ConstructionFailure(); }
+            Value = 42;
+        }
+        public static int Main() { Program p = new Program(false); return p.Value; }
+    }
+}
+)ns");
+    context.expect(
+        terminatingBranch.started && terminatingBranch.exitCode == 0 &&
+            terminatingBranch.error.empty(),
+        "TL-LANG-335 a throwing branch must not contaminate the normal exit: " +
+            terminatingBranch.error + terminatingBranch.output);
+
+    expectRequiredFailure("T09RequiredEarlyReturn", R"ns(
+class Program
+{
+    public required int Value;
+    public Program(bool early)
+    {
+        if (early) { return; }
+        Value = 42;
+    }
+    public static int Main() { return 0; }
+}
+)ns");
+}
+
 void registerRequiredMemberCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-335", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -3067,6 +3154,7 @@ class Program
                         "required field 'Value' is never assigned") != std::string::npos,
                 "TL-LANG-335 an unassigned required field must be rejected: " +
                     rejected.error + rejected.output);
+            verifyRequiredMemberFlowCases(context, products);
         }});
 }
 

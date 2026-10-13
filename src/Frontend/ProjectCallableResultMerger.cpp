@@ -267,6 +267,8 @@ void ProjectCallableResultMerger::merge(
         source.assignedOutParameters_.begin(), source.assignedOutParameters_.end());
     destination.assignedRequiredFields_.insert(
         source.assignedRequiredFields_.begin(), source.assignedRequiredFields_.end());
+    destination.constructorsWithNormalExit_.insert(
+        source.constructorsWithNormalExit_.begin(), source.constructorsWithNormalExit_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&

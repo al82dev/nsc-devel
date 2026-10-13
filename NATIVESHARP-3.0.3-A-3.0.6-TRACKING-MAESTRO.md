@@ -1037,7 +1037,7 @@ T00
 
 ### T09 — construcción, propiedades y eventos
 
-- [x] `NS304-T09-F01` — Implementar miembros `required` y definite initialization. *(parser `required` + flag isRequired + assignedRequiredFields_ + verifyRequiredFieldAssignments por constructor + TL-LANG-335.)*
+- [x] `NS304-T09-F01` — Implementar miembros `required` y definite initialization. *(parser `required` + flag isRequired + dataflow por camino en OwnershipFlowSnapshot + intersección de salidas normales por constructor + TL-LANG-335 PASS, 2026-10-13, 1.024 s.)*
 - [x] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser `init` + marcador `:init` + flag isInit + restricción en constructor + TL-LANG-334; congelamiento efectivo vía backing privado.)*
 - [x] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible. *(backing `__nsc_backing_<name>$stage38` determinista + layout de campo regular; ya satisfecho por síntesis existente.)*
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record + class primary ctor promote-to-fields + orden textual + TL-LANG-337/344; semántica params-in-scope C# 12 residual.)*

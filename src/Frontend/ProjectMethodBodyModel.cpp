@@ -771,8 +771,46 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     definiteAssignmentWriteTarget_ = nullptr;
     activeUnionWriteTarget_ = nullptr;
     ownershipFlowReachable_ = true;
+    activeRequiredFieldAssignments_.clear();
+    hasRequiredConstructorExit_ = false;
+    requiredConstructorExitAssignments_.clear();
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
+}
+
+void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(
+    std::size_t callableOrdinal)
+{
+    const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+    if (callable == nullptr || callable->kind != ClassMemberKind::Constructor ||
+        callable->isStatic)
+        return;
+
+    if (!hasRequiredConstructorExit_)
+    {
+        requiredConstructorExitAssignments_ = activeRequiredFieldAssignments_;
+        hasRequiredConstructorExit_ = true;
+        return;
+    }
+    std::erase_if(
+        requiredConstructorExitAssignments_,
+        [&](std::size_t fieldOrdinal)
+        {
+            return !activeRequiredFieldAssignments_.contains(fieldOrdinal);
+        });
+}
+
+void ProjectMethodBodyModel::finalizeRequiredConstructorAssignments(
+    const ClassMemberSymbol& callable,
+    std::size_t callableOrdinal)
+{
+    if (callable.kind != ClassMemberKind::Constructor || callable.isStatic) return;
+    if (ownershipFlowReachable_) recordRequiredConstructorNormalExit(callableOrdinal);
+    if (!hasRequiredConstructorExit_) return;
+
+    constructorsWithNormalExit_.insert(callableOrdinal);
+    for (const std::size_t fieldOrdinal : requiredConstructorExitAssignments_)
+        assignedRequiredFields_.insert({callableOrdinal, fieldOrdinal});
 }
 
 std::vector<std::size_t> ProjectMethodBodyModel::createOwnedParameterCleanups(
@@ -853,6 +891,7 @@ void ProjectMethodBodyModel::analyzeCallable(
     analyzeConstructorInitializer(callable, callableOrdinal, rootScopeOrdinal, diagnostics);
     analyzeBlock(
         callable.syntax->first(), callableOrdinal, rootScopeOrdinal, false, diagnostics);
+    finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(
         cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
     activeCleanupRegions_.clear();
@@ -1519,15 +1558,18 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
 void ProjectMethodBodyModel::verifyRequiredFieldAssignments(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    // NS304-T09-F01: todo campo `required` de instancia debe asignarse en CADA constructor del
-    // tipo. Se rastrean las asignaciones `X = ...`/`this.X = ...` (assignedRequiredFields_) y aqui
-    // se reportan los que quedaron sin asignar. El object initializer queda fuera de este chequeo.
+    // NS304-T09-F01: every instance `required` field must be assigned on every normal exit of
+    // every constructor. assignedRequiredFields_ contains only the finalized path intersection.
+    // Object initializers remain outside this constructor-body check.
     if (memberModel_ == nullptr) return;
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size(); ++memberOrdinal)
     {
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Constructor || member.isStatic) continue;
         if (!analyzedCallableMembers_.contains(memberOrdinal)) continue;
+        // A constructor that can only throw/terminate never produces an object whose required
+        // fields could be observed. Normal returns and fallthrough are recorded explicitly.
+        if (!constructorsWithNormalExit_.contains(memberOrdinal)) continue;
         for (std::size_t fieldOrdinal = 0; fieldOrdinal < memberModel_->members().size(); ++fieldOrdinal)
         {
             const ClassMemberSymbol& field = memberModel_->members()[fieldOrdinal];
@@ -3196,6 +3238,9 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 
     state.partiallyMovedPlaces = partiallyMovedPlaces_;
     state.maybePartiallyMovedPlaces = maybePartiallyMovedPlaces_;
+    state.assignedRequiredFields = activeRequiredFieldAssignments_;
+    state.hasRequiredConstructorExit = hasRequiredConstructorExit_;
+    state.requiredConstructorExitAssignments = requiredConstructorExitAssignments_;
 
     state.storageFacts.resize(state.parameterFlags.size() + state.localFlags.size());
     ownershipFlowStatistics_.denseStorageSlotsCaptured += state.storageFacts.size();
@@ -3261,6 +3306,9 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     }
     partiallyMovedPlaces_ = state.partiallyMovedPlaces;
     maybePartiallyMovedPlaces_ = state.maybePartiallyMovedPlaces;
+    activeRequiredFieldAssignments_ = state.assignedRequiredFields;
+    hasRequiredConstructorExit_ = state.hasRequiredConstructorExit;
+    requiredConstructorExitAssignments_ = state.requiredConstructorExitAssignments;
     // C7: a snapshot cannot say anything about a local that did not exist when it was taken, and
     // restoring one must not silently un-assign such a local. Catch clauses are the case that
     // forced this: analyzeTry captures its catch-entry state, THEN declares the exception local
@@ -3341,13 +3389,45 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     const OwnershipFlowSnapshot& right) const
 {
     ++ownershipFlowStatistics_.joinsComputed;
+    const auto mergeRequiredExits = [](
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& leftState,
+        const OwnershipFlowSnapshot& rightState)
+    {
+        result.hasRequiredConstructorExit = leftState.hasRequiredConstructorExit ||
+            rightState.hasRequiredConstructorExit;
+        if (!result.hasRequiredConstructorExit)
+        {
+            result.requiredConstructorExitAssignments.clear();
+            return;
+        }
+        if (!leftState.hasRequiredConstructorExit)
+        {
+            result.requiredConstructorExitAssignments =
+                rightState.requiredConstructorExitAssignments;
+            return;
+        }
+        result.requiredConstructorExitAssignments =
+            leftState.requiredConstructorExitAssignments;
+        if (!rightState.hasRequiredConstructorExit) return;
+        std::erase_if(
+            result.requiredConstructorExitAssignments,
+            [&](std::size_t fieldOrdinal)
+            {
+                return !rightState.requiredConstructorExitAssignments.contains(fieldOrdinal);
+            });
+    };
     if (!left.reachable)
     {
-        return right;
+        OwnershipFlowSnapshot result = right;
+        mergeRequiredExits(result, left, right);
+        return result;
     }
     if (!right.reachable)
     {
-        return left;
+        OwnershipFlowSnapshot result = left;
+        mergeRequiredExits(result, left, right);
+        return result;
     }
 
     OwnershipFlowSnapshot result;
@@ -3437,6 +3517,13 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
         right.maybePartiallyMovedPlaces,
         result.partiallyMovedPlaces,
         result.maybePartiallyMovedPlaces);
+
+    for (const std::size_t fieldOrdinal : left.assignedRequiredFields)
+    {
+        if (right.assignedRequiredFields.contains(fieldOrdinal))
+            result.assignedRequiredFields.insert(fieldOrdinal);
+    }
+    mergeRequiredExits(result, left, right);
 
     result.storageFacts.resize(result.parameterFlags.size() + result.localFlags.size());
     const auto joinStorage = [&](std::size_t storageKey)
@@ -4969,6 +5056,7 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         case ast::AstNodeKind::ReturnStatement:
             analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            recordRequiredConstructorNormalExit(methodMemberOrdinal);
             ownershipFlowReachable_ = false;
             break;
         case ast::AstNodeKind::TryStatement:
@@ -20942,7 +21030,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return {};
     }
 
-    // NS304-T09-F01: track assignments to `required` instance fields for the constructor check.
+    // NS304-T09-F01: track assignments on the active constructor path. Branch joins intersect
+    // this set, and only the final normal-exit intersection is published for verification.
     if (left.assignable && left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
         *left.assignmentMemberOrdinal < memberModel_->members().size())
     {
@@ -20951,7 +21040,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         if (targetMember.kind == ClassMemberKind::Field && targetMember.isRequired &&
             !targetMember.isStatic)
         {
-            assignedRequiredFields_.insert({methodMemberOrdinal, *left.assignmentMemberOrdinal});
+            const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+            if (callable != nullptr && callable->kind == ClassMemberKind::Constructor &&
+                !callable->isStatic)
+            {
+                activeRequiredFieldAssignments_.insert(*left.assignmentMemberOrdinal);
+            }
         }
     }
 

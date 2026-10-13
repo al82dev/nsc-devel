@@ -9,11 +9,14 @@
   lista de modificadores de miembro de clase; el campo se marca con el sufijo `required` en su
   `auxiliaryText`.
 - **Member model** (`ProjectMemberModel.h/.cpp`): flag `ClassMemberSymbol::isRequired`.
-- **Sema** (`ProjectMethodBodyModel`): `assignedRequiredFields_` rastrea `X = ...`/`this.X = ...`;
-  `verifyRequiredFieldAssignments` exige que todo campo `required` de instancia se asigne en CADA
-  constructor (se reporta el no asignado). El merger de shards propaga el set.
-- Prueba `TL-LANG-335`: positivo (constructor asigna → 42) y negativo (constructor sin asignar →
-  rechazado).
+- **Sema** (`ProjectMethodBodyModel`): el estado activo de `required` forma parte de
+  `OwnershipFlowSnapshot`; los caminos alcanzables se unen por intersección. Cada `return` normal
+  y el fallthrough del constructor participan en la intersección final; `throw`/`never` no crean
+  una instancia observable. `assignedRequiredFields_` conserva únicamente el resultado final por
+  constructor y el merger de shards propaga esos resultados.
+- Prueba `TL-LANG-335`: asignación completa → 42; ausencia total y asignación en una sola rama →
+  rechazo; ambas ramas → aceptación; rama que lanza no contamina el join; `return` anticipado sin
+  asignación → rechazo.
 
 ## Residual
 

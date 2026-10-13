@@ -2228,9 +2228,13 @@ private:
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.
     std::set<std::pair<std::size_t, std::size_t>> assignedOutParameters_;
-    // NS304-T09-F01: (constructor ordinal, field member ordinal) pairs a `required` field was
-    // assigned. See verifyRequiredFieldAssignments for the end-of-constructor check.
+    // NS304-T09-F01: pairs proven assigned on every normal exit of a constructor. The active
+    // per-path state lives in OwnershipFlowSnapshot; this set is only the finalized result.
     std::set<std::pair<std::size_t, std::size_t>> assignedRequiredFields_;
+    std::unordered_set<std::size_t> constructorsWithNormalExit_;
+    std::unordered_set<std::size_t> activeRequiredFieldAssignments_;
+    bool hasRequiredConstructorExit_ = false;
+    std::unordered_set<std::size_t> requiredConstructorExitAssignments_;
     // NS304-T09-F07: tipo objetivo activo durante el análisis de un `new()` target-typed.
     std::string activeTargetTypeKey_;
     // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
@@ -2387,6 +2391,9 @@ private:
         std::string message) const;
     bool callableCanBeAnalyzed(const ProjectCallableAnalysisContext& context) const;
     void resetCallableScratch(const ClassMemberSymbol& callable);
+    void recordRequiredConstructorNormalExit(std::size_t callableOrdinal);
+    void finalizeRequiredConstructorAssignments(
+        const ClassMemberSymbol& callable, std::size_t callableOrdinal);
     std::vector<std::size_t> createOwnedParameterCleanups(
         const ClassMemberSymbol& callable,
         std::size_t callableOrdinal,
