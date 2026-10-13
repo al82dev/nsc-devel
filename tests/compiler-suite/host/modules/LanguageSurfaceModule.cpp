@@ -2480,6 +2480,51 @@ class Program
         }});
 }
 
+void registerExtensionPropertyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-324", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "property", "getter"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08ExtensionProperty", "Exe", R"ns(
+namespace Suite
+{
+    extension int
+    {
+        public int Doubled
+        {
+            get { return this * 2; }
+        }
+    }
+}
+
+using Suite;
+
+class Program
+{
+    public static int Main()
+    {
+        return 21.Doubled;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08ExtensionProperty.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-324 an extension property must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-324 an extension property getter must dispatch: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2521,5 +2566,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
     registerAsyncMethodMarkerCase(registry);
+    registerExtensionPropertyCase(registry);
 }
 }

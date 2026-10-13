@@ -4011,6 +4011,69 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 return lowerResolvedCall(lengthCall, {});
             }
+            // NS304-T08-F02: extension property getter auto-invocado en Sema (namespace call con
+            // receptor reenviado). Se baja igual que la llamada de namespace del path de Call.
+            if (const NamespaceFunctionCallBinding* namespaceCall =
+                    namespaceFunctionCallBinding(expression);
+                namespaceCall != nullptr)
+            {
+                if (namespaceCall->resolution != MethodCallResolutionKind::Resolved ||
+                    !namespaceCall->selectedFunctionOrdinal.has_value() ||
+                    namespaceFunctionModel_ == nullptr ||
+                    *namespaceCall->selectedFunctionOrdinal >=
+                        namespaceFunctionModel_->functions().size())
+                {
+                    error = "extension property getter reached HIR without a resolved target";
+                    return nullptr;
+                }
+                const std::size_t functionOrdinal = *namespaceCall->selectedFunctionOrdinal;
+                const NamespaceFunctionSymbol& target =
+                    namespaceFunctionModel_->functions()[functionOrdinal];
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::StaticCall, expression, namespaceCall->resultTypeKey);
+                node->namespaceFunctionOrdinal = functionOrdinal;
+                node->stringValue = target.mangledName;
+                const std::size_t targetCallableOrdinal =
+                    (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
+                    functionOrdinal;
+                bool hasOwnedTemporary = false;
+                if (namespaceCall->forwardedReceiver)
+                {
+                    if (namespaceCall->receiverSyntax == nullptr || target.parameters.empty() ||
+                        namespaceCall->selectedArgumentParameterOrdinals.empty())
+                    {
+                        error = "extension property getter lost its receiver contract";
+                        return nullptr;
+                    }
+                    const std::size_t parameterOrdinal =
+                        namespaceCall->selectedArgumentParameterOrdinals.front();
+                    if (parameterOrdinal >= target.parameters.size())
+                    {
+                        error = "extension receiver has no matching parameter";
+                        return nullptr;
+                    }
+                    const bool addressReceiver =
+                        target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
+                    auto receiver = lowerExpression(
+                        namespaceCall->receiverSyntax, memberOrdinal, addressReceiver, error);
+                    if (receiver == nullptr) return nullptr;
+                    if (!addressReceiver && !namespaceCall->selectedConversions.empty() &&
+                        namespaceCall->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        receiver = wrapImplicitConversion(
+                            std::move(receiver), namespaceCall->selectedConversions.front(),
+                            namespaceCall->receiverSyntax);
+                    }
+                    receiver = wrapCallArgumentBorrow(
+                        std::move(receiver), namespaceCall->receiverSyntax,
+                        targetCallableOrdinal, parameterOrdinal, hasOwnedTemporary);
+                    node->children.push_back(std::move(receiver));
+                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
+                }
+                return node;
+            }
             if (currentLambda_ != nullptr)
             {
                 const MethodLambdaValueBinding* lambdaValue = lambdaValueBinding(expression);
