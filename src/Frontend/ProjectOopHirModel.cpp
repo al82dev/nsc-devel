@@ -2020,9 +2020,17 @@ bool ProjectOopHirModel::buildImpl(
             poll = splitAsyncFunction(function, error);
             if (poll == nullptr) return false;
         }
+        std::unique_ptr<ProjectOopHirFunction> moveNext;
+        if (!function.constructor && !function.destructor &&
+            function.effects.contains(sema::Effect::Generator))
+        {
+            moveNext = splitGeneratorFunction(function, error);
+            if (moveNext == nullptr) return false;
+        }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
         if (poll) functions_.push_back(std::move(*poll));
+        if (moveNext) functions_.push_back(std::move(*moveNext));
     }
     }
 
@@ -3814,6 +3822,74 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
     return poll;
+}
+
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitGeneratorFunction(
+    ProjectOopHirFunction& function,
+    std::string& error)
+{
+    if (function.body == nullptr)
+    {
+        error = "generator has no lowered body to split";
+        return nullptr;
+    }
+    const std::string iteratorKey = function.returnTypeKey;
+    const auto item = language::iteratorInnerTypeKey(iteratorKey);
+    if (!item.has_value())
+    {
+        error = "generator return type is not an iterator surface: " + iteratorKey;
+        return nullptr;
+    }
+    const std::string itemTypeKey(*item);
+    const ast::AstNode* syntax = function.body->syntax;
+
+    // MoveNext: `bool Gen$moveNext(iterator<T>* self)` runs the body to the next yield. The body's
+    // YieldValue/YieldBreak nodes are lowered by the LLVM (item + state + return true/false).
+    auto moveNext = std::make_unique<ProjectOopHirFunction>();
+    moveNext->memberOrdinal = function.memberOrdinal;
+    moveNext->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    moveNext->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    moveNext->isStatic = true;
+    moveNext->inliningPolicy = function.inliningPolicy;
+    moveNext->mangledName = function.mangledName + "$moveNext";
+    moveNext->debugDisplayName = function.debugDisplayName + "$moveNext";
+    moveNext->returnTypeKey = "builtin:bool";
+    moveNext->errorTypeKey = function.errorTypeKey;
+    moveNext->effects = function.effects;
+    moveNext->returnOwnership = sema::OwnershipKind::None;
+    moveNext->parameterNames.push_back("self");
+    moveNext->parameterTypeKeys.push_back(iteratorKey + "*");
+    moveNext->parameterPassKinds.push_back(ParameterPassKind::Value);
+    moveNext->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    moveNext->body = std::move(function.body);
+
+    // NS304-T06-F03: number the yields 1..N (the state set after each yield; 0 is the entry state)
+    // and append the terminal `return false` after the last yield.
+    std::size_t nextYieldState = 0;
+    const auto assignStates = [&](const auto& self, ProjectOopHirNode* node) -> void
+    {
+        if (node == nullptr) return;
+        if (node->kind == ProjectOopHirNodeKind::YieldValue)
+            node->integerValue = ++nextYieldState;
+        for (auto& child : node->children) self(self, child.get());
+    };
+    assignStates(assignStates, moveNext->body.get());
+    auto wrapped = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    wrapped->children.push_back(std::move(moveNext->body));
+    auto retFalse = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:bool");
+    auto falseValue = makeNode(ProjectOopHirNodeKind::BooleanConstant, syntax, "builtin:bool");
+    falseValue->booleanValue = false;
+    retFalse->children.push_back(std::move(falseValue));
+    wrapped->children.push_back(std::move(retFalse));
+    moveNext->body = std::move(wrapped);
+
+    // Constructor: `return default(iterator:<T>);` -- lazy, never runs the body.
+    auto constructorBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, iteratorKey);
+    ret->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, iteratorKey));
+    constructorBody->children.push_back(std::move(ret));
+    function.body = std::move(constructorBody);
+    return moveNext;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(

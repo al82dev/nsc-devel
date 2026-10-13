@@ -7867,6 +7867,61 @@ private:
                 return true;
             }
 
+            case frontend::ProjectOopMirNodeKind::YieldValue:
+            {
+                // NS304-T06-F03: `yield return v` produces the item and returns true on the entry
+                // state; on a later state it falls through (the next yield or the terminal return).
+                if (parameterStorage_.empty())
+                    return fail(error, "yield value has no MoveNext self parameter");
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "yield.self");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return false;
+                LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "yield.self.state");
+                LLVMValueRef prevState = LLVMConstInt(intType, node->integerValue - 1, 0);
+                LLVMBasicBlockRef entryBlock = appendBlock("yield.entry");
+                LLVMBasicBlockRef resumeBlock = appendBlock("yield.resume");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, selfState, prevState, "yield.is.entry"),
+                    entryBlock, resumeBlock);
+
+                // Entry: store the item (field 2) + state = integerValue + return true.
+                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                LLVMValueRef item = node->children.empty()
+                    ? nullptr : lowerExpression(node->children.front().get(), error);
+                if (!node->children.empty() && item == nullptr) return false;
+                if (item != nullptr)
+                {
+                    LLVMTypeRef itemType = llvmType(node->children.front()->typeKey, error);
+                    if (itemType == nullptr) return false;
+                    LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
+                }
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, node->integerValue, 0), self);
+                LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0));
+
+                // Resume: fall through to the next yield (or the terminal return false).
+                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                return true;
+            }
+
+            case frontend::ProjectOopMirNodeKind::YieldBreak:
+            {
+                // NS304-T06-F03: `yield break` terminates the generator (state = -1) + return false.
+                if (parameterStorage_.empty())
+                    return fail(error, "yield break has no MoveNext self parameter");
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "yieldbreak.self");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return false;
+                LLVMBuildStore(builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), self);
+                LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                return true;
+            }
+
             default:
             {
                 LLVMValueRef value = lowerExpression(node, error);

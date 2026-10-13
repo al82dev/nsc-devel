@@ -823,6 +823,13 @@ private:
         ProjectOopHirFunction& function,
         std::string& error);
 
+    // NS304-T06-F03: splits a generator into a lazy constructor (function.body becomes
+    // `return default(iterator:<T>)`) and a MoveNext function (returned; `bool(self)` runs the body
+    // to the next yield). Returns nullptr and sets error on failure.
+    std::unique_ptr<ProjectOopHirFunction> splitGeneratorFunction(
+        ProjectOopHirFunction& function,
+        std::string& error);
+
 public:
     // El rango del nodo mas interno que no se pudo bajar, o un rango invalido si el fallo no vino
     // de una expresion. Quien reporta el error lo traduce a fichero:linea:columna con el
