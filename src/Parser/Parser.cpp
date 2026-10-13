@@ -4028,7 +4028,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
     }
     if (isAsyncMethod && declaration != nullptr &&
-        declaration->kind() == ast::AstNodeKind::FunctionDeclaration)
+        (declaration->kind() == ast::AstNodeKind::FunctionDeclaration ||
+         declaration->kind() == ast::AstNodeKind::MethodDeclaration))
     {
         std::string marker = declaration->auxiliaryText();
         if (!marker.empty()) marker += ';';
@@ -5941,12 +5942,7 @@ ast::AstNode* Parser::parseClassMember(
 {
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
-    if (atContextualKeyword("async"))
-    {
-        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
-        // el callable cuando el punto lo permite (follow-up para class/interface member).
-        consume();
-    }
+    bool isAsync = false;
     TokenKind accessibility = TokenKind::Invalid;
     bool isPartial = false;
     bool isNew = false;
@@ -6532,8 +6528,8 @@ ast::AstNode* Parser::parseClassMember(
 
     if (atContextualKeyword("async"))
     {
-        // NS304-T05-F01: se consume (ya no se rechaza con NS3049); el marcador async se baja en
-        // el callable cuando el punto lo permite (follow-up para class/interface member).
+        // NS304-T05-F03: se consume y se marca; el lowering async (F03) necesita el marker.
+        isAsync = true;
         consume();
     }
 
@@ -7147,6 +7143,13 @@ ast::AstNode* Parser::parseClassMember(
         {
             method->setReference(isReferenceReturn);
             method->setLifetimeName(std::move(returnLifetime));
+        }
+        if (method != nullptr && isAsync)
+        {
+            std::string marker = method->auxiliaryText();
+            if (!marker.empty()) marker += ';';
+            marker += "async";
+            method->setAuxiliaryText(std::move(marker));
         }
         return method;
     }

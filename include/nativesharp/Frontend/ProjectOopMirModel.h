@@ -145,6 +145,12 @@ enum class ProjectOopMirNodeKind
     LocalAddress,
     FieldAddress,
     BitFieldAddress,
+    // NS304-T05-F03: address of one synthetic field of an opaque future. `immediate` holds the
+    // resolved byte offset; the single child is the future pointer.
+    FutureFieldAddress,
+    // NS304-T05-F03: `await operand` over a synchronously-completing future. The single child is
+    // the future value; `stringValue` is the poll mangled name; `elementTypeKey` the future key.
+    AwaitFuture,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

@@ -9,6 +9,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 #include "nativesharp/AST/AstNodeKind.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -1047,6 +1048,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopHirNodeKind::LocalAddress: return "local-address";
         case ProjectOopHirNodeKind::FieldAddress: return "field-address";
+        case ProjectOopHirNodeKind::FutureFieldAddress: return "future-field-address";
+        case ProjectOopHirNodeKind::AwaitFuture: return "await-future";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
@@ -1375,7 +1378,9 @@ bool ProjectOopHirModel::buildImpl(
     {
         struct RegularFunctionResult final
         {
-            std::optional<ProjectOopHirFunction> function;
+            // A worker can produce more than one callable for a single member: an async method
+            // yields the lazy constructor AND its `$poll` function.
+            std::vector<ProjectOopHirFunction> functions;
             std::string error;
             SourceRange errorRange;
             bool success = false;
@@ -1411,7 +1416,7 @@ bool ProjectOopHirModel::buildImpl(
                     this);
                 result.errorRange = worker.lastErrorRange();
                 if (result.success && !worker.functions_.empty())
-                    result.function = std::move(worker.functions_.front());
+                    result.functions = std::move(worker.functions_);
             });
         }
         workers.wait();
@@ -1426,29 +1431,34 @@ bool ProjectOopHirModel::buildImpl(
                 lastErrorRange_ = result.errorRange;
                 return false;
             }
-            if (!result.function.has_value()) continue;
-            std::size_t localCount = 0;
-            std::size_t cleanupCount = 0;
-            std::size_t regionCount = 0;
-            scanParallelOrdinals(
-                result.function->body.get(),
-                localFloor,
-                cleanupFloor,
-                localCount,
-                cleanupCount,
-                regionCount);
-            applyParallelOrdinalOffsets(
-                result.function->body.get(),
-                localFloor,
-                cleanupFloor,
-                nextSyntheticLocalOrdinal_ - localFloor,
-                nextSyntheticCleanupRegionOrdinal_ - cleanupFloor,
-                nextHirRegionOrdinal_);
-            nextSyntheticLocalOrdinal_ += localCount;
-            nextSyntheticCleanupRegionOrdinal_ += cleanupCount;
-            nextHirRegionOrdinal_ += regionCount;
-            functionByMember_[memberOrdinal] = functions_.size();
-            functions_.push_back(std::move(*result.function));
+            if (!result.functions.empty())
+            {
+                functionByMember_[memberOrdinal] = functions_.size();
+                for (ProjectOopHirFunction& function : result.functions)
+                {
+                    std::size_t localCount = 0;
+                    std::size_t cleanupCount = 0;
+                    std::size_t regionCount = 0;
+                    scanParallelOrdinals(
+                        function.body.get(),
+                        localFloor,
+                        cleanupFloor,
+                        localCount,
+                        cleanupCount,
+                        regionCount);
+                    applyParallelOrdinalOffsets(
+                        function.body.get(),
+                        localFloor,
+                        cleanupFloor,
+                        nextSyntheticLocalOrdinal_ - localFloor,
+                        nextSyntheticCleanupRegionOrdinal_ - cleanupFloor,
+                        nextHirRegionOrdinal_);
+                    nextSyntheticLocalOrdinal_ += localCount;
+                    nextSyntheticCleanupRegionOrdinal_ += cleanupCount;
+                    nextHirRegionOrdinal_ += regionCount;
+                    functions_.push_back(std::move(function));
+                }
+            }
         }
     }
 
@@ -1998,8 +2008,16 @@ bool ProjectOopHirModel::buildImpl(
                 return false;
             }
         }
+        std::unique_ptr<ProjectOopHirFunction> poll;
+        if (!function.constructor && !function.destructor &&
+            function.effects.contains(sema::Effect::Async))
+        {
+            poll = splitAsyncFunction(function, error);
+            if (poll == nullptr) return false;
+        }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
+        if (poll) functions_.push_back(std::move(*poll));
     }
     }
 
@@ -2126,8 +2144,15 @@ bool ProjectOopHirModel::buildImpl(
                     std::make_move_iterator(ownedParameterCleanupNodes.begin()),
                     std::make_move_iterator(ownedParameterCleanupNodes.end()));
             }
+            std::unique_ptr<ProjectOopHirFunction> poll;
+            if (function.effects.contains(sema::Effect::Async))
+            {
+                poll = splitAsyncFunction(function, error);
+                if (poll == nullptr) return false;
+            }
             functionByNamespaceFunction_[functionOrdinal] = functions_.size();
             functions_.push_back(std::move(function));
+            if (poll) functions_.push_back(std::move(*poll));
         }
     }
     if (memberFilter.has_value())
@@ -3548,6 +3573,129 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         lastErrorRange_ = expression->range();
     }
     return lowered;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
+    std::unique_ptr<ProjectOopHirNode> body,
+    std::size_t selfParameterOrdinal,
+    std::string_view resultTypeKey,
+    std::string& error)
+{
+    if (body == nullptr)
+    {
+        return nullptr;
+    }
+    if (body->kind == ProjectOopHirNodeKind::Return)
+    {
+        // `return v;` -> { self->result = v; self->state = 1 (ready); return; }
+        const std::string futureKey = language::futureTypeKey(resultTypeKey);
+        auto block = makeNode(ProjectOopHirNodeKind::Block, body->syntax, "builtin:void");
+
+        const auto selfParameter = [&]() -> std::unique_ptr<ProjectOopHirNode>
+        {
+            auto self = makeNode(
+                ProjectOopHirNodeKind::ParameterValue, body->syntax, futureKey + "*");
+            self->parameterOrdinal = selfParameterOrdinal;
+            return self;
+        };
+
+        auto resultField = makeNode(
+            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, std::string(resultTypeKey));
+        resultField->memberOrdinal = 2; // result
+        resultField->elementTypeKey = futureKey;
+        resultField->children.push_back(selfParameter());
+
+        std::unique_ptr<ProjectOopHirNode> value = !body->children.empty()
+            ? std::move(body->children[0])
+            : makeNode(ProjectOopHirNodeKind::DefaultValue, body->syntax, std::string(resultTypeKey));
+
+        auto resultStore = makeNode(
+            ProjectOopHirNodeKind::Assignment, body->syntax, std::string(resultTypeKey));
+        resultStore->operation = lexer::TokenKind::Equal;
+        resultStore->children.push_back(std::move(resultField));
+        resultStore->children.push_back(std::move(value));
+        block->children.push_back(std::move(resultStore));
+
+        auto stateField = makeNode(
+            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, "builtin:int");
+        stateField->memberOrdinal = 0; // state
+        stateField->elementTypeKey = futureKey;
+        stateField->children.push_back(selfParameter());
+
+        auto ready = makeNode(ProjectOopHirNodeKind::IntegerConstant, body->syntax, "builtin:int");
+        ready->integerValue = ~0ULL; // ready = -1 (uniform); pending/resume states are 1..N
+
+        auto stateStore = makeNode(
+            ProjectOopHirNodeKind::Assignment, body->syntax, "builtin:int");
+        stateStore->operation = lexer::TokenKind::Equal;
+        stateStore->children.push_back(std::move(stateField));
+        stateStore->children.push_back(std::move(ready));
+        block->children.push_back(std::move(stateStore));
+
+        block->children.push_back(makeNode(ProjectOopHirNodeKind::Return, body->syntax, "builtin:void"));
+        return block;
+    }
+    for (auto& child : body->children)
+    {
+        child = rewriteAsyncPollReturns(
+            std::move(child), selfParameterOrdinal, resultTypeKey, error);
+        if (child == nullptr)
+        {
+            return nullptr;
+        }
+    }
+    return body;
+}
+
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
+    ProjectOopHirFunction& function,
+    std::string& error)
+{
+    if (function.body == nullptr)
+    {
+        error = "async function has no lowered body to split";
+        return nullptr;
+    }
+    const std::string futureKey = function.returnTypeKey;
+    const auto inner = language::futureInnerTypeKey(futureKey);
+    if (!inner.has_value())
+    {
+        error = "async function return type is not a future surface: " + futureKey;
+        return nullptr;
+    }
+    const std::string resultTypeKey(*inner);
+    const ast::AstNode* syntax = function.body->syntax;
+
+    auto poll = std::make_unique<ProjectOopHirFunction>();
+    poll->memberOrdinal = function.memberOrdinal;
+    poll->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    poll->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    poll->isStatic = true;
+    poll->isAsyncPoll = true;
+    poll->inliningPolicy = function.inliningPolicy;
+    poll->mangledName = function.mangledName + "$poll";
+    poll->debugDisplayName = function.debugDisplayName + "$poll";
+    poll->returnTypeKey = "builtin:void";
+    poll->errorTypeKey = function.errorTypeKey;
+    poll->effects = function.effects;
+    poll->returnOwnership = sema::OwnershipKind::None;
+    poll->parameterNames.push_back("self");
+    poll->parameterTypeKeys.push_back(futureKey + "*");
+    poll->parameterPassKinds.push_back(ParameterPassKind::Value);
+    poll->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    poll->body = rewriteAsyncPollReturns(std::move(function.body), 0, resultTypeKey, error);
+    if (poll->body == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Constructor: `return default(future:<T>);` -- lazy, never runs the body.
+    auto constructorBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
+    ret->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, futureKey));
+    constructorBody->children.push_back(std::move(ret));
+    function.body = std::move(constructorBody);
+    return poll;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
@@ -8030,6 +8178,58 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         // un falso positivo del barrido: las lambdas se bajan por binding ANTES del switch, no por
         // un `case`. Comprobado antes de escribirlo -- el barrido mide lo que mide, no lo que uno
         // quiere que mida.
+
+        case ast::AstNodeKind::AwaitExpression:
+        {
+            // NS304-T05-F03: `await operand` over a synchronously-completing future. The operand
+            // must be a direct call to an async function (returns future:<T>); the poll function
+            // runs the body and stores the result, which this node reads back. Suspend/resume for
+            // pending futures is the state-machine step.
+            const MethodCallBinding* binding = callBinding(expression->first());
+            if (binding == nullptr || !binding->selectedMemberOrdinal.has_value() ||
+                *binding->selectedMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "await operand must be a direct call to an async function";
+                return nullptr;
+            }
+            const ClassMemberSymbol& callee = memberModel_->members()[*binding->selectedMemberOrdinal];
+            // NS304-T05-F03: the productive suspend/resume state machine is not wired yet, so an
+            // await over a future whose producer can suspend would otherwise silently read a stale
+            // result. Reject it explicitly instead of a silent fallback.
+            const auto containsAwait = [](const auto& self, const ast::AstNode* node) -> bool
+            {
+                if (node == nullptr) return false;
+                if (node->kind() == ast::AstNodeKind::AwaitExpression) return true;
+                if (self(self, node->first())) return true;
+                if (self(self, node->second())) return true;
+                for (const ast::AstNode* child : node->children())
+                    if (self(self, child)) return true;
+                return false;
+            };
+            if (callee.syntax != nullptr && containsAwait(containsAwait, callee.syntax->first()))
+            {
+                error = "await on an async function that can suspend requires the state machine "
+                        "lowering (NS304-T05-F03)";
+                return nullptr;
+            }
+            auto call = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (call == nullptr) return nullptr;
+            const auto inner = language::futureInnerTypeKey(call->typeKey);
+            if (!inner.has_value())
+            {
+                error = "await operand does not produce a future surface: " + call->typeKey;
+                return nullptr;
+            }
+            auto await = makeNode(ProjectOopHirNodeKind::AwaitFuture, expression, std::string(*inner));
+            await->elementTypeKey = call->typeKey;
+            await->stringValue = mangleCallable(
+                nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
+            // NS304-T05-F03: resume state index (single await = 1; multi-await generalizes). The
+            // frame slot is fixed at offset 0 for the single-await frame { child }.
+            await->integerValue = 1;
+            await->children.push_back(std::move(call));
+            return await;
+        }
 
         default:
             error = "unsupported Stage 34 OOP expression kind: " +

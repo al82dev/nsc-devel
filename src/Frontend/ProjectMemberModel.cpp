@@ -5,6 +5,7 @@
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 
@@ -1849,12 +1850,20 @@ bool ProjectMemberModel::collectTypeMembers(
                  memberNode->hasModifier(lexer::TokenKind::KwForceInline));
             symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody;
             symbol.name = memberNode->text();
+            // NS304-T05-F03: `async` viaja como token `;async` en auxiliaryText
+            // (Parser.cpp:4033-4035). Un metodo async devuelve un Future opaco lazy
+            // (`future:<T>`) y lleva Effect::Async. El lowering productivo es F03.
+            const bool isAsyncMethod = symbol.kind == ClassMemberKind::Method &&
+                (memberNode->auxiliaryText() == "async" ||
+                 memberNode->auxiliaryText().ends_with(";async"));
             symbol.declaredTypeSyntax = memberNode->typeSyntax();
             symbol.declaredTypeKey = symbol.kind == ClassMemberKind::Constructor
                 ? "type:" + type.identity.key()
                 : symbol.kind == ClassMemberKind::Destructor
                     ? "builtin:void"
                     : canonicalTypeKey(memberNode->typeSyntax(), nameLookup);
+            if (isAsyncMethod)
+                symbol.declaredTypeKey = language::futureTypeKey(symbol.declaredTypeKey);
             symbol.declaredErrorTypeSyntax = memberNode->throwsTypeSyntax();
             symbol.declaredErrorTypeKey = memberNode->throwsTypeSyntax() == nullptr
                 ? std::string{}
@@ -1984,6 +1993,8 @@ bool ProjectMemberModel::collectTypeMembers(
                 symbol.effects = symbol.effects.with(sema::Effect::Unsafe);
             if (!symbol.declaredErrorTypeKey.empty())
                 symbol.effects = symbol.effects.with(sema::Effect::Throws);
+            if (isAsyncMethod)
+                symbol.effects = symbol.effects.with(sema::Effect::Async);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method || symbol.kind == ClassMemberKind::Constructor) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);

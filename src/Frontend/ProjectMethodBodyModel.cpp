@@ -18,6 +18,7 @@
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
@@ -776,6 +777,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     requiredConstructorExitAssignments_.clear();
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
+    awaitExpressions_.clear();
 }
 
 void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(
@@ -2761,6 +2763,11 @@ std::span<const MethodScope> ProjectMethodBodyModel::scopes() const noexcept
 std::span<const MethodLocalSymbol> ProjectMethodBodyModel::locals() const noexcept
 {
     return locals_;
+}
+
+const std::vector<const ast::AstNode*>& ProjectMethodBodyModel::awaitExpressions() const noexcept
+{
+    return awaitExpressions_;
 }
 
 std::span<const MethodNameBinding> ProjectMethodBodyModel::nameBindings() const noexcept
@@ -7361,6 +7368,15 @@ void ProjectMethodBodyModel::analyzeReturn(
         return;
     }
 
+    // NS304-T05-F03: an async method returns the future surface at the ABI level, but `return v`
+    // yields the awaited inner type; the semantic return check unwraps the future.
+    std::string declaredReturnTypeKey = method->declaredTypeKey;
+    if (method->effects.contains(sema::Effect::Async))
+    {
+        const auto inner = language::futureInnerTypeKey(declaredReturnTypeKey);
+        if (inner.has_value()) declaredReturnTypeKey = std::string(*inner);
+    }
+
     if (currentLambdaOrdinal_.has_value())
     {
         if (statement->isReference())
@@ -7463,7 +7479,7 @@ void ProjectMethodBodyModel::analyzeReturn(
         return;
     }
 
-    if (method->declaredTypeKey == "builtin:void")
+    if (declaredReturnTypeKey == "builtin:void")
     {
         if (statement->first() != nullptr)
         {
@@ -7703,19 +7719,19 @@ void ProjectMethodBodyModel::analyzeReturn(
 
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey,
-        method->declaredTypeKey,
+        declaredReturnTypeKey,
         value.integerConstant);
     if (!conversion.exists())
     {
         if (!reportTupleConversionFailure(
-                value.typeKey, method->declaredTypeKey, statement->first()->range(), diagnostics))
+                value.typeKey, declaredReturnTypeKey, statement->first()->range(), diagnostics))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 statement->first()->range(),
                 "cannot convert return expression from '" + value.typeKey + "' to '" +
-                    method->declaredTypeKey + "'");
+                    declaredReturnTypeKey + "'");
         }
         return;
     }
@@ -9701,15 +9717,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 "a match arm cannot be used as a standalone expression");
             break;
         case ast::AstNodeKind::AwaitExpression:
-            // NS304-T05-F03: el AST de await esta (T05-F01); el lowering a state machine async es
-            // T05-F03. Hasta cablear la vertical, el await se diagnostica causalmente (igual que el
-            // yield en T06-F03) en lugar de caer silenciosamente al default.
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "await requires the async state machine lowering (NS304-T05-F03)");
+        {
+            // NS304-T05-F03: `await operand` resuelve el Future opaco del operando a su tipo
+            // interno. El operando debe ser un Future (future:<T>). El registro de la suspension
+            // (estado de maquina) y la transformacion HIR/MIR que la consume son F03.
+            const ExpressionResult operand = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!operand.valid)
+            {
+                break;
+            }
+            const std::optional<std::string_view> inner =
+                language::futureInnerTypeKey(operand.typeKey);
+            if (!inner.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "await operand must be a Future value (future:<T>)");
+                break;
+            }
+            result.typeKey = std::string(*inner);
+            result.valid = true;
+            awaitExpressions_.push_back(expression);
             break;
+        }
         case ast::AstNodeKind::IdentifierExpression:
             if (expression->auxiliaryText() == "generic-lambda-self" &&
                 !activeLambdaBindings_.empty())

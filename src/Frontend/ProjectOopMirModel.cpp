@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -745,6 +746,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::LocalAddress: return "local-address";
         case ProjectOopMirNodeKind::FieldAddress: return "field-address";
         case ProjectOopMirNodeKind::BitFieldAddress: return "bit-field-address";
+        case ProjectOopMirNodeKind::FutureFieldAddress: return "future-field-address";
+        case ProjectOopMirNodeKind::AwaitFuture: return "await-future";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
@@ -1091,6 +1094,78 @@ bool ProjectOopMirModel::build(
             layout.referenceAlignment,
             layout.fields});
     }
+    // NS304-T05-F03: `future:<T>` es la superficie resoluble del future opaco de una funcion
+    // async. Layout uniforme { i32 state; void* frame; T result }: el discriminante, el puntero al
+    // frame del caller (sin heap implicito) y el resultado. Se descubre igual que los tuples.
+    std::vector<std::string> futureKeys;
+    const auto collectFutureKey = [&](std::string_view key)
+    {
+        if (language::futureInnerTypeKey(key).has_value()) futureKeys.emplace_back(key);
+    };
+    const auto collectFutureNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
+    {
+        if (node == nullptr) return;
+        collectFutureKey(node->typeKey);
+        collectFutureKey(node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys) collectFutureKey(key);
+        for (const auto& child : node->children) self(self, child.get());
+    };
+    for (const ProjectOopHirFunction& function : hirModel.functions())
+    {
+        collectFutureKey(function.returnTypeKey);
+        for (const std::string& key : function.parameterTypeKeys) collectFutureKey(key);
+        for (const std::string& key : function.captureTypeKeys) collectFutureKey(key);
+        collectFutureNode(collectFutureNode, function.body.get());
+    }
+    std::ranges::sort(futureKeys);
+    futureKeys.erase(std::unique(futureKeys.begin(), futureKeys.end()), futureKeys.end());
+    const auto alignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
+    {
+        if (alignment <= 1) return value;
+        return (value + alignment - 1) / alignment * alignment;
+    };
+    for (const std::string& key : futureKeys)
+    {
+        const std::optional<std::string_view> inner = language::futureInnerTypeKey(key);
+        const auto resultLayout = objectLayoutModel.valueLayoutForTypeKey(
+            nameLookup, inner.has_value() ? std::string(*inner) : std::string{});
+        if (!inner.has_value() || !resultLayout.has_value())
+        {
+            error = "NativeSharp async future has no physical layout: " + key;
+            return false;
+        }
+        constexpr std::uint64_t stateSize = 4;
+        constexpr std::uint64_t stateAlignment = 4;
+        constexpr std::uint64_t frameSize = 8;
+        constexpr std::uint64_t frameAlignment = 8;
+        const std::uint64_t frameOffset = alignUp(stateSize, frameAlignment);
+        const std::uint64_t resultOffset = alignUp(frameOffset + frameSize, resultLayout->second);
+        const std::uint64_t totalAlignment =
+            std::max({stateAlignment, frameAlignment, resultLayout->second});
+        const std::uint64_t totalSize = alignUp(resultOffset + resultLayout->first, totalAlignment);
+        std::vector<ObjectFieldLayout> fields;
+        fields.push_back(ObjectFieldLayout{
+            0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            1, frameOffset, frameSize, frameAlignment, "builtin:void*", std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            2, resultOffset, resultLayout->first, resultLayout->second,
+            std::string(*inner), std::nullopt, std::nullopt});
+        structLayouts_.push_back(ProjectOopMirStructLayout{
+            (std::numeric_limits<std::size_t>::max)(),
+            key,
+            totalSize,
+            totalAlignment,
+            false,
+            0,
+            0,
+            false,
+            abiPassingForSize(totalSize),
+            false,
+            false,
+            {},
+            std::move(fields)});
+    }
     functionByMember_.resize(memberModel.members().size());
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
@@ -1412,6 +1487,9 @@ bool ProjectOopMirModel::build(
         lowerer.interfaceModel_ = &interfaceModel;
         lowerer.destructionModel_ = &destructionModel;
         lowerer.hirModel_ = &hirModel;
+        // NS304-T05-F03: the future field-address lowering resolves byte offsets against the
+        // struct layout catalogue, so every worker needs the same catalogue the main model built.
+        lowerer.structLayouts_ = structLayouts_;
     };
 
     if (workerCount > 1 && hirFunctions.size() > 1)
@@ -2997,6 +3075,59 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 error = "T01-F03 null-conditional access to a bit field has no nullable value carrier";
                 return nullptr;
             }
+            break;
+        }
+
+        case ProjectOopHirNodeKind::FutureFieldAddress:
+        {
+            if (!node->memberOrdinal.has_value() || node->elementTypeKey.empty())
+            {
+                error = "future field address requires a field index and a future type key";
+                return nullptr;
+            }
+            const ProjectOopMirStructLayout* layout = nullptr;
+            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
+            {
+                if (candidate.typeKey == node->elementTypeKey)
+                {
+                    layout = &candidate;
+                    break;
+                }
+            }
+            if (layout == nullptr || *node->memberOrdinal >= layout->fields.size())
+            {
+                error = "future field address has no field layout for '" + node->elementTypeKey +
+                    "' index " + std::to_string(*node->memberOrdinal);
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::FutureFieldAddress;
+            result->immediate = layout->fields[*node->memberOrdinal].offset;
+            result->typeKey = node->typeKey;
+            break;
+        }
+
+        case ProjectOopHirNodeKind::AwaitFuture:
+        {
+            const ProjectOopMirStructLayout* layout = nullptr;
+            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
+            {
+                if (candidate.typeKey == node->elementTypeKey)
+                {
+                    layout = &candidate;
+                    break;
+                }
+            }
+            if (layout == nullptr || layout->fields.size() < 3)
+            {
+                error = "await future has no result field layout for '" + node->elementTypeKey + "'";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::AwaitFuture;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            result->calleeName = node->stringValue;
+            result->immediate = layout->fields[2].offset;
+            result->integerValue = node->integerValue;
             break;
         }
 

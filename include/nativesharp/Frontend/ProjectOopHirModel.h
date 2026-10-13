@@ -138,6 +138,16 @@ enum class ProjectOopHirNodeKind
     ParameterAddress,
     LocalAddress,
     FieldAddress,
+    // NS304-T05-F03: address of one synthetic field of an opaque future. `memberOrdinal` is the
+    // field index (0 = state, 1 = frame, 2 = result) and `elementTypeKey` the future type key;
+    // the MIR resolves the byte offset against the future's ProjectOopMirStructLayout. The single
+    // child is the future pointer.
+    FutureFieldAddress,
+    // NS304-T05-F03: `await operand` over a synchronously-completing future. The single child is
+    // the future value; stringValue is the poll function's mangled name; elementTypeKey is the
+    // future type key; typeKey is the awaited inner type. MIR stores the future, calls the poll,
+    // and loads the result field.
+    AwaitFuture,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,
@@ -649,6 +659,9 @@ struct ProjectOopHirFunction final
     bool referenceReturn = false;
     bool isNoHeap = false;
     sema::EffectSet effects;
+    // NS304-T05-F03: poll function synthesized from an async function's body. Shares the async
+    // function's memberOrdinal (like a lambda shares its owner); mangledName carries `$poll`.
+    bool isAsyncPoll = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
@@ -778,6 +791,22 @@ private:
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
         bool addressContext,
+        std::string& error);
+
+    // NS304-T05-F03: rewrites every Return node of an async poll body into
+    // `self->result = v; self->state = ready; return;`. self is the parameter at
+    // `selfParameterOrdinal` (type future:<T>*); resultTypeKey is the awaited inner type T.
+    std::unique_ptr<ProjectOopHirNode> rewriteAsyncPollReturns(
+        std::unique_ptr<ProjectOopHirNode> body,
+        std::size_t selfParameterOrdinal,
+        std::string_view resultTypeKey,
+        std::string& error);
+
+    // NS304-T05-F03: splits an async function into a lazy constructor (function.body becomes
+    // `return default(future:<T>)`) and a poll function (returned; runs the body and stores the
+    // result). Returns nullptr and sets error on failure.
+    std::unique_ptr<ProjectOopHirFunction> splitAsyncFunction(
+        ProjectOopHirFunction& function,
         std::string& error);
 
 public:

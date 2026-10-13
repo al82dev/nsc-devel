@@ -9046,6 +9046,99 @@ private:
             case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
             case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
                 return staticFieldAddress(node, error);
+            case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
+            {
+                if (node->children.empty())
+                    return failValue(error, "future field address has no future receiver");
+                LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+                if (receiver == nullptr) return nullptr;
+                return byteOffset(receiver, node->immediate, "future.field.addr");
+            }
+
+            case frontend::ProjectOopMirNodeKind::AwaitFuture:
+            {
+                // NS304-T05-F03 suspend/resume. `self` is the poll's parameter 0 (future:<T>*);
+                // the future layout is { i32 state@0, void* frame@8, T result@16 }.
+                if (node->children.size() != 1U)
+                    return failValue(error, "await future requires one operand");
+                if (parameterStorage_.empty())
+                    return failValue(error, "await future has no poll self parameter");
+                LLVMValueRef self = parameterStorage_[0];
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                if (intType == nullptr || carrier == nullptr) return nullptr;
+
+                LLVMValueRef childSlot = entryBlockAlloca(
+                    carrier, structAlignmentFor(node->elementTypeKey), "await.child");
+                if (childSlot == nullptr)
+                    return failValue(error, "await future could not reserve child storage");
+
+                // 1. Select: entry (self->state == 0) → fresh child; resume → self->frame (slot 0).
+                LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "await.self.state");
+                LLVMBasicBlockRef entryBlock = appendBlock("await.entry");
+                LLVMBasicBlockRef resumeBlock = appendBlock("await.resume");
+                LLVMBasicBlockRef pollBlock = appendBlock("await.poll");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, selfState, LLVMConstInt(intType, 0, 0), "await.is.entry"),
+                    entryBlock, resumeBlock);
+
+                // Entry: lower the child call → store in childSlot.
+                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                LLVMValueRef fresh = lowerExpression(node->children.front().get(), error);
+                if (fresh == nullptr) return nullptr;
+                LLVMBuildStore(builder_, fresh, childSlot);
+                LLVMBuildBr(builder_, pollBlock);
+
+                // Resume: load self->frame (offset 8) → childSlot.
+                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                LLVMValueRef framePtr = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "await.self.frame.addr"), "await.self.frame");
+                LLVMBuildStore(
+                    builder_, LLVMBuildLoad2(builder_, carrier, framePtr, "await.saved.child"), childSlot);
+                LLVMBuildBr(builder_, pollBlock);
+
+                // Poll: call G$poll(&childSlot).
+                LLVMPositionBuilderAtEnd(builder_, pollBlock);
+                const auto found = functions_.find(node->calleeName);
+                if (found == functions_.end() || found->second.function == nullptr)
+                    return failValue(error, "async poll target was not declared: " + node->calleeName);
+                LLVMValueRef pollArgs[] = { childSlot };
+                if (LLVMBuildCall2(builder_, found->second.functionType, found->second.function,
+                                   pollArgs, 1U, "") == nullptr)
+                    return failValue(error, "async poll call failed");
+
+                // 2. Check pending: child.state == -1 (ready) → extract; else suspend.
+                LLVMValueRef childState = LLVMBuildLoad2(
+                    builder_, intType, childSlot, "await.child.state");
+                LLVMValueRef readyConst = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
+                LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
+                LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
+                    readyBlock, suspendBlock);
+
+                // Suspend: save child in self->frame + state=N + ret void.
+                LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+                LLVMValueRef suspendFrame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "await.self.frame.addr2"), "await.self.frame");
+                LLVMBuildStore(
+                    builder_, LLVMBuildLoad2(builder_, carrier, childSlot, "await.child.to.save"),
+                    suspendFrame);
+                LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
+                LLVMBuildRetVoid(builder_);
+
+                // Ready: load result (immediate = result offset).
+                LLVMPositionBuilderAtEnd(builder_, readyBlock);
+                LLVMTypeRef resultType = llvmType(node->typeKey, error);
+                if (resultType == nullptr) return nullptr;
+                return LLVMBuildLoad2(
+                    builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
+                    "await.result");
+            }
 
             case frontend::ProjectOopMirNodeKind::IntegerConstant:
             {
@@ -17089,6 +17182,7 @@ private:
             return LLVMArrayType2(elementType, static_cast<unsigned>(*count));
         }
         if (typeKey.starts_with("type:") ||
+            typeKey.starts_with("future:") ||
             frontend::ProjectTypeConversion::isTuple(typeKey))
         {
             // El ancho del enum es el de su TIPO SUBYACENTE, no siempre 32. La regla esta en

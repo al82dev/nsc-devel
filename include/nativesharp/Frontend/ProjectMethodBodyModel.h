@@ -1531,6 +1531,7 @@ public:
 
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;
+    const std::vector<const ast::AstNode*>& awaitExpressions() const noexcept;
     std::span<const MethodNameBinding> nameBindings() const noexcept;
     const MethodNameBinding* nameBinding(
         const ast::AstNode* syntax,
@@ -2437,6 +2438,9 @@ private:
     std::vector<MethodScope> scopes_;
     std::vector<std::vector<ScopeName>> scopeNames_;
     std::vector<MethodLocalSymbol> locals_;
+    // NS304-T05-F03: puntos `await` en orden fuente (indice de estado = posicion + 1). Los consume
+    // el lowering de state machine (HIR/MIR) y buildAsyncFunctionPlan.
+    std::vector<const ast::AstNode*> awaitExpressions_;
     std::vector<MethodNameBinding> nameBindings_;
     ProjectCallableBindingIndex nameBindingIndex_;
     std::vector<MethodShadowingEvent> shadowingEvents_;
