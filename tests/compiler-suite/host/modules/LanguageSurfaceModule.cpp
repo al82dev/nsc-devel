@@ -3014,15 +3014,19 @@ class Point
 {
     public int X;
     public int Y;
+
+    public Point(int x, int y)
+    {
+        X = x;
+        Y = y;
+    }
 }
 
 class Program
 {
     public static int Main()
     {
-        Point p = new();
-        p.X = 3;
-        p.Y = 4;
+        Point p = new(3, 4);
         return p.X + p.Y;
     }
 }

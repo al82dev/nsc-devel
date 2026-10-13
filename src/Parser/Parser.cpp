@@ -14216,6 +14216,44 @@ ast::AstNode* Parser::parseUnaryExpression()
         // single evaluation without recovering structure from tokens.
         if (consumeIf(TokenKind::LeftParen))
         {
+            // NS304-T09-F07: `new(args)` target-typed se desambigua de `new (storage) T(args)`
+            // (placement): si tras el `)` que cierra viene un tipo, es placement.
+            const bool placement = [&]()
+            {
+                std::size_t cursor = index_;
+                int depth = 1;
+                for (; cursor < tokens_.size(); ++cursor)
+                {
+                    const TokenKind kind = tokens_[cursor].kind();
+                    if (kind == TokenKind::LeftParen) ++depth;
+                    else if (kind == TokenKind::RightParen)
+                    {
+                        if (--depth == 0)
+                        {
+                            ++cursor;
+                            break;
+                        }
+                    }
+                }
+                return cursor < tokens_.size() && canStartTypeAt(cursor);
+            }();
+            if (!placement)
+            {
+                ast::AstNode* creation = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::ObjectCreationExpression, start);
+                creation->setAuxiliaryText("target-typed");
+                if (!at(TokenKind::RightParen))
+                {
+                    while (true)
+                    {
+                        creation->addChild(parseArgument());
+                        if (!consumeIf(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RightParen, "')' after target-typed new arguments");
+                creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
+                return creation;
+            }
             ast::AstNode* storage = parseExpression();
             expect(TokenKind::RightParen, "')' after placement storage");
             ast::TypeSyntax* type = parseAllocationElementType();
