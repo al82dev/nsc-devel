@@ -13897,6 +13897,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = receiver.typeKey;
         result.receiverTypeOrdinal = receiver.receiverTypeOrdinal;
         result.assignable = false;
+        // NS304-T08-F02: auto-invoca el getter ANTES de registrar el method group, para que el HIR
+        // vea la llamada (no un method-group que solo vale como call target).
+        if (!allowMethodGroup && methods.size() == 1U)
+        {
+            const std::size_t functionOrdinal = methods.front() - namespaceCallableBase_;
+            if (functionOrdinal < namespaceCallableAdapters().size() &&
+                namespaceCallableAdapters()[functionOrdinal].parameters.size() == 1U)
+            {
+                const NamespaceFunctionReferenceBinding* extension =
+                    namespaceFunctionModel_->extensionBinding(expression);
+                if (extension != nullptr)
+                {
+                    result = analyzeNamespaceFunctionCall(
+                        expression, *extension, methodMemberOrdinal, scopeOrdinal,
+                        diagnostics, &result);
+                    return true;
+                }
+            }
+        }
         recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::ExplicitObjectMethodGroup,
             expression,

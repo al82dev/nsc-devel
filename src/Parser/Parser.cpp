@@ -2841,21 +2841,26 @@ ast::AstNode* Parser::parseExtensionDeclaration()
         else if (member != nullptr &&
                  member->kind() == ast::AstNodeKind::PropertyDeclaration)
         {
-            // NS304-T08-F02: baja la property a su getter (metodo top-level con el nombre de la
+            // NS304-T08-F02: baja la property a su getter (function top-level con el nombre de la
             // property) para que se registre como funcion de extension.
             const std::string propertyName = member->text();
             for (ast::AstNode* accessor : member->children())
             {
                 if (accessor == nullptr ||
-                    accessor->kind() != ast::AstNodeKind::FunctionDeclaration ||
+                    accessor->kind() != ast::AstNodeKind::MethodDeclaration ||
                     accessor->text() != "get_" + propertyName)
                 {
                     continue;
                 }
-                accessor->setText(propertyName);
-                accessor->prependChild(makeReceiver());
-                accessor->setAuxiliaryText("ns3-extension");
-                extension->addChild(accessor);
+                ast::AstNode* function = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::FunctionDeclaration, accessor->range());
+                function->setText(propertyName);
+                function->setTypeSyntax(cloneParsedType(arena_, accessor->typeSyntax()));
+                function->setFirst(accessor->first());
+                function->setTokenKind(accessor->tokenKind());
+                function->prependChild(makeReceiver());
+                function->setAuxiliaryText("ns3-extension");
+                extension->addChild(function);
             }
         }
         else if (member != nullptr)
