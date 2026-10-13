@@ -6347,6 +6347,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 return node;
             }
+            if (const MethodCoreBinding* iteratorCore = coreBinding(expression);
+                iteratorCore != nullptr &&
+                (iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorGetEnumerator))
+            {
+                if (addressContext || !expression->children().empty() ||
+                    expression->first() == nullptr || expression->first()->first() == nullptr)
+                {
+                    error = std::string(methodCoreOperationKindName(iteratorCore->kind)) +
+                        "() has an invalid call shape";
+                    return nullptr;
+                }
+                // MoveNext mutates the iterator's state, so its receiver is lowered as an ADDRESS
+                // (the `it` variable's storage); Current/GetEnumerator read it as a value.
+                auto receiver = lowerExpression(
+                    expression->first()->first(), memberOrdinal,
+                    iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext, error);
+                if (receiver == nullptr) return nullptr;
+                auto node = makeNode(
+                    iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext
+                        ? ProjectOopHirNodeKind::IteratorMoveNext
+                        : ProjectOopHirNodeKind::IteratorGetEnumerator,
+                    expression,
+                    iteratorCore->resultTypeKey);
+                node->elementTypeKey = iteratorCore->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                return node;
+            }
             const NamespaceFunctionCallBinding* namespaceCall =
                 namespaceFunctionCallBinding(expression);
             if (namespaceCall != nullptr)

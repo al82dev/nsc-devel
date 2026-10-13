@@ -262,6 +262,8 @@ sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexc
 constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 // ID 129. El gemelo del de arriba para el `ToString()` sintetizado de un enum.
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
+// NS304-T06-F08. Facade for the opaque generator iterator's MoveNext()/GetEnumerator().
+constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
 
 struct NamedArgumentMap final
 {
@@ -14695,6 +14697,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
+    // NS304-T06-F08: `it.MoveNext()`/`it.GetEnumerator()` synthesize a method-group facade so the
+    // call resolves with zero arguments; analyzeCall records the core binding.
+    if (!typeReceiver &&
+        (expression->text() == "MoveNext" || expression->text() == "GetEnumerator") &&
+        language::iteratorInnerTypeKey(receiver.typeKey).has_value())
+    {
+        result.methodGroup = true;
+        result.methodCandidates.clear();
+        result.valid = allowMethodGroup;
+        result.receiverSyntax = expression->first();
+        result.receiverTypeKey = receiver.typeKey;
+        result.receiverTypeOrdinal = receiver.receiverTypeOrdinal;
+        result.typeKey = kIteratorFacadeTypeKey;
+        recordNameBinding(MethodNameBinding{
+            MethodNameBindingKind::ExplicitObjectMethodGroup,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            expression->text(),
+            kIteratorFacadeTypeKey,
+            std::nullopt,
+            std::nullopt,
+            {},
+            expression->first(),
+            receiver.typeKey,
+            receiver.receiverTypeOrdinal,
+            false});
+        return result;
+    }
+
     // Stage 51: native string and primitive instance syntax is a language-level facade over
     // NativeSharp.Core.String static methods.  The receiver is forwarded as parameter zero;
     // this keeps string itself a native reference type without inventing a CLR-style object.
@@ -16197,6 +16229,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         enumResult.typeKey = "builtin:string";
         enumResult.valid = true;
         return enumResult;
+    }
+
+    // NS304-T06-F08: `it.MoveNext()`/`it.GetEnumerator()` zero-argument calls over an opaque
+    // generator iterator. MoveNext returns builtin:bool; GetEnumerator returns the iterator itself.
+    if (callee.methodGroup && callee.typeKey == kIteratorFacadeTypeKey)
+    {
+        if (!expression->children().empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "the compiler-provided iterator MoveNext/GetEnumerator takes no arguments");
+            return {};
+        }
+        const std::string& memberName = call.methodName;
+        const bool isMoveNext = memberName == "MoveNext";
+        coreBindings_.push_back(MethodCoreBinding{
+            isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
+                       : MethodCoreOperationKind::IteratorGetEnumerator,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            isMoveNext ? "builtin:bool" : callee.receiverTypeKey,
+            callee.receiverTypeKey,
+            false, std::nullopt, std::nullopt});
+        ExpressionResult iteratorResult;
+        iteratorResult.typeKey = isMoveNext ? "builtin:bool" : callee.receiverTypeKey;
+        iteratorResult.valid = true;
+        return iteratorResult;
     }
 
     // then treats it exactly like any other core operation.
