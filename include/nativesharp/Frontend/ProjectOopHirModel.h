@@ -151,6 +151,9 @@ enum class ProjectOopHirNodeKind
     // NS304-T05-F09: a bare `yield;` suspension point. integerValue is the resume state index N
     // (suspend writes self->state = N and returns; the next poll resumes here). No children.
     SuspendPoint,
+    // NS304-T05-F09: the address of the async poll function (F$poll) stored into the future's
+    // pollFn field. stringValue is the poll's mangled name; typeKey is builtin:void*.
+    PollAddress,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

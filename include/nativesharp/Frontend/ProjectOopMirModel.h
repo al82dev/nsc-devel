@@ -153,6 +153,8 @@ enum class ProjectOopMirNodeKind
     AwaitFuture,
     // NS304-T05-F09: a bare `yield;` suspension point. `integerValue` is the resume state index.
     SuspendPoint,
+    // NS304-T05-F09: address of the async poll function (F$poll). `stringValue` is the poll name.
+    PollAddress,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

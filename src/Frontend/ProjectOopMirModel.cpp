@@ -749,6 +749,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::FutureFieldAddress: return "future-field-address";
         case ProjectOopMirNodeKind::AwaitFuture: return "await-future";
         case ProjectOopMirNodeKind::SuspendPoint: return "suspend-point";
+        case ProjectOopMirNodeKind::PollAddress: return "poll-address";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
@@ -1152,13 +1153,21 @@ bool ProjectOopMirModel::build(
         constexpr std::uint64_t frameAlignment = 8;
         const std::uint64_t frameOffset = alignUp(stateSize, frameAlignment);
         const std::uint64_t resultOffset = alignUp(frameOffset + frameSize, resultLayout->second);
+        // NS304-T05-F09: the future carries its poll function pointer (index 3) so `await` over a
+        // variable can resolve the poll without a direct call site.
+        constexpr std::uint64_t pollFnSize = 8;
+        constexpr std::uint64_t pollFnAlignment = 8;
+        const std::uint64_t pollFnOffset = alignUp(resultOffset + resultLayout->first, pollFnAlignment);
         const std::uint64_t errorOffset = errorInner.has_value() && errorLayout->first > 0
-            ? alignUp(resultOffset + resultLayout->first, errorLayout->second)
+            ? alignUp(pollFnOffset + pollFnSize, errorLayout->second)
             : 0;
         const std::uint64_t totalAlignment =
-            std::max({stateAlignment, frameAlignment, resultLayout->second, errorLayout->second});
-        const std::uint64_t totalSize =
-            alignUp(errorOffset + errorLayout->first, totalAlignment);
+            std::max({stateAlignment, frameAlignment, resultLayout->second, pollFnAlignment,
+                      errorLayout->second});
+        const std::uint64_t lastFieldEnd = errorInner.has_value() && errorLayout->first > 0
+            ? errorOffset + errorLayout->first
+            : pollFnOffset + pollFnSize;
+        const std::uint64_t totalSize = alignUp(lastFieldEnd, totalAlignment);
         std::vector<ObjectFieldLayout> fields;
         fields.push_back(ObjectFieldLayout{
             0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
@@ -1167,10 +1176,12 @@ bool ProjectOopMirModel::build(
         fields.push_back(ObjectFieldLayout{
             2, resultOffset, resultLayout->first, resultLayout->second,
             std::string(*inner), std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            3, pollFnOffset, pollFnSize, pollFnAlignment, "builtin:void*", std::nullopt, std::nullopt});
         if (errorInner.has_value() && errorLayout->first > 0)
         {
             fields.push_back(ObjectFieldLayout{
-                3, errorOffset, errorLayout->first, errorLayout->second,
+                4, errorOffset, errorLayout->first, errorLayout->second,
                 std::string(*errorInner), std::nullopt, std::nullopt});
         }
         structLayouts_.push_back(ProjectOopMirStructLayout{
@@ -3212,6 +3223,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::SuspendPoint;
             result->typeKey = node->typeKey;
             result->integerValue = node->integerValue;
+            break;
+
+        case ProjectOopHirNodeKind::PollAddress:
+            result->kind = ProjectOopMirNodeKind::PollAddress;
+            result->typeKey = node->typeKey;
+            result->stringValue = node->stringValue;
             break;
 
         case ProjectOopHirNodeKind::NullConditionalFieldStore:

@@ -9343,6 +9343,14 @@ private:
                 LLVMTypeRef type = llvmType(node->typeKey, error);
                 return type != nullptr ? LLVMConstInt(type, node->integerValue, isSignedInteger(node->typeKey) ? 1 : 0) : nullptr;
             }
+            case frontend::ProjectOopMirNodeKind::PollAddress:
+            {
+                // NS304-T05-F09: the poll function's address, stored into the future's pollFn.
+                const auto found = functions_.find(node->stringValue);
+                if (found == functions_.end() || found->second.function == nullptr)
+                    return failValue(error, "async poll target was not declared: " + node->stringValue);
+                return found->second.function;
+            }
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
             {
                 LLVMTypeRef type = llvmType(node->typeKey, error);

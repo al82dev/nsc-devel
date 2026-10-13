@@ -218,6 +218,10 @@ bool ProjectOopCodePartition::build(
         addCallee(node->resultErrorExtractorCalleeName);
         addCallee(node->resultErrorFactoryCalleeName);
         addCallee(node->resultErrorConversionCalleeName);
+        // NS304-T05-F09: a PollAddress references the async poll function by name (stringValue), so
+        // the unit that lowers it must also declare that poll for the cross-unit pointer store.
+        if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
+            addCallee(node->stringValue);
         if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
             addCallee(mirModel.panicHandlerMangledName());
         addMember(node->memberOrdinal, dependencies);

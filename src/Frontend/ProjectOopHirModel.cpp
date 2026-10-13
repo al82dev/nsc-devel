@@ -1051,6 +1051,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::FutureFieldAddress: return "future-field-address";
         case ProjectOopHirNodeKind::AwaitFuture: return "await-future";
         case ProjectOopHirNodeKind::SuspendPoint: return "suspend-point";
+        case ProjectOopHirNodeKind::PollAddress: return "poll-address";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
@@ -3615,7 +3616,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         auto errorField = makeNode(
             ProjectOopHirNodeKind::FutureFieldAddress, body->syntax,
             body->children.empty() ? std::string{} : body->children[0]->typeKey);
-        errorField->memberOrdinal = 3; // error
+        errorField->memberOrdinal = 4; // error (pollFn is index 3)
         errorField->elementTypeKey = std::string(futureKey);
         errorField->children.push_back(selfParameter());
 
@@ -3759,11 +3760,35 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
         return nullptr;
     }
 
-    // Constructor: `return default(future:<T>);` -- lazy, never runs the body.
+    // Constructor: `future<T> self = default; self.pollFn = F$poll; return self;` -- lazy, never
+    // runs the body, but carries the poll function pointer so `await` over a variable works.
     auto constructorBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
-    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
-    ret->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, futureKey));
-    constructorBody->children.push_back(std::move(ret));
+    const std::size_t selfOrdinal = nextSyntheticLocalOrdinal_++;
+    auto selfDecl = makeNode(ProjectOopHirNodeKind::LocalDeclaration, syntax, futureKey);
+    selfDecl->localOrdinal = selfOrdinal;
+    selfDecl->stringValue = "self";
+    selfDecl->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, syntax, futureKey));
+    constructorBody->children.push_back(std::move(selfDecl));
+
+    auto pollField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    pollField->memberOrdinal = 3; // pollFn
+    pollField->elementTypeKey = futureKey;
+    auto selfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, futureKey + "*");
+    selfAddress->localOrdinal = selfOrdinal;
+    pollField->children.push_back(std::move(selfAddress));
+    auto pollAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    pollAddress->stringValue = function.mangledName + "$poll";
+    auto pollStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    pollStore->operation = lexer::TokenKind::Equal;
+    pollStore->children.push_back(std::move(pollField));
+    pollStore->children.push_back(std::move(pollAddress));
+    constructorBody->children.push_back(std::move(pollStore));
+
+    auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
+    auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, futureKey);
+    selfReturn->localOrdinal = selfOrdinal;
+    retSelf->children.push_back(std::move(selfReturn));
+    constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
     return poll;
 }
