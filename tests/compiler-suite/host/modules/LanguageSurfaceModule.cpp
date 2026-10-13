@@ -3511,6 +3511,45 @@ class Program
         }});
 }
 
+void registerNameOfQualifiedGenericCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-353", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "nameof", "qualified", "generic", "type"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NameOfQualifiedGeneric", "Exe", R"ns(
+namespace Foo
+{
+    class Bar<T>
+    {
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        string n = nameof(Foo.Bar<int>);
+        return n.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NameOfQualifiedGeneric.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-353 nameof(Foo.Bar<int>) must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-353 nameof(Foo.Bar<int>) must be \"Bar\" (length 3): " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3578,5 +3617,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNameOfGenericMethodCase(registry);
     registerStaticLocalFunctionCase(registry);
     registerGenericLocalFunctionCase(registry);
+    registerNameOfQualifiedGenericCase(registry);
 }
 }

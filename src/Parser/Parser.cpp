@@ -15117,12 +15117,31 @@ ast::AstNode* Parser::parseNameOfExpression()
     std::string name;
     // `nameof(Generic<int>)` / `nameof(Space.Type<T>)`: the argument is a closed generic type
     // reference. parseExpression would misread `Generic < int` (the `<` reads as a comparison),
-    // so resolve the type here and take its base name.
-    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Less)
+    // so resolve the type here and take its base name. The qualified spelling `A.B<T>` needs the
+    // same treatment: scan the identifier chain to the `<`.
+    const auto qualifiedGenericType = [&]()
+    {
+        std::size_t cursor = index_;
+        while (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier)
+        {
+            ++cursor;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Dot)
+            {
+                ++cursor;
+                continue;
+            }
+            break;
+        }
+        return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less;
+    };
+    if (at(TokenKind::Identifier) && (peek().kind() == TokenKind::Less || qualifiedGenericType()))
     {
         if (ast::TypeSyntax* type = parseType())
         {
             name = type->baseName();
+            // `nameof(Foo.Bar<T>)` devuelve el nombre simple "Bar", no el cualificado.
+            const std::size_t dot = name.rfind('.');
+            if (dot != std::string::npos) name = name.substr(dot + 1);
         }
     }
     else
