@@ -1,6 +1,6 @@
 # NS304-T06-F07 — Early stop, destrucción, errors, panic y cleanup determinista
 
-- **Estado**: PARCIAL (drop en yield break cerrado; abandono de foreach + error tipado pendientes)
+- **Estado**: PARCIAL (drop en yield break + it.Drop() + drop-glue cerrados; teardown automático de foreach + error tipado pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -49,3 +49,15 @@ exactamente una vez. Un error tipado debe distinguirse del fin normal.
 
 Queda: **abandono de `foreach`** (destruir el frame del generator al salir del loop) y **error tipado**
 (`throws E` de generator) — surface pendiente.
+
+### Cierre parcial (dropFn + it.Drop) — verificado 2026-10-13
+
+- `iterator:<T>` lleva `dropFn` (campo 4); el constructor lo fija a `Gen$drop`.
+- `Gen$drop` = `DropFrame(self)`: hereda los `asyncFrameLocals` del `$moveNext` y baja el drop-glue
+  (`valueDropEntries_[typeKey](frame+offset)` en orden inverso).
+- `it.Drop()` (core-op `IteratorDrop` + facade) llama `dropFn`.
+- Verificado: `it.MoveNext(); it.Drop();` compila y corre (exit 0); IR muestra el null-check del frame
+  + el bucle de drop-glue. Registrado `TL-LANG-384` (PASS). Commits `9479383c`, `cfc7885a`, `8c7ab115`.
+
+Queda: el **teardown automático del `foreach`** (invocar `dropFn` al salir del loop, sin llamada
+explícita) y el **error tipado**.
