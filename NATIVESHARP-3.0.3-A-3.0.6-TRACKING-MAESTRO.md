@@ -1011,7 +1011,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 - [x] `NS304-T06-F01` — Retirar rechazo `NS3049` para `yield return` y `yield break`. *(AST YieldReturnStatement/YieldBreakStatement; lowering T06-F03.)*
 - [x] `NS304-T06-F02` — Implementar AST, semántica y restricciones de contexto de generator. *(CERRADO: Iterator<T> surface + contexto yield + Effect::Generator + unificar item + rechazar return v; TL-LANG-379/380.)*
-- [ ] `NS304-T06-F03` — Transformar cuerpo en frame y state machine MIR verificable.
+- [x] `NS304-T06-F03` — Transformar cuerpo en frame y state machine MIR verificable. *(CERRADO estructural: split constructor+MoveNext + yield LLVM item/state/return + terminal; consumidor MoveNext/Current+foreach = F08.)*
 - [ ] `NS304-T06-F04` — Calcular locals vivos, captures, ownership y drop flags por suspensión.
 - [ ] `NS304-T06-F05` — Soportar items por value, move, ref y ref mut con lifetime asociado.
 - [ ] `NS304-T06-F06` — Integrar pinning y construcción in-place para frames autoreferenciales.

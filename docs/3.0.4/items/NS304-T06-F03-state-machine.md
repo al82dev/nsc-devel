@@ -1,6 +1,6 @@
 # NS304-T06-F03 — Transformar cuerpo en frame y state machine MIR verificable
 
-- **Estado**: AUDITADO (pendiente: lowering del cuerpo generator a HIR/MIR/LLVM; el modelo ya existe)
+- **Estado**: CERRADO (estructural: split + MoveNext + yield LLVM + terminal; consumidor MoveNext/Current+foreach = F08)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -64,3 +64,17 @@ congelar el ABI completo (eso queda en F08).
 
 F03 hereda el caller-stack/liveness del marco async (T05-F04) y reutiliza `IterationSemantics`; el
 consumo intermodular y el `foreach` son F08.
+
+### Cierre (estructural) — verificado 2026-10-13
+
+- `iterator:<T>` layout uniforme `{ i32 state; void* frame; T item }` (sin heap implícito).
+- `splitGeneratorFunction`: constructor lazy (`return default(iterator)`) + `MoveNext` (`bool(self)`),
+  numerando los yields 1..N y añadiendo el `return false` terminal.
+- LLVM `YieldValue` (entry → `item`+`state`+`return true`; resume → fall-through) y `YieldBreak`
+  (`state=-1` + `return false`).
+- Verificado (IR): `Iterator<int> Gen(){ yield return 1; }` → `Gen$moveNext` emite `state==0 →
+  item=1,state=1,ret true / else ret false`. Registrado `TL-LANG-329` (compile pass). Commits
+  `d6ddb419`, `17e7200c`.
+
+El **consumidor** (`MoveNext()`/`Current` + `foreach`) es el ABI de **F08**; la state machine está
+emitida y estructuralmente correcta.
