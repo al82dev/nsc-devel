@@ -5497,11 +5497,15 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
     const lexer::Token& name = consume();
     if (at(TokenKind::LeftParen) || at(TokenKind::Less))
     {
+        // NS304-T02-F01: every interface (not just a trait) accepts bodyless methods. With ';'
+        // parseMethodTail marks the method abstract implicitly (allowBodyless); with '{...}' it
+        // keeps the default implementation. isTrait must not gate that permission, otherwise an
+        // ordinary `interface I { int Read(); }` is misread as a concrete bodyless class method.
         ast::AstNode* method = parseMethodTail(
             returnType, name, accessibility,
             false, sawStatic, false, false, sawAbstract,
             false, false, false, false, false, false,
-            sawNoHeap, false, beginIndex, isTrait);
+            sawNoHeap, false, beginIndex, true);
         if (method != nullptr)
         {
             method->setReference(isReferenceReturn);
