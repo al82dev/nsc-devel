@@ -134,7 +134,7 @@ namespace NativeSharp.Core
         // Acceso nativo equivalente a std::string_view::operator[]. El llamador garantiza que el
         // indice esta en rango; el indexador no impone excepciones ni fabrica un caracter centinela.
         // `UncheckedAt` se conserva como nombre explicito y compatible para los bucles existentes.
-        public char this[int index]
+        public readonly char this[int index]
         {
             get
             {

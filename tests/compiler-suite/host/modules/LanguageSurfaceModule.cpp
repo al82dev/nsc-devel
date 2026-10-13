@@ -2069,6 +2069,31 @@ class Program
         }});
 }
 
+void registerListPatternUtf8StringCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-363", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "string", "utf8", "byte-semantics"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-363", "T03ListUtf8String", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        string text = "Méx";
+        return match(text)
+        {
+            ['M', .. var middle, 'x'] =>
+                middle.Length() == 2 &&
+                (int)middle[0] == 195 &&
+                (int)middle[1] == 169 ? 42 : 0,
+            _ => 0
+        };
+    }
+}
+)ns", 42);
+        }});
+}
+
 void registerPropertyPatternCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-311", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4414,6 +4439,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListPatternReadOnlySpanCase(registry);
     registerListPatternStringViewCase(registry);
     registerListPatternProtocolCase(registry);
+    registerListPatternUtf8StringCase(registry);
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);
