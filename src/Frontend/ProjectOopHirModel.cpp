@@ -8284,8 +8284,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             if (binding == nullptr || !binding->selectedMemberOrdinal.has_value() ||
                 *binding->selectedMemberOrdinal >= memberModel_->members().size())
             {
-                error = "await operand must be a direct call to an async function";
-                return nullptr;
+                // NS304-T05-F09: await over a future VARIABLE (not a direct call). The future
+                // carries its poll (pollFn), so the await resolves it from the operand's value.
+                auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (operand == nullptr) return nullptr;
+                const auto variableInner = language::futureInnerTypeKey(operand->typeKey);
+                if (!variableInner.has_value())
+                {
+                    error = "await operand is neither an async call nor a future value: " +
+                        operand->typeKey;
+                    return nullptr;
+                }
+                auto await = makeNode(
+                    ProjectOopHirNodeKind::AwaitFuture, expression, std::string(*variableInner));
+                await->elementTypeKey = operand->typeKey;
+                // Empty calleeName marks the pollFn path: the MIR/LLVM loads the poll from the
+                // future's pollFn field instead of a direct function reference.
+                await->stringValue.clear();
+                await->integerValue = loweringAsyncBody_ ? 1 : 0;
+                await->children.push_back(std::move(operand));
+                return await;
             }
             const ClassMemberSymbol& callee = memberModel_->members()[*binding->selectedMemberOrdinal];
             // NS304-T05-F03: reject an await over a producer that can actually suspend

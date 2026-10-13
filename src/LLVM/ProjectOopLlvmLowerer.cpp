@@ -9172,19 +9172,45 @@ private:
                     if (slot == nullptr)
                         return failValue(error, "await future could not reserve temporary storage");
                     LLVMBuildStore(builder_, value, slot);
-                    const auto blockingFound = functions_.find(node->calleeName);
-                    if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
-                        return failValue(error, "async poll target was not declared: " + node->calleeName);
-                    // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited
-                    // futures across suspension) so its suspend path has valid storage.
-                    if (blockingFound->second.asyncFrameSize > 0)
+                    LLVMValueRef blockingFunction = nullptr;
+                    LLVMTypeRef blockingFunctionType = nullptr;
+                    if (node->calleeName.empty())
                     {
-                        LLVMTypeRef frameType = LLVMArrayType2(
-                            LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
-                        LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
-                        if (frameSlot == nullptr)
-                            return failValue(error, "await future could not reserve frame storage");
-                        LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
+                        // NS304-T05-F09: await over a future VARIABLE — resolve the poll from the
+                        // future's pollFn field instead of a direct function reference.
+                        std::uint64_t pollFnOffset = 0;
+                        if (const frontend::ProjectOopMirStructLayout* layout =
+                                structLayout(node->elementTypeKey))
+                        {
+                            for (const frontend::ObjectFieldLayout& field : layout->fields)
+                                if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
+                        }
+                        LLVMValueRef pollFn = LLVMBuildLoad2(
+                            builder_, LLVMPointerTypeInContext(context_, 0),
+                            byteOffset(slot, pollFnOffset, "await.pollfn.addr"), "await.pollfn");
+                        LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
+                        blockingFunctionType = LLVMFunctionType(
+                            LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
+                        blockingFunction = pollFn;
+                    }
+                    else
+                    {
+                        const auto blockingFound = functions_.find(node->calleeName);
+                        if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
+                            return failValue(error, "async poll target was not declared: " + node->calleeName);
+                        // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited
+                        // futures across suspension) so its suspend path has valid storage.
+                        if (blockingFound->second.asyncFrameSize > 0)
+                        {
+                            LLVMTypeRef frameType = LLVMArrayType2(
+                                LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
+                            LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
+                            if (frameSlot == nullptr)
+                                return failValue(error, "await future could not reserve frame storage");
+                            LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
+                        }
+                        blockingFunctionType = blockingFound->second.functionType;
+                        blockingFunction = blockingFound->second.function;
                     }
                     // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
                     // ready (state == -1). For a synchronously-completing producer this runs once.
@@ -9197,8 +9223,8 @@ private:
                     LLVMBuildBr(builder_, pollLoop);
                     LLVMPositionBuilderAtEnd(builder_, pollLoop);
                     LLVMValueRef blockingArgs[] = { slot };
-                    if (LLVMBuildCall2(builder_, blockingFound->second.functionType,
-                                       blockingFound->second.function, blockingArgs, 1U, "") == nullptr)
+                    if (LLVMBuildCall2(builder_, blockingFunctionType,
+                                       blockingFunction, blockingArgs, 1U, "") == nullptr)
                         return failValue(error, "async poll call failed");
                     LLVMValueRef blockingState = LLVMBuildLoad2(
                         builder_, blockingIntType, slot, "await.state");
@@ -9297,13 +9323,37 @@ private:
                     builder_, LLVMBuildLoad2(builder_, carrier, framePtr, "await.saved.child"), childSlot);
                 LLVMBuildBr(builder_, pollBlock);
 
-                // Poll: call G$poll(&childSlot).
+                // Poll: call G$poll(&childSlot) — or the future's pollFn for a variable await.
                 LLVMPositionBuilderAtEnd(builder_, pollBlock);
-                const auto found = functions_.find(node->calleeName);
-                if (found == functions_.end() || found->second.function == nullptr)
-                    return failValue(error, "async poll target was not declared: " + node->calleeName);
+                LLVMValueRef pollFunction = nullptr;
+                LLVMTypeRef pollFunctionType = nullptr;
+                if (node->calleeName.empty())
+                {
+                    // NS304-T05-F09: variable await — resolve the poll from the future's pollFn.
+                    std::uint64_t pollFnOffset = 0;
+                    if (const frontend::ProjectOopMirStructLayout* layout =
+                            structLayout(node->elementTypeKey))
+                    {
+                        for (const frontend::ObjectFieldLayout& field : layout->fields)
+                            if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
+                    }
+                    pollFunction = LLVMBuildLoad2(
+                        builder_, LLVMPointerTypeInContext(context_, 0),
+                        byteOffset(childSlot, pollFnOffset, "await.child.pollfn"), "await.child.pollfn");
+                    LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
+                    pollFunctionType = LLVMFunctionType(
+                        LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
+                }
+                else
+                {
+                    const auto found = functions_.find(node->calleeName);
+                    if (found == functions_.end() || found->second.function == nullptr)
+                        return failValue(error, "async poll target was not declared: " + node->calleeName);
+                    pollFunction = found->second.function;
+                    pollFunctionType = found->second.functionType;
+                }
                 LLVMValueRef pollArgs[] = { childSlot };
-                if (LLVMBuildCall2(builder_, found->second.functionType, found->second.function,
+                if (LLVMBuildCall2(builder_, pollFunctionType, pollFunction,
                                    pollArgs, 1U, "") == nullptr)
                     return failValue(error, "async poll call failed");
 
