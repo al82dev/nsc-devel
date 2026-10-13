@@ -83,9 +83,12 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
             output << (segment == ProjectCollectionSegmentKind::Spread ? 'S' : 'E');
     }
     if (node->referenceLocal) output << " reference-local=true";
+    if (node->referenceLocal)
+        output << " reference-mutable=" << (node->referenceMutable ? "true" : "false");
     if (node->staticLocal) output << " storage=module-static";
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
+    if (node->governingReference) output << " governing-reference=true";
     if (node->kind == ProjectOopHirNodeKind::LoopExpression)
         output << " label=" << (node->stringValue.empty() ? "<none>" : node->stringValue)
                << " break-result=" << node->typeKey;

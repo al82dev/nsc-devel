@@ -457,12 +457,17 @@ struct ProjectOopMirNode final
     std::vector<ProjectCollectionSegmentKind> collectionSegments;
     // Item 312. Mirrors ProjectOopHirNode::referenceLocal for backend slot materialization.
     bool referenceLocal = false;
+    // Mirrors ProjectOopHirNode::referenceMutable for cache/debug consumers. LLVM intentionally
+    // uses the same address representation for readonly and mutable aliases.
+    bool referenceMutable = false;
     // NativeSharp 3.0.4 T01-F06. Mirrors the HIR module-storage lifetime contract.
     bool staticLocal = false;
     // NativeSharp 3.0 T06-F06. Mirrors the HIR pin contract through MIR and cache identity.
     bool pinnedStorage = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
     bool referenceResult = false;
+    // Mirrors the HIR governing-address contract for pattern ref/ref mut bindings.
+    bool governingReference = false;
     // T01-F03. Mirrors ProjectOopHirNode::nullConditionalCall.
     bool nullConditionalCall = false;
     // NativeSharp 3.0 T08-F06. A semantic requirement, not an optimizer hint.

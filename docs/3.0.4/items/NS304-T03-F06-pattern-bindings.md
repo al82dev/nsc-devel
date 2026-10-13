@@ -1,6 +1,6 @@
 # NS304-T03-F06 — Bindings `copy`, `move`, `ref` y `ref mut` en patterns
 
-- **Estado**: EN IMPLEMENTACIÓN
+- **Estado**: CERRADO con evidencia puntual.
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `Language/SumTypeSemantics.h` (`PatternBindingMode`),
   `Parser::parsePatternPrimary` (modos), `Parser::lowerPattern`/`emitPatternBindings` (modo→HIR),
@@ -38,3 +38,23 @@ Parseo actual de modo (Parser.cpp:10563-10587):
 
 `TL-LANG-313`: bindings `copy`/`move`/`ref`/`ref mut` compilan y preservan el modo; `ref mut`
 permite mutar el elemento; `ref` (readonly) rechaza escritura.
+
+## Implementación de capacidad
+
+El lowering conserva dos marcadores distintos, `local:pattern-ref` y
+`local:pattern-ref-mut`. Sema convierte el primero en un local referencia constante y el segundo
+en un préstamo mutable exclusivo. `MethodLocalSymbol::referenceMutable` propaga la capacidad a
+HIR/MIR y a la identidad de cache; LLVM comparte deliberadamente la misma representación física
+de dirección para ambos modos porque la escritura readonly ya fue rechazada antes de HIR.
+
+El valor gobernante del `match` conserva además su dirección cuando existe un binding por
+referencia. `MatchValueExpression` se reconoce como almacenamiento naturalmente direccionable,
+por lo que un campo de struct no se materializa en una copia antes de inicializar `ref mut`.
+
+## Evidencia de cierre
+
+- 2026-10-13: construcción incremental de `nsc`, 7/7 pasos.
+- 2026-10-13: construcción incremental de `nsc_component_tests`, 3/3 pasos.
+- 2026-10-13: `TL-LANG-313` PASS, 397,933 us. El caso verifica `copy`, `move`, lectura
+  mediante `ref`, escritura observable mediante `ref mut` y rechazo diagnóstico de escritura
+  mediante `ref` readonly.

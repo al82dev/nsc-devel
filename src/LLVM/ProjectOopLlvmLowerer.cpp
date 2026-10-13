@@ -14169,13 +14169,24 @@ private:
         if (node->children.size() < 2 || node->children.front() == nullptr)
             return failValue(error, "T03-F03 match expression MIR is incomplete");
 
-        LLVMValueRef governing = lowerExpression(node->children.front().get(), error);
-        if (governing == nullptr) return nullptr;
-        if (terminated()) return governing;
         LLVMTypeRef governingType = llvmType(node->children.front()->typeKey, error);
         if (governingType == nullptr) return nullptr;
-        LLVMValueRef governingAddress = LLVMBuildAlloca(builder_, governingType, "match.value.addr");
-        LLVMBuildStore(builder_, governing, governingAddress);
+        LLVMValueRef governingAddress = nullptr;
+        LLVMValueRef governing = nullptr;
+        if (node->governingReference)
+        {
+            governingAddress = lowerExpression(node->children.front().get(), error);
+            if (governingAddress == nullptr) return nullptr;
+            governing = LLVMBuildLoad2(builder_, governingType, governingAddress, "match.value");
+        }
+        else
+        {
+            governing = lowerExpression(node->children.front().get(), error);
+            if (governing == nullptr) return nullptr;
+            governingAddress = LLVMBuildAlloca(builder_, governingType, "match.value.addr");
+            LLVMBuildStore(builder_, governing, governingAddress);
+        }
+        if (terminated()) return governing;
         matchValueStack_.emplace_back(governing, governingAddress);
         struct MatchValuePop final
         {

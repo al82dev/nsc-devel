@@ -103,6 +103,10 @@ struct MethodLocalSymbol final
     // NativeSharp 2.0 item 312. typeKey is the logical element type; the physical local slot
     // stores an address to another exact-type, mutable location.
     bool isReference = false;
+    // Pattern `ref` and `ref mut` share the physical alias representation, but only the latter
+    // grants write capability. Preserve that distinction after the parser-owned lowering so HIR,
+    // MIR, diagnostics and cache identity never have to infer it from source text.
+    bool referenceMutable = false;
     // Item 315. A ref local keeps the escape origin of the address it aliases. This closes
     // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
     // the return site and also propagates through reference-returning calls.
@@ -323,6 +327,9 @@ struct MethodMatchExpressionBinding final
     std::string governingTypeKey;
     std::string resultTypeKey;
     bool referenceResult = false;
+    // True when at least one arm binds through ref/ref mut. The governing expression must then
+    // retain its original address instead of being copied into the match snapshot.
+    bool governingReference = false;
     // Present only when every arm is an unguarded whole-case variant pattern. The backend may
     // then load the compiler-owned tag once and emit an LLVM switch instead of repeated IsCase.
     std::optional<std::size_t> switchTagMemberOrdinal;

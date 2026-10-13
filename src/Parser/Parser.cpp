@@ -11482,10 +11482,12 @@ ast::AstNode* Parser::lowerPattern(
             source(),
             false,
             pattern.bindingMode == PatternBindingMode::Value ||
-                pattern.bindingMode == PatternBindingMode::Copy);
-        if (pattern.bindingMode == PatternBindingMode::Reference ||
-            pattern.bindingMode == PatternBindingMode::ReferenceMutable)
-            declaration->setAuxiliaryText("local:ref");
+                pattern.bindingMode == PatternBindingMode::Copy ||
+                pattern.bindingMode == PatternBindingMode::Reference);
+        if (pattern.bindingMode == PatternBindingMode::Reference)
+            declaration->setAuxiliaryText("local:pattern-ref");
+        else if (pattern.bindingMode == PatternBindingMode::ReferenceMutable)
+            declaration->setAuxiliaryText("local:pattern-ref-mut");
         block->addChild(declaration);
         block->addChild(continuation);
         return block;
@@ -11726,10 +11728,12 @@ void Parser::emitPatternBindings(
                 name,
                 selector,
                 false,
-                mode == PatternBindingMode::Value || mode == PatternBindingMode::Copy);
-            if (mode == PatternBindingMode::Reference ||
-                mode == PatternBindingMode::ReferenceMutable)
-                declaration->setAuxiliaryText("local:ref");
+                mode == PatternBindingMode::Value || mode == PatternBindingMode::Copy ||
+                    mode == PatternBindingMode::Reference);
+            if (mode == PatternBindingMode::Reference)
+                declaration->setAuxiliaryText("local:pattern-ref");
+            else if (mode == PatternBindingMode::ReferenceMutable)
+                declaration->setAuxiliaryText("local:pattern-ref-mut");
             destination->addChild(declaration);
         }
         return;
@@ -11744,10 +11748,12 @@ void Parser::emitPatternBindings(
             source(),
             false,
             pattern.bindingMode == PatternBindingMode::Value ||
-                pattern.bindingMode == PatternBindingMode::Copy);
-        if (pattern.bindingMode == PatternBindingMode::Reference ||
-            pattern.bindingMode == PatternBindingMode::ReferenceMutable)
-            declaration->setAuxiliaryText("local:ref");
+                pattern.bindingMode == PatternBindingMode::Copy ||
+                pattern.bindingMode == PatternBindingMode::Reference);
+        if (pattern.bindingMode == PatternBindingMode::Reference)
+            declaration->setAuxiliaryText("local:pattern-ref");
+        else if (pattern.bindingMode == PatternBindingMode::ReferenceMutable)
+            declaration->setAuxiliaryText("local:pattern-ref-mut");
         destination->addChild(declaration);
         return;
     }
@@ -12377,11 +12383,19 @@ ast::AstNode* Parser::parseMatchExpression()
 
     std::string coverage = "match-coverage:v1:";
     bool firstArm = true;
+    bool hasReferenceBinding = false;
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t armBegin = index_;
         Pattern pattern = parsePattern(false);
         validateOrBindings(pattern);
+        const auto armBindings = collectBindings(pattern);
+        hasReferenceBinding = hasReferenceBinding || std::ranges::any_of(
+            armBindings, [](const auto& binding)
+            {
+                return binding.second == PatternBindingMode::Reference ||
+                    binding.second == PatternBindingMode::ReferenceMutable;
+            });
         ast::AstNode* guard = nullptr;
         if (atContextualKeyword("when"))
         {
@@ -12498,6 +12512,7 @@ ast::AstNode* Parser::parseMatchExpression()
             "a match expression requires at least one arm");
     }
     match->setAuxiliaryText(std::move(coverage));
+    match->setFlag(hasReferenceBinding);
     match->setRange(tokenRangeFrom(beginIndex));
     return match;
 }

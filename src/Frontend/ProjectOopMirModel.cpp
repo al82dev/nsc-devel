@@ -1938,9 +1938,11 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->booleanValue = node->booleanValue;
     result->collectionSegments = node->collectionSegments;
     result->referenceLocal = node->referenceLocal;
+    result->referenceMutable = node->referenceMutable;
     result->staticLocal = node->staticLocal;
     result->pinnedStorage = node->pinnedStorage;
     result->referenceResult = node->referenceResult;
+    result->governingReference = node->governingReference;
     result->nullConditionalCall = node->nullConditionalCall;
     result->mustTailCall = node->mustTailCall;
     result->ownership = node->ownership;

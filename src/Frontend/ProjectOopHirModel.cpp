@@ -2535,6 +2535,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
+            node->referenceMutable = local->referenceMutable;
             node->staticLocal = local->isStatic;
             node->pinnedStorage = local->isPinned;
             node->ownership = local->ownership;
@@ -4573,9 +4574,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
             auto node = makeNode(ProjectOopHirNodeKind::MatchExpression, expression, resultType);
             node->referenceResult = binding->referenceResult;
+            node->governingReference = binding->governingReference;
             node->secondaryMemberOrdinal = binding->switchTagMemberOrdinal;
             node->booleanValue = binding->switchTagMemberOrdinal.has_value();
-            auto governing = lowerExpression(expression->first(), memberOrdinal, false, error);
+            auto governing = lowerExpression(
+                expression->first(), memberOrdinal, binding->governingReference, error);
             if (governing == nullptr) return nullptr;
             node->children.push_back(std::move(governing));
 
@@ -8103,6 +8106,7 @@ bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) 
         }
         case ast::AstNodeKind::ThisExpression:
         case ast::AstNodeKind::BaseExpression:
+        case ast::AstNodeKind::MatchValueExpression:
             return true;
         case ast::AstNodeKind::UnaryExpression:
             // `*p` is storage; `-v` is a value.

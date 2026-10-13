@@ -2059,7 +2059,8 @@ class Program
         int copyVal = match(p) { { X: copy cx } => cx, _ => 0 };
         int moveVal = match(p) { { X: move mx } => mx, _ => 0 };
         int refVal = match(p) { { X: ref rx } => rx, _ => 0 };
-        return copyVal + moveVal + refVal;
+        int mutVal = match(p) { { X: ref mut rw } => rw = rw + 1, _ => 0 };
+        return copyVal + moveVal + refVal + mutVal + p.X;
     }
 }
 )ns");
@@ -2073,9 +2074,36 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 15,
-                "TL-LANG-313 pattern binding modes must preserve values: " +
-                    result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 27,
+                "TL-LANG-313 pattern binding modes must preserve values and ref mut writes: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+
+            const std::filesystem::path readonlyProject = products.writeProject(
+                "T03ReadonlyPatternBinding", "Exe", R"ns(
+public copy borrowed struct Point
+{
+    public int X;
+    public Point(int x) { X = x; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Point p = new Point(5);
+        return match(p) { { X: ref rx } => rx = 9, _ => 0 };
+    }
+}
+)ns");
+            const external_program_support::Result readonlyEmitted = emitT01Product(
+                L"--emit-project-oop-exe", readonlyProject,
+                products.directory() / "T03ReadonlyPatternBinding.exe", products.directory());
+            const std::string readonlyDiagnostics = readonlyEmitted.error + readonlyEmitted.output;
+            context.expect(readonlyEmitted.started && readonlyEmitted.exitCode != 0 &&
+                    readonlyDiagnostics.find("left side of assignment is not assignable") !=
+                        std::string::npos,
+                "TL-LANG-313 ref binding must reject writes while ref mut remains writable: " +
+                    readonlyDiagnostics);
         }});
 }
 

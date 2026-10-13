@@ -568,6 +568,9 @@ struct ProjectOopHirNode final
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;
+    // Capability of a reference local. The backend representation remains an address slot;
+    // semantic assignment checks have already enforced readonly `ref` before HIR construction.
+    bool referenceMutable = false;
     // NativeSharp 3.0.4 T01-F06. LocalDeclaration uses module storage and a once guard.
     bool staticLocal = false;
     // NativeSharp 3.0 T06-F06. The local's storage/address is statically pinned for its lexical
@@ -576,6 +579,8 @@ struct ProjectOopHirNode final
     // Item 313. A call with this bit produces an address although typeKey names the referent.
     // Value contexts add PointerLoad; address contexts preserve the call itself.
     bool referenceResult = false;
+    // MatchExpression only: its governing child is an address used by ref/ref mut bindings.
+    bool governingReference = false;
     // T01-F03. Set only on an instance getter/method reached through `?.`.  The receiver is the
     // first child as for every other instance call, but the backend must test it before lowering
     // the remaining children so argument/default expressions stay lazy on the null edge.

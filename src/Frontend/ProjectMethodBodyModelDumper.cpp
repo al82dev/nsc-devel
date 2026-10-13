@@ -67,6 +67,7 @@ void ProjectMethodBodyModelDumper::dump(
                << " name=" << local.name
                << " type=" << local.typeKey
                << " ref=" << (local.isReference ? "true" : "false")
+               << " ref-mutable=" << (local.referenceMutable ? "true" : "false")
                << " const=" << (local.isConst ? "true" : "false")
                << " raii=" << (local.isRaii ? "true" : "false")
                << " pinned=" << (local.isPinned ? "true" : "false")

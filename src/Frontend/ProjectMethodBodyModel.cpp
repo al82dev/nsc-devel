@@ -5882,9 +5882,16 @@ void ProjectMethodBodyModel::analyzeVariable(
         variable->auxiliaryText() == "local:foreach-ref";
     const bool isMutableForeachReference =
         variable->auxiliaryText() == "local:foreach-ref-mut";
+    const bool isReadonlyPatternReference =
+        variable->auxiliaryText() == "local:pattern-ref";
+    const bool isMutablePatternReference =
+        variable->auxiliaryText() == "local:pattern-ref-mut";
     const bool isReferenceLocal =
         variable->auxiliaryText() == "local:ref" || isPinnedReferenceLocal ||
-        isReadonlyForeachReference || isMutableForeachReference;
+        isReadonlyForeachReference || isMutableForeachReference ||
+        isReadonlyPatternReference || isMutablePatternReference;
+    const bool isReadonlyReference =
+        isReadonlyForeachReference || isReadonlyPatternReference;
     const bool isPinnedLocal =
         variable->auxiliaryText() == "local:pinned" || isPinnedReferenceLocal;
     const bool isDeferValueCapture =
@@ -6241,7 +6248,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             "volatile local cannot also be const, raii, owned, borrowed, or a reference local");
     }
     if (isReferenceLocal &&
-        ((!isReadonlyForeachReference && variable->flag()) ||
+        ((!isReadonlyReference && variable->flag()) ||
          variable->hasModifier(TokenKind::KwRaii) ||
          declaredOwnership != sema::OwnershipKind::None))
     {
@@ -6257,7 +6264,9 @@ void ProjectMethodBodyModel::analyzeVariable(
             diagnostics::DiagnosticId::ExpectedToken,
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
-            "reference local requires an initializer naming mutable addressable storage");
+            isReadonlyReference
+                ? "readonly reference local requires an initializer naming addressable storage"
+                : "reference local requires an initializer naming mutable addressable storage");
     }
     if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" && !managedDelegate &&
         !raiiOwnsNativeArrayBuffer)
@@ -6426,14 +6435,14 @@ void ProjectMethodBodyModel::analyzeVariable(
         if (isReferenceLocal && initializer.valid)
         {
             if (!initializer.addressable ||
-                (!isReadonlyForeachReference && !initializer.assignable))
+                (!isReadonlyReference && !initializer.assignable))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     variable->first()->range(),
-                    isReadonlyForeachReference
-                        ? "foreach ref initializer must be an addressable storage location"
+                    isReadonlyReference
+                        ? "readonly reference initializer must be an addressable storage location"
                         : "reference-local initializer must be a mutable addressable storage location");
             }
             if (initializer.typeKey != typeKey)
@@ -6463,12 +6472,12 @@ void ProjectMethodBodyModel::analyzeVariable(
                     "reference local lifetime exceeds the lifetime region of its source storage");
             }
             if (initializer.addressable &&
-                (isReadonlyForeachReference || initializer.assignable) &&
+                (isReadonlyReference || initializer.assignable) &&
                 initializer.typeKey == typeKey)
             {
                 pendingReferenceReborrowSourceLocalOrdinal = referenceRootLocalOrdinal(
                     variable->first(), scopeOrdinal);
-                if (!isReadonlyForeachReference)
+                if (!isReadonlyReference)
                 {
                     bool placeIsPrecise = true;
                     const std::optional<std::string> place = storagePlaceKey(
@@ -6723,6 +6732,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.typeKey = typeKey;
     local.isStatic = isStaticLocal;
     local.isReference = isReferenceLocal;
+    local.referenceMutable = isReferenceLocal && !isReadonlyReference;
     local.referenceEscapeOrigin = pendingReferenceEscapeOrigin;
     if (isReferenceLocal)
     {
@@ -9100,6 +9110,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
     binding.governingTypeKey = governing.typeKey;
     binding.resultTypeKey = commonType;
     binding.referenceResult = referenceResult;
+    binding.governingReference = expression->flag();
     if (switchTagMemberOrdinal.has_value() &&
         coverageArms.size() == expression->children().size() &&
         std::ranges::all_of(coverageArms, [](const language::MatchArmCoverage& arm)
