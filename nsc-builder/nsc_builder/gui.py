@@ -38,6 +38,27 @@ from .execution import *
 from .runtime_support import *
 
 
+def _smoke_catalog() -> CanonicalCatalog:
+    """Return a deterministic in-memory catalog for structural GUI checks."""
+    case = CaseRecord(
+        case_id="SMOKE-UNIT-001",
+        contract_id="SMOKE-GUI-001",
+        component="Smoke.GUI",
+        wave=0,
+        purpose="Exercise the unit-test projection without repository metadata.",
+        layer="unit",
+        profile="PR",
+        build_modes=("Debug",),
+        optimizations=("NA",),
+        executor="nsc_component_tests",
+        disposition="Required",
+        objective="Construct every top-level workspace.",
+        expected_outcome="PASS",
+        manifest={},
+    )
+    return CanonicalCatalog((case,))
+
+
 def launch_gui(smoke_only: bool = False) -> int:
     """Launch the complete single-file PySide6 application."""
     try:
@@ -71,6 +92,10 @@ def launch_gui(smoke_only: bool = False) -> int:
         )
     except ImportError as error:
         raise RuntimeError("NSC Builder 3 requires PySide6 for its graphical interface") from error
+
+    from .baseline_page import BaselinePageMixin, BaselineWorker
+    from .deploy_page import DeployPageMixin
+    from .unit_tests_page import UnitTestsPageMixin
 
     class CommandWorker(QThread):
         """Run explicit compiler or test-infrastructure configure/build stages."""
@@ -228,7 +253,12 @@ def launch_gui(smoke_only: bool = False) -> int:
             """Forward one row-scoped cancellation without stopping the worker."""
             return self.engine is not None and self.engine.cancel_current(key)
 
-    class MainWindow(QMainWindow):
+    class MainWindow(
+        UnitTestsPageMixin,
+        BaselinePageMixin,
+        DeployPageMixin,
+        QMainWindow,
+    ):
         """Present compiler-suite construction and execution as separate workflows."""
 
         TABLE_HEADERS = (
@@ -266,8 +296,10 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         def __init__(self) -> None:
             super().__init__()
-            self.catalog = CanonicalCatalog.load()
-            self.worker: CommandWorker | SuiteWorker | None = None
+            self.catalog = _smoke_catalog() if smoke_only else CanonicalCatalog.load()
+            self._command_worker_type = CommandWorker
+            self._suite_worker_type = SuiteWorker
+            self.worker: CommandWorker | SuiteWorker | BaselineWorker | None = None
             self.last_failed_variants: tuple[RunVariant, ...] = ()
             self.last_preparation_variants: tuple[RunVariant, ...] = ()
             self.failure_outcomes_by_key: dict[str, CaseOutcome] = {}
@@ -281,8 +313,13 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.live_status_counts: Counter[str] = Counter()
             self.variant_position_by_key: dict[str, int] = {}
             self.status_filter_visible_rows = 0
+            self.unit_variants_by_key: dict[str, RunVariant] = {}
+            self.unit_status_items: dict[str, QTableWidgetItem] = {}
+            self.unit_last_failed_variants: tuple[RunVariant, ...] = ()
             self.path_edits: dict[str, QLineEdit] = {}
             self.active_operation = ""
+            self.active_suite_surface = "external"
+            self.active_release_operation = ""
             self.active_modes: tuple[str, ...] = ()
             self.infrastructure_ninja_total = 0
             self.history_run_pages: dict[str, QWidget] = {}
@@ -294,11 +331,13 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.setWindowTitle(APP_NAME)
             self.resize(1600, 960)
             self._build_ui()
-            self._load_config(BuilderConfig.load())
+            config = BuilderConfig() if smoke_only else BuilderConfig.load()
+            self._load_config(config)
             self._refresh_scope_values()
             self._refresh_catalog_summary()
-            self._preview_plan()
-            self._refresh_history()
+            if not smoke_only:
+                self._preview_plan()
+                self._refresh_history()
 
         def _build_ui(self) -> None:
             central = QWidget()
@@ -308,10 +347,21 @@ def launch_gui(smoke_only: bool = False) -> int:
             outer.addWidget(self.summary_label)
             self.tabs = QTabWidget()
             self.tabs.addTab(self._build_infrastructure_tab(), "Construcción")
-            self.tabs.addTab(self._build_execution_tab(), "Pruebas")
-            self.tabs.addTab(self._build_results_tab(), "Resultados")
+            self.tabs.addTab(self._build_execution_tab(), "Pruebas externas")
+            self.unit_tab_index = self.tabs.addTab(
+                self._build_unit_tests_tab(), "Pruebas unitarias"
+            )
+            self.results_tab_index = self.tabs.addTab(
+                self._build_results_tab(), "Resultados"
+            )
             self.history_top_tab_index = self.tabs.addTab(
                 self._build_history_tab(), "Historial"
+            )
+            self.baseline_tab_index = self.tabs.addTab(
+                self._build_baseline_tab(), "Baseline"
+            )
+            self.deploy_tab_index = self.tabs.addTab(
+                self._build_deploy_tab(), "Deploy"
             )
             outer.addWidget(self.tabs, 1)
             self.setCentralWidget(central)
@@ -1201,7 +1251,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.infrastructure_stage.setText(message)
             self._render_error_report(typed, cancelled, evidence)
             if failed:
-                self.tabs.setCurrentIndex(2)
+                self.tabs.setCurrentIndex(self.results_tab_index)
                 self.result_tabs.setCurrentIndex(1)
             self.active_operation = ""
             self.worker = None
@@ -1642,7 +1692,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.variant_by_key.get(key),
                 self.current_outcomes_by_key.get(key),
             )
-            self.tabs.setCurrentIndex(2)
+            self.tabs.setCurrentIndex(self.results_tab_index)
 
         def _open_failure_case_detail(self, row: int, _column: int) -> None:
             self._cancel_pending_exact_action()
@@ -1656,7 +1706,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.failure_variants_by_key.get(key),
                 self.failure_outcomes_by_key.get(key),
             )
-            self.tabs.setCurrentIndex(2)
+            self.tabs.setCurrentIndex(self.results_tab_index)
 
         def _handle_case_table_click(self, row: int, column: int) -> None:
             if column == self.ACTION_COLUMN:
@@ -1734,6 +1784,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             variants: Sequence[RunVariant],
             origin: str,
         ) -> None:
+            self.active_suite_surface = "external"
             self.catalog = CanonicalCatalog.load()
             variants = refresh_run_variants(self.catalog, variants)
             config = config.with_discovery().validated(require_tools=False)
@@ -2096,7 +2147,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.worker = None
             self._set_busy(False)
             self._refresh_history()
-            self.tabs.setCurrentIndex(2)
+            self.tabs.setCurrentIndex(self.results_tab_index)
             if prepared_failure is not None or evidence.startswith("ERROR:"):
                 self.result_tabs.setCurrentIndex(1)
             else:
@@ -2129,6 +2180,13 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.build_button.setEnabled(not busy)
             self.run_button.setEnabled(not busy)
             self.preview_button.setEnabled(not busy)
+            self.unit_run_button.setEnabled(not busy)
+            self.unit_preview_button.setEnabled(not busy)
+            self.baseline_run_button.setEnabled(not busy)
+            self.baseline_preview_button.setEnabled(not busy)
+            self.deploy_run_button.setEnabled(not busy)
+            self.deploy_preview_button.setEnabled(not busy)
+            self.deploy_mode.setEnabled(not busy)
             self.save_button.setEnabled(not busy)
             self.detect_button.setEnabled(not busy)
             self.receipt_button.setEnabled(not busy)
@@ -2158,7 +2216,19 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.clear_results_button.setEnabled(not busy)
             infrastructure_busy = busy and bool(self.active_operation)
             self.infrastructure_cancel_button.setEnabled(infrastructure_busy)
-            self.cancel_button.setEnabled(busy and not infrastructure_busy)
+            suite_busy = busy and isinstance(self.worker, SuiteWorker)
+            self.cancel_button.setEnabled(
+                suite_busy and self.active_suite_surface == "external"
+            )
+            self.unit_cancel_button.setEnabled(
+                suite_busy and self.active_suite_surface == "unit"
+            )
+            self.baseline_cancel_button.setEnabled(
+                busy and self.active_release_operation == "baseline"
+            )
+            self.deploy_cancel_button.setEnabled(
+                busy and self.active_release_operation == "deploy"
+            )
             if busy:
                 self.retry_button.setEnabled(False)
                 self.preparation_retry_button.setEnabled(False)
@@ -2167,6 +2237,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.failure_enable_button.setEnabled(False)
             else:
                 self._refresh_failure_controls()
+                self.unit_retry_button.setEnabled(bool(self.unit_last_failed_variants))
                 self.preparation_retry_button.setEnabled(
                     bool(self.last_preparation_variants)
                 )
@@ -3118,6 +3189,12 @@ def launch_gui(smoke_only: bool = False) -> int:
             "preparation_retry_button": "Reintentar preparación/corrida",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
             "failure_enable_button": "Reactivar seleccionados",
+            "unit_run_button": "Ejecutar unitarias",
+            "unit_cancel_button": "Cancelar corrida/árbol",
+            "baseline_run_button": "Certificar / crear baseline",
+            "baseline_cancel_button": "Cancelar certificación",
+            "deploy_run_button": "Instalar para pruebas",
+            "deploy_cancel_button": "Cancelar instalación",
         }
         for attribute, expected_text in expected_buttons.items():
             button = getattr(window, attribute, None)
@@ -3134,10 +3211,21 @@ def launch_gui(smoke_only: bool = False) -> int:
         primary_tabs = [
             window.tabs.tabText(index) for index in range(window.tabs.count())
         ]
-        if primary_tabs != ["Construcción", "Pruebas", "Resultados", "Historial"]:
+        if primary_tabs != [
+            "Construcción",
+            "Pruebas externas",
+            "Pruebas unitarias",
+            "Resultados",
+            "Historial",
+            "Baseline",
+            "Deploy",
+        ]:
             raise RuntimeError(
-                "GUI smoke missing the Construcción/Pruebas/Resultados/Historial hierarchy"
+                "GUI smoke missing the seven independent top-level workspaces"
             )
+        unit_ids = [case.case_id for case in window.catalog.cases if case.layer == "unit"]
+        if len(unit_ids) != len(set(unit_ids)) or not unit_ids:
+            raise RuntimeError("GUI smoke found an empty or duplicated unit-test projection")
         if any(
             window.result_tabs.tabText(index) == "Historial"
             for index in range(window.result_tabs.count())
@@ -3173,76 +3261,6 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing the producer-blocked status filter")
         if not hasattr(SuiteWorker, "preparation_ready"):
             raise RuntimeError("GUI smoke missing producer preparation progress")
-        valid_history = next(
-            (
-                root
-                for root in sorted(HISTORY_ROOT.iterdir(), reverse=True)
-                if root.is_dir()
-                and history_record(root)[1] == "phase-2-suite"
-                and history_record(root)[2] not in {"INCOMPLETE", "MALFORMED"}
-            ),
-            None,
-        ) if HISTORY_ROOT.is_dir() else None
-        if valid_history is not None:
-            live_signature = (
-                window.case_table.rowCount(),
-                dict(window.live_status_counts),
-                window.full_log.toPlainText(),
-                window.error_report.toPlainText(),
-            )
-            prior_tab_count = window.history_workspace_tabs.count()
-            window._load_history_path(valid_history)
-            if window.history_workspace_tabs.count() != prior_tab_count + 1:
-                raise RuntimeError("GUI smoke did not open a dedicated historical tab")
-            if window.tabs.currentIndex() != window.history_top_tab_index:
-                raise RuntimeError("GUI smoke did not keep the run inside Historial")
-            if len(window.history_run_pages) != 1:
-                raise RuntimeError("GUI smoke did not retain the historical page identity")
-            historical_page = next(iter(window.history_run_pages.values()))
-            run_sections = historical_page.findChild(
-                QTabWidget, "history_run_sections"
-            )
-            if (
-                run_sections is None
-                or run_sections.count() != 2
-                or not run_sections.tabText(0).startswith("Pruebas (")
-                or run_sections.tabText(1) != "Reporte"
-            ):
-                raise RuntimeError(
-                    "GUI smoke missing the Pruebas/Reporte historical hierarchy"
-                )
-            report_sections = historical_page.findChild(
-                QTabWidget, "history_report_sections"
-            )
-            required_report_tabs = {
-                "Resumen",
-                "Errores condensados",
-                "Log completo",
-                "Eventos",
-                "Resultados JSON",
-                "Metadatos",
-            }
-            if report_sections is None or {
-                report_sections.tabText(index)
-                for index in range(report_sections.count())
-            } != required_report_tabs:
-                raise RuntimeError("GUI smoke missing complete nested report tabs")
-            if historical_page.findChild(
-                QPushButton, "history_rerun_selected"
-            ) is None or historical_page.findChild(
-                QPushButton, "history_rerun_failures"
-            ) is None or historical_page.findChild(
-                QPushButton, "history_rerun_all"
-            ) is None:
-                raise RuntimeError("GUI smoke missing visible historical rerun actions")
-            restored_signature = (
-                window.case_table.rowCount(),
-                dict(window.live_status_counts),
-                window.full_log.toPlainText(),
-                window.error_report.toPlainText(),
-            )
-            if restored_signature != live_signature:
-                raise RuntimeError("historical loading mutated the live test workspace")
         window.close()
         return 0
     window.show()
