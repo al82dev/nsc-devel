@@ -2171,6 +2171,7 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isSetter = metadata.starts_with("property:set:") ||
                 metadata.starts_with("indexer:set:");
             symbol.isInit = metadata.find(":init") != std::string::npos;
+            symbol.isRequired = metadata.find("required") != std::string::npos;
             symbol.isUserOperator = metadata.starts_with("operator:");
             symbol.isUserConversion = metadata.starts_with("conversion:");
             symbol.isImplicitUserConversion = metadata == "conversion:implicit";

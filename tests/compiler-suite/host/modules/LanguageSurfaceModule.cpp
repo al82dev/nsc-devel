@@ -2817,6 +2817,42 @@ class Program
         }});
 }
 
+void registerRequiredMemberCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-335", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "required", "member", "field"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09RequiredMember", "Exe", R"ns(
+class Program
+{
+    public required int Value;
+
+    public static int Main()
+    {
+        Program p = new Program();
+        p.Value = 42;
+        return p.Value;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09RequiredMember.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-335 a required field must parse and compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-335 the required field must behave like an ordinary field: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2866,5 +2902,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerRawInterpolatedCase(registry);
     registerNoHeapEscapeCase(registry);
     registerInitAccessorCase(registry);
+    registerRequiredMemberCase(registry);
 }
 }

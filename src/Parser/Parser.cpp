@@ -5772,6 +5772,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isForceInline = false;
     bool isNoInline = false;
     bool isNoHeap = false;
+    bool isRequired = false;
     bool isUnsafe = false;
     bool isControlledSpecialization = false;
     SourceRange controlledSpecializationRange{};
@@ -5978,7 +5979,8 @@ ast::AstNode* Parser::parseClassMember(
               at(TokenKind::KwNoInline) || at(TokenKind::KwNoHeap) ||
               at(TokenKind::KwVirtual) || at(TokenKind::KwOverride) ||
               at(TokenKind::KwAbstract) || at(TokenKind::KwSealed) ||
-              at(TokenKind::KwExport) || at(TokenKind::KwExtern)))
+              at(TokenKind::KwExport) || at(TokenKind::KwExtern) ||
+              atContextualKeyword("required")))
         {
             break;
         }
@@ -6099,6 +6101,20 @@ ast::AstNode* Parser::parseClassMember(
                     "duplicate noheap modifier on class member");
             }
             isNoHeap = true;
+            continue;
+        }
+        if (modifier.lexeme() == "required")
+        {
+            // NS304-T09-F01: `required` es un modificador contextual de campo/property.
+            if (isRequired)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate required modifier on class member");
+            }
+            isRequired = true;
             continue;
         }
         if (modifier.kind() == TokenKind::KwConst)
@@ -7088,6 +7104,15 @@ ast::AstNode* Parser::parseClassMember(
         std::string metadata = field->auxiliaryText();
         if (!metadata.empty()) metadata += ";";
         metadata += "field-align:" + std::to_string(*nestedLayoutAlign);
+        field->setAuxiliaryText(std::move(metadata));
+    }
+    if (isRequired)
+    {
+        // NS304-T09-F01: `required` viaja en el auxiliaryText del campo, que es donde
+        // ProjectMemberModel lee los marcadores de layout/required.
+        std::string metadata = field->auxiliaryText();
+        if (!metadata.empty()) metadata += ";";
+        metadata += "required";
         field->setAuxiliaryText(std::move(metadata));
     }
     if (accessibility != TokenKind::Invalid)
