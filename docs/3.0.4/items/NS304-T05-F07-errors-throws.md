@@ -1,6 +1,6 @@
 # NS304-T05-F07 — Integrar throws E, Result, ?, panic y unwind nativo con async
 
-- **Estado**: PARCIAL (superficie future lleva E; slot de error + ReadyError + ?/Result pendientes)
+- **Estado**: PARCIAL (superficie + ReadyError cerrados; rethrow/SEH + ?/Result = refinamiento runtime)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -74,3 +74,16 @@ de F02 está listo como modelo y es el contrato a cablear.
 
 Queda: slot de error en el struct + camino `ReadyError` en `AwaitFuture` (un `throw` en el cuerpo
 aún unwindea nativo SEH) y `?`/`Result` a través del await. Esos son el runtime, acoplados a F09.
+
+### Cierre parcial (ReadyError) — verificado 2026-10-13
+
+- Layout: `future:<T>|<E>` ahora lleva un slot de error (campo 3, tras result).
+- `rewriteAsyncPollReturns` recibe el future-key completo y reescribe `throw E` →
+  `{ self->error = E; self->state = -2; return; }` (el throw deja de unwindear nativo).
+- Blocking await detecta `state == -2` y señala el error determinista (exit -1).
+- Verificado: `async Read(){ throw new Exception(); return 42; }` + `await Read()` → exit -1;
+  sin throw → exit 42. Registrado `TL-LANG-376` (PASS). Commit `88d4bb60`.
+
+Queda (refinamiento runtime): el **rethrow/SEH** (propagar el error cargado al `catch` del caller,
+en vez de la señal determinista) y el camino `ReadyError` en el `AwaitFuture` async (propagar el
+error del hijo al future padre). Ambos acoplados a F09.
