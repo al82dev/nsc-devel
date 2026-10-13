@@ -1,6 +1,6 @@
 # NS304-T04-F01 — Inferir tipo callable natural para lambda y method group
 
-- **Estado**: CERRADO (lambda natural) / residual menor (method group)
+- **Estado**: CERRADO (lambda + method group natural)
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `ProjectMethodBodyModel.cpp` (análisis de `LambdaExpression` y
   `AnonymousLambdaType`), `ProjectGenericModel.cpp` (`inferLambdaTypeArguments`), y la prueba
@@ -28,8 +28,9 @@ La infraestructura de callables ya es extensa (análisis por olas paralelas):
 **Prueba `TL-LANG-314`** (exit 42): `var f = (int x) => x + 1; return f(41);` — **PASS**, valida la
 inferencia del retorno desde el cuerpo.
 
-## Residual menor (a confirmar en testing final)
+## Cierre (method group natural)
 
-Inferencia de **method group** (rank único) a `fn*`/`fn&` sin destino tipado explícito. La
-conversión method group → delegate ya existe (`bindMethodGroupToDelegate`, :22974), pero la
-inferencia del tipo `fn` natural de un method group único sin contexto no se validó con prueba.
+Inferencia de **method group** (rank único) a `fn*`/`fn&` sin destino tipado explícito, validada
+por `TL-LANG-319` (`var f = Double; return f(21);` → 42). La conversión method group → delegate la
+provee `bindMethodGroupToDelegate` (:22974) y el tipo `fn` natural único la resuelve el ranking de
+T04-F07. Sin residual pendiente.
