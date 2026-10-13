@@ -3377,6 +3377,36 @@ class Program
         }});
 }
 
+void registerCollectionSpreadDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-349", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "expression", "spread", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionSpread", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] a = [1, 2];
+        int[] b = [..a, 3];
+        return b[0];
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionSpread.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                (emitted.error + emitted.output).find("spread elements in collection expressions") !=
+                    std::string::npos,
+                "TL-LANG-349 a collection expression spread must diagnose clearly: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3440,5 +3470,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerClassPrimaryConstructorCase(registry);
     registerCollectionExpressionCase(registry);
     registerEmptyCollectionExpressionDiagnosticCase(registry);
+    registerCollectionSpreadDiagnosticCase(registry);
 }
 }

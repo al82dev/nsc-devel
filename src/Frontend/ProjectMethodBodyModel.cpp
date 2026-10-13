@@ -12897,6 +12897,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // NS304-T09-F05: `[a, b, c]` target-typed a array nativo o, sin target, inferido del
             // primer elemento (homogéneo). Spreads/builder residual.
             const std::string explicitTarget = activeTargetTypeKey_;
+            // NS304-T09-F05 residual: el spread `..x` se parsea pero su aplanado aún no se baja.
+            for (const ast::AstNode* child : expression->children())
+            {
+                if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        child->range(),
+                        "spread elements in collection expressions are not yet supported");
+                    result.valid = false;
+                    return result;
+                }
+            }
             std::vector<ExpressionResult> elementValues;
             std::vector<const ast::AstNode*> elementSyntaxes;
             elementValues.reserve(expression->children().size());
