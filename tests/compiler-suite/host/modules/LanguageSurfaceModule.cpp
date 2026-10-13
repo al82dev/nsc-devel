@@ -3746,10 +3746,9 @@ void registerYieldDiagnosticCase(TestRegistry& registry)
                 "T06YieldDiagnostic", "Exe", R"ns(
 class Program
 {
-    public static int Main()
+    public static Iterator<int> Generate()
     {
         yield return 42;
-        return 0;
     }
 }
 )ns");
@@ -3761,6 +3760,35 @@ class Program
                     (emitted.error + emitted.output).find("generator state machine lowering") !=
                         std::string::npos,
                 "TL-LANG-329 yield must report the generator-lowering diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
+void registerYieldContextCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-379", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "context", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06YieldContext", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        yield return 1;
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06YieldContext.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error + emitted.output).find("yield requires a generator") !=
+                        std::string::npos,
+                "TL-LANG-379 yield outside a generator must report the context diagnostic: " +
                     emitted.error + emitted.output);
         }});
 }
@@ -5218,6 +5246,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
+    registerYieldContextCase(registry);
     registerExtensionSetterMethodCase(registry);
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
