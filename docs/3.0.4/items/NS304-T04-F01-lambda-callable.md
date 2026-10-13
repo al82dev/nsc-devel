@@ -1,6 +1,8 @@
 # NS304-T04-F01 — Inferir tipo callable natural para lambda y method group
 
 - **Estado**: CERRADO (lambda + method group natural)
+- **Validación secuencial**: confirmado en campaña; `TL-LANG-314` PASS, `TL-LANG-319` PASS
+  (2026-10-13); guard `TL-LANG-315` (T03) PASS. Avanza a 31/147.
 - **Rama**: development
 - **Alcance (SCOPE LOCK)**: `ProjectMethodBodyModel.cpp` (análisis de `LambdaExpression` y
   `AnonymousLambdaType`), `ProjectGenericModel.cpp` (`inferLambdaTypeArguments`), y la prueba
