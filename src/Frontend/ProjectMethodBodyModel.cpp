@@ -5050,6 +5050,15 @@ void ProjectMethodBodyModel::analyzeStatement(
                 "local functions are parsed but their callable registration is not yet "
                 "implemented (NS304-T04-F06)");
             break;
+        case ast::AstNodeKind::YieldReturnStatement:
+        case ast::AstNodeKind::YieldBreakStatement:
+            // NS304-T06-F02: el AST de yield esta (T06-F01); el lowering a state machine es T06-F03.
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "yield requires the generator state machine lowering (NS304-T06-F03)");
+            break;
         default:
             break;
     }

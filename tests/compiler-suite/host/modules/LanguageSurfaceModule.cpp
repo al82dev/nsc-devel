@@ -2577,6 +2577,35 @@ class Program
         }});
 }
 
+void registerYieldDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-329", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06YieldDiagnostic", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        yield return 42;
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06YieldDiagnostic.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error + emitted.output).find("generator state machine lowering") !=
+                        std::string::npos,
+                "TL-LANG-329 yield must report the generator-lowering diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2620,5 +2649,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncMethodMarkerCase(registry);
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
+    registerYieldDiagnosticCase(registry);
 }
 }
