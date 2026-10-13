@@ -1,6 +1,6 @@
 # NS304-T05-F09 — ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular
 
-- **Estado**: ABIERTO (auditado; diseño de ABI por fijar)
+- **Estado**: PARCIAL (Opción A en curso: future lleva pollFn + constructor lo fija; await sobre variable pendiente)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -37,6 +37,20 @@ Estado real tras F03 (cerrado):
 Recomendación: **(A) poll virtual** — es la forma canónica del "future opaco" (el future lleva su
 poll/resume/drop), evita los tipos por-función y desbloquea tanto `await` sobre variable como la
 primitiva pendiente. Es una decisión de ABI material (F09); se registra para Alberto.
+
+### Cierre parcial (Opción A, fundación) — verificado 2026-10-13
+
+- **Layout**: el future ahora lleva `pollFn` (campo 3, offset 24): `{state, frame, result, pollFn, error?}`;
+  el error se mueve al índice 4. `future:builtin:int` = 32 bytes.
+- **Constructor**: fija `pollFn = F$poll` vía el nuevo nodo `PollAddress` (HIR/MIR), que baja a la
+  dirección de la función. IR verificado: `store ptr F$poll, ptr %future.field.addr`.
+- **Partición**: `ProjectOopCodePartition::collectNode` declara el poll en la unidad que baja el
+  `PollAddress` (referencia cruzada de unidad).
+- Verificado: `TL-LANG-328/369-376` pass. Commit `7ddc45fb`.
+
+Queda (Opción A, consumidor): el `await` debe **llamar `pollFn`** (hoy usa `calleeName`), `Future<T>`
+nombrable (map a `future:<T>`) y `await` sobre **variable** — el hueco demostrado que consume el
+pollFn.
 
 ## Prueba puntual
 
