@@ -2783,6 +2783,78 @@ class Program
         }});
 }
 
+void registerClosureDropOracleCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-368", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "closure", "drop", "owned", "capture", "destructor"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04ClosureDrop", "Exe", R"ns(
+delegate int Read();
+class Box
+{
+    public static int Drops;
+    public int Value;
+    public Box(int value) { Value = value; }
+    ~Box() { Drops = Drops + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int observed = 0;
+        {
+            raii Box box = new Box(42);
+            raii Read read = [move box] () => box.Value;
+            observed = read();
+        }
+        return Box.Drops * 100 + observed;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04ClosureDrop.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-368 a move-captured closure must compile and drop its owner: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 142,
+                "TL-LANG-368 the owned capture must be dropped exactly once (Drops=1, value=42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+
+            const std::filesystem::path escapeProject = products.writeProject(
+                "T04ClosureEscape", "Exe", R"ns(
+delegate int Read();
+class Program
+{
+    public static Read Make()
+    {
+        int captured = 5;
+        return (Read)(() => captured);
+    }
+    public static int Main()
+    {
+        Read read = Make();
+        return read();
+    }
+}
+)ns");
+            const external_program_support::Result escapeRejected = emitT01Product(
+                L"--emit-project-oop-exe", escapeProject,
+                products.directory() / "T04ClosureEscape.exe", products.directory());
+            context.expect(escapeRejected.started && escapeRejected.exitCode != 0 &&
+                    (escapeRejected.error + escapeRejected.output).find("captured") !=
+                        std::string::npos,
+                "TL-LANG-368 a closure escaping a captured local must be rejected: " +
+                    escapeRejected.error + escapeRejected.output);
+        }});
+}
+
 void registerClosureErrorCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-320", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4713,6 +4785,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerMethodGroupRankingCase(registry);
     registerClosureErrorCase(registry);
     registerClosureErrorThrowCase(registry);
+    registerClosureDropOracleCase(registry);
     registerExtensionMethodCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);

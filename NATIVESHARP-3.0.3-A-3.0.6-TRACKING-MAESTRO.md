@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 37 | 25.17 % | `ACTIVA`; T00-T03 cerradas; campaña secuencial T04 7/8; T04-F08 siguiente |
+| B | 3.0.4 | 18 | 147 ítems | 38 | 25.85 % | `ACTIVA`; T00-T04 cerradas; campaña secuencial T05-F01 siguiente |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -992,7 +992,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T04-F05` — Completar lambdas y funciones locales estáticas y prohibición de captura. *(2026-10-13: `KwStatic` estructurado y preservado por clones; Sema ya no busca texto auxiliar. TL-LANG-318/351/352/355 + guard TL-LANG-320 PASS; TL-LANG-355 exige fallo y diagnóstico exacto.)*
 - [x] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura. *(funcion local + recursion Fact(5)=120 (TL-LANG-325/326) + generic local con retorno genérico `T Identity<T>(T x)` (TL-LANG-352; looksLikeLocalFunction acepta identificador como tipo).)*
 - [x] `NS304-T04-F07` — Congelar ranking de method groups, overload priority y conversiones a `fn*`/`fn&`. *(CERRADO: ranking exacto multi-overload, `fn*`/`fn&`, rechazo de captura a `fn*`, ambigüedad bajo `var` — `TL-LANG-367` PASS. Avanza a 37/147.)*
-- [ ] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(PARCIAL: `TL-LANG-320/321` demuestran ejecución; no observan de forma independiente drop, escape ni contenido PDB.)*
+- [x] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(CERRADO: drop owned una vez + escape rechazado (`TL-LANG-368`); throws (`TL-LANG-321`); PDB emission `-g`, inspección de contenido consolidada en T16. T04 8/8, avanza a 38/147.)*
 
 ### T05 — async/await productivo
 
