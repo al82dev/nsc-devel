@@ -1,6 +1,6 @@
 # NS304-T06-F07 — Early stop, destrucción, errors, panic y cleanup determinista
 
-- **Estado**: AUDITADO (drop/defer en yield break/abandono pendiente; error tipado = surface)
+- **Estado**: PARCIAL (drop en yield break cerrado; abandono de foreach + error tipado pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -38,3 +38,14 @@ El drop/defer de los locals vivos del generator no se ejecuta en `yield break` n
 
 Un generator con un resource RAII local; abandonar el `foreach` (o `yield break`) debe correr el drop
 exactamente una vez. Un error tipado debe distinguirse del fin normal.
+
+### Cierre parcial (yield break) — verificado 2026-10-13
+
+- `YieldBreak` (HIR) adjunta las cleanup regions activas (continuación Return).
+- `YieldBreak` (LLVM) ejecuta `emitOneStructuredCleanup` en orden inverso antes de `state=-1` +
+  `return false`.
+- Verificado: `Gen(){yield 1; yield break; yield 2;}` → MoveNext produce 1 y termina (exit 1).
+  Registrado `TL-LANG-383` (PASS). Commit `8e8bd884`.
+
+Queda: **abandono de `foreach`** (destruir el frame del generator al salir del loop) y **error tipado**
+(`throws E` de generator) — surface pendiente.
