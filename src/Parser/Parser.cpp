@@ -916,6 +916,8 @@ bool Parser::looksLikeLocalFunction() const noexcept
 {
     std::size_t cursor = index_;
     std::size_t afterType = cursor;
+    // NS304-T04-F05: `static` local function — el modificador no participa en el escaneo del tipo.
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwStatic) ++cursor;
     if (!scanTypeAt(cursor, afterType)) return false;
     cursor = afterType;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier) return false;
@@ -929,6 +931,9 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     // reutilizar la inferencia de tipo callable natural de lambda (T04-F07). La recursion
     // (autoreferencia) es follow-up.
     const std::size_t beginIndex = index_;
+    // NS304-T04-F05: `static` local function — sin captura; el marcador viaja al lambda.
+    const bool isStaticLocal = at(TokenKind::KwStatic);
+    if (isStaticLocal) consume();
     ast::AstNode* function = parseFunctionOrGlobalVariable();
     if (function == nullptr || function->kind() != ast::AstNodeKind::FunctionDeclaration)
     {
@@ -936,6 +941,7 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     }
     ast::AstNode* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, function->range());
+    if (isStaticLocal) lambda->addModifier(TokenKind::KwStatic);
     for (ast::AstNode* parameter : function->children())
     {
         lambda->addChild(cloneParsedNode(arena_, parameter));
@@ -9142,6 +9148,8 @@ ast::AstNode* Parser::parseStatement()
 
     if (at(TokenKind::KwStatic))
     {
+        // NS304-T04-F05: `static int name(...) { ... }` es una función local estática.
+        if (looksLikeLocalFunction()) return parseLocalFunctionAsLambda();
         const SourceRange staticRange = consume().range();
         const bool declaration =
             (atContextualKeyword("pin") &&

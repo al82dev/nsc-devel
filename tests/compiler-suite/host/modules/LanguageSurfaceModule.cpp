@@ -3443,6 +3443,40 @@ class Program
         }});
 }
 
+void registerStaticLocalFunctionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-351", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "local", "function", "static"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04StaticLocalFunction", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        static int Twice(int n)
+        {
+            return n * 2;
+        }
+        return Twice(21);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04StaticLocalFunction.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-351 a static local function must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-351 Twice(21) must be 42: " + result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3508,5 +3542,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerEmptyCollectionExpressionDiagnosticCase(registry);
     registerCollectionSpreadDiagnosticCase(registry);
     registerNameOfGenericMethodCase(registry);
+    registerStaticLocalFunctionCase(registry);
 }
 }
