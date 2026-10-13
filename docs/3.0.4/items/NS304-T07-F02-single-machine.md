@@ -48,3 +48,13 @@ productivo.
 - Verificado: `AsyncIterator<int,object> Gen(){ yield 1; }` → error claro. Commit `cf188c1`.
 
 Queda: **el split único** (`MoveNextAsync` → future de la siguiente demanda) y el MIR de estados/aristas.
+
+### ABI del future-de-demanda (recomendado)
+
+- **(A) `future<bool>` + poll interno**: `await it.MoveNextAsync()` → `bool`; el poll del future ejecuta
+  el cuerpo async-generator hasta el siguiente `yield`/`await`. Reutiliza `future:<bool>|<E>` de T05.
+- (B) `future<item>` directo (descartado por ahora).
+
+Split planeado: constructor `Gen` (async-iterator + `moveNextFn = Gen$moveNext`) → `Gen$moveNext`
+(`future<bool>`, fija `pollFn = Gen$moveNext$poll`) → `Gen$moveNext$poll` (cuerpo con yield/await, un
+frame).
