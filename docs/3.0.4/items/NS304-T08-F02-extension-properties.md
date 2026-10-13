@@ -13,16 +13,20 @@
 
 ## Gap F02
 
-1. Parsear `public int Prop { get { ... } set { ... } }` dentro de un bloque `extension`, con el
-   receptor sintético igual que los métodos.
-2. Cablear el lookup de extension property (getter/setter/ref getter) al member access del Sema.
+1. Parsear `public int Prop { get { ... } set { ... } }` dentro de un bloque `extension` ✅ (parser
+   acepta `PropertyDeclaration` en el bloque).
+2. **Falta inyectar el receptor en el getter/setter**: el getter de la property no recibe
+   `__nsc_extension_this`, así que `21.Doubled` falla ("member access ... receiver type builtin:int").
+   El getter/setter son sub-nodos de la `PropertyDeclaration`; hay que inyectarles el receptor igual
+   que a los métodos.
+3. Cablear el lookup de extension property al member access del Sema.
 
 ## Plan
 
-1. En `parseExtensionDeclaration`, aceptar `PropertyDeclaration` además de `FunctionDeclaration`
-   (reusar el parser de property de class member, inyectando el receptor).
-2. En el lookup (Sema), resolver extension properties con el `bindExtension` (análogo a métodos).
-3. Prueba `TL-LANG-324`.
+1. En `parseExtensionDeclaration`, al aceptar `PropertyDeclaration`, inyectar el receptor en el
+   getter/setter (los sub-nodos).
+2. En el lookup (Sema), resolver extension properties con el `bindExtension`.
+3. Prueba `TL-LANG-324` (ya redactada; se re-registra al pasar).
 
 ## Prueba puntual
 
