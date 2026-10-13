@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 35 | 23.81 % | `ACTIVA`; T00-T03 cerradas; campaña secuencial T04 5/8; T04-F06 siguiente |
+| B | 3.0.4 | 18 | 147 ítems | 36 | 24.49 % | `ACTIVA`; T00-T03 cerradas; campaña secuencial T04 6/8; T04-F07 siguiente |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
