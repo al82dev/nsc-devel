@@ -8806,7 +8806,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
             MethodScopeKind::Block, methodMemberOrdinal, scopeOrdinal);
         for (const ast::AstNode* binding : arm->children())
         {
-            analyzeVariable(binding, methodMemberOrdinal, armScope, diagnostics);
+            // NS304-T03-F04: los bindings del arm incluyen DeconstructionDeclarationStatement
+            // (posicional/tuple); analyzeStatement maneja tanto variables como deconstruccion.
+            analyzeStatement(binding, methodMemberOrdinal, armScope, diagnostics);
         }
         if (arm->second() != nullptr)
         {

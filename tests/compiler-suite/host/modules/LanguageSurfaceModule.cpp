@@ -2525,6 +2525,58 @@ class Program
         }});
 }
 
+void registerPositionalPatternCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-322", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "positional", "deconstruct"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T03Positional", "Exe", R"ns(
+class Program
+{
+    public struct Point
+    {
+        public int X;
+        public int Y;
+        public Point(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+        public (int, int) Deconstruct()
+        {
+            return (X, Y);
+        }
+    }
+
+    public static int Main()
+    {
+        Point p = new Point(3, 4);
+        return match(p)
+        {
+            Point(x, y) => x + y,
+            _ => 0
+        };
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T03Positional.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-322 a positional pattern must deconstruct by position: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-322 positional deconstruction must bind elements: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2567,5 +2619,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLambdaAttributeCase(registry);
     registerAsyncMethodMarkerCase(registry);
     registerExtensionPropertyCase(registry);
+    registerPositionalPatternCase(registry);
 }
 }

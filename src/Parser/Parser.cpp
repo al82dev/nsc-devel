@@ -11116,13 +11116,9 @@ ast::AstNode* Parser::makePatternCondition(
         }
         case PatternKind::Positional:
         {
-            // NS304-T03-F04: la deconstruccion posicional se baja en Sema (bindDeconstructionSource).
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                pattern.range,
-                "positional patterns require deconstruction lowering (NS304-T03-F04)");
-            return makeBooleanLiteral(pattern.range, false);
+            // NS304-T03-F04: `source.Deconstruct()` devuelve una tupla; el match siempre aplica
+            // (el tipo tiene Deconstruct) y la deconstruccion/binding ocurre en emitPatternBindings.
+            return makeBooleanLiteral(pattern.range, true);
         }
         case PatternKind::List:
         {
@@ -11323,6 +11319,20 @@ ast::AstNode* Parser::lowerPattern(
         decision->setSecond(thenBlock);
         return decision;
     }
+    if (pattern.kind == PatternKind::Positional)
+    {
+        // NS304-T03-F04: como el patron Tuple/List, la deconstruccion + binding van en el thenBlock.
+        ast::AstNode* thenBlock = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, pattern.range);
+        if (emitBindings)
+            emitPatternBindings(pattern, source, thenBlock, temporaryPrefix);
+        thenBlock->addChild(continuation);
+        ast::AstNode* decision = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, pattern.range);
+        decision->setFirst(makePatternCondition(pattern, source));
+        decision->setSecond(thenBlock);
+        return decision;
+    }
     if (pattern.kind == PatternKind::Variant)
     {
         ast::AstNode* test = makeZeroArgCallExpression(
@@ -11453,6 +11463,34 @@ void Parser::emitPatternBindings(
         for (std::size_t index = 0; index < pattern.children.size(); ++index)
         {
             const std::string name = std::string(temporaryPrefix) + "_tuple_" +
+                std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
+            elementNames.push_back(name);
+            deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        }
+        destination->addChild(deconstruction);
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = elementNames[index];
+            PatternExpressionFactory element = [&, name]
+            {
+                return makeIdentifierExpression(pattern.range, name);
+            };
+            emitPatternBindings(
+                pattern.children[index], element, destination, temporaryPrefix);
+        }
+        return;
+    }
+    if (pattern.kind == PatternKind::Positional)
+    {
+        // NS304-T03-F04: deconstruye el valor nominal via Deconstruct() (bindDeconstructionSource
+        // resuelve el Deconstruct y devuelve la tupla).
+        ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
+        deconstruction->setFirst(source());
+        std::vector<std::string> elementNames;
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = std::string(temporaryPrefix) + "_pos_" +
                 std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
             elementNames.push_back(name);
             deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
