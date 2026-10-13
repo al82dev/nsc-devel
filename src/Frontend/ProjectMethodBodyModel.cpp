@@ -22960,6 +22960,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         assignedLocals_.insert(localOrdinal);
     }
 
+    // NS304-T04-F06: recursion de funcion local. El lambda lleva "local-function:<name>"; registra
+    // <name> en el scope DEL LAMBDA (no en el enclosing) con su fn* para que el cuerpo se
+    // auto-referencie sin que el lambda lo trate como captura del entorno.
+    if (syntax->auxiliaryText().starts_with("local-function:"))
+    {
+        const std::string selfName = syntax->auxiliaryText().substr(
+            std::string_view("local-function:").size());
+        if (!selfName.empty() && !returnType.empty())
+        {
+            language::FunctionType signature;
+            signature.parameters = binding.parameterTypeKeys;
+            signature.result = returnType;
+            signature.carrier = language::FunctionCarrier::Pointer;
+            const std::string fnTypeKey = language::functionTypeIdentity(signature);
+            MethodLocalSymbol selfLocal;
+            selfLocal.methodMemberOrdinal = methodMemberOrdinal;
+            selfLocal.scopeOrdinal = lambdaScope;
+            selfLocal.name = selfName;
+            selfLocal.typeKey = fnTypeKey;
+            selfLocal.range = syntax->range();
+            selfLocal.syntax = syntax;
+            selfLocal.lambdaOrdinal = binding.lambdaOrdinal;
+            const std::size_t selfOrdinal = locals_.size();
+            locals_.push_back(std::move(selfLocal));
+            scopes_[lambdaScope].localOrdinals.push_back(selfOrdinal);
+            scopeNames_[lambdaScope].push_back(ScopeName{
+                ScopeNameKind::Local, selfName, selfOrdinal, syntax->range()});
+            assignedLocals_.insert(selfOrdinal);
+        }
+    }
+
     const std::size_t nameBindingBegin = nameBindings_.size();
     const OwnershipFlowSnapshot previousOwnershipFlow = captureOwnershipFlow();
     const std::optional<std::size_t> previousLambda = currentLambdaOrdinal_;

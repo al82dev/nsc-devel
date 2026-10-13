@@ -942,6 +942,9 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     }
     // Conserva el tipo de retorno explicito para que el Sema construya el fn* (recursion).
     lambda->setTypeSyntax(cloneParsedType(arena_, function->typeSyntax()));
+    // NS304-T04-F06: el lambda lleva su nombre para que el Sema registre la auto-referencia en el
+    // scope del lambda (no en el enclosing) y el cuerpo pueda llamarse a si mismo sin capturar.
+    lambda->setAuxiliaryText("local-function:" + function->text());
     // Un lambda natural no-convertido exige cuerpo de EXPRESION (el retorno se infiere del
     // cuerpo). Si el cuerpo es `{ return expr; }` (un solo return), se usa `expr` como cuerpo.
     ast::AstNode* body = function->first();
