@@ -128,6 +128,8 @@ enum class AstNodeKind
     // NativeSharp 3.0 T01. Appended to preserve every 2.x serialized node identity.
     NullCoalescingExpression,
     NullConditionalMemberExpression,
+    // NS304-T10-F05: null-conditional index `obj?[i]` (READ/WRITE residual).
+    NullConditionalIndexExpression,
     RangeExpression,
     FromEndExpression,
     SpreadElementExpression,

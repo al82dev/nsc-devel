@@ -1043,6 +1043,7 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
                 return makeToken(TokenKind::QuestionQuestion, begin);
             }
             if (match('.')) return makeToken(TokenKind::QuestionDot, begin);
+            if (match('[')) return makeToken(TokenKind::QuestionBracket, begin);
             return makeToken(TokenKind::Question, begin);
         case '.':
             if (current() == '.' && peek() == '.')

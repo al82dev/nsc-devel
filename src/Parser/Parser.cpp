@@ -14669,6 +14669,52 @@ ast::AstNode* Parser::parsePostfixExpression()
             continue;
         }
 
+        if (at(TokenKind::QuestionBracket))
+        {
+            consume(); // '?['
+            std::vector<ast::AstNode*> indices;
+            if (!at(TokenKind::RightBracket))
+            {
+                while (true)
+                {
+                    ast::AstNode* indexExpression = nullptr;
+                    ast::AstNode* rangeStart = nullptr;
+                    if (!at(TokenKind::DotDot)) rangeStart = parseAssignmentExpression();
+                    if (at(TokenKind::DotDot))
+                    {
+                        const SourceRange rangeToken = consume().range();
+                        ast::AstNode* rangeEnd = nullptr;
+                        if (!at(TokenKind::Comma) && !at(TokenKind::RightBracket))
+                            rangeEnd = parseAssignmentExpression();
+                        indexExpression = arena_.make<ast::AstNode>(
+                            ast::AstNodeKind::RangeExpression,
+                            SourceRange(
+                                rangeStart != nullptr ? rangeStart->range().begin() : rangeToken.begin(),
+                                rangeEnd != nullptr ? rangeEnd->range().end() : rangeToken.end()));
+                        indexExpression->setTokenKind(TokenKind::DotDot);
+                        indexExpression->setFirst(rangeStart);
+                        indexExpression->setSecond(rangeEnd);
+                    }
+                    else
+                    {
+                        indexExpression = rangeStart;
+                    }
+                    if (indexExpression != nullptr) indices.push_back(indexExpression);
+                    if (!consumeIf(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RightBracket, "']'");
+            ast::AstNode* indexNode = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::NullConditionalIndexExpression,
+                SourceRange(expression->range().begin(), tokens_[index_ - 1].range().end()));
+            indexNode->setTokenKind(TokenKind::QuestionBracket);
+            indexNode->setFirst(expression);
+            if (!indices.empty()) indexNode->setSecond(indices.front());
+            for (ast::AstNode* indexExpression : indices) indexNode->addChild(indexExpression);
+            expression = indexNode;
+            continue;
+        }
+
         if (at(TokenKind::QuestionDot))
         {
             consume();

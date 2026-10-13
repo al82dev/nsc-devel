@@ -200,13 +200,14 @@ void registerLexerOperatorModule(TestRegistry& registry) {
                      "question-family operators use maximal munch",
                      [](TestContext& context) {
                          constexpr std::array samples{
+                             OperatorSample{"?[", TokenKind::QuestionBracket},
                              OperatorSample{"?" "?=", TokenKind::QuestionQuestionEqual},
                              OperatorSample{"??", TokenKind::QuestionQuestion},
                              OperatorSample{"?.", TokenKind::QuestionDot},
                              OperatorSample{"?", TokenKind::Question},
                          };
                          expectSequence(context,
-                                        "?" "?= ?? ?. ?",
+                                        "?[ ?" "?= ?? ?. ?",
                                         samples.data(),
                                         samples.size(),
                                         "TL-LEX-095");

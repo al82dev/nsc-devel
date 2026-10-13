@@ -94,6 +94,17 @@ void testNullConditionalMember(TestContext& context)
         "TP-PAR-482 null-conditional member must retain source, name, and complete range");
 }
 
+// Verifies null-conditional index retains the receiver and one index child. Complexity is O(n).
+void testNullConditionalIndex(TestContext& context)
+{
+    ParserFixture fixture("source?[0]");
+    AstNode* node = parse(fixture);
+    context.expect(node != nullptr && node->kind() == AstNodeKind::NullConditionalIndexExpression &&
+            node->first() != nullptr && node->first()->text() == "source" &&
+            node->children().size() == 1,
+        "TP-PAR-537 null-conditional index must retain receiver and index");
+}
+
 // Verifies ordinary dot access produces MemberExpression. Complexity is O(n).
 void testDotMember(TestContext& context)
 {
@@ -271,5 +282,6 @@ void registerParserPostfixExpressionModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-492", "CP-PAR-039", testQuestionDisambiguation);
     addCase(registry, "TP-PAR-493", "CP-PAR-039", testStaticGenericReceiver);
     addCase(registry, "TP-PAR-494", "CP-PAR-039", testDeepChain, "NIGHTLY");
+    addCase(registry, "TP-PAR-537", "CP-PAR-039", testNullConditionalIndex);
 }
 }
