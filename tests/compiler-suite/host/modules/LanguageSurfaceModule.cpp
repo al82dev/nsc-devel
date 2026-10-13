@@ -3338,12 +3338,30 @@ class Box
 
 class Program
 {
+    private static int ReceiverEvaluations;
+    private static int RhsEvaluations;
+
+    private static Box Receiver(Box value)
+    {
+        ReceiverEvaluations += 1;
+        return value;
+    }
+
+    private static int NextValue(int value)
+    {
+        RhsEvaluations += 1;
+        return value;
+    }
+
     public static int Main()
     {
         Box b = null;
-        b?.Value = 1;
+        int skipped = (Receiver(b)?.Value = NextValue(1));
         Box c = new Box();
-        c?.Value = 42;
+        int stored = (Receiver(c)?.Value = NextValue(42));
+        if (skipped != 0) return 100;
+        if (stored != 42 || c.Value != 42) return 101;
+        if (ReceiverEvaluations != 2 || RhsEvaluations != 1) return 102;
         return c.Value;
     }
 }
@@ -3423,13 +3441,31 @@ void registerNullConditionalCompoundCase(TestRegistry& registry)
 class Box { public int Value; }
 class Program
 {
+    private static int ReceiverEvaluations;
+    private static int RhsEvaluations;
+
+    private static Box Receiver(Box value)
+    {
+        ReceiverEvaluations += 1;
+        return value;
+    }
+
+    private static int Addend(int value)
+    {
+        RhsEvaluations += 1;
+        return value;
+    }
+
     public static int Main()
     {
         Box b = null;
-        b?.Value += 1;
+        int skipped = (Receiver(b)?.Value += Addend(1));
         Box c = new Box();
         c.Value = 10;
-        c?.Value += 5;
+        int stored = (Receiver(c)?.Value += Addend(5));
+        if (skipped != 0) return 100;
+        if (stored != 15 || c.Value != 15) return 101;
+        if (ReceiverEvaluations != 2 || RhsEvaluations != 1) return 102;
         return c.Value;
     }
 }
@@ -3532,14 +3568,39 @@ void registerNullConditionalIndexReadCase(TestRegistry& registry)
                 "T10NullCondIndexRead", "Exe", R"ns(
 class Program
 {
+    private static int ReceiverEvaluations;
+    private static int IndexEvaluations;
+    private static int RhsEvaluations;
+
+    private static string[] Receiver(string[] value)
+    {
+        ReceiverEvaluations += 1;
+        return value;
+    }
+
+    private static int NextIndex()
+    {
+        IndexEvaluations += 1;
+        return 1;
+    }
+
+    private static string NextValue(string value)
+    {
+        RhsEvaluations += 1;
+        return value;
+    }
+
     public static int Main()
     {
         string[] arr = null;
-        arr?[0] = "x";
-        string x = arr?[0];
+        string skippedStore = (Receiver(arr)?[NextIndex()] = NextValue("x"));
+        string skippedLoad = Receiver(arr)?[NextIndex()];
         string[] arr2 = new string[2];
-        arr2?[1] = "hello";
-        string y = arr2?[1];
+        string stored = (Receiver(arr2)?[NextIndex()] = NextValue("hello"));
+        string y = Receiver(arr2)?[NextIndex()];
+        if (skippedStore != null || skippedLoad != null) return 100;
+        if (stored.Length != 5 || y.Length != 5) return 101;
+        if (ReceiverEvaluations != 4 || IndexEvaluations != 2 || RhsEvaluations != 1) return 102;
         return y.Length;
     }
 }
@@ -3567,16 +3628,40 @@ void registerNullConditionalStringConcatCase(TestRegistry& registry)
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
                 "T10NullCondStringConcat", "Exe", R"ns(
-class Box { public string Name; }
+class Box { public owned string Name; }
 class Program
 {
+    private static int ReceiverEvaluations;
+    private static int RhsEvaluations;
+
+    private static Box NullReceiver(Box value)
+    {
+        ReceiverEvaluations += 1;
+        return value;
+    }
+
+    private static borrowed Box Receiver(borrowed Box value)
+    {
+        ReceiverEvaluations += 1;
+        return value;
+    }
+
+    private static string Suffix(string value)
+    {
+        RhsEvaluations += 1;
+        return value;
+    }
+
     public static int Main()
     {
         Box b = null;
-        b?.Name += "x";
-        Box c = new Box();
-        c.Name = "hello";
-        c?.Name += " world";
+        string skipped = (NullReceiver(b)?.Name += Suffix("x"));
+        raii Box c = new Box();
+        string first = (c?.Name += Suffix("hello"));
+        string stored = (Receiver(c)?.Name += Suffix(" world"));
+        if (skipped != null) return 100;
+        if (first.Length != 5 || stored.Length != 11 || c.Name.Length != 11) return 101;
+        if (ReceiverEvaluations != 2 || RhsEvaluations != 2) return 102;
         return c.Name.Length;
     }
 }
@@ -3591,7 +3676,7 @@ class Program
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 11,
-                "TL-LANG-346 c.Name += \" world\" must be \"hello world\" (length 11): " +
+                "TL-LANG-346 owned c.Name += \" world\" must return/store length 11 and skip the null RHS: " +
                     result.error + result.output);
         }});
 }

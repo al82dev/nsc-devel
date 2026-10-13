@@ -22274,13 +22274,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
     }
 
-    // NS304-T10-F05: `obj?.Field = value` — el store es condicional al null-check del receptor.
-    // El RHS se evalúa incondicionalmente (simplificación documentada); el lowering de HIR emite
-    // el null check + store condicional.
+    // NS304-T10-F05: `obj?.Field = value` evaluates the RHS only on the non-null edge.
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
     {
         ExpressionResult assignmentResult = right;
+        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
         assignmentResult.assignable = false;
         assignmentResult.valid = true;
         return assignmentResult;
@@ -22303,13 +22302,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             return {};
         }
         ExpressionResult assignmentResult = right;
+        assignmentResult.ownsStorageDestination = ownedArrayElementOwnsStorage;
         assignmentResult.assignable = false;
         assignmentResult.valid = true;
         return assignmentResult;
     }
 
-    // NS304-T10-F06: null-conditional compound (`obj?.Field += x`) numérico. El RHS se evalúa
-    // incondicionalmente; el lowering de HIR/LLVM hace el read-modify-write condicional al null.
+    // NS304-T10-F06: null-conditional compound assignment evaluates its RHS and performs the
+    // read-modify-write only on the non-null edge.
     if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
     {
@@ -22331,6 +22331,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         {
             ExpressionResult assignmentResult = left;
             assignmentResult.typeKey = "builtin:string";
+            assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
             assignmentResult.assignable = false;
             assignmentResult.valid = true;
             return assignmentResult;
@@ -22359,6 +22360,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             return {};
         }
         ExpressionResult assignmentResult = left;
+        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
         assignmentResult.assignable = false;
         assignmentResult.valid = true;
         return assignmentResult;

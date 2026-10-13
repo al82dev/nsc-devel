@@ -5555,9 +5555,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return node;
             }
 
-            // NS304-T10-F05/F06: `obj?.Field = value` y el compound numérico `obj?.Field += value`
-            // bajan a un store condicional al null-check. El compound lleva el operador en
-            // `operation` y el backend hace el read-modify-write en la rama no nula.
+            // NS304-T10-F05/F06: the receiver remains the first child so LLVM can branch before
+            // lowering the RHS. booleanValue carries the semantic owning-destination contract.
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
             {
@@ -5575,6 +5574,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(
                     ProjectOopHirNodeKind::NullConditionalFieldStore, expression, resultType);
                 node->operation = expression->tokenKind();
+                const MethodExpressionTypeBinding* assignmentType = expressionType(expression);
+                node->booleanValue = assignmentType != nullptr &&
+                    assignmentType->ownsStorageDestination;
                 node->memberOrdinal = binding->candidateMemberOrdinals.front();
                 node->volatileAccess = memberModel_ != nullptr &&
                     *node->memberOrdinal < memberModel_->members().size() &&
@@ -5584,7 +5586,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return node;
             }
 
-            // NS304-T10-F05: `arr?[i] = value` — store condicional de elemento de array nativo.
+            // NS304-T10-F05: receiver, index, and value remain separate children so only the
+            // receiver is evaluated before the null branch.
             if (expression->tokenKind() == lexer::TokenKind::Equal &&
                 expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
@@ -5607,6 +5610,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(
                     ProjectOopHirNodeKind::NullConditionalArrayStore, expression, resultType);
                 node->elementTypeKey = core->elementTypeKey;
+                const MethodExpressionTypeBinding* assignmentType = expressionType(expression);
+                node->booleanValue = assignmentType != nullptr &&
+                    assignmentType->ownsStorageDestination;
                 node->children.push_back(std::move(receiver));
                 node->children.push_back(std::move(index));
                 node->children.push_back(std::move(value));

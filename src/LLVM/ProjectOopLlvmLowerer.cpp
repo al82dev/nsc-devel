@@ -14828,11 +14828,12 @@ private:
             return failValue(error, "null-conditional field store MIR requires receiver and value");
         LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
-        LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-        if (value == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
         LLVMValueRef hasReceiver = LLVMBuildICmp(
             builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
+        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.store");
         LLVMBasicBlockRef endBlock = appendBlock("nullcond.store.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
@@ -14844,19 +14845,27 @@ private:
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.store.addr");
+        LLVMValueRef current = nullptr;
+        if (node->operation != lexer::TokenKind::Equal)
+        {
+            current = LLVMBuildLoad2(
+                builder_, resultType, address, "nullcond.compound.load");
+            if (node->volatileAccess) LLVMSetVolatile(current, 1);
+        }
+        LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+        if (value == nullptr) return nullptr;
+        if (terminated())
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return LLVMConstNull(resultType);
+        }
         LLVMValueRef storedValue = value;
         if (node->operation != lexer::TokenKind::Equal)
         {
             // NS304-T10-F06: compound — read-modify-write en la rama no nula. La aritmética se
             // reutiliza de applyBinaryOperation para no duplicar las reglas de signo/redondeo.
-            LLVMTypeRef valueType = llvmType(node->typeKey, error);
-            if (valueType == nullptr) return nullptr;
-            LLVMValueRef current = LLVMBuildLoad2(
-                builder_, valueType, address, "nullcond.compound.load");
             if (node->typeKey == "builtin:string")
             {
-                // NS304-T10-F06: concatenación de cadena — asigna una cadena nueva (la propiedad
-                // de la vieja queda sin liberar: simplificación documentada del compound).
                 LLVMValueRef leftLength = nullableStringLength(current, "nullcond.concat.left");
                 LLVMValueRef rightLength = nullableStringLength(value, "nullcond.concat.right");
                 LLVMValueRef total = LLVMBuildAdd(
@@ -14873,6 +14882,10 @@ private:
                 if (!emitMemcpyBytes(rightDestination, rightData, rightLength, "nullcond.concat.copy.right", error))
                     return nullptr;
                 storedValue = result;
+                if (node->booleanValue &&
+                    !emitOwnedPointerDestroy(
+                        current, node->typeKey, "nullcond.concat.previous", error))
+                    return nullptr;
             }
             else
             {
@@ -14885,10 +14898,17 @@ private:
         }
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
+        const bool valueReachesEnd = !terminated();
+        if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
-        return value;
+        if (!valueReachesEnd) return LLVMConstNull(resultType);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.store.result");
+        LLVMValueRef values[] = {LLVMConstNull(resultType), storedValue};
+        LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
     }
 
     LLVMValueRef lowerNullConditionalArrayLoad(
@@ -14899,9 +14919,9 @@ private:
                 std::to_string(node->children.size()) + ")");
         LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
-        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-        if (index == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
         LLVMValueRef hasReceiver = LLVMBuildICmp(
             builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
         LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
@@ -14910,6 +14930,13 @@ private:
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+        if (index == nullptr) return nullptr;
+        if (terminated())
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return LLVMConstNull(resultType);
+        }
         LLVMValueRef length = LLVMBuildLoad2(
             builder_, LLVMInt64TypeInContext(context_), receiver, "nullcond.index.length");
         LLVMValueRef inRange = LLVMBuildICmp(
@@ -14937,8 +14964,6 @@ private:
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.index.addr");
-        LLVMTypeRef resultType = llvmType(node->typeKey, error);
-        if (resultType == nullptr) return nullptr;
         LLVMValueRef element = LLVMBuildLoad2(
             builder_, resultType, address, "nullcond.index.element");
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
@@ -14959,18 +14984,26 @@ private:
             return failValue(error, "null-conditional array store MIR requires receiver, index, value");
         LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
-        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-        if (index == nullptr) return nullptr;
-        LLVMValueRef value = lowerExpression(node->children[2].get(), error);
-        if (value == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
         LLVMValueRef hasReceiver = LLVMBuildICmp(
             builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
+        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index.store");
         LLVMBasicBlockRef endBlock = appendBlock("nullcond.index.store.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+        if (index == nullptr) return nullptr;
+        LLVMValueRef value = lowerExpression(node->children[2].get(), error);
+        if (value == nullptr) return nullptr;
+        if (terminated())
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return LLVMConstNull(resultType);
+        }
         LLVMValueRef length = LLVMBuildLoad2(
             builder_, LLVMInt64TypeInContext(context_), receiver, "nullcond.index.length");
         LLVMValueRef inRange = LLVMBuildICmp(
@@ -14999,10 +15032,17 @@ private:
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.index.addr");
         LLVMBuildStore(builder_, value, address);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
+        const bool valueReachesEnd = !terminated();
+        if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
-        return value;
+        if (!valueReachesEnd) return LLVMConstNull(resultType);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.index.store.result");
+        LLVMValueRef values[] = {LLVMConstNull(resultType), value};
+        LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
     }
 
     LLVMValueRef lowerShortCircuit(const frontend::ProjectOopMirNode* node, std::string& error)
