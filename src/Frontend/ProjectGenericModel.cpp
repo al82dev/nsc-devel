@@ -2607,6 +2607,8 @@ bool ProjectGenericModel::processTypeSyntax(
     // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal
     // generic template. Its argument was already processed above.
     if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 1) return true;
+    // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
+    if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1) return true;
 
     TemplateState* state = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());

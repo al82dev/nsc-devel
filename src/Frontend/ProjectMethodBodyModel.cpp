@@ -5220,13 +5220,31 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         case ast::AstNodeKind::YieldReturnStatement:
         case ast::AstNodeKind::YieldBreakStatement:
-            // NS304-T06-F02: el AST de yield esta (T06-F01); el lowering a state machine es T06-F03.
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                statement->range(),
-                "yield requires the generator state machine lowering (NS304-T06-F03)");
+        {
+            // NS304-T06-F02: distinguish a yield inside a generator (declared `Iterator<T>` return)
+            // from a yield in an ordinary callable (context error). The productive lowering to a
+            // frame/state machine is still T06-F03.
+            const ClassMemberSymbol* yieldMethod = methodSymbol(methodMemberOrdinal);
+            const bool isGenerator = yieldMethod != nullptr &&
+                language::iteratorInnerTypeKey(yieldMethod->declaredTypeKey).has_value();
+            if (!isGenerator)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "yield requires a generator whose return type is Iterator<T> (NS304-T06-F02)");
+            }
+            else
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "generator state machine lowering is not yet implemented (NS304-T06-F03)");
+            }
             break;
+        }
         case ast::AstNodeKind::SuspendStatement:
         {
             // NS304-T05-F09: a bare `yield;` is an explicit suspension point of the async poll.

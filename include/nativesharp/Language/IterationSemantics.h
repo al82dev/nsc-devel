@@ -21,6 +21,22 @@ struct IteratorProtocol final
 };
 bool validateIteratorProtocol(const IteratorProtocol& protocol, std::string& error);
 
+// NS304-T06-F02: surface type key of a synchronous generator's opaque iterator.
+// iteratorTypeKey("builtin:int") == "iterator:builtin:int"; the inverse strips the prefix.
+inline std::string iteratorTypeKey(std::string_view itemTypeKey)
+{
+    std::string key = "iterator:";
+    key.append(itemTypeKey);
+    return key;
+}
+
+inline std::optional<std::string_view> iteratorInnerTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    return typeKey.substr(prefix.size());
+}
+
 struct LazyIntegerRange final
 {
     std::int64_t begin = 0;

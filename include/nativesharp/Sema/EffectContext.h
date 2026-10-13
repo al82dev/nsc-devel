@@ -12,7 +12,8 @@ enum class Effect : std::uint32_t
     Throws = 1U << 1U,
     Async = 1U << 2U,
     Comptime = 1U << 3U,
-    NoHeap = 1U << 4U
+    NoHeap = 1U << 4U,
+    Generator = 1U << 5U
 };
 
 class EffectSet final
@@ -49,6 +50,7 @@ constexpr std::string_view effectName(Effect effect) noexcept
         case Effect::Async: return "async";
         case Effect::Comptime: return "comptime";
         case Effect::NoHeap: return "noheap";
+        case Effect::Generator: return "generator";
     }
     return "unknown";
 }

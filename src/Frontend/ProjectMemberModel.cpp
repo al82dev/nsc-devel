@@ -1429,6 +1429,13 @@ std::string ProjectMemberModel::canonicalTypeKey(
         result = language::futureTypeKey(
             canonicalTypeKey(syntax->typeArguments()[0], nameLookup));
     }
+    else if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1)
+    {
+        // NS304-T06-F02: `Iterator<T>` is the opaque, nameable generator iterator surface. It maps
+        // to the internal `iterator:<T>` type key; T is the item type of every yield.
+        result = language::iteratorTypeKey(
+            canonicalTypeKey(syntax->typeArguments()[0], nameLookup));
+    }
     else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         result = "builtin:" + syntax->baseName();

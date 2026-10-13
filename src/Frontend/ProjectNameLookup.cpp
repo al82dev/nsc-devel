@@ -1639,7 +1639,11 @@ void ProjectNameLookup::bindTypeSyntax(
     // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal type.
     const bool futureSurface =
         syntax->baseName() == "Future" && syntax->typeArguments().size() == 1;
+    // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
+    const bool iteratorSurface =
+        syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1;
     if (syntax->isFunction() || syntax->isTuple() || portableSimd || futureSurface ||
+        iteratorSurface ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
