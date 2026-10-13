@@ -93,6 +93,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(NullCoalescingExpression);
         NS_AST_KIND(NullConditionalMemberExpression);
         NS_AST_KIND(NullConditionalIndexExpression);
+        NS_AST_KIND(CollectionExpression);
         NS_AST_KIND(RangeExpression);
         NS_AST_KIND(FromEndExpression);
         NS_AST_KIND(SpreadElementExpression);

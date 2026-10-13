@@ -25,7 +25,7 @@ struct ExpectedAstKind final
 
 // Independent CA-AST-003 oracle: order and spelling are intentionally explicit so a product-side
 // reorder, insertion, or rename cannot update the expected values implicitly.
-constexpr std::array<ExpectedAstKind, 104> ExpectedAstKinds = {{
+constexpr std::array<ExpectedAstKind, 105> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -112,6 +112,7 @@ constexpr std::array<ExpectedAstKind, 104> ExpectedAstKinds = {{
     {AstNodeKind::NullCoalescingExpression, "NullCoalescingExpression"},
     {AstNodeKind::NullConditionalMemberExpression, "NullConditionalMemberExpression"},
     {AstNodeKind::NullConditionalIndexExpression, "NullConditionalIndexExpression"},
+    {AstNodeKind::CollectionExpression, "CollectionExpression"},
     {AstNodeKind::RangeExpression, "RangeExpression"},
     {AstNodeKind::FromEndExpression, "FromEndExpression"},
     {AstNodeKind::SpreadElementExpression, "SpreadElementExpression"},

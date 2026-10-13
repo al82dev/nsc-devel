@@ -130,6 +130,8 @@ enum class AstNodeKind
     NullConditionalMemberExpression,
     // NS304-T10-F05: null-conditional index `obj?[i]` (READ/WRITE residual).
     NullConditionalIndexExpression,
+    // NS304-T09-F05: collection expression `[a, b, c]` (C# 12). Elementos en children().
+    CollectionExpression,
     RangeExpression,
     FromEndExpression,
     SpreadElementExpression,

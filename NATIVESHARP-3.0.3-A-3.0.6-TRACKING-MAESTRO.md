@@ -1041,7 +1041,7 @@ T00
 - [x] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser `init` + marcador `:init` + flag isInit + restricción en constructor + TL-LANG-334; congelamiento efectivo vía backing privado.)*
 - [x] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible. *(backing `__nsc_backing_<name>$stage38` determinista + layout de campo regular; ya satisfecho por síntesis existente.)*
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record + class primary ctor promote-to-fields + orden textual + TL-LANG-337/344; semántica params-in-scope C# 12 residual.)*
-- [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito.
+- [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito. *(AST CollectionExpression + parser `[a,b,c]` + TP-PAR-539; type-inference/Sema + spreads + builder residual.)*
 - [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] con length literal + TL-LANG-308/309/310; length const genérico residual (sistema de tipos).)*
 - [x] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() y new(args) vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; desambiguación de placement por lookahead.)*
 - [x] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + accessors custom add_/remove_ (parser + InstanceCall) + TL-LANG-338/341.)*

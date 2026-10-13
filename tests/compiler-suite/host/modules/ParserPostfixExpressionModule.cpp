@@ -105,6 +105,17 @@ void testNullConditionalIndex(TestContext& context)
         "TP-PAR-537 null-conditional index must retain receiver and index");
 }
 
+// Verifies a collection expression retains its elements in source order. Complexity is O(n).
+void testCollectionExpression(TestContext& context)
+{
+    ParserFixture fixture("[1, 2, 3]");
+    AstNode* node = parse(fixture);
+    context.expect(node != nullptr && node->kind() == AstNodeKind::CollectionExpression &&
+            node->children().size() == 3 &&
+            node->children()[0]->kind() == AstNodeKind::IntegerLiteralExpression,
+        "TP-PAR-539 a collection expression must retain its elements in source order");
+}
+
 // Verifies ordinary dot access produces MemberExpression. Complexity is O(n).
 void testDotMember(TestContext& context)
 {
@@ -283,5 +294,6 @@ void registerParserPostfixExpressionModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-493", "CP-PAR-039", testStaticGenericReceiver);
     addCase(registry, "TP-PAR-494", "CP-PAR-039", testDeepChain, "NIGHTLY");
     addCase(registry, "TP-PAR-537", "CP-PAR-039", testNullConditionalIndex);
+    addCase(registry, "TP-PAR-539", "CP-PAR-039", testCollectionExpression);
 }
 }

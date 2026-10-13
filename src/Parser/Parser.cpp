@@ -15028,6 +15028,27 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
     return node;
 }
 
+ast::AstNode* Parser::parseCollectionExpression()
+{
+    // NS304-T09-F05: `[a, b, c]` — los elementos se bajan como children en orden. El spread
+    // (`..x`) y el builder protocol quedan fuera de esta fundación léxica/sintáctica.
+    const SourceRange begin = consume().range(); // '['
+    ast::AstNode* collection = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::CollectionExpression, begin);
+    if (!at(TokenKind::RightBracket))
+    {
+        while (true)
+        {
+            ast::AstNode* element = parseAssignmentExpression();
+            if (element != nullptr) collection->addChild(element);
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+    }
+    expect(TokenKind::RightBracket, "']' after collection expression");
+    collection->setRange(SourceRange(begin.begin(), tokens_[index_ - 1].range().end()));
+    return collection;
+}
+
 ast::AstNode* Parser::parseNameOfExpression()
 {
     // NS304-T10-F07: `nameof(x)` es una constante de cadena de tiempo de compilación igual al
@@ -15113,6 +15134,10 @@ ast::AstNode* Parser::parsePrimaryExpression()
 
     switch (token.kind())
     {
+        case TokenKind::LeftBracket:
+            // NS304-T09-F05: `[a, b, c]` en posición de expresión primaria es una collection
+            // expression (C# 12); los atributos `[...]` viven en posición de declaración.
+            return parseCollectionExpression();
         case TokenKind::Identifier: kind = ast::AstNodeKind::IdentifierExpression; break;
         case TokenKind::IntegerLiteral: kind = ast::AstNodeKind::IntegerLiteralExpression; break;
         case TokenKind::FloatingLiteral: kind = ast::AstNodeKind::FloatingLiteralExpression; break;
