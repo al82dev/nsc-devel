@@ -585,6 +585,10 @@ struct ProjectOopHirNode final
     // first child as for every other instance call, but the backend must test it before lowering
     // the remaining children so argument/default expressions stay lazy on the null edge.
     bool nullConditionalCall = false;
+    // Property/indexer setters have a void ABI, while the assignment expression yields the
+    // converted value passed to the setter. Late lowering must return that already-evaluated
+    // argument after emitting the call instead of treating the void call as the expression value.
+    bool returnsAssignedValue = false;
     // NativeSharp 3.0 T08-F06. Set only after the frontend proves ABI identity and an empty
     // cleanup path for `must_tail return call(...)`.
     bool mustTailCall = false;

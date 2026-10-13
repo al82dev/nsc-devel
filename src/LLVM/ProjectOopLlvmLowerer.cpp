@@ -15394,6 +15394,7 @@ private:
         }
         std::vector<LLVMValueRef> sourceArguments;
         sourceArguments.reserve(node->children.size() - 1);
+        LLVMValueRef assignedValue = nullptr;
         if (argumentOverrides != nullptr &&
             argumentOverrides->size() != node->children.size() - 1U)
         {
@@ -15409,6 +15410,8 @@ private:
                 return nullptr;
             }
             if (terminated()) return value;
+            if (node->returnsAssignedValue && index + 1U == node->children.size())
+                assignedValue = value;
             value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -15430,6 +15433,12 @@ private:
                 1U, node->typeKey);
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
+        }
+        if (node->returnsAssignedValue)
+        {
+            if (assignedValue == nullptr)
+                return failValue(error, "setter assignment call lost its converted value");
+            return assignedValue;
         }
         return call;
     }
@@ -15574,6 +15583,7 @@ private:
         }
         std::vector<LLVMValueRef> sourceArguments;
         sourceArguments.reserve(node->children.size());
+        LLVMValueRef assignedValue = nullptr;
         if (argumentOverrides != nullptr &&
             argumentOverrides->size() != node->children.size())
         {
@@ -15590,6 +15600,8 @@ private:
                 return nullptr;
             }
             if (terminated()) return value;
+            if (node->returnsAssignedValue && index + 1U == node->children.size())
+                assignedValue = value;
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -15612,6 +15624,12 @@ private:
                 0U, node->typeKey);
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
+        }
+        if (node->returnsAssignedValue)
+        {
+            if (assignedValue == nullptr)
+                return failValue(error, "static setter assignment call lost its converted value");
+            return assignedValue;
         }
         return call;
     }
@@ -15695,6 +15713,7 @@ private:
         std::vector<LLVMTypeRef> sourceParameterTypes;
         sourceArguments.reserve(node->children.size() - 1);
         sourceParameterTypes.reserve(node->children.size() - 1);
+        LLVMValueRef assignedValue = nullptr;
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
@@ -15703,6 +15722,8 @@ private:
             {
                 return nullptr;
             }
+            if (node->returnsAssignedValue && index + 1U == node->children.size())
+                assignedValue = value;
             value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -15743,6 +15764,12 @@ private:
                 1U, node->typeKey);
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
+        }
+        if (node->returnsAssignedValue)
+        {
+            if (assignedValue == nullptr)
+                return failValue(error, "virtual setter assignment call lost its converted value");
+            return assignedValue;
         }
         return call;
     }
@@ -15886,6 +15913,7 @@ private:
         std::vector<LLVMTypeRef> sourceParameterTypes;
         sourceArguments.reserve(node->children.size() - 1);
         sourceParameterTypes.reserve(node->children.size() - 1);
+        LLVMValueRef assignedValue = nullptr;
         for (std::size_t childIndex = 1; childIndex < node->children.size(); ++childIndex)
         {
             LLVMValueRef value = lowerExpression(node->children[childIndex].get(), error);
@@ -15894,6 +15922,8 @@ private:
             {
                 return nullptr;
             }
+            if (node->returnsAssignedValue && childIndex + 1U == node->children.size())
+                assignedValue = value;
             value = wrapIndirectArgument(value, node->children[childIndex]->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -15934,6 +15964,12 @@ private:
                 1U, node->typeKey);
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
+        }
+        if (node->returnsAssignedValue)
+        {
+            if (assignedValue == nullptr)
+                return failValue(error, "interface setter assignment call lost its converted value");
+            return assignedValue;
         }
         return interfaceCall;
     }

@@ -470,6 +470,8 @@ struct ProjectOopMirNode final
     bool governingReference = false;
     // T01-F03. Mirrors ProjectOopHirNode::nullConditionalCall.
     bool nullConditionalCall = false;
+    // Mirrors the setter-assignment value contract without changing the setter's void ABI.
+    bool returnsAssignedValue = false;
     // NativeSharp 3.0 T08-F06. A semantic requirement, not an optimizer hint.
     bool mustTailCall = false;
     // Item 377. Retained for CodeView/PDB ownership and borrow visualization.

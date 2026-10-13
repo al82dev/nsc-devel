@@ -5484,9 +5484,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         combined->operation = baseOperator;
                         combined->children.push_back(std::move(current));
                         combined->children.push_back(std::move(operand));
-                        return lowerResolvedCall(setterCall, arguments, std::move(combined));
+                        auto setterNode = lowerResolvedCall(
+                            setterCall, arguments, std::move(combined));
+                        if (setterNode != nullptr) setterNode->returnsAssignedValue = true;
+                        return setterNode;
                     }
-                    return lowerResolvedCall(setterCall, arguments);
+                    auto setterNode = lowerResolvedCall(setterCall, arguments);
+                    if (setterNode != nullptr) setterNode->returnsAssignedValue = true;
+                    return setterNode;
                 }
             }
 
@@ -5555,6 +5560,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(value));
                 node->argumentParameterOrdinals.push_back(valueParameterOrdinal);
                 node->argumentTypeKeys.push_back(target.parameters[valueParameterOrdinal].typeKey);
+                node->returnsAssignedValue = true;
                 return node;
             }
 
