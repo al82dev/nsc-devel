@@ -2668,7 +2668,8 @@ class Program
     {
         string s = nameof(Program);
         string m = nameof(Program.Main);
-        return s.Length + m.Length;
+        string g = nameof(Box<int>);
+        return s.Length + m.Length + g.Length;
     }
 }
 )ns");
@@ -2681,8 +2682,8 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 11,
-                "TL-LANG-331 nameof(Program)=\"Program\" + nameof(Program.Main)=\"Main\" must be 7+4=11: " +
+            context.expect(result.started && result.error.empty() && result.exitCode == 14,
+                "TL-LANG-331 nameof(Program)=\"Program\" + \"Main\" + \"Box\" must be 7+4+3=14: " +
                     result.error + result.output);
         }});
 }

@@ -14739,32 +14739,46 @@ ast::AstNode* Parser::parseNameOfExpression()
     const SourceRange begin = current().range();
     consume(); // `nameof`
     expect(TokenKind::LeftParen, "'(' after 'nameof'");
-    ast::AstNode* argument = parseExpression();
-    const SourceRange end = current().range();
-    expect(TokenKind::RightParen, "')' after 'nameof' argument");
 
     std::string name;
-    const ast::AstNode* cursor = argument;
-    while (cursor != nullptr && name.empty())
+    // `nameof(Generic<int>)` / `nameof(Space.Type<T>)`: the argument is a closed generic type
+    // reference. parseExpression would misread `Generic < int` (the `<` reads as a comparison),
+    // so resolve the type here and take its base name.
+    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Less)
     {
-        switch (cursor->kind())
+        if (ast::TypeSyntax* type = parseType())
         {
-            case ast::AstNodeKind::IdentifierExpression:
-                name = cursor->text();
-                break;
-            case ast::AstNodeKind::MemberExpression:
-            case ast::AstNodeKind::PointerMemberExpression:
-            case ast::AstNodeKind::NullConditionalMemberExpression:
-                name = cursor->text();
-                break;
-            case ast::AstNodeKind::CallExpression:
-            case ast::AstNodeKind::IndexExpression:
-                cursor = cursor->first();
-                continue;
-            default:
-                break;
+            name = type->baseName();
         }
     }
+    else
+    {
+        ast::AstNode* argument = parseExpression();
+        const ast::AstNode* cursor = argument;
+        while (cursor != nullptr && name.empty())
+        {
+            switch (cursor->kind())
+            {
+                case ast::AstNodeKind::IdentifierExpression:
+                    name = cursor->text();
+                    break;
+                case ast::AstNodeKind::MemberExpression:
+                case ast::AstNodeKind::PointerMemberExpression:
+                case ast::AstNodeKind::NullConditionalMemberExpression:
+                    name = cursor->text();
+                    break;
+                case ast::AstNodeKind::CallExpression:
+                case ast::AstNodeKind::IndexExpression:
+                    cursor = cursor->first();
+                    continue;
+                default:
+                    break;
+            }
+        }
+    }
+
+    const SourceRange end = current().range();
+    expect(TokenKind::RightParen, "')' after 'nameof' argument");
 
     ast::AstNode* literal = arena_.make<ast::AstNode>(
         ast::AstNodeKind::StringLiteralExpression, join(begin, end));
