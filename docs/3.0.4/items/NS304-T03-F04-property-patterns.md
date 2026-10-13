@@ -23,12 +23,12 @@
 
 - Las TUPLAS son estructurales y NO admiten `.Item{i}`; se acceden por deconstrucción
   (`TupleDeconstructElement` en HIR).
-- La deconstrucción (`DeconstructionDeclarationStatement`) SOLO funciona como statement de
-  declaración (`var (a,b) = tuple;`); en el CONTEXTO DE MATCH ARM no declara los targets
-  ("cannot initialize local '' of type '<missing-type>'"), ni con fuente CALL (`Deconstruct()`)
-  ni con fuente directa (temporal materializado).
-- **Para cerrar**: hay que cablear la deconstrucción en el binding del match arm (declarar los
-  element temps correctamente) — un cambio en Sema/Parser, no un fix de lowering.
+- La deconstrucción (`DeconstructionDeclarationStatement`) en el THENBLOCK del match arm no declara
+  los targets: "cannot initialize local '' of type '<missing-type>' from <source>". El patrón `Tuple`
+  tiene el mismo código pero su condición es `false` (nunca se analiza), así que el bug estaba
+  latente; el posicional (condición `true`) lo expone.
+- **Para cerrar**: cablear `DeconstructionDeclarationStatement` en el análisis del arm (declarar los
+  targets y bajar la deconstrucción), o bajar el posicional por otra vía (temporal + accesos).
 
 ## Gap F04 (posicional)
 
