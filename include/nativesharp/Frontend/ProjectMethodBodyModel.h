@@ -1334,6 +1334,9 @@ struct MethodEventBinding final
     bool staticEvent = false;
     std::string resultTypeKey;
     std::vector<ProjectImplicitConversion> argumentConversions;
+    // NS304-T09-F08: si el event declara accessors custom, el ordinal del metodo add_/remove_ a
+    // invocar (en lugar de la storage sintetizada).
+    std::optional<std::size_t> customAccessorMemberOrdinal;
 };
 
 // E017 carrier bridge. `??` recognizes only the public NativeSharp.Core.Optional<T> protocol;

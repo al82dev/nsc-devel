@@ -3100,15 +3100,23 @@ public delegate void Handler(int x);
 
 class Program
 {
+    public static int Result = 0;
     public event Handler Changed
     {
-        add { }
-        remove { }
+        add { Result += 1; }
+        remove { Result += 2; }
+    }
+
+    public static void Handle(int x)
+    {
     }
 
     public static int Main()
     {
-        return 0;
+        Program p = new Program();
+        p.Changed += Handle;
+        p.Changed -= Handle;
+        return Result;
     }
 }
 )ns");
@@ -3119,6 +3127,12 @@ class Program
             context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
                 "TL-LANG-341 a custom event with add/remove must parse and compile: " +
                     emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-341 add (+=1) then remove (+=2) must invoke the custom accessors: " +
+                    result.error + result.output);
         }});
 }
 

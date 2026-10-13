@@ -5316,6 +5316,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Stage 42 event subscription expression is not addressable";
                     return nullptr;
                 }
+                if (stage42Event->customAccessorMemberOrdinal.has_value())
+                {
+                    // NS304-T09-F08: custom accessors -> instancia una llamada a add_/remove_.
+                    auto node = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:void");
+                    node->memberOrdinal = *stage42Event->customAccessorMemberOrdinal;
+                    if (!stage42Event->staticEvent)
+                    {
+                        auto receiver = lowerReceiver(
+                            stage42Event->receiverSyntax, stage42Event->receiverTypeKey, memberOrdinal, error);
+                        if (receiver == nullptr) return nullptr;
+                        node->children.push_back(std::move(receiver));
+                    }
+                    auto handler = lowerExpression(expression->second(), memberOrdinal, false, error);
+                    if (handler == nullptr) return nullptr;
+                    if (!stage42Event->argumentConversions.empty() &&
+                        stage42Event->argumentConversions.front().kind != ProjectConversionKind::Identity)
+                    {
+                        handler = wrapImplicitConversion(
+                            std::move(handler), stage42Event->argumentConversions.front(), expression->second());
+                    }
+                    node->children.push_back(std::move(handler));
+                    node->argumentParameterOrdinals.push_back(0);
+                    node->argumentTypeKeys.push_back(stage42Event->delegateTypeKey);
+                    return node;
+                }
                 auto backingAddress = lowerEventBacking(stage42Event, true);
                 auto handler = lowerExpression(expression->second(), memberOrdinal, false, error);
                 if (backingAddress == nullptr || handler == nullptr) return nullptr;

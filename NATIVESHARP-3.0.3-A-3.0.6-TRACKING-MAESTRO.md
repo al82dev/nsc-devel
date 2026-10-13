@@ -1044,7 +1044,7 @@ T00
 - [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito.
 - [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] con length literal + TL-LANG-308/309/310; length const genérico residual (sistema de tipos).)*
 - [x] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() y new(args) vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; desambiguación de placement por lookahead.)*
-- [ ] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + TL-LANG-338; storage explícito custom residual.)*
+- [x] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + accessors custom add_/remove_ (parser + InstanceCall) + TL-LANG-338/341.)*
 - [ ] `NS304-T09-F09` — Integrar fallo parcial, drop order, inheritance, records, with y debug metadata.
 - [ ] `NS304-T09-F10` — Implementar constructores fallibles `throws E`, propagación, cleanup parcial, ABI,
   NSMETA, MIR unwind, allocators, PDB y self-host.
