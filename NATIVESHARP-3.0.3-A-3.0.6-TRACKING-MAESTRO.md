@@ -2186,6 +2186,7 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-12 | B04/T03-F01 | Formas base de list patterns | exacto, prefijo, sufijo y descarte bajados a Length+índices; `TL-LANG-308` | `PASS`; T03 1/8; 23/147 cerrados; T03-F02 activa |
 | 2026-10-12 | B04/T03-F02 | Captura rest/slice prestada | `.. var` baja a `Slice` sin copia y conserva lifetime; `TL-LANG-309` positivo+negativo | `PASS`; T03 2/8; 24/147 cerrados; T03-F03 activa |
 | 2026-10-13 | mantenimiento focal | Tipo función nullable con lifetime | `TP-PAR-053`; `QuestionBracket` se integra al carrier sin perder lifetime; oráculo separado en siete campos | `PASS` en 3,370 us; no altera 24/147 ni certifica una tanda de Parte B |
+| 2026-10-13 | mantenimiento focal | Placement construction | `TP-PAR-470`; fixture con `Item` nominal conocido y oráculo separado en siete campos | `PASS` en 5,504 us; corrección sólo de prueba; no altera 24/147 ni certifica una tanda de Parte B |
 
 ## 6. Estado al corte
 

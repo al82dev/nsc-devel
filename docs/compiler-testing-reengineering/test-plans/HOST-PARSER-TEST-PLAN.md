@@ -545,7 +545,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-467 | CP-PAR-038 | alignof expr/type | kind correcto | PR |
 | TP-PAR-468 | CP-PAR-038 | offsetof | type/member exactos | PR |
 | TP-PAR-469 | CP-PAR-038 | default y default(T) | DefaultValueExpression | PR |
-| TP-PAR-470 | CP-PAR-038 | new object/array/placement | kinds, type, args/initializer | PR |
+| TP-PAR-470 | CP-PAR-038 | new object/array/placement | placement kind/storage/type/arg count/arg value/cursor EOF/diagnostics exactos | PR |
 | TP-PAR-471 | CP-PAR-038 | delete/destroy | kind/operand | PR |
 | TP-PAR-472 | CP-PAR-038 | stackalloc | type/count/initializer | PR |
 | TP-PAR-473 | CP-PAR-038 | unary chain | asociación derecha y rango | PR |

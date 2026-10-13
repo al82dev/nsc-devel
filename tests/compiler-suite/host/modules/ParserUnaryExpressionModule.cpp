@@ -166,7 +166,9 @@ void testNewForms(TestContext& context)
     ParserFixture object("new Item(1)");
     ParserFixture array("new int[4]");
     ParserFixture initialized("new int[] { 1, 2 }");
-    ParserFixture placement("new (storage) Item(1)");
+    // Placement lookahead distinguishes this form from target-typed `new(storage)` by resolving
+    // the following nominal type, just as the product parser does after indexing declarations.
+    ParserFixture placement("new (storage) Item(1)", {"Item"});
     AstNode* objectNode = parse(object);
     AstNode* arrayNode = parse(array);
     AstNode* initializedNode = parse(initialized);
@@ -179,10 +181,31 @@ void testNewForms(TestContext& context)
             initializedNode->auxiliaryText() == "inferred-array-initializer" &&
             initializedNode->children().size() == 2,
         "TP-PAR-470 inferred array initializer must retain ordered elements");
-    context.expect(placementNode != nullptr && placementNode->kind() ==
-            AstNodeKind::PlacementConstructionExpression && placementNode->first() != nullptr &&
-            placementNode->children().size() == 1,
-        "TP-PAR-470 placement construction must separate storage from arguments");
+    const auto& placementDiagnostics = placement.diagnostics().diagnostics();
+    const std::string placementObservation = " (cursor='" +
+        std::string(placement.parser().current().lexeme()) + "', diagnostics=" +
+        std::to_string(placementDiagnostics.size()) + ")";
+    context.expect(placementNode != nullptr &&
+            placementNode->kind() == AstNodeKind::PlacementConstructionExpression,
+        "TP-PAR-470 kind must be PlacementConstructionExpression" + placementObservation);
+    context.expect(placementNode != nullptr && placementNode->first() != nullptr &&
+            placementNode->first()->kind() == AstNodeKind::IdentifierExpression &&
+            placementNode->first()->text() == "storage",
+        "TP-PAR-470 storage must be the identifier 'storage'");
+    context.expect(placementNode != nullptr && placementNode->typeSyntax() != nullptr &&
+            placementNode->typeSyntax()->baseName() == "Item",
+        "TP-PAR-470 constructed type must be Item");
+    context.expect(placementNode != nullptr && placementNode->children().size() == 1,
+        "TP-PAR-470 constructor argument count must be one");
+    context.expect(placementNode != nullptr && placementNode->children().size() == 1 &&
+            placementNode->children()[0] != nullptr &&
+            placementNode->children()[0]->kind() == AstNodeKind::IntegerLiteralExpression &&
+            placementNode->children()[0]->integerValue() == 1,
+        "TP-PAR-470 constructor argument value must be integer 1");
+    context.expect(placement.parser().current().kind() == TokenKind::EndOfFile,
+        "TP-PAR-470 parser cursor must finish at EOF" + placementObservation);
+    context.expect(placementDiagnostics.empty(),
+        "TP-PAR-470 placement construction must not emit diagnostics");
 }
 
 // Verifies delete and destroy retain distinct lifetime operations and operands. Complexity is O(n).
