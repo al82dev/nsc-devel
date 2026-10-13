@@ -20350,8 +20350,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     }
     // NS304-T10-F05: un null-conditional write admite campos de tipo valor (el READ nullable lo
     // rechazaria); el flag suprime el chequeo de resultado nullable durante el analisis del LHS.
-    const bool nullConditionalWrite = expression->tokenKind() == TokenKind::Equal &&
-        expression->first() != nullptr &&
+    const bool nullConditionalWrite = expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
     const bool previousNullConditionalWrite = activeNullConditionalWrite_;
     activeNullConditionalWrite_ = nullConditionalWrite;
@@ -21601,6 +21600,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         assignmentResult.assignable = false;
         assignmentResult.valid = true;
         return assignmentResult;
+    }
+
+    // NS304-T10-F06: el null-conditional compound (`obj?.Field += x`) todavía no se baja; un
+    // diagnóstico claro evita el "left side not assignable" genérico.
+    if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "null-conditional compound assignment ('obj?.Field += x') is not yet supported; "
+            "use a temporary with an explicit null check");
+        return {};
     }
 
     if (!left.assignable)
