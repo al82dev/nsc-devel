@@ -98,6 +98,43 @@ class DiagnosedRegressionTests(unittest.TestCase):
             self.assertEqual(status, "FAIL")
             self.assertIn("instead of its exact abnormal terminal", detail)
 
+    def test_observed_pass_does_not_publish_failure_only_detail(self) -> None:
+        engine = ExecutionEngine(
+            BuilderConfig(),
+            SimpleNamespace(root=Path("A:/synthetic-history")),
+            lambda _line: None,
+            lambda *_args: None,
+            lambda *_args: None,
+        )
+
+        passed = engine._expected_status(
+            self.abnormal_case(), True, "failure-only diagnostic", "evidence"
+        )
+        failed = engine._expected_status(
+            self.abnormal_case(), False, "failure-only diagnostic", "evidence"
+        )
+
+        self.assertEqual(passed, ("PASS", "", "evidence"))
+        self.assertEqual(failed, ("FAIL", "failure-only diagnostic", "evidence"))
+
+    def test_terminal_outcome_delimits_raw_case_output(self) -> None:
+        emitted: list[str] = []
+        stored: list[str] = []
+        engine = ExecutionEngine(
+            BuilderConfig(),
+            SimpleNamespace(root=Path("A:/synthetic-history"), log=stored.append),
+            emitted.append,
+            lambda *_args: None,
+            lambda *_args: None,
+        )
+        outcome = SimpleNamespace(key="CASE|Debug|NA", status="PASS", detail="")
+
+        engine._emit_terminal_outcome(outcome)
+
+        expected = "\n===== RESULT CASE|Debug|NA: PASS =====\n"
+        self.assertEqual(stored, [expected])
+        self.assertEqual(emitted, [expected])
+
     def test_parser_lookahead_uses_the_declaring_typesyntax_namespace(self) -> None:
         source = (
             REPOSITORY_ROOT

@@ -645,6 +645,7 @@ class ExecutionEngine:
             self.store.event("CASE_STARTED", self._variant_payload(variant))
             outcome = self._run_controlled_variant(variant)
             outcomes.append(outcome)
+            self._emit_terminal_outcome(outcome)
             self.status(
                 variant.key,
                 outcome.status,
@@ -1490,8 +1491,10 @@ class ExecutionEngine:
     def _expected_status(
         self, case: CaseRecord, passed: bool, detail: str, evidence: str
     ) -> tuple[str, str, str]:
-        """Publish the observed oracle result independently from expectation metadata."""
-        return ("PASS" if passed else "FAIL"), detail, evidence
+        """Publish failure detail only when the observed oracle actually failed."""
+        if passed:
+            return "PASS", "", evidence
+        return "FAIL", detail, evidence
 
     def _case_root(self, variant: RunVariant) -> Path:
         """Create an isolated evidence directory for one concrete variant."""
@@ -1557,6 +1560,13 @@ class ExecutionEngine:
         """Mirror subprocess output to both the GUI and progressive evidence."""
         self.store.log(line)
         self.output(line)
+
+    def _emit_terminal_outcome(self, outcome: CaseOutcome) -> None:
+        """Delimit raw case output with its authoritative terminal result."""
+        detail = f" — {outcome.detail}" if outcome.detail else ""
+        self._emit_output(
+            f"\n===== RESULT {outcome.key}: {outcome.status}{detail} =====\n"
+        )
 
     def _set_active_phase(
         self,

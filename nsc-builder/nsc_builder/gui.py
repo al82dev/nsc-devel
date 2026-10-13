@@ -1826,6 +1826,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             worker.progress_ready.connect(self._update_progress)
             worker.preparation_ready.connect(self._update_preparation)
             worker.completed.connect(self._suite_finished)
+            worker.finished.connect(self._release_finished_suite_worker)
             worker.start()
 
         def _retry_failures(self) -> None:
@@ -2154,6 +2155,12 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.result_tabs.setCurrentIndex(
                     self.failure_tab_index if failed else 0
                 )
+
+        def _release_finished_suite_worker(self) -> None:
+            """Leave the GUI idle even if terminal result rendering raises."""
+            if self.worker is self.sender():
+                self.worker = None
+                self._set_busy(False)
 
         def _render_error_report(
             self,
