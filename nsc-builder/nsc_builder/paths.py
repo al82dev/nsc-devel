@@ -34,9 +34,9 @@ def is_a_drive(path: Path) -> bool:
 
 def require_a_path(path: Path, label: str, must_exist: bool = False) -> Path:
     """Validate an A-drive path so Builder 3 never writes or deploys to C."""
+    if not is_a_drive(path):
+        raise ValueError(f"{label} must be an absolute A-drive path, got {path}")
     resolved = path.resolve()
-    if not is_a_drive(resolved):
-        raise ValueError(f"{label} must be on A:, got {resolved}")
     if must_exist and not resolved.exists():
         raise ValueError(f"{label} does not exist: {resolved}")
     return resolved
@@ -44,9 +44,9 @@ def require_a_path(path: Path, label: str, must_exist: bool = False) -> Path:
 
 def require_file_path(path: Path, label: str, require_a_drive: bool = False) -> Path:
     """Require an existing regular file, optionally constrained to the A drive."""
+    if require_a_drive and not is_a_drive(path):
+        raise ValueError(f"{label} must be an absolute A-drive path, got {path}")
     resolved = path.resolve()
-    if require_a_drive and not is_a_drive(resolved):
-        raise ValueError(f"{label} must be on A:, got {resolved}")
     if not resolved.is_file():
         raise ValueError(f"{label} must be an existing file: {resolved}")
     return resolved
@@ -60,9 +60,9 @@ def require_directory_path(
     must_exist: bool = False,
 ) -> Path:
     """Require a directory or a not-yet-created directory destination."""
+    if require_a_drive and not is_a_drive(path):
+        raise ValueError(f"{label} must be an absolute A-drive path, got {path}")
     resolved = path.resolve()
-    if require_a_drive and not is_a_drive(resolved):
-        raise ValueError(f"{label} must be on A:, got {resolved}")
     if resolved.exists() and not resolved.is_dir():
         raise ValueError(f"{label} must be a directory: {resolved}")
     if must_exist and not resolved.is_dir():
@@ -75,7 +75,10 @@ def first_existing_file(candidates: Iterable[str | Path]) -> str:
     for candidate in candidates:
         if not candidate:
             continue
-        path = Path(candidate).resolve()
+        raw_path = Path(candidate)
+        if not is_a_drive(raw_path):
+            continue
+        path = raw_path.resolve()
         if path.is_file():
             return str(path)
     return ""
@@ -86,7 +89,10 @@ def first_existing_directory(candidates: Iterable[str | Path]) -> str:
     for candidate in candidates:
         if not candidate:
             continue
-        path = Path(candidate).resolve()
+        raw_path = Path(candidate)
+        if not is_a_drive(raw_path):
+            continue
+        path = raw_path.resolve()
         if path.is_dir():
             return str(path)
     return ""
@@ -96,11 +102,15 @@ def first_distinct_existing_file(
     candidates: Iterable[str | Path], excluded: str | Path
 ) -> str:
     """Return the first existing file whose identity path differs from excluded."""
-    excluded_path = Path(excluded).resolve()
+    excluded_raw = Path(excluded)
+    excluded_path = excluded_raw.resolve() if is_a_drive(excluded_raw) else None
     for candidate in candidates:
         if not candidate:
             continue
-        path = Path(candidate).expanduser().resolve()
+        raw_path = Path(candidate)
+        if not is_a_drive(raw_path):
+            continue
+        path = raw_path.resolve()
         if path.is_file() and path != excluded_path:
             return str(path)
     return ""

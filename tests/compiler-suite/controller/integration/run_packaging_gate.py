@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -293,8 +296,21 @@ def stage_installation(installation_root: Path, case_root: Path) -> Path:
     return prefix
 
 
-def package_command(
-    python_executable: Path,
+def load_packaging_api(script: Path) -> object:
+    module_name = "nsc_packaging_api"
+    spec = importlib.util.spec_from_file_location(module_name, script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load Packaging API: {script}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+    return module
+
+
+def package_arguments(
     script: Path,
     prefix: Path,
     archive_executable: Path,
@@ -309,7 +325,7 @@ def package_command(
     if variant == 5:
         timestamp = "..."
     command = [
-        str(python_executable), "-B", str(script),
+        str(script),
         "--prefix", str(prefix),
         "--seven-zip", str(archive_executable),
         "--output-dir", str(output),
@@ -321,6 +337,43 @@ def package_command(
     return command
 
 
+def invoke_packaging_api(
+    api: object,
+    arguments: list[str],
+    prefix: Path,
+    archive_executable: Path,
+    output: Path,
+    variant: int,
+    dry_run: bool,
+    environment: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    compression = 10 if variant == 4 else 9
+    timestamp = "..." if variant == 5 else "20261009-000000"
+    return_code = 0
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        try:
+            api.create_archive(
+                prefix,
+                archive_executable,
+                output,
+                compression,
+                timestamp,
+                dry_run,
+                environment,
+            )
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return_code = 1
+    return subprocess.CompletedProcess(
+        arguments,
+        return_code,
+        stdout.getvalue(),
+        stderr.getvalue(),
+    )
+
+
 def run_package_native_sharp(
     options: argparse.Namespace,
     case_root: Path,
@@ -330,13 +383,13 @@ def run_package_native_sharp(
     prefix = stage_installation(options.installation_root, case_root)
     output = case_root / "output"
     script = options.repository_root / "package_native_sharp.py"
+    api = load_packaging_api(script)
     if variant == 3:
         compiler = prefix / "bin" / "nsc.exe"
         if compiler.exists():
             compiler.unlink()
     dry_run = variant != 2
-    command = package_command(
-        options.python_executable,
+    command = package_arguments(
         script,
         prefix,
         options.archive_executable,
@@ -346,7 +399,16 @@ def run_package_native_sharp(
     )
 
     def invoke(stem: str) -> subprocess.CompletedProcess[str]:
-        completed = run_process(command, case_root, environment)
+        completed = invoke_packaging_api(
+            api,
+            command,
+            prefix,
+            options.archive_executable,
+            output,
+            variant,
+            dry_run,
+            environment,
+        )
         log_process(case_root, stem, completed)
         return completed
 
@@ -421,7 +483,6 @@ def run_case(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python-executable", type=Path, required=True)
     parser.add_argument("--archive-executable", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
@@ -429,13 +490,10 @@ def main() -> int:
     parser.add_argument("--work-parent", type=Path, required=True)
     parser.add_argument("--build-mode", choices=("Debug", "Release"), required=True)
     options = parser.parse_args()
-    options.python_executable = options.python_executable.resolve()
     options.archive_executable = options.archive_executable.resolve()
     options.source_root = options.source_root.resolve()
     options.repository_root = options.repository_root.resolve()
     options.installation_root = options.installation_root.resolve()
-    if not options.python_executable.is_file():
-        raise RuntimeError("Packaging requires an explicit Python executable")
     if not options.archive_executable.is_file():
         raise RuntimeError("Packaging requires an explicit archive executable")
     if not (options.installation_root / "bin" / "nsc.exe").is_file():

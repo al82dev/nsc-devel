@@ -1823,3 +1823,24 @@ configuro, compilo ni ejecuto. Evidencia:
   no satisfecho, cubre lectura legacy, recarga de catálogo y las precondiciones
   exactas de `TB-BAS-021/022`. No se configuró ni compiló NSC y no se ejecutó
   la batería del compilador.
+
+## Validación 256 — aislamiento A-only de procesos de prueba
+
+`IMPLEMENTADA; EVIDENCIA DIRIGIDA PARCIAL; RECORRIDA INTEGRAL PENDIENTE`.
+
+- Builder 3 deriva `TEMP`, `TMP`, `TMPDIR`, staging y evidencia de cada variante
+  desde el `EvidenceStore` canónico bajo `A:\nsc-devel\_nscbuilder3`; rechaza
+  raíces no A, escapes y solapes entre variantes o reintentos.
+- La precondición de archivador sólo aplica si la selección contiene Packaging y
+  el descubrimiento queda limitado a rutas A explícitas/canónicas, sin `PATH`,
+  registro ni `ProgramFiles`.
+- `C12B-PKG-003` consume `package_native_sharp.create_archive` dentro del proceso
+  Builder y propaga el entorno aislado a `nsc.exe` y `7z.exe`; su ejecución
+  funcional post-refactor queda pendiente de reiniciar Builder.
+- Ocho casos representativos de Language, Compilation, Language Service, Driver,
+  Interop, LLVM, Linker y Runtime pasan con procesos A-only; `TSH-00001` compila
+  y ejecuta. Esto valida la frontera compartida, no sustituye la reejecución de
+  los `17` infra, `71` derivados y `187` consumidores bloqueados.
+- `T12B-00457..T12B-00462` conservan bloqueo explícito: su contrato literal
+  `deploy.bat` requiere un shell fuera de A y no fue reinterpretado.
+- Evidencia: `TANDA-VALIDACION-256-AISLAMIENTO-A-ONLY-INFRAESTRUCTURA.md`.

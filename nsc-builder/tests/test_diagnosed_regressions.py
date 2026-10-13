@@ -22,6 +22,7 @@ from nsc_builder.execution import expected_abnormal_termination_detail
 from nsc_builder.execution import ExecutionEngine
 from nsc_builder.configuration import BuilderConfig
 from nsc_builder.models import TestCase, TestVariant
+from nsc_builder.paths import STORAGE_ROOT
 
 
 class DiagnosedRegressionTests(unittest.TestCase):
@@ -65,7 +66,10 @@ class DiagnosedRegressionTests(unittest.TestCase):
                     )
 
     def test_structured_failure_cannot_satisfy_an_abnormal_kpd_contract(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="builder-abnormal-", dir=Path.cwd()) as directory:
+        STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="builder-abnormal-", dir=STORAGE_ROOT
+        ) as directory:
             root = Path(directory)
             executable = root / "build" / "debug" / "nsc_component_tests.exe"
             executable.parent.mkdir(parents=True)

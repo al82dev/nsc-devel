@@ -11,7 +11,6 @@ import math
 import os
 import queue
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -49,17 +48,22 @@ def parse_builder_config_payload(value: Any) -> dict[str, Any]:
 
 
 def discover_archive_executable(configured: str) -> str:
-    """Find 7-Zip from an override, PATH, or Windows installation roots."""
-    candidates: list[str | Path] = [
+    """Find 7-Zip only from an explicit A-drive path or canonical A roots."""
+    candidates: tuple[str | Path, ...] = (
         configured,
-        shutil.which("7z") or "",
-        shutil.which("7zz") or "",
-    ]
-    for variable in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
-        root = os.environ.get(variable, "")
-        if root:
-            candidates.append(Path(root) / "7-Zip" / "7z.exe")
-    return first_existing_file(candidates)
+        Path("A:/apps/7zip/7z.exe"),
+        Path("A:/7z/7z.exe"),
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        raw_path = Path(candidate)
+        if not is_a_drive(raw_path):
+            continue
+        path = raw_path.resolve()
+        if path.is_file():
+            return str(path)
+    return ""
 
 
 @dataclass(frozen=True)
@@ -193,7 +197,11 @@ class BuilderConfig:
                 Path(self.nslink_executable), "NSLink executable", require_a_drive=True
             )
             if self.archive_executable:
-                require_file_path(Path(self.archive_executable), "archive executable")
+                require_file_path(
+                    Path(self.archive_executable),
+                    "archive executable",
+                    require_a_drive=True,
+                )
             if self.comparison_nsc:
                 require_file_path(Path(self.comparison_nsc), "comparison NSC executable")
             if self.build_id_header:

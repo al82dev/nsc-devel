@@ -55,7 +55,10 @@ def parse_identity(output: str) -> BuildIdentity:
     )
 
 
-def read_identity(prefix: Path) -> BuildIdentity:
+def read_identity(
+    prefix: Path,
+    environment: dict[str, str] | None = None,
+) -> BuildIdentity:
     compiler = prefix / "bin" / "nsc.exe"
     if not compiler.is_file():
         raise FileNotFoundError(f"NativeSharp compiler not found: {compiler}")
@@ -67,6 +70,7 @@ def read_identity(prefix: Path) -> BuildIdentity:
         encoding="utf-8",
         errors="replace",
         creationflags=flags,
+        env=environment,
         check=False,
     )
     output = (result.stdout + "\n" + result.stderr).strip()
@@ -91,12 +95,17 @@ def command_line(arguments: list[str]) -> str:
     return subprocess.list2cmdline(arguments)
 
 
-def list_archive_paths(seven_zip: Path, archive: Path) -> list[PureWindowsPath]:
+def list_archive_paths(
+    seven_zip: Path,
+    archive: Path,
+    environment: dict[str, str] | None = None,
+) -> list[PureWindowsPath]:
     result = subprocess.run(
         [str(seven_zip), "l", "-slt", str(archive)],
         capture_output=True,
         text=True,
         errors="replace",
+        env=environment,
         check=False,
     )
     if result.returncode != 0:
@@ -137,6 +146,7 @@ def create_archive(
     compression: int,
     timestamp: str,
     dry_run: bool,
+    environment: dict[str, str] | None = None,
 ) -> Path:
     if prefix == Path(prefix.anchor):
         raise ValueError("the installation directory cannot be a drive root")
@@ -147,7 +157,7 @@ def create_archive(
     if not 0 <= compression <= 9:
         raise ValueError("compression must be between 0 and 9")
 
-    identity = read_identity(prefix)
+    identity = read_identity(prefix, environment)
     entries = source_entries(prefix)
     final_archive = output_dir / archive_name(identity, timestamp)
     partial_archive = final_archive.with_name(final_archive.name + ".partial")
@@ -184,6 +194,7 @@ def create_archive(
             stderr=subprocess.STDOUT,
             text=True,
             errors="replace",
+            env=environment,
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -191,7 +202,7 @@ def create_archive(
         return_code = process.wait()
         if return_code != 0:
             raise RuntimeError(f"7-Zip exited with code {return_code}")
-        archived_paths = list_archive_paths(seven_zip, partial_archive)
+        archived_paths = list_archive_paths(seven_zip, partial_archive, environment)
         verify_flat_root(archived_paths, entries)
         partial_archive.replace(final_archive)
     except BaseException:

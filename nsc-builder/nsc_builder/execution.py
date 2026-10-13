@@ -35,6 +35,7 @@ from .reporting import *
 from .process_control import *
 from .build import *
 from .runtime_support import compiler_receipt
+from .isolation import isolated_test_environment, require_storage_descendant
 
 
 MISSING_LLVM_PACKAGE_DIAGNOSTIC = (
@@ -663,7 +664,13 @@ class ExecutionEngine:
     ) -> tuple[tuple[ProducerPreparation, ...], PreparationFailure | None]:
         """Complete every prerequisite before allowing the first case dispatch."""
         preparation_root = self.store.root / "preparation"
-        preparation_root.mkdir(parents=True, exist_ok=True)
+        try:
+            self._validate_run_infrastructure(variants, preparation_root)
+        except (OSError, ValueError) as error:
+            return (), self._preparation_failed(
+                stage="test-infrastructure-precondition",
+                detail=f"{type(error).__name__}: {error}",
+            )
         self.preparation("Precondición del compilador", 0, 1, "validando herramientas")
         self.store.event(
             "PREPARATION_STAGE_STARTED",
@@ -728,7 +735,12 @@ class ExecutionEngine:
                 },
             )
             try:
-                code, captured = self.process.run(list(item.command), item.cwd)
+                environment = isolated_test_environment(
+                    preparation_root / f"command-{command_index:02d}"
+                )
+                code, captured = self.process.run(
+                    list(item.command), item.cwd, environment
+                )
             except Exception as error:
                 return (), self._preparation_failed(
                     stage=item.stage,
@@ -837,6 +849,29 @@ class ExecutionEngine:
             {"status": "PASS", "producer_count": len(results)},
         )
         return tuple(results), None
+
+    def _validate_run_infrastructure(
+        self,
+        variants: Sequence[RunVariant],
+        preparation_root: Path,
+    ) -> None:
+        """Validate A-only process roots and selection-specific prerequisites."""
+        require_storage_descendant(self.store.root, "run evidence root")
+        isolated_test_environment(preparation_root / "process")
+        requires_archive = any(
+            item.case.component == "Packaging" for item in variants
+        )
+        if not requires_archive:
+            return
+        if not self.config.archive_executable:
+            raise FileNotFoundError(
+                "Packaging requires an A-drive archive executable"
+            )
+        require_file_path(
+            Path(self.config.archive_executable),
+            "Packaging archive executable",
+            require_a_drive=True,
+        )
 
     def _preparation_failed(
         self,
@@ -1046,6 +1081,7 @@ class ExecutionEngine:
         code, captured = self.process.run(
             [str(executable), "--case", variant.case.case_id],
             case_root,
+            self._nsc_environment(case_root),
         )
         log_path = case_root / "host.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
@@ -1139,7 +1175,9 @@ class ExecutionEngine:
             f"ejecutando controlador de identidad {variant.case.case_id}",
         )
         # This command runs the compiler-identity test controller; it does not build NSC.
-        code, captured = self.process.run(command, SOURCE_ROOT)
+        code, captured = self.process.run(
+            command, SOURCE_ROOT, self._nsc_environment(case_root)
+        )
         log_path = case_root / "controller.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
         result_path = case_root / run_id / "results.json"
@@ -1192,7 +1230,7 @@ class ExecutionEngine:
         command = [str(executable), case_argument]
         if use_sandbox:
             command.append(str(case_root))
-        environment = self._nsc_environment()
+        environment = self._nsc_environment(case_root)
         self._set_active_phase(
             variant,
             "RUNNING",
@@ -1262,7 +1300,9 @@ class ExecutionEngine:
             str(fixture_root),
         )
         write_json(fixture_root / "compile.command.json", command)
-        code, captured = self.process.run(command, fixture_root, self._nsc_environment())
+        code, captured = self.process.run(
+            command, fixture_root, self._nsc_environment(fixture_root)
+        )
         (fixture_root / "compile.log").write_text(captured, encoding="utf-8", newline="\n")
         if self.process.last_termination_reason == "cancelled":
             raise RuntimeError(f"fixture {source_project.name} compilation was cancelled")
@@ -1322,7 +1362,6 @@ class ExecutionEngine:
             return "INFRASTRUCTURE_ERROR", "Packaging requires an archive executable", ""
         module = self._load_gate("run_packaging_gate.py")
         arguments = argparse.Namespace(
-            python_executable=Path(sys.executable).resolve(),
             archive_executable=archive,
             source_root=SUITE_ROOT,
             repository_root=SOURCE_ROOT,
@@ -1348,6 +1387,7 @@ class ExecutionEngine:
 
         controlled_invocations: list[subprocess.CompletedProcess[str]] = []
         isolation_root = case_root / "missing-llvm-package-root"
+        case_environment = self._nsc_environment(case_root)
 
         def controlled_runner(
             command: Sequence[str],
@@ -1360,6 +1400,9 @@ class ExecutionEngine:
                 environment,
                 isolation_root,
             )
+            controlled_environment = self._nsc_environment(
+                case_root, controlled_environment
+            )
             completed = self.process.run_completed(
                 controlled_command, cwd, controlled_environment
             )
@@ -1371,7 +1414,9 @@ class ExecutionEngine:
         gate_error = ""
         module.run_process = controlled_runner
         try:
-            raw_result = module.run_case(manifest, options, case_root, dict(os.environ))
+            raw_result = module.run_case(
+                manifest, options, case_root, case_environment
+            )
         except Exception as error:
             gate_error = f"{type(error).__name__}: {error}"
         finally:
@@ -1454,10 +1499,14 @@ class ExecutionEngine:
         root.mkdir(parents=True, exist_ok=True)
         return root
 
-    def _nsc_environment(self) -> dict[str, str]:
-        """Build the explicit NSLink environment used by NativeSharp products."""
+    def _nsc_environment(
+        self,
+        owner_root: Path,
+        inherited: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Build the A-isolated NSLink environment used by test processes."""
         nslink = Path(self.config.nslink_executable).resolve()
-        environment = dict(os.environ)
+        environment = isolated_test_environment(owner_root / "process", inherited)
         environment["NSC_LINKER"] = str(nslink)
         environment["PATH"] = str(nslink.parent) + os.pathsep + environment.get("PATH", "")
         return environment
