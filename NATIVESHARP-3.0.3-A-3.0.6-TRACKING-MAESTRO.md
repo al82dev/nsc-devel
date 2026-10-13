@@ -1016,7 +1016,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T06-F05` — Soportar items por value, move, ref y ref mut con lifetime asociado.
 - [ ] `NS304-T06-F06` — Integrar pinning y construcción in-place para frames autoreferenciales.
 - [ ] `NS304-T06-F07` — Implementar early stop, destrucción, errors, panic y cleanup determinista.
-- [ ] `NS304-T06-F08` — Congelar iterator ABI/NSMETA, LLVM, PDB y consumo por `foreach`.
+- [ ] `NS304-T06-F08` — Congelar iterator ABI/NSMETA, LLVM, PDB y consumo por `foreach`. *(PARCIAL: ABI + MoveNext/Current/GetEnumerator + foreach cerrados; NSMETA/PDB/intermodular pendientes.)*
 
 ### T07 — async streams y concurrencia estructurada
 
