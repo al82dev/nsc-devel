@@ -2030,16 +2030,20 @@ bool ProjectOopHirModel::buildImpl(
             if (poll == nullptr) return false;
         }
         std::unique_ptr<ProjectOopHirFunction> moveNext;
+        std::unique_ptr<ProjectOopHirFunction> drop;
         if (!function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator))
         {
-            moveNext = splitGeneratorFunction(function, error);
-            if (moveNext == nullptr) return false;
+            auto split = splitGeneratorFunction(function, error);
+            if (split.first == nullptr) return false;
+            moveNext = std::move(split.first);
+            drop = std::move(split.second);
         }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
         if (poll) functions_.push_back(std::move(*poll));
         if (moveNext) functions_.push_back(std::move(*moveNext));
+        if (drop) functions_.push_back(std::move(*drop));
     }
     }
 
@@ -3837,21 +3841,22 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     return poll;
 }
 
-std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitGeneratorFunction(
+std::pair<std::unique_ptr<ProjectOopHirFunction>, std::unique_ptr<ProjectOopHirFunction>>
+ProjectOopHirModel::splitGeneratorFunction(
     ProjectOopHirFunction& function,
     std::string& error)
 {
     if (function.body == nullptr)
     {
         error = "generator has no lowered body to split";
-        return nullptr;
+        return {nullptr, nullptr};
     }
     const std::string iteratorKey = function.returnTypeKey;
     const auto item = language::iteratorInnerTypeKey(iteratorKey);
     if (!item.has_value())
     {
         error = "generator return type is not an iterator surface: " + iteratorKey;
-        return nullptr;
+        return {nullptr, nullptr};
     }
     const std::string itemTypeKey(*item);
     const ast::AstNode* syntax = function.body->syntax;
@@ -3920,13 +3925,51 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitGeneratorFunctio
     moveNextStore->children.push_back(std::move(moveNextAddress));
     constructorBody->children.push_back(std::move(moveNextStore));
 
+    // NS304-T06-F07: also carry the Drop function pointer (field 4).
+    auto dropField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    dropField->memberOrdinal = 4; // dropFn
+    dropField->elementTypeKey = iteratorKey;
+    auto dropSelfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, iteratorKey + "*");
+    dropSelfAddress->localOrdinal = selfOrdinal;
+    dropField->children.push_back(std::move(dropSelfAddress));
+    auto dropAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    dropAddress->stringValue = function.mangledName + "$drop";
+    auto dropStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    dropStore->operation = lexer::TokenKind::Equal;
+    dropStore->children.push_back(std::move(dropField));
+    dropStore->children.push_back(std::move(dropAddress));
+    constructorBody->children.push_back(std::move(dropStore));
+
     auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, iteratorKey);
     auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, iteratorKey);
     selfReturn->localOrdinal = selfOrdinal;
     retSelf->children.push_back(std::move(selfReturn));
     constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
-    return moveNext;
+
+    // Drop: `void Gen$drop(iterator<T>* self)` destroys the frame's live locals on early stop.
+    // The drop-glue body is emitted by the LLVM from the MoveNext's frame locals.
+    auto drop = std::make_unique<ProjectOopHirFunction>();
+    drop->memberOrdinal = function.memberOrdinal;
+    drop->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    drop->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    drop->isStatic = true;
+    drop->inliningPolicy = function.inliningPolicy;
+    drop->mangledName = function.mangledName + "$drop";
+    drop->debugDisplayName = function.debugDisplayName + "$drop";
+    drop->returnTypeKey = "builtin:void";
+    drop->errorTypeKey = function.errorTypeKey;
+    drop->effects = function.effects;
+    drop->returnOwnership = sema::OwnershipKind::None;
+    drop->parameterNames.push_back("self");
+    drop->parameterTypeKeys.push_back(iteratorKey + "*");
+    drop->parameterPassKinds.push_back(ParameterPassKind::Value);
+    drop->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    auto dropBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    dropBody->children.push_back(makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:void"));
+    drop->body = std::move(dropBody);
+
+    return {std::move(moveNext), std::move(drop)};
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(

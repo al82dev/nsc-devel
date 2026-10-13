@@ -1253,9 +1253,15 @@ bool ProjectOopMirModel::build(
         constexpr std::uint64_t moveNextFnSize = 8;
         constexpr std::uint64_t moveNextFnAlignment = 8;
         const std::uint64_t moveNextFnOffset = alignUp(itemOffset + itemLayout->first, moveNextFnAlignment);
+        // NS304-T06-F07: the iterator carries its Drop function pointer (field 4) so abandoning the
+        // foreach destroys the frame's live locals.
+        constexpr std::uint64_t dropFnSize = 8;
+        constexpr std::uint64_t dropFnAlignment = 8;
+        const std::uint64_t dropFnOffset = alignUp(moveNextFnOffset + moveNextFnSize, dropFnAlignment);
         const std::uint64_t totalAlignment =
-            std::max({stateAlignment, frameAlignment, itemLayout->second, moveNextFnAlignment});
-        const std::uint64_t totalSize = alignUp(moveNextFnOffset + moveNextFnSize, totalAlignment);
+            std::max({stateAlignment, frameAlignment, itemLayout->second, moveNextFnAlignment,
+                      dropFnAlignment});
+        const std::uint64_t totalSize = alignUp(dropFnOffset + dropFnSize, totalAlignment);
         std::vector<ObjectFieldLayout> fields;
         fields.push_back(ObjectFieldLayout{
             0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
@@ -1266,6 +1272,9 @@ bool ProjectOopMirModel::build(
             std::string(*item), std::nullopt, std::nullopt});
         fields.push_back(ObjectFieldLayout{
             3, moveNextFnOffset, moveNextFnSize, moveNextFnAlignment, "builtin:void*",
+            std::nullopt, std::nullopt});
+        fields.push_back(ObjectFieldLayout{
+            4, dropFnOffset, dropFnSize, dropFnAlignment, "builtin:void*",
             std::nullopt, std::nullopt});
         structLayouts_.push_back(ProjectOopMirStructLayout{
             (std::numeric_limits<std::size_t>::max)(),

@@ -831,8 +831,10 @@ private:
 
     // NS304-T06-F03: splits a generator into a lazy constructor (function.body becomes
     // `return default(iterator:<T>)`) and a MoveNext function (returned; `bool(self)` runs the body
-    // to the next yield). Returns nullptr and sets error on failure.
-    std::unique_ptr<ProjectOopHirFunction> splitGeneratorFunction(
+    // to the next yield). NS304-T06-F07: also returns a Drop function (`void(self)` destroys the
+    // frame's live locals). Returns {nullptr, nullptr} and sets error on failure.
+    std::pair<std::unique_ptr<ProjectOopHirFunction>, std::unique_ptr<ProjectOopHirFunction>>
+    splitGeneratorFunction(
         ProjectOopHirFunction& function,
         std::string& error);
 
