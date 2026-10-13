@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 26 | 17.69 % | `ACTIVA`; T00-T02 cerradas; campaña secuencial T03 4/8; T03-F05 siguiente |
+| B | 3.0.4 | 18 | 147 ítems | 27 | 18.37 % | `ACTIVA`; T00-T02 cerradas; campaña secuencial T03 5/8; T03-F06 siguiente |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -978,7 +978,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
 - [x] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(Matriz de sustratos TL-LANG-310 y TL-LANG-357..362, 7/7 PASS. TL363 valida UTF-8 no ASCII; TL364 alias/no-copia observable y readonly; TL365 rechazo exacto del escape desde stackalloc. B1/B2 y guards permanecen cerrados. F03 satisface su expediente y avanza a 25/147.)*
 - [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(CERRADO: parser `PatternKind::Positional` + lowering `lowerPattern`/`emitPatternBindings`; sema `bindDeconstructionSource` por símbolo con aridad/ambiguo/ownership. Evidencia O0 2026-10-13: TL-LANG-311 PASS, TL-LANG-322 PASS, TP-PAR-357 PASS + guards TL-LANG-308/309/310 PASS. Avanza a 26/147.)*
-- [ ] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(EVIDENCIA TÉCNICA ADELANTADA, no contabilizable todavía: unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
+- [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(CERRADO: `analyzeListMatch` (exacta/rest), OR compuesto por `|`, dominios abiertos sin wildcard rechazados, `analyzeClosedMatch` para variantes; reportes en 4499/8865 y 4549/8915. Evidencia O0 2026-10-13: TL-LANG-267 PASS, TL-LANG-312 PASS + guards F01-F04 PASS. Avanza a 27/147.)*
 - [ ] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(EVIDENCIA TÉCNICA ADELANTADA, no contabilizable todavía: la mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
 - [ ] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(PARCIAL: F01–F06 demuestran checks, branches y vistas prestadas; `TL-LANG-310` sólo cubre el sustrato string y no demuestra ausencia general de colección, boxing o asignación temporal. Falta evidencia puntual de IR/coste.)*
 - [ ] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(EVIDENCIA TÉCNICA ADELANTADA Y PARCIAL, no contabilizable: faltantes+redundancia de list y variante; escape canónico por TL-LANG-365, con TL-LANG-309 como guard no escapante.)*
