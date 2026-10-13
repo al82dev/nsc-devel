@@ -1,62 +1,48 @@
 # NS304-T03-F06 — Bindings `copy`, `move`, `ref` y `ref mut` en patterns
 
-- **Estado**: EVIDENCIA TÉCNICA ADELANTADA COMPLETA; cierre secuencial pendiente.
+- **Estado**: CERRADO (28/147)
 - **Rama**: development
-- **Contabilidad**: no incrementa el 25/147 vigente; requiere los cierres secuenciales F04–F05 y
-  luego su propio cierre en orden.
-- **Alcance (SCOPE LOCK)**: `Language/SumTypeSemantics.h` (`PatternBindingMode`),
-  `Parser::parsePatternPrimary` (modos), `Parser::lowerPattern`/`emitPatternBindings` (modo→HIR),
-  y la prueba `TL-LANG-313`. NO tocar CMake, toolchain, Builder, foreach, rango T01-F04.
 
-## Auditoría (línea base)
+## Propósito
 
-`PatternBindingMode` (SumTypeSemantics.h:44-47) tiene solo `Value`, `Reference`, `Move`.
+Definir y transportar los cuatro modos de binding de pattern (`copy`, `move`, `ref`, `ref mut`)
+desde el parser hasta LLVM, preservando la semántica de préstamo y rechazando escritura readonly.
 
-Parseo actual de modo (Parser.cpp:10563-10587):
-- `var x` → `Value`.
-- `ref x` → `Reference` (solo lectura).
-- `move x` → `Move`.
+## Contrato verificado
 
-`copy` ya es keyword contextual (Parser.cpp:2100/13370) y `ref mut` se usa en `foreach`
-(Parser.cpp:12287: "exclusive mutable alias"), pero NO en patterns.
+- **Enum único** `PatternBindingMode` (`SumTypeSemantics.h`): `Value`, `Reference`, `Move`,
+  `Copy`, `ReferenceMutable` compartido entre parser y `SumTypeSemantics`.
+- **Parser** (`parsePatternPrimary` 11025/11033): `copy x` → `Copy`; `ref mut x` → `ReferenceMutable`;
+  `ref x` → `Reference`; `move x` → `Move`; `bindingModeName` los nombra.
+- **OR-compatibilidad** (`orPatternBindingsCompatible`): alternativas OR deben coincidir en
+  nombres, tipos y modos (incluido `ReferenceMutable`, 10481/12288/12437).
+- **Sema/HIR/MIR/LLVM**: marcadores `local:pattern-ref` y `local:pattern-ref-mut`;
+  `MethodLocalSymbol::referenceMutable` propaga la capacidad; `MatchValueExpression` es
+  almacenamiento direccionable (sin copia materializada antes de `ref mut`).
+- `ref` readonly rechaza escritura; `ref mut` conserva el alias mutable exclusivo.
 
-## Gaps F06
+## Evidencia (O0)
 
-1. **`copy`**: nuevo `PatternBindingMode::Copy`; parseo de `copy x` en `parsePatternPrimary`.
-2. **`ref mut`**: nuevo `PatternBindingMode::ReferenceMutable`; parseo de `ref mut x`
-   (dos contextuales) y lowering con alias mutable exclusivo.
-3. Propagación del modo por el pipeline: `bindingModeName` (11400-11407), `collectBindings`,
-   `emitPatternBindings` (11240/11251) y la validación de OR-compatibilidad
-   (`orPatternBindingsCompatible` en SumTypeSemantics.cpp:55-72) que compara `mode`.
+| Caso | Resultado | Duración |
+|---|---|---|
+| `TL-LANG-313` (copy/move/ref/ref mut + rechazo de escritura `ref`) | PASS | 304,909 us |
+| `TL-LANG-364` (ownership: alias/no-copia observable, readonly) | PASS | 864,741 us |
+| `TL-LANG-312` (guard F05) | PASS | 427,416 us |
+| `TL-LANG-267` (guard F05) | PASS | 136 us |
+| `TL-LANG-311` (guard F04) | PASS | 301,398 us |
+| `TL-LANG-322` (guard F04) | PASS | 652,700 us |
+| `TP-PAR-357` (guard F04) | PASS | 290 us |
+| `TL-LANG-308/309/310` (guards F01-F03) | PASS | 289/275/569 ms |
 
-## Plan
+## Comando de validación
 
-1. Añadir `Copy` y `ReferenceMutable` al enum + `bindingModeName`.
-2. Parsear `copy x` y `ref mut x` (distinguir `ref` de `ref mut` por `peek` de `mut`).
-3. Bajar `ref mut` como referencia mutable (igual que el `foreach ref mut`).
-4. Prueba `TL-LANG-313`: `copy`/`move`/`ref`/`ref mut` en un pattern de struct y de list.
+```powershell
+$env:TMP=$env:TEMP="A:\nsc-devel\_tmp"
+A:\nsc-devel\build-compiler-suite-v3\debug\nsc_component_tests.exe --case TL-LANG-313
+# ... --case TL-LANG-364, TL-LANG-312, TL-LANG-267, TL-LANG-311, TL-LANG-322, TP-PAR-357, TL-LANG-308..310
+```
 
-## Prueba puntual
+## Riesgos / limitaciones pendientes
 
-`TL-LANG-313`: bindings `copy`/`move`/`ref`/`ref mut` compilan y preservan el modo; `ref mut`
-permite mutar el elemento; `ref` (readonly) rechaza escritura.
-
-## Implementación de capacidad
-
-El lowering conserva dos marcadores distintos, `local:pattern-ref` y
-`local:pattern-ref-mut`. Sema convierte el primero en un local referencia constante y el segundo
-en un préstamo mutable exclusivo. `MethodLocalSymbol::referenceMutable` propaga la capacidad a
-HIR/MIR y a la identidad de cache; LLVM comparte deliberadamente la misma representación física
-de dirección para ambos modos porque la escritura readonly ya fue rechazada antes de HIR.
-
-El valor gobernante del `match` conserva además su dirección cuando existe un binding por
-referencia. `MatchValueExpression` se reconoce como almacenamiento naturalmente direccionable,
-por lo que un campo de struct no se materializa en una copia antes de inicializar `ref mut`.
-
-## Evidencia de cierre
-
-- 2026-10-13: construcción incremental de `nsc`, 7/7 pasos.
-- 2026-10-13: construcción incremental de `nsc_component_tests`, 3/3 pasos.
-- 2026-10-13: `TL-LANG-313` PASS, 397,933 us. El caso verifica `copy`, `move`, lectura
-  mediante `ref`, escritura observable mediante `ref mut` y rechazo diagnóstico de escritura
-  mediante `ref` readonly.
+- Ninguna dentro del alcance de F06. La certificación de metadata y paridad host/self-host se
+  consolida en F08.
