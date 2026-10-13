@@ -3246,6 +3246,42 @@ class Program
         }});
 }
 
+void registerNullConditionalIndexReadCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-345", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "null-conditional", "index", "read"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NullCondIndexRead", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        string[] arr = null;
+        string x = arr?[0];
+        string[] arr2 = new string[2];
+        arr2[1] = "hello";
+        string y = arr2?[1];
+        return y.Length;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NullCondIndexRead.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-345 arr?[i] must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-345 arr2?[1] must load (arr?[0] skip on null): " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3304,6 +3340,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCustomEventCase(registry);
     registerNullConditionalCompoundCase(registry);
     registerNullConditionalIndexDiagnosticCase(registry);
+    registerNullConditionalIndexReadCase(registry);
     registerClassPrimaryConstructorCase(registry);
 }
 }

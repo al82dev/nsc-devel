@@ -1,6 +1,6 @@
-# NS304-T10-F05 — `?[]` null-conditional index (fundación léxica/sintáctica)
+# NS304-T10-F05 — `?[]` null-conditional index
 
-- **Estado**: PARCIAL (token `?[` + parser + AST) / residual (Sema/HIR/LLVM del READ y WRITE)
+- **Estado**: PARCIAL (token + parser + READ de array nativo) / residual (WRITE + indexador de usuario)
 - **Rama**: development
 
 ## Resultado
@@ -9,11 +9,13 @@
 - **Parser**: `obj?[i]` baja como `NullConditionalIndexExpression` (receiver en first(), índice en
   children, con soporte de rangos `..` como el `[...]` ordinario).
 - **AST**: nuevo `AstNodeKind::NullConditionalIndexExpression` + nombre público.
-- Pruebas: `TL-LEX-095` (`?[`), `TL-LEX-001` (catálogo), `TA-AST-019..025` (catálogo AST),
-  `TP-PAR-537` (parser) → **PASS**.
+- **Sema/HIR/LLVM**: `arr?[i]` sobre array nativo baja como `NullConditionalArrayElement` →
+  `NullConditionalArrayLoad` (null-check + bounds-check + element-load condicional, reutiliza
+  `normalizeNativeIndex`).
+- Pruebas: `TP-PAR-537` (parser), `TL-LEX-095/001`, `TA-AST-019..025`, `TL-LANG-345` (READ) → **PASS**.
 
 ## Residual
 
-- **Sema/HIR/LLVM**: el `NullConditionalIndexExpression` aún no se analiza ni baja (el READ `obj?[i]`
-  y el WRITE `obj?[i] = v` requieren la ruta de indexador null-conditional equivalente a la de
-  `?.Field`, hoy solo miembro).
+- **WRITE** `obj?[i] = v`: requiere indexador null-conditional direccionable (hoy el element-load
+  null-conditional no es addressable).
+- **Indexador de usuario** `obj?[i]` sobre tipos con `this[...]`: sólo array nativo soportado.

@@ -637,6 +637,9 @@ enum class MethodCoreOperationKind
     FixedArrayLength,
     ArrayElement,
     RangeArrayElement,
+    // NS304-T10-F05: `receiver?[index]` sobre array nativo — mismo element-load que ArrayElement
+    // pero con null-check del receptor (resultado nullable).
+    NullConditionalArrayElement,
     // C2.1 "fixed arrays": indexing something whose storage is INLINE and unmanaged -- a fixed
     // array field/local (`float[4]`) or a raw pointer (`int*`). One operation kind covers both
     // because the address arithmetic is identical (base + index * elementSize) and neither has a

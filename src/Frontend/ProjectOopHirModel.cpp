@@ -394,6 +394,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::FixedArrayLength:
     case MethodCoreOperationKind::ArrayElement:
     case MethodCoreOperationKind::RangeArrayElement:
+    case MethodCoreOperationKind::NullConditionalArrayElement:
     case MethodCoreOperationKind::RawElement:
     case MethodCoreOperationKind::StringLiteral:
     case MethodCoreOperationKind::StringLength:
@@ -1039,6 +1040,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::FieldValue: return "field-value";
         case ProjectOopHirNodeKind::NullConditionalFieldValue: return "null-conditional-field-value";
         case ProjectOopHirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
+        case ProjectOopHirNodeKind::NullConditionalArrayLoad: return "null-conditional-array-load";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
         case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
@@ -4896,6 +4898,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::IndexExpression:
+        case ast::AstNodeKind::NullConditionalIndexExpression:
         {
             if (const MethodRangeSliceBinding* range = rangeSliceBinding(expression);
                 range != nullptr)
@@ -5016,6 +5019,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     if (index == nullptr) return nullptr;
                     node->children.push_back(std::move(index));
                 }
+                return node;
+            }
+            // NS304-T10-F05: `receiver?[index]` — load condicional de elemento de array nativo.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::NullConditionalArrayElement)
+            {
+                if (addressContext)
+                {
+                    error = "T10-F05 null-conditional array element is not addressable";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                const ast::AstNode* indexSyntax = !expression->children().empty()
+                    ? expression->children().front() : expression->second();
+                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                if (index == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::NullConditionalArrayLoad, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(index));
                 return node;
             }
             // C2.1 "fixed arrays": inline, unmanaged element access -- `fixedArrayField[i]` and

@@ -131,6 +131,8 @@ enum class ProjectOopMirNodeKind
     NullConditionalFieldLoad,
     // NS304-T10-F05: store condicional `receiver?.field = value` (receiver + value).
     NullConditionalFieldStore,
+    // NS304-T10-F05: load condicional `receiver?[index]` (receiver + index).
+    NullConditionalArrayLoad,
     // Item 329. A bit field has no standalone address. BitFieldAddress is a logical lvalue
     // descriptor consumed only by Store/CompoundStore; it identifies the containing allocation
     // unit so the backend can perform one masked read-modify-write.

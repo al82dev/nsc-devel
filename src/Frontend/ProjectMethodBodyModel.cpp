@@ -12823,12 +12823,72 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         }
         case ast::AstNodeKind::NullConditionalIndexExpression:
         {
+            const ExpressionResult base = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            std::vector<ExpressionResult> indices;
+            const auto& indexSyntaxes = expression->children();
+            if (!indexSyntaxes.empty())
+            {
+                for (const ast::AstNode* indexSyntax : indexSyntaxes)
+                {
+                    indices.push_back(analyzeExpression(
+                        indexSyntax, methodMemberOrdinal, scopeOrdinal, diagnostics));
+                }
+            }
+            else if (expression->second() != nullptr)
+            {
+                indices.push_back(analyzeExpression(
+                    expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics));
+            }
+
+            // NS304-T10-F05: sólo el array nativo tiene READ null-conditional (receptor + índice);
+            // el element-load condicional se marca como NullConditionalArrayElement.
+            if (base.valid && ProjectTypeConversion::isNativeArray(base.typeKey))
+            {
+                const std::size_t arrayRank =
+                    ProjectTypeConversion::nativeArrayRank(base.typeKey);
+                bool validIndices = indices.size() == arrayRank;
+                for (const ExpressionResult& index : indices)
+                {
+                    validIndices = validIndices && index.valid &&
+                        ProjectTypeConversion::isIntegral(index.typeKey) &&
+                        index.typeKey != "builtin:bool";
+                }
+                if (validIndices)
+                {
+                    const std::optional<std::string> element =
+                        ProjectTypeConversion::nativeArrayElementType(base.typeKey);
+                    if (element.has_value())
+                    {
+                        result.typeKey = *element;
+                        result.valid = true;
+                        result.assignable = false;
+                        coreBindings_.push_back(MethodCoreBinding{
+                            MethodCoreOperationKind::NullConditionalArrayElement,
+                            expression,
+                            methodMemberOrdinal,
+                            scopeOrdinal,
+                            result.typeKey,
+                            result.typeKey,
+                            true, std::nullopt, std::nullopt});
+                    }
+                }
+                if (!result.valid)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidIndex,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "native array indexing requires exactly one integral index per dimension");
+                }
+                break;
+            }
+
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "null-conditional index access ('obj?[i]') is not yet supported; use an explicit "
-                "null check on the receiver");
+                "null-conditional index access ('obj?[i]') is only supported on native arrays");
             result.valid = false;
             break;
         }
@@ -24965,6 +25025,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::FixedArrayLength: return "fixed-array-length";
         case MethodCoreOperationKind::ArrayElement: return "array-element";
         case MethodCoreOperationKind::RangeArrayElement: return "range-array-element";
+        case MethodCoreOperationKind::NullConditionalArrayElement: return "null-conditional-array-element";
         case MethodCoreOperationKind::RawElement: return "raw-element";
         case MethodCoreOperationKind::StringLiteral: return "string-literal";
         case MethodCoreOperationKind::StringLength: return "string-length";

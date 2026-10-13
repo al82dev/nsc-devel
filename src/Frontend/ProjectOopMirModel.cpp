@@ -736,6 +736,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
         case ProjectOopMirNodeKind::NullConditionalFieldLoad: return "null-conditional-field-load";
         case ProjectOopMirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
+        case ProjectOopMirNodeKind::NullConditionalArrayLoad: return "null-conditional-array-load";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
         case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
@@ -2819,6 +2820,25 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             else if (node->kind == ProjectOopHirNodeKind::RangeArrayElementValue)
                 result->kind = ProjectOopMirNodeKind::RangeArrayElementLoad;
             else result->kind = ProjectOopMirNodeKind::RangeArrayElementAddress;
+            break;
+        }
+        case ProjectOopHirNodeKind::NullConditionalArrayLoad:
+        {
+            if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "Stage 41 null-conditional array lowering requires name lookup and value layouts";
+                return nullptr;
+            }
+            const auto layout = elementLayout(node->elementTypeKey);
+            if (!layout.has_value() || layout->first == 0)
+            {
+                error = "Stage 41 cannot determine native array element layout for '" +
+                    node->elementTypeKey + "'";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::NullConditionalArrayLoad;
+            result->immediate = layout->first;
+            result->alignment = layout->second;
             break;
         }
         case ProjectOopHirNodeKind::RangeSlice:

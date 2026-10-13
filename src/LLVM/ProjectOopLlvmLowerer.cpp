@@ -9010,6 +9010,8 @@ private:
                 return lowerNullConditionalField(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
                 return lowerNullConditionalFieldStore(node, error);
+            case frontend::ProjectOopMirNodeKind::NullConditionalArrayLoad:
+                return lowerNullConditionalArrayLoad(node, error);
             case frontend::ProjectOopMirNodeKind::BitFieldLoad:
             {
                 LLVMValueRef address = fieldAddress(node, error);
@@ -14785,6 +14787,67 @@ private:
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         return value;
+    }
+
+    LLVMValueRef lowerNullConditionalArrayLoad(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 2)
+            return failValue(error, "null-conditional array load MIR requires receiver and index (got " +
+                std::to_string(node->children.size()) + ")");
+        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        if (receiver == nullptr) return nullptr;
+        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+        if (index == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef hasReceiver = LLVMBuildICmp(
+            builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
+        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index");
+        LLVMBasicBlockRef endBlock = appendBlock("nullcond.index.end");
+        LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef length = LLVMBuildLoad2(
+            builder_, LLVMInt64TypeInContext(context_), receiver, "nullcond.index.length");
+        LLVMValueRef inRange = LLVMBuildICmp(
+            builder_, LLVMIntULT, index, length, "nullcond.index.inrange");
+        if (isSignedInteger(node->children[1]->typeKey))
+        {
+            LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            LLVMValueRef nonNegative = LLVMBuildICmp(
+                builder_, LLVMIntSGE, index, zero, "nullcond.index.nonnegative");
+            inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "nullcond.index.valid");
+        }
+        if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "nullcond.index", error))
+            return nullptr;
+        const std::uint64_t elementSize = node->immediate;
+        const std::uint64_t elementAlignment = node->alignment;
+        const std::uint64_t dataOffset =
+            (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+        LLVMValueRef scaled = LLVMBuildMul(
+            builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+            "nullcond.index.scaled");
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_, scaled, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
+            "nullcond.index.offset");
+        LLVMValueRef indices[] = {offset};
+        LLVMValueRef address = LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
+            "nullcond.index.addr");
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef element = LLVMBuildLoad2(
+            builder_, resultType, address, "nullcond.index.element");
+        LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.index.phi");
+        LLVMValueRef values[] = {LLVMConstNull(resultType), element};
+        LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
     }
 
     LLVMValueRef lowerShortCircuit(const frontend::ProjectOopMirNode* node, std::string& error)

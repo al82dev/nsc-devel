@@ -1055,7 +1055,7 @@ T00
 - [x] `NS304-T10-F02` — Completar raw interpolated strings y delimitadores anidados. *(lexRawInterpolatedString con delimitador dinámico 3+ comillas, contenido crudo + huecos; TL-LEX-111 + TL-LANG-332.)*
 - [ ] `NS304-T10-F03` — Hacer productivos interpolation handlers con stack/writer/custom sink.
 - [x] `NS304-T10-F04` — Validar formato consteval e interpolación constante pura. *(handler estático T01-F06 + TL-LANG-336 literal hole.)*
-- [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value via NullConditionalFieldStore (HIR/MIR/LLVM) + TL-LANG-340; token `?[` + parser NullConditionalIndexExpression + TP-PAR-537; Sema/HIR/LLVM de `?[]` READ/WRITE y RHS condicional residual.)*
+- [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value + compound + token `?[` + READ de array nativo (`arr?[i]`) via NullConditionalArrayLoad + TL-LANG-340/342/345; ?[] WRITE + indexador de usuario + RHS condicional residual.)*
 - [ ] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos. *(numérico obj?.Field += x via operation + applyBinaryOperation + TL-LANG-342; string concat + ++/-- residual.)*
 - [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(lowering parser→StringLiteralExpression: ident/alias, miembro, callee/receptor y `Generic<int>`→baseName; TL-LANG-331.)*
 - [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; no-culture residual bloqueado en la feature.)*

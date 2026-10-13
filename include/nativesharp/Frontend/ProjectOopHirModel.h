@@ -129,6 +129,8 @@ enum class ProjectOopHirNodeKind
     NullConditionalFieldValue,
     // NS304-T10-F05: `receiver?.field = value` — store condicional al null-check del receptor.
     NullConditionalFieldStore,
+    // NS304-T10-F05: `receiver?[index]` — load condicional del elemento de array nativo.
+    NullConditionalArrayLoad,
     StaticFieldValue,
     NamespaceStateValue,
     ParameterAddress,
