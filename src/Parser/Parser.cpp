@@ -13906,10 +13906,13 @@ ast::AstNode* Parser::parseLambdaExpression()
     const std::size_t beginIndex = index_;
     auto* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
-    // NS304-T04-F05: `static` = lambda sin captura. Se guarda como sufijo "static" del
-    // auxiliaryText para que bindLambdaToDelegate lo fuerce a captura vacia.
-    bool staticLambda = false;
-    if (at(TokenKind::KwStatic)) { staticLambda = true; consume(); }
+    // NS304-T04-F05: `static` is structural callable metadata. It must not share the auxiliary
+    // text channel with capture contracts, effects, calling conventions, or user spellings.
+    if (at(TokenKind::KwStatic))
+    {
+        consume();
+        lambda->addModifier(TokenKind::KwStatic);
+    }
     // NS304-T04-F02: prefijos de efecto `noheap`/`unsafe` y calling convention `extern C`.
     std::string effects;
     if (at(TokenKind::KwNoHeap)) { effects = "noheap"; consume(); }
@@ -14104,11 +14107,6 @@ ast::AstNode* Parser::parseLambdaExpression()
 
     lambda->setRange(tokenRangeFrom(beginIndex));
     std::string auxiliary = captureContract;
-    if (staticLambda)
-    {
-        if (!auxiliary.empty()) auxiliary += ';';
-        auxiliary += "static";
-    }
     if (!effects.empty())
     {
         if (!auxiliary.empty()) auxiliary += ';';

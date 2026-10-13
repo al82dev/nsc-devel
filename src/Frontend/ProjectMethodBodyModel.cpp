@@ -23962,15 +23962,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         bodyValid = false;
     }
-    // NS304-T04-F05: un lambda `static` no puede capturar nada del entorno.
+    // NS304-T04-F05: static is an AST modifier, never a substring of unrelated textual metadata.
+    // Local functions are represented as lambdas, so use their structural modifier and retain a
+    // precise diagnostic that identifies the source construct.
     if (bodyValid && !binding.captures.empty() &&
-        syntax->auxiliaryText().find("static") != std::string::npos)
+        syntax->hasModifier(TokenKind::KwStatic))
     {
+        const bool localFunction = syntax->auxiliaryText().starts_with("local-function:");
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             syntax->range(),
-            "a static lambda cannot capture variables from the enclosing scope");
+            localFunction
+                ? "a static local function cannot capture variables from the enclosing scope"
+                : "a static lambda cannot capture variables from the enclosing scope");
         bodyValid = false;
     }
     std::vector<language::Capture> closureCaptures;

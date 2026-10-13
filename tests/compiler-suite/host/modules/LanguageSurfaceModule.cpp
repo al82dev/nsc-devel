@@ -2196,10 +2196,14 @@ void registerStaticLambdaCase(TestRegistry& registry)
                 "T04StaticLambda", "Exe", R"ns(
 class Program
 {
+    public delegate int Map(int x);
+
     public static int Main()
     {
         var f = static (int x) => x + 1;
-        return f(41);
+        int staticBias = 1;
+        Map ordinary = [copy staticBias] (int x) => x + staticBias;
+        return f(20) + ordinary(20);
     }
 }
 )ns");
@@ -2214,7 +2218,8 @@ class Program
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
-                "TL-LANG-318 a static lambda must remain invocable: " +
+                "TL-LANG-318 structured static metadata must not reject an ordinary capture "
+                "whose name contains 'static': " +
                     result.error + result.output);
 
             const std::filesystem::path badProject = products.writeProject(
@@ -3673,7 +3678,11 @@ class Program
         {
             return n * 2;
         }
-        return Twice(21);
+        int staticNamed(int n)
+        {
+            return n + 1;
+        }
+        return staticNamed(Twice(20)) + 1;
     }
 }
 )ns");
@@ -3687,7 +3696,8 @@ class Program
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
-                "TL-LANG-351 Twice(21) must be 42: " + result.error + result.output);
+                "TL-LANG-351 static must be structural and an ordinary local function name may "
+                "contain 'static': " + result.error + result.output);
         }});
 }
 
@@ -3842,11 +3852,14 @@ class Program
                 products.directory() / "T04StaticLocalCapture.exe";
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
+            const std::string evidence = emitted.error + emitted.output;
             context.expect(
-                (emitted.error + emitted.output).find("capture") != std::string::npos ||
-                    (emitted.error + emitted.output).find("x") != std::string::npos,
-                "TL-LANG-355 a static local function must reject capture: " +
-                    emitted.error + emitted.output);
+                emitted.started && emitted.exitCode != 0 &&
+                    evidence.find(
+                        "a static local function cannot capture variables from the enclosing scope") !=
+                        std::string::npos,
+                "TL-LANG-355 must fail with the specific static-local capture diagnostic: " +
+                    evidence);
         }});
 }
 
