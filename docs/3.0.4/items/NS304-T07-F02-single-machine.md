@@ -1,6 +1,6 @@
 # NS304-T07-F02 — Máquina única para await + yield
 
-- **Estado**: AUDITADO (modelo async-generator unit-tested; sin surface ni lowering)
+- **Estado**: PARCIAL (marcación del doble efecto + guard + yield válido cerrados; split único pendiente)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -39,3 +39,12 @@ sin consumidor.
 T07-F02 es la combinación de T05-F03 + T06-F03; magnitud comparable a ambas. El modelo
 `buildAsyncGeneratorPlan` ya valida estados contiguos + backpressure; el trabajo es el lowering
 productivo.
+
+### Cierre parcial (marcación + guard) — verificado 2026-10-13
+
+- `AsyncIterator<T,E>` devuelto → efectos `Generator` + `Async` simultáneos.
+- `yield` es válido en un async-generator (el item es `T`).
+- El HIR rechaza el cuerpo de doble efecto con `NS304-T07-F02` explícito (sin apilar los dos splits).
+- Verificado: `AsyncIterator<int,object> Gen(){ yield 1; }` → error claro. Commit `cf188c1`.
+
+Queda: **el split único** (`MoveNextAsync` → future de la siguiente demanda) y el MIR de estados/aristas.
