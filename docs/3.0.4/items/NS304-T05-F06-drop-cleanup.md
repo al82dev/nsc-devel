@@ -1,6 +1,6 @@
 # NS304-T05-F06 — Ejecutar drop/defer/finally una vez en completion, error o cancelación
 
-- **Estado**: ABIERTO (auditado; drop en completion perdido; cancelación sin path)
+- **Estado**: PARCIAL (drop en completion cerrado; cancelación/error sin path)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -65,3 +65,13 @@ una vez en error, y cero en suspensión intermedia.
 El gap de completion es independiente de F09 y demostrable hoy. El gap de cancelación/error depende
 de F09 (ABI drop) y de F07 (errores). El orden efectivo: F09 → F04 (liveness) → F06 (drop), porque
 el drop al completar debe correr sobre el valor correcto restaurado por F04.
+
+### Cierre parcial (completion) — verificado 2026-10-13
+
+`rewriteAsyncPollReturns` ahora copia `cleanupRegionOrdinals` + `cleanupContinuationKind` del
+`return v` original al `return;` sintetizado. Verificado: `async Read(){ raii Box box=new Box();
+return 42; }` + `Main(){ return Box.Drops*100 + await Read(); }` ejecuta exit 142 (Drops=1, una
+sola vez). Registrado como `TL-LANG-372` (PASS). Commits `da7e7b41`, `64431d1a`.
+
+Queda: drop en cancelación (F09 ABI drop) y en error (F07), y el drop tras suspensión (F04
+liveness).
