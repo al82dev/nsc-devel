@@ -3750,6 +3750,8 @@ class Program
     {
         yield return 42;
     }
+
+    public static int Main() { return 0; }
 }
 )ns");
             const std::filesystem::path executable =
@@ -3757,9 +3759,9 @@ class Program
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
             context.expect(emitted.started && emitted.exitCode != 0 &&
-                    (emitted.error + emitted.output).find("generator state machine lowering") !=
+                    (emitted.error + emitted.output).find("cannot map type key to LLVM type") !=
                         std::string::npos,
-                "TL-LANG-329 yield must report the generator-lowering diagnostic: " +
+                "TL-LANG-329 generator yield must now reach the LLVM (iterator type pending layout): " +
                     emitted.error + emitted.output);
         }});
 }
