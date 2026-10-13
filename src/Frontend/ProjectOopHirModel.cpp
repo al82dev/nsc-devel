@@ -3253,8 +3253,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
 
         case ast::AstNodeKind::YieldBreakStatement:
         {
-            // NS304-T06-F03: `yield break` terminates the generator (state = completed).
-            return makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
+            // NS304-T06-F07: `yield break` terminates the generator and must run the active cleanup
+            // regions (defer/drop) exactly once before returning false.
+            auto node = makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
+            attachStructuredExit(*node);
+            node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
+            return node;
         }
 
         case ast::AstNodeKind::ReturnStatement:

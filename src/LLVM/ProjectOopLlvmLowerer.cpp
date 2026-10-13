@@ -7965,9 +7965,16 @@ private:
 
             case frontend::ProjectOopMirNodeKind::YieldBreak:
             {
-                // NS304-T06-F03: `yield break` terminates the generator (state = -1) + return false.
+                // NS304-T06-F07: `yield break` runs the active cleanup (defer/drop) once, then
+                // terminates the generator (state = -1) + return false.
                 if (parameterStorage_.empty())
                     return fail(error, "yield break has no MoveNext self parameter");
+                for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0; --index)
+                {
+                    if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error))
+                        return false;
+                    if (terminated()) return true;
+                }
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                     "yieldbreak.self");
