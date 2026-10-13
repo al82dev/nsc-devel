@@ -10457,7 +10457,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         (inheritanceModel_->isClass(*ordinal) ||
                          (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
                 }();
-            if (!nullableResult)
+            if (!nullableResult && !activeNullConditionalWrite_)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -20348,12 +20348,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         markAssignmentTarget(expression->first(), scopeOrdinal);
         activeUnionWriteTarget_ = expression->first();
     }
+    // NS304-T10-F05: un null-conditional write admite campos de tipo valor (el READ nullable lo
+    // rechazaria); el flag suprime el chequeo de resultado nullable durante el analisis del LHS.
+    const bool nullConditionalWrite = expression->tokenKind() == TokenKind::Equal &&
+        expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
+    const bool previousNullConditionalWrite = activeNullConditionalWrite_;
+    activeNullConditionalWrite_ = nullConditionalWrite;
     if (!left.valid)
     {
         left = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
             false, true, false, expression->tokenKind() == TokenKind::Equal);
     }
+    activeNullConditionalWrite_ = previousNullConditionalWrite;
     definiteAssignmentWriteTarget_ = previousWriteTarget;
     activeUnionWriteTarget_ = previousUnionWriteTarget;
     if (!left.valid)

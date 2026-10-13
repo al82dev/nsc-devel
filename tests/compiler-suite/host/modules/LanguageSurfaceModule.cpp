@@ -3057,7 +3057,7 @@ void registerNullConditionalWriteCase(TestRegistry& registry)
                 "T10NullConditionalWrite", "Exe", R"ns(
 class Box
 {
-    public string Name;
+    public int Value;
 }
 
 class Program
@@ -3065,10 +3065,10 @@ class Program
     public static int Main()
     {
         Box b = null;
-        b?.Name = "x";
+        b?.Value = 1;
         Box c = new Box();
-        c?.Name = "hello";
-        return c.Name.Length;
+        c?.Value = 42;
+        return c.Value;
     }
 }
 )ns");
@@ -3082,8 +3082,8 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 5,
-                "TL-LANG-340 c?.Name = \"hello\" must store (and b?.Name skip on null): " +
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-340 c?.Value = 42 must store (and b?.Value skip on null): " +
                     result.error + result.output);
         }});
 }

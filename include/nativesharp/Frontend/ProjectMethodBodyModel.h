@@ -2227,6 +2227,8 @@ private:
     std::set<std::pair<std::size_t, std::size_t>> assignedRequiredFields_;
     // NS304-T09-F07: tipo objetivo activo durante el análisis de un `new()` target-typed.
     std::string activeTargetTypeKey_;
+    // NS304-T10-F05: true mientras se analiza el LHS de un null-conditional write.
+    bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
