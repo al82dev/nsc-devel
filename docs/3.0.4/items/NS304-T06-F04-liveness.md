@@ -1,6 +1,6 @@
 # NS304-T06-F04 — Locals vivos, captures, ownership y drop flags por suspensión
 
-- **Estado**: AUDITADO (pendiente: frame de locals + save/restore en el YieldValue)
+- **Estado**: PARCIAL conservativo (frame + save/restore de locals cerrados; captures/ownership/drop flags + liveness precisa pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -41,3 +41,14 @@ persisten.
 
 `Iterator<int> Gen(){ int x = 10; yield return x; yield return x + 1; }` + consumo → 10, 11
 (el local `x` debe persistir entre yields). Actualmente el segundo yield leería stack muerto.
+
+### Cierre parcial (save/restore) — verificado 2026-10-13
+
+- MIR: el frame del MoveNext = los locals declarados (conservativo), reutilizando `asyncFrameLocals`.
+- `YieldValue` LLVM: entry asigna el frame una vez (null check + PHI) + guarda los locals vivos;
+  resume los restaura.
+- Verificado: `int x=10; yield return x; yield return x+1;` → `MoveNext` produce 10, 11 (exit 21).
+  Registrado `TL-LANG-382` (PASS). Commit `8206f68b`.
+
+Queda (cola): captures/parámetros con ownership, drop flags por inicialización y liveness precisa
+def-use (hoy conserva todos los locals declarados).
