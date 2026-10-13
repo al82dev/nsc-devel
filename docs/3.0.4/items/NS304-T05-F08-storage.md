@@ -1,6 +1,6 @@
 # NS304-T05-F08 — Storage en stack, caller, arena o allocator explícito; nunca heap obligatorio
 
-- **Estado**: ABIERTO (auditado; caller-stack hecho, arena/allocator no cableado)
+- **Estado**: PARCIAL (caller-stack + nunca-heap cerrados; arena/allocator = surface de selección pendiente de Alberto)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -57,3 +57,13 @@ tiene surface de usuario hoy, así que el positivo requiere definirla primero.)
 
 F08 hereda el caller-stack de F03/F04 (ya verificado). El resto (arena/allocator) es una ampliación
 de surface no cableada, independiente de la primitiva pendiente de F09.
+
+### Cierre parcial (caller-stack + nunca-heap) — verificado 2026-10-13
+
+- **Caller-stack**: el `await` aloca el frame con `entryBlockAlloca` (alloca de stack) y lo guarda
+  en `future.frame@8`; verificado en LLVM IR (`%await.frame = alloca [24 x i8]`).
+- **Nunca heap obligatorio**: `asyncFrameHasImplicitHeap` es siempre `false`; el frame es `alloca`,
+  no `malloc`.
+- **Pendiente (surface)**: `CallerArena`/`ExplicitHeap` no tienen superficie de usuario para
+  seleccionarlos. Es una decisión de surface (atributo `[FrameStorage(...)]` vs parámetro del
+  constructor) que se deja registrada para Alberto; sin ella el lowering no puede emitir arena/allocator.
