@@ -134,7 +134,7 @@ void registerAsyncPlanBoundaryCase(TestRegistry& registry)
 void registerFutureProtocolCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-055", [](TestContext& context) {
-        FutureProtocol protocol{"Value", "Error", "Cancelled", true, true, true, true};
+        FutureProtocol protocol{"Value", "Error", "Cancelled", "", true, true, true, true};
         std::string error = "stale";
         context.expect(validateFutureProtocol(protocol, error) && error.empty(),
             "TL-LANG-055 a complete static single-consumer protocol must succeed");
