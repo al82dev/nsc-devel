@@ -481,6 +481,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::IteratorCurrent:
     case MethodCoreOperationKind::IteratorGetEnumerator:
     case MethodCoreOperationKind::IteratorDrop:
+    case MethodCoreOperationKind::IteratorMoveNextAsync:
         return std::nullopt;
     }
 
@@ -1065,6 +1066,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::IteratorMoveNext: return "iterator-move-next";
         case ProjectOopHirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopHirNodeKind::IteratorDrop: return "iterator-drop";
+        case ProjectOopHirNodeKind::IteratorMoveNextAsync: return "iterator-move-next-async";
         case ProjectOopHirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
@@ -6412,7 +6414,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 iteratorCore != nullptr &&
                 (iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext ||
                  iteratorCore->kind == MethodCoreOperationKind::IteratorGetEnumerator ||
-                 iteratorCore->kind == MethodCoreOperationKind::IteratorDrop))
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorDrop ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync))
             {
                 if (addressContext || !expression->children().empty() ||
                     expression->first() == nullptr || expression->first()->first() == nullptr)
@@ -6421,7 +6424,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         "() has an invalid call shape";
                     return nullptr;
                 }
-                // MoveNext/Drop mutate the iterator (state/frame), so the receiver is the ADDRESS.
+                // MoveNext/Drop/MoveNextAsync mutate the iterator (state/frame), so the receiver is
+                // the ADDRESS.
                 auto receiver = lowerExpression(
                     expression->first()->first(), memberOrdinal,
                     iteratorCore->kind != MethodCoreOperationKind::IteratorGetEnumerator, error);
@@ -6431,7 +6435,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         ? ProjectOopHirNodeKind::IteratorMoveNext
                         : iteratorCore->kind == MethodCoreOperationKind::IteratorDrop
                             ? ProjectOopHirNodeKind::IteratorDrop
-                            : ProjectOopHirNodeKind::IteratorGetEnumerator,
+                            : iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync
+                                ? ProjectOopHirNodeKind::IteratorMoveNextAsync
+                                : ProjectOopHirNodeKind::IteratorGetEnumerator,
                     expression,
                     iteratorCore->resultTypeKey);
                 node->elementTypeKey = iteratorCore->elementTypeKey;

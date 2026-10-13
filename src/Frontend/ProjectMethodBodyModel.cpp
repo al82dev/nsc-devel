@@ -14705,6 +14705,34 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         }
     }
 
+    // NS304-T07-F02: `it.MoveNextAsync()` on an async-iterator returns the future of the next demand.
+    if (!typeReceiver && expression->text() == "MoveNextAsync" &&
+        language::asyncIteratorInnerTypeKey(receiver.typeKey).has_value())
+    {
+        result.methodGroup = true;
+        result.methodCandidates.clear();
+        result.valid = allowMethodGroup;
+        result.receiverSyntax = expression->first();
+        result.receiverTypeKey = receiver.typeKey;
+        result.receiverTypeOrdinal = receiver.receiverTypeOrdinal;
+        result.typeKey = kIteratorFacadeTypeKey;
+        recordNameBinding(MethodNameBinding{
+            MethodNameBindingKind::ExplicitObjectMethodGroup,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            expression->text(),
+            kIteratorFacadeTypeKey,
+            std::nullopt,
+            std::nullopt,
+            {},
+            expression->first(),
+            receiver.typeKey,
+            receiver.receiverTypeOrdinal,
+            false});
+        return result;
+    }
+
     // NS304-T06-F08 / NS304-T07-F02: `it.MoveNext()`/`it.GetEnumerator()`/`it.Drop()` synthesize a
     // method-group facade so the call resolves with zero arguments; analyzeCall records the binding.
     if (!typeReceiver &&
@@ -16257,18 +16285,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const std::string& memberName = call.methodName;
         const bool isMoveNext = memberName == "MoveNext";
         const bool isDrop = memberName == "Drop";
+        const bool isMoveNextAsync = memberName == "MoveNextAsync";
+        // NS304-T07-F02: MoveNextAsync returns the future of the next demand (future:<bool>).
+        const std::string resultTypeKey = isMoveNext
+            ? "builtin:bool"
+            : isMoveNextAsync ? language::futureTypeKey("builtin:bool") : "builtin:void";
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
+                       : isMoveNextAsync ? MethodCoreOperationKind::IteratorMoveNextAsync
                        : isDrop ? MethodCoreOperationKind::IteratorDrop
                                 : MethodCoreOperationKind::IteratorGetEnumerator,
             expression,
             methodMemberOrdinal,
             scopeOrdinal,
-            isMoveNext ? "builtin:bool" : "builtin:void",
+            resultTypeKey,
             callee.receiverTypeKey,
             false, std::nullopt, std::nullopt});
         ExpressionResult iteratorResult;
-        iteratorResult.typeKey = isMoveNext ? "builtin:bool" : "builtin:void";
+        iteratorResult.typeKey = resultTypeKey;
         iteratorResult.valid = true;
         return iteratorResult;
     }
@@ -26025,6 +26059,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorCurrent: return "iterator-current";
         case MethodCoreOperationKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case MethodCoreOperationKind::IteratorDrop: return "iterator-drop";
+        case MethodCoreOperationKind::IteratorMoveNextAsync: return "iterator-move-next-async";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";

@@ -1145,7 +1145,8 @@ enum class MethodCoreOperationKind
     IteratorMoveNext,
     IteratorCurrent,
     IteratorGetEnumerator,
-    IteratorDrop
+    IteratorDrop,
+    IteratorMoveNextAsync
 };
 
 struct MethodCoreBinding final

@@ -169,6 +169,8 @@ enum class ProjectOopHirNodeKind
     IteratorGetEnumerator,
     // NS304-T06-F07: `it.Drop()` — calls the iterator's dropFn (field 4). One child: the address.
     IteratorDrop,
+    // NS304-T07-F02: `it.MoveNextAsync()` — returns the future of the next demand. One child: address.
+    IteratorMoveNextAsync,
     // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
     DropFrame,
     StaticFieldAddress,

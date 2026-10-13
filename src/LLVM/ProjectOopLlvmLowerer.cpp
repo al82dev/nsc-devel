@@ -9376,23 +9376,33 @@ private:
                     if (blockingIntType == nullptr) return nullptr;
                     LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
                     LLVMBasicBlockRef notReady = appendBlock("await.poll.notready");
+                    LLVMBasicBlockRef checkError = appendBlock("await.poll.checkerror");
                     LLVMBasicBlockRef loopDone = appendBlock("await.poll.done");
                     LLVMBasicBlockRef loopError = appendBlock("await.poll.error");
                     LLVMBuildBr(builder_, pollLoop);
                     LLVMPositionBuilderAtEnd(builder_, pollLoop);
+                    // NS304-T07-F02: check the state BEFORE polling so an already-ready future
+                    // (state == -1, e.g. MoveNextAsync's eager demand) skips the poll entirely.
+                    LLVMValueRef blockingReady = LLVMConstInt(
+                        blockingIntType, static_cast<unsigned long long>(-1), 1);
+                    LLVMValueRef preState = LLVMBuildLoad2(
+                        builder_, blockingIntType, slot, "await.pre.state");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, preState, blockingReady, "await.pre.ready"),
+                        loopDone, notReady);
+                    LLVMPositionBuilderAtEnd(builder_, notReady);
                     LLVMValueRef blockingArgs[] = { slot };
                     if (LLVMBuildCall2(builder_, blockingFunctionType,
                                        blockingFunction, blockingArgs, 1U, "") == nullptr)
                         return failValue(error, "async poll call failed");
                     LLVMValueRef blockingState = LLVMBuildLoad2(
                         builder_, blockingIntType, slot, "await.state");
-                    LLVMValueRef blockingReady = LLVMConstInt(
-                        blockingIntType, static_cast<unsigned long long>(-1), 1);
                     LLVMBuildCondBr(
                         builder_,
                         LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingReady, "await.ready"),
-                        loopDone, notReady);
-                    LLVMPositionBuilderAtEnd(builder_, notReady);
+                        loopDone, checkError);
+                    LLVMPositionBuilderAtEnd(builder_, checkError);
                     LLVMValueRef blockingError = LLVMConstInt(
                         blockingIntType, static_cast<unsigned long long>(-2), 1);
                     LLVMBuildCondBr(
@@ -9617,6 +9627,35 @@ private:
                     return failValue(error, "iterator Drop call failed");
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
+            case frontend::ProjectOopMirNodeKind::IteratorMoveNextAsync:
+            {
+                // NS304-T07-F02: MoveNextAsync runs the sync MoveNext eagerly and returns a ready
+                // future<bool> (state=1, result=hasNext). The await-on-demand (suspend/resume) is
+                // the next tramo.
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator MoveNextAsync requires one operand");
+                LLVMValueRef self = lowerExpression(node->children.front().get(), error);
+                if (self == nullptr) return nullptr;
+                LLVMValueRef moveNextFn = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 24, "moveNextAsync.fn.addr"), "moveNextAsync.fn");
+                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(LLVMInt1TypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { self };
+                LLVMValueRef hasNext = LLVMBuildCall2(
+                    builder_, fnType, moveNextFn, args, 1U, "moveNextAsync.hasNext");
+                LLVMTypeRef futureType = llvmType(node->typeKey, error);
+                if (futureType == nullptr) return nullptr;
+                LLVMValueRef future = entryBlockAlloca(futureType, 8, "moveNextAsync.future");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return nullptr;
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1),
+                    byteOffset(future, 0, "moveNextAsync.state.addr"));
+                LLVMBuildStore(builder_, hasNext, byteOffset(future, 16, "moveNextAsync.result.addr"));
+                return LLVMBuildLoad2(builder_, futureType, future, "moveNextAsync.future.load");
+            }
+
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
             {
                 LLVMTypeRef type = llvmType(node->typeKey, error);
