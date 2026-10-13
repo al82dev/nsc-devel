@@ -3167,6 +3167,39 @@ class Program
         }});
 }
 
+void registerNullConditionalIndexDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-343", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "null-conditional", "index", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NullCondIndex", "Exe", R"ns(
+class Box
+{
+    public int this[int i] { get { return i; } set { } }
+}
+class Program
+{
+    public static int Main()
+    {
+        Box b = new Box();
+        return b?[0];
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NullCondIndex.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                (emitted.error + emitted.output).find("null-conditional index access") !=
+                    std::string::npos,
+                "TL-LANG-343 obj?[i] must report a clear diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3224,5 +3257,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalWriteCase(registry);
     registerCustomEventCase(registry);
     registerNullConditionalCompoundDiagnosticCase(registry);
+    registerNullConditionalIndexDiagnosticCase(registry);
 }
 }

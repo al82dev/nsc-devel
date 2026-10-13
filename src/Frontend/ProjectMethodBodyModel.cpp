@@ -12821,6 +12821,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 !destroysCurrentThis && !destroysOwnedValue;
             break;
         }
+        case ast::AstNodeKind::NullConditionalIndexExpression:
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "null-conditional index access ('obj?[i]') is not yet supported; use an explicit "
+                "null check on the receiver");
+            result.valid = false;
+            break;
+        }
         default:
             break;
     }
