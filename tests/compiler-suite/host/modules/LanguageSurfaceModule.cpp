@@ -1798,7 +1798,15 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 52,
                 "TL-LANG-309 rest capture must preserve origin-backed elements without copying: " +
                     result.error + result.output);
+        }});
+}
 
+void registerListPatternStackEscapeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-365", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "slice", "borrow", "stackalloc", "escape"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
             const std::filesystem::path escapeProject = products.writeProject(
                 "T03ListRestEscape", "Exe", R"ns(
 public copy borrowed struct EscapeSlice
@@ -1831,7 +1839,7 @@ class Program
             context.expect(escaped.started && escaped.exitCode != 0 &&
                     escapeDiagnostics.find("borrows from local 'storage' and cannot be returned") !=
                         std::string::npos,
-                "TL-LANG-309 a rest view rooted in local storage must not escape: " +
+                "TL-LANG-365 a rest view rooted in stack storage must not escape through return: " +
                     escapeDiagnostics);
         }});
 }
@@ -4499,6 +4507,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultDispatchAbiCase(registry);
     registerListPatternShapeCase(registry);
     registerListPatternRestCaptureCase(registry);
+    registerListPatternStackEscapeCase(registry);
     registerListPatternStringCase(registry);
     registerListPatternArrayCase(registry);
     registerListPatternInlineArrayCase(registry);

@@ -1,7 +1,7 @@
 # NS304-T03-F03 — list patterns sobre colecciones nativas y protocolo usuario
 
-Estado: `EN IMPLEMENTACIÓN` (los siete sustratos ejecutables y el alias/no-copia observable pasan
-individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y escape negativo).
+Estado: `CERRADO` (matriz de sustratos, UTF-8 no ASCII, alias/no-copia observable y escape desde
+`stackalloc` cuentan con casos canónicos y evidencia puntual PASS).
 
 ## Evidencia focal de sustratos — 2026-10-13
 
@@ -12,10 +12,16 @@ individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y esca
   `Length()` e indexación; además cubre el límite vacío `start == extent`, `count == 0`.
 - El lowering LLVM construye `{data,count}` sobre la dirección del almacenamiento inline, sin
   reservar ni copiar elementos, y valida `start/count` contra el extent del tipo fijo.
-- Esta evidencia no certifica por sí sola todos los oráculos del expediente: el fixture string
-  actual es ASCII y todavía no existe aquí el negativo de escape desde `stackalloc`. La evidencia
-  separada TL-LANG-364 cubre alias/no-copia mediante mutación observable. Por ello F03 continúa
-  abierto.
+- La matriz base se complementa con TL-LANG-363 para UTF-8, TL-LANG-364 para alias/no-copia y
+  readonly, y TL-LANG-365 para escape desde `stackalloc`; esos casos cierran los oráculos que no
+  pertenecían a la matriz nominal de sustratos.
+
+## Cierre gap 1 — UTF-8 no ASCII
+
+- `TL-LANG-363` usa `Méx` y verifica que el rest StringView conserve exactamente las dos unidades
+  UTF-8 de `é` (`195`, `169`) y longitud 2.
+- Evidencia puntual 2026-10-13: TL-LANG-363 PASS; no se reinterpretó la semántica vigente por
+  bytes de string/StringView.
 
 ## Cierre parcial gap 2 — alias/no-copia observable
 
@@ -26,8 +32,18 @@ individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y esca
   intento de escritura se rechaza con `property/indexer has no accessible setter`.
 - Evidencia puntual 2026-10-13: TL-LANG-364 PASS, 871,994 us; guards TL-LANG-357/358/360 PASS y
   `nsc_readonly_receiver_tests` PASS, 14 checks.
-- F03 continúa abierto y el avance permanece en 24/147; este cierre parcial no acredita los
-  oráculos pendientes de UTF-8 ni escape desde `stackalloc`.
+- Este cierre parcial no acreditaba por sí solo UTF-8 ni escape desde `stackalloc`; ambos se
+  certifican separadamente mediante TL-LANG-363 y TL-LANG-365.
+
+## Cierre gap 3 — escape desde stackalloc
+
+- `TL-LANG-365` separa del guard positivo TL-LANG-309 el negativo ya respaldado por las reglas de
+  préstamos: una captura rest derivada de `stackalloc int[4]` no puede retornarse fuera del método.
+- El oráculo exige el diagnóstico exacto `borrows from local 'storage' and cannot be returned`;
+  TL-LANG-309 permanece como control local no escapante y conserva su salida 52.
+- Evidencia puntual 2026-10-13: TL-LANG-365 PASS en 46,298 us y TL-LANG-309 PASS en 353,921 us.
+- Con TL-LANG-310, TL-LANG-357..365, B1/B2 y los guards versionados, todos los criterios de este
+  expediente están satisfechos. F03 avanza de 24/147 a 25/147 sin batería completa intermedia.
 
 ## Cierre parcial B1 — identidad de especializaciones
 
@@ -60,9 +76,9 @@ individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y esca
   del miembro `.Length` para built-ins/campos y deja caer a resolución normal de método para
   Span/ReadOnlySpan/StringView. Esto habilita Span/ReadOnlySpan/StringView y el protocolo usuario
   (no-rest y rest), sin romper `TL-LANG-308`/`TL-LANG-309`.
-- **Parcial (síntesis de vistas)**: rest sobre array/inline ya solicita y enlaza tipos
-  `Span<T>`/`ReadOnlySpan<T>` materializados antes de Sema. Sigue pendiente cerrar el lowering
-  ejecutable de todos los sustratos, incluido string, mediante nuevos
+- **Hecho (síntesis de vistas)**: rest sobre array/inline solicita y enlaza tipos
+  `Span<T>`/`ReadOnlySpan<T>` materializados antes de Sema. El lowering ejecutable de los
+  sustratos, incluido string, usa
   `MethodCoreOperationKind` (`SpanFromArray`/`ReadOnlySpanFromArray`/`StringViewFromString` y
   variantes de inline), reutilizando el esqueleto de `StringCharacterPointer`/`ArrayLength`/
   `RawElement` a través de Sema→HIR→MIR→LLVM.
@@ -104,8 +120,8 @@ individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y esca
   o el sistema de tipos global; ejecutar batería completa; modificar guards cerrados; usar
   recursión; auto-invocar métodos con la grafía `.Length` fuera del list pattern.
 - **Criterio de terminación**: `TL-LANG-310` PASS + guards `TL-LANG-308/309/261-270` PASS, sin
-  batería completa; tracking avanza a 25/147 solo con esa evidencia; el commit queda listo para el
-  usuario (compilación/commit de su autoría).
+  batería completa. Satisfecho junto con los oráculos complementarios TL-LANG-363/364/365;
+  tracking avanza a 25/147.
 
 ## 2. Auditoría — frontera real de Longitud / Indexación / Slice
 

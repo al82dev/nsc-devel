@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 12 | 8.16 % | `ACTIVA`; T00 cerrada; T01-F01/F02/F03/F04 cerradas, T01-F05 activa |
+| B | 3.0.4 | 18 | 147 ítems | 25 | 17.01 % | `ACTIVA`; T00-T02 cerradas; campaña secuencial T03 3/8; T03-F04 siguiente |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -918,7 +918,7 @@ T00
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 6 | 100 % |
-| T03 | List, slice y property patterns | 8 | 2 | 25 % |
+| T03 | List, slice y property patterns | 8 | 3 | 37.5 % |
 | T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
 | T05 | Async/await productivo | 10 | 0 | 0 % |
 | T06 | Generadores síncronos | 8 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **24** | **16.33 %** |
+| **Total** |  | **147** | **25** | **17.01 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -972,12 +972,12 @@ T00
 
 - [x] `NS304-T03-F01` — Implementar list patterns exactos, prefijo, sufijo y elemento descartado.
 - [x] `NS304-T03-F02` — Implementar rest/slice capture sin copia implícita y con lifetime del origen.
-- [ ] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(Matriz de sustratos 2026-10-13: TL-LANG-310 y TL-LANG-357..362, 7/7 PASS individual. TL358 cubre Span/ReadOnlySpan sobre fixed array, inicio no cero y limite vacio. TL364 demuestra alias/no-copia observable sobre array y fixed array, y rechazo readonly. B1/B2 permanecen cerrados. F03 sigue abierto: faltan oraculos ejecutables de UTF-8 no ASCII y escape negativo desde stackalloc; no se incrementa 24/147.)*
+- [x] `NS304-T03-F03` — Soportar arrays, inline arrays, slices, spans, strings UTF-8 y protocolo usuario. *(Matriz de sustratos TL-LANG-310 y TL-LANG-357..362, 7/7 PASS. TL363 valida UTF-8 no ASCII; TL364 alias/no-copia observable y readonly; TL365 rechazo exacto del escape desde stackalloc. B1/B2 y guards permanecen cerrados. F03 satisface su expediente y avanza a 25/147.)*
 - [x] `NS304-T03-F04` — Completar property patterns anidados, posicionales, relacionales y lógicos. *(Relacionales, lógicos y anidados; precedencia `!` > `&` > `|` con agrupación explícita; posicional nominal/unario con condición real, validación de tipo, `Deconstruct` y aridad. Evidencia puntual 2026-10-13: TL-LANG-311 PASS, 364,823 us; TP-PAR-357 PASS, 13,545 us; TL-LANG-322 PASS, 802,361 us.)*
 - [x] `NS304-T03-F05` — Extender usefulness/exhaustiveness para longitud, OR-pattern y dominios abiertos. *(Unión canónica de dominios exactos/rest preservada por brazo OR; redundancia sólo cuando todas sus alternativas ya están cubiertas. Evidencia puntual 2026-10-13: TL-LANG-267 PASS, 196 us; TL-LANG-312 PASS, 468,431 us.)*
 - [x] `NS304-T03-F06` — Definir bindings `copy`, `move`, `ref` y `ref mut` dentro de cada pattern. *(La mutabilidad se conserva estructuralmente Parser→Sema→HIR→MIR/LLVM; `ref` readonly rechaza escritura y `ref mut` conserva el alias al almacenamiento gobernante. Evidencia puntual 2026-10-13: TL-LANG-313 PASS, 397,933 us.)*
 - [x] `NS304-T03-F07` — Bajar a length checks, branches y borrows sin colección ni boxing temporal. *(satisfecho por F01–F06; cubierto por TL-LANG-308/310)*
-- [x] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(faltantes+redundancia de list y variante; escape por TL-LANG-309)*
+- [x] `NS304-T03-F08` — Añadir diagnósticos de casos faltantes, redundancia, escape y move inválido. *(faltantes+redundancia de list y variante; escape canónico por TL-LANG-365, con TL-LANG-309 como guard no escapante)*
 
 ### T04 — lambdas, callables y funciones locales
 
@@ -2189,12 +2189,13 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
 | 2026-10-13 | mantenimiento focal | Placement construction | `TP-PAR-470`; fixture con `Item` nominal conocido y oráculo separado en siete campos | `PASS` en 5,504 us; corrección sólo de prueba; no altera 24/147 ni certifica una tanda de Parte B |
 | 2026-10-13 | B04/T03-F03 residual B2 | Materialización de vistas solicitadas desde cuerpos | cola serial y determinista previa a Sema para `Span<T>`/`ReadOnlySpan<T>`, deduplicada por la clave canónica B1; `TF-FRONT-167` | `PASS` en 113,509 us; F03 y `TL-LANG-310` permanecen abiertos; no altera 24/147 |
 | 2026-10-13 | B04/T03-F03 gap 2 | Alias/no-copia observable y readonly | `TL-LANG-364`: mutación por rest Span actualiza `int[]`/`int[4]`; `in int[4]` materializa ReadOnlySpan y rechaza setter | `PASS` en 871,994 us; TL357/358/360 PASS; readonly receiver 14/14; F03 sigue abierto y no altera 24/147 |
+| 2026-10-13 | B04/T03-F03 gap 3 y cierre | Escape de rest view desde stackalloc | `TL-LANG-365` separa el negativo de TL309 y exige `borrows from local 'storage' and cannot be returned`; TL363 ya cubre UTF-8 | TL365 PASS 46,298 us; TL309 PASS 353,921 us; F03 cerrado; campaña T03 3/8; 25/147 |
 
 ## 6. Estado al corte
 
 - A: `52/52` cierres puntuales preservados; `TP-PAR-478` corregido; consolidado dirigido 53/53 y batería final
   5,714/5,714 `PASS`; Parte A certificada en ciclo 2.
-- B: `24/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
+- B: `25/147`; B00 reconcilió los 147 IDs, T00-F01/F02 separaron inventario y
   evidencia histórica, T00-F03 clasificó 88/88 capacidades estables C# 8.0–14
   T00-F04 clasificó 69/69 capacidades Beef de las seis áreas comprometidas y
   T00-F05 separó nueve planes 3.0.4 de la superficie productiva y T00-F06
@@ -2221,8 +2222,9 @@ tandas y sólo se repite la batería completa después de cerrar todas las causa
   vtables, DLL exports, evolución, MIR/LLVM y PDB mediante `TL-LANG-307`. T02
   queda 6/6. T03-F01 añadió list patterns exactos, prefijo, sufijo y descarte
   con `TL-LANG-308`; T03-F02 añadió captura rest como `Slice` prestado sin
-  copia y cierre de escape con `TL-LANG-309`; T03 queda 2/8 y T03-F03 queda
-  habilitada.
+  copia con `TL-LANG-309`; T03-F03 cerró la matriz de sustratos, UTF-8, alias/no-copia y escape
+  desde stackalloc con TL-LANG-310 y TL-LANG-357..365. La campaña secuencial T03 queda 3/8 y
+  T03-F04 es el siguiente ítem contabilizable.
   La contradicción de `v.3.0.3`
   permanece como deuda y la rama no se mueve.
 - C: `0/149`; bloqueada por cierre certificado de B.
