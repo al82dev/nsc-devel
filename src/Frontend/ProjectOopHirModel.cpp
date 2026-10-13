@@ -3592,22 +3592,71 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     std::unique_ptr<ProjectOopHirNode> body,
     std::size_t selfParameterOrdinal,
     std::string_view resultTypeKey,
+    std::string_view futureKey,
     std::string& error)
 {
     if (body == nullptr)
     {
         return nullptr;
     }
+    if (body->kind == ProjectOopHirNodeKind::Throw)
+    {
+        // NS304-T05-F07: `throw E;` becomes a future error, not a native unwind:
+        // { self->error = E; self->state = -2 (error); return; }
+        auto block = makeNode(ProjectOopHirNodeKind::Block, body->syntax, "builtin:void");
+        const auto selfParameter = [&]() -> std::unique_ptr<ProjectOopHirNode>
+        {
+            auto self = makeNode(
+                ProjectOopHirNodeKind::ParameterValue, body->syntax, std::string(futureKey) + "*");
+            self->parameterOrdinal = selfParameterOrdinal;
+            return self;
+        };
+
+        auto errorField = makeNode(
+            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax,
+            body->children.empty() ? std::string{} : body->children[0]->typeKey);
+        errorField->memberOrdinal = 3; // error
+        errorField->elementTypeKey = std::string(futureKey);
+        errorField->children.push_back(selfParameter());
+
+        std::unique_ptr<ProjectOopHirNode> errorValue = !body->children.empty()
+            ? std::move(body->children[0])
+            : makeNode(ProjectOopHirNodeKind::NullConstant, body->syntax, errorField->typeKey);
+        auto errorStore = makeNode(
+            ProjectOopHirNodeKind::Assignment, body->syntax, errorField->typeKey);
+        errorStore->operation = lexer::TokenKind::Equal;
+        errorStore->children.push_back(std::move(errorField));
+        errorStore->children.push_back(std::move(errorValue));
+        block->children.push_back(std::move(errorStore));
+
+        auto stateField = makeNode(
+            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, "builtin:int");
+        stateField->memberOrdinal = 0; // state
+        stateField->elementTypeKey = std::string(futureKey);
+        stateField->children.push_back(selfParameter());
+        auto errored = makeNode(ProjectOopHirNodeKind::IntegerConstant, body->syntax, "builtin:int");
+        errored->integerValue = ~0ULL - 1ULL; // error = -2 (uniform; ready = -1, resume 1..N)
+        auto stateStore = makeNode(
+            ProjectOopHirNodeKind::Assignment, body->syntax, "builtin:int");
+        stateStore->operation = lexer::TokenKind::Equal;
+        stateStore->children.push_back(std::move(stateField));
+        stateStore->children.push_back(std::move(errored));
+        block->children.push_back(std::move(stateStore));
+
+        auto synthesizedReturn = makeNode(
+            ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
+        block->children.push_back(std::move(synthesizedReturn));
+        return block;
+    }
     if (body->kind == ProjectOopHirNodeKind::Return)
     {
         // `return v;` -> { self->result = v; self->state = 1 (ready); return; }
-        const std::string futureKey = language::futureTypeKey(resultTypeKey);
         auto block = makeNode(ProjectOopHirNodeKind::Block, body->syntax, "builtin:void");
 
         const auto selfParameter = [&]() -> std::unique_ptr<ProjectOopHirNode>
         {
             auto self = makeNode(
-                ProjectOopHirNodeKind::ParameterValue, body->syntax, futureKey + "*");
+                ProjectOopHirNodeKind::ParameterValue, body->syntax, std::string(futureKey) + "*");
             self->parameterOrdinal = selfParameterOrdinal;
             return self;
         };
@@ -3658,7 +3707,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     for (auto& child : body->children)
     {
         child = rewriteAsyncPollReturns(
-            std::move(child), selfParameterOrdinal, resultTypeKey, error);
+            std::move(child), selfParameterOrdinal, resultTypeKey, futureKey, error);
         if (child == nullptr)
         {
             return nullptr;
@@ -3703,7 +3752,8 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     poll->parameterTypeKeys.push_back(futureKey + "*");
     poll->parameterPassKinds.push_back(ParameterPassKind::Value);
     poll->parameterOwnerships.push_back(sema::OwnershipKind::None);
-    poll->body = rewriteAsyncPollReturns(std::move(function.body), 0, resultTypeKey, error);
+    poll->body = rewriteAsyncPollReturns(
+        std::move(function.body), 0, resultTypeKey, futureKey, error);
     if (poll->body == nullptr)
     {
         return nullptr;

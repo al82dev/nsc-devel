@@ -803,6 +803,7 @@ private:
         std::unique_ptr<ProjectOopHirNode> body,
         std::size_t selfParameterOrdinal,
         std::string_view resultTypeKey,
+        std::string_view futureKey,
         std::string& error);
 
     // NS304-T05-F03: splits an async function into a lazy constructor (function.body becomes

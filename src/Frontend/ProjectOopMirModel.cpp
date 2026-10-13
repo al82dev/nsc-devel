@@ -1128,15 +1128,20 @@ bool ProjectOopMirModel::build(
     for (const std::string& key : futureKeys)
     {
         const std::optional<std::string_view> inner = language::futureInnerTypeKey(key);
-        // async void has no result payload: a zero-size, unit-aligned result keeps the uniform
-        // future layout { state, frame, result } without a distinct void future ABI.
+        // NS304-T05-F07: a throwing future (`future:<T>|<E>`) carries an error slot after result.
+        const std::optional<std::string_view> errorInner = language::futureErrorTypeKey(key);
         const std::optional<std::pair<std::uint64_t, std::uint64_t>> resultLayout =
             (inner.has_value() && *inner == "builtin:void")
                 ? std::optional<std::pair<std::uint64_t, std::uint64_t>>(
                       std::pair<std::uint64_t, std::uint64_t>{0U, 1U})
                 : objectLayoutModel.valueLayoutForTypeKey(
                       nameLookup, inner.has_value() ? std::string(*inner) : std::string{});
-        if (!inner.has_value() || !resultLayout.has_value())
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> errorLayout =
+            errorInner.has_value()
+                ? objectLayoutModel.valueLayoutForTypeKey(nameLookup, std::string(*errorInner))
+                : std::optional<std::pair<std::uint64_t, std::uint64_t>>(
+                      std::pair<std::uint64_t, std::uint64_t>{0U, 1U});
+        if (!inner.has_value() || !resultLayout.has_value() || !errorLayout.has_value())
         {
             error = "NativeSharp async future has no physical layout: " + key;
             return false;
@@ -1147,9 +1152,13 @@ bool ProjectOopMirModel::build(
         constexpr std::uint64_t frameAlignment = 8;
         const std::uint64_t frameOffset = alignUp(stateSize, frameAlignment);
         const std::uint64_t resultOffset = alignUp(frameOffset + frameSize, resultLayout->second);
+        const std::uint64_t errorOffset = errorInner.has_value() && errorLayout->first > 0
+            ? alignUp(resultOffset + resultLayout->first, errorLayout->second)
+            : 0;
         const std::uint64_t totalAlignment =
-            std::max({stateAlignment, frameAlignment, resultLayout->second});
-        const std::uint64_t totalSize = alignUp(resultOffset + resultLayout->first, totalAlignment);
+            std::max({stateAlignment, frameAlignment, resultLayout->second, errorLayout->second});
+        const std::uint64_t totalSize =
+            alignUp(errorOffset + errorLayout->first, totalAlignment);
         std::vector<ObjectFieldLayout> fields;
         fields.push_back(ObjectFieldLayout{
             0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
@@ -1158,6 +1167,12 @@ bool ProjectOopMirModel::build(
         fields.push_back(ObjectFieldLayout{
             2, resultOffset, resultLayout->first, resultLayout->second,
             std::string(*inner), std::nullopt, std::nullopt});
+        if (errorInner.has_value() && errorLayout->first > 0)
+        {
+            fields.push_back(ObjectFieldLayout{
+                3, errorOffset, errorLayout->first, errorLayout->second,
+                std::string(*errorInner), std::nullopt, std::nullopt});
+        }
         structLayouts_.push_back(ProjectOopMirStructLayout{
             (std::numeric_limits<std::size_t>::max)(),
             key,

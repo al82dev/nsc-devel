@@ -9191,7 +9191,9 @@ private:
                     LLVMTypeRef blockingIntType = llvmType("builtin:int", error);
                     if (blockingIntType == nullptr) return nullptr;
                     LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
+                    LLVMBasicBlockRef notReady = appendBlock("await.poll.notready");
                     LLVMBasicBlockRef loopDone = appendBlock("await.poll.done");
+                    LLVMBasicBlockRef loopError = appendBlock("await.poll.error");
                     LLVMBuildBr(builder_, pollLoop);
                     LLVMPositionBuilderAtEnd(builder_, pollLoop);
                     LLVMValueRef blockingArgs[] = { slot };
@@ -9205,13 +9207,37 @@ private:
                     LLVMBuildCondBr(
                         builder_,
                         LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingReady, "await.ready"),
-                        loopDone, pollLoop);
+                        loopDone, notReady);
+                    LLVMPositionBuilderAtEnd(builder_, notReady);
+                    LLVMValueRef blockingError = LLVMConstInt(
+                        blockingIntType, static_cast<unsigned long long>(-2), 1);
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingError, "await.errored"),
+                        loopError, pollLoop);
+
+                    // Ready: load the result and merge with the error path.
                     LLVMPositionBuilderAtEnd(builder_, loopDone);
                     LLVMTypeRef blockingResultType = llvmType(node->typeKey, error);
                     if (blockingResultType == nullptr) return nullptr;
-                    return LLVMBuildLoad2(
+                    LLVMValueRef readyValue = LLVMBuildLoad2(
                         builder_, blockingResultType,
                         byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
+                    LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
+                    LLVMBuildBr(builder_, loopMerge);
+
+                    // NS304-T05-F07: the future errored (state == -2). The full rethrow (unwind the
+                    // carried error into the caller's catch) is the runtime refinement; for now the
+                    // blocking await signals the error deterministically instead of a native unwind.
+                    LLVMPositionBuilderAtEnd(builder_, loopError);
+                    LLVMBuildBr(builder_, loopMerge);
+
+                    LLVMPositionBuilderAtEnd(builder_, loopMerge);
+                    LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, blockingResultType, "await.value");
+                    LLVMValueRef incomingValues[] = { readyValue, LLVMConstInt(blockingResultType, static_cast<unsigned long long>(-1), 1) };
+                    LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
+                    LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
+                    return awaitPhi;
                 }
 
                 // NS304-T05-F03 suspend/resume. `self` is the poll's parameter 0 (future:<T>*);
