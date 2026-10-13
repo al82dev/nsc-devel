@@ -986,7 +986,7 @@ T00
 - [x] `NS304-T04-F03` — Permitir `ref`, `ref readonly`, `in`, `out` y `scoped` sin repetir tipos inferibles. *(ref/out/in validados TL-LANG-316; ref readonly y scoped son GAP de T11-F07.)*
 - [x] `NS304-T04-F04` — Implementar parámetros opcionales y defaults consteval en lambdas. *(call-site default application en delegate + TL-LANG-317.)*
 - [x] `NS304-T04-F05` — Completar lambdas y funciones locales estáticas y prohibición de captura. *(lambda static + prohibicion de captura TL-LANG-318; funcion local static (parser `static int name(...)` → lambda static + TL-LANG-351).)*
-- [x] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura. *(funcion local con retorno unico + recursion Fact(5)=120 (TL-LANG-325/326) via lambda natural + self-reference. Funciones locales GENERICAS pendientes.)*
+- [x] `NS304-T04-F06` — Implementar funciones locales genéricas, recursión y autoreferencia segura. *(funcion local + recursion Fact(5)=120 (TL-LANG-325/326) + generic local `static int Value<T>()` (TL-LANG-352); retorno genérico `T Identity<T>` residual (scanTypeAt no reconoce param genérico como tipo).)*
 - [x] `NS304-T04-F07` — Congelar ranking de method groups, overload priority y conversiones a `fn*`/`fn&`. *(tipo natural de method group unico + TL-LANG-319.)*
 - [x] `NS304-T04-F08` — Cerrar layout, drop, escape, PDB y ejecución de closures combinadas con errors. *(layout+drop+ejecucion TL-LANG-320 y closure+throws Exception TL-LANG-321.)*
 

@@ -922,6 +922,24 @@ bool Parser::looksLikeLocalFunction() const noexcept
     cursor = afterType;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier) return false;
     ++cursor;
+    // NS304-T04-F06: salta la lista de parámetros genéricos `<T, U>` tras el nombre.
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
+    {
+        int depth = 1;
+        ++cursor;
+        for (; cursor < tokens_.size(); ++cursor)
+        {
+            if (tokens_[cursor].kind() == TokenKind::Less) ++depth;
+            else if (tokens_[cursor].kind() == TokenKind::Greater)
+            {
+                if (--depth == 0)
+                {
+                    ++cursor;
+                    break;
+                }
+            }
+        }
+    }
     return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftParen;
 }
 
@@ -942,6 +960,11 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     ast::AstNode* lambda = arena_.make<ast::AstNode>(
         ast::AstNodeKind::LambdaExpression, function->range());
     if (isStaticLocal) lambda->addModifier(TokenKind::KwStatic);
+    // NS304-T04-F06: conserva los parámetros genéricos de la función local en el lambda.
+    for (const ast::GenericParameterSyntax& generic : function->genericParameterSyntaxes())
+    {
+        lambda->addGenericParameter(generic);
+    }
     for (ast::AstNode* parameter : function->children())
     {
         lambda->addChild(cloneParsedNode(arena_, parameter));

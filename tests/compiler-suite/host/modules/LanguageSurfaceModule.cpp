@@ -3477,6 +3477,40 @@ class Program
         }});
 }
 
+void registerGenericLocalFunctionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-352", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "local", "function", "generic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04GenericLocalFunction", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        static int Value<T>()
+        {
+            return 42;
+        }
+        return Value<int>();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04GenericLocalFunction.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-352 a generic local function must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-352 Value<int>() must be 42: " + result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3543,5 +3577,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCollectionSpreadDiagnosticCase(registry);
     registerNameOfGenericMethodCase(registry);
     registerStaticLocalFunctionCase(registry);
+    registerGenericLocalFunctionCase(registry);
 }
 }
