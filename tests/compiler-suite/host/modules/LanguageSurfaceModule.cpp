@@ -3759,9 +3759,9 @@ class Program
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project, executable, products.directory());
             context.expect(emitted.started && emitted.exitCode != 0 &&
-                    (emitted.error + emitted.output).find("cannot map type key to LLVM type") !=
+                    (emitted.error + emitted.output).find("non-expression Stage 34 MIR node") !=
                         std::string::npos,
-                "TL-LANG-329 generator yield must now reach the LLVM (iterator type pending layout): " +
+                "TL-LANG-329 generator yield must reach the LLVM (MoveNext lowering pending): " +
                     emitted.error + emitted.output);
         }});
 }
