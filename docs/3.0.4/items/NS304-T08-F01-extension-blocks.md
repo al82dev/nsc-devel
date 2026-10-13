@@ -7,9 +7,13 @@
 
 - El parser YA acepta `extension <Type> { ... }` (`parseExtensionDeclaration`, Parser.cpp:2716)
   y sintetiza el receptor `__nsc_extension_this`.
-- **Falta el lookup**: `21.Double()` falla con "member access ... receiver has type 'builtin:int'".
-  Los extension members se parsean pero no se integran en la resolución de miembros (no hay
-  fallback a extension methods en el member lookup del Sema).
+- **Infraestructura parcialmente cableada**: `ProjectMethodBodyModel::bindExtension` (13850) YA
+  resuelve extensiones (receiver conversion + pass), y `ProjectNamespaceFunctionModel` crea
+  `extensionBindingBySyntax_` para `MemberExpression` con candidatos `isExtension` (955-983).
+- **Falta el eslabón**: `21.Double()` falla ("member access ... receiver type builtin:int"), es
+  decir que el `extensionBinding` no se crea/encuentra para este caso — probablemente la
+  `candidatesInNamespace` no registra el extension de `int` o el walk no lo visita con el nombre
+  correcto. Es un gap de registro/lookup, no de sintaxis.
 
 ## Gap F01
 
