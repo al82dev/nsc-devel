@@ -3348,6 +3348,35 @@ class Program
         }});
 }
 
+void registerEmptyCollectionExpressionDiagnosticCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-348", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "expression", "empty", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09EmptyCollection", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        var a = [];
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09EmptyCollection.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                (emitted.error + emitted.output).find("requires a native array target type") !=
+                    std::string::npos,
+                "TL-LANG-348 an empty collection expression without a target must diagnose: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3410,5 +3439,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalStringConcatDiagnosticCase(registry);
     registerClassPrimaryConstructorCase(registry);
     registerCollectionExpressionCase(registry);
+    registerEmptyCollectionExpressionDiagnosticCase(registry);
 }
 }
