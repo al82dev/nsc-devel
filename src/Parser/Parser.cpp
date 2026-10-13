@@ -7339,9 +7339,10 @@ ast::AstNode* Parser::parsePropertyTail(
             }
         }
         const bool getter = at(TokenKind::KwGet);
-        // NS304-T09-F02: `init` se reconoce como un setter contextual de solo-inicializacion.
-        // La restriccion de contexto (solo durante construccion) se impone en Sema mas adelante.
-        const bool setter = at(TokenKind::KwSet) || atContextualKeyword("init");
+        // NS304-T09-F02: `init` se reconoce como un setter contextual de solo-inicializacion y se
+        // marca en el metadata `:init` para que Sema distinga el setter restringido del ordinario.
+        const bool initOnly = atContextualKeyword("init");
+        const bool setter = at(TokenKind::KwSet) || initOnly;
         if (!getter && !setter)
         {
             diagnostics_.report(
@@ -7379,7 +7380,8 @@ ast::AstNode* Parser::parsePropertyTail(
             isOverride,
             isAbstract,
             isSealed,
-            std::string("property:") + (getter ? "get:" : "set:") + propertyName,
+            std::string("property:") + (getter ? "get:" : "set:") + propertyName +
+                (initOnly ? ":init" : ""),
             accessorRange);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
         if (setter)
@@ -7597,7 +7599,8 @@ ast::AstNode* Parser::parseIndexerTail(
             }
         }
         const bool getter = at(TokenKind::KwGet);
-        const bool setter = at(TokenKind::KwSet) || atContextualKeyword("init");
+        const bool initOnly = atContextualKeyword("init");
+        const bool setter = at(TokenKind::KwSet) || initOnly;
         if (!getter && !setter)
         {
             diagnostics_.report(
@@ -7642,7 +7645,8 @@ ast::AstNode* Parser::parseIndexerTail(
             isOverride,
             isAbstract,
             isSealed,
-            std::string("indexer:") + (getter ? "get:Item" : "set:Item"),
+            std::string("indexer:") + (getter ? "get:Item" : "set:Item") +
+                (initOnly ? ":init" : ""),
             accessorRange);
         if (getter) accessor->setReference(isReferenceReturn);
         if (isNew) accessor->addModifier(TokenKind::KwNew);

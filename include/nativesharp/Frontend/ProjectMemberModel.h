@@ -222,6 +222,7 @@ struct ClassMemberSymbol final
     bool isIndexerAccessor = false;
     bool isGetter = false;
     bool isSetter = false;
+    bool isInit = false;
     bool isUserOperator = false;
     // NativeSharp 3.0 T05-F07. Stable semantic identity (for example `lang:Add`) shared by a
     // trait operator requirement and every concrete witness. The ABI method name remains in

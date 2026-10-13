@@ -2765,10 +2765,14 @@ class Program
 {
     public int Value { get; init; }
 
+    public Program()
+    {
+        Value = 42;
+    }
+
     public static int Main()
     {
         Program p = new Program();
-        p.Value = 42;
         return p.Value;
     }
 }
@@ -2786,6 +2790,30 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
                 "TL-LANG-334 the init accessor must dispatch as a setter: " +
                     result.error + result.output);
+
+            const std::filesystem::path negativeProject = products.writeProject(
+                "T09InitNegative", "Exe", R"ns(
+class Program
+{
+    public int Value { get; init; }
+
+    public static int Main()
+    {
+        Program p = new Program();
+        p.Value = 42;
+        return p.Value;
+    }
+}
+)ns");
+            const external_program_support::Result rejected = emitT01Product(
+                L"--emit-project-oop-exe", negativeProject,
+                products.directory() / "T09InitNegative.exe", products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find(
+                        "init accessor can only be assigned during construction") !=
+                        std::string::npos,
+                "TL-LANG-334 init assignment outside a constructor must be rejected: " +
+                    rejected.error + rejected.output);
         }});
 }
 

@@ -21250,6 +21250,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             return {};
         }
 
+        // NS304-T09-F02: un setter `init` solo es asignable durante la construccion. Por ahora el
+        // contexto permitido es un constructor de la misma declaracion; el object initializer
+        // (`new T { X = 1 }`) queda pendiente del rastreo de contexto de inicializacion.
+        for (const std::size_t setterOrdinal : setters)
+        {
+            const ClassMemberSymbol* setterSymbol = methodSymbol(setterOrdinal);
+            if (setterSymbol == nullptr || !setterSymbol->isInit) continue;
+            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+            if (caller == nullptr || caller->kind != ClassMemberKind::Constructor)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first()->range(),
+                    "init accessor can only be assigned during construction (in a constructor)");
+                return {};
+            }
+            break;
+        }
+
         std::vector<ExpressionResult> setterArguments;
         if (getter.isIndexerAccessor && expression->first()->kind() == ast::AstNodeKind::IndexExpression)
         {
