@@ -21,11 +21,15 @@
 
 ## Hallazgo (lowering)
 
-- Las TUPLAS son estructurales y NO admiten `.Item{i}` (member access); se acceden por
-  deconstrucción (`TupleDeconstructElement` en HIR). Por eso el lowering posicional no puede
-  emitir `source().Deconstruct().Item{i}`: necesita bajar un `DeconstructionDeclarationStatement`
-  (como el patrón `Tuple`, que usa `Deconstruct` + deconstrucción), o resolver la deconstrucción
-  en Sema dentro del análisis del match arm.
+- Las TUPLAS son estructurales y NO admiten `.Item{i}`; se acceden por deconstrucción
+  (`TupleDeconstructElement` en HIR).
+- Intenté bajar el posicional como `DeconstructionDeclarationStatement` con fuente
+  `source().Deconstruct()` (igual que el patrón `Tuple`), pero la fuente CALL no se analiza:
+  "cannot initialize local '' of type '<missing-type>' from tuple". La deconstrucción hoy solo
+  acepta una fuente DIRECTA (valor), no una llamada.
+- **Para cerrar**: o bien el Sema resuelve la deconstrucción sobre una llamada (`Deconstruct()`),
+  o bien el parser materializa el resultado del `Deconstruct()` en un temporal y deconstruye ESE
+  temporal.
 
 ## Gap F04 (posicional)
 
