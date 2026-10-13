@@ -2014,6 +2014,10 @@ bool ProjectMemberModel::collectTypeMembers(
                 symbol.effects = symbol.effects.with(sema::Effect::Throws);
             if (isAsyncMethod)
                 symbol.effects = symbol.effects.with(sema::Effect::Async);
+            // NS304-T06-F02: a generator is marked by its declared iterator return type
+            // (`Iterator<T>` -> `iterator:<T>`), not by a textual scan for `yield`.
+            if (language::iteratorInnerTypeKey(symbol.declaredTypeKey).has_value())
+                symbol.effects = symbol.effects.with(sema::Effect::Generator);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method || symbol.kind == ClassMemberKind::Constructor) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);

@@ -5082,10 +5082,24 @@ void ProjectMethodBodyModel::analyzeStatement(
             analyzeSwitch(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
         case ast::AstNodeKind::ReturnStatement:
+        {
+            // NS304-T06-F02: a generator (Iterator<T> return) ends with `yield break`, not an
+            // ordinary value return; reject `return v;` but allow the bare `return;`.
+            const ClassMemberSymbol* returnMethod = methodSymbol(methodMemberOrdinal);
+            if (statement->first() != nullptr && returnMethod != nullptr &&
+                language::iteratorInnerTypeKey(returnMethod->declaredTypeKey).has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "a generator cannot return a value; use yield return or yield break (NS304-T06-F02)");
+            }
             analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             recordRequiredConstructorNormalExit(methodMemberOrdinal);
             ownershipFlowReachable_ = false;
             break;
+        }
         case ast::AstNodeKind::TryStatement:
             analyzeTry(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
@@ -5225,9 +5239,10 @@ void ProjectMethodBodyModel::analyzeStatement(
             // from a yield in an ordinary callable (context error). The productive lowering to a
             // frame/state machine is still T06-F03.
             const ClassMemberSymbol* yieldMethod = methodSymbol(methodMemberOrdinal);
-            const bool isGenerator = yieldMethod != nullptr &&
-                language::iteratorInnerTypeKey(yieldMethod->declaredTypeKey).has_value();
-            if (!isGenerator)
+            const auto itemInner = yieldMethod != nullptr
+                ? language::iteratorInnerTypeKey(yieldMethod->declaredTypeKey)
+                : std::optional<std::string_view>{};
+            if (!itemInner.has_value())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -5237,6 +5252,22 @@ void ProjectMethodBodyModel::analyzeStatement(
             }
             else
             {
+                // NS304-T06-F02: unify every productive yield to the declared item type.
+                if (statement->kind() == ast::AstNodeKind::YieldReturnStatement &&
+                    statement->first() != nullptr)
+                {
+                    const ExpressionResult yielded = analyzeExpression(
+                        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    if (yielded.valid && yielded.typeKey != std::string(*itemInner))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            statement->first()->range(),
+                            "generator yields '" + yielded.typeKey +
+                                "' but its item type is '" + std::string(*itemInner) + "' (NS304-T06-F02)");
+                    }
+                }
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
