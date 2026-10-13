@@ -2753,6 +2753,42 @@ class Program
         }});
 }
 
+void registerInitAccessorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-334", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "init", "accessor", "property"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09InitAccessor", "Exe", R"ns(
+class Program
+{
+    public int Value { get; init; }
+
+    public static int Main()
+    {
+        Program p = new Program();
+        p.Value = 42;
+        return p.Value;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09InitAccessor.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-334 an init accessor must parse and compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-334 the init accessor must dispatch as a setter: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2801,5 +2837,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNameOfCase(registry);
     registerRawInterpolatedCase(registry);
     registerNoHeapEscapeCase(registry);
+    registerInitAccessorCase(registry);
 }
 }

@@ -7339,14 +7339,16 @@ ast::AstNode* Parser::parsePropertyTail(
             }
         }
         const bool getter = at(TokenKind::KwGet);
-        const bool setter = at(TokenKind::KwSet);
+        // NS304-T09-F02: `init` se reconoce como un setter contextual de solo-inicializacion.
+        // La restriccion de contexto (solo durante construccion) se impone en Sema mas adelante.
+        const bool setter = at(TokenKind::KwSet) || atContextualKeyword("init");
         if (!getter && !setter)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "expected get or set accessor in property declaration");
+                "expected get, set or init accessor in property declaration");
             synchronizeStatement();
             if (at(TokenKind::RightBrace)) break;
             continue;
@@ -7595,14 +7597,14 @@ ast::AstNode* Parser::parseIndexerTail(
             }
         }
         const bool getter = at(TokenKind::KwGet);
-        const bool setter = at(TokenKind::KwSet);
+        const bool setter = at(TokenKind::KwSet) || atContextualKeyword("init");
         if (!getter && !setter)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "expected get or set accessor in indexer declaration");
+                "expected get, set or init accessor in indexer declaration");
             synchronizeStatement();
             if (at(TokenKind::RightBrace)) break;
             continue;

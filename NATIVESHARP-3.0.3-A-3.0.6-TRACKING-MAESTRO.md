@@ -1038,7 +1038,7 @@ T00
 ### T09 — construcción, propiedades y eventos
 
 - [ ] `NS304-T09-F01` — Implementar miembros `required` y definite initialization.
-- [ ] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción.
+- [ ] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser reconoce `init` en accessors (property/indexer) como `set` + TL-LANG-334; restricción de construcción y congelamiento residual.)*
 - [ ] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible.
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo.
 - [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito.
