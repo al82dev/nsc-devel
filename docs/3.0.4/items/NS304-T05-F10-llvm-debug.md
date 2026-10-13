@@ -1,6 +1,6 @@
 # NS304-T05-F10 — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames
 
-- **Estado**: PARCIAL (identidad del poll distinguida; state@0 y logical frames pendientes)
+- **Estado**: CERRADO (identidad del poll + state emitidos; logical frames = opcional/no bloqueante)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -61,3 +61,12 @@ contiene `Program.F$poll` (poll) distinto de `Program.F` (constructor). Commit `
 
 Queda: emitir `state@0` como variable de debug (offset 0, `DIFlagArtificial`) y "logical frames"
 (opcional).
+
+### Cierre (state@0) — verificado 2026-10-13
+
+`defineFunction` emite una `DILocalVariable "state"` (i32, `DIFlagArtificial`, offset 0) para el
+poll, apuntando a `self->state`, de modo que el depurador ve 0/-1/1..N. Verificado:
+`--emit-project-oop-exe -g` → `probe.pdb` contiene `state` (1 match). Commit `2754ffd3`.
+
+"Logical frames" (modelar el poll como `DILexicalBlock` anidado) queda como opcional no bloqueante
+para el cierre.
