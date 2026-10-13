@@ -159,6 +159,10 @@ enum class ProjectOopMirNodeKind
     YieldValue,
     // NS304-T06-F03: `yield break` of a synchronous generator. No children.
     YieldBreak,
+    // NS304-T06-F08: iterator protocol nodes (Current/MoveNext/GetEnumerator). One child each.
+    IteratorCurrent,
+    IteratorMoveNext,
+    IteratorGetEnumerator,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

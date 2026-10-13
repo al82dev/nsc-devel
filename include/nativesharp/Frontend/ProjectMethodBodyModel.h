@@ -1138,7 +1138,13 @@ enum class MethodCoreOperationKind
     Assert,
     Unreachable,
     Assume,
-    Panic
+    Panic,
+    // NS304-T06-F08: the opaque generator iterator's structural protocol. MoveNext takes the
+    // iterator and returns builtin:bool (calls moveNextFn); Current is a property reading the
+    // item (field 2); GetEnumerator returns the iterator itself (for foreach).
+    IteratorMoveNext,
+    IteratorCurrent,
+    IteratorGetEnumerator
 };
 
 struct MethodCoreBinding final

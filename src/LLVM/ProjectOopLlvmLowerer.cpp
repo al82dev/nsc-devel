@@ -9456,6 +9456,52 @@ private:
                     return failValue(error, "async poll target was not declared: " + node->stringValue);
                 return found->second.function;
             }
+            case frontend::ProjectOopMirNodeKind::IteratorCurrent:
+            {
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator Current requires one operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, structAlignmentFor(node->elementTypeKey), "iterator.current");
+                if (slot == nullptr)
+                    return failValue(error, "iterator Current could not reserve storage");
+                LLVMBuildStore(builder_, value, slot);
+                LLVMTypeRef itemType = llvmType(node->typeKey, error);
+                if (itemType == nullptr) return nullptr;
+                return LLVMBuildLoad2(
+                    builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item");
+            }
+            case frontend::ProjectOopMirNodeKind::IteratorMoveNext:
+            {
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator MoveNext requires one operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, structAlignmentFor(node->elementTypeKey), "iterator.movenext");
+                if (slot == nullptr)
+                    return failValue(error, "iterator MoveNext could not reserve storage");
+                LLVMBuildStore(builder_, value, slot);
+                LLVMValueRef moveNextFn = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(slot, 24, "iterator.movenextfn.addr"), "iterator.movenextfn");
+                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(
+                    LLVMInt1TypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { slot };
+                return LLVMBuildCall2(builder_, fnType, moveNextFn, args, 1U, "iterator.movenext.call");
+            }
+            case frontend::ProjectOopMirNodeKind::IteratorGetEnumerator:
+            {
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator GetEnumerator requires one operand");
+                return lowerExpression(node->children.front().get(), error);
+            }
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
             {
                 LLVMTypeRef type = llvmType(node->typeKey, error);

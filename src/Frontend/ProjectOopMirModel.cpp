@@ -752,6 +752,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::PollAddress: return "poll-address";
         case ProjectOopMirNodeKind::YieldValue: return "yield-value";
         case ProjectOopMirNodeKind::YieldBreak: return "yield-break";
+        case ProjectOopMirNodeKind::IteratorCurrent: return "iterator-current";
+        case ProjectOopMirNodeKind::IteratorMoveNext: return "iterator-move-next";
+        case ProjectOopMirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
@@ -3320,6 +3323,24 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::YieldBreak:
             result->kind = ProjectOopMirNodeKind::YieldBreak;
             result->typeKey = node->typeKey;
+            break;
+
+        case ProjectOopHirNodeKind::IteratorCurrent:
+            result->kind = ProjectOopMirNodeKind::IteratorCurrent;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            break;
+
+        case ProjectOopHirNodeKind::IteratorMoveNext:
+            result->kind = ProjectOopMirNodeKind::IteratorMoveNext;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            break;
+
+        case ProjectOopHirNodeKind::IteratorGetEnumerator:
+            result->kind = ProjectOopMirNodeKind::IteratorGetEnumerator;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
             break;
 
         case ProjectOopHirNodeKind::NullConditionalFieldStore:

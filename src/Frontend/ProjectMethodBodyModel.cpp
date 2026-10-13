@@ -14677,6 +14677,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
+    // NS304-T06-F08: `it.Current` reads the generator iterator's item (field 2).
+    if (!typeReceiver && expression->text() == "Current" &&
+        language::iteratorInnerTypeKey(receiver.typeKey).has_value())
+    {
+        result.typeKey = std::string(*language::iteratorInnerTypeKey(receiver.typeKey));
+        result.valid = true;
+        result.assignable = false;
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::IteratorCurrent,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            result.typeKey,
+            receiver.typeKey,
+            false, std::nullopt, std::nullopt});
+        return result;
+    }
+
     // Stage 51: native string and primitive instance syntax is a language-level facade over
     // NativeSharp.Core.String static methods.  The receiver is forwarded as parameter zero;
     // this keeps string itself a native reference type without inventing a CLR-style object.
@@ -25929,6 +25947,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::Unreachable: return "unreachable";
         case MethodCoreOperationKind::Assume: return "assume";
         case MethodCoreOperationKind::Panic: return "panic";
+        case MethodCoreOperationKind::IteratorMoveNext: return "iterator-move-next";
+        case MethodCoreOperationKind::IteratorCurrent: return "iterator-current";
+        case MethodCoreOperationKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";

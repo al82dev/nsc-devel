@@ -475,6 +475,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::SpanFromFixedArray:
     case MethodCoreOperationKind::ReadOnlySpanFromFixedArray:
         return std::nullopt;
+    // NS304-T06-F08: the iterator protocol is lowered by its own path (see the IteratorCurrent/
+    // IteratorMoveNext/IteratorGetEnumerator blocks in lowerExpression), not the shared string block.
+    case MethodCoreOperationKind::IteratorMoveNext:
+    case MethodCoreOperationKind::IteratorCurrent:
+    case MethodCoreOperationKind::IteratorGetEnumerator:
+        return std::nullopt;
     }
 
     // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
@@ -1054,6 +1060,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::PollAddress: return "poll-address";
         case ProjectOopHirNodeKind::YieldValue: return "yield-value";
         case ProjectOopHirNodeKind::YieldBreak: return "yield-break";
+        case ProjectOopHirNodeKind::IteratorCurrent: return "iterator-current";
+        case ProjectOopHirNodeKind::IteratorMoveNext: return "iterator-move-next";
+        case ProjectOopHirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
@@ -4355,6 +4364,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         : ProjectOopHirNodeKind::StringLength,
                     expression,
                     core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                return node;
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::IteratorCurrent)
+            {
+                if (addressContext)
+                {
+                    error = "iterator Current is an intrinsic value and is not addressable";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::IteratorCurrent, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
                 node->children.push_back(std::move(receiver));
                 return node;

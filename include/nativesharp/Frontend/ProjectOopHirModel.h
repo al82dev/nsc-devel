@@ -161,6 +161,12 @@ enum class ProjectOopHirNodeKind
     // NS304-T06-F03: `yield break` of a synchronous generator. Lowered to { self->state =
     // completed; return false; }. No children.
     YieldBreak,
+    // NS304-T06-F08: `it.Current` — reads the iterator's item (field 2). One child: the iterator
+    // value. `it.MoveNext()` — calls the iterator's moveNextFn (field 3) and returns its bool.
+    // `it.GetEnumerator()` — returns the iterator value unchanged.
+    IteratorCurrent,
+    IteratorMoveNext,
+    IteratorGetEnumerator,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,
