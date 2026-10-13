@@ -1003,9 +1003,9 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones.
 - [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación.
 - [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async.
-- [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio.
-- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular.
-- [ ] `NS304-T05-F10` — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames.
+- [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio. *(PARCIAL: caller-stack + nunca-heap cerrados; arena/allocator = decisión de surface para Alberto.)*
+- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(PARCIAL: bare `yield;` suspend point + pending→ready real + frame + liveness.)*
+- [x] `NS304-T05-F10` — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames. *(CERRADO: subprogram distinguido F/F$poll + state@0 artificial; locals/sequence points heredados; logical frames opcional.)*
 
 ### T06 — generadores síncronos
 
