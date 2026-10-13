@@ -1127,8 +1127,14 @@ bool ProjectOopMirModel::build(
     for (const std::string& key : futureKeys)
     {
         const std::optional<std::string_view> inner = language::futureInnerTypeKey(key);
-        const auto resultLayout = objectLayoutModel.valueLayoutForTypeKey(
-            nameLookup, inner.has_value() ? std::string(*inner) : std::string{});
+        // async void has no result payload: a zero-size, unit-aligned result keeps the uniform
+        // future layout { state, frame, result } without a distinct void future ABI.
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> resultLayout =
+            (inner.has_value() && *inner == "builtin:void")
+                ? std::optional<std::pair<std::uint64_t, std::uint64_t>>(
+                      std::pair<std::uint64_t, std::uint64_t>{0U, 1U})
+                : objectLayoutModel.valueLayoutForTypeKey(
+                      nameLookup, inner.has_value() ? std::string(*inner) : std::string{});
         if (!inner.has_value() || !resultLayout.has_value())
         {
             error = "NativeSharp async future has no physical layout: " + key;
