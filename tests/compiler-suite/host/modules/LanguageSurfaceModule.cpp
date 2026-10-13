@@ -2294,6 +2294,51 @@ class Program
         }});
 }
 
+void registerExtensionMethodCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-323", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "method", "receiver"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08Extension", "Exe", R"ns(
+namespace Suite
+{
+    extension int
+    {
+        public int Double()
+        {
+            return this * 2;
+        }
+    }
+}
+
+using Suite;
+
+class Program
+{
+    public static int Main()
+    {
+        return 21.Double();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08Extension.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-323 an extension method must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-323 an extension method must dispatch on the receiver: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2330,5 +2375,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerMethodGroupNaturalTypeCase(registry);
     registerClosureErrorCase(registry);
     registerClosureErrorThrowCase(registry);
+    registerExtensionMethodCase(registry);
 }
 }
