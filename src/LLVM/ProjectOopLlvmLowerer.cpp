@@ -602,6 +602,7 @@ private:
         LLVMValueRef function = nullptr;
         LLVMTypeRef functionType = nullptr;
         LLVMMetadataRef subprogram = nullptr;
+        std::uint64_t asyncFrameSize = 0;
     };
 
     enum class FuncletKind
@@ -3374,7 +3375,8 @@ private:
                 return false;
             }
             if (subprogram != nullptr) LLVMSetSubprogram(llvmFunction, subprogram);
-            functions_[function.mangledName] = FunctionInfo{llvmFunction, functionType, subprogram};
+            functions_[function.mangledName] =
+                FunctionInfo{llvmFunction, functionType, subprogram, function.asyncFrameSize};
         }
         return true;
     }
@@ -9075,6 +9077,17 @@ private:
                     const auto blockingFound = functions_.find(node->calleeName);
                     if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
                         return failValue(error, "async poll target was not declared: " + node->calleeName);
+                    // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited
+                    // futures across suspension) so its suspend path has valid storage.
+                    if (blockingFound->second.asyncFrameSize > 0)
+                    {
+                        LLVMTypeRef frameType = LLVMArrayType2(
+                            LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
+                        LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
+                        if (frameSlot == nullptr)
+                            return failValue(error, "await future could not reserve frame storage");
+                        LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
+                    }
                     LLVMValueRef blockingArgs[] = { slot };
                     if (LLVMBuildCall2(builder_, blockingFound->second.functionType,
                                        blockingFound->second.function, blockingArgs, 1U, "") == nullptr)
@@ -9121,6 +9134,17 @@ private:
                 LLVMValueRef fresh = lowerExpression(node->children.front().get(), error);
                 if (fresh == nullptr) return nullptr;
                 LLVMBuildStore(builder_, fresh, childSlot);
+                // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
+                const auto entryFound = functions_.find(node->calleeName);
+                if (entryFound != functions_.end() && entryFound->second.asyncFrameSize > 0)
+                {
+                    LLVMTypeRef frameType = LLVMArrayType2(
+                        LLVMInt8TypeInContext(context_), entryFound->second.asyncFrameSize);
+                    LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.child.frame");
+                    if (frameSlot == nullptr)
+                        return failValue(error, "await future could not reserve child frame storage");
+                    LLVMBuildStore(builder_, frameSlot, byteOffset(childSlot, 8, "await.child.frame.field"));
+                }
                 LLVMBuildBr(builder_, pollBlock);
 
                 // Resume: load self->frame (offset 8) → childSlot.

@@ -1458,6 +1458,30 @@ bool ProjectOopMirModel::build(
             return function;
         }
         function.body = lowerer.lowerNode(source.body.get(), functionError);
+        // NS304-T05-F04: frame size for poll functions = sum of the awaited future struct sizes.
+        if (function.mangledName.ends_with("$poll"))
+        {
+            std::uint64_t frameSize = 0;
+            const auto sumAwaited = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
+                {
+                    for (const ProjectOopMirStructLayout& layout : structLayouts_)
+                    {
+                        if (layout.typeKey == node->elementTypeKey)
+                        {
+                            frameSize += layout.size;
+                            break;
+                        }
+                    }
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            sumAwaited(sumAwaited, function.body.get());
+            function.asyncFrameSize = frameSize;
+        }
         if (function.body == nullptr)
         {
             // Say WHERE. An internal error from this pipeline used to arrive as a bare sentence --

@@ -805,6 +805,7 @@ struct ProjectOopMirFunction final
     std::string returnTypeKey;
     std::string errorTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
+    std::uint64_t asyncFrameSize = 0; // poll functions only: bytes needed to hold awaited futures
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
     std::vector<ParameterPassKind> parameterPassKinds;
