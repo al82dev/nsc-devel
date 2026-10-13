@@ -245,6 +245,7 @@ class UnitTestsPageMixin:
         worker.progress_ready.connect(self._update_unit_progress)
         worker.preparation_ready.connect(self._update_unit_preparation)
         worker.completed.connect(self._unit_suite_finished)
+        worker.finished.connect(self._release_finished_suite_worker)
         worker.start()
 
     def _update_unit_case(
