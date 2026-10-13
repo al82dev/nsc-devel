@@ -3645,7 +3645,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         stateStore->children.push_back(std::move(ready));
         block->children.push_back(std::move(stateStore));
 
-        block->children.push_back(makeNode(ProjectOopHirNodeKind::Return, body->syntax, "builtin:void"));
+        // NS304-T05-F06: the synthesized `return;` must carry the original return's cleanup
+        // regions, so owned locals drop exactly once on completion (the drop rides the non-local
+        // exit's cleanupRegionOrdinals).
+        auto synthesizedReturn = makeNode(
+            ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
+        synthesizedReturn->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
+        synthesizedReturn->cleanupContinuationKind = body->cleanupContinuationKind;
+        block->children.push_back(std::move(synthesizedReturn));
         return block;
     }
     for (auto& child : body->children)
