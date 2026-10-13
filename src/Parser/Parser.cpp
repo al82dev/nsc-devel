@@ -15144,8 +15144,10 @@ ast::AstNode* Parser::parseNameOfExpression()
             if (dot != std::string::npos) name = name.substr(dot + 1);
         }
     }
-    else
+    if (name.empty())
     {
+        // `nameof(Foo.Bar.Method<int>)` (método genérico cualificado): parseType falla y se cae a
+        // la ruta de expresión, que extrae el nombre del último miembro.
         ast::AstNode* argument = parseExpression();
         const ast::AstNode* cursor = argument;
         while (cursor != nullptr && name.empty())
