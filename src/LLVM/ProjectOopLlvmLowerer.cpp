@@ -9012,6 +9012,8 @@ private:
                 return lowerNullConditionalFieldStore(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayLoad:
                 return lowerNullConditionalArrayLoad(node, error);
+            case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
+                return lowerNullConditionalArrayStore(node, error);
             case frontend::ProjectOopMirNodeKind::BitFieldLoad:
             {
                 LLVMValueRef address = fieldAddress(node, error);
@@ -14848,6 +14850,59 @@ private:
         LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
         LLVMAddIncoming(phi, values, blocks, 2);
         return phi;
+    }
+
+    LLVMValueRef lowerNullConditionalArrayStore(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 3)
+            return failValue(error, "null-conditional array store MIR requires receiver, index, value");
+        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        if (receiver == nullptr) return nullptr;
+        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+        if (index == nullptr) return nullptr;
+        LLVMValueRef value = lowerExpression(node->children[2].get(), error);
+        if (value == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef hasReceiver = LLVMBuildICmp(
+            builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
+        LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index.store");
+        LLVMBasicBlockRef endBlock = appendBlock("nullcond.index.store.end");
+        LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef length = LLVMBuildLoad2(
+            builder_, LLVMInt64TypeInContext(context_), receiver, "nullcond.index.length");
+        LLVMValueRef inRange = LLVMBuildICmp(
+            builder_, LLVMIntULT, index, length, "nullcond.index.inrange");
+        if (isSignedInteger(node->children[1]->typeKey))
+        {
+            LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            LLVMValueRef nonNegative = LLVMBuildICmp(
+                builder_, LLVMIntSGE, index, zero, "nullcond.index.nonnegative");
+            inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "nullcond.index.valid");
+        }
+        if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "nullcond.index", error))
+            return nullptr;
+        const std::uint64_t elementSize = node->immediate;
+        const std::uint64_t elementAlignment = node->alignment;
+        const std::uint64_t dataOffset =
+            (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+        LLVMValueRef scaled = LLVMBuildMul(
+            builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+            "nullcond.index.scaled");
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_, scaled, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
+            "nullcond.index.offset");
+        LLVMValueRef indices[] = {offset};
+        LLVMValueRef address = LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
+            "nullcond.index.addr");
+        LLVMBuildStore(builder_, value, address);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        return value;
     }
 
     LLVMValueRef lowerShortCircuit(const frontend::ProjectOopMirNode* node, std::string& error)

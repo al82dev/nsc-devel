@@ -1041,6 +1041,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::NullConditionalFieldValue: return "null-conditional-field-value";
         case ProjectOopHirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
         case ProjectOopHirNodeKind::NullConditionalArrayLoad: return "null-conditional-array-load";
+        case ProjectOopHirNodeKind::NullConditionalArrayStore: return "null-conditional-array-store";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
         case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
@@ -5578,6 +5579,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     *node->memberOrdinal < memberModel_->members().size() &&
                     memberModel_->members()[*node->memberOrdinal].isVolatile;
                 node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(value));
+                return node;
+            }
+
+            // NS304-T10-F05: `arr?[i] = value` — store condicional de elemento de array nativo.
+            if (expression->tokenKind() == lexer::TokenKind::Equal &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+            {
+                const MethodCoreBinding* core = coreBinding(expression->first());
+                if (core == nullptr ||
+                    core->kind != MethodCoreOperationKind::NullConditionalArrayElement)
+                {
+                    error = "T10-F05 null-conditional index store has no native-array element binding";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first()->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                const ast::AstNode* indexSyntax = !expression->first()->children().empty()
+                    ? expression->first()->children().front() : expression->first()->second();
+                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                if (index == nullptr) return nullptr;
+                auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::NullConditionalArrayStore, expression, resultType);
+                node->elementTypeKey = core->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(index));
                 node->children.push_back(std::move(value));
                 return node;
             }

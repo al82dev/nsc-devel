@@ -737,6 +737,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::NullConditionalFieldLoad: return "null-conditional-field-load";
         case ProjectOopMirNodeKind::NullConditionalFieldStore: return "null-conditional-field-store";
         case ProjectOopMirNodeKind::NullConditionalArrayLoad: return "null-conditional-array-load";
+        case ProjectOopMirNodeKind::NullConditionalArrayStore: return "null-conditional-array-store";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
         case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
@@ -2837,6 +2838,25 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 return nullptr;
             }
             result->kind = ProjectOopMirNodeKind::NullConditionalArrayLoad;
+            result->immediate = layout->first;
+            result->alignment = layout->second;
+            break;
+        }
+        case ProjectOopHirNodeKind::NullConditionalArrayStore:
+        {
+            if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "Stage 41 null-conditional array store requires name lookup and value layouts";
+                return nullptr;
+            }
+            const auto layout = elementLayout(node->elementTypeKey);
+            if (!layout.has_value() || layout->first == 0)
+            {
+                error = "Stage 41 cannot determine native array element layout for '" +
+                    node->elementTypeKey + "'";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::NullConditionalArrayStore;
             result->immediate = layout->first;
             result->alignment = layout->second;
             break;

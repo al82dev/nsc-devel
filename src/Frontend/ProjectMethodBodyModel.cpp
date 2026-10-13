@@ -21673,6 +21673,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return assignmentResult;
     }
 
+    // NS304-T10-F05: `arr?[i] = value` — store condicional al null-check del receptor (array nativo).
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+    {
+        const ProjectImplicitConversion conversion = classifyImplicit(
+            right.typeKey, left.typeKey, right.integerConstant);
+        if (!conversion.exists())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
+                    left.typeKey + "'");
+            return {};
+        }
+        ExpressionResult assignmentResult = right;
+        assignmentResult.assignable = false;
+        assignmentResult.valid = true;
+        return assignmentResult;
+    }
+
     // NS304-T10-F06: null-conditional compound (`obj?.Field += x`) numérico. El RHS se evalúa
     // incondicionalmente; el lowering de HIR/LLVM hace el read-modify-write condicional al null.
     if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&

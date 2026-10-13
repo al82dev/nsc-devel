@@ -3259,9 +3259,10 @@ class Program
     public static int Main()
     {
         string[] arr = null;
+        arr?[0] = "x";
         string x = arr?[0];
         string[] arr2 = new string[2];
-        arr2[1] = "hello";
+        arr2?[1] = "hello";
         string y = arr2?[1];
         return y.Length;
     }
