@@ -2094,6 +2094,73 @@ class Program
         }});
 }
 
+void registerListPatternAliasingCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-364", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "span", "alias", "readonly"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-364", "T03ListRestAliasing", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] array = new int[4];
+        array[0] = 10; array[1] = 20; array[2] = 30; array[3] = 40;
+        int arrayWrite = match(array)
+        {
+            [10, .. var middle, 40] => middle[0] = 71,
+            _ => 0
+        };
+        if (arrayWrite != 71 || array[1] != 71) { return 1; }
+
+        int[4] fixedValues;
+        fixedValues[0] = 10; fixedValues[1] = 20;
+        fixedValues[2] = 30; fixedValues[3] = 40;
+        int fixedWrite = match(fixedValues)
+        {
+            [10, .. var middle, 40] => middle[1] = 72,
+            _ => 0
+        };
+        if (fixedWrite != 72 || fixedValues[2] != 72) { return 2; }
+        return 42;
+    }
+}
+)ns", 42);
+
+            TemporaryT01Products readonlyProducts;
+            if (!stageT03ListPatternCore(context, readonlyProducts, "TL-LANG-364")) return;
+            const std::filesystem::path readonlyProject = readonlyProducts.writeProject(
+                "T03ListRestReadonly", "Exe", R"ns(
+class Program
+{
+    private static int Invalid(in int[4] values)
+    {
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle[0] = 99,
+            _ => 0
+        };
+    }
+    public static int Main()
+    {
+        int[4] values;
+        return Invalid(in values);
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const external_program_support::Result rejected = emitT01Product(
+                L"--emit-project-oop-exe", readonlyProject,
+                readonlyProducts.directory() / "T03ListRestReadonly.exe",
+                readonlyProducts.directory());
+            const std::string diagnostics = rejected.error + rejected.output;
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    diagnostics.find("property/indexer has no accessible setter") !=
+                        std::string::npos,
+                "TL-LANG-364 readonly fixed-array rest must reject mutation with the exact "
+                "receiver diagnostic: " + diagnostics);
+        }});
+}
+
 void registerPropertyPatternCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-311", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4440,6 +4507,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerListPatternStringViewCase(registry);
     registerListPatternProtocolCase(registry);
     registerListPatternUtf8StringCase(registry);
+    registerListPatternAliasingCase(registry);
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);

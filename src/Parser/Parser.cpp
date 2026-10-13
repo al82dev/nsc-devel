@@ -11772,14 +11772,24 @@ void Parser::emitPatternBindings(
     {
         ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
             pattern.range, TokenKind::KwVar, "var");
+        ast::AstNode* initializer = source();
+        // A rest value is a borrowed view. Its local cell is compiler-generated, but making that
+        // cell const would also make a mutable Span receiver readonly and incorrectly suppress
+        // writes to the referenced storage. Readonly sources already produce ReadOnlySpan<T>.
+        const bool mutableRestView =
+            pattern.bindingMode == PatternBindingMode::Value &&
+            initializer != nullptr &&
+            initializer->kind() == ast::AstNodeKind::CallExpression &&
+            initializer->auxiliaryText() == "list-pattern-rest";
         ast::AstNode* declaration = makeVariableDeclaration(
             type,
             pattern.name,
-            source(),
+            initializer,
             false,
-            pattern.bindingMode == PatternBindingMode::Value ||
-                pattern.bindingMode == PatternBindingMode::Copy ||
-                pattern.bindingMode == PatternBindingMode::Reference);
+            !mutableRestView &&
+                (pattern.bindingMode == PatternBindingMode::Value ||
+                 pattern.bindingMode == PatternBindingMode::Copy ||
+                 pattern.bindingMode == PatternBindingMode::Reference));
         if (pattern.bindingMode == PatternBindingMode::Reference)
             declaration->setAuxiliaryText("local:pattern-ref");
         else if (pattern.bindingMode == PatternBindingMode::ReferenceMutable)

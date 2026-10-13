@@ -9110,7 +9110,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
     binding.governingTypeKey = governing.typeKey;
     binding.resultTypeKey = commonType;
     binding.referenceResult = referenceResult;
-    binding.governingReference = expression->flag();
+    const bool fixedArrayGoverning =
+        ProjectMemberModel::fixedArrayElementTypeKey(governing.typeKey).has_value();
+    const std::function<bool(const ast::AstNode*)> containsRestView =
+        [&](const ast::AstNode* node)
+        {
+            if (node == nullptr) return false;
+            if (node->kind() == ast::AstNodeKind::CallExpression &&
+                node->auxiliaryText() == "list-pattern-rest")
+            {
+                return true;
+            }
+            if (containsRestView(node->first()) || containsRestView(node->second()) ||
+                containsRestView(node->third()))
+            {
+                return true;
+            }
+            return std::ranges::any_of(node->children(), containsRestView);
+        };
+    // A fixed array is an inline value. Snapshotting it would make a synthesized Span rest view
+    // point at the snapshot instead of the caller-visible storage. Reuse the existing governing
+    // address contract only when an addressable fixed-array match actually contains such a view;
+    // ordinary value matches keep their one-time value snapshot.
+    const bool fixedArrayRestView = fixedArrayGoverning && governing.addressable &&
+        containsRestView(expression);
+    binding.governingReference = expression->flag() || fixedArrayRestView;
     if (switchTagMemberOrdinal.has_value() &&
         coverageArms.size() == expression->children().size() &&
         std::ranges::all_of(coverageArms, [](const language::MatchArmCoverage& arm)

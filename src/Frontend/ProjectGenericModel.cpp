@@ -2265,6 +2265,18 @@ void ProjectGenericModel::processNode(
         bool conflict = false;
         currentScope.valueTypes[child->text()] =
             cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict);
+        if (child->kind() == ast::AstNodeKind::ParameterDeclaration)
+        {
+            // A nested callable may shadow a by-reference name with an ordinary value parameter.
+            // Clear the inherited marker before recording the current declaration's pass kind.
+            currentScope.valuePassKinds.erase(child->text());
+            if (child->auxiliaryText().starts_with("pass:"))
+            {
+                const std::size_t end = child->auxiliaryText().find('|');
+                currentScope.valuePassKinds[child->text()] =
+                    child->auxiliaryText().substr(5U, end == std::string::npos ? end : end - 5U);
+            }
+        }
     }
 
     // MatchExpression arm conditions and bindings use MatchValueExpression to read the one-time
@@ -2272,8 +2284,18 @@ void ProjectGenericModel::processNode(
     // materialize closed view types before Sema. Match statements expose an ordinary hidden local.
     if (node->kind() == ast::AstNodeKind::MatchExpression && node->first() != nullptr)
     {
+        // currentScope is the lexical copy passed only to this node's descendants. Resetting the
+        // marker here scopes nested matches correctly; the caller's enclosing match is restored
+        // automatically when this processNode invocation returns.
+        currentScope.matchValuePassKind.clear();
         if (ast::TypeSyntax* governingType = inferExpressionType(unit, node->first(), currentScope))
             currentScope.matchValueType = governingType;
+        if (node->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto pass = currentScope.valuePassKinds.find(node->first()->text());
+            if (pass != currentScope.valuePassKinds.end())
+                currentScope.matchValuePassKind = pass->second;
+        }
     }
 
     // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
@@ -2476,15 +2498,31 @@ void ProjectGenericModel::collectBodyTypeSpecializationDemand(
 
     ast::TypeSyntax* receiverType = inferExpressionType(unit, node->first()->first(), scope);
     if (receiverType == nullptr || receiverType->modifiers().empty()) return;
-    const ast::TypeModifierSyntaxKind outer = receiverType->modifiers().back().kind;
+
+    // `in/ref/out T[N]` is represented as T[N]* for the calling convention. The synthetic
+    // MatchValueExpression still denotes the array value, so look through exactly that recorded
+    // reference wrapper before removing the one outer collection modifier used to derive T.
+    // The pass kind remains intact in the lexical scope; definitive Sema uses `in` to select
+    // ReadOnlySpan<T> and mutable passes to select Span<T>.
+    std::size_t structuralModifierCount = receiverType->modifiers().size();
+    if (node->first()->first()->kind() == ast::AstNodeKind::MatchValueExpression &&
+        !scope.matchValuePassKind.empty() &&
+        receiverType->modifiers()[structuralModifierCount - 1U].kind ==
+            ast::TypeModifierSyntaxKind::Pointer)
+    {
+        --structuralModifierCount;
+    }
+    if (structuralModifierCount == 0U) return;
+    const ast::TypeModifierSyntaxKind outer =
+        receiverType->modifiers()[structuralModifierCount - 1U].kind;
     if (outer != ast::TypeModifierSyntaxKind::DynamicArray &&
         outer != ast::TypeModifierSyntaxKind::Array)
     {
         return;
     }
 
-    ast::TypeSyntax* elementType = cloneType(
-        unit.arena(), receiverType, {}, receiverType->modifiers().size() - 1U);
+    ast::TypeSyntax* elementType =
+        cloneType(unit.arena(), receiverType, {}, structuralModifierCount - 1U);
     if (elementType == nullptr) return;
 
     // Readonly-ness is a semantic property of the receiver (in-parameter, readonly field, const

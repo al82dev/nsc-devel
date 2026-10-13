@@ -1,7 +1,7 @@
 # NS304-T03-F03 — list patterns sobre colecciones nativas y protocolo usuario
 
-Estado: `EN IMPLEMENTACIÓN` (los siete sustratos ejecutables pasan individualmente; permanecen
-abiertos los oráculos contractuales de UTF-8, alias/no-copia observable y escape negativo).
+Estado: `EN IMPLEMENTACIÓN` (los siete sustratos ejecutables y el alias/no-copia observable pasan
+individualmente; permanecen abiertos los oráculos contractuales de UTF-8 y escape negativo).
 
 ## Evidencia focal de sustratos — 2026-10-13
 
@@ -13,8 +13,21 @@ abiertos los oráculos contractuales de UTF-8, alias/no-copia observable y escap
 - El lowering LLVM construye `{data,count}` sobre la dirección del almacenamiento inline, sin
   reservar ni copiar elementos, y valida `start/count` contra el extent del tipo fijo.
 - Esta evidencia no certifica por sí sola todos los oráculos del expediente: el fixture string
-  actual es ASCII, los casos positivos no observan alias mediante mutación posterior y todavía no
-  existe aquí el negativo de escape desde `stackalloc`. Por ello F03 continúa abierto.
+  actual es ASCII y todavía no existe aquí el negativo de escape desde `stackalloc`. La evidencia
+  separada TL-LANG-364 cubre alias/no-copia mediante mutación observable. Por ello F03 continúa
+  abierto.
+
+## Cierre parcial gap 2 — alias/no-copia observable
+
+- `TL-LANG-364` demuestra que una captura rest mutable sobre `int[]` y `int[4]` produce una vista
+  respaldada por el almacenamiento original: la asignación devuelve el valor convertido y la
+  mutación se observa inmediatamente en el origen.
+- Un parámetro `in int[4]` solicita `ReadOnlySpan<int>` en el prepass sin perder el pass-kind; el
+  intento de escritura se rechaza con `property/indexer has no accessible setter`.
+- Evidencia puntual 2026-10-13: TL-LANG-364 PASS, 871,994 us; guards TL-LANG-357/358/360 PASS y
+  `nsc_readonly_receiver_tests` PASS, 14 checks.
+- F03 continúa abierto y el avance permanece en 24/147; este cierre parcial no acredita los
+  oráculos pendientes de UTF-8 ni escape desde `stackalloc`.
 
 ## Cierre parcial B1 — identidad de especializaciones
 
