@@ -6294,8 +6294,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 auto node = makeNode(nodeKind, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
+                const bool fixedArrayView =
+                    core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
+                    core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray;
                 auto receiver = lowerExpression(
-                    expression->first()->first(), memberOrdinal, false, error);
+                    expression->first()->first(), memberOrdinal, fixedArrayView, error);
                 if (receiver == nullptr) return nullptr;
                 node->children.push_back(std::move(receiver));
                 for (const ast::AstNode* child : expression->children())

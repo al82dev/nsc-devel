@@ -9240,12 +9240,95 @@ private:
                 if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
                 return loaded;
             }
-            // NS304-T03-F03: inline/fixed array rest capture is deferred: the fixed array has no
-            // length header (the receiver is an inline value, not a heap reference), so the address
-            // and length sources differ from the native array case above.
+            // NS304-T03-F03: fixed-array rest capture is a borrowed Span view over inline storage.
+            // Unlike a native array there is no object header: the receiver is already the address
+            // of the fixed array, and the extent is carried by its canonical type identity.
             case frontend::ProjectOopMirNodeKind::SpanFromFixedArray:
             case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray:
-                return failValue(error, "Stage 41 fixed-array rest capture is not implemented yet");
+            {
+                if (node->children.size() != 3)
+                    return failValue(
+                        error, "fixed-array Span rest capture requires receiver, start and length");
+                const std::optional<std::uint64_t> fixedCount =
+                    frontend::ProjectMemberModel::fixedArrayCount(node->children[0]->typeKey);
+                if (!fixedCount.has_value())
+                    return failValue(error, "fixed-array Span rest capture lost its source extent");
+
+                LLVMValueRef base = lowerExpression(node->children[0].get(), error);
+                if (base == nullptr) return nullptr;
+                LLVMValueRef start = normalizeNativeIndex(node->children[1].get(), error);
+                if (start == nullptr) return nullptr;
+                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
+                if (count == nullptr) return nullptr;
+                LLVMValueRef countNative = convert(
+                    count, node->children[2]->typeKey, "builtin:nuint", error);
+                if (countNative == nullptr) return nullptr;
+
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+                LLVMValueRef zero64 = LLVMConstInt(i64, 0, 0);
+                if (isSignedInteger(node->children[1]->typeKey))
+                {
+                    LLVMValueRef valid = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, start, zero64, "fixed.span.start.nonnegative");
+                    if (!emitGuard(
+                            valid, LlvmTrapReason::BoundsViolation,
+                            "fixed.span.start", error)) return nullptr;
+                }
+                if (isSignedInteger(node->children[2]->typeKey))
+                {
+                    LLVMValueRef valid = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, countNative, zero64,
+                        "fixed.span.count.nonnegative");
+                    if (!emitGuard(
+                            valid, LlvmTrapReason::BoundsViolation,
+                            "fixed.span.count", error)) return nullptr;
+                }
+
+                LLVMValueRef extent = LLVMConstInt(i64, *fixedCount, 0);
+                LLVMValueRef startFits = LLVMBuildICmp(
+                    builder_, LLVMIntULE, start, extent, "fixed.span.start.fits");
+                if (!emitGuard(
+                        startFits, LlvmTrapReason::BoundsViolation,
+                        "fixed.span.start.bounds", error)) return nullptr;
+                LLVMValueRef remaining = LLVMBuildSub(
+                    builder_, extent, start, "fixed.span.remaining");
+                LLVMValueRef countFits = LLVMBuildICmp(
+                    builder_, LLVMIntULE, countNative, remaining, "fixed.span.count.fits");
+                if (!emitGuard(
+                        countFits, LlvmTrapReason::BoundsViolation,
+                        "fixed.span.count.bounds", error)) return nullptr;
+
+                const auto [elementSize, ignoredAlignment] =
+                    captureValueLayout(node->elementTypeKey, error);
+                (void)ignoredAlignment;
+                if (elementSize == 0) return nullptr;
+                LLVMValueRef scaled = LLVMBuildMul(
+                    builder_, start,
+                    LLVMConstInt(i64, elementSize, 0), "fixed.span.start.scaled");
+                LLVMValueRef indices[] = {scaled};
+                LLVMValueRef dataAddress = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), base, indices, 1,
+                    "fixed.span.data.gep");
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, countNative, zero64, "fixed.span.empty");
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(
+                    builder_, countIsZero, nullData, dataAddress, "fixed.span.data");
+
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                const unsigned carrierAlignment = structAlignmentFor(node->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, carrierAlignment, "fixed.span.init");
+                if (slot == nullptr)
+                    return failValue(error, "fixed-array Span rest capture could not reserve storage");
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "fixed.span.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(
+                    builder_, carrier, slot, "fixed.span.init.value");
+                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
+                return loaded;
+            }
             case frontend::ProjectOopMirNodeKind::StringSubstring:
                 return lowerStringSubstring(node, error);
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:

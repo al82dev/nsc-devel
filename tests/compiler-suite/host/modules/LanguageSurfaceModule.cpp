@@ -1836,24 +1836,59 @@ class Program
         }});
 }
 
-void registerListPatternSubstratesCase(TestRegistry& registry)
+constexpr std::string_view kT03ListPatternCoreItems =
+    "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+    "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+    "<Compile Include=\"String.ns\"/><Compile Include=\"Span.ns\"/>"
+    "<Compile Include=\"StringView.ns\"/>";
+
+bool stageT03ListPatternCore(TestContext& context, TemporaryT01Products& products,
+    std::string_view caseId)
+{
+    const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+    const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+    for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+             "NumericParsing.ns", "String.ns", "Span.ns", "StringView.ns"})
+    {
+        std::error_code copyError;
+        std::filesystem::copy_file(coreDir / file, products.directory() / file,
+            std::filesystem::copy_options::overwrite_existing, copyError);
+        context.expect(!copyError,
+            std::string(caseId) + " must stage NativeSharp.Core/" + file + ": " +
+                copyError.message());
+        if (copyError) return false;
+    }
+    return true;
+}
+
+void verifyT03ListPatternSubstrate(TestContext& context, std::string_view caseId,
+    std::string_view projectName, std::string_view source, int expectedExit)
+{
+    TemporaryT01Products products;
+    if (!stageT03ListPatternCore(context, products, caseId)) return;
+    const std::filesystem::path project = products.writeProject(
+        projectName, "Exe", source, kT03ListPatternCoreItems);
+    const std::filesystem::path executable =
+        products.directory() / (std::string(projectName) + ".exe");
+    const external_program_support::Result emitted = emitT01Product(
+        L"--emit-project-oop-exe", project, executable, products.directory());
+    context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+        std::string(caseId) + " substrate fixture must compile: " + emitted.error + emitted.output);
+    if (!emitted.started || emitted.exitCode != 0) return;
+    const auto result = external_program_support::run(
+        executable, {}, {}, products.directory());
+    context.expect(result.started && result.error.empty() &&
+            result.exitCode == static_cast<decltype(result.exitCode)>(expectedExit),
+        std::string(caseId) + " rest view must preserve the selected substrate: " +
+            result.error + result.output + " exit=" + std::to_string(result.exitCode));
+}
+
+void registerListPatternStringCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-310", "CL-LANG-020", "Host.Language", "integration", "PR",
-        {"language", "pattern", "list", "rest", "array", "string", "borrow", "view"},
+        {"language", "pattern", "list", "rest", "string", "borrow", "view"},
         [](TestContext& context) {
-            TemporaryT01Products products;
-            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
-            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
-            std::error_code copyError;
-            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
-                     "NumericParsing.ns", "String.ns", "Span.ns", "StringView.ns"})
-            {
-                copyError.clear();
-                std::filesystem::copy_file(coreDir / file, products.directory() / file,
-                    std::filesystem::copy_options::overwrite_existing, copyError);
-            }
-            const std::filesystem::path project = products.writeProject(
-                "T03ListSubstrates", "Exe", R"ns(
+            verifyT03ListPatternSubstrate(context, "TL-LANG-310", "T03ListString", R"ns(
 class Program
 {
     public static int Main()
@@ -1864,23 +1899,173 @@ class Program
         return stringRest;
     }
 }
-)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
-                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
-                "<Compile Include=\"String.ns\"/><Compile Include=\"Span.ns\"/>"
-                "<Compile Include=\"StringView.ns\"/>");
-            const std::filesystem::path executable =
-                products.directory() / "T03ListSubstrates.exe";
-            const external_program_support::Result emitted = emitT01Product(
-                L"--emit-project-oop-exe", project, executable, products.directory());
-            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
-                "TL-LANG-310 array and string rest capture must compile as Span/StringView: " +
-                    emitted.error + emitted.output);
-            if (!emitted.started || emitted.exitCode != 0) return;
-            const auto result = external_program_support::run(
-                executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 5,
-                "TL-LANG-310 rest views must preserve origin elements without copying: " +
-                    result.error + result.output);
+)ns", 5);
+        }});
+}
+
+void registerListPatternArrayCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-357", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "array", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-357", "T03ListArray", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] values = new int[4];
+        values[0] = 10; values[1] = 20; values[2] = 30; values[3] = 40;
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns", 52);
+        }});
+}
+
+void registerListPatternInlineArrayCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-358", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "inline-array", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-358", "T03ListInlineArray", R"ns(
+class Program
+{
+    private static int Read(in int[4] values)
+    {
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+
+    public static int Main()
+    {
+        int[4] values;
+        values[0] = 10; values[1] = 20; values[2] = 30; values[3] = 40;
+        int mutableResult = match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+        int emptyAtEnd = match(values)
+        {
+            [10, 20, 30, 40, .. var empty] => empty.Length(),
+            _ => -1
+        };
+        return mutableResult + Read(in values) + emptyAtEnd;
+    }
+}
+)ns", 104);
+        }});
+}
+
+void registerListPatternSpanCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-359", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "span", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-359", "T03ListSpan", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        int[] storage = new int[4];
+        storage[0] = 10; storage[1] = 20; storage[2] = 30; storage[3] = 40;
+        Span<int> values = Spans.Of<int>(storage);
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns", 52);
+        }});
+}
+
+void registerListPatternReadOnlySpanCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-360", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "readonly-span", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-360", "T03ListReadOnlySpan", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        int[] storage = new int[4];
+        storage[0] = 10; storage[1] = 20; storage[2] = 30; storage[3] = 40;
+        ReadOnlySpan<int> values = Spans.ReadOnlyOf<int>(storage);
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns", 52);
+        }});
+}
+
+void registerListPatternStringViewCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-361", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "string-view", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-361", "T03ListStringView", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        StringView values = StringView.Of("hello");
+        return match(values) { [.. var all] => all.Length(), _ => 0 };
+    }
+}
+)ns", 5);
+        }});
+}
+
+void registerListPatternProtocolCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-362", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "pattern", "list", "rest", "protocol", "borrow", "view"},
+        [](TestContext& context) {
+            verifyT03ListPatternSubstrate(context, "TL-LANG-362", "T03ListProtocol", R"ns(
+public copy borrowed struct PatternCollection
+{
+    private int* data;
+    public PatternCollection(int* source, int length) { data = source; Count = length; }
+    public int Count;
+    public readonly int Length() { return Count; }
+    public readonly int this[int index] { get { return data[index]; } }
+    public readonly PatternCollection Slice(int start, int length)
+    {
+        return new PatternCollection(data + start, length);
+    }
+}
+class Program
+{
+    public static int Main()
+    {
+        int* storage = stackalloc int[4];
+        storage[0] = 10; storage[1] = 20; storage[2] = 30; storage[3] = 40;
+        PatternCollection values = new PatternCollection(storage, 4);
+        return match(values)
+        {
+            [10, .. var middle, 40] => middle.Length() + middle[0] + middle[1],
+            _ => 0
+        };
+    }
+}
+)ns", 52);
         }});
 }
 
@@ -4222,7 +4407,13 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDefaultDispatchAbiCase(registry);
     registerListPatternShapeCase(registry);
     registerListPatternRestCaptureCase(registry);
-    registerListPatternSubstratesCase(registry);
+    registerListPatternStringCase(registry);
+    registerListPatternArrayCase(registry);
+    registerListPatternInlineArrayCase(registry);
+    registerListPatternSpanCase(registry);
+    registerListPatternReadOnlySpanCase(registry);
+    registerListPatternStringViewCase(registry);
+    registerListPatternProtocolCase(registry);
     registerPropertyPatternCase(registry);
     registerListExhaustivenessCase(registry);
     registerPatternBindingModeCase(registry);

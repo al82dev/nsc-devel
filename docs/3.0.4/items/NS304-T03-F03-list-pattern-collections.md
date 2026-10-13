@@ -1,7 +1,20 @@
 # NS304-T03-F03 — list patterns sobre colecciones nativas y protocolo usuario
 
-Estado: `EN IMPLEMENTACIÓN` (longitud unificada y materialización previa a Sema para vistas de
-array; integración completa de los seis sustratos pendiente).
+Estado: `EN IMPLEMENTACIÓN` (los siete sustratos ejecutables pasan individualmente; permanecen
+abiertos los oráculos contractuales de UTF-8, alias/no-copia observable y escape negativo).
+
+## Evidencia focal de sustratos — 2026-10-13
+
+- Casos canónicos independientes: `TL-LANG-310`, `TL-LANG-357`–`TL-LANG-362`.
+- Matriz dirigida: **7/7 PASS** con `nsc_component_tests --case <ID>`.
+- `TL-LANG-358` fuerza las dos operaciones de fixed array: local mutable → `Span<int>` y
+  parámetro `in int[4]` → `ReadOnlySpan<int>`. Ambos slices empiezan en índice 1 y validan
+  `Length()` e indexación; además cubre el límite vacío `start == extent`, `count == 0`.
+- El lowering LLVM construye `{data,count}` sobre la dirección del almacenamiento inline, sin
+  reservar ni copiar elementos, y valida `start/count` contra el extent del tipo fijo.
+- Esta evidencia no certifica por sí sola todos los oráculos del expediente: el fixture string
+  actual es ASCII, los casos positivos no observan alias mediante mutación posterior y todavía no
+  existe aquí el negativo de escape desde `stackalloc`. Por ello F03 continúa abierto.
 
 ## Cierre parcial B1 — identidad de especializaciones
 
