@@ -2662,6 +2662,89 @@ class Program
         }});
 }
 
+void registerMethodGroupRankingCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-367", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "method-group", "ranking", "fn-pointer", "fn-reference", "overload"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T04MethodGroupRanking", "Exe", R"ns(
+class Program
+{
+    public static int Pick(int x) { return x; }
+    public static long Pick(long x) { return x + 100; }
+
+    public static int Main()
+    {
+        fn*(int) -> int f = Pick;
+        int a = f(21);
+        int b = f(40);
+        fn&(int) -> int r = Pick;
+        int c = r(0);
+        return a + b + c;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T04MethodGroupRanking.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-367 fn*/fn& method-group ranking must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 61,
+                "TL-LANG-367 fn* target must rank the int overload (21 + 40 + 0 = 61): " +
+                    result.error + result.output);
+
+            const std::filesystem::path captureProject = products.writeProject(
+                "T04FnPointerCapture", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int y = 5;
+        fn*(int) -> int f = (x) => x + y;
+        return f(1);
+    }
+}
+)ns");
+            const external_program_support::Result captureRejected = emitT01Product(
+                L"--emit-project-oop-exe", captureProject,
+                products.directory() / "T04FnPointerCapture.exe", products.directory());
+            context.expect(captureRejected.started && captureRejected.exitCode != 0 &&
+                    (captureRejected.error + captureRejected.output).find("capture") !=
+                        std::string::npos,
+                "TL-LANG-367 a capturing lambda must not convert to fn* (no environment): " +
+                    captureRejected.error + captureRejected.output);
+
+            const std::filesystem::path ambiguousProject = products.writeProject(
+                "T04MethodGroupAmbiguous", "Exe", R"ns(
+class Program
+{
+    public static int Pick(int x) { return x; }
+    public static long Pick(long x) { return x + 100; }
+    public static int Main()
+    {
+        var f = Pick;
+        return f(1);
+    }
+}
+)ns");
+            const external_program_support::Result ambiguousRejected = emitT01Product(
+                L"--emit-project-oop-exe", ambiguousProject,
+                products.directory() / "T04MethodGroupAmbiguous.exe", products.directory());
+            context.expect(ambiguousRejected.started && ambiguousRejected.exitCode != 0 &&
+                    (ambiguousRejected.error + ambiguousRejected.output).find("multiple overloads") !=
+                        std::string::npos,
+                "TL-LANG-367 a multi-overload method group must report ambiguity under var: " +
+                    ambiguousRejected.error + ambiguousRejected.output);
+        }});
+}
+
 void registerMethodGroupNaturalTypeCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-319", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -4627,6 +4710,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerLambdaDefaultParamCase(registry);
     registerStaticLambdaCase(registry);
     registerMethodGroupNaturalTypeCase(registry);
+    registerMethodGroupRankingCase(registry);
     registerClosureErrorCase(registry);
     registerClosureErrorThrowCase(registry);
     registerExtensionMethodCase(registry);
