@@ -13,18 +13,21 @@
 
 ## Gap F02 (validado con intento real)
 
-- El parser SÍ acepta `PropertyDeclaration` y baja el getter a un método top-level con el nombre de
-  la property (`f09b24da`), así que `21.Doubled()` (llamada) ya funciona como extension method.
-- `21.Doubled` (property, sin `()`) sigue fallando: `bindExtension` lo devuelve como METHOD GROUP
-  ("can only be used as a call target"). Falta AUTO-INVOCAR el getter (método zero-arg) cuando la
-  extension property se usa como valor. La auto-invocación es un cambio Sema (analogo al
-  `resolveSyntheticCall` de "list-pattern-length", pero para namespace functions).
+- El parser baja el getter a una `FunctionDeclaration` top-level con el nombre de la property
+  (`f09b24da` + `bdc762f2`), así `21.Doubled()` (llamada) ya funciona.
+- `21.Doubled` (property) ya se AUTO-INVOCA en Sema (`bindExtension` auto-invoca el getter
+  receiver-only antes de registrar el method group, `bdc762f2`).
+- **Falta HIR**: el member access `21.Doubled` no baja como llamada de namespace ("Stage 34 cannot
+  map identifier/member expression to Stage 27 binding"). Hay que reconocer el
+  `NamespaceFunctionCallBinding` en el path de member access del HIR (extraer el bloque de
+  ProjectOopHirModel.cpp:5703 a un helper y llamarlo desde el member access).
 
 ## Plan
 
-1. ✅ Parser: property → getter método top-level con receptor.
-2. Auto-invocar el getter en `bindExtension` (un solo candidato zero-arg + contexto de valor).
-3. Prueba `TL-LANG-324` (ya redactada; se re-registra al pasar).
+1. ✅ Parser: property → getter `FunctionDeclaration` top-level con receptor.
+2. ✅ Sema: auto-invocar el getter en `bindExtension`.
+3. HIR: bajar el member access auto-invocado como llamada de namespace.
+4. Prueba `TL-LANG-324` (ya redactada; se re-registra al pasar).
 
 ## Prueba puntual
 
