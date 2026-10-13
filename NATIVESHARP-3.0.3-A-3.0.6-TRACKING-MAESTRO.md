@@ -1057,7 +1057,7 @@ T00
 - [x] `NS304-T10-F04` — Validar formato consteval e interpolación constante pura. *(handler estático T01-F06 + TL-LANG-336 literal hole.)*
 - [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value + compound + token `?[` + READ/WRITE de array nativo (`arr?[i]`/`arr?[i]=v`) via NullConditionalArrayLoad/Store + TL-LANG-340/342/345; indexador de usuario + RHS condicional residual.)*
 - [ ] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos. *(numérico + string concat (`obj?.Name += "x"`) via operation + applyBinaryOperation/concat + TL-LANG-342/346; ++/-- residual.)*
-- [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(lowering parser→StringLiteralExpression: ident/alias, miembro, callee/receptor y `Generic<int>`→baseName; TL-LANG-331 + generic method TL-LANG-350 + qualified generic `nameof(Foo.Bar<int>)`→"Bar" TL-LANG-353.)*
+- [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(AST conserva operando; GenericModel/NameLookup/Sema resuelven sin evaluar; HIR emite la constante sólo tras éxito. Evidencia focal 2026-10-13: TA-AST-025 y TL-LANG-331/350/353/356 PASS, con negativos de símbolo inexistente, inaccesibilidad y aridad.)*
 - [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; no-culture residual bloqueado en la feature.)*
 
 ### T11 — spans, referencias y genéricos modernos

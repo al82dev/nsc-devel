@@ -9668,6 +9668,265 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = "builtin:char";
             result.valid = true;
             break;
+        case ast::AstNodeKind::NameOfExpression:
+        {
+            const ast::AstNode* target = expression->first();
+            while (target != nullptr &&
+                   (target->kind() == ast::AstNodeKind::CallExpression ||
+                    target->kind() == ast::AstNodeKind::IndexExpression))
+            {
+                target = target->first();
+            }
+            if (target == nullptr || expression->text().empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "nameof requires a symbol, member, or generic name");
+                break;
+            }
+
+            std::span<ast::TypeSyntax* const> genericArguments = expression->typeSyntaxes();
+            if (genericArguments.empty() && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::CallExpression)
+                genericArguments = expression->first()->typeSyntaxes();
+
+            bool resolved = false;
+            bool typeCandidateFound = false;
+            if (nameLookup_ != nullptr)
+            {
+                if (nameLookup_->resolvedTypeOrdinal(expression->typeSyntax()).has_value())
+                {
+                    typeCandidateFound = true;
+                    resolved = true;
+                }
+                else if (const ExpressionTypeNameBinding* type =
+                        nameLookup_->expressionTypeBinding(target);
+                    type != nullptr && !type->candidateTypeOrdinals.empty())
+                {
+                    typeCandidateFound = true;
+                    if (type->candidateTypeOrdinals.size() != 1U)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::AmbiguousTypeName,
+                            diagnostics::DiagnosticSeverity::Error,
+                            target->range(),
+                            "ambiguous type name '" + type->writtenName + "'; candidates: " +
+                                typeCandidateList(type->candidateTypeOrdinals, *nameLookup_));
+                    }
+                    else
+                    {
+                        const std::size_t typeOrdinal = type->candidateTypeOrdinals.front();
+                        const std::size_t expected = typeOrdinal < nameLookup_->namedTypes().size()
+                            ? nameLookup_->namedTypes()[typeOrdinal].identity.arity() : 0U;
+                        if (!genericArguments.empty() && expected != genericArguments.size())
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidArgumentCount,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "type '" + expression->text() + "' expects " +
+                                    std::to_string(expected) +
+                                    " generic argument(s) but received " +
+                                    std::to_string(genericArguments.size()));
+                        }
+                        else
+                        {
+                            resolved = true;
+                        }
+                    }
+                }
+            }
+
+            if (!typeCandidateFound)
+            {
+                bool genericMethodNameFound = false;
+                if (!genericArguments.empty() && memberModel_ != nullptr &&
+                    nameLookup_ != nullptr && inheritanceModel_ != nullptr)
+                {
+                    std::optional<std::size_t> ownerTypeOrdinal;
+                    if (target->kind() == ast::AstNodeKind::IdentifierExpression)
+                    {
+                        if (const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal))
+                            ownerTypeOrdinal = caller->declaringTypeOrdinal;
+                    }
+                    else if (target->kind() == ast::AstNodeKind::MemberExpression &&
+                             target->first() != nullptr)
+                    {
+                        if (const ExpressionTypeNameBinding* receiver =
+                                nameLookup_->expressionTypeBinding(target->first());
+                            receiver != nullptr && receiver->candidateTypeOrdinals.size() == 1U)
+                            ownerTypeOrdinal = receiver->candidateTypeOrdinals.front();
+                    }
+
+                    if (ownerTypeOrdinal.has_value())
+                    {
+                        const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+                        const std::size_t accessingTypeOrdinal = caller == nullptr
+                            ? *ownerTypeOrdinal : caller->declaringTypeOrdinal;
+                        for (const std::size_t ordinal :
+                             memberModel_->findMembers(*ownerTypeOrdinal, expression->text()))
+                        {
+                            if (ordinal >= memberModel_->members().size())
+                            {
+                                continue;
+                            }
+                            const ClassMemberSymbol& method = memberModel_->members()[ordinal];
+                            if (method.kind != ClassMemberKind::Method || method.syntax == nullptr)
+                                continue;
+                            if (!ProjectMemberAccessibility::isAccessible(
+                                    method, accessingTypeOrdinal, ownerTypeOrdinal,
+                                    *nameLookup_, *inheritanceModel_))
+                                continue;
+                            genericMethodNameFound = true;
+                            if (method.syntax->genericParameters().size() ==
+                                genericArguments.size())
+                            {
+                                resolved = true;
+                                break;
+                            }
+                        }
+
+                        if (!resolved && genericModel_ != nullptr &&
+                            *ownerTypeOrdinal < nameLookup_->namedTypes().size())
+                        {
+                            const NamedTypeDeclaration& owner =
+                                nameLookup_->namedTypes()[*ownerTypeOrdinal];
+                            std::string ownerName;
+                            for (const compilation::TypeNameSegment& segment :
+                                 owner.identity.containingTypes())
+                            {
+                                if (!ownerName.empty())
+                                {
+                                    ownerName += "+";
+                                }
+                                ownerName += segment.name;
+                            }
+                            if (!ownerName.empty())
+                            {
+                                ownerName += "+";
+                            }
+                            ownerName += owner.identity.name();
+
+                            std::string namespaceName;
+                            for (const std::string& segment : owner.identity.namespaceSegments())
+                            {
+                                if (!namespaceName.empty())
+                                {
+                                    namespaceName += ".";
+                                }
+                                namespaceName += segment;
+                            }
+
+                            for (const GenericTemplateRecord& method : genericModel_->templates())
+                            {
+                                if (method.kind != GenericTemplateKind::Method ||
+                                    method.projectOrdinal != owner.projectOrdinal ||
+                                    method.namespaceName != namespaceName ||
+                                    method.ownerName != ownerName ||
+                                    method.name != expression->text())
+                                {
+                                    continue;
+                                }
+                                genericMethodNameFound = true;
+                                const bool sameOwner = caller != nullptr &&
+                                    caller->declaringTypeOrdinal == *ownerTypeOrdinal;
+                                if (!sameOwner &&
+                                    method.accessibility != GenericTemplateAccessibility::Public)
+                                {
+                                    continue;
+                                }
+                                if (method.parameters.size() == genericArguments.size())
+                                {
+                                    resolved = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ExpressionResult symbol;
+                if (!resolved && !genericMethodNameFound)
+                {
+                    const OwnershipFlowSnapshot beforeOperand = captureOwnershipFlow();
+                    const bool previousUnevaluated = inUnevaluatedOperand_;
+                    inUnevaluatedOperand_ = true;
+                    symbol = analyzeExpression(
+                        target, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                        /*allowMethodGroup=*/true,
+                        /*allowEvent=*/true);
+                    inUnevaluatedOperand_ = previousUnevaluated;
+                    restoreOwnershipFlow(beforeOperand);
+                }
+
+                if (!resolved)
+                {
+                    if (genericMethodNameFound)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidArgumentCount,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "no symbol named '" + expression->text() + "' accepts " +
+                                std::to_string(genericArguments.size()) +
+                                " generic argument(s)");
+                    }
+                    else if (symbol.methodGroup && !genericArguments.empty())
+                    {
+                        resolved = std::ranges::any_of(
+                            symbol.methodCandidates,
+                            [&](std::size_t ordinal)
+                            {
+                                const ClassMemberSymbol* method = methodSymbol(ordinal);
+                                return method != nullptr && method->syntax != nullptr &&
+                                    method->syntax->genericParameters().size() ==
+                                        genericArguments.size();
+                            });
+                        if (!resolved)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidArgumentCount,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "no symbol named '" + expression->text() + "' accepts " +
+                                    std::to_string(genericArguments.size()) +
+                                    " generic argument(s)");
+                        }
+                    }
+                    else if (!genericArguments.empty() && symbol.valid && !symbol.methodGroup)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidArgumentCount,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "symbol '" + expression->text() +
+                                "' does not accept generic arguments");
+                    }
+                    else
+                    {
+                        resolved = symbol.valid || symbol.methodGroup;
+                    }
+                }
+            }
+
+            if (!resolved)
+            {
+                break;
+            }
+            result.typeKey = "string-literal";
+            result.valid = true;
+            coreBindings_.push_back(MethodCoreBinding{
+                MethodCoreOperationKind::StringLiteral,
+                expression,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                "builtin:string",
+                "builtin:char",
+                false, std::nullopt, std::nullopt});
+            break;
+        }
         case ast::AstNodeKind::StringLiteralExpression:
             result.typeKey = "string-literal";
             result.valid = true;
@@ -22549,6 +22808,7 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
                     0,
                     0.0,
                     node->tokenKind() == TokenKind::KwTrue};
+            case ast::AstNodeKind::NameOfExpression:
             case ast::AstNodeKind::StringLiteralExpression:
                 return Stage37ConstantValue{
                     Stage37ConstantKind::String,

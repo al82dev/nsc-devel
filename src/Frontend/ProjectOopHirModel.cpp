@@ -4301,6 +4301,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::StringLiteralExpression:
+        case ast::AstNodeKind::NameOfExpression:
         {
             if (addressContext)
             {

@@ -2291,7 +2291,32 @@ void ProjectGenericModel::processNode(
             cloneAliasType(unit.arena(), node->typeSyntax(), {}, conflict);
     }
 
-    if (node->typeSyntax() != nullptr)
+    if (node->kind() == ast::AstNodeKind::NameOfExpression &&
+        node->typeSyntax() != nullptr && !node->typeSyntax()->typeArguments().empty())
+    {
+        ast::TypeSyntax* candidate = node->typeSyntax();
+        TemplateState* typeTemplate = resolveTypeTemplate(
+            unit, currentNamespace, candidate->baseName(), candidate->typeArguments().size());
+        if (typeTemplate == nullptr)
+        {
+            typeTemplate = resolveTypeTemplate(
+                unit, currentNamespace, candidate->baseName(),
+                std::numeric_limits<std::size_t>::max());
+        }
+        if (typeTemplate != nullptr)
+        {
+            processTypeSyntax(unit, candidate, currentNamespace, currentScope, diagnostics);
+        }
+        else
+        {
+            // A generic method name has the same token shape as a closed generic type. Its
+            // argument types still participate in generic materialization, but the enclosing
+            // spelling is resolved later as a method group by the body model.
+            for (ast::TypeSyntax* argument : candidate->typeArguments())
+                processTypeSyntax(unit, argument, currentNamespace, currentScope, diagnostics);
+        }
+    }
+    else if (node->typeSyntax() != nullptr)
     {
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }

@@ -176,7 +176,12 @@ enum class AstNodeKind
     // NativeSharp 3.0 T06-F01. `yield return expr` / `yield break`. first() is the yielded value
     // (nullptr for break). The productive frame lowering is T06-F03.
     YieldReturnStatement,
-    YieldBreakStatement
+    YieldBreakStatement,
+
+    // NativeSharp 3.0 T10-F07. first() preserves the source operand; typeSyntaxes() preserves
+    // explicit generic arguments. Semantic analysis resolves that syntax without evaluating it
+    // before the node becomes a compile-time string constant.
+    NameOfExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

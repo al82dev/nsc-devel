@@ -15159,18 +15159,19 @@ ast::AstNode* Parser::parseCollectionExpression()
 
 ast::AstNode* Parser::parseNameOfExpression()
 {
-    // NS304-T10-F07: `nameof(x)` es una constante de cadena de tiempo de compilación igual al
-    // nombre del último identificador/miembro de `x`. Se baja a un StringLiteralExpression en el
-    // parser, de modo que reutiliza toda la maquinaria existente de literales de cadena.
+    // Keep the source operand until semantic lookup proves that the selected symbol exists and
+    // is accessible. The constant string is produced only after that validation.
     const SourceRange begin = current().range();
     consume(); // `nameof`
     expect(TokenKind::LeftParen, "'(' after 'nameof'");
 
-    std::string name;
-    // `nameof(Generic<int>)` / `nameof(Space.Type<T>)`: the argument is a closed generic type
-    // reference. parseExpression would misread `Generic < int` (the `<` reads as a comparison),
-    // so resolve the type here and take its base name. The qualified spelling `A.B<T>` needs the
-    // same treatment: scan the identifier chain to the `<`.
+    ast::AstNode* operand = nullptr;
+    std::vector<ast::TypeSyntax*> genericArguments;
+    ast::TypeSyntax* genericTarget = nullptr;
+    // A generic name without a call cannot use the ordinary postfix parser: that parser rightly
+    // requires `<...>` to be followed by `(`. Keep the same identifier/member AST shape here and
+    // preserve the complete candidate type plus its explicit arguments on NameOfExpression;
+    // Sema decides whether the name denotes a type or a method and validates its arity.
     const auto qualifiedGenericType = [&]()
     {
         std::size_t cursor = index_;
@@ -15188,49 +15189,67 @@ ast::AstNode* Parser::parseNameOfExpression()
     };
     if (at(TokenKind::Identifier) && (peek().kind() == TokenKind::Less || qualifiedGenericType()))
     {
-        if (ast::TypeSyntax* type = parseType())
+        const lexer::Token& identifier = consume();
+        SourceRange genericRange = identifier.range();
+        std::string qualifiedName(identifier.lexeme());
+        operand = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IdentifierExpression, identifier.range());
+        operand->setText(std::string(identifier.lexeme()));
+        while (consumeIf(TokenKind::Dot))
         {
-            name = type->baseName();
-            // `nameof(Foo.Bar<T>)` devuelve el nombre simple "Bar", no el cualificado.
-            const std::size_t dot = name.rfind('.');
-            if (dot != std::string::npos) name = name.substr(dot + 1);
+            const lexer::Token& member = current();
+            expect(TokenKind::Identifier, "member name in 'nameof' argument");
+            ast::AstNode* access = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MemberExpression,
+                SourceRange(operand->range().begin(), member.range().end()));
+            access->setFirst(operand);
+            access->setText(std::string(member.lexeme()));
+            operand = access;
+            genericRange = join(genericRange, member.range());
+            qualifiedName += ".";
+            qualifiedName += member.lexeme();
+        }
+        parseTypeArgumentList(genericArguments);
+        genericTarget = arena_.make<ast::TypeSyntax>(
+            genericRange, TokenKind::Identifier, std::move(qualifiedName));
+        for (ast::TypeSyntax* argument : genericArguments)
+        {
+            genericTarget->addTypeArgument(argument);
         }
     }
-    if (name.empty())
+    else
     {
-        // `nameof(Foo.Bar.Method<int>)` (método genérico cualificado): parseType falla y se cae a
-        // la ruta de expresión, que extrae el nombre del último miembro.
-        ast::AstNode* argument = parseExpression();
-        const ast::AstNode* cursor = argument;
-        while (cursor != nullptr && name.empty())
-        {
-            switch (cursor->kind())
-            {
-                case ast::AstNodeKind::IdentifierExpression:
-                    name = cursor->text();
-                    break;
-                case ast::AstNodeKind::MemberExpression:
-                case ast::AstNodeKind::PointerMemberExpression:
-                case ast::AstNodeKind::NullConditionalMemberExpression:
-                    name = cursor->text();
-                    break;
-                case ast::AstNodeKind::CallExpression:
-                case ast::AstNodeKind::IndexExpression:
-                    cursor = cursor->first();
-                    continue;
-                default:
-                    break;
-            }
-        }
+        operand = parseExpression();
     }
 
     const SourceRange end = current().range();
     expect(TokenKind::RightParen, "')' after 'nameof' argument");
 
-    ast::AstNode* literal = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::StringLiteralExpression, join(begin, end));
-    literal->setText(std::move(name));
-    return literal;
+    ast::AstNode* expression = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::NameOfExpression, join(begin, end));
+    expression->setFirst(operand);
+    expression->setTypeSyntax(genericTarget);
+    for (ast::TypeSyntax* argument : genericArguments)
+    {
+        expression->addTypeSyntax(argument);
+    }
+
+    const ast::AstNode* named = operand;
+    while (named != nullptr &&
+           (named->kind() == ast::AstNodeKind::CallExpression ||
+            named->kind() == ast::AstNodeKind::IndexExpression))
+    {
+        named = named->first();
+    }
+    if (named != nullptr &&
+        (named->kind() == ast::AstNodeKind::IdentifierExpression ||
+         named->kind() == ast::AstNodeKind::MemberExpression ||
+         named->kind() == ast::AstNodeKind::PointerMemberExpression ||
+         named->kind() == ast::AstNodeKind::NullConditionalMemberExpression))
+    {
+        expression->setText(named->text());
+    }
+    return expression;
 }
 
 ast::AstNode* Parser::parsePrimaryExpression()

@@ -1387,8 +1387,31 @@ void ProjectNameLookup::bindNode(
     {
         bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope, index);
     }
+    else if (node->kind() == ast::AstNodeKind::NameOfExpression)
+    {
+        const ast::AstNode* target = node->first();
+        while (target != nullptr &&
+               (target->kind() == ast::AstNodeKind::CallExpression ||
+                target->kind() == ast::AstNodeKind::IndexExpression))
+            target = target->first();
+        if (node->typeSyntax() != nullptr && node->typeSyntax()->typeArguments().empty())
+        {
+            bindTypeSyntax(
+                unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
+        }
+        else
+        {
+            bindExpressionTypeReceiver(unit, target, namespaceSegments, scope, index);
+            if (node->typeSyntax() != nullptr)
+            {
+                for (const ast::TypeSyntax* argument : node->typeSyntax()->typeArguments())
+                    bindTypeSyntax(
+                        unit, argument, namespaceSegments, scope, diagnostics, index);
+            }
+        }
+    }
 
-    if (node->typeSyntax() != nullptr)
+    if (node->typeSyntax() != nullptr && node->kind() != ast::AstNodeKind::NameOfExpression)
     {
         bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
         for (const ast::TypeModifierSyntax& modifier : node->typeSyntax()->modifiers())

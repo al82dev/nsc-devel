@@ -2828,13 +2828,30 @@ void registerNameOfCase(TestRegistry& registry)
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
                 "T10NameOf", "Exe", R"ns(
+class Box<T>
+{
+}
+
 class Program
 {
+    private static int Counter;
+
+    private static int SideEffect()
+    {
+        Counter = Counter + 1;
+        return Counter;
+    }
+
     public static int Main()
     {
         string s = nameof(Program);
         string m = nameof(Program.Main);
         string g = nameof(Box<int>);
+        string e = nameof(SideEffect());
+        if (Counter != 0 || e.Length != 10)
+        {
+            return 1;
+        }
         return s.Length + m.Length + g.Length;
     }
 }
@@ -2849,7 +2866,7 @@ class Program
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 14,
-                "TL-LANG-331 nameof(Program)=\"Program\" + \"Main\" + \"Box\" must be 7+4+3=14: " +
+                "TL-LANG-331 nameof must preserve spelling without evaluating SideEffect(): " +
                     result.error + result.output);
         }});
 }
@@ -3614,6 +3631,29 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 6,
                 "TL-LANG-350 nameof(Method<int>) must be \"Method\" (length 6): " +
                     result.error + result.output);
+
+            const std::filesystem::path invalidProject = products.writeProject(
+                "T10NameOfGenericMethodArity", "Exe", R"ns(
+class Program
+{
+    public static void Method<T>() { }
+    public static int Main()
+    {
+        string n = nameof(Method<int, int>);
+        return n.Length;
+    }
+}
+)ns");
+            const std::filesystem::path invalidExecutable =
+                products.directory() / "T10NameOfGenericMethodArity.exe";
+            const external_program_support::Result invalid = emitT01Product(
+                L"--emit-project-oop-exe", invalidProject, invalidExecutable,
+                products.directory());
+            const std::string invalidEvidence = invalid.error + invalid.output;
+            context.expect(invalid.started && invalid.exitCode != 0 &&
+                    invalidEvidence.find("accepts 2 generic argument(s)") != std::string::npos,
+                "TL-LANG-350 nameof must reject an invalid generic method arity: " +
+                    invalidEvidence);
         }});
 }
 
@@ -3721,6 +3761,27 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 3,
                 "TL-LANG-353 nameof(Foo.Bar<int>) must be \"Bar\" (length 3): " +
                     result.error + result.output);
+
+            const std::filesystem::path invalidProject = products.writeProject(
+                "T10NameOfUnknownSymbol", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        string n = nameof(MissingType);
+        return n.Length;
+    }
+}
+)ns");
+            const std::filesystem::path invalidExecutable =
+                products.directory() / "T10NameOfUnknownSymbol.exe";
+            const external_program_support::Result invalid = emitT01Product(
+                L"--emit-project-oop-exe", invalidProject, invalidExecutable,
+                products.directory());
+            const std::string invalidEvidence = invalid.error + invalid.output;
+            context.expect(invalid.started && invalid.exitCode != 0 &&
+                    invalidEvidence.find("unknown identifier 'MissingType'") != std::string::npos,
+                "TL-LANG-353 nameof must reject an unresolved symbol: " + invalidEvidence);
         }});
 }
 
@@ -3828,6 +3889,35 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 6,
                 "TL-LANG-356 nameof(Foo.Bar.Method<int>) must be \"Method\" (length 6): " +
                     result.error + result.output);
+
+            const std::filesystem::path invalidProject = products.writeProject(
+                "T10NameOfInaccessibleMember", "Exe", R"ns(
+namespace HiddenApi
+{
+    class Gate
+    {
+        private static int Secret;
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        string n = nameof(HiddenApi.Gate.Secret);
+        return n.Length;
+    }
+}
+)ns");
+            const std::filesystem::path invalidExecutable =
+                products.directory() / "T10NameOfInaccessibleMember.exe";
+            const external_program_support::Result invalid = emitT01Product(
+                L"--emit-project-oop-exe", invalidProject, invalidExecutable,
+                products.directory());
+            const std::string invalidEvidence = invalid.error + invalid.output;
+            context.expect(invalid.started && invalid.exitCode != 0 &&
+                    invalidEvidence.find("not accessible") != std::string::npos,
+                "TL-LANG-356 nameof must reject an inaccessible member: " + invalidEvidence);
         }});
 }
 

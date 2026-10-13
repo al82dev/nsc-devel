@@ -25,7 +25,7 @@ struct ExpectedAstKind final
 
 // Independent CA-AST-003 oracle: order and spelling are intentionally explicit so a product-side
 // reorder, insertion, or rename cannot update the expected values implicitly.
-constexpr std::array<ExpectedAstKind, 105> ExpectedAstKinds = {{
+constexpr std::array<ExpectedAstKind, 106> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -131,6 +131,7 @@ constexpr std::array<ExpectedAstKind, 105> ExpectedAstKinds = {{
     {AstNodeKind::AwaitExpression, "AwaitExpression"},
     {AstNodeKind::YieldReturnStatement, "YieldReturnStatement"},
     {AstNodeKind::YieldBreakStatement, "YieldBreakStatement"},
+    {AstNodeKind::NameOfExpression, "NameOfExpression"},
 }};
 
 constexpr std::size_t HistoricalKindCount = 83;
@@ -215,8 +216,8 @@ void testAppendedKindOrder(TestContext& context)
 {
     using Underlying = std::underlying_type_t<AstNodeKind>;
     context.expect(ExpectedAstKinds[HistoricalKindCount].kind == AstNodeKind::NullCoalescingExpression &&
-            ExpectedAstKinds.back().kind == AstNodeKind::YieldBreakStatement,
-        "TA-AST-025 appended range must remain NullCoalescingExpression through YieldBreakStatement");
+            ExpectedAstKinds.back().kind == AstNodeKind::NameOfExpression,
+        "TA-AST-025 appended range must remain NullCoalescingExpression through NameOfExpression");
     for (std::size_t index = HistoricalKindCount; index < ExpectedAstKinds.size(); ++index)
     {
         context.expect(static_cast<Underlying>(ExpectedAstKinds[index].kind) ==
