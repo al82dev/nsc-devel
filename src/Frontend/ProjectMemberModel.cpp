@@ -1422,6 +1422,13 @@ std::string ProjectMemberModel::canonicalTypeKey(
         }
         if (result.empty()) result = "invalid-simd:" + syntax->baseName();
     }
+    else if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 1)
+    {
+        // NS304-T05-F09: `Future<T>` is the opaque, nameable future surface. It maps to the
+        // internal `future:<T>` type key (the non-throwing future).
+        result = language::futureTypeKey(
+            canonicalTypeKey(syntax->typeArguments()[0], nameLookup));
+    }
     else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         result = "builtin:" + syntax->baseName();

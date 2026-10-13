@@ -2604,6 +2604,9 @@ bool ProjectGenericModel::processTypeSyntax(
     // NativeSharp 3 portable vectors are structural too. Their lane/count arguments have already
     // been processed, but there is deliberately no nominal template to specialize.
     if (syntax->baseName() == "simd" || syntax->baseName() == "mask") return true;
+    // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal
+    // generic template. Its argument was already processed above.
+    if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 1) return true;
 
     TemplateState* state = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());

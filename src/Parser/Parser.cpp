@@ -354,7 +354,7 @@ Parser::Parser(
       arena_(arena),
       diagnostics_(diagnostics)
 {
-    static constexpr std::array<std::string_view, 16> builtinNames = {
+    static constexpr std::array<std::string_view, 17> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
         "nint", "nuint", "float", "double", "string",
         // C8 "type root": `object` is a KNOWN TYPE NAME here so that `object x = ...;` parses as
@@ -362,7 +362,10 @@ Parser::Parser(
         // name lookup resolves it, as a last resort, to NativeSharp.Core.Object (see
         // ProjectNameLookup::bindTypeSyntax). A project without the root in view therefore gets
         // "unknown type name 'object'" rather than a parse that quietly means something else.
-        "object"};
+        "object",
+        // NS304-T05-F09: `Future<T>` is the opaque future surface. A known type name here so
+        // `Future<int> f = ...;` parses as a declaration (resolved by canonicalTypeKey to future:<T>).
+        "Future"};
 
     for (const std::string_view name : builtinNames)
     {

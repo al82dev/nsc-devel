@@ -1636,7 +1636,10 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
 
     const bool portableSimd = syntax->baseName() == "simd" || syntax->baseName() == "mask";
-    if (syntax->isFunction() || syntax->isTuple() || portableSimd ||
+    // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal type.
+    const bool futureSurface =
+        syntax->baseName() == "Future" && syntax->typeArguments().size() == 1;
+    if (syntax->isFunction() || syntax->isTuple() || portableSimd || futureSurface ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
