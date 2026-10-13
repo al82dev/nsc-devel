@@ -1,6 +1,6 @@
 # NS304-T05-F05 — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones
 
-- **Estado**: ABIERTO (auditado; verificación across-suspension pendiente)
+- **Estado**: PARCIAL (rechazo conservativo de borrow/pin across-suspension cerrado; re-localización y move = refinamiento)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -59,3 +59,15 @@ válido, y rechazar el escape/move inválido. Requiere la suspensión real de F0
 F05 depende de F04 (liveness: los locals vivos existen en el frame) y de F09 (suspensión real).
 El transform de verificación no es ejercitable hasta F09; se implementará cuando el frame guarde
 locals vivos y la primitiva pendiente exista. Orden efectivo: F09 → F04 → F05.
+
+### Cierre parcial (rechazo conservativo) — verificado 2026-10-13
+
+`analyzeCallable` ahora rechaza, tras el cuerpo, cualquier local `Borrowed` o `isPinned` en un
+callable async con punto de suspensión (`await` o `yield;`). El `SuspendStatement` se registra
+también como punto de suspensión. Verificado: `borrowed Box view` a través de `yield` se rechaza
+(`async function cannot hold a borrowed or pinned local across a suspension`); `int value` a través
+de `yield` sigue compilando (exit 10). Registrado `TL-LANG-374` (PASS). Commit `d84ff262`.
+
+**Nota de precisión**: es conservativo (rechaza cualquier borrow/pin en un callable async con
+suspensión, sin def-use liveness). La re-localización de vistas prestadas y la verificación de
+move/self-reference quedan como refinamiento.
