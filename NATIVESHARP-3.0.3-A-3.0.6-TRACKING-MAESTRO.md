@@ -1037,7 +1037,7 @@ T00
 
 ### T09 — construcción, propiedades y eventos
 
-- [ ] `NS304-T09-F01` — Implementar miembros `required` y definite initialization. *(parser reconoce `required` + flag isRequired + TL-LANG-335; validación de inicialización en construcción residual.)*
+- [x] `NS304-T09-F01` — Implementar miembros `required` y definite initialization. *(parser `required` + flag isRequired + assignedRequiredFields_ + verifyRequiredFieldAssignments por constructor + TL-LANG-335.)*
 - [x] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser `init` + marcador `:init` + flag isInit + restricción en constructor + TL-LANG-334; congelamiento efectivo vía backing privado.)*
 - [ ] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible.
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo.

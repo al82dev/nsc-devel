@@ -1,18 +1,21 @@
 # NS304-T09-F01 — Miembros `required` y definite initialization
 
-- **Estado**: PARCIAL (parser + flag `isRequired`) / residual (validación en construcción)
+- **Estado**: CERRADO (parser + flag + validación en constructor)
 - **Rama**: development
 
 ## Resultado
 
 - **Parser** (`src/Parser/Parser.cpp`): `required` se reconoce como modificador contextual en la
-  lista de modificadores de miembro de clase. El campo se marca con el sufijo `required` en su
-  `auxiliaryText` (junto a `at:`/`field-align:`).
-- **Member model** (`ProjectMemberModel.h/.cpp`): nuevo flag `ClassMemberSymbol::isRequired`
-  derivado del marcador `required`.
-- Prueba: `TL-LANG-335` (`public required int Value;` compila y se comporta como campo ordinario).
+  lista de modificadores de miembro de clase; el campo se marca con el sufijo `required` en su
+  `auxiliaryText`.
+- **Member model** (`ProjectMemberModel.h/.cpp`): flag `ClassMemberSymbol::isRequired`.
+- **Sema** (`ProjectMethodBodyModel`): `assignedRequiredFields_` rastrea `X = ...`/`this.X = ...`;
+  `verifyRequiredFieldAssignments` exige que todo campo `required` de instancia se asigne en CADA
+  constructor (se reporta el no asignado). El merger de shards propaga el set.
+- Prueba `TL-LANG-335`: positivo (constructor asigna → 42) y negativo (constructor sin asignar →
+  rechazado).
 
 ## Residual
 
-- **Validación de definite initialization**: exigir que todo miembro `required` se inicialice en el
-  constructor o object initializer; hoy `required` es solo un marcador sin enforcement.
+- **Object initializer** (`new T { X = 1 }`): el initializer de agregado inicializa campos, no
+  properties; no aplica al enforcement de `required` (capacidad aparte).

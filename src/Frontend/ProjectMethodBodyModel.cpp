@@ -1412,6 +1412,7 @@ bool ProjectMethodBodyModel::build(
     }
 
     verifyOutParameterAssignments(diagnostics);
+    verifyRequiredFieldAssignments(diagnostics);
 
     // A required inlining contract cannot be honored by an all-required recursive cycle.  LLVM
     // deliberately refuses to expand recursive alwaysinline call sites, so diagnose the source
@@ -1511,6 +1512,34 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
                 member.parameters[index].range,
                 "out parameter '" + member.parameters[index].name +
                     "' is never assigned in the body of '" + member.name + "'");
+        }
+    }
+}
+
+void ProjectMethodBodyModel::verifyRequiredFieldAssignments(
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // NS304-T09-F01: todo campo `required` de instancia debe asignarse en CADA constructor del
+    // tipo. Se rastrean las asignaciones `X = ...`/`this.X = ...` (assignedRequiredFields_) y aqui
+    // se reportan los que quedaron sin asignar. El object initializer queda fuera de este chequeo.
+    if (memberModel_ == nullptr) return;
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Constructor || member.isStatic) continue;
+        if (!analyzedCallableMembers_.contains(memberOrdinal)) continue;
+        for (std::size_t fieldOrdinal = 0; fieldOrdinal < memberModel_->members().size(); ++fieldOrdinal)
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[fieldOrdinal];
+            if (field.kind != ClassMemberKind::Field || !field.isRequired || field.isStatic) continue;
+            if (field.declaringTypeOrdinal != member.declaringTypeOrdinal) continue;
+            if (assignedRequiredFields_.contains({memberOrdinal, fieldOrdinal})) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                field.syntax != nullptr ? field.syntax->range() : member.syntax->range(),
+                "required field '" + field.name + "' is never assigned in constructor '" +
+                    member.name + "'");
         }
     }
 }
@@ -20309,6 +20338,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     if (!left.valid)
     {
         return {};
+    }
+
+    // NS304-T09-F01: track assignments to `required` instance fields for the constructor check.
+    if (left.assignable && left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+        *left.assignmentMemberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& targetMember =
+            memberModel_->members()[*left.assignmentMemberOrdinal];
+        if (targetMember.kind == ClassMemberKind::Field && targetMember.isRequired &&
+            !targetMember.isStatic)
+        {
+            assignedRequiredFields_.insert({methodMemberOrdinal, *left.assignmentMemberOrdinal});
+        }
     }
 
     std::optional<std::size_t> assignedUnionStorage;

@@ -265,6 +265,8 @@ void ProjectCallableResultMerger::merge(
         destination.staticInterpolationValues_.insert_or_assign(syntax, std::move(value));
     destination.assignedOutParameters_.insert(
         source.assignedOutParameters_.begin(), source.assignedOutParameters_.end());
+    destination.assignedRequiredFields_.insert(
+        source.assignedRequiredFields_.begin(), source.assignedRequiredFields_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&

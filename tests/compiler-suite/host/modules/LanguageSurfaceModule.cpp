@@ -2829,10 +2829,14 @@ class Program
 {
     public required int Value;
 
+    public Program()
+    {
+        Value = 42;
+    }
+
     public static int Main()
     {
         Program p = new Program();
-        p.Value = 42;
         return p.Value;
     }
 }
@@ -2850,6 +2854,31 @@ class Program
             context.expect(result.started && result.error.empty() && result.exitCode == 42,
                 "TL-LANG-335 the required field must behave like an ordinary field: " +
                     result.error + result.output);
+
+            const std::filesystem::path negativeProject = products.writeProject(
+                "T09RequiredNegative", "Exe", R"ns(
+class Program
+{
+    public required int Value;
+
+    public Program()
+    {
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns");
+            const external_program_support::Result rejected = emitT01Product(
+                L"--emit-project-oop-exe", negativeProject,
+                products.directory() / "T09RequiredNegative.exe", products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find(
+                        "required field 'Value' is never assigned") != std::string::npos,
+                "TL-LANG-335 an unassigned required field must be rejected: " +
+                    rejected.error + rejected.output);
         }});
 }
 
