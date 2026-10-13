@@ -9600,6 +9600,23 @@ private:
                     return failValue(error, "iterator GetEnumerator requires one operand");
                 return lowerExpression(node->children.front().get(), error);
             }
+            case frontend::ProjectOopMirNodeKind::IteratorDrop:
+            {
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator Drop requires one operand");
+                LLVMValueRef self = lowerExpression(node->children.front().get(), error);
+                if (self == nullptr) return nullptr;
+                LLVMValueRef dropFn = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 32, "iterator.dropfn.addr"), "iterator.dropfn");
+                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(
+                    LLVMVoidTypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { self };
+                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
+                    return failValue(error, "iterator Drop call failed");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
             {
                 LLVMTypeRef type = llvmType(node->typeKey, error);

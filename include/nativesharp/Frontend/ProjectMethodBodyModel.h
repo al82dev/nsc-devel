@@ -1144,7 +1144,8 @@ enum class MethodCoreOperationKind
     // item (field 2); GetEnumerator returns the iterator itself (for foreach).
     IteratorMoveNext,
     IteratorCurrent,
-    IteratorGetEnumerator
+    IteratorGetEnumerator,
+    IteratorDrop
 };
 
 struct MethodCoreBinding final

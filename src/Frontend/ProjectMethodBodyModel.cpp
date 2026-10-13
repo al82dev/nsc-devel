@@ -14700,7 +14700,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     // NS304-T06-F08: `it.MoveNext()`/`it.GetEnumerator()` synthesize a method-group facade so the
     // call resolves with zero arguments; analyzeCall records the core binding.
     if (!typeReceiver &&
-        (expression->text() == "MoveNext" || expression->text() == "GetEnumerator") &&
+        (expression->text() == "MoveNext" || expression->text() == "GetEnumerator" ||
+         expression->text() == "Drop") &&
         language::iteratorInnerTypeKey(receiver.typeKey).has_value())
     {
         result.methodGroup = true;
@@ -16246,17 +16247,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
         const std::string& memberName = call.methodName;
         const bool isMoveNext = memberName == "MoveNext";
+        const bool isDrop = memberName == "Drop";
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
-                       : MethodCoreOperationKind::IteratorGetEnumerator,
+                       : isDrop ? MethodCoreOperationKind::IteratorDrop
+                                : MethodCoreOperationKind::IteratorGetEnumerator,
             expression,
             methodMemberOrdinal,
             scopeOrdinal,
-            isMoveNext ? "builtin:bool" : callee.receiverTypeKey,
+            isMoveNext ? "builtin:bool" : "builtin:void",
             callee.receiverTypeKey,
             false, std::nullopt, std::nullopt});
         ExpressionResult iteratorResult;
-        iteratorResult.typeKey = isMoveNext ? "builtin:bool" : callee.receiverTypeKey;
+        iteratorResult.typeKey = isMoveNext ? "builtin:bool" : "builtin:void";
         iteratorResult.valid = true;
         return iteratorResult;
     }
@@ -26012,6 +26015,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorMoveNext: return "iterator-move-next";
         case MethodCoreOperationKind::IteratorCurrent: return "iterator-current";
         case MethodCoreOperationKind::IteratorGetEnumerator: return "iterator-get-enumerator";
+        case MethodCoreOperationKind::IteratorDrop: return "iterator-drop";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";
