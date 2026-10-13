@@ -5268,6 +5268,36 @@ private:
             if (!emitDebugParameter(function, index, storage, error)) return false;
         }
 
+        // NS304-T05-F10: expose the future's state discriminant as an artificial debug variable
+        // (offset 0) so a debugger can inspect 0/-1/1..N. Only for the poll (self = parameter 0).
+        if (function.mangledName.ends_with("$poll") &&
+            debugInformation_ == DebugInformationKind::Full &&
+            currentDebugSubprogram_ != nullptr && !parameterStorage_.empty() &&
+            function.body != nullptr && function.body->syntax != nullptr &&
+            function.body->syntax->range().isValid())
+        {
+            LLVMValueRef selfSlot = parameterStorage_[0];
+            LLVMValueRef self = LLVMBuildLoad2(
+                builder_, LLVMPointerTypeInContext(context_, 0), selfSlot, "debug.state.self");
+            const SourceRange range = function.body->syntax->range();
+            LLVMMetadataRef file = debugFile(range.begin());
+            LLVMMetadataRef stateType = debugNamedValueType("builtin:int", "state");
+            if (file != nullptr && stateType != nullptr)
+            {
+                const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+                LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+                    debugBuilder_, currentDebugSubprogram_, "state", 5, file, position.line,
+                    stateType, 1, LLVMDIFlagArtificial, 0);
+                LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+                LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+                    context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+                if (variable != nullptr && expression != nullptr && location != nullptr)
+                    LLVMDIBuilderInsertDeclareRecordAtEnd(
+                        debugBuilder_, self, variable, expression, location,
+                        LLVMGetInsertBlock(builder_));
+            }
+        }
+
         collectLocalAllocas(function.body.get(), error);
         if (!error.empty()) return false;
         for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
