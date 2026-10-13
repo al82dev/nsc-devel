@@ -1907,7 +1907,12 @@ class Program
         int relational = match(p) { { X: >= 5 } => 1, _ => 0 };
         int logical = match(p) { { X: >= 5 & <= 10 } => 2, _ => 0 };
         int notPat = match(p) { { X: !3 } => 4, _ => 0 };
-        return relational + logical + notPat;
+        int notAnd = match(p) { { X: !3 & >= 10 } => 8, _ => 0 };
+        int notOr = match(p) { { X: !5 | >= 5 } => 16, _ => 0 };
+        int grouped = match(p) { { X: !(5 & >= 10) } => 32, _ => 0 };
+        int combined = match(p) { { X: !3 & >= 5 | 5 } => 64, _ => 0 };
+        int guarded = match(p) { { X: !5 | >= 5 } when relational == 1 => 128, _ => 0 };
+        return relational + logical + notPat + notAnd + notOr + grouped + combined + guarded;
     }
 }
 )ns");
@@ -1921,9 +1926,10 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() && result.exitCode == 7,
-                "TL-LANG-311 property sub-patterns must evaluate correctly: " +
-                    result.error + result.output);
+            context.expect(result.started && result.error.empty() && result.exitCode == 247,
+                "TL-LANG-311 pattern precedence must be ! before & before | while grouping and "
+                "guards remain explicit: " + result.error + result.output +
+                    " exit=" + std::to_string(result.exitCode));
         }});
 }
 

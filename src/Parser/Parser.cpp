@@ -10935,7 +10935,9 @@ Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
     if (consumeIf(TokenKind::Bang))
     {
         result.kind = PatternKind::Not;
-        result.children.push_back(parsePattern(true));
+        // Pattern precedence is unary `!`, then `&`, then `|`. Recurse only through the unary
+        // layer here; a grouped pattern deliberately re-enters parsePattern below.
+        result.children.push_back(parsePatternPrimary(true));
         result.range = tokenRangeFrom(patternBegin);
         return result;
     }

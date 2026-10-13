@@ -1,12 +1,14 @@
 # NS304-T03-F04 — Completar property patterns anidados, posicionales, relacionales y lógicos
 
-- **Estado**: EN IMPLEMENTACIÓN (posicional pendiente)
+- **Estado**: CERRADO con evidencia puntual.
 - **Rama**: development
 
 ## Estado (validado)
 
 - Relacionales (`< <= > >=`), lógicos (`not`/`!`, `and`/`&`), y anidados: LISTOS (`TL-LANG-311`).
-- Posicional `T(a, b, ...)`: PENDIENTE.
+- La precedencia canónica es `!` unario, después `&` y finalmente `|`; los paréntesis vuelven a
+  entrar en la gramática completa y preservan agrupación explícita.
+- Posicional `T(a, b, ...)`: LISTO (`TP-PAR-357`, `TL-LANG-322`).
 
 ## Auditoría (posicional)
 
@@ -45,3 +47,10 @@
 ## Prueba puntual
 
 `TL-LANG-322`: `match(point) { Point(x, y) => x + y, _ => 0 }` con `Point` que publica `Deconstruct`.
+
+## Evidencia de precedencia lógica
+
+- 2026-10-13: construcción incremental de `nsc`, 7/7 pasos.
+- 2026-10-13: construcción incremental de `nsc_component_tests`, 4/4 pasos.
+- 2026-10-13: `TL-LANG-311` PASS, 364,823 us. Distingue `!p & q`, `!p | q`,
+  `!(p & q)`, la combinación `!p & q | r` y un guard explícito.
