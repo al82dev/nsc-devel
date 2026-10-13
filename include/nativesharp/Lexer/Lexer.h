@@ -47,6 +47,8 @@ private:
 
     bool decodeEscape(std::string& output, std::uint32_t literalBegin);
     bool decodeEscapeByte(std::uint8_t& output, std::uint32_t literalBegin);
+    bool decodeUnicodeCodePoint(
+        std::uint32_t& output, std::uint32_t literalBegin, std::size_t digitCount);
     void reportInvalid(
         std::uint32_t begin,
         std::uint32_t end,

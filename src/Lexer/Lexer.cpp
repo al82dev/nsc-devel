@@ -1058,6 +1058,41 @@ Token Lexer::makeToken(TokenKind kind, std::uint32_t begin) const
 
 bool Lexer::decodeEscape(std::string& output, std::uint32_t literalBegin)
 {
+    // NS304-T10: `\uXXXX` / `\UXXXXXXXX` codifican un scalar value Unicode como UTF-8.
+    if (current() == 'u' || current() == 'U')
+    {
+        const std::size_t digitCount = current() == 'u' ? 4U : 8U;
+        advance();
+        std::uint32_t codePoint = 0;
+        if (!decodeUnicodeCodePoint(codePoint, literalBegin, digitCount))
+        {
+            return false;
+        }
+        if (codePoint < 0x80)
+        {
+            output.push_back(static_cast<char>(codePoint));
+        }
+        else if (codePoint < 0x800)
+        {
+            output.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+            output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else if (codePoint < 0x10000)
+        {
+            output.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+            output.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else
+        {
+            output.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+            output.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        return true;
+    }
+
     std::uint8_t value = 0;
     if (!decodeEscapeByte(value, literalBegin))
     {
@@ -1107,6 +1142,27 @@ bool Lexer::decodeEscapeByte(std::uint8_t& output, std::uint32_t literalBegin)
             output = static_cast<std::uint8_t>((high << 4) | low);
             return true;
         }
+        case 'u':
+        case 'U':
+        {
+            const std::size_t digitCount = escape == 'u' ? 4U : 8U;
+            std::uint32_t codePoint = 0;
+            if (!decodeUnicodeCodePoint(codePoint, literalBegin, digitCount))
+            {
+                return false;
+            }
+            if (codePoint > 0x7F)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidEscapeSequence,
+                    diagnostics::DiagnosticSeverity::Error,
+                    location(literalBegin),
+                    "char literal Unicode escape must fit one ASCII byte (<= 0x7F)");
+                return false;
+            }
+            output = static_cast<std::uint8_t>(codePoint);
+            return true;
+        }
         default:
             diagnostics_.report(
                 diagnostics::DiagnosticId::InvalidEscapeSequence,
@@ -1115,6 +1171,36 @@ bool Lexer::decodeEscapeByte(std::uint8_t& output, std::uint32_t literalBegin)
                 "unsupported escape sequence");
             return false;
     }
+}
+
+bool Lexer::decodeUnicodeCodePoint(
+    std::uint32_t& output, std::uint32_t literalBegin, std::size_t digitCount)
+{
+    output = 0;
+    for (std::size_t index = 0; index < digitCount; ++index)
+    {
+        if (isAtEnd() || !isHexDigit(current()))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidEscapeSequence,
+                diagnostics::DiagnosticSeverity::Error,
+                location(literalBegin),
+                "\\u/\\U escape requires exactly " + std::to_string(digitCount) +
+                    " hexadecimal digits");
+            return false;
+        }
+        output = (output << 4) | static_cast<std::uint32_t>(hexValue(advance()));
+    }
+    if (output > 0x10FFFF || (output >= 0xD800 && output <= 0xDFFF))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidEscapeSequence,
+            diagnostics::DiagnosticSeverity::Error,
+            location(literalBegin),
+            "Unicode escape must be a scalar value (not a surrogate and <= U+10FFFF)");
+        return false;
+    }
+    return true;
 }
 
 void Lexer::reportInvalid(
