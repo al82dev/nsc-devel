@@ -11962,6 +11962,8 @@ private:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyClobber:
             case frontend::ProjectOopMirNodeKind::MatchArm:
             case frontend::ProjectOopMirNodeKind::SuspendPoint:
+            case frontend::ProjectOopMirNodeKind::YieldValue:
+            case frontend::ProjectOopMirNodeKind::YieldBreak:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }

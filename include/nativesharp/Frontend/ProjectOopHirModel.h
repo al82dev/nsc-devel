@@ -154,6 +154,13 @@ enum class ProjectOopHirNodeKind
     // NS304-T05-F09: the address of the async poll function (F$poll) stored into the future's
     // pollFn field. stringValue is the poll's mangled name; typeKey is builtin:void*.
     PollAddress,
+    // NS304-T06-F03: `yield return v` of a synchronous generator. integerValue is the yield state
+    // index N; the single child is the item value. Lowered to { self->item = v; self->state = N;
+    // return true; } by the generator MoveNext split.
+    YieldValue,
+    // NS304-T06-F03: `yield break` of a synchronous generator. Lowered to { self->state =
+    // completed; return false; }. No children.
+    YieldBreak,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

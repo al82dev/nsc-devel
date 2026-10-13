@@ -155,6 +155,10 @@ enum class ProjectOopMirNodeKind
     SuspendPoint,
     // NS304-T05-F09: address of the async poll function (F$poll). `stringValue` is the poll name.
     PollAddress,
+    // NS304-T06-F03: `yield return v` of a synchronous generator. `integerValue` is the yield state.
+    YieldValue,
+    // NS304-T06-F03: `yield break` of a synchronous generator. No children.
+    YieldBreak,
     StaticFieldAddress,
     NamespaceStateAddress,
     IntegerConstant,

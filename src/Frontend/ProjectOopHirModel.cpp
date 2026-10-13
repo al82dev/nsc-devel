@@ -1052,6 +1052,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::AwaitFuture: return "await-future";
         case ProjectOopHirNodeKind::SuspendPoint: return "suspend-point";
         case ProjectOopHirNodeKind::PollAddress: return "poll-address";
+        case ProjectOopHirNodeKind::YieldValue: return "yield-value";
+        case ProjectOopHirNodeKind::YieldBreak: return "yield-break";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
