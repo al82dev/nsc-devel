@@ -1058,7 +1058,7 @@ T00
 - [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS.
 - [ ] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos.
 - [ ] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados.
-- [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`.
+- [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` (0x1B) en decodeEscapeByte + TL-LEX-057/066; Unicode/noheap residual.)*
 
 ### T11 — spans, referencias y genéricos modernos
 

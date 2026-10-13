@@ -38,12 +38,12 @@ void registerDirectAsciiCase(TestRegistry& registry)
     });
 }
 
-// Verifies every simple escape accepted by decodeEscapeByte. Complexity is O(k), k = 11 fixed samples.
+// Verifies every simple escape accepted by decodeEscapeByte. Complexity is O(k), k = 12 fixed samples.
 void registerSimpleEscapesCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LEX-057", [](TestContext& context) {
-        const std::array<std::pair<std::string_view, std::uint8_t>, 11> samples = {{
-            {"'\\0'", 0}, {"'\\a'", 7}, {"'\\b'", 8}, {"'\\f'", 12}, {"'\\n'", 10},
+        const std::array<std::pair<std::string_view, std::uint8_t>, 12> samples = {{
+            {"'\\0'", 0}, {"'\\a'", 7}, {"'\\b'", 8}, {"'\\e'", 27}, {"'\\f'", 12}, {"'\\n'", 10},
             {"'\\r'", 13}, {"'\\t'", 9}, {"'\\v'", 11}, {"'\\\\'", '\\'},
             {"'\\''", '\''}, {"'\\\"'", '"'}}};
         std::string source;

@@ -1081,6 +1081,7 @@ bool Lexer::decodeEscapeByte(std::uint8_t& output, std::uint32_t literalBegin)
         case '0': output = 0; return true;
         case 'a': output = 7; return true;
         case 'b': output = 8; return true;
+        case 'e': output = 27; return true; // ESC (C# 14 `\e`), NS304-T10-F08
         case 'f': output = 12; return true;
         case 'n': output = 10; return true;
         case 'r': output = 13; return true;

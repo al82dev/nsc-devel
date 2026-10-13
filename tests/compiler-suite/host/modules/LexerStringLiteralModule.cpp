@@ -64,9 +64,9 @@ void registerAsciiCase(TestRegistry& registry)
 void registerEscapesCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LEX-066", [](TestContext& context) {
-        const std::string source = R"NS("\0\a\b\f\n\r\t\v\\\'\"\x41")NS";
+        const std::string source = R"NS("\0\a\b\e\f\n\r\t\v\\\'\"\x41")NS";
         std::string expected;
-        for (const unsigned byte : {0U, 7U, 8U, 12U, 10U, 13U, 9U, 11U, 92U, 39U, 34U, 65U})
+        for (const unsigned byte : {0U, 7U, 8U, 27U, 12U, 10U, 13U, 9U, 11U, 92U, 39U, 34U, 65U})
             expected.push_back(static_cast<char>(byte));
         const LexerFixture fixture(source);
         lexer_test::expectToken(context, fixture.tokens()[0], TokenKind::StringLiteral, 0,
