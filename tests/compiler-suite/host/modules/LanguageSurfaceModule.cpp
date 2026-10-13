@@ -2606,6 +2606,53 @@ class Program
         }});
 }
 
+void registerExtensionSetterMethodCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-330", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "property", "setter"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08ExtensionSetter", "Exe", R"ns(
+namespace Suite
+{
+    extension int
+    {
+        public int Doubled
+        {
+            get { return this * 2; }
+            set { int observed = value; }
+        }
+    }
+}
+
+using Suite;
+
+class Program
+{
+    public static int Main()
+    {
+        21.set_Doubled(42);
+        return 21.Doubled;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08ExtensionSetter.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-330 an extension property setter method must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-330 the setter method + getter must dispatch: " +
+                    result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -2650,5 +2697,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionPropertyCase(registry);
     registerPositionalPatternCase(registry);
     registerYieldDiagnosticCase(registry);
+    registerExtensionSetterMethodCase(registry);
 }
 }
