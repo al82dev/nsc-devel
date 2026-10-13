@@ -15035,6 +15035,9 @@ ast::AstNode* Parser::parseCollectionExpression()
     const SourceRange begin = consume().range(); // '['
     ast::AstNode* collection = arena_.make<ast::AstNode>(
         ast::AstNodeKind::CollectionExpression, begin);
+    // La cuenta se infiere de los elementos (igual que `new T[] { ... }`), que es la ruta que
+    // Sema/HIR ya saben bajar sin contar un `first()`.
+    collection->setAuxiliaryText("inferred-array-initializer");
     if (!at(TokenKind::RightBracket))
     {
         while (true)

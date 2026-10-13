@@ -1,17 +1,19 @@
-# NS304-T09-F05 — Collection expressions (fundación léxica/sintáctica)
+# NS304-T09-F05 — Collection expressions
 
-- **Estado**: PARCIAL (token/AST/parser de `[a, b, c]`) / residual (Sema/type-inference + spreads + builder)
+- **Estado**: PARCIAL (parser + target-typed a array nativo) / residual (inferencia abierta + spreads + builder)
 - **Rama**: development
 
 ## Resultado
 
 - **AST**: nuevo `AstNodeKind::CollectionExpression` (elementos en children, orden de fuente).
 - **Parser**: `[a, b, c]` en posición de expresión primaria se reconoce como collection expression
-  (`parseCollectionExpression`); los atributos `[...]` siguen viviendo en posición de declaración.
-- Pruebas: `TP-PAR-539` (parser), `TA-AST-019..025` (catálogo AST actualizado) → **PASS**.
+  (`parseCollectionExpression`, marker `inferred-array-initializer`).
+- **Sema/HIR/LLVM**: `int[] a = [1, 2, 3]` target-typed a array nativo reutiliza `ArrayAllocation`
+  (inferencia de cuenta por elementos); inferencia vía `activeTargetTypeKey_`.
+- Pruebas: `TP-PAR-539` (parser), `TA-AST-019..025`, `TL-LANG-347` (`a[0]+a[1]+a[2]` = 6) → **PASS**.
 
 ## Residual
 
-- **Sema/type-inference**: inferir el tipo de colección objetivo (array/span/builder) y bajar la
-  construcción sin heap implícito.
-- **Spreads** (`..x`) y **builder protocol**: fuera de esta fundación.
+- **Inferencia abierta** (sin target type, p. ej. `var` o argumento genérico).
+- **Spreads** (`..x`) y **builder protocol**: fuera de esta base.
+

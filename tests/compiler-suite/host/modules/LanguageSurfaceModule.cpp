@@ -3314,6 +3314,37 @@ class Program
         }});
 }
 
+void registerCollectionExpressionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-347", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "expression", "array"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionExpression", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int[] a = [1, 2, 3];
+        return a[0] + a[1] + a[2];
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionExpression.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-347 int[] a = [1,2,3] must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-347 a[0]+a[1]+a[2] must be 6: " + result.error + result.output);
+        }});
+}
+
 void registerLanguageSurfaceModule(TestRegistry& registry)
 {
     registerSurfaceCatalogCase(registry);
@@ -3375,5 +3406,6 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalIndexReadCase(registry);
     registerNullConditionalStringConcatDiagnosticCase(registry);
     registerClassPrimaryConstructorCase(registry);
+    registerCollectionExpressionCase(registry);
 }
 }

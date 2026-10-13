@@ -12892,6 +12892,67 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.valid = false;
             break;
         }
+        case ast::AstNodeKind::CollectionExpression:
+        {
+            // NS304-T09-F05: `[a, b, c]` target-typed a array nativo. La inferencia del tipo de
+            // colección objetivo se limita al array nativo (spread/builder residual).
+            const std::string targetTypeKey = activeTargetTypeKey_;
+            if (!ProjectTypeConversion::isNativeArray(targetTypeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a collection expression requires a native array target type");
+                result.valid = false;
+                break;
+            }
+            const std::optional<std::string> element =
+                ProjectTypeConversion::nativeArrayElementType(targetTypeKey);
+            if (!element.has_value() || *element == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidAllocationType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "native arrays cannot have void elements");
+                result.valid = false;
+                break;
+            }
+            bool elementsValid = true;
+            for (const ast::AstNode* initializer : expression->children())
+            {
+                const ExpressionResult value = analyzeExpression(
+                    initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    false, false, true);
+                if (!value.valid || !classifyImplicit(
+                        value.typeKey, *element, value.integerConstant).exists())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        initializer->range(),
+                        "collection expression element is not implicitly convertible to '" +
+                            *element + "'");
+                    elementsValid = false;
+                }
+            }
+            result.typeKey = targetTypeKey;
+            result.valid = elementsValid;
+            if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
+            if (result.valid)
+            {
+                coreBindings_.push_back(MethodCoreBinding{
+                    MethodCoreOperationKind::ArrayAllocation,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    result.typeKey,
+                    *element,
+                    false, std::nullopt, std::nullopt});
+            }
+            break;
+        }
         default:
             break;
     }

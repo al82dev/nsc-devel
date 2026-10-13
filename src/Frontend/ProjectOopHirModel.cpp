@@ -7380,6 +7380,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::NewExpression:
+        case ast::AstNodeKind::CollectionExpression:
         {
             const MethodCoreBinding* core = coreBinding(expression);
             // CC1 fase 4C -- `new T` escalar. Hasta esta ronda el mensaje de abajo decia que el
