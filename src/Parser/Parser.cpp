@@ -354,7 +354,7 @@ Parser::Parser(
       arena_(arena),
       diagnostics_(diagnostics)
 {
-    static constexpr std::array<std::string_view, 18> builtinNames = {
+    static constexpr std::array<std::string_view, 19> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
         "nint", "nuint", "float", "double", "string",
         // C8 "type root": `object` is a KNOWN TYPE NAME here so that `object x = ...;` parses as
@@ -368,7 +368,9 @@ Parser::Parser(
         "Future",
         // NS304-T06-F02: `Iterator<T>` is the opaque generator iterator surface (resolved by
         // canonicalTypeKey to iterator:<T>).
-        "Iterator"};
+        "Iterator",
+        // NS304-T07-F01: `AsyncIterator<T,E>` is the opaque async-stream iterator surface.
+        "AsyncIterator"};
 
     for (const std::string_view name : builtinNames)
     {

@@ -37,6 +37,29 @@ inline std::optional<std::string_view> iteratorInnerTypeKey(std::string_view typ
     return typeKey.substr(prefix.size());
 }
 
+// NS304-T07-F01: surface type key of an async generator's opaque async iterator.
+// asyncIteratorTypeKey("builtin:int", "type:E") == "async-iterator:builtin:int|type:E".
+inline std::string asyncIteratorTypeKey(std::string_view itemTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = "async-iterator:";
+    key.append(itemTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
+inline std::optional<std::string_view> asyncIteratorInnerTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "async-iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
 struct LazyIntegerRange final
 {
     std::int64_t begin = 0;

@@ -1642,8 +1642,11 @@ void ProjectNameLookup::bindTypeSyntax(
     // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
     const bool iteratorSurface =
         syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1;
+    // NS304-T07-F01: `AsyncIterator<T,E>` is a structural opaque surface (async-iterator:<T>|<E>).
+    const bool asyncIteratorSurface =
+        syntax->baseName() == "AsyncIterator" && syntax->typeArguments().size() == 2;
     if (syntax->isFunction() || syntax->isTuple() || portableSimd || futureSurface ||
-        iteratorSurface ||
+        iteratorSurface || asyncIteratorSurface ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;

@@ -1436,6 +1436,14 @@ std::string ProjectMemberModel::canonicalTypeKey(
         result = language::iteratorTypeKey(
             canonicalTypeKey(syntax->typeArguments()[0], nameLookup));
     }
+    else if (syntax->baseName() == "AsyncIterator" && syntax->typeArguments().size() == 2)
+    {
+        // NS304-T07-F01: `AsyncIterator<T,E>` is the opaque, nameable async-stream iterator. It maps
+        // to `async-iterator:<T>|<E>`; T is the item, E the error.
+        result = language::asyncIteratorTypeKey(
+            canonicalTypeKey(syntax->typeArguments()[0], nameLookup),
+            canonicalTypeKey(syntax->typeArguments()[1], nameLookup));
+    }
     else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         result = "builtin:" + syntax->baseName();
