@@ -10,16 +10,16 @@ namespace NativeSharp.Core
     //       Registra una tarea hija (un future ya construido) y devuelve un handle estable. El
     //       executor pasa a ser responsable de avanzarla (poll) hasta su terminacion o cancelacion.
     //
-    //   * bool PollJoin(int handle)
-    //       Avanza la tarea hasta que termina; devuelve true una sola vez cuando ya esta terminada
-    //       y su resultado/error se puede observar. Idempotente despues del true.
+    //   * int PollJoin(int handle)
+    //       Avanza la tarea hasta que termina. Devuelve -1 mientras sigue viva; 0 cuando termino
+    //       bien; 1 cuando termino con fallo. Idempotente despues de terminar.
     //
     //   * void Cancel(int handle)
     //       Senala cancelacion a una tarea viva. No la une: PollJoin sigue siendo obligatorio.
     public trait IExecutor
     {
         int Spawn(Future<void> task);
-        bool PollJoin(int handle);
+        int PollJoin(int handle);
         void Cancel(int handle);
     }
 }

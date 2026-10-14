@@ -6666,7 +6666,7 @@ struct InlineExecutor : IExecutor
     public int joined;
     public InlineExecutor() { spawned = 0; joined = 0; }
     public int Spawn(Future<void> task) { spawned = spawned + 1; return spawned - 1; }
-    public bool PollJoin(int handle) { joined = joined + 1; return true; }
+    public int PollJoin(int handle) { joined = joined + 1; return 0; }
     public void Cancel(int handle) { }
 }
 class Program
@@ -6693,6 +6693,50 @@ class Program
                 executable, {}, {}, products.directory());
             context.expect(result.started && result.error.empty() && result.exitCode == 2,
                 "TL-LANG-457 Spawn must register two children and Join must run (count=2): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-458", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "task-scope", "spawn", "join", "child-failure", "executor"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07TaskScopeFailure", "Exe", R"ns(
+using NativeSharp.Core;
+struct FailingExecutor : IExecutor
+{
+    public int spawned;
+    public FailingExecutor() { spawned = 0; }
+    public int Spawn(Future<void> task) { spawned = spawned + 1; return spawned - 1; }
+    public int PollJoin(int handle) { return 1; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child() { }
+    public static int Main()
+    {
+        TaskScope<FailingExecutor> scope = TaskScope<FailingExecutor>.Create(new FailingExecutor());
+        scope.Spawn(Child());
+        scope.Join();
+        return scope.Failed() ? 7 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07TaskScopeFailure.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-458 the failing child scope must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-458 a failing child must mark the scope failed (exit 7): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
 }

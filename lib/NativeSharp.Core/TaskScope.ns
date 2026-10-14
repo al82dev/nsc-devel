@@ -50,10 +50,14 @@ namespace NativeSharp.Core
         {
             for (int i = count - 1; i >= 0; i = i - 1)
             {
-                bool done = executor.PollJoin(handles[i]);
-                while (!done)
+                int status = executor.PollJoin(handles[i]);
+                while (status == -1)
                 {
-                    done = executor.PollJoin(handles[i]);
+                    status = executor.PollJoin(handles[i]);
+                }
+                if (status == 1)
+                {
+                    failed = true;
                 }
             }
         }
