@@ -24,6 +24,13 @@ Estado real (tras F01-F03):
 Un operador declarado en `extension T { static operator+(T, T) {...} }` no participa en la resolución
 de operadores del tipo `T` (ni como mutación nominal ni como witness).
 
+### Verificación (2026-10-13)
+
+- El parser **no acepta** `operator` dentro del bloque `extension`: `parseGlobalDeclaration` reporta
+  `expected declaration name, found 'operator'`. Requiere: (1) parser del `operator` en el bloque
+  extension → namespace function; (2) registro en el lookup de operadores del tipo extendido;
+  (3) witness estático de trait + conformance (surface A).
+
 ## Decisión de surface (material, para Alberto)
 
 - **(A) witness estático de trait** (recomendada): el operador extension emite un witness del trait de
