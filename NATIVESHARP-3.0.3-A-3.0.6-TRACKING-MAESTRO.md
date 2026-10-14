@@ -1068,7 +1068,9 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 ### T11 — spans, referencias y genéricos modernos
 
-- [ ] `NS304-T11-F01` — Elevar slice/span mutable e inmutable a tipos de conversion ranking.
+- [x] `NS304-T11-F01` — Elevar slice/span mutable e inmutable a tipos de conversion ranking.
+  *(vista `Span<T>`→`ReadOnlySpan<T>` unidireccional, rank 6, lowering estructural; inversa
+  rechazada; TL-LANG-408 exit 7.)*
 - [ ] `NS304-T11-F02` — Definir conversiones array/buffer/string/slice sin copia ni extensión de lifetime.
 - [ ] `NS304-T11-F03` — Integrar spans en extension receiver, inferencia y conversiones compuestas.
 - [ ] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
