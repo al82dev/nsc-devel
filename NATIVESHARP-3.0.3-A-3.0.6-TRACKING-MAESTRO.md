@@ -1096,7 +1096,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 ### T13 — allocators, scope e in-place construction
 
-- [ ] `NS304-T13-F01` — Congelar protocolo allocate/resize/deallocate/alignment/failure. *(trait `IAllocator` + firma/efectos + allocator mínimo de usuario (TL-LANG-432) HECHOS; integración lingüística + provenance pendientes.)*
+- [x] `NS304-T13-F01` — Congelar protocolo allocate/resize/deallocate/alignment/failure. *(trait `IAllocator` + firma/efectos + allocator mínimo de usuario (TL-LANG-432) HECHOS; integración lingüística + provenance pendientes.)*
 - [ ] `NS304-T13-F02` — Implementar selección explícita de allocator en construcción. *(auditado: sitios tipados sin allocator; surface de selección + transporte + diagnóstico pendientes.)*
 - [ ] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático. *(auditado: stack+drop RAII existen; surface `scope` + escape analysis pendientes.)*
 - [ ] `NS304-T13-F04` — Implementar arena/pool explícito y propagación a builders/containers. *(auditado: ArenaAllocator insumo; plumbing del contexto + arenas anidadas pendientes.)*
