@@ -218,6 +218,7 @@ bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
     return syntax.auxiliaryText() == "ns3-extension" ||
         syntax.auxiliaryText() == "ns3-extension-static" ||
+        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos ||
         syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
 }
 
@@ -369,7 +370,35 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.isExtension = isExtensionDeclaration(syntax);
-        candidate.operatorToken = syntax.tokenKind();
+        candidate.operatorToken = lexer::TokenKind::Invalid;
+        if (candidate.isExtension)
+        {
+            // NS304-T08-F04: recover the operator token from the operator name (operator+ -> +).
+            const std::string_view name = candidate.name;
+            constexpr std::string_view prefix = "operator";
+            if (name.starts_with(prefix))
+            {
+                const std::string_view spelling = name.substr(prefix.size());
+                if (spelling == "+") candidate.operatorToken = lexer::TokenKind::Plus;
+                else if (spelling == "-") candidate.operatorToken = lexer::TokenKind::Minus;
+                else if (spelling == "*") candidate.operatorToken = lexer::TokenKind::Star;
+                else if (spelling == "/") candidate.operatorToken = lexer::TokenKind::Slash;
+                else if (spelling == "%") candidate.operatorToken = lexer::TokenKind::Percent;
+                else if (spelling == "!") candidate.operatorToken = lexer::TokenKind::Bang;
+                else if (spelling == "~") candidate.operatorToken = lexer::TokenKind::Tilde;
+                else if (spelling == "&") candidate.operatorToken = lexer::TokenKind::Amp;
+                else if (spelling == "|") candidate.operatorToken = lexer::TokenKind::Pipe;
+                else if (spelling == "^") candidate.operatorToken = lexer::TokenKind::Caret;
+                else if (spelling == "<<") candidate.operatorToken = lexer::TokenKind::LessLess;
+                else if (spelling == ">>") candidate.operatorToken = lexer::TokenKind::GreaterGreater;
+                else if (spelling == "==") candidate.operatorToken = lexer::TokenKind::EqualEqual;
+                else if (spelling == "!=") candidate.operatorToken = lexer::TokenKind::BangEqual;
+                else if (spelling == "<=") candidate.operatorToken = lexer::TokenKind::LessEqual;
+                else if (spelling == ">=") candidate.operatorToken = lexer::TokenKind::GreaterEqual;
+                else if (spelling == "<") candidate.operatorToken = lexer::TokenKind::Less;
+                else if (spelling == ">") candidate.operatorToken = lexer::TokenKind::Greater;
+            }
+        }
         candidate.parts.push_back(NamespaceFunctionPart{
             declaration.accessibility,
             declaration.sourceOrdinal,

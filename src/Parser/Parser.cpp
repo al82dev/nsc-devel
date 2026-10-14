@@ -2921,7 +2921,7 @@ ast::AstNode* Parser::parseExtensionDeclaration()
         }
         else if (member != nullptr &&
                  member->kind() == ast::AstNodeKind::MethodDeclaration &&
-                 member->auxiliaryText() == "ns3-extension-static")
+                 member->auxiliaryText().find("ns3-extension-static") != std::string::npos)
         {
             // NS304-T08-F04: extension operator (already ns3-extension-static from parseOperatorTail).
             extension->addChild(member);
@@ -8739,7 +8739,9 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
         if (operatorDeclaration != nullptr)
         {
             operatorDeclaration->addModifier(TokenKind::KwStatic);
-            operatorDeclaration->setAuxiliaryText("ns3-extension-static");
+            // NS304-T08-F04: keep the operator: metadata and append the extension marker.
+            operatorDeclaration->setAuxiliaryText(
+                operatorDeclaration->auxiliaryText() + "|ns3-extension-static");
             operatorDeclaration->setReference(isReferenceReturn);
         }
         return operatorDeclaration;

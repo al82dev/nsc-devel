@@ -19873,6 +19873,21 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
             seen.insert(ordinal);
             result.push_back(ordinal);
         }
+        // NS304-T08-F04: extension operators (namespace functions) participate in the same lookup.
+        if (namespaceFunctionModel_ != nullptr)
+        {
+            for (std::size_t functionOrdinal = 0;
+                 functionOrdinal < namespaceFunctionModel_->functions().size(); ++functionOrdinal)
+            {
+                const NamespaceFunctionSymbol& function =
+                    namespaceFunctionModel_->functions()[functionOrdinal];
+                if (!function.isExtension || function.name != methodName) continue;
+                const std::size_t adapterOrdinal = namespaceCallableBase_ + functionOrdinal;
+                if (seen.contains(adapterOrdinal)) continue;
+                seen.insert(adapterOrdinal);
+                result.push_back(adapterOrdinal);
+            }
+        }
     };
     appendForType(leftTypeKey);
     if (rightTypeKey.has_value()) appendForType(*rightTypeKey);
