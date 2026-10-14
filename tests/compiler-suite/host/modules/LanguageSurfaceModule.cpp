@@ -3664,6 +3664,50 @@ class Program
                 "TL-LANG-403 an impl owning neither type nor trait must be rejected as orphan: " +
                     orphan.error + orphan.output);
         }});
+
+    registry.add(TestCase{"TL-LANG-404", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trait", "impl", "conformance", "intermodular", "dispatch"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T08DispatchProducer", "Library", R"ns(
+public class External { }
+)ns");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T08DispatchConsumer", "Exe", R"ns(
+trait Local
+{
+    int F();
+}
+
+impl Local for External
+{
+    public int F() { return 5; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        External e = new External();
+        return e.F();
+    }
+}
+)ns", "<ProjectReference Include=\"T08DispatchProducer.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T08DispatchConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-404 the intermodular conformance dispatch must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-404 e.F() must dispatch to the impl over the external type (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
 }
 
 void registerLocalFunctionCase(TestRegistry& registry)
