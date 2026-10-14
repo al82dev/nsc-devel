@@ -284,6 +284,53 @@ bool isFloating(std::string_view type) noexcept
     return type == "builtin:float" || type == "builtin:double";
 }
 
+// NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
+// `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
+// `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
+// limited to 64 bits here; wider coefficients are validated in F05 (overflow) with the exact digits.
+bool decimalCoefficientAndScale(double value, std::uint64_t& coefficient, int& scale) noexcept
+{
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+    std::string text(buffer);
+    const auto e = text.find_first_of("eE");
+    std::string mantissa = e == std::string::npos ? text : text.substr(0, e);
+    int exponent = 0;
+    if (e != std::string::npos)
+    {
+        const char* start = text.data() + e + 1;
+        const auto parsed = std::from_chars(start, text.data() + text.size(), exponent);
+        if (parsed.ec != std::errc{}) return false;
+    }
+    const auto dot = mantissa.find('.');
+    std::string digits = dot == std::string::npos
+        ? mantissa
+        : mantissa.substr(0, dot) + mantissa.substr(dot + 1);
+    int baseScale = dot == std::string::npos ? 0 : static_cast<int>(mantissa.size() - dot - 1);
+    const auto first = digits.find_first_not_of('0');
+    if (first == std::string::npos)
+    {
+        coefficient = 0;
+        scale = 0;
+        return true;
+    }
+    digits = digits.substr(first);
+    const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), coefficient);
+    if (parsed.ec != std::errc{}) return false;
+    int effectiveScale = baseScale - exponent;
+    if (effectiveScale < 0)
+    {
+        for (int i = 0; i < -effectiveScale; ++i)
+        {
+            if (coefficient > (std::numeric_limits<std::uint64_t>::max() / 10U)) return false;
+            coefficient *= 10U;
+        }
+        effectiveScale = 0;
+    }
+    scale = effectiveScale;
+    return true;
+}
+
 LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable = false) noexcept
 {
     if (instruction == nullptr) return instruction;
@@ -9751,7 +9798,33 @@ private:
             case frontend::ProjectOopMirNodeKind::FloatingConstant:
             {
                 LLVMTypeRef type = llvmType(node->typeKey, error);
-                return type != nullptr ? LLVMConstReal(type, node->floatingValue) : nullptr;
+                if (type == nullptr) return nullptr;
+                if (node->typeKey == "builtin:decimal")
+                {
+                    // 128-bit decimal: low 96 bits = coefficient, bits 96..101 = scale,
+                    // bit 127 = sign. The C API wrapper exposes no constant shift/or, so the
+                    // value is assembled with builder instructions.
+                    std::uint64_t coefficient = 0;
+                    int scale = 0;
+                    if (!decimalCoefficientAndScale(node->floatingValue, coefficient, scale))
+                        return failValue(error, "decimal literal coefficient exceeds 64 bits in Stage 34");
+                    LLVMValueRef lo = LLVMConstInt(type, coefficient, 0);
+                    LLVMValueRef scaleValue = LLVMConstInt(
+                        type, static_cast<std::uint64_t>(scale), 0);
+                    LLVMValueRef scaleShifted = LLVMBuildShl(
+                        builder_, scaleValue,
+                        LLVMConstInt(LLVMInt32TypeInContext(context_), 96, 0), "decimal.scale");
+                    LLVMValueRef combined = LLVMBuildOr(builder_, lo, scaleShifted, "decimal.value");
+                    if (node->floatingValue < 0.0)
+                    {
+                        LLVMValueRef sign = LLVMBuildShl(
+                            builder_, LLVMConstInt(type, 1, 0),
+                            LLVMConstInt(LLVMInt32TypeInContext(context_), 127, 0), "decimal.sign");
+                        combined = LLVMBuildOr(builder_, combined, sign, "decimal.signed");
+                    }
+                    return combined;
+                }
+                return LLVMConstReal(type, node->floatingValue);
             }
             case frontend::ProjectOopMirNodeKind::BooleanConstant:
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), node->booleanValue ? 1U : 0U, 0);

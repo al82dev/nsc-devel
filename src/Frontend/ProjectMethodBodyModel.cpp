@@ -9934,10 +9934,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 isUnsignedIntegerLiteral(expression)};
             break;
         case ast::AstNodeKind::FloatingLiteralExpression:
-            result.typeKey = (!expression->text().empty() &&
-                (expression->text().back() == 'f' || expression->text().back() == 'F'))
-                ? "builtin:float"
-                : "builtin:double";
+            // NS304-T15-F02: an `m`/`M` suffix is an exact decimal literal; otherwise the value is
+            // a binary FP literal (float with `f`/`F`, double without suffix).
+            if (!expression->text().empty() &&
+                (expression->text().back() == 'm' || expression->text().back() == 'M'))
+            {
+                result.typeKey = "builtin:decimal";
+            }
+            else
+            {
+                result.typeKey = (!expression->text().empty() &&
+                    (expression->text().back() == 'f' || expression->text().back() == 'F'))
+                    ? "builtin:float"
+                    : "builtin:double";
+            }
             result.valid = true;
             break;
         case ast::AstNodeKind::CharacterLiteralExpression:

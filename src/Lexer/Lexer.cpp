@@ -538,7 +538,8 @@ Token Lexer::lexNumber(std::uint32_t begin)
             }
         }
 
-        if (current() == 'f' || current() == 'F')
+        // NS304-T15-F02: `m`/`M` marks an exact decimal literal; the lexeme keeps the suffix.
+        if (current() == 'f' || current() == 'F' || current() == 'm' || current() == 'M')
         {
             floating = true;
             advance();
