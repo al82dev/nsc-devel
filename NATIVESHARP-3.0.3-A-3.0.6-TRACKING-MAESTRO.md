@@ -1098,7 +1098,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 - [x] `NS304-T13-F01` — Congelar protocolo allocate/resize/deallocate/alignment/failure. *(trait `IAllocator` + firma/efectos + allocator mínimo de usuario (TL-LANG-432) HECHOS; integración lingüística + provenance pendientes.)*
 - [x] `NS304-T13-F02` — Implementar selección explícita de allocator en construcción. *(new (alloc) T → Allocate + placement (TL-LANG-477, exit 42); provenance = F07 residual.)*
-- [x] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático. *(scope Tipo x = new T(args) → alloca frame + drop una vez (TL-LANG-484) + retorno/captura rechazados (TL-LANG-485); campo/static residual documentado.)*
+- [x] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático. *(scope Tipo x = new T(args) → alloca frame + drop una vez (TL-LANG-484) + retorno/captura/campo rechazados (TL-LANG-485/486).)*
 - [ ] `NS304-T13-F04` — Implementar arena/pool explícito y propagación a builders/containers. *(auditado: ArenaAllocator insumo; plumbing del contexto + arenas anidadas pendientes.)*
 - [ ] `NS304-T13-F05` — Completar placement/in-place con rollback ante fallo parcial. *(auditado: drop inverso existe; placement + rollback pendientes.)*
 - [ ] `NS304-T13-F06` — Implementar trailing/append storage con layout consteval y bounds. *(auditado: layout consteval existe; cola variable + ABI pendientes.)*
