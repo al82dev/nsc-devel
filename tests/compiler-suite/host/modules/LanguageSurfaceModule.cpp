@@ -5526,6 +5526,49 @@ class Program
         }});
 }
 
+void registerAsyncIntermodularFutureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-438", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "future", "pollFn", "intermodular", "abi"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T05FutureProducer", "Library", R"ns(
+public class Async
+{
+    public static async int Make()
+    {
+        int x = 5;
+        yield;
+        return x;
+    }
+}
+)ns");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T05FutureConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        return await Async.Make();
+    }
+}
+)ns", "<ProjectReference Include=\"T05FutureProducer.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T05FutureConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-438 the intermodular future must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-438 the opaque future must be consumed across modules via its pollFn (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncAwaitVariableCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-377", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7748,6 +7791,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncRethrowCase(registry);
     registerAsyncNestedErrorPropagationCase(registry);
     registerAsyncFrameStorageHeapCase(registry);
+    registerAsyncIntermodularFutureCase(registry);
     registerAsyncAwaitVariableCase(registry);
     registerAsyncFutureTypeCase(registry);
     registerExtensionPropertyCase(registry);
