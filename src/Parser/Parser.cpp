@@ -14857,6 +14857,24 @@ ast::AstNode* Parser::parseUnaryExpression()
                 return creation;
             }
             ast::AstNode* storage = parseExpression();
+            // NS304-T13-F06: `new (allocator, trailing: capacity) T(...)` — the contextual
+            // `trailing:` capacity is the flexible-array extent, not a constructor argument.
+            bool hasTrailing = false;
+            ast::AstNode* trailingCapacity = nullptr;
+            if (consumeIf(TokenKind::Comma))
+            {
+                if (atContextualKeyword("trailing") && peek().kind() == TokenKind::Colon)
+                {
+                    consume();
+                    consume();
+                    trailingCapacity = parseExpression();
+                    hasTrailing = trailingCapacity != nullptr;
+                }
+                else
+                {
+                    expect(TokenKind::Colon, "':' after 'trailing'");
+                }
+            }
             expect(TokenKind::RightParen, "')' after placement storage");
             ast::TypeSyntax* type = parseAllocationElementType();
             ast::AstNode* creation = arena_.make<ast::AstNode>(
@@ -14864,6 +14882,11 @@ ast::AstNode* Parser::parseUnaryExpression()
                 start);
             creation->setFirst(storage);
             creation->setTypeSyntax(type);
+            if (hasTrailing)
+            {
+                creation->setAuxiliaryText("trailing");
+                creation->addChild(trailingCapacity);
+            }
             if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
             {
                 if (!at(TokenKind::RightParen))
