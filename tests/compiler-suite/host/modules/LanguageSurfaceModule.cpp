@@ -3118,6 +3118,54 @@ class Program
         }});
 }
 
+void registerForeachTeardownCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-391", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "foreach", "teardown", "drop"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06ForeachTeardown", "Exe", R"ns(
+struct Resource
+{
+    public static int Dropped;
+    ~Resource() { Resource.Dropped = 1; }
+}
+
+class Program
+{
+    public static Iterator<int> Generate()
+    {
+        Resource r = new Resource();
+        yield return 1;
+    }
+
+    public static int Main()
+    {
+        foreach (int x in Generate())
+        {
+            break;
+        }
+        return Resource.Dropped;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06ForeachTeardown.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-391 the abandoned foreach must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 1,
+                "TL-LANG-391 abandoning the foreach must drop the generator frame (exit 1): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5690,6 +5738,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGlobalNamespaceExtensionCase(registry);
     registerStaticExtensionMemberCase(registry);
     registerIteratorErrorSurfaceCase(registry);
+    registerForeachTeardownCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
