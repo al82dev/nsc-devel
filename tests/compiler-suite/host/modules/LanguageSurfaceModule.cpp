@@ -4064,6 +4064,47 @@ class Program { public static int Main() { Box<I> b = new Box<I>(); b.Value = ne
         }});
 }
 
+void registerRefLikeConstraintCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-414", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "generic", "where", "ref-like", "constraint"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-414")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T11F05RefLike", "Exe", R"ns(
+using NativeSharp.Core;
+struct Wrapper<T> where T : ref-like
+{
+    public int Read(T view) { return view[0]; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int[] a = new int[] { 5 };
+        ReadOnlySpan<int> s = a;
+        Wrapper<ReadOnlySpan<int>> w = new Wrapper<ReadOnlySpan<int>>();
+        return w.Read(s);
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const std::filesystem::path executable =
+                products.directory() / "T11F05RefLike.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-414 a ref-like constrained generic must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-414 ReadOnlySpan<int> satisfies where T : ref-like (view[0] = 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6745,6 +6786,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStringToStringViewCase(registry);
     registerParamsReadOnlySpanCase(registry);
     registerGenericExtensionDispatchCase(registry);
+    registerRefLikeConstraintCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);

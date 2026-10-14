@@ -2236,10 +2236,19 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
             const bool isLifetime = atContextualKeyword("lifetime");
             const bool isUnmanaged = atContextualKeyword("unmanaged");
             const bool isNotNull = atContextualKeyword("notnull");
+            // NS304-T11-F05: `ref-like` is a three-token contextual keyword (`ref` `-` `like`).
+            const bool isRefLike = atContextualKeyword("ref") &&
+                peek().kind() == TokenKind::Minus &&
+                peek(2).kind() == TokenKind::Identifier && peek(2).lexeme() == "like";
             if (isKeywordClass || isKeywordStruct || isKeywordNew || isCopy || isMove ||
-                isLifetime || isUnmanaged || isNotNull)
+                isLifetime || isUnmanaged || isNotNull || isRefLike)
             {
                 const lexer::Token& keyword = consume();
+                if (isRefLike)
+                {
+                    consume(); // '-'
+                    consume(); // 'like'
+                }
                 const bool conflictsWithEarlierPrimary =
                     (isKeywordClass && (clause.requiresValueType || clause.requiresUnmanaged)) ||
                     (isKeywordStruct && clause.requiresClass);
@@ -2272,7 +2281,8 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 else if (isMove) { flag = &clause.requiresMove; spelling = "move"; }
                 else if (isLifetime) { flag = &clause.requiresTrackedLifetime; spelling = "lifetime"; }
                 else if (isUnmanaged) { flag = &clause.requiresUnmanaged; spelling = "unmanaged"; }
-                else { flag = &clause.requiresNotNull; spelling = "notnull"; }
+                else if (isNotNull) { flag = &clause.requiresNotNull; spelling = "notnull"; }
+                else { flag = &clause.requiresRefLike; spelling = "ref-like"; }
                 if (*flag)
                 {
                     diagnostics_.report(

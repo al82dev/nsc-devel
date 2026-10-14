@@ -90,6 +90,7 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         capability(clause.requiresTrackedLifetime, "lifetime");
         capability(clause.requiresUnmanaged, "unmanaged");
         capability(clause.requiresNotNull, "notnull");
+        capability(clause.requiresRefLike, "ref-like");
         for (const TypeSyntax* constraint : clause.typeConstraints)
         {
             if (!first) output << ',';

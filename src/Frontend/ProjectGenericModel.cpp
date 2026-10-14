@@ -5157,6 +5157,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         copy.requiresTrackedLifetime = clause.requiresTrackedLifetime;
         copy.requiresUnmanaged = clause.requiresUnmanaged;
         copy.requiresNotNull = clause.requiresNotNull;
+        copy.requiresRefLike = clause.requiresRefLike;
         copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
         copy.associatedProjection = cloneType(
             arena, clause.associatedProjection, substitutions);

@@ -48,6 +48,8 @@ enum class GenericConstraintViolationKind
     RequiresTrackedLifetime,
     RequiresUnmanaged,
     RequiresNotNull,
+    // NS304-T11-F05: `where T : ref-like` and the argument is not a stack-only borrowed view.
+    RequiresRefLike,
     EqualityMismatch,
     InvalidConstraintCombination
 };

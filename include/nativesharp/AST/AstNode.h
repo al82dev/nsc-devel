@@ -86,6 +86,8 @@ struct GenericConstraintClause
     bool requiresTrackedLifetime = false;
     bool requiresUnmanaged = false;
     bool requiresNotNull = false;
+    // NS304-T11-F05: `where T : ref-like` authorizes a stack-only (ref-like) generic argument.
+    bool requiresRefLike = false;
     // `where T == U` and `where N == 4`. A const value uses the same deterministic TypeSyntax
     // marker as a const-generic argument; a type/parameter uses ordinary type syntax and is
     // substituted by the generic cloner.

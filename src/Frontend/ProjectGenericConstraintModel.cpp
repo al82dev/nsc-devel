@@ -241,6 +241,19 @@ bool isDefinitelyNonNull(
          declaration->kind == NamedTypeDeclarationKind::Enum);
 }
 
+// NS304-T11-F05: a ref-like (stack-only) argument is a borrowed struct view (Span/ReadOnlySpan).
+bool isRefLikeArgument(
+    const ast::TypeSyntax* syntax,
+    const NamedTypeDeclaration* declaration)
+{
+    if (syntax == nullptr) return false;
+    if (syntax->isFunction() || !syntax->modifiers().empty()) return false;
+    return declaration != nullptr &&
+        declaration->kind == NamedTypeDeclarationKind::Struct &&
+        declaration->syntax != nullptr &&
+        declaration->syntax->auxiliaryText().find("borrowedview") != std::string::npos;
+}
+
 std::string normalizedArgumentIdentity(
     const ast::TypeSyntax* syntax,
     const ProjectNameLookup& nameLookup,
@@ -304,6 +317,7 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
             if (clause.requiresTrackedLifetime) clauseAtoms.emplace_back("lifetime");
             if (clause.requiresUnmanaged) clauseAtoms.emplace_back("unmanaged");
             if (clause.requiresNotNull) clauseAtoms.emplace_back("notnull");
+            if (clause.requiresRefLike) clauseAtoms.emplace_back("ref-like");
             if (clause.equalityConstraint != nullptr)
             {
                 clauseAtoms.push_back(
@@ -742,6 +756,12 @@ bool ProjectGenericConstraintModel::build(
                 GenericConstraintViolationKind::RequiresNotNull,
                 "notnull",
                 "a representation that cannot be null");
+            requireCapability(
+                clause.requiresRefLike,
+                isRefLikeArgument(argumentSyntax, argument),
+                GenericConstraintViolationKind::RequiresRefLike,
+                "ref-like",
+                "a stack-only borrowed view (Span/ReadOnlySpan)");
 
             if (clause.equalityConstraint != nullptr)
             {
