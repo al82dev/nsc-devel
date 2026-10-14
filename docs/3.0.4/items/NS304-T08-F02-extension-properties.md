@@ -20,9 +20,10 @@
 
 ## Residual
 
-- **Getter por referencia** (`ref` en extension property): pendiente. Verificado (ronda 100):
+- **Getter por referencia** (`ref` en extension property): pendiente. Verificado (ronda 100/167):
   `extension Box { public ref int ValueRef { get { return ref this.Value; } } }` falla con
   `return ref is valid only inside a ref-returning method` + `left side of assignment is not
-  assignable`. Requiere que el accessor `get_` retorne por referencia (`isReferenceReturn`) y que
-  la asignación reescrita mantenga la dirección del receptor mutable (hoy el receptor viaja por valor).
+  assignable`. Además la property `ref` NO-extension también falla con `ref return is valid only on an
+  ordinary method in item 313` — es decir, el **ref-returning property** (no sólo la extensión) no
+  está soportado; es un feature de type-system más amplio.
 - La evidencia de getter/setter por valor no cierra el contrato completo de F02.
