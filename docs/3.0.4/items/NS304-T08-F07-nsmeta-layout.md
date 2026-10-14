@@ -22,6 +22,12 @@ Falta publicar el descriptor de extension en NSMETA (receiver, passing mode, con
 demostrar el consumo intermodular sin fuentes. La igualdad de layout ya se cumple por construcción
 (cero mutación); falta la prueba que lo demuestra.
 
+### Verificación (2026-10-13)
+
+- La extensión (F01–F04) es namespace function sin field injection: el layout del tipo extendido no
+  muta (verificado en los expedientes F01–F04). El pendiente es el **descriptor NSMETA + consumo
+  intermodular** (la cola de metadata compartida con T05-F09/T06-F08/T07-F08/T16).
+
 ## Nota
 
 F07 es el cola de NSMETA de T08 (compartido con T05-F09/T06-F08/T07-F08). No es una surface nueva;
