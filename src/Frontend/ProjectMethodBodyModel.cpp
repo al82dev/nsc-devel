@@ -738,6 +738,10 @@ bool ProjectMethodBodyModel::callableCanBeAnalyzed(
     if (analyzedCallableMembers_.contains(callableOrdinal)) return false;
     const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
     if (callable == nullptr) return false;
+    // NS304-T08-F06: an open generic namespace function's body is deferred to its specialization;
+    // only the concrete clone (`Twice<I>`) is analyzed.
+    if (callable->syntax != nullptr && !callable->syntax->genericParameters().empty())
+        return false;
     const ProjectGenericConstraintModel* constraints = context.genericConstraintModel();
     if (callableOrdinal >= namespaceCallableBase_ || constraints == nullptr)
         return true;

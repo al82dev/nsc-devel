@@ -188,6 +188,8 @@ public:
     std::string closedTypeKeyForTemplate(
         std::string_view templateName,
         std::string_view elementTypeKey) const;
+    // The recorded resolved identity for an open generic reference (`Box<T>`), or null when absent.
+    const std::string* resolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
     GenericInstantiationReport instantiationReport() const noexcept;
     bool isBuilt() const noexcept;
 

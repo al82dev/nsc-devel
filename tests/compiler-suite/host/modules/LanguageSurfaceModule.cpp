@@ -4034,6 +4034,36 @@ class Program
         }});
 }
 
+void registerGenericExtensionDispatchCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-412", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "generic", "where", "dispatch"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08F06GenericExtension", "Exe", R"ns(
+trait Special { int V(); }
+struct Box<T> { public T Value; }
+extension Box<T> where T : Special { public int Twice() { return this.Value.V() * 2; } }
+class I : Special { public int V() { return 3; } }
+class Program { public static int Main() { Box<I> b = new Box<I>(); b.Value = new I(); return b.Twice(); } }
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08F06GenericExtension.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-412 a generic extension dispatch must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-412 b.Twice() over Box<I> must return 6: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6663,6 +6693,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerArrayToSpanConversionCase(registry);
     registerStringToStringViewCase(registry);
     registerParamsReadOnlySpanCase(registry);
+    registerGenericExtensionDispatchCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);

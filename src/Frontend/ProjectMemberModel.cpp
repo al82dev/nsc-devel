@@ -1367,6 +1367,17 @@ std::string ProjectMemberModel::canonicalTypeKey(
         return "<missing-type>";
     }
 
+    // NS304-T08-F06: an OPEN generic reference (`Box<T>` with a still-present type argument) carries
+    // its recorded identity from the generic model; use it instead of failing name resolution.
+    if (genericModel_ != nullptr && !syntax->typeArguments().empty())
+    {
+        if (const std::string* identity = genericModel_->resolvedTypeIdentity(syntax);
+            identity != nullptr && !identity->empty())
+        {
+            return *identity;
+        }
+    }
+
     std::string result;
     if (syntax->isFunction())
     {
@@ -1487,7 +1498,20 @@ std::string ProjectMemberModel::canonicalTypeKey(
     }
     else
     {
-        result = "unresolved:" + syntax->baseName();
+        // NS304-T08-F06: a specialized clone's receiver (`Box__g1__I__...`) materialized late may
+        // not carry a name-lookup binding; resolve it by its mangled terminal name.
+        const NamedTypeDeclaration* found = nullptr;
+        for (const NamedTypeDeclaration& declaration : nameLookup.namedTypes())
+        {
+            if (declaration.identity.key().ends_with(syntax->baseName()))
+            {
+                found = &declaration;
+                break;
+            }
+        }
+        result = found != nullptr
+            ? "type:" + found->identity.key()
+            : "unresolved:" + syntax->baseName();
     }
 
     for (const ast::TypeModifierSyntax& modifier : syntax->modifiers())

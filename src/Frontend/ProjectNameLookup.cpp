@@ -594,7 +594,7 @@ void ProjectNameLookup::predeclareNode(
         return;
     }
 
-    if (!node->genericParameters().empty())
+    if (!node->genericParameters().empty() && isNamedTypeDeclaration(node->kind()))
     {
         return;
     }

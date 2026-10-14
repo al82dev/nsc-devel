@@ -2873,6 +2873,30 @@ ast::AstNode* Parser::parseExtensionDeclaration(TokenKind accessibility)
         receiverPass = consume().kind();
     }
 
+    // NS304-T08-F06: the receiver's generic arguments are the extension block's type parameters.
+    std::vector<std::string> receiverGenericArguments;
+    for (std::size_t cursor = index_; cursor < tokens_.size(); ++cursor)
+    {
+        if (tokens_[cursor].kind() == TokenKind::Less)
+        {
+            for (std::size_t inner = cursor + 1;
+                 inner < tokens_.size() && tokens_[inner].kind() != TokenKind::Greater &&
+                 tokens_[inner].kind() != TokenKind::EndOfFile; ++inner)
+            {
+                if (tokens_[inner].kind() == TokenKind::Identifier)
+                    receiverGenericArguments.emplace_back(tokens_[inner].lexeme());
+            }
+            break;
+        }
+        if (tokens_[cursor].kind() == TokenKind::LeftBrace ||
+            tokens_[cursor].kind() == TokenKind::Semicolon ||
+            tokens_[cursor].kind() == TokenKind::EndOfFile)
+        {
+            break;
+        }
+    }
+    for (const std::string& name : receiverGenericArguments) knownTypeNames_.insert(name);
+
     ast::TypeSyntax* receiverType = parseType();
     if (receiverType == nullptr)
     {
@@ -2886,6 +2910,12 @@ ast::AstNode* Parser::parseExtensionDeclaration(TokenKind accessibility)
     extension->setAuxiliaryText(
         receiverPass == TokenKind::Invalid ? "value" :
         receiverPass == TokenKind::KwIn ? "in" : "ref");
+    for (const std::string& name : receiverGenericArguments)
+    {
+        extension->addGenericParameter(name);
+    }
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, extension);
+    parseGenericConstraintClauses(extension);
 
     if (!expect(TokenKind::LeftBrace, "'{' after extension receiver type"))
     {
@@ -2933,9 +2963,9 @@ ast::AstNode* Parser::parseExtensionDeclaration(TokenKind accessibility)
                 member->setTokenKind(accessibility);
                 member->addModifier(accessibility);
             }
+            for (const std::string& name : receiverGenericArguments)
             {
-                member->setTokenKind(accessibility);
-                member->addModifier(accessibility);
+                member->addGenericParameter(name);
             }
             extension->addChild(member);
         }

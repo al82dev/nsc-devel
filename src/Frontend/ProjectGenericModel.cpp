@@ -1674,6 +1674,13 @@ std::string ProjectGenericModel::closedTypeKeyForTemplate(
     return "type:" + std::string(canonicalKey.substr(0, terminalBegin)) + specializedName;
 }
 
+const std::string* ProjectGenericModel::resolvedTypeIdentity(
+    const ast::TypeSyntax* syntax) const noexcept
+{
+    const auto found = resolvedTypeIdentityBySyntax_.find(syntax);
+    return found == resolvedTypeIdentityBySyntax_.end() ? nullptr : &found->second;
+}
+
 GenericInstantiationReport ProjectGenericModel::instantiationReport() const noexcept
 {
     return GenericInstantiationReport{
@@ -2330,7 +2337,31 @@ void ProjectGenericModel::processNode(
                 currentScope, diagnostics);
         }
     }
-    if (templateNode || insideTemplate) return;
+    if (templateNode || insideTemplate)
+    {
+        // NS304-T08-F06: a generic function's receiver still resolves its generic type reference
+        // (`Box<T>`) so the extension dispatch can unify it with the closed receiver `Box<I>`.
+        if (isGenericMethodTemplateNode(node))
+        {
+            GenericLookupScope receiverScope = currentScope;
+            for (const std::string& parameter : node->genericParameters())
+                receiverScope.typeParameters.insert(parameter);
+            for (const ast::AstNode* child : node->children())
+            {
+                if (child == nullptr ||
+                    child->kind() != ast::AstNodeKind::ParameterDeclaration ||
+                    child->typeSyntax() == nullptr)
+                {
+                    continue;
+                }
+                processTypeSyntax(
+                    unit, const_cast<ast::TypeSyntax*>(child->typeSyntax()), currentNamespace,
+                    receiverScope, diagnostics);
+                break;
+            }
+        }
+        return;
+    }
 
     // The declaration type is contextual evidence for its initializer. Keep the readable,
     // structural spelling before materialization rewrites this node in place.
@@ -2368,6 +2399,15 @@ void ProjectGenericModel::processNode(
             for (ast::TypeSyntax* argument : candidate->typeArguments())
                 processTypeSyntax(unit, argument, currentNamespace, currentScope, diagnostics);
         }
+    }
+    else if (node->kind() == ast::AstNodeKind::ExtensionDeclaration && node->typeSyntax() != nullptr)
+    {
+        // NS304-T08-F06: the extension's receiver `Box<T>` is an OPEN reference; the block's type
+        // parameters are in scope so it does not materialize a closed clone.
+        GenericLookupScope extensionScope = currentScope;
+        for (const std::string& parameter : node->genericParameters())
+            extensionScope.typeParameters.insert(parameter);
+        processTypeSyntax(unit, node->typeSyntax(), currentNamespace, extensionScope, diagnostics);
     }
     else if (node->typeSyntax() != nullptr)
     {
@@ -2663,6 +2703,23 @@ bool ProjectGenericModel::processTypeSyntax(
     if (!normalizeGenericArguments(
             state->record, syntax->typeArguments(), syntax->range(), diagnostics))
         return false;
+
+    // NS304-T08-F06: an open generic reference whose argument is a scope parameter does not
+    // materialize a closed clone; record its template identity and keep its source spelling so a
+    // later substitution can still replace T.
+    const bool anyOpenParameter = std::ranges::any_of(
+        syntax->typeArguments(), [&](const ast::TypeSyntax* argument)
+        {
+            return argument != nullptr && argument->typeArguments().empty() &&
+                scope.typeParameters.contains(argument->baseName());
+        });
+    if (anyOpenParameter)
+    {
+        std::string canonical = "generic:" + state->record.canonicalKey;
+        appendTypeModifiers(canonical, syntax);
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        return true;
+    }
 
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
@@ -3457,7 +3514,15 @@ bool ProjectGenericModel::inferGenericCall(
     constexpr std::size_t kAny = std::numeric_limits<std::size_t>::max();
     const std::vector<TemplateState*> named = templatesNamedBy(
         unit, site, requestedOwner, methodName, kAny, kAny);
-    if (named.empty()) return true;
+    // NS304-T08-F06: an extension member access has a VALUE receiver, not an owner. When the
+    // receiver spelling finds no template, the extension is a namespace-level declaration, so
+    // retry with the lexical namespace as the owner.
+    std::vector<TemplateState*> extensionNamed;
+    if (named.empty() && callee->kind() == ast::AstNodeKind::MemberExpression)
+        extensionNamed = templatesNamedBy(
+            unit, site, templateSourceSpelling(namespaceName, {}), methodName, kAny, kAny);
+    const std::vector<TemplateState*>& effectiveNamed = named.empty() ? extensionNamed : named;
+    if (effectiveNamed.empty()) return true;
 
     // First collect bottom-up evidence without diagnosing a missing context. A later candidate may
     // provide an exact parameter type to the inner call (for example `int x = Id(Make())`).
@@ -3476,7 +3541,7 @@ bool ProjectGenericModel::inferGenericCall(
     // A potentially applicable non-generic overload remains an ordinary overload-resolution
     // problem. An exact expected type can, however, prove an overload irrelevant by return type;
     // adding such an unrelated declaration must not disable otherwise deterministic inference.
-    for (const TemplateState* candidate : named)
+    for (const TemplateState* candidate : effectiveNamed)
     {
         if (candidate == nullptr || candidate->parent == nullptr) continue;
         for (const ast::AstNode* sibling : candidate->parent->children())
@@ -3512,7 +3577,7 @@ bool ProjectGenericModel::inferGenericCall(
         return score;
     };
     std::vector<Inference> successes;
-    for (TemplateState* candidate : named)
+    for (TemplateState* candidate : effectiveNamed)
     {
         if (candidate == nullptr || candidate->syntax == nullptr) continue;
         std::vector<const ast::AstNode*> parameters;
@@ -3550,8 +3615,14 @@ bool ProjectGenericModel::inferGenericCall(
             used[*parameterIndex] = true;
             mapping[argumentIndex] = parameterIndex;
         }
+        // NS304-T08-F06: the extension receiver (first parameter, prepended as `ns3-extension`) is
+        // not a call argument, so it must not trigger the "missing argument" check.
+        const bool extensionCandidate =
+            candidate->syntax->auxiliaryText().find("ns3-extension") != std::string::npos;
         for (std::size_t index = 0; viable && index < parameters.size(); ++index)
-            if (!used[index] && parameters[index]->first() == nullptr) viable = false;
+            if (!used[index] && parameters[index]->first() == nullptr &&
+                !(extensionCandidate && index == 0))
+                viable = false;
         if (!viable) continue;
 
         const std::unordered_set<std::string> genericParameters(
@@ -3576,6 +3647,21 @@ bool ProjectGenericModel::inferGenericCall(
                     genericParameters, scope, inferred);
             }
         }
+        // NS304-T08-F06: an extension receiver supplies the inference evidence when the call has no
+        // explicit arguments (`b.Twice()` on `Box<I>` for `Twice<T>` over `Box<T>`).
+        if (viable && call->children().empty() && call->first() != nullptr &&
+            call->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            call->first()->first() != nullptr && !parameters.empty() && extensionCandidate)
+        {
+            ast::TypeSyntax* receiverActual =
+                inferExpressionType(unit, call->first()->first(), scope);
+            if (receiverActual != nullptr && parameters.front()->typeSyntax() != nullptr)
+            {
+                viable = inferTypeArguments(
+                    unit, parameters.front()->typeSyntax(), receiverActual,
+                    candidate->record, genericParameters, inferred);
+            }
+        }
         if (viable && expectedType != nullptr && candidate->syntax->typeSyntax() != nullptr)
             viable = inferTypeArguments(
                 unit, candidate->syntax->typeSyntax(), expectedType,
@@ -3584,7 +3670,7 @@ bool ProjectGenericModel::inferGenericCall(
         // With one visible generic template there is no candidate-state leak: any parameter type
         // made fully concrete by the first pass is safe context for an unresolved nested
         // expression. This is the top-down half of the ordered bidirectional algorithm.
-        if (viable && named.size() == 1U)
+        if (viable && effectiveNamed.size() == 1U)
         {
             const std::function<bool(const ast::TypeSyntax*)> containsOpenParameter =
                 [&](const ast::TypeSyntax* syntax)
@@ -3963,6 +4049,19 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
                     break;
                 }
             }
+        }
+        if (!found.empty()) return found;
+    }
+    // NS304-T08-F06: a global-namespace template has an empty source owner. The ladder cannot
+    // produce an empty rung, so match those templates explicitly.
+    if (writtenOwner.empty())
+    {
+        std::vector<TemplateState*> found;
+        for (TemplateState& state : templateStates_)
+        {
+            if (!aplicable(state)) continue;
+            if (templateSourceSpelling(state.record.namespaceName, state.record.ownerName).empty())
+                found.push_back(&state);
         }
         if (!found.empty()) return found;
     }
