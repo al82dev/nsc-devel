@@ -16339,10 +16339,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const bool isMoveNext = memberName == "MoveNext";
         const bool isDrop = memberName == "Drop";
         const bool isMoveNextAsync = memberName == "MoveNextAsync";
-        // NS304-T07-F02: MoveNextAsync returns the future of the next demand (future:<bool>).
+        // NS304-T07-F02/F03: MoveNextAsync returns the future of the next demand with the
+        // async-iterator's error type (future:<bool>|<E>).
+        const std::optional<std::string_view> asyncError =
+            language::asyncIteratorErrorTypeKey(callee.receiverTypeKey);
+        const std::string moveNextAsyncResult = language::futureTypeKey(
+            "builtin:bool", asyncError.has_value() ? std::string(*asyncError) : std::string{});
         const std::string resultTypeKey = isMoveNext
             ? "builtin:bool"
-            : isMoveNextAsync ? language::futureTypeKey("builtin:bool")
+            : isMoveNextAsync ? moveNextAsyncResult
             : isDrop ? "builtin:void" : callee.receiverTypeKey;
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext

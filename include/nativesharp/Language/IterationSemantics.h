@@ -60,6 +60,16 @@ inline std::optional<std::string_view> asyncIteratorInnerTypeKey(std::string_vie
     return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
 }
 
+inline std::optional<std::string_view> asyncIteratorErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "async-iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    if (pipe == std::string_view::npos) return std::nullopt;
+    return rest.substr(pipe + 1);
+}
+
 struct LazyIntegerRange final
 {
     std::int64_t begin = 0;
