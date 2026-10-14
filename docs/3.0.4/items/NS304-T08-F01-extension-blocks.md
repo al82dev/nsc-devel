@@ -1,15 +1,15 @@
 # NS304-T08-F01 — Bloques extension canónicos sobre tipos y constraints
 
-- **Estado**: CERRADO (extension method en namespace) / residual (namespace global)
+- **Estado**: CERRADO (namespace + namespace global)
 - **Rama**: development
 
 ## Resultado (validado)
 
 - `extension int { int Double() {...} }` dentro de un `namespace` + `using` funciona: **`TL-LANG-323` PASS**
   (exit 42). El receptor sintético + `bindExtension` + lookup están cableados.
-- **Residual**: el extension en el NAMESPACE GLOBAL no se registra (`predeclareNode` exige
-  `!namespaceSegments.empty()`, ProjectNameLookup.cpp:613-614). Se confirma relajando esa
-  condición o documentando que el extension global requiere namespace.
+- **Namespace global**: `predeclareNode` ya registra las funciones con `namespaceSegments` vacío.
+  Verificado: `extension int { Double() }` en el nivel superior → `21.Double()` = 42. **`TL-LANG-388`
+  PASS**. Commit `0b0d8c49`.
 
 ## Gap F01
 
