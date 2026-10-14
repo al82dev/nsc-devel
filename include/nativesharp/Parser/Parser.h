@@ -168,7 +168,8 @@ private:
         std::size_t beginIndex,
         bool interfaceContext,
         bool allowReadonlyGetter,
-        bool isReferenceReturn);
+        bool isReferenceReturn,
+        bool isPartial = false);
     ast::AstNode* parseIndexerTail(
         ast::TypeSyntax* elementType,
         lexer::TokenKind accessibility,

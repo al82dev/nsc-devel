@@ -4179,6 +4179,44 @@ class Program
         }});
 }
 
+void registerPartialPropertyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-417", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "partial", "property", "accessor", "merge"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T12F03PartialProperty", "Exe", R"ns(
+partial class Foo
+{
+    public partial int P { get; }
+    public partial int P { get { return 5; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        Foo f = new Foo();
+        return f.P;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T12F03PartialProperty.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-417 a partial property accessor signature + body must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-417 f.P must dispatch through the merged getter (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6863,6 +6901,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerRefLikeConstraintCase(registry);
     registerRefLikeTraitWitnessCase(registry);
     registerPartialMethodCase(registry);
+    registerPartialPropertyCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);

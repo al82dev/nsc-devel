@@ -1822,7 +1822,17 @@ bool ProjectMemberModel::collectTypeMembers(
             {
                 const auto ordinary = ordinaryDeclarations.find(declaredMember->text());
                 const auto previousProperty = propertyDeclarations.find(declaredMember->text());
-                if (ordinary != ordinaryDeclarations.end() || previousProperty != propertyDeclarations.end())
+                // NS304-T12-F03: two partial property declarations merge; the accessors merge in the
+                // member model (F02). Keep the first declaration as the canonical property.
+                const bool partialPropertyMerge =
+                    previousProperty != propertyDeclarations.end() &&
+                    previousProperty->second != nullptr &&
+                    previousProperty->second->auxiliaryText().find("partial-property") != std::string::npos &&
+                    declaredMember->auxiliaryText().find("partial-property") != std::string::npos;
+                if (partialPropertyMerge)
+                {
+                }
+                else if (ordinary != ordinaryDeclarations.end() || previousProperty != propertyDeclarations.end())
                 {
                     const ast::AstNode* previous = ordinary != ordinaryDeclarations.end()
                         ? ordinary->second : previousProperty->second;

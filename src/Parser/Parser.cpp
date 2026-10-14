@@ -7277,7 +7277,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* property = parsePropertyTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            beginIndex, false, structContext && !isStatic, isReferenceReturn);
+            beginIndex, false, structContext && !isStatic, isReferenceReturn, isPartialMember);
         if (isReadonly && structContext && !isStatic && property != nullptr)
         {
             property->addModifier(TokenKind::KwReadonly);
@@ -7643,13 +7643,14 @@ ast::AstNode* Parser::parsePropertyTail(
     std::size_t beginIndex,
     bool interfaceContext,
     bool allowReadonlyGetter,
-    bool isReferenceReturn)
+    bool isReferenceReturn,
+    bool isPartial)
 {
     ast::AstNode* property = arena_.make<ast::AstNode>(
         ast::AstNodeKind::PropertyDeclaration, name.range());
     property->setText(std::string(name.lexeme()));
     property->setTypeSyntax(propertyType);
-    property->setAuxiliaryText("property");
+    property->setAuxiliaryText(isPartial ? "property;partial-property" : "property");
     if (accessibility != TokenKind::Invalid)
     {
         property->setTokenKind(accessibility);
@@ -7751,6 +7752,12 @@ ast::AstNode* Parser::parsePropertyTail(
             std::string("property:") + (getter ? "get:" : "set:") + propertyName +
                 (initOnly ? ":init" : ""),
             accessorRange);
+        // NS304-T12-F03: a partial accessor carries the partial-method marker so the member model
+        // merges the signature with the defining body (F02).
+        if (isPartial)
+        {
+            accessor->setAuxiliaryText(accessor->auxiliaryText() + ";partial-method");
+        }
         // NS304-T08-F02: propagate the ref-returning flag to the getter accessor.
         if (getter && isReferenceReturn) accessor->setReference(true);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
@@ -7769,7 +7776,12 @@ ast::AstNode* Parser::parsePropertyTail(
 
         if (consumeIf(TokenKind::Semicolon))
         {
-            if (interfaceContext || isAbstract)
+            if (isPartial)
+            {
+                // NS304-T12-F03: a partial accessor signature carries no body and no auto storage;
+                // the defining accessor in the other part provides the body.
+            }
+            else if (interfaceContext || isAbstract)
             {
                 // A bodyless interface or trait accessor remains a pure contract.  The abstract
                 // marker belongs to the accessor, not to the enclosing declaration: a property
