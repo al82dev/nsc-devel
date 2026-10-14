@@ -17647,6 +17647,66 @@ private:
                 LLVMSetAlignment(converted, static_cast<unsigned>(targetLayout->alignment));
             return converted;
         }
+        // NS304-T11-F01: Span<T> -> ReadOnlySpan<T> is a structural two-field view. The pointer
+        // field converts by opaque-pointer identity (const is erased in LLVM), the length field is
+        // identity; both are copied into the target struct exactly like the tuple conversion above.
+        {
+            const auto terminal = [](std::string_view key) -> std::string_view
+            {
+                const std::size_t separator = key.find_last_of(".:+");
+                return separator == std::string_view::npos ? key : key.substr(separator + 1U);
+            };
+            constexpr std::string_view spanPrefix = "Span__g1__";
+            constexpr std::string_view readOnlySpanPrefix = "ReadOnlySpan__g1__";
+            if (terminal(source).starts_with(spanPrefix) &&
+                terminal(target).starts_with(readOnlySpanPrefix))
+            {
+                const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(source);
+                const frontend::ProjectOopMirStructLayout* targetLayout = structLayout(target);
+                if (sourceLayout != nullptr && targetLayout != nullptr &&
+                    sourceLayout->fields.size() == 2U && targetLayout->fields.size() == 2U)
+                {
+                    std::string ignored;
+                    LLVMTypeRef sourceCarrier = llvmType(source, ignored);
+                    if (sourceCarrier == nullptr)
+                        return failValue(error, "span view source has no LLVM carrier");
+                    LLVMValueRef sourceSlot = entryBlockAlloca(
+                        sourceCarrier, static_cast<unsigned>(sourceLayout->alignment), "span.view.source");
+                    LLVMValueRef sourceStore = LLVMBuildStore(builder_, value, sourceSlot);
+                    if (sourceLayout->alignment > 1U)
+                        LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
+                    LLVMValueRef targetSlot = entryBlockAlloca(
+                        destination, static_cast<unsigned>(targetLayout->alignment), "span.view.target");
+                    LLVMValueRef targetZero = LLVMBuildStore(builder_, LLVMConstNull(destination), targetSlot);
+                    if (targetLayout->alignment > 1U)
+                        LLVMSetAlignment(targetZero, static_cast<unsigned>(targetLayout->alignment));
+                    for (std::size_t index = 0; index < 2U; ++index)
+                    {
+                        LLVMTypeRef sourceType = llvmType(sourceLayout->fields[index].typeKey, error);
+                        if (sourceType == nullptr) return nullptr;
+                        LLVMValueRef sourceAddress = byteOffset(
+                            sourceSlot, sourceLayout->fields[index].offset, "span.view.source.element");
+                        LLVMValueRef element = LLVMBuildLoad2(
+                            builder_, sourceType, sourceAddress, "span.view.element");
+                        if (sourceLayout->fields[index].alignment > 1U)
+                            LLVMSetAlignment(element, static_cast<unsigned>(sourceLayout->fields[index].alignment));
+                        element = convert(element, sourceLayout->fields[index].typeKey,
+                            targetLayout->fields[index].typeKey, error);
+                        if (element == nullptr) return nullptr;
+                        LLVMValueRef targetAddress = byteOffset(
+                            targetSlot, targetLayout->fields[index].offset, "span.view.target.element");
+                        LLVMValueRef store = LLVMBuildStore(builder_, element, targetAddress);
+                        if (targetLayout->fields[index].alignment > 1U)
+                            LLVMSetAlignment(store, static_cast<unsigned>(targetLayout->fields[index].alignment));
+                    }
+                    LLVMValueRef converted = LLVMBuildLoad2(
+                        builder_, destination, targetSlot, "span.view.value");
+                    if (targetLayout->alignment > 1U)
+                        LLVMSetAlignment(converted, static_cast<unsigned>(targetLayout->alignment));
+                    return converted;
+                }
+            }
+        }
         // UN ENUM SE CONVIERTE COMO SU TIPO SUBYACENTE. `integerWidth()` e `isSignedInteger()` solo
         // saben de claves "builtin:", asi que la clave de un enum tiene que traer su ancho y su
         // signo de la declaracion. Antes esto decia "32 bits y con signo" sin preguntar, y con un

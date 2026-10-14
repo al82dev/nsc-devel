@@ -113,6 +113,46 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         }
     }
 
+    // NS304-T11-F01: Span<T> -> ReadOnlySpan<T> is a one-way structural view conversion. Mutable
+    // storage becomes an immutable view over the same element type; the reverse is rejected because
+    // it would invent mutability. It ranks after reference conversions but before user-defined.
+    {
+        const auto terminal = [](std::string_view key) -> std::string_view
+        {
+            const std::size_t separator = key.find_last_of(".:+");
+            return separator == std::string_view::npos ? key : key.substr(separator + 1U);
+        };
+        const std::string_view sourceTerminal = terminal(sourceTypeKey);
+        const std::string_view targetTerminal = terminal(targetTypeKey);
+        constexpr std::string_view spanPrefix = "Span__g1__";
+        constexpr std::string_view readOnlySpanPrefix = "ReadOnlySpan__g1__";
+        if (!sourceTerminal.starts_with(spanPrefix) ||
+            !targetTerminal.starts_with(readOnlySpanPrefix))
+        {
+            // Fall through to user-defined conversion.
+        }
+        else
+        {
+            const auto elementSpelling = [](std::string_view terminal, std::string_view prefix)
+                -> std::string_view
+            {
+                const std::string_view rest = terminal.substr(prefix.size());
+                const std::size_t hash = rest.rfind("__h");
+                return hash == std::string_view::npos ? std::string_view{} : rest.substr(0, hash);
+            };
+            if (elementSpelling(sourceTerminal, spanPrefix) ==
+                elementSpelling(targetTerminal, readOnlySpanPrefix))
+            {
+                return ProjectImplicitConversion{
+                    ProjectConversionKind::View,
+                    6,
+                    std::string(sourceTypeKey),
+                    std::string(targetTypeKey),
+                    std::nullopt};
+            }
+        }
+    }
+
     const ProjectImplicitConversion userDefined = findUserDefined(
         sourceTypeKey, targetTypeKey, true);
     if (userDefined.exists())

@@ -27,6 +27,9 @@ enum class ProjectConversionKind
     PointerToVoid,
     StringLiteralToCharPointer,
     StringLiteralToNativeString,
+    // NS304-T11-F01: a mutable view (Span<T>) becomes an immutable view (ReadOnlySpan<T>). Identity
+    // element, one-way (immutable never gains mutability). Structural (pointer const + length).
+    View,
     UserDefinedImplicit,
     UserDefinedExplicit
 };

@@ -776,6 +776,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::PointerToVoid: return "pointer-to-void";
         case ProjectConversionKind::StringLiteralToCharPointer: return "string-literal-to-char-pointer";
         case ProjectConversionKind::StringLiteralToNativeString: return "string-literal-to-native-string";
+        case ProjectConversionKind::View: return "view";
         case ProjectConversionKind::UserDefinedImplicit: return "user-defined-implicit";
         case ProjectConversionKind::UserDefinedExplicit: return "user-defined-explicit";
     }
