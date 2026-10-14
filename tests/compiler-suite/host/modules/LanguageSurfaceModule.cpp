@@ -7027,6 +7027,137 @@ class Program
                 "TL-LANG-465 a raw-pointer struct must not derive Send structurally: " +
                     emitted.error + emitted.output);
         }});
+
+    registry.add(TestCase{"TL-LANG-466", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "thread-executor", "local", "send", "compile"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07ThreadLocalExecutor", "Exe", R"ns(
+using NativeSharp.Core;
+struct Raw { public byte* p; }
+struct LocalExec : IExecutor
+{
+    public int Spawn(Future<void> task) { return 0; }
+    public int PollJoin(int handle) { return 0; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child(ref Raw value) { yield; }
+    public static int Main()
+    {
+        Raw value = default(Raw);
+        TaskScope<LocalExec> scope = TaskScope<LocalExec>.Create(new LocalExec());
+        scope.Spawn(Child(ref value));
+        scope.Join();
+        return 7;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07ThreadLocalExecutor.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-466 a non-Send Future on a local IExecutor must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-466 the local-executor program must run (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-467", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "thread-executor", "send", "reject"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07ThreadSendNegative", "Exe", R"ns(
+using NativeSharp.Core;
+struct Raw { public byte* p; }
+struct ThreadExec : IThreadExecutor
+{
+    public int Spawn(Future<void> task) { return 0; }
+    public int PollJoin(int handle) { return 0; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child(ref Raw value) { yield; }
+    public static int Main()
+    {
+        Raw value = default(Raw);
+        TaskScope<ThreadExec> scope = TaskScope<ThreadExec>.Create(new ThreadExec());
+        scope.Spawn(Child(ref value));
+        scope.Join();
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07ThreadSendNegative.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    emitted.output.find("future submitted to a thread executor is not Send") !=
+                        std::string::npos,
+                "TL-LANG-467 a non-Send Future on an IThreadExecutor must be rejected: " +
+                    emitted.error + emitted.output);
+        }});
+
+    registry.add(TestCase{"TL-LANG-468", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "thread-executor", "send", "compile", "run"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07ThreadSendPositive", "Exe", R"ns(
+using NativeSharp.Core;
+struct ThreadExec : IThreadExecutor
+{
+    public int Spawn(Future<void> task) { return 0; }
+    public int PollJoin(int handle) { return 0; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child(ref int value) { yield; value = value + 1; }
+    public static int Main()
+    {
+        int value = 41;
+        TaskScope<ThreadExec> scope = TaskScope<ThreadExec>.Create(new ThreadExec());
+        scope.Spawn(Child(ref value));
+        scope.Join();
+        value = value + 1;
+        return value;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07ThreadSendPositive.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-468 a Send Future on an IThreadExecutor must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-468 the thread-executor child write + source increment reach 42: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
 }
 
 void registerGeneratorEarlyStopCase(TestRegistry& registry)

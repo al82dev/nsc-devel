@@ -18016,6 +18016,89 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
+
+        // NS304-T07-F07: a thread executor may move the Future to another thread, so every `ref`
+        // capture must be Send (a raw pointer, or a type containing one, does not derive Send).
+        if (genericModel_ != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr &&
+            inheritanceModel_ != nullptr && interfaceModel_ != nullptr &&
+            selected.memberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& spawnMember = memberModel_->members()[selected.memberOrdinal];
+            const std::size_t declaringOrdinal = spawnMember.declaringTypeOrdinal;
+            if (declaringOrdinal < nameLookup_->namedTypes().size())
+            {
+                const std::string scopeKey =
+                    nameLookup_->namedTypes()[declaringOrdinal].identity.key();
+                const GenericSpecializationRecord* spec =
+                    genericModel_->specializationForTypeKey(scopeKey);
+                if (spec != nullptr && spec->typeArguments.size() == 1U)
+                {
+                    const std::string executorKey = ProjectMemberModel::canonicalGenericArgumentKey(
+                        spec->typeArguments.front(), *nameLookup_);
+                    const std::optional<std::size_t> executorOrdinal =
+                        namedTypeOrdinalForTypeKey(executorKey);
+                    const std::optional<std::size_t> threadOrdinal = namedTypeOrdinalForTypeKey(
+                        "type:NativeSharpCore::NativeSharp.Core.IThreadExecutor");
+                    if (executorOrdinal.has_value() && threadOrdinal.has_value() &&
+                        interfaceModel_->classImplementsInterface(*executorOrdinal, *threadOrdinal))
+                    {
+                        std::function<bool(const std::string&)> typeIsSend;
+                        typeIsSend = [&](const std::string& typeKey) -> bool
+                        {
+                            if (typeKey.ends_with("*")) return false;
+                            const std::optional<std::size_t> typeOrdinal =
+                                namedTypeOrdinalForTypeKey(typeKey);
+                            if (!typeOrdinal.has_value()) return true;
+                            for (const ClassMemberSymbol& member : memberModel_->members())
+                            {
+                                if (member.kind != ClassMemberKind::Field ||
+                                    member.declaringTypeOrdinal != *typeOrdinal)
+                                    continue;
+                                if (!typeIsSend(member.declaredTypeKey)) return false;
+                            }
+                            return true;
+                        };
+                        for (const ast::AstNode* argument : expression->children())
+                        {
+                            if (argument == nullptr ||
+                                argument->kind() != ast::AstNodeKind::CallExpression)
+                                continue;
+                            const MethodCallBinding* childCall =
+                                callBinding(argument, methodMemberOrdinal);
+                            if (childCall == nullptr ||
+                                !childCall->selectedMemberOrdinal.has_value()) continue;
+                            if (*childCall->selectedMemberOrdinal >= memberModel_->members().size())
+                                continue;
+                            const ClassMemberSymbol& child =
+                                memberModel_->members()[*childCall->selectedMemberOrdinal];
+                            for (std::size_t childArgOrdinal = 0;
+                                 childArgOrdinal < argument->children().size(); ++childArgOrdinal)
+                            {
+                                if (childArgOrdinal >= child.parameters.size() ||
+                                    child.parameters[childArgOrdinal].passKind != ParameterPassKind::Ref)
+                                    continue;
+                                const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+                                    argument->children()[childArgOrdinal], scopeOrdinal);
+                                if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal ||
+                                    !origin.ordinal.has_value() ||
+                                    *origin.ordinal >= locals_.size())
+                                    continue;
+                                const MethodLocalSymbol& source = locals_[*origin.ordinal];
+                                if (!typeIsSend(source.typeKey))
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidCall,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        argument->range(),
+                                        "future submitted to a thread executor is not Send: capture '" +
+                                            source.name + "' has type '" + source.typeKey + "'");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     call.selectedConversions = selected.conversions;
