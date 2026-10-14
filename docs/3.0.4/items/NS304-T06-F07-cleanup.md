@@ -61,3 +61,11 @@ Queda: **abandono de `foreach`** (destruir el frame del generator al salir del l
 
 Queda: el **teardown automático del `foreach`** (invocar `dropFn` al salir del loop, sin llamada
 explícita) y el **error tipado**.
+
+### Teardown del foreach — ruta trazada (ronda 169)
+
+El `__enumerator` del foreach es un local de valor (no `raii`), y la **destrucción automática de value
+locals no está soportada** (`foreach struct enumerator ... must have a trivial lifetime`,
+ProjectMethodBodyModel.cpp). Relajar los checks RAII (type + ownership) hace compilar, pero el drop del
+value-type no se emite en el cleanup → el abandono no destruye el frame (exit 0 en el demo). El
+teardown depende de la **RAII de value-types** (un feature más amplio).
