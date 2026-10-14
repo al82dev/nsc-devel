@@ -5274,8 +5274,11 @@ void ProjectMethodBodyModel::analyzeStatement(
                 if (statement->kind() == ast::AstNodeKind::YieldReturnStatement &&
                     statement->first() != nullptr)
                 {
+                    // NS304-T07-F04: a move-only item is transferred once via `move(x)`; the yield
+                    // operand is a consuming context, so allow the canonical move.
                     const ExpressionResult yielded = analyzeExpression(
-                        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+                        false, false, true);
                     if (yielded.valid)
                     {
                         // NS304-T06-F05: a `ref`/`ref mut` item (`ref:<T>`/`refmut:<T>`) yields a
@@ -10753,6 +10756,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 --partialMoveSourceDepth_;
                 if (tryOwnedFieldMoveSource(member, partialRoot)) break;
+                // NS304-T07-F04: `move(it.Current)` transfers a move-only item out of the
+                // iterator's item slot exactly once.
+                if (expression->first()->text() == "Current" && member.valid &&
+                    memberModel_ != nullptr && memberModel_->typeIsMoveOnly(member.typeKey))
+                {
+                    const ast::AstNode* iteratorSyntax = expression->first()->first();
+                    bool iteratorPrecise = true;
+                    const std::optional<std::string> iteratorPlace = storagePlaceKey(
+                        iteratorSyntax, scopeOrdinal, &iteratorPrecise);
+                    if (iteratorPlace.has_value() && movedIteratorItems_.contains(*iteratorPlace))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "cannot move from the iterator item twice; the previous move(it.Current) already transferred it");
+                        break;
+                    }
+                    if (iteratorPlace.has_value())
+                        movedIteratorItems_.insert(*iteratorPlace);
+                    MethodMoveBinding move;
+                    move.syntax = expression;
+                    move.methodMemberOrdinal = methodMemberOrdinal;
+                    move.scopeOrdinal = scopeOrdinal;
+                    move.typeKey = member.typeKey;
+                    move.sourceIsIteratorCurrent = true;
+                    move.clearSourceStorage = true;
+                    moveBindings_.push_back(std::move(move));
+                    result.typeKey = member.typeKey;
+                    result.ownership = sema::OwnershipKind::Owned;
+                    result.ownershipTransfer = true;
+                    break;
+                }
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
@@ -14928,7 +14964,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     const bool asyncIterator = language::asyncIteratorInnerTypeKey(receiver.typeKey).has_value();
     if (!typeReceiver &&
         (((expression->text() == "MoveNext" || expression->text() == "GetEnumerator") && syncIterator) ||
-         (expression->text() == "Drop" && (syncIterator || asyncIterator))))
+         (expression->text() == "Drop" && (syncIterator || asyncIterator)) ||
+         (expression->text() == "Cancel" && asyncIterator)))
     {
         result.methodGroup = true;
         result.methodCandidates.clear();
@@ -16539,6 +16576,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const bool isMoveNext = memberName == "MoveNext";
         const bool isDrop = memberName == "Drop";
         const bool isMoveNextAsync = memberName == "MoveNextAsync";
+        const bool isCancel = memberName == "Cancel";
         // NS304-T07-F02/F03: MoveNextAsync returns the future of the next demand with the
         // async-iterator's error type (future:<bool>|<E>).
         const std::optional<std::string_view> asyncError =
@@ -16548,7 +16586,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const std::string resultTypeKey = isMoveNext
             ? "builtin:bool"
             : isMoveNextAsync ? moveNextAsyncResult
-            : isDrop ? "builtin:void" : callee.receiverTypeKey;
+            : isDrop ? "builtin:void" : isCancel ? "builtin:void" : callee.receiverTypeKey;
         // NS304-T07-F04: a `ref`/`ref mut` Current borrow lives only until the next demand or
         // destruction. Advancing or dropping the iterator while that borrow is live is rejected.
         if (isMoveNext || isMoveNextAsync || isDrop)
@@ -16571,6 +16609,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
                        : isMoveNextAsync ? MethodCoreOperationKind::IteratorMoveNextAsync
                        : isDrop ? MethodCoreOperationKind::IteratorDrop
+                       : isCancel ? MethodCoreOperationKind::IteratorCancel
                                 : MethodCoreOperationKind::IteratorGetEnumerator,
             expression,
             methodMemberOrdinal,
@@ -26363,6 +26402,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case MethodCoreOperationKind::IteratorDrop: return "iterator-drop";
         case MethodCoreOperationKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case MethodCoreOperationKind::IteratorCancel: return "iterator-cancel";
         case MethodCoreOperationKind::CollectionBuilder: return "collection-builder";
         case MethodCoreOperationKind::NullConditionalUserIndex: return "null-conditional-user-index";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";

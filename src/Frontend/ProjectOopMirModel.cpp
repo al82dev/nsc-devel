@@ -720,6 +720,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::MoveValue: return "move-value";
         case ProjectOopMirNodeKind::MoveArrayElement: return "move-array-element";
         case ProjectOopMirNodeKind::MoveOwnedField: return "move-owned-field";
+        case ProjectOopMirNodeKind::MoveIteratorCurrent: return "move-iterator-current";
         case ProjectOopMirNodeKind::OwnedTemporaryBorrow: return "owned-temporary-borrow";
         case ProjectOopMirNodeKind::FullExpressionCleanup: return "full-expression-cleanup";
         case ProjectOopMirNodeKind::PointerLoad: return "pointer-load";
@@ -760,6 +761,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopMirNodeKind::IteratorDrop: return "iterator-drop";
         case ProjectOopMirNodeKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case ProjectOopMirNodeKind::IteratorCancel: return "iterator-cancel";
         case ProjectOopMirNodeKind::AsyncYieldValue: return "async-yield-value";
         case ProjectOopMirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
@@ -2709,6 +2711,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::MoveOwnedField:
             result->kind = ProjectOopMirNodeKind::MoveOwnedField;
             break;
+        case ProjectOopHirNodeKind::MoveIteratorCurrent:
+            result->kind = ProjectOopMirNodeKind::MoveIteratorCurrent;
+            break;
         case ProjectOopHirNodeKind::OwnedTemporaryBorrow:
             result->kind = ProjectOopMirNodeKind::OwnedTemporaryBorrow;
             break;
@@ -3685,6 +3690,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
 
         case ProjectOopHirNodeKind::IteratorMoveNextAsync:
             result->kind = ProjectOopMirNodeKind::IteratorMoveNextAsync;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            break;
+
+        case ProjectOopHirNodeKind::IteratorCancel:
+            result->kind = ProjectOopMirNodeKind::IteratorCancel;
             result->typeKey = node->typeKey;
             result->elementTypeKey = node->elementTypeKey;
             break;

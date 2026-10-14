@@ -482,6 +482,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::IteratorGetEnumerator:
     case MethodCoreOperationKind::IteratorDrop:
     case MethodCoreOperationKind::IteratorMoveNextAsync:
+    case MethodCoreOperationKind::IteratorCancel:
         return std::nullopt;
     case MethodCoreOperationKind::CollectionBuilder:
         return std::nullopt;
@@ -1030,6 +1031,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::MoveValue: return "move-value";
         case ProjectOopHirNodeKind::MoveArrayElement: return "move-array-element";
         case ProjectOopHirNodeKind::MoveOwnedField: return "move-owned-field";
+        case ProjectOopHirNodeKind::MoveIteratorCurrent: return "move-iterator-current";
         case ProjectOopHirNodeKind::OwnedTemporaryBorrow: return "owned-temporary-borrow";
         case ProjectOopHirNodeKind::FullExpressionCleanup: return "full-expression-cleanup";
         case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
@@ -1072,6 +1074,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case ProjectOopHirNodeKind::IteratorDrop: return "iterator-drop";
         case ProjectOopHirNodeKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case ProjectOopHirNodeKind::IteratorCancel: return "iterator-cancel";
         case ProjectOopHirNodeKind::AsyncYieldValue: return "async-yield-value";
         case ProjectOopHirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
@@ -6636,6 +6639,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(address));
                 return node;
             }
+            if (move->sourceIsIteratorCurrent)
+            {
+                // NS304-T07-F04: move(it.Current) takes the move-only item out of the iterator's
+                // item slot (field 2). The child is the iterator's ADDRESS; the backend loads the
+                // item slot and clears it so the Drop never double-frees the transferred value.
+                auto iterator = lowerExpression(expression->first()->first(), memberOrdinal, true, error);
+                if (iterator == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::MoveIteratorCurrent, expression, move->typeKey);
+                node->booleanValue = move->clearSourceStorage;
+                node->children.push_back(std::move(iterator));
+                return node;
+            }
             auto node = makeNode(ProjectOopHirNodeKind::MoveValue, expression, move->typeKey);
             node->localOrdinal = move->sourceLocalOrdinal;
             node->parameterOrdinal = move->sourceParameterOrdinal;
@@ -6774,7 +6789,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 (iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext ||
                  iteratorCore->kind == MethodCoreOperationKind::IteratorGetEnumerator ||
                  iteratorCore->kind == MethodCoreOperationKind::IteratorDrop ||
-                 iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync))
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorCancel))
             {
                 if (addressContext || !expression->children().empty() ||
                     expression->first() == nullptr || expression->first()->first() == nullptr)
@@ -6796,7 +6812,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                             ? ProjectOopHirNodeKind::IteratorDrop
                             : iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync
                                 ? ProjectOopHirNodeKind::IteratorMoveNextAsync
-                                : ProjectOopHirNodeKind::IteratorGetEnumerator,
+                                : iteratorCore->kind == MethodCoreOperationKind::IteratorCancel
+                                    ? ProjectOopHirNodeKind::IteratorCancel
+                                    : ProjectOopHirNodeKind::IteratorGetEnumerator,
                     expression,
                     iteratorCore->resultTypeKey);
                 node->elementTypeKey = iteratorCore->elementTypeKey;

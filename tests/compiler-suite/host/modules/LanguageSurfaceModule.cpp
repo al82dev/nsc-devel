@@ -6471,6 +6471,73 @@ class Program
 )ns", "mutable borrow");
 }
 
+void registerAsyncGeneratorMoveOnlyItemCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-452", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "move-only", "move", "item", "Current"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGenMoveOnly", "Exe", R"ns(
+struct Box { public owned int* p; }
+class Program
+{
+    public static AsyncIterator<Box, int> Gen() { Box b = new Box(); yield return move(b); }
+    public static int Main()
+    {
+        AsyncIterator<Box, int> it = Gen();
+        bool h = await it.MoveNextAsync();
+        Box g = move(it.Current);
+        it.Drop();
+        return 7;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGenMoveOnly.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-452 the move-only item must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-452 the move-only item must transfer once and not double-free (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-453", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "move-only", "move", "item", "reject"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGenMoveOnlyTwice", "Exe", R"ns(
+struct Box { public owned int* p; }
+class Program
+{
+    public static AsyncIterator<Box, int> Gen() { Box b = new Box(); yield return move(b); }
+    public static int Main()
+    {
+        AsyncIterator<Box, int> it = Gen();
+        bool h = await it.MoveNextAsync();
+        Box g = move(it.Current);
+        Box g2 = move(it.Current);
+        return 7;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGenMoveOnlyTwice.exe";
+            const external_program_support::Result rejected = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(rejected.started && rejected.exitCode != 0 &&
+                    (rejected.error + rejected.output).find("twice") != std::string::npos,
+                "TL-LANG-453 a second move(it.Current) must be rejected: " +
+                    rejected.error + rejected.output);
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8237,6 +8304,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorIntermodularCase(registry);
     registerAsyncGeneratorRefItemCase(registry);
     registerAsyncGeneratorRefBorrowRejectCase(registry);
+    registerAsyncGeneratorMoveOnlyItemCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

@@ -463,6 +463,9 @@ struct MethodMoveBinding final
     // entry, or a later overwrite's release) sees an empty slot instead of double-freeing the
     // value that was just moved out.
     bool sourceIsOwnedField = false;
+    // NS304-T07-F04: `move(it.Current)` transfers a move-only item out of the iterator's item slot
+    // exactly once. The HIR lowers it as a load of item@16 + a clear-store (no double drop).
+    bool sourceIsIteratorCurrent = false;
     // The source storage must be cleared after the load whenever its bits carry a drop
     // obligation. Reference slots use null as their optimized drop flag; move-only value
     // aggregates are zeroed so every nested owning slot becomes empty as well.
@@ -1148,6 +1151,7 @@ enum class MethodCoreOperationKind
     IteratorGetEnumerator,
     IteratorDrop,
     IteratorMoveNextAsync,
+    IteratorCancel,
     // NS304-T09-F05: a collection expression targeting a builder (CreateBuilder/Add/ToCollection).
     CollectionBuilder,
     // NS304-T10-F05: a null-conditional index over a USER indexer (`obj?[i]`). The receiver is
@@ -2511,6 +2515,9 @@ private:
     std::unordered_set<std::size_t> maybeInvokedFnOnceLocals_;
     std::unordered_set<std::string> partiallyMovedPlaces_;
     std::unordered_set<std::string> maybePartiallyMovedPlaces_;
+    // NS304-T07-F04: the place keys of async-iterators whose move-only item was already moved out
+    // via move(it.Current). A second move on the same iterator is diagnosed.
+    std::unordered_set<std::string> movedIteratorItems_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
     std::unordered_set<std::size_t> maybeInvalidLocalBorrows_;
     // C7 "definite assignment": the locals DEFINITELY assigned at the current point of the walk.

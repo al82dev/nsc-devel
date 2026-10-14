@@ -8121,6 +8121,26 @@ private:
                 if (intType == nullptr) return false;
                 LLVMValueRef iterState = LLVMBuildLoad2(
                     builder_, intType, asyncIter, "ayield.iter.state");
+                // NS304-T07-F05: a cancelled async-iterator (state == -3) yields no more items; the
+                // poll returns false and parks the iterator at the terminal state.
+                LLVMValueRef cancelledConst = LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1);
+                LLVMBasicBlockRef cancelledBlock = appendBlock("ayield.cancelled");
+                LLVMBasicBlockRef runBlock = appendBlock("ayield.run");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, iterState, cancelledConst, "ayield.is.cancelled"),
+                    cancelledBlock, runBlock);
+                LLVMPositionBuilderAtEnd(builder_, cancelledBlock);
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
+                    byteOffset(future, 16, "ayield.cancelled.result"));
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1),
+                    byteOffset(future, 0, "ayield.cancelled.state"));
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), asyncIter);
+                LLVMBuildRetVoid(builder_);
+                LLVMPositionBuilderAtEnd(builder_, runBlock);
                 LLVMValueRef prevState = LLVMConstInt(intType, node->integerValue - 1, 0);
                 LLVMBasicBlockRef entryBlock = appendBlock("ayield.entry");
                 LLVMBasicBlockRef resumeBlock = appendBlock("ayield.resume");
@@ -9414,6 +9434,25 @@ private:
                 }
                 return value;
             }
+            case frontend::ProjectOopMirNodeKind::MoveIteratorCurrent:
+            {
+                // NS304-T07-F04: move(it.Current) — the child is the iterator's ADDRESS; the item
+                // slot is field 2 (offset 16). Load it, then zero the vacated slot so the Drop
+                // never double-frees the value that just changed owners.
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                    return failValue(error, "move iterator Current requires exactly one iterator operand");
+                LLVMValueRef iterator = lowerExpression(node->children.front().get(), error);
+                if (iterator == nullptr) return nullptr;
+                LLVMTypeRef itemType = llvmType(node->typeKey, error);
+                if (itemType == nullptr) return nullptr;
+                LLVMValueRef slot = byteOffset(iterator, 16, "move.iterator.item.addr");
+                LLVMValueRef value = LLVMBuildLoad2(builder_, itemType, slot, "move.iterator.item.load");
+                if (node->booleanValue)
+                {
+                    LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+                }
+                return value;
+            }
             case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
             {
                 if (node->children.size() != 1 || node->children.front() == nullptr ||
@@ -10102,6 +10141,22 @@ private:
                 if (LLVMBuildCall2(builder_, fnType, moveNextFn, args, 2U, "") == nullptr)
                     return failValue(error, "iterator MoveNextAsync call failed");
                 return LLVMBuildLoad2(builder_, futureType, sretSlot, "moveNextAsync.future.load");
+            }
+
+            case frontend::ProjectOopMirNodeKind::IteratorCancel:
+            {
+                // NS304-T07-F05: `it.Cancel()` marks the async-iterator cancelled (state == -3),
+                // which the poll observes at its next await/yield.
+                if (node->children.size() != 1U)
+                    return failValue(error, "iterator Cancel requires one operand");
+                LLVMValueRef self = lowerExpression(node->children.front().get(), error);
+                if (self == nullptr) return nullptr;
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) return nullptr;
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1),
+                    self);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
 
             case frontend::ProjectOopMirNodeKind::FloatingConstant:

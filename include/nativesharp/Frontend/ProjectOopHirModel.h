@@ -75,6 +75,9 @@ enum class ProjectOopHirNodeKind
     // nulling the vacated slot. Address-shaped exactly like MoveArrayElement; kept as its own
     // kind so IR dumps say what the source actually was.
     MoveOwnedField,
+    // NS304-T07-F04: move(it.Current) transfers a move-only item out of the iterator's item slot,
+    // clearing the vacated slot. Address-shaped: the child is the iterator's address (not the item).
+    MoveIteratorCurrent,
     // NSC-LIMIT-021. The inner value is a fresh owner lent as a call argument. The node gives it
     // a hidden slot/cleanup identity; FullExpressionCleanup below closes that lifetime.
     OwnedTemporaryBorrow,
@@ -175,6 +178,8 @@ enum class ProjectOopHirNodeKind
     IteratorDrop,
     // NS304-T07-F02: `it.MoveNextAsync()` — returns the future of the next demand. One child: address.
     IteratorMoveNextAsync,
+    // NS304-T07-F05: `it.Cancel()` — sets the async-iterator's cancellation flag. One child: address.
+    IteratorCancel,
     // NS304-T07-F02: the async-generator poll's `yield return v`. One child: the item value.
     AsyncYieldValue,
     // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
