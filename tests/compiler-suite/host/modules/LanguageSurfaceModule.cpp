@@ -3995,6 +3995,45 @@ class Program
         }});
 }
 
+void registerParamsReadOnlySpanCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-411", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "params", "readonly-span", "no-heap"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-411")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T11F04ParamsSpan", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Sum(params ReadOnlySpan<int> values)
+    {
+        return values[0] + values[1];
+    }
+
+    public static int Main()
+    {
+        return Sum(3, 4);
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const std::filesystem::path executable =
+                products.directory() / "T11F04ParamsSpan.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-411 a params ReadOnlySpan<int> call must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-411 Sum(3, 4) over params ReadOnlySpan<int> must return 7: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6623,6 +6662,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerSpanViewConversionCase(registry);
     registerArrayToSpanConversionCase(registry);
     registerStringToStringViewCase(registry);
+    registerParamsReadOnlySpanCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
