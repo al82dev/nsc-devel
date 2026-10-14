@@ -4537,6 +4537,40 @@ class Program
         }});
 }
 
+void registerDecimalDivideMixedScaleCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-478", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "arithmetic", "div", "mixed-scale"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F04DecimalDivideMixedScale", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal a = 1.5m / 2m;      // 0.75 (scale 2)
+        decimal b = 1m / 2.5m;      // 0.4  (scale 1)
+        if ((int)(a * 100m) == 75 && (int)(b * 10m) == 4) return 0;
+        return 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F04DecimalDivideMixedScale.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-478 decimal mixed-scale divide must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-478 1.5m/2m and 1m/2.5m must divide with mixed scales (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9332,6 +9366,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalMultiplyCase(registry);
     registerDecimalToIntCase(registry);
     registerDecimalDivideCase(registry);
+    registerDecimalDivideMixedScaleCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

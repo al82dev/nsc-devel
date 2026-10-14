@@ -15529,21 +15529,42 @@ private:
             }
             else if (operation == lexer::TokenKind::Slash)
             {
-                // div: equal-scale alignment = leftCoefficient * 10 / rightCoefficient, result keeps
-                // the left scale. The division goes through a 64-bit lane (128-bit would need
-                // __udivti3).
+                // div: result scale = max(leftScale, rightScale) + (leftScale > rightScale ? 1 : 0),
+                // numerator = leftCoeff * 10^(rightScale - leftScale + target) / rightCoeff.
+                // This preserves the exact quotient when the scales differ (1.5m / 2m -> 75e-2)
+                // and keeps the equal-scale result at its natural scale (1.5m / 2.5m -> 6e-1).
+                // Periodic division still truncates (rounding is a later F04 increment). 64-bit
+                // lane: __udivti3 is not linked.
+                LLVMValueRef rightScale = LLVMBuildLShr(
+                    builder_, right, scaleShift, "decimal.div.right.scale");
+                LLVMValueRef scaleGe = LLVMBuildICmp(
+                    builder_, LLVMIntUGE, leftScale, rightScale, "decimal.div.scale.ge");
+                LLVMValueRef scaleGt = LLVMBuildICmp(
+                    builder_, LLVMIntUGT, leftScale, rightScale, "decimal.div.scale.gt");
+                LLVMValueRef maxScale = LLVMBuildSelect(
+                    builder_, scaleGe, leftScale, rightScale, "decimal.div.scale.max");
+                LLVMValueRef guard = LLVMBuildZExt(
+                    builder_, scaleGt, LLVMIntTypeInContext(context_, 128), "decimal.div.guard");
+                LLVMValueRef target = LLVMBuildAdd(
+                    builder_, maxScale, guard, "decimal.div.scale.target");
+                LLVMValueRef exponent = LLVMBuildSub(
+                    builder_, LLVMBuildAdd(builder_, target, rightScale, "decimal.div.exp.a"),
+                    leftScale, "decimal.div.exponent");
                 LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
                 LLVMValueRef leftCoeff64 = LLVMBuildTrunc(
                     builder_, leftCoefficient, lane, "decimal.div.left64");
                 LLVMValueRef rightCoeff64 = LLVMBuildTrunc(
                     builder_, rightCoefficient, lane, "decimal.div.right64");
+                LLVMValueRef exponent64 = LLVMBuildTrunc(
+                    builder_, exponent, lane, "decimal.div.exponent64");
                 LLVMValueRef numerator = LLVMBuildMul(
-                    builder_, leftCoeff64, LLVMConstInt(lane, 10, 0), "decimal.div.num");
+                    builder_, leftCoeff64, buildPow10(exponent64, "decimal.div.pow10"),
+                    "decimal.div.num");
                 LLVMValueRef quotient = LLVMBuildUDiv(
                     builder_, numerator, rightCoeff64, "decimal.div.quotient");
                 combined = LLVMBuildZExt(
                     builder_, quotient, LLVMIntTypeInContext(context_, 128), "decimal.div.wide");
-                effectiveScale = leftScale;
+                effectiveScale = target;
             }
             else
             {
