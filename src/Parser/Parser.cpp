@@ -8054,6 +8054,9 @@ ast::AstNode* Parser::parseOperatorTail(
         ast::AstNodeKind::MethodDeclaration, operatorKeywordRange);
     method->setTypeSyntax(returnType);
     method->setTokenKind(operation.kind());
+    // NS304-T08-F04: name the operator method (operator<symbol>) so namespace/operator lookup can
+    // find the extension operator; the operator: metadata keeps the trait/overload classification.
+    method->setText("operator" + std::string(operatorSpelling(operation.kind())));
     method->setAuxiliaryText("operator:" + std::string(lexer::tokenKindName(operation.kind())));
     if (accessibility != TokenKind::KwPublic)
     {

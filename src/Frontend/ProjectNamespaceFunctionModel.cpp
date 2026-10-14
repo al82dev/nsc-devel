@@ -369,6 +369,7 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.isExtension = isExtensionDeclaration(syntax);
+        candidate.operatorToken = syntax.tokenKind();
         candidate.parts.push_back(NamespaceFunctionPart{
             declaration.accessibility,
             declaration.sourceOrdinal,

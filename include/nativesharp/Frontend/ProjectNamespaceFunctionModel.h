@@ -66,6 +66,9 @@ struct NamespaceFunctionSymbol final
     bool isExportedC = false;
     bool isPrecompiled = false;
     bool isExtension = false;
+    // NS304-T08-F04: for an extension operator, the operation token (Plus/Minus/...). Invalid for
+    // non-operator extension functions.
+    lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;
 };
 
 struct PrecompiledNamespaceFunctionIdentity final
