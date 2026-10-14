@@ -7266,6 +7266,60 @@ class Program
         }});
 }
 
+void registerAsyncIteratorPdbCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-471", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async-iterator", "pdb", "suspension", "async-frame", "debug"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncIterPdb", "Exe", R"ns(
+class Program
+{
+    public static AsyncIterator<int, int> Gen()
+    {
+        yield return 1;
+        yield return 2;
+        yield return 3;
+    }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool has = await it.MoveNextAsync();
+        int sum = 0;
+        while (has) { sum = sum + it.Current; has = await it.MoveNextAsync(); }
+        return sum;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncIterPdb.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-471 the async-iterator debug build must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const std::filesystem::path pdb = products.directory() / "T07AsyncIterPdb.pdb";
+            context.expect(std::filesystem::is_regular_file(pdb) &&
+                    std::filesystem::file_size(pdb) > 0U,
+                "TL-LANG-471 the async-iterator must retain a non-empty PDB");
+            std::ifstream input(pdb, std::ios::binary);
+            const std::string content((std::istreambuf_iterator<char>(input)),
+                                      std::istreambuf_iterator<char>());
+            context.expect(content.find("Gen$moveNext$poll") != std::string::npos &&
+                    content.find("Gen$moveNext") != std::string::npos &&
+                    content.find("Gen$drop") != std::string::npos,
+                "TL-LANG-471 the PDB must carry the async suspension frames "
+                "($moveNext$poll/$moveNext/$drop)");
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-471 the debug async-iterator must run to 6: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9037,6 +9091,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTaskScopeCase(registry);
     registerSendSyncCase(registry);
     registerAsyncIteratorMetadataCase(registry);
+    registerAsyncIteratorPdbCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
