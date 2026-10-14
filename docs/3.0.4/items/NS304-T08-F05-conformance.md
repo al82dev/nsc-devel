@@ -1,6 +1,6 @@
 # NS304-T08-F05 — Conformance externa (orphan/coherence)
 
-- **Estado**: AUDITADO (witnesses/coherence en TraitSemantics; orphan + metadata pendientes)
+- **Estado**: PARCIAL (orphan rule + conformance duplicada + dispatch intermodular cerrados; witness NSMETA pendiente)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -28,6 +28,22 @@ conformance retroactiva incompatible) y publicar el witness + constraints en NSM
 - La conformance nominal `impl Trait for Class` **funciona** (exit 5); el impl duplicado se rechaza
   por firma (`duplicate method signature`). El target debe ser **clase no estática** (un struct da
   `trait impl target must be a non-static class`).
+
+### Verificación (tanda 227-231)
+
+- **Orphan rule** (TL-LANG-403): `impl Local for External` con trait poseído por el módulo compila;
+  `impl ExternalTrait for External` (no posee ni tipo ni trait) se rechaza con `orphan impl`.
+  (`ProjectNameLookup::finalizePredeclarations`, coteja `projectOrdinal` del impl contra el del trait.)
+- **Conformance duplicada**: `impl Addable for Vector` dos veces → `duplicate trait impl` (ya existía).
+- **Dispatch intermodular** (TL-LANG-404): `impl Local for External` + `e.F()` → **exit 5**. Los
+  trait-impl parts sobre targets externos se almacenan en `ProjectNameLookup::externalTraitImplParts_`
+  y `ProjectMemberModel` registra sus métodos en la superficie del tipo externo.
+
+### Pendiente
+
+- **Witness + constraints NSMETA**: serializar el record de conformance (target + trait + impl
+  methods) y reconstruirlo en un consumidor de 3 módulos (`e.F()`=5 a través de NSMETA). La
+  serialización sola sería superficie desconectada; va acoplada a la reconstrucción del consumidor.
 - Lo pendiente es el **vertical de reglas** (orphan: posesión de módulo del tipo/trait/extensión) +
   la **metadata NSMETA** (witness + constraints), no una surface nueva.
 

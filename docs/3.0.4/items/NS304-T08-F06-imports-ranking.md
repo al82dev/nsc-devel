@@ -1,6 +1,6 @@
 # NS304-T08-F06 — Imports, precedencia, ambigüedad y lookup incremental
 
-- **Estado**: AUDITADO (nominal-antes-extensión ya es el orden; ranking/índices incrementales pendientes)
+- **Estado**: PARCIAL (nominal-antes-extensión y visibilidad de bloque cerradas; ranking/índices pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -29,6 +29,20 @@ archivo) y los índices incrementales por identidad (invalidables, no cache text
 - La precedencia nominal-antes-extensión y el despacho básico de extensión funcionan
   (`extension Box { int Twice() }` → `b.Twice()` exit 1). Lo pendiente es el ranking/ambigüedad
   normativos y los índices por identidad (un vertical de determinismo, no una surface).
+
+### Verificación (tanda 244)
+
+- **Visibilidad** (TL-LANG-405): `public extension Box` resuelve `b.Twice()` (exit 1) para el
+  consumidor; `internal extension HiddenBox` se rechaza con `no compatible member`.
+  (`Parser::parseExtensionDeclaration` acepta `public`/`internal` y lo baja al namespace function;
+  `candidatesInNamespace` ya filtraba la accesibilidad cross-module.)
+
+### Pendiente
+
+- **Ranking por constraints**: `extension Box<T> where T:Special` exige *generic namespace functions*
+  (`predeclareNode`/`ProjectGenericModel` no registran funciones genéricas); tras eso, el constraint
+  debe entrar en `signatureKey` y el ranking en `bindExtension`.
+- **Índices por identidad**: `extensionBindingBySyntax_` es cache por nodo; cambiarlo a identidad.
 
 ## Nota
 
