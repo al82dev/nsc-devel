@@ -3710,6 +3710,72 @@ class Program
         }});
 }
 
+void registerExtensionVisibilityCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-405", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "visibility", "accessibility", "intermodular"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T08VisibilityProducer", "Library", R"ns(
+public struct Box { }
+public extension Box { public int Twice() { return 1; } }
+)ns");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T08VisibilityConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Box b = new Box();
+        return b.Twice();
+    }
+}
+)ns", "<ProjectReference Include=\"T08VisibilityProducer.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T08VisibilityConsumer.exe";
+            const external_program_support::Result visible = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(visible.started && visible.exitCode == 0 && visible.error.empty(),
+                "TL-LANG-405 a public extension must be visible to the consumer: " +
+                    visible.error + visible.output);
+            if (visible.started && visible.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    executable, {}, {}, products.directory());
+                context.expect(result.started && result.exitCode == 1,
+                    "TL-LANG-405 the public extension dispatch must run (exit 1): " +
+                        result.error + result.output + " exit=" + std::to_string(result.exitCode));
+            }
+
+            const std::filesystem::path hiddenProject = products.writeProject(
+                "T08VisibilityHiddenProducer", "Library", R"ns(
+public struct HiddenBox { }
+internal extension HiddenBox { public int Twice() { return 2; } }
+)ns");
+            const std::filesystem::path hiddenConsumer = products.writeProject(
+                "T08VisibilityHiddenConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        HiddenBox b = new HiddenBox();
+        return b.Twice();
+    }
+}
+)ns", "<ProjectReference Include=\"T08VisibilityHiddenProducer.nsproj\"/>");
+            const std::filesystem::path hiddenExecutable =
+                products.directory() / "T08VisibilityHiddenConsumer.exe";
+            const external_program_support::Result hidden = emitT01Product(
+                L"--emit-project-oop-exe", hiddenConsumer, hiddenExecutable,
+                products.directory());
+            context.expect(hidden.started && hidden.exitCode != 0 &&
+                    hidden.output.find("no compatible member") != std::string::npos,
+                "TL-LANG-405 an internal extension must not be visible to the consumer: " +
+                    hidden.error + hidden.output);
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6332,6 +6398,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerInlineArrayConstGenericCase(registry);
     registerNullConditionalUserIndexCase(registry);
     registerOrphanCoherenceCase(registry);
+    registerExtensionVisibilityCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
