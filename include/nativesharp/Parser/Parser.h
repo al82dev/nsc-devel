@@ -216,7 +216,8 @@ private:
         lexer::TokenKind accessibility,
         bool isStatic,
         bool isNoHeap,
-        std::size_t beginIndex);
+        std::size_t beginIndex,
+        bool isPartial = false);
     ast::AstNode* parseMethodTail(
         ast::TypeSyntax* returnType,
         const lexer::Token& name,

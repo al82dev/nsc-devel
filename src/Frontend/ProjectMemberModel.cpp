@@ -3132,7 +3132,8 @@ bool ProjectMemberModel::collectTypeMembers(
                         // Attach the body to the signature (which must carry no body) and drop the
                         // defining declaration.
                         const bool partialMerge =
-                            symbol.kind == ClassMemberKind::Method &&
+                            (symbol.kind == ClassMemberKind::Method ||
+                             symbol.kind == ClassMemberKind::Constructor) &&
                             symbol.syntax != nullptr && previous.syntax != nullptr &&
                             symbol.syntax->auxiliaryText().find("partial-method") != std::string::npos &&
                             previous.syntax->auxiliaryText().find("partial-method") != std::string::npos;

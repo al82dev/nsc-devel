@@ -6782,7 +6782,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "constructors cannot be readonly, volatile, const, virtual, override, abstract or sealed");
         }
-        return parseConstructorTail(className, accessibility, isStatic, isNoHeap, beginIndex);
+        return parseConstructorTail(className, accessibility, isStatic, isNoHeap, beginIndex, isPartialMember);
     }
 
     if (at(TokenKind::KwImplicit) || at(TokenKind::KwExplicit))
@@ -8381,7 +8381,8 @@ ast::AstNode* Parser::parseConstructorTail(
     TokenKind accessibility,
     bool isStatic,
     bool isNoHeap,
-    std::size_t beginIndex)
+    std::size_t beginIndex,
+    bool isPartial)
 {
     const lexer::Token& name = consume();
     ast::AstNode* constructor = arena_.make<ast::AstNode>(
@@ -8487,6 +8488,12 @@ ast::AstNode* Parser::parseConstructorTail(
     {
         constructor->setFirst(parseBlock());
     }
+    else if (isPartial)
+    {
+        // NS304-T12-F04: a partial constructor signature carries no body; the defining part
+        // provides the body (with the only initializer/base/this).
+        expect(TokenKind::Semicolon, "';'");
+    }
     else
     {
         diagnostics_.report(
@@ -8495,6 +8502,13 @@ ast::AstNode* Parser::parseConstructorTail(
             current().range(),
             "constructor declarations require a body in Stage 34");
         expect(TokenKind::LeftBrace, "constructor body");
+    }
+    if (isPartial)
+    {
+        std::string marker = constructor->auxiliaryText();
+        if (!marker.empty()) marker += ';';
+        marker += "partial-method";
+        constructor->setAuxiliaryText(std::move(marker));
     }
 
     constructor->setRange(tokenRangeFrom(beginIndex));
