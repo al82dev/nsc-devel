@@ -6562,9 +6562,15 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         if (isReferenceLocal && initializer.valid)
         {
-            // NS304-T06-F05: a `ref:`/`refmut:` item IS an addressable reference into the frame.
+            // NS304-T06-F05/T07-F04: a `ref:`/`refmut:` item IS an addressable reference into the
+            // frame (the Current core-op yields the reference, not a copy).
             const bool itemByReference = initializer.typeKey.starts_with("ref:") ||
                 initializer.typeKey.starts_with("refmut:");
+            std::string initializerReferentType = initializer.typeKey;
+            if (initializerReferentType.starts_with("ref:"))
+                initializerReferentType = initializerReferentType.substr(4);
+            else if (initializerReferentType.starts_with("refmut:"))
+                initializerReferentType = initializerReferentType.substr(7);
             if ((!initializer.addressable && !itemByReference) ||
                 (!isReadonlyReference && !initializer.assignable && !itemByReference))
             {
@@ -6576,24 +6582,14 @@ void ProjectMethodBodyModel::analyzeVariable(
                         ? "readonly reference initializer must be an addressable storage location"
                         : "reference-local initializer must be a mutable addressable storage location");
             }
-            if (initializer.typeKey != typeKey)
+            if (initializerReferentType != typeKey)
             {
-                // NS304-T06-F05: a `ref T`/`ref mut T` foreach binding unwraps the item's reference
-                // qualifier before comparing the referent type.
-                std::string initializerReferent = initializer.typeKey;
-                if (initializerReferent.starts_with("ref:"))
-                    initializerReferent = initializerReferent.substr(4);
-                else if (initializerReferent.starts_with("refmut:"))
-                    initializerReferent = initializerReferent.substr(7);
-                if (initializerReferent != typeKey)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidConversion,
-                        diagnostics::DiagnosticSeverity::Error,
-                        variable->first()->range(),
-                        "reference-local initializer type '" + initializer.typeKey +
-                            "' must exactly match declared type '" + typeKey + "'");
-                }
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "reference-local initializer type '" + initializer.typeKey +
+                        "' must exactly match declared type '" + typeKey + "'");
             }
             pendingReferenceEscapeOrigin =
                 referenceEscapeOriginOfExpression(variable->first(), scopeOrdinal);
@@ -6612,9 +6608,9 @@ void ProjectMethodBodyModel::analyzeVariable(
                     variable->range(),
                     "reference local lifetime exceeds the lifetime region of its source storage");
             }
-            if (initializer.addressable &&
-                (isReadonlyReference || initializer.assignable) &&
-                initializer.typeKey == typeKey)
+            if ((initializer.addressable || itemByReference) &&
+                (isReadonlyReference || initializer.assignable || itemByReference) &&
+                initializerReferentType == typeKey)
             {
                 pendingReferenceReborrowSourceLocalOrdinal = referenceRootLocalOrdinal(
                     variable->first(), scopeOrdinal);
@@ -6624,6 +6620,17 @@ void ProjectMethodBodyModel::analyzeVariable(
                     const std::optional<std::string> place = storagePlaceKey(
                         variable->first(), scopeOrdinal, &placeIsPrecise);
                     pendingReferencePlaceKey = place.value_or("U");
+                    // NS304-T07-F04: a second mutable borrow of the same iterator item is rejected
+                    // while the first one is still live (ref mut aliasing).
+                    if (itemByReference && place.has_value() &&
+                        conflictingMutableReference(*place, scopeOrdinal).has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->first()->range(),
+                            "cannot create another reference to the iterator item while a mutable borrow is still live");
+                    }
                     if (isPinnedReferenceLocal && (!place.has_value() || !placeIsPrecise))
                     {
                         diagnostics.report(
@@ -16542,6 +16549,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             ? "builtin:bool"
             : isMoveNextAsync ? moveNextAsyncResult
             : isDrop ? "builtin:void" : callee.receiverTypeKey;
+        // NS304-T07-F04: a `ref`/`ref mut` Current borrow lives only until the next demand or
+        // destruction. Advancing or dropping the iterator while that borrow is live is rejected.
+        if (isMoveNext || isMoveNextAsync || isDrop)
+        {
+            bool receiverPrecise = true;
+            const std::optional<std::string> receiverPlace = storagePlaceKey(
+                callee.receiverSyntax, scopeOrdinal, &receiverPrecise);
+            if (receiverPlace.has_value() &&
+                conflictingMutableReference(*receiverPlace, scopeOrdinal).has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot advance or drop the iterator while a reference to its Current item is still live");
+                return {};
+            }
+        }
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
                        : isMoveNextAsync ? MethodCoreOperationKind::IteratorMoveNextAsync

@@ -6403,6 +6403,74 @@ class Program
 )ns", 42, "the single await+yield machine must keep working with a ref item (exit 42)");
 }
 
+void registerAsyncGeneratorRefBorrowRejectCase(TestRegistry& registry)
+{
+    const auto addRejectCase = [&](std::string id, std::string projectName, std::string source,
+                                   std::string diagnostic)
+    {
+        registry.add(TestCase{id, "CL-LANG-020", "Host.Language", "integration", "PR",
+            {"language", "yield", "async-generator", "ref", "borrow", "reject"},
+            [source = std::move(source), diagnostic = std::move(diagnostic),
+             projectName = std::move(projectName), id = std::move(id)](TestContext& context) {
+                TemporaryT01Products products;
+                const std::filesystem::path project =
+                    products.writeProject(projectName, "Exe", source);
+                const std::filesystem::path executable =
+                    products.directory() / (projectName + ".exe");
+                const external_program_support::Result rejected = emitT01Product(
+                    L"--emit-project-oop-exe", project, executable, products.directory());
+                context.expect(rejected.started && rejected.exitCode != 0 &&
+                        (rejected.error + rejected.output).find(diagnostic) != std::string::npos,
+                    id + " must reject '" + diagnostic + "': " + rejected.error + rejected.output);
+            }});
+    };
+
+    addRejectCase("TL-LANG-449", "T07AsyncGenRefAdvanceBorrow", R"ns(
+class Program
+{
+    public static AsyncIterator<ref int, int> Gen() { int x = 10; yield return x; }
+    public static int Main()
+    {
+        AsyncIterator<ref int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        ref int v = ref it.Current;
+        bool h2 = await it.MoveNextAsync();
+        return v;
+    }
+}
+)ns", "still live");
+
+    addRejectCase("TL-LANG-450", "T07AsyncGenRefDropBorrow", R"ns(
+class Program
+{
+    public static AsyncIterator<ref int, int> Gen() { int x = 10; yield return x; }
+    public static int Main()
+    {
+        AsyncIterator<ref int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        ref int v = ref it.Current;
+        it.Drop();
+        return v;
+    }
+}
+)ns", "still live");
+
+    addRejectCase("TL-LANG-451", "T07AsyncGenRefMutSecondBorrow", R"ns(
+class Program
+{
+    public static AsyncIterator<ref mut int, int> Gen() { int x = 10; yield return x; }
+    public static int Main()
+    {
+        AsyncIterator<ref mut int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        ref int a = ref it.Current;
+        ref int b = ref it.Current;
+        return a;
+    }
+}
+)ns", "mutable borrow");
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8168,6 +8236,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorTypedErrorCase(registry);
     registerGeneratorIntermodularCase(registry);
     registerAsyncGeneratorRefItemCase(registry);
+    registerAsyncGeneratorRefBorrowRejectCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
