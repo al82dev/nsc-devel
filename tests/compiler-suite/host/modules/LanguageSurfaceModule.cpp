@@ -3077,6 +3077,47 @@ class Program
         }});
 }
 
+void registerIteratorErrorSurfaceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-390", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "iterator", "error-surface"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06IteratorErrorSurface", "Exe", R"ns(
+class Program
+{
+    public static Iterator<int, int> Generate()
+    {
+        yield return 1;
+        yield return 2;
+    }
+
+    public static int Main()
+    {
+        Iterator<int, int> it = Generate();
+        int sum = 0;
+        while (it.MoveNext()) { sum += it.Current; }
+        return sum;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06IteratorErrorSurface.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-390 Iterator<T,E> must resolve and yield: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-390 Iterator<T,E> must yield 1 then 2 (sum=3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5648,6 +5689,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionMethodCase(registry);
     registerGlobalNamespaceExtensionCase(registry);
     registerStaticExtensionMemberCase(registry);
+    registerIteratorErrorSurfaceCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
