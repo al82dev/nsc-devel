@@ -17848,6 +17848,9 @@ private:
         if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" || typeKey == "builtin:nuint") return LLVMInt64TypeInContext(context_);
         if (typeKey == "builtin:i128" || typeKey == "builtin:u128")
             return LLVMIntTypeInContext(context_, 128);
+        // NS304-T15-F01: decimal is a 128-bit value (96-bit coefficient + scale + sign).
+        if (typeKey == "builtin:decimal")
+            return LLVMIntTypeInContext(context_, 128);
         if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
         if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
         if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())

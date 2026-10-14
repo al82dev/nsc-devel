@@ -49,6 +49,9 @@ TypeLayout TargetDataLayout::layoutOf(BuiltinLayoutKind kind) const noexcept
         case BuiltinLayoutKind::Int128:
         case BuiltinLayoutKind::UInt128:
             return {16, 16};
+
+        case BuiltinLayoutKind::Decimal:
+            return {16, 8};
     }
 
     return {0, 1};

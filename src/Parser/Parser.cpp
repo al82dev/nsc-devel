@@ -1181,8 +1181,7 @@ ast::TypeSyntax* Parser::parseType()
     }
     if (atContextualKeyword("decimal"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::Decimal);
+        // NS304-T15-F01: `decimal` is now a builtin value type (128-bit coefficient+scale+sign).
     }
 
     if (atContextualKeyword("fn"))

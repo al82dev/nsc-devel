@@ -427,6 +427,11 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
             : static_cast<std::uint64_t>(type->laneBits * type->laneCount / 8U);
         return TypeLayout{bytes, std::min<std::uint64_t>(bytes, 16U)};
     }
+    // NS304-T15-F01: `decimal` is a 128-bit builtin (96-bit coefficient + scale + sign).
+    if (syntax->baseName() == "decimal" && syntax->typeArguments().empty())
+    {
+        return targetLayout_.layoutOf(BuiltinLayoutKind::Decimal);
+    }
     if (const std::optional<BuiltinLayoutKind> builtin = builtinLayoutKind(syntax->baseTokenKind()); builtin.has_value())
     {
         return targetLayout_.layoutOf(*builtin);

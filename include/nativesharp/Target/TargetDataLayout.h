@@ -28,6 +28,8 @@ enum class BuiltinLayoutKind
     UInt128,
     Float,
     Double,
+    // NS304-T15-F01: 128-bit decimal (96-bit coefficient + scale + sign) is 16 bytes.
+    Decimal,
     Enum,
     Pointer
 };

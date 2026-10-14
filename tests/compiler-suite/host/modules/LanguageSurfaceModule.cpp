@@ -4302,6 +4302,39 @@ class Program
         }});
 }
 
+void registerDecimalRepresentationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-420", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "builtin", "layout", "128-bit"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F01Decimal", "Exe", R"ns(
+struct S { public decimal d; }
+class Program
+{
+    public static int Main()
+    {
+        return (int)sizeof(S);
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F01Decimal.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-420 a decimal builtin field must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 16,
+                "TL-LANG-420 decimal must be a 16-byte (128-bit) value (sizeof=16): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6989,6 +7022,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPartialPropertyCase(registry);
     registerPartialConstructorCase(registry);
     registerPartialEventCase(registry);
+    registerDecimalRepresentationCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);

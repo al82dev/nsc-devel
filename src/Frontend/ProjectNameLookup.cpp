@@ -1702,8 +1702,10 @@ void ProjectNameLookup::bindTypeSyntax(
     // NS304-T07-F01: `AsyncIterator<T,E>` is a structural opaque surface (async-iterator:<T>|<E>).
     const bool asyncIteratorSurface =
         syntax->baseName() == "AsyncIterator" && syntax->typeArguments().size() == 2;
+    // NS304-T15-F01: `decimal` is a builtin 128-bit value type (builtin:decimal).
+    const bool decimalSurface = syntax->baseName() == "decimal" && syntax->typeArguments().empty();
     if (syntax->isFunction() || syntax->isTuple() || portableSimd || futureSurface ||
-        iteratorSurface || iteratorErrorSurface || asyncIteratorSurface ||
+        iteratorSurface || iteratorErrorSurface || asyncIteratorSurface || decimalSurface ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;

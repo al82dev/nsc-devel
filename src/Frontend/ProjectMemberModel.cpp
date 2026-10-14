@@ -1487,7 +1487,8 @@ std::string ProjectMemberModel::canonicalTypeKey(
             canonicalTypeKey(syntax->typeArguments()[0], nameLookup),
             canonicalTypeKey(syntax->typeArguments()[1], nameLookup));
     }
-    else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+    else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
+             (syntax->baseName() == "decimal" && syntax->typeArguments().empty()))
     {
         result = "builtin:" + syntax->baseName();
     }
