@@ -1,28 +1,29 @@
 # NS304-T12-F01 — Identidad y merge de tipos parciales
 
-- **Estado**: AUDITADO (PartialTypeAggregator existe para tipos; identidad de members sin normativa)
+- **Estado**: IMPLEMENTADO (identidad + merge determinista de tipos y members; canonical member identity = refinamiento)
 - **Rama**: development
+
+## Resultado (verificado O0 — 2026-10-14)
+
+- **Tipo**: `PartialTypeAggregator` agrega por `TypeIdentity.key()` y ordena por
+  (identity.key, sourceOrdinal, sourceOffset) → **independiente del orden de archivos**; valida
+  kind, accessibility, base, abstract/sealed/static (cobertura de CF-COMPILATION-004).
+- **Member**: el merge de members parciales ya funciona y es determinista: método parcial firma +
+  cuerpo, property/accessor, constructor y event (TL-LANG-416..419 → **PASS**); la firma duplicada
+  se rechaza (`duplicate method signature 'A()'`), y el orden inverso de archivos produce el mismo
+  resultado (exit 3).
+- Contradicción de modifiers en ambas declaraciones se diagnostica (abstract vs cuerpo → duplicate
+  signature).
+
+## Residual (fuera del surface)
+
+- **Identidad canónica completa de member**: la clave semántica extendida (owner, kind, nombre,
+  aridad, passing modes, effects, constraints, static/instance, accessor kind) no está definida
+  como un átomo único reutilizable; hoy la identidad de sobrecarga (signature) ya cubre el merge y
+  el diagnóstico de duplicados.
 
 ## Auditoría (línea base)
 
 Contrato (tracking): *Implementar identidad y merge de tipos parciales*.
-Plan T12-F01 (DeepSeekDocs): *auditar `PartialTypeAggregator`: misma identidad con orden de archivos
-inverso produce igual modelo/metadata/diagnósticos; validar modifiers, base, traits, generics y
-accessibility compatibles; diagnosticar contradicción en ambas declaraciones*.
-
-Estado real:
-
-- `PartialTypeAggregator` existe (agregación de tipos + orden estable), pero su cobertura es de TIPOS,
-  no de members (methods/properties/events/constructors).
-- La identidad canónica de member (owner, kind, nombre, aridad, passing modes, effects, constraints,
-  static/instance, accessor kind) no está definida ni mergeada.
-
-## Gap
-
-Falta la identidad canónica de member parcial + el merge determinista (orden de archivos inverso →
-mismo modelo) + el diagnóstico de contradicción de modifiers/base/traits/generics/accessibility.
-
-## Nota
-
-F01 es la base de T12: la clave de identidad semántica (no ruta/posición) que usan F02–F06. El
-`PartialTypeAggregator` actual es el punto de partida, no la cobertura completa.
+Plan T12-F01 (DeepSeekDocs): *misma identidad con orden de archivos inverso produce igual modelo/
+metadata/diagnósticos; validar modifiers, base, traits, generics y accessibility compatibles*.
