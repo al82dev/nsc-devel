@@ -15,14 +15,14 @@
 - **Length const genérico**: permitir `T[N]` donde `N` es un parámetro genérico (`const N`)
   requiere materializar el tamaño en el sistema de tipos (misma familia que el Span<T> de T03-F03).
 
-### Auditado ronda 113 + verificación 2026-10-14
+### Auditado ronda 113 + verificación 2026-10-14 (corregida)
 
 - El const genérico (`const N`) es un feature **transversal del type-system**: exige materializar el
   valor const como parámetro de tipo + aridad en el layout.
 - El valor const YA es productivo como expresión (`Fixed<T, const int N> { int Count() { return N; } }`
   + `Fixed<int, 0>`/`Fixed<int, 1>`; ver `FrontendGenericsFlowModule.cpp`).
-- **Hueco base (corregido)**: el fixed buffer como **FIELD** no parsea — `public int[3] data;`
-  falla con `expected '(', found ';'` (el parser trata `[3] data` como método/propiedad, no como
-  campo). El LOCAL `int[3] a = default;` sí funciona. Sobre esa base, `int[N] data;` añade la const
-  expr en el count. La vertical es: parser (campo con array count) → Sema (materializar el valor
-  const del argumento) → layout (aridad = valor const).
+- **Hueco base (corregido)**: la DECLARACIÓN del fixed buffer sí parsea (`struct Fixed { public
+  int[3] data; }` compila; `int[3] a = default;` también). El fallo real es el **index access**:
+  `a[0]`/`f.data[0]` da `expected '(', found ';'` (el parser no reconoce el `[0]` sobre un fixed
+  array como indexación). Sobre esa base, `int[N]` añade la const expr en el count. La vertical es:
+  parser (index access de fixed array) → Sema (materializar el valor const) → layout (aridad).
