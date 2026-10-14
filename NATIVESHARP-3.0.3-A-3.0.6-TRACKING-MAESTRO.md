@@ -999,12 +999,12 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T05-F01` — Retirar rechazo `NS3049` para `async`/`await` y completar AST/recovery. *(await→AwaitExpression; async consumido sin NS3049 + marcador en function global y en class/interface method (TL-LANG-328).)*
 - [x] `NS304-T05-F02` — Integrar `Future` lazy, `Poll`, `Waker`, resultado, error y cancelación. *(CERRADO sólo como modelo de protocolo: `wakerType` es metadata estructurada; superficie resoluble, runtime y lowering productivo pertenecen a T05-F03.)*
 - [x] `NS304-T05-F03` — Implementar transformación productiva a state machine HIR/MIR. *(CERRADO: vertical future:<T> resoluble Sema→HIR/MIR/LLVM, constructor lazy, poll, state machine suspend/resume localizada y blocking await sync→async en bucle; TL-LANG-370 run-pass exit 6, guards TL-LANG-328/369, TL-LANG-369 reescrito. La ejecución de suspensión real (pending→ready) con primitiva pendiente pertenece a T05-F04/F09.)*
-- [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos. *(PARCIAL conservativo: frame layout + save-all-locals en la reanudación; liveness precisa def-use pendiente.)*
-- [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones. *(PARCIAL conservativo: rechazo de cualquier local borrowed/pinned en async con suspensión.)*
-- [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación. *(PARCIAL: drop en completion; drop en error/cancelación pendiente.)*
-- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async. *(PARCIAL: surface future:<T>\|<E> + ReadyError (throw→state=-2) + rethrow/SEH del blocking await (TL-LANG-413); Result/?/panic y ReadyError async (F09) pendientes.)*
-- [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio. *(PARCIAL: caller-stack + nunca-heap cerrados; arena/allocator = decisión de surface para Alberto.)*
-- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(PARCIAL: poll virtual completo — pollFn + constructor + await sobre variable + Future<T> nombrable; resume/drop + intermodular pendientes.)*
+- [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos. *(frame layout + discriminante + storage (F03) + liveness precisa def-use (TL-LANG-433, exit 10) HECHOS.)*
+- [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones. *(borrow de local re-localizado (TL-LANG-374 exit 10); pin y borrow de parámetro rechazados (TL-LANG-434).)*
+- [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación. *(drop en completion (TL-LANG-372) + tras suspensión (TL-LANG-435, exit 142) HECHOS; cancelación/error = F09/F07.)*
+- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async. *(surface future:<T>|<E> + ReadyError (throw→state=-2) + rethrow/SEH (TL-LANG-413) + ReadyError async propaga al padre (TL-LANG-436, exit 7) HECHOS; ?/Result/panic = F09/F07.)*
+- [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio. *(surface [FrameStorage(...)] + ExplicitHeap malloc/free (TL-LANG-437, exit 42) HECHOS; default caller-stack + never-heap.)*
+- [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(poll virtual completo — pollFn + constructor + await sobre variable + Future<T> + resume (re-poll) + intermodular (TL-LANG-438, exit 5); drop/cancelación = F06, requiere surface de cancelación.)*
 - [x] `NS304-T05-F10` — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames. *(CERRADO: subprogram distinguido F/F$poll + state@0 artificial; locals/sequence points heredados; logical frames opcional.)*
 
 ### T06 — generadores síncronos
@@ -1012,21 +1012,21 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T06-F01` — Retirar rechazo `NS3049` para `yield return` y `yield break`. *(AST YieldReturnStatement/YieldBreakStatement; lowering T06-F03.)*
 - [x] `NS304-T06-F02` — Implementar AST, semántica y restricciones de contexto de generator. *(CERRADO: Iterator<T> surface + contexto yield + Effect::Generator + unificar item + rechazar return v; TL-LANG-379/380.)*
 - [x] `NS304-T06-F03` — Transformar cuerpo en frame y state machine MIR verificable. *(CERRADO estructural: split constructor+MoveNext + yield LLVM item/state/return + terminal; consumidor MoveNext/Current+foreach = F08.)*
-- [ ] `NS304-T06-F04` — Calcular locals vivos, captures, ownership y drop flags por suspensión. *(PARCIAL conservativo: frame + save/restore de locals cerrados; captures/ownership/drop flags + liveness precisa pendientes.)*
-- [ ] `NS304-T06-F05` — Soportar items por value, move, ref y ref mut con lifetime asociado.
-- [ ] `NS304-T06-F06` — Integrar pinning y construcción in-place para frames autoreferenciales.
-- [ ] `NS304-T06-F07` — Implementar early stop, destrucción, errors, panic y cleanup determinista. *(PARCIAL: drop en yield break + dropFn + drop-glue + it.Drop() + teardown foreach + Iterator<T,E> cerrados; panic determinista pendiente.)*
-- [ ] `NS304-T06-F08` — Congelar iterator ABI/NSMETA, LLVM, PDB y consumo por `foreach`. *(PARCIAL: ABI + MoveNext/Current/GetEnumerator + foreach cerrados; NSMETA/PDB/intermodular pendientes.)*
+- [ ] `NS304-T06-F04` — Calcular locals vivos, captures, ownership y drop flags por suspensión. *(liveness precisa def-use + captura de parámetros en frame (TL-LANG-439, exit 21) HECHOS; drop flags por inicialización = F06-F07.)*
+- [ ] `NS304-T06-F05` — Soportar items por value, move, ref y ref mut con lifetime asociado. *(surface Iterator<ref T>/<ref mut T> + item por referencia (TL-LANG-440/441) HECHOS; rechazo borrow-por-MoveNext = refinamiento.)*
+- [ ] `NS304-T06-F06` — Integrar pinning y construcción in-place para frames autoreferenciales. *(pinning caller-stack (no-op) + frame autoreferencial (TL-LANG-442, exit 20) HECHOS; in-place movible = T13.)*
+- [ ] `NS304-T06-F07` — Implementar early stop, destrucción, errors, panic y cleanup determinista. *(yield break + dropFn + it.Drop + teardown foreach + error tipado Iterator<T,E> (TL-LANG-443, exit 49) HECHOS; panic = camino SEH explícito.)*
+- [ ] `NS304-T06-F08` — Congelar iterator ABI/NSMETA, LLVM, PDB y consumo por `foreach`. *(ABI + MoveNext/Current/foreach + intermodular (TL-LANG-444, exit 3) HECHOS; NSMETA/PDB = infraestructura.)*
 
 ### T07 — async streams y concurrencia estructurada
 
 - [x] `NS304-T07-F01` — Definir `AsyncIterator`/`AsyncGenerator` y demanda explícita del consumidor. *(CERRADO: surface `async-iterator:<T>|<E>` + `AsyncIterator<T,E>` + `MoveNextAsync` (TL-LANG-385/386).)*
 - [x] `NS304-T07-F02` — Implementar máquina única para `await` + `yield` sin frames duplicados. *(CERRADO: splitAsyncGeneratorFunction + una máquina await+yield (TL-LANG-385/386).)*
-- [ ] `NS304-T07-F03` — Definir backpressure, terminalidad, errores y orden observable. *(error tipado `<E>` productivo; backpressure/terminalidad/orden observables pendientes.)*
-- [ ] `NS304-T07-F04` — Implementar items borrowed/move-only y prohibir supervivencia fuera de demanda.
-- [ ] `NS304-T07-F05` — Propagar cancelación y ejecutar cleanup de productor y consumidor.
-- [ ] `NS304-T07-F06` — Cerrar `task scope`, spawn/join, child failure y no-escape de borrows.
-- [ ] `NS304-T07-F07` — Verificar `Send`/`Sync`, cambio de thread y executor elegido por protocolo.
+- [ ] `NS304-T07-F03` — Definir backpressure, terminalidad, errores y orden observable. *(backpressure/orden/terminal sticky + future tipado future:<bool>|<E> (a2e88354) HECHOS; propagación runtime del error = T07-F05.)*
+- [ ] `NS304-T07-F04` — Implementar items borrowed/move-only y prohibir supervivencia fuera de demanda. *(HECHO: ref/ref mut (TL-LANG-445..451), move-only (TL-LANG-452/453), free del frame async (TL-LANG-454); commits 0c48f700/60aa2bcb/1ec8a5f9/0ab8fa78. Follow-up: doble-owner del foreach síncrono (T06-F08).)*
+- [ ] `NS304-T07-F05` — Propagar cancelación y ejecutar cleanup de productor y consumidor. *(HECHO: it.Cancel() (TL-LANG-455) + finally en cancelación (TL-LANG-456); commits 2048bd8a/52ce22f. Error del productor = T07-F03; CancellationToken explícito = ampliación T07-F07.)*
+- [x] `NS304-T07-F06` — Cerrar `task scope`, spawn/join, child failure y no-escape de borrows. *(HECHO: TaskScope/IExecutor (TL-LANG-457/458), captura ref (TL-LANG-459), provenance no-escape (TL-LANG-460/461), Join idempotente + destructor inverso (TL-LANG-462/463); commits a0121a53/9cc14132/87dd975d.)*
+- [x] `NS304-T07-F07` — Verificar `Send`/`Sync`, cambio de thread y executor elegido por protocolo. *(HECHO: Send/Sync estructural (TL-LANG-464/465), IThreadExecutor enforcement (TL-LANG-466..469); commits 02b27eb0/3cd6f9f6/cabec748.)*
 - [ ] `NS304-T07-F08` — Emitir metadata/debug de logical stacks, suspension points y async frames.
 
 ### T08 — extension members y operadores

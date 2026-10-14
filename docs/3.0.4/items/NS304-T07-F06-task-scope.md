@@ -1,42 +1,41 @@
 # NS304-T07-F06 — Task scope, spawn/join y child failure
 
-- **Estado**: AUDITADO (sin scope/spawn productivo; infraestructura histórica sin verificar)
+- **Estado**: IMPLEMENTADO (surface #6/#7 de `NS304-DECISIONES-SURFACE.md`)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Surface final
 
-Contrato (tracking): *Implementar task scope, spawn/join y child failure*.
-Plan T07-F06 (DeepSeekDocs): *todo hijo pertenece a un scope y debe unirse o cancelarse antes de
-salir; definir agregación/propagación de child failure, orden de cleanup y prohibición de borrows que
-sobrevivan al scope; sin tareas huérfanas silenciosas*.
+- `IExecutor { int Spawn(Future<void>); int PollJoin(int); void Cancel(int); }` (`PollJoin`:
+  `-1` pendiente / `0` ok / `1` fallo, idempotente; `Cancel` no reemplaza a `Join`).
+- `TaskScope<TExecutor> where TExecutor : IExecutor` + `TaskScope<TExecutor>.Create(executor)`.
+- `scope.Spawn(Future<void>)` (sin lambda async); `void Join()` + `bool Failed()`; `ChildCount()`.
+- `Join` **idempotente** (flag `active` por handle), **child failure** (`PollJoin == 1` → `failed`
+  y cancel+join de los restantes en orden inverso), **destructor** `~TaskScope()` (cancel+join
+  inverso, cada operación una vez), estado Open/Joining/Closed.
 
-Estado real (tras F02):
+## Captura `ref` del async function
 
-- **Sin surface productiva**: no hay `TaskScope`, `spawn` ni `join` resueltos por el lenguaje.
-- **Infraestructura histórica**: el plan menciona `NativeSharp3T10TaskScopeTests.cpp` y adapters de
-  concurrencia/coroutines — existen como evidencia, no como feature cerrada (hay que verificar nombres
-  actuales antes de editar).
+- El `$poll` lleva `generatorParameterTypeKeys` + `isGeneratorConstructor` (HIR); MIR registra
+  `asyncFrameParameters`; LLVM `GeneratorFrameInit` copia los parámetros al frame.
+- `ParameterValue`/`ParameterAddress` distinguen `self` (ordinal 0, `future:<T>*`) de un `ref`
+  capturado (ordinal 0, `T*`) por ordinal + type key, de modo que la escritura llega al storage
+  original a través del `yield`. `TL-LANG-459` (exit 42).
 
-## Gap
+## Provenance del borrow (scoped child borrow)
 
-No hay scope estructurado que posea hijos, ni `spawn`/`join`, ni agregación de child failure. Un hijo
-`spawn` no tiene dónde registrarse ni quién lo una/cancele.
+- `scope.Spawn(Child(ref value))` registra el origen `CurrentFrameLocal` del `ref` en
+  `scopedChildBorrows_`; `scope.Join()` lo descarga; salir del bloque que posee `value` con el
+  borrow vivo rechaza con `scoped child borrow outlives its source; join or cancel the TaskScope
+  before leaving the source lifetime`. `TL-LANG-460` (rechazo) / `TL-LANG-461` (Join descarga, 42).
 
-## Decisión de surface (material, para Alberto)
+## Pruebas
 
-- **(A) `TaskScope` explícito + `scope.Spawn(...)`/`scope.Join()`** (recomendada): el scope posee los
-  hijos y exige join/cancel antes de salir.
-- **(B) scoped `spawn { }` con join implícito al final del scope** (estilo structured concurrency).
+- `TL-LANG-457` spawn/join básico (exit 2); `TL-LANG-458` child failure (exit 7); `TL-LANG-459`
+  captura `ref` (exit 42); `TL-LANG-460` borrow escape (rechazo); `TL-LANG-461` borrow join (42);
+  `TL-LANG-462` cleanup inverso del destructor (exit 7); `TL-LANG-463` Join idempotente (exit 7).
 
-Recomendación: **(A)**.
+## Commits
 
-## Plan (tras surface)
-
-1. Resolver `TaskScope`/`Spawn`/`Join` + registrar el hijo en el scope (rechazar huérfanos).
-2. Agregar/propagar child failure (el fallo de un hijo finaliza el scope).
-3. Orden de cleanup (hijos en orden inverso de spawn) + rechazo de borrows que sobrevivan al scope.
-
-## Nota
-
-F06 es un vertical grande (concurrencia estructurada) que depende de la surface de scope y de F05
-(cancelación). No mezclar con paralelismo interno del compilador.
+- `a0121a53` — captura `ref` del async function.
+- `9cc14132` — Join idempotente + destructor inverso.
+- `87dd975d` — provenance: borrow que sobrevive al source se rechaza.

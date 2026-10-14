@@ -1,42 +1,38 @@
 # NS304-T07-F07 — Send/Sync, thread y executor
 
-- **Estado**: AUDITADO (sin Send/Sync ni executor; surface + type-system pendientes)
+- **Estado**: IMPLEMENTADO (derivación estructural + enforcement multithread)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Surface final (surface #7)
 
-Contrato (tracking): *Implementar Send/Sync y executor por protocolo*.
-Plan T07-F07 (DeepSeekDocs): *resolver constraints de frame, captures, waker e item al cruzar thread;
-un executor se selecciona mediante protocolo explícito; rechazar transferencia de storage no Send/Sync;
-probar executor single-thread y multithread controlado*.
+- `Send`/`Sync` son **marker traits vacíos** (`lib/NativeSharp.Core/Send.ns`, `Sync.ns`), sin
+  gramática `Send T`/`Sync T`. La conformidad se deriva **estructuralmente**.
+- `IThreadExecutor : IExecutor` (trait vacío) distingue un executor que puede mover el `Future` a
+  otro thread; un `IExecutor` puro es single-thread local.
 
-Estado real (tras F02):
+## Derivación estructural (`ProjectGenericConstraintModel`)
 
-- **Sin Send/Sync**: no hay marcadores de tipos ni verificación de transferencia entre threads.
-- **Sin executor**: el async-generator baja a caller-stack (T05-F08) sin selección de executor; no hay
-  protocolo explícito.
+- `where T : Send`/`where T : Sync` no exige declaración nominal; evalúa los campos con
+  `evaluateThreadSafety`: `RawPointer` (clave `*`) no deriva; `ref:` → `SharedReference`;
+  `refmut:` → `MutableReference` (Send del referido, **no** Sync); `Value` deriva.
+- `TL-LANG-464` (positivo, exit 7) / `TL-LANG-465` (raw pointer negativo, rechazo).
 
-## Gap
+## Enforcement multithread (`TaskScope<TExecutor>.Spawn`)
 
-No hay constraints Send/Sync que rechacen la transferencia de un frame/capture/item no seguro entre
-threads, ni un protocolo de executor que el usuario elija (sin scheduler global).
+- Resuelve el argumento `TExecutor` de la especialización `TaskScope<TExecutor>`; si implementa
+  `IThreadExecutor`, verifica cada `ref` capture del `Future<void>`:
+  - no-Send → `future submitted to a thread executor is not Send: capture 'x' has type 'T'`;
+  - Send pero no-Sync (captura compartida) → `shared capture 'x' requires its referred type 'T'
+    to be Sync`.
+- `TL-LANG-466` (local executor no-Send compila, exit 7); `TL-LANG-467` (multithread negativo);
+  `TL-LANG-468` (multithread positivo, exit 42); `TL-LANG-469` (shared no-Sync negativo).
 
-## Decisión de surface (material, para Alberto)
+## Pruebas
 
-- **(A) marcadores `Send`/`Sync` en el tipo** (recomendada): `Send T` / `Sync T` explícitos; el
-  compilador rechaza cruzar un thread con storage no Send/Sync.
-- **(B) traits implícitos** (auto Send/Sync por composición).
+- `TL-LANG-464`..`TL-LANG-469` (A–F del plan).
 
-Recomendación: **(A)**.
+## Commits
 
-## Plan (tras surface)
-
-1. Resolver `Send`/`Sync` + verificar el frame/captures/item del async-iterator al cruzar thread.
-2. Protocolo de executor (`IExecutor`/`scope.Executor`) que el usuario selecciona; el lenguaje no
-   instala scheduler global.
-3. Probar single-thread y multithread controlado (executor elegido).
-
-## Nota
-
-F07 depende de la surface Send/Sync + F06 (scope) y F05 (cancelación). Es un vertical grande que
-toca el type-system (constraints) y la compilación/scheduler sólo donde el contrato lo consuma.
+- `02b27eb0` — derivación estructural Send/Sync.
+- `3cd6f9f6` — enforcement Send en `Spawn` (IThreadExecutor).
+- `cabec748` — captura compartida exige Sync.
