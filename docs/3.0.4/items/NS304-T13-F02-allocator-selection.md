@@ -1,20 +1,34 @@
 # NS304-T13-F02 — Selección del allocator en construcción
 
-- **Estado**: EN PROGRESO (gap confirmado; diseño = generalizar `new (expr) T(args)` con `IAllocator`)
+- **Estado**: IMPLEMENTADO (`new (allocator) T(...)` → `IAllocator.Allocate` + placement; provenance = F07)
 - **Rama**: development
+
+## Resultado (2026-10-14)
+
+- **Sema** (`PlacementConstructionExpression`): si el operando conforma `IAllocator` (via
+  `interfaceModel_->classImplementsInterface`), el sitio es `ProjectConstructionSiteKind::Allocator`;
+  se resuelve el `Allocate` no-estático del tipo operando y se transporta al binding
+  (`allocatorTypeKey` + `allocatorAllocateMemberOrdinal`).
+- **HIR** (`ProjectOopHirModel`): desugaring a `BlockExpression` → `allocator.Allocate(sizeof T)`
+  (InstanceCall, receiver por valor o address según struct/class del allocator, argumento = size del
+  layout) + `PlacementConstruction` sobre el `byte*` devuelto. Sin llamada LLVM directa a `Allocate`.
+- **Prueba**: `TL-LANG-477` — `new (alloc) A(42)` sobre `BlockAllocator : IAllocator` → `a.X` exit 42
+  (**PASS**); verificado también con allocator `struct` (exit 42).
+
+## Residual (fuera del surface)
+
+- **Provenance del allocator** (contrato de F07): el seguimiento de qué punteros salen de qué
+  allocator es el vertical siguiente; F02 solo selecciona el allocator en la construcción.
 
 ## Auditoría + diseño (2026-10-14)
 
-- **Confirmado en O0**: `new (alloc) A(42)` se parsea como `PlacementConstructionExpression` y el
-  binding exige `A*` exacto (`placement construction ... requires destination storage of exact type
-  'type:...A*'`). El hueco: si `expr` conforma `IAllocator`, debe ser **selección de allocator**, no
-  placement crudo.
-- **Diseño (no es surface nueva)**: generalizar el shape ya decidido de Item 317 `new (expr) T(args)`
-  por tipo — `expr : IAllocator` → `allocator.Allocate(size)` + construir in-place + devolver la
-  referencia `T` (igual que placement de clase). Evalúa `expr` una sola vez; overload del constructor
-  intacta. Sitio nuevo `ProjectConstructionSiteKind::Allocator` + transporte del allocator al lowering.
+- **Confirmado en O0**: `new (alloc) A(42)` se parsea como `PlacementConstructionExpression`; el
+  binding exige `A*`. El hueco: si `expr : IAllocator`, es selección de allocator (`Allocate(size)` +
+  construir in-place), no placement crudo.
+- **Bloqueo del primer intento (documentado)**: llamar `IAllocator::Allocate` por
+  `functions_.find(mangledName)` desde el LLVM lowerer fallaba (método en otro code-unit, inlineado).
+  El fix correcto fue **desugaring en HIR**, implementado arriba.
 
-## Pendiente (vertical en curso)
+## Commits
 
-- Binding (conformance a `IAllocator` + sitio `Allocator`), modelo de construcción, HIR/MIR y lowering
-  `allocate`+construct en `lowerPlacementConstruction`.
+- `e726bda9` — selección de allocator en construcción (TL-LANG-477).
