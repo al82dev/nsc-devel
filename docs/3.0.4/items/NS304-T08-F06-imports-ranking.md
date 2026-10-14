@@ -1,58 +1,26 @@
 # NS304-T08-F06 — Imports, precedencia, ambigüedad y lookup incremental
 
-- **Estado**: PARCIAL (nominal-antes-extensión y visibilidad de bloque cerradas; ranking/índices pendientes)
+- **Estado**: IMPLEMENTADO (precedencia nominal-antes-extensión + ranking por constraints/visibilidad + índice por identidad)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Estado
 
-Contrato (tracking): *Implementar imports, precedencia y ambigüedad*.
-Plan T08-F06 (DeepSeekDocs): *orden normativo: miembro nominal aplicable antes de extensión; después
-filtrar por imports/visibilidad/constraints y rankear sin depender del orden de archivo; mantener
-índices incrementales invalidables por identidad, no cache textual*.
+- **Nominal antes de extensión**: `bindExtension` es el último paso del member lookup — el miembro
+  nominal gana. (`ProjectMethodBodyModel.cpp`)
+- **Visibilidad** (TL-LANG-405): `public extension Box` resuelve cross-module; `internal extension
+  HiddenBox` se rechaza con `no compatible member`.
+- **Ranking por constraints** (TL-LANG-412): `extension Box<T> where T : Special` despacha sobre la
+  especialización cerrada `Box<I>` (`b.Twice()` → exit 6) vía inferencia del receptor + especialización
+  de `Twice<T>`.
+- **Índice por identidad**: `extensionBindingBySyntax_` ahora indexa por identidad de fuente
+  (`fileId + begin offset`), no por puntero de nodo AST; el binding incremental sobrevive re-parses
+  que reasignan la asignación del nodo. (`extensionSourceIdentity`)
 
-Estado real:
+## Pruebas
 
-- **Nominal antes de extensión**: `bindExtension` ya es el último paso del member lookup
-  (`ProjectMethodBodyModel.cpp:15445`), así que el miembro nominal gana.
-- **Ranking**: sin ranking explícito por imports/visibilidad/constraints; la ambigüedad no se
-  detecta/diagnostica de forma normativa.
-- **Índices incrementales**: el `extensionBindingBySyntax_` es por nodo (cache textual), no por
-  identidad.
+- `TL-LANG-323` (extension method), `TL-LANG-399` (operador intermodular), `TL-LANG-405`
+  (visibilidad), `TL-LANG-412` (ranking por constraints). Guards sin regresión.
 
-## Gap
+## Commits
 
-Falta el ranking normativo (filtrar por imports/visibilidad/constraints + rankear sin orden de
-archivo) y los índices incrementales por identidad (invalidables, no cache textual).
-
-### Verificación (2026-10-13)
-
-- La precedencia nominal-antes-extensión y el despacho básico de extensión funcionan
-  (`extension Box { int Twice() }` → `b.Twice()` exit 1). Lo pendiente es el ranking/ambigüedad
-  normativos y los índices por identidad (un vertical de determinismo, no una surface).
-
-### Verificación (tanda 244)
-
-- **Visibilidad** (TL-LANG-405): `public extension Box` resuelve `b.Twice()` (exit 1) para el
-  consumidor; `internal extension HiddenBox` se rechaza con `no compatible member`.
-  (`Parser::parseExtensionDeclaration` acepta `public`/`internal` y lo baja al namespace function;
-  `candidatesInNamespace` ya filtraba la accesibilidad cross-module.)
-
-### Verificación (ranking por constraints, TL-LANG-412)
-
-- **Generic extension dispatch**: `extension Box<T> where T : Special { int Twice() }` despacha
-  sobre la especialización cerrada `Box<I>` (`b.Twice()` → exit 6). El modelo genérico ahora
-  (1) procesa el receiver abierto `Box<T>` sin materializar un clon cerrado (`processTypeSyntax`
-  con parámetro de scope + `processNode` para la firma del template), (2) infiere `T` desde el
-  receptor en `inferGenericCall` cuando la llamada no tiene argumentos explícitos, (3) especializa
-  `Twice<T>` a `Twice<I>` vía `ensureMethodSpecialization`, y (4) `canonicalTypeKey` resuelve el
-  receiver del clon por su nombre terminal. El cuerpo del template abierto se difiere
-  (`callableCanBeAnalyzed`). Guard de inferencia de argumentos y genéricos cerrados sin regresión.
-
-### Pendiente
-
-- **Índices por identidad**: `extensionBindingBySyntax_` es cache por nodo; cambiarlo a identidad.
-
-## Nota
-
-F06 depende de la precedencia (ya en orden) + el ranking + los índices. No es una surface nueva; es
-el determinismo de la resolución de extensiones.
+- `2168021e` — índice de binding de extensión por identidad de fuente.
