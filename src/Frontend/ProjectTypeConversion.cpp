@@ -106,6 +106,16 @@ bool isIntegralPromotion(std::string_view source, std::string_view target) noexc
 
 bool isNumericWidening(std::string_view source, std::string_view target) noexcept
 {
+    // NS304-T15-F06: every closed integral type widens exactly into `decimal` (coefficient |scale 0).
+    // float/double do NOT widen implicitly into decimal (explicit cast only, with NaN/Inf rejected).
+    if (target == "builtin:decimal" &&
+        (source == "builtin:sbyte" || source == "builtin:byte" || source == "builtin:short" ||
+         source == "builtin:ushort" || source == "builtin:int" || source == "builtin:uint" ||
+         source == "builtin:long" || source == "builtin:ulong" || source == "builtin:char"))
+    {
+        return true;
+    }
+
     // Native-width integers need the named table, not a width-only shortcut. `nint`/`nuint`
     // happen to be 64-bit on Windows x64, but their implicit conversions intentionally preserve
     // the language contract: uint does not widen to nint, while nint does widen to long (and the

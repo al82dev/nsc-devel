@@ -4571,6 +4571,85 @@ class Program
         }});
 }
 
+void registerDecimalConversionsCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-479", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "conversion", "cast", "overload"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F06DecimalConversions", "Exe", R"ns(
+class P
+{
+    public static int M(long v) { return 1; }
+    public static int M(decimal v) { return 2; }
+}
+class Program
+{
+    public static int Main()
+    {
+        decimal a = 42;
+        decimal b = (decimal)(-7);
+        decimal c = 255L;
+        double x = (double)1.5m;
+        decimal e = (decimal)1.5;
+        if ((int)a != 42) return 1;
+        if ((int)b != -7) return 2;
+        if ((int)c != 255) return 3;
+        if ((int)(e * 10m) != 15) return 4;
+        if (P.M(42) != 1) return 5;   // int -> long beats int -> decimal
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F06DecimalConversions.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-479 decimal conversions must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-479 decimal casts and overload ranking must hold (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerDecimalNaNRejectionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-480", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "conversion", "nan", "infinity"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F06DecimalNaN", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        double nan = 0.0 / 0.0;
+        decimal e = (decimal)nan;
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F06DecimalNaN.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-480 NaN->decimal must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.exitCode == 145,
+                "TL-LANG-480 NaN->decimal must trap DecimalOverflow (exit 145): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9367,6 +9446,8 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalToIntCase(registry);
     registerDecimalDivideCase(registry);
     registerDecimalDivideMixedScaleCase(registry);
+    registerDecimalConversionsCase(registry);
+    registerDecimalNaNRejectionCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

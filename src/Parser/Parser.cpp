@@ -549,7 +549,7 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
     }
 
     if (token.kind() == TokenKind::Identifier &&
-        (token.lexeme() == "simd" || token.lexeme() == "mask"))
+        (token.lexeme() == "simd" || token.lexeme() == "mask" || token.lexeme() == "decimal"))
     {
         return true;
     }
@@ -809,8 +809,10 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
     }
     const lexer::Token& token = tokens_[tokenIndex];
     const bool builtin = lexer::isBuiltinTypeKeyword(token.kind());
+    // NS304-T15-F06: `decimal` is a contextual builtin value type (identifier token, not a reserved
+    // keyword), so a cast lookahead `(decimal)x` must recognize it as a type exactly like `simd`/`mask`.
     const bool portableSimd = token.kind() == TokenKind::Identifier &&
-        (token.lexeme() == "simd" || token.lexeme() == "mask");
+        (token.lexeme() == "simd" || token.lexeme() == "mask" || token.lexeme() == "decimal");
     if (token.kind() != TokenKind::Identifier)
     {
         if (!builtin) return false;

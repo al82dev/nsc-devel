@@ -18527,7 +18527,15 @@ private:
             LLVMValueRef coefficientMask = LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0);
             LLVMValueRef coefficient = LLVMBuildAnd(builder_, value, coefficientMask, "decimal.coeff");
             LLVMValueRef scaleShift = LLVMConstInt(wide, 96, 0);
-            LLVMValueRef scale = LLVMBuildLShr(builder_, value, scaleShift, "decimal.scale");
+            LLVMValueRef scaleRaw = LLVMBuildLShr(builder_, value, scaleShift, "decimal.scale.raw");
+            // The scale occupies bits 96..101; the sign sits at bit 127. Mask the scale so a negative
+            // decimal's sign bit never leaks into the pow10 loop as a bogus exponent.
+            LLVMValueRef scale = LLVMBuildAnd(
+                builder_, scaleRaw, LLVMConstInt(wide, 0x3F, 0), "decimal.scale");
+            LLVMValueRef signBit = LLVMBuildLShr(
+                builder_, value, LLVMConstInt(wide, 127, 0), "decimal.sign.bit");
+            LLVMValueRef isNegative = LLVMBuildTrunc(
+                builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
 
             LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
             LLVMValueRef coefficientLane = LLVMBuildTrunc(
@@ -18564,7 +18572,100 @@ private:
 
             LLVMPositionBuilderAtEnd(builder_, exit);
             LLVMValueRef quotient = LLVMBuildUDiv(builder_, coefficientLane, divisor, "decimal.quotient");
-            return LLVMBuildTrunc(builder_, quotient, destination, "trunc.decimal");
+            LLVMValueRef truncated = LLVMBuildTrunc(builder_, quotient, destination, "decimal.trunc");
+            LLVMValueRef negated = LLVMBuildSub(
+                builder_, LLVMConstNull(destination), truncated, "decimal.neg");
+            return LLVMBuildSelect(builder_, isNegative, negated, truncated, "decimal.toint");
+        }
+        // NS304-T15-F06: integer -> decimal = |value| coefficient, scale 0, sign bit 127 for
+        // negatives. Implicit and exact (no rounding, no overflow for the closed integral set).
+        if (sourceWidth != 0 && target == "builtin:decimal")
+        {
+            LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+            LLVMValueRef extended = sourceSigned
+                ? LLVMBuildSExt(builder_, value, wide, "decimal.from.sext")
+                : LLVMBuildZExt(builder_, value, wide, "decimal.from.zext");
+            LLVMValueRef isNegative = LLVMBuildICmp(
+                builder_, LLVMIntSLT, extended, LLVMConstNull(wide), "decimal.from.neg");
+            LLVMValueRef negated = LLVMBuildNeg(builder_, extended, "decimal.from.negated");
+            LLVMValueRef coefficient = LLVMBuildSelect(
+                builder_, isNegative, negated, extended, "decimal.from.coeff");
+            LLVMValueRef sign = LLVMBuildShl(
+                builder_, LLVMBuildZExt(builder_, isNegative, wide, "decimal.from.signext"),
+                LLVMConstInt(wide, 127, 0), "decimal.from.sign");
+            return LLVMBuildOr(builder_, coefficient, sign, "decimal.from.value");
+        }
+        // NS304-T15-F06: decimal -> float/double = |coefficient| / 10^scale, sign applied. Precision
+        // loss is accepted (the destination FP format decides it).
+        if (source == "builtin:decimal" && (target == "builtin:float" || target == "builtin:double"))
+        {
+            LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+            LLVMValueRef coefficient = LLVMBuildAnd(
+                builder_, value, LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0), "decimal.coeff");
+            LLVMValueRef scaleRaw = LLVMBuildLShr(
+                builder_, value, LLVMConstInt(wide, 96, 0), "decimal.scale.raw");
+            LLVMValueRef scale = LLVMBuildAnd(
+                builder_, scaleRaw, LLVMConstInt(wide, 0x3F, 0), "decimal.scale");
+            LLVMValueRef signBit = LLVMBuildLShr(
+                builder_, value, LLVMConstInt(wide, 127, 0), "decimal.sign.bit");
+            LLVMValueRef isNegative = LLVMBuildTrunc(
+                builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
+            LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+            LLVMValueRef coeff64 = LLVMBuildTrunc(builder_, coefficient, lane, "decimal.coeff64");
+            LLVMValueRef scale64 = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
+            LLVMValueRef divisorInt = buildPow10(scale64, "decimal.tofp.pow10");
+            LLVMValueRef coeffFp = LLVMBuildUIToFP(builder_, coeff64, destination, "decimal.coeff.fp");
+            LLVMValueRef divisorFp = LLVMBuildUIToFP(builder_, divisorInt, destination, "decimal.pow10.fp");
+            LLVMValueRef result = LLVMBuildFDiv(builder_, coeffFp, divisorFp, "decimal.tofp");
+            LLVMValueRef negated = LLVMBuildFNeg(builder_, result, "decimal.tofp.neg");
+            return LLVMBuildSelect(builder_, isNegative, negated, result, "decimal.tofp.signed");
+        }
+        // NS304-T15-F06: float/double -> decimal. Finite values are rounded to 6 fractional digits
+        // (coefficient = round(|v| * 10^6), scale 6, sign bit).
+        if ((source == "builtin:float" || source == "builtin:double") && target == "builtin:decimal")
+        {
+            LLVMTypeRef sourceFp = llvmType(source, error);
+            if (sourceFp == nullptr) return nullptr;
+            LLVMValueRef isNegative = LLVMBuildFCmp(
+                builder_, LLVMRealOLT, value, LLVMConstReal(sourceFp, 0.0), "decimal.from.neg");
+            LLVMValueRef negValue = LLVMBuildFNeg(builder_, value, "decimal.from.negval");
+            LLVMValueRef abs = LLVMBuildSelect(
+                builder_, isNegative, negValue, value, "decimal.from.abs");
+
+            // NaN and infinities are rejected before any decimal bits are produced.
+            LLVMValueRef isNan = LLVMBuildFCmp(builder_, LLVMRealUNO, value, value, "decimal.from.nan");
+            LLVMValueRef inf = LLVMConstReal(
+                sourceFp, std::numeric_limits<double>::infinity());
+            LLVMValueRef isInf = LLVMBuildFCmp(builder_, LLVMRealOEQ, abs, inf, "decimal.from.inf");
+            LLVMValueRef invalid = LLVMBuildOr(builder_, isNan, isInf, "decimal.from.invalid");
+            LLVMBasicBlockRef okBlock = appendBlock("decimal.from.ok");
+            LLVMBasicBlockRef trapBlock = appendBlock("decimal.from.trap");
+            LLVMBuildCondBr(builder_, invalid, trapBlock, okBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, trapBlock);
+            if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                return failValue(error, "decimal float conversion rejects non-finite input but no trap is configured");
+            LLVMValueRef reason = LLVMConstInt(
+                LLVMInt32TypeInContext(context_),
+                static_cast<std::uint64_t>(LlvmTrapReason::DecimalOverflow), 0);
+            LLVMValueRef trapArgs[] = { reason };
+            buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArgs, 1, "");
+            LLVMBuildUnreachable(builder_);
+
+            LLVMPositionBuilderAtEnd(builder_, okBlock);
+            LLVMValueRef scaled = LLVMBuildFMul(
+                builder_, abs, LLVMConstReal(sourceFp, 1e6), "decimal.from.scaled");
+            LLVMValueRef rounded = LLVMBuildFPToSI(
+                builder_, scaled, LLVMInt64TypeInContext(context_), "decimal.from.coeff64");
+            LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+            LLVMValueRef coeffWide = LLVMBuildZExt(builder_, rounded, wide, "decimal.from.coeff");
+            LLVMValueRef scaleShifted = LLVMBuildShl(
+                builder_, LLVMConstInt(wide, 6, 0), LLVMConstInt(wide, 96, 0), "decimal.from.scale");
+            LLVMValueRef combined = LLVMBuildOr(builder_, coeffWide, scaleShifted, "decimal.from.value");
+            LLVMValueRef sign = LLVMBuildShl(
+                builder_, LLVMBuildZExt(builder_, isNegative, wide, "decimal.from.signext"),
+                LLVMConstInt(wide, 127, 0), "decimal.from.sign");
+            return LLVMBuildOr(builder_, combined, sign, "decimal.from.signed");
         }
         return failValue(error, "unsupported Stage 34 LLVM conversion from '" + std::string(source) + "' to '" + std::string(target) + "'");
     }
