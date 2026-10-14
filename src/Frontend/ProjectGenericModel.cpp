@@ -2609,6 +2609,8 @@ bool ProjectGenericModel::processTypeSyntax(
     if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 1) return true;
     // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
     if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1) return true;
+    // NS304-T06-F07: `Iterator<T,E>` is also a structural opaque surface (iterator:<T>|<E>).
+    if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 2) return true;
     // NS304-T07-F01: `AsyncIterator<T,E>` is a structural opaque surface (async-iterator:<T>|<E>).
     if (syntax->baseName() == "AsyncIterator" && syntax->typeArguments().size() == 2) return true;
 

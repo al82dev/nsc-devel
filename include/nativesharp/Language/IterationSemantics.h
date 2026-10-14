@@ -34,7 +34,32 @@ inline std::optional<std::string_view> iteratorInnerTypeKey(std::string_view typ
 {
     constexpr std::string_view prefix = "iterator:";
     if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
-    return typeKey.substr(prefix.size());
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
+// NS304-T06-F07: Iterator<T,E> maps to iterator:<T>|<E> (the pipe separates item from error).
+inline std::string iteratorTypeKey(std::string_view itemTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = "iterator:";
+    key.append(itemTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
+inline std::optional<std::string_view> iteratorErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    if (pipe == std::string_view::npos) return std::nullopt;
+    return rest.substr(pipe + 1);
 }
 
 // NS304-T07-F01: surface type key of an async generator's opaque async iterator.
