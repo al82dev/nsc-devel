@@ -2920,6 +2920,13 @@ ast::AstNode* Parser::parseExtensionDeclaration()
             extension->addChild(member);
         }
         else if (member != nullptr &&
+                 member->kind() == ast::AstNodeKind::MethodDeclaration &&
+                 member->auxiliaryText() == "ns3-extension-static")
+        {
+            // NS304-T08-F04: extension operator (already ns3-extension-static from parseOperatorTail).
+            extension->addChild(member);
+        }
+        else if (member != nullptr &&
                  member->kind() == ast::AstNodeKind::PropertyDeclaration)
         {
             // NS304-T08-F02: baja la property a sus accessors (functions top-level). El getter
@@ -8719,6 +8726,21 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
         returnLifetime = parseOptionalLifetimeAnnotation("ref return");
     }
     ast::TypeSyntax* type = parseType();
+
+    // NS304-T08-F04: an extension operator (`extension T { static Vector operator+(...) }`) is a
+    // namespace function marked ns3-extension-static; the operator lookup resolves it for the type.
+    if (at(TokenKind::KwOperator) && parsingExtensionBody_)
+    {
+        ast::AstNode* operatorDeclaration =
+            parseOperatorTail(type, TokenKind::KwPublic, true, beginIndex);
+        if (operatorDeclaration != nullptr)
+        {
+            operatorDeclaration->addModifier(TokenKind::KwStatic);
+            operatorDeclaration->setAuxiliaryText("ns3-extension-static");
+            operatorDeclaration->setReference(isReferenceReturn);
+        }
+        return operatorDeclaration;
+    }
 
     if (!at(TokenKind::Identifier))
     {
