@@ -9680,16 +9680,49 @@ private:
                                    pollArgs, 1U, "") == nullptr)
                     return failValue(error, "async poll call failed");
 
-                // 2. Check pending: child.state == -1 (ready) → extract; else suspend.
+                // 2. Check pending: child.state == -1 (ready) → extract; child.state == -2
+                // (ReadyError) → propagate the error to the parent; else suspend.
                 LLVMValueRef childState = LLVMBuildLoad2(
                     builder_, intType, childSlot, "await.child.state");
                 LLVMValueRef readyConst = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
+                LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
                 LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
+                LLVMBasicBlockRef errorCheckBlock = appendBlock("await.errorcheck");
+                LLVMBasicBlockRef errorBlock = appendBlock("await.error");
                 LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
                 LLVMBuildCondBr(
                     builder_,
                     LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
-                    readyBlock, suspendBlock);
+                    readyBlock, errorCheckBlock);
+
+                // ReadyError: child errored. Propagate the carried error into the parent future's
+                // error slot and mark the parent errored (state == -2) — no native unwind.
+                LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
+                    errorBlock, suspendBlock);
+                LLVMPositionBuilderAtEnd(builder_, errorBlock);
+                const std::optional<std::string_view> errorInner =
+                    language::futureErrorTypeKey(node->elementTypeKey);
+                const std::string errorKey = errorInner.has_value()
+                    ? std::string(*errorInner) : std::string{};
+                LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
+                std::uint64_t errorOffset = 0;
+                if (const frontend::ProjectOopMirStructLayout* errorLayout =
+                        structLayout(node->elementTypeKey))
+                {
+                    for (const frontend::ObjectFieldLayout& field : errorLayout->fields)
+                        if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
+                }
+                if (errorType == nullptr || errorOffset == 0)
+                    return failValue(error, "async await error propagation has no error slot");
+                LLVMValueRef childError = LLVMBuildLoad2(
+                    builder_, errorType,
+                    byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
+                LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
+                LLVMBuildStore(builder_, errorConst, self);
+                LLVMBuildRetVoid(builder_);
 
                 // Suspend: save child in self->frame + state=N + ret void.
                 LLVMPositionBuilderAtEnd(builder_, suspendBlock);

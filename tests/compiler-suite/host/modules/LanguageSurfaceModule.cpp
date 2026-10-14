@@ -5433,6 +5433,53 @@ class Program
         }});
 }
 
+void registerAsyncNestedErrorPropagationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-436", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "throws", "throw", "error", "future", "ReadyError", "propagate"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncNestedError", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static async int Child() throws Exception
+    {
+        throw new Exception();
+        return 42;
+    }
+
+    public static async int Parent() throws Exception
+    {
+        return await Child();
+    }
+
+    public static int Main()
+    {
+        try { return await Parent(); }
+        catch (Exception e) { return 7; }
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncNestedError.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-436 nested async error propagation must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-436 a child future ReadyError must propagate to the parent and rethrow (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncAwaitVariableCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-377", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7653,6 +7700,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncThrowsCase(registry);
     registerAsyncThrowErrorCase(registry);
     registerAsyncRethrowCase(registry);
+    registerAsyncNestedErrorPropagationCase(registry);
     registerAsyncAwaitVariableCase(registry);
     registerAsyncFutureTypeCase(registry);
     registerExtensionPropertyCase(registry);
