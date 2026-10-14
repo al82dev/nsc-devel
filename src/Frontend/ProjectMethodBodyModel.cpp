@@ -19766,22 +19766,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
-    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    if (memberModel_ != nullptr)
     {
-        const ClassMemberSymbol& member = memberModel_->members()[selected.memberOrdinal];
-        call.resultTypeKey = member.declaredTypeKey;
-        call.staticCall = member.isStatic;
-        result.assignable = member.isReferenceReturn;
-        result.addressable = member.isReferenceReturn;
-        if (call.staticCall)
+        const ClassMemberSymbol* memberPtr = methodSymbol(selected.memberOrdinal);
+        if (memberPtr != nullptr)
         {
-            call.implicitThis = false;
-            call.explicitThis = false;
-            call.baseReceiver = false;
-            call.receiverSyntax = nullptr;
-            call.receiverTypeKey.clear();
-            call.receiverTypeOrdinal.reset();
-            call.interfaceCall = false;
+            const ClassMemberSymbol& member = *memberPtr;
+            call.resultTypeKey = member.declaredTypeKey;
+            call.staticCall = member.isStatic;
+            result.assignable = member.isReferenceReturn;
+            result.addressable = member.isReferenceReturn;
+            if (call.staticCall)
+            {
+                call.implicitThis = false;
+                call.explicitThis = false;
+                call.baseReceiver = false;
+                call.receiverSyntax = nullptr;
+                call.receiverTypeKey.clear();
+                call.receiverTypeOrdinal.reset();
+                call.interfaceCall = false;
+            }
         }
     }
     result.typeKey = call.resultTypeKey;
