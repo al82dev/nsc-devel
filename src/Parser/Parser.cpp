@@ -14885,7 +14885,6 @@ ast::AstNode* Parser::parseUnaryExpression()
             if (hasTrailing)
             {
                 creation->setAuxiliaryText("trailing");
-                creation->addChild(trailingCapacity);
             }
             if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
             {
@@ -14898,6 +14897,12 @@ ast::AstNode* Parser::parseUnaryExpression()
                     }
                 }
                 expect(TokenKind::RightParen, "')' after placement constructor arguments");
+            }
+            if (hasTrailing)
+            {
+                // NS304-T13-F06: the trailing capacity is the LAST child so that the leading
+                // children are exactly the constructor arguments.
+                creation->addChild(trailingCapacity);
             }
             creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
             return creation;
