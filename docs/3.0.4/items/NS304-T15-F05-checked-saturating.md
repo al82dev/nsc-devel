@@ -1,26 +1,15 @@
 # NS304-T15-F05 — Checked/wrapping/saturating decimal
 
-- **Estado**: AUDITADO (modos enteros existen; modos decimales sin definir)
+- **Estado**: PARCIAL (overflow del coeficiente atrapado; modos checked/saturating explícitos pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (overflow del coeficiente — 2026-10-14)
 
-Contrato (tracking): *Implementar checked/wrapping/saturating decimal*.
-Plan T15-F05 (DeepSeekDocs): *definir qué modos tienen significado; checked diagnostica/retorna error
-según contexto; saturating limita a min/max; wrapping sólo si existe definición matemática aprobada,
-nunca por accidente de bits*.
+- **LLVM**: el producto decimal comprueba `coeficiente > 2^96−1` y atrapa `DecimalOverflow`
+  (exit 145) en vez de envolver silenciosamente — "nunca por accidente de bits" (F05).
+- Verificado: `1e15m * 1e15m` → exit 145. Registrado `TL-LANG-429` (PASS).
 
-Estado real:
+## Residual
 
-- Los modos checked/wrapping/saturating existen para enteros; para `decimal` no está definido qué
-  modos tienen significado (overflow/rounding del coeficiente 96 bits + escala 0–28).
-
-## Gap
-
-Falta definir los modos decimales: checked (diagnostica/error según contexto), saturating (min/max),
-wrapping (sólo si hay definición matemática aprobada, nunca por accidente de bits).
-
-## Nota
-
-F05 depende de F04 (aritmética) + los modos enteros existentes. No es una surface nueva; es la
-definición de overflow/rounding decimal.
+- Los **modos explícitos** checked/saturating (keywords/métodos con contexto) y el diagnóstico
+  compile-time de literales fuera de rango; wrapping queda prohibido sin definición matemática.

@@ -1,29 +1,17 @@
 # NS304-T14-F01 — Introspección completa
 
-- **Estado**: AUDITADO (Comptime/Macro/Metaprogramming son base; inventario de declaration kinds sin cerrar)
+- **Estado**: PARCIAL (inventario de kinds + gate de kind sin visitor localizados; descriptors tipados amplios pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado parcial (2026-10-14)
 
-Contrato (tracking): *Implementar introspección completa*.
-Plan T14-F01 (DeepSeekDocs): *inventariar cada declaration kind vigente en 3.0.4 y exponer descriptors
-tipados, identidad, modifiers, generics, effects, ownership y source origin; no devolver texto ni
-omitir miembros nuevos silenciosamente; añadir gate que falle cuando aparezca un kind sin
-visitor/introspection*.
+- **Inventario/gate**: el mapeo `staticKind` (`ProjectMetaprogrammingModel.cpp:13`) colapsa cualquier
+  `ClassMemberKind` nuevo a `Field` por su `default` — el fallback silencioso exacto que el doc pide
+  convertir en un gate que falle. Es un gate defensivo interno (ningún kind nuevo lo alcanza hoy), no
+  una feature O0 aislable.
 
-Estado real:
+## Residual
 
-- `ComptimeEngine`, `MacroExpansionEngine`, `ProjectMetaprogrammingModel`, `MetaprogrammingSemantics`
-  existen como base (el self-host tiene `ComptimeProcessor.ns`).
-- No hay inventario cerrado de declaration kinds + descriptors tipados (identidad/modifiers/generics/
-  effects/ownership/source origin) + gate de kind sin introspection.
-
-## Gap
-
-Falta el inventario de declaration kinds + los descriptors tipados (no texto) + el gate que falla ante
-un kind sin visitor/introspection.
-
-## Nota
-
-F01 es la base de T14 (antes de F02 generación tipada + F03 mixin). No es una surface nueva; es el
-cierre de la introspección del AST vigente.
+- Los **descriptors tipados** (identidad/modifiers/generics/effects/ownership/source origin) de cada
+  declaration kind vigente + el gate efectivo (trap/`unreachable` en el `default`) + la falla cuando
+  aparezca un kind sin visitor/introspection.

@@ -1,27 +1,15 @@
 # NS304-T16-F02 — Writer/reader y compatibilidad 3.0
 
-- **Estado**: AUDITADO (codec/merger/API diff existen; round-trip de campos nuevos + fixtures previos sin cerrar)
+- **Estado**: PARCIAL (writer/reader + rechazo de versión futura operativos; fixtures binarios + round-trip de campos nuevos pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (codec + rechazo — 2026-10-14)
 
-Contrato (tracking): *Implementar writer/reader y compatibilidad 3.0*.
-Plan T16-F02 (DeepSeekDocs): *actualizar writer y reader juntos; round-trip de cada nuevo campo;
-defaults seguros para metadata anterior; rechazo explícito de versión futura o contrato incompatible;
-merger/API diff conservan semántica y orden estable; fixtures binarios de versión anterior, no
-fabricados sólo en memoria*.
+- **Writer/reader**: el codec versiona por `formatMinor` (los campos nuevos van `if (minor >= N)` en
+  writer y reader); el rechazo explícito de versión futura ya existe
+  (`formatMajor != kFormatMajor || formatMinor > kFormatMinor` → error, `LibraryMetadata.cpp:3656/4218`).
 
-Estado real:
+## Residual
 
-- El codec/merger/API diff existen; el round-trip de los campos nuevos (T03–T15) + los defaults seguros
-  de metadata anterior + el rechazo de versión futura + los fixtures binarios no están cerrados.
-
-## Gap
-
-Falta actualizar writer+reader juntos (round-trip de cada campo nuevo), defaults seguros para metadata
-3.0 anterior, rechazo explícito de versión futura/incompatible, y fixtures binarios de versión previa.
-
-## Nota
-
-F02 depende de F01 (versiones) + el codec existente. No es una surface nueva; es el round-trip + la
-compatibilidad downlevel del metadata.
+- El **round-trip de cada campo nuevo T03–T15** + los **defaults seguros de metadata 3.0 anterior** +
+  los **fixtures binarios de versión previa** (no fabricados en memoria) — el corpus de compatibilidad.

@@ -1002,7 +1002,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T05-F04` — Calcular frame layout, discriminante, liveness y storage de locals suspendidos. *(PARCIAL conservativo: frame layout + save-all-locals en la reanudación; liveness precisa def-use pendiente.)*
 - [ ] `NS304-T05-F05` — Verificar borrows, moves, pinning, self-references y escapes entre suspensiones. *(PARCIAL conservativo: rechazo de cualquier local borrowed/pinned en async con suspensión.)*
 - [ ] `NS304-T05-F06` — Ejecutar drop/defer/finally una vez en completion, error o cancelación. *(PARCIAL: drop en completion; drop en error/cancelación pendiente.)*
-- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async. *(PARCIAL: surface future:<T>\|<E> + ReadyError (throw→state=-2, señal determinista); Result/?/panic y rethrow SEH pendientes.)*
+- [ ] `NS304-T05-F07` — Integrar `throws E`, `Result`, `?`, panic y unwind nativo con async. *(PARCIAL: surface future:<T>\|<E> + ReadyError (throw→state=-2) + rethrow/SEH del blocking await (TL-LANG-413); Result/?/panic y ReadyError async (F09) pendientes.)*
 - [ ] `NS304-T05-F08` — Permitir storage en stack, caller, arena o allocator explícito; nunca heap obligatorio. *(PARCIAL: caller-stack + nunca-heap cerrados; arena/allocator = decisión de surface para Alberto.)*
 - [ ] `NS304-T05-F09` — Emitir ABI/NSMETA de future opaco, poll/resume/drop y consumo intermodular. *(PARCIAL: poll virtual completo — pollFn + constructor + await sobre variable + Future<T> nombrable; resume/drop + intermodular pendientes.)*
 - [x] `NS304-T05-F10` — Emitir LLVM y debug metadata de state, locals, sequence points y logical frames. *(CERRADO: subprogram distinguido F/F$poll + state@0 artificial; locals/sequence points heredados; logical frames opcional.)*
@@ -1036,7 +1036,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(CERRADO: `static` en extension sin receptor (ns3-extension-static) + TP-PAR-538 + `T.Miembro()` vía StaticMethodGroup (TL-LANG-389).)*
 - [x] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos. *(CERRADO: `operator+` de extensión resuelve y baja como llamada de namespace (TL-LANG-394, exit 5).)*
 - [x] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(orphan rule (TL-LANG-403) + conformance duplicada + dispatch intermodular `e.F()`=5 (TL-LANG-404) + witness NSMETA (TL-LANG-406) cerrados.)*
-- [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión + visibilidad de bloque `public`/`internal` (TL-LANG-405) cerradas; ranking por constraints/índices pendientes.)*
+- [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión + visibilidad de bloque `public`/`internal` (TL-LANG-405) + ranking por constraints — dispatch de extensión genérica `Box<T> where T:Special` (TL-LANG-412) cerrados; índices por identidad pendientes.)*
 - [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia (NSMETA 1.32) + static/operator (bit 6) + consumo intermodular del operador (TL-LANG-399) cerrados; genéricos + prueba de cero layout mutation pendientes.)*
 
 ### T09 — construcción, propiedades y eventos
@@ -1081,64 +1081,64 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [~] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
   *(`params ReadOnlySpan<T>` sin heap ✅ TL-LANG-411 exit 7; inline buffer y builder aprobado
   pendientes.)*
-- [ ] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints.
-- [ ] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable.
+- [ ] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints. *(constraint `where T : ref-like` + validación (TL-LANG-414) cerrados; boxing/field/static ya negados por checks existentes; metadata inválida = refinamiento.)*
+- [ ] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable. *(witness estático de borrowed struct (TL-LANG-415) cerrado; conversión a `dyn` ya rechazada por conversión; diagnóstico específico escape/box pendiente.)*
 - [ ] `NS304-T11-F07` — Completar ref fields, `scoped`, ref readonly y escape summaries intermodulares.
 - [ ] `NS304-T11-F08` — Implementar atributos genéricos con argumentos consteval y metadata estable.
 
 ### T12 — partial members y composición de fuente
 
 - [ ] `NS304-T12-F01` — Definir identidad y merge de tipos parciales independiente del orden de archivos.
-- [ ] `NS304-T12-F02` — Implementar métodos parciales con firma, efectos, generics y body opcional/obligatorio.
-- [ ] `NS304-T12-F03` — Implementar propiedades e indexadores parciales.
-- [ ] `NS304-T12-F04` — Implementar constructores parciales y limitar initializer/base call a un body.
-- [ ] `NS304-T12-F05` — Implementar eventos parciales con add/remove y storage declarado.
+- [ ] `NS304-T12-F02` — Implementar métodos parciales con firma, efectos, generics y body opcional/obligatorio. *(declaración sin body + body definitorio fusionados por signatureKey (TL-LANG-416); dos bodies/llamada sin body diagnosticados; coincidencia de firma completa pendiente.)*
+- [ ] `NS304-T12-F03` — Implementar propiedades e indexadores parciales. *(property parcial firma+accessor fusionados (TL-LANG-417); indexers y conflictos get/set/init/ref pendientes.)*
+- [ ] `NS304-T12-F04` — Implementar constructores parciales y limitar initializer/base call a un body. *(firma + body definitorio fusionados (TL-LANG-418); un solo initializer/base/this + unificación firma/effects pendientes.)*
+- [ ] `NS304-T12-F05` — Implementar eventos parciales con add/remove y storage declarado. *(evento parcial + add/remove fusionados (TL-LANG-419); emparejamiento handler/accessibility/storage pendiente.)*
 - [ ] `NS304-T12-F06` — Integrar macros/derive, colisiones, NSMETA y build incremental.
 
 ### T13 — allocators, scope e in-place construction
 
-- [ ] `NS304-T13-F01` — Congelar protocolo allocate/resize/deallocate/alignment/failure.
-- [ ] `NS304-T13-F02` — Implementar selección explícita de allocator en construcción.
-- [ ] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático.
-- [ ] `NS304-T13-F04` — Implementar arena/pool explícito y propagación a builders/containers.
-- [ ] `NS304-T13-F05` — Completar placement/in-place con rollback ante fallo parcial.
-- [ ] `NS304-T13-F06` — Implementar trailing/append storage con layout consteval y bounds.
-- [ ] `NS304-T13-F07` — Verificar provenance allocator/deallocator entre módulos y DLL.
-- [ ] `NS304-T13-F08` — Integrar allocation failure con `Result`, `throws`, panic y `noheap`.
-- [ ] `NS304-T13-F09` — Emitir cost report que demuestre stack/arena/heap elegido.
+- [ ] `NS304-T13-F01` — Congelar protocolo allocate/resize/deallocate/alignment/failure. *(trait `IAllocator` + firma/efectos + allocator mínimo de usuario (TL-LANG-432) HECHOS; integración lingüística + provenance pendientes.)*
+- [ ] `NS304-T13-F02` — Implementar selección explícita de allocator en construcción. *(auditado: sitios tipados sin allocator; surface de selección + transporte + diagnóstico pendientes.)*
+- [ ] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático. *(auditado: stack+drop RAII existen; surface `scope` + escape analysis pendientes.)*
+- [ ] `NS304-T13-F04` — Implementar arena/pool explícito y propagación a builders/containers. *(auditado: ArenaAllocator insumo; plumbing del contexto + arenas anidadas pendientes.)*
+- [ ] `NS304-T13-F05` — Completar placement/in-place con rollback ante fallo parcial. *(auditado: drop inverso existe; placement + rollback pendientes.)*
+- [ ] `NS304-T13-F06` — Implementar trailing/append storage con layout consteval y bounds. *(auditado: layout consteval existe; cola variable + ABI pendientes.)*
+- [ ] `NS304-T13-F07` — Verificar provenance allocator/deallocator entre módulos y DLL. *(auditado: contrato de deallocator no publicado; plumbing intermodular pendiente.)*
+- [ ] `NS304-T13-F08` — Integrar allocation failure con `Result`, `throws`, panic y `noheap`. *(noheap + rechazo de heap allocation operativos; perfil explícito de failure pendiente.)*
+- [ ] `NS304-T13-F09` — Emitir cost report que demuestre stack/arena/heap elegido. *(auditado: noheap verifica ausencia; reporte estructurado + allocator instrumentado pendientes.)*
 
 ### T14 — comptime, derive y generación higiénica
 
-- [ ] `NS304-T14-F01` — Auditar introspección de toda declaración admitida en v3.0.4.
-- [ ] `NS304-T14-F02` — Generar tipadamente miembros, impls, helpers y declaraciones auxiliares.
-- [ ] `NS304-T14-F03` — Implementar mixin seguro como expansión AST higiénica y acotada.
-- [ ] `NS304-T14-F04` — Garantizar source mapping, macro backtrace y navegación al origen.
-- [ ] `NS304-T14-F05` — Integrar generics, associated items, partial y extension blocks generados.
-- [ ] `NS304-T14-F06` — Congelar capabilities, entradas externas, cache key y reproducibilidad.
-- [ ] `NS304-T14-F07` — Detectar ciclos, colisiones, crecimiento infinito y presupuestos.
-- [ ] `NS304-T14-F08` — Probar serializer, formatter, binding y trait derive sin runtime reflection.
+- [ ] `NS304-T14-F01` — Auditar introspección de toda declaración admitida en v3.0.4. *(inventario/gate localizados (staticKind default silencioso); descriptors tipados + gate efectivo pendientes.)*
+- [ ] `NS304-T14-F02` — Generar tipadamente miembros, impls, helpers y declaraciones auxiliares. *(auditado: builders AST + mismo binder pendientes.)*
+- [ ] `NS304-T14-F03` — Implementar mixin seguro como expansión AST higiénica y acotada. *(auditado: contextos + higiene + rechazo de kind pendientes.)*
+- [ ] `NS304-T14-F04` — Garantizar source mapping, macro backtrace y navegación al origen. *(auditado: mapping de generados + cadena de expansión pendientes.)*
+- [ ] `NS304-T14-F05` — Integrar generics, associated items, partial y extension blocks generados. *(auditado: identidad de generados sin unificar.)*
+- [ ] `NS304-T14-F06` — Congelar capabilities, entradas externas, cache key y reproducibilidad. *(auditado: capacidades/inputs + cache key pendientes.)*
+- [ ] `NS304-T14-F07` — Detectar ciclos, colisiones, crecimiento infinito y presupuestos. *(presupuesto de pasos + backtrace operativos; profundidad/nodos/memoria + ciclo/colisión pendientes.)*
+- [ ] `NS304-T14-F08` — Probar serializer, formatter, binding y trait derive sin runtime reflection. *(auditado: fixtures de derive pendientes.)*
 
 ### T15 — tipo decimal nativo
 
-- [ ] `NS304-T15-F01` — Congelar 128 bits: coeficiente 96 bits, escala 0-28, signo, sin NaN/infinito.
-- [ ] `NS304-T15-F02` — Implementar lexer, literales, sufijos, parsing y round-trip exacto.
-- [ ] `NS304-T15-F03` — Implementar identidad, layout, ABI, mangling, NSMETA y FFI permitido.
-- [ ] `NS304-T15-F04` — Implementar aritmética, comparación y redondeo.
-- [ ] `NS304-T15-F05` — Integrar overflow checked/wrapping/saturating donde esté definido.
-- [ ] `NS304-T15-F06` — Implementar conversiones enteras/FP/decimal y ranking de overload.
-- [ ] `NS304-T15-F07` — Unificar consteval/runtime y bajar a intrinsics o helpers versionados.
-- [ ] `NS304-T15-F08` — Integrar formatting/parsing, traits numéricos, generics y bordes.
+- [ ] `NS304-T15-F01` — Congelar 128 bits: coeficiente 96 bits, escala 0-28, signo, sin NaN/infinito. *(tipo builtin `decimal` + layout 16B (TL-LANG-420) cerrados; contrato numérico/invariantes + ABI classification pendientes.)*
+- [ ] `NS304-T15-F02` — Implementar lexer, literales, sufijos, parsing y round-trip exacto. *(literal `m` + type `builtin:decimal` + constante 128-bit (TL-LANG-421) cerrados; round-trip exacto + overflow/precisión pendientes.)*
+- [ ] `NS304-T15-F03` — Implementar identidad, layout, ABI, mangling, NSMETA y FFI permitido. *(tipo/layout/pass-return/mangling del decimal operativos (TL-LANG-422); metadata versionada + FFI con representación declarada pendientes.)*
+- [ ] `NS304-T15-F04` — Implementar aritmética, comparación y redondeo. *(add/sub/rem con escalas mixtas + mul/div (TL-LANG-423/424/426/427/430/431); rounding + escala mixta en div + overflow de escala pendientes.)*
+- [ ] `NS304-T15-F05` — Integrar overflow checked/wrapping/saturating donde esté definido. *(overflow del coeficiente atrapado (TL-LANG-429); modos explícitos checked/saturating pendientes.)*
+- [ ] `NS304-T15-F06` — Implementar conversiones enteras/FP/decimal y ranking de overload. *(decimal→entero truncado (TL-LANG-425) operativo; entero→decimal + decimal↔FP + ranking pendientes.)*
+- [ ] `NS304-T15-F07` — Unificar consteval/runtime y bajar a intrinsics o helpers versionados. *(const decimal materializado como i128 (TL-LANG-428); equivalencia consteval/runtime exhaustiva + helpers estáticos pendientes.)*
+- [ ] `NS304-T15-F08` — Integrar formatting/parsing, traits numéricos, generics y bordes. *(core-op `DecimalToString` plumbing armado; emisión de dígitos del lowering pendiente.)*
 
 ### T16 — integración ABI, metadata, debug y self-host
 
-- [ ] `NS304-T16-F01` — Consolidar versiones definitivas de HIR, MIR, NSMETA y runtime ABI.
-- [ ] `NS304-T16-F02` — Actualizar writer/reader y compatibilidad de metadata 3.0 previa.
-- [ ] `NS304-T16-F03` — Validar producer/consumer sin source reference por feature pública.
-- [ ] `NS304-T16-F04` — Validar EXE/DLL, exports, callbacks, unload y ownership cross-module.
-- [ ] `NS304-T16-F05` — Completar CodeView/PDB de closures, patterns, async, generators y static init.
-- [ ] `NS304-T16-F06` — Portar semántica a self-host y eliminar divergencias.
-- [ ] `NS304-T16-F07` — Actualizar lints, fix-its y guía de migración a v3.0.4.
-- [ ] `NS304-T16-F08` — Regenerar superficie sin `DeferredTo4` dentro del alcance.
+- [ ] `NS304-T16-F01` — Consolidar versiones definitivas de HIR, MIR, NSMETA y runtime ABI. *(versiones ABI por formato ya reservadas; matriz T03–T15 + feature bits/invariantes pendientes.)*
+- [ ] `NS304-T16-F02` — Actualizar writer/reader y compatibilidad de metadata 3.0 previa. *(codec + rechazo de versión futura operativos; fixtures binarios + round-trip de campos nuevos pendientes.)*
+- [ ] `NS304-T16-F03` — Validar producer/consumer sin source reference por feature pública. *(auditado: corpus de pruebas intermodulares por feature T03–T15, depende de F02.)*
+- [ ] `NS304-T16-F04` — Validar EXE/DLL, exports, callbacks, unload y ownership cross-module. *(auditado: corpus cross-module de ownership + unload, depende de F03.)*
+- [ ] `NS304-T16-F05` — Completar CodeView/PDB de closures, patterns, async, generators y static init. *(auditado: vertical de debug info de las construcciones T03–T15.)*
+- [ ] `NS304-T16-F06` — Portar semántica a self-host y eliminar divergencias. *(auditado: corpus de parity estructural host/self-host por feature T03–T15.)*
+- [ ] `NS304-T16-F07` — Actualizar lints, fix-its y guía de migración a v3.0.4. *(auditado: reglas por cambios T03–T15 + fix-it idempotente + guía con fixtures.)*
+- [ ] `NS304-T16-F08` — Regenerar superficie sin `DeferredTo4` dentro del alcance. *(auditado: regeneración desde inventario + validación de evidencia; cierre de T16 y condición de T17.)*
 
 ### T17 — conformidad C# 14/Beef y cierre
 

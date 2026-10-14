@@ -1,26 +1,18 @@
 # NS304-T12-F05 — Eventos parciales
 
-- **Estado**: AUDITADO (eventos nativos T09-F08 cerrados; parcial sin surface)
+- **Estado**: PARCIAL (evento parcial + add/remove fusionados; emparejamiento normativo de handler/accessibility/storage pendiente)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (firma + accessors — 2026-10-14)
 
-Contrato (tracking): *Implementar eventos parciales*.
-Plan T12-F05 (DeepSeekDocs): *emparejar tipo de handler, add/remove, accessibility y storage declarado;
-no crear multicast heap oculto; dos storage definitions o accessors incompatibles producen diagnóstico
-estable*.
+- **Parser** (`parseEventTail`): `partial` marca el evento `partial-event` y cada accessor
+  `partial-method`; el evento parcial con `add`/`remove` se acepta.
+- **Member model**: dos `partial-event` (y su backing `event-backing:`) fusionan sin conflicto; los
+  accessors `add_`/`remove_` parciales fusionan por `signatureKey` (F02).
+- Verificado: `partial event Handler Changed;` + `partial event Handler Changed { add{…} remove{…} }`
+  → add(+1) + remove(+2) = exit 3. Registrado `TL-LANG-419` (PASS). No hay multicast heap oculto.
 
-Estado real:
+## Residual
 
-- Eventos nativos (handler + add/remove + storage) están cerrados (T09-F08). Un evento parcial
-  (declaration + implementation separadas) no existe.
-
-## Gap
-
-Falta el evento parcial: emparejar handler/add/remove/accessibility/storage + el diagnóstico estable
-de dos storage definitions/accessors incompatibles (sin multicast heap oculto).
-
-## Nota
-
-F05 depende de F01 (identidad) + T09-F08 (eventos). No es una surface nueva; es el emparejamiento
-parcial del evento.
+- **Emparejamiento normativo** de handler/accessibility/storage declarado + el diagnóstico de dos
+  storage definitions o accessors incompatibles (hoy se fusiona por nombre/`signatureKey`).

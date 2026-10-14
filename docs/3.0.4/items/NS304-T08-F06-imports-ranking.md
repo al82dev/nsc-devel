@@ -37,14 +37,19 @@ archivo) y los índices incrementales por identidad (invalidables, no cache text
   (`Parser::parseExtensionDeclaration` acepta `public`/`internal` y lo baja al namespace function;
   `candidatesInNamespace` ya filtraba la accesibilidad cross-module.)
 
+### Verificación (ranking por constraints, TL-LANG-412)
+
+- **Generic extension dispatch**: `extension Box<T> where T : Special { int Twice() }` despacha
+  sobre la especialización cerrada `Box<I>` (`b.Twice()` → exit 6). El modelo genérico ahora
+  (1) procesa el receiver abierto `Box<T>` sin materializar un clon cerrado (`processTypeSyntax`
+  con parámetro de scope + `processNode` para la firma del template), (2) infiere `T` desde el
+  receptor en `inferGenericCall` cuando la llamada no tiene argumentos explícitos, (3) especializa
+  `Twice<T>` a `Twice<I>` vía `ensureMethodSpecialization`, y (4) `canonicalTypeKey` resuelve el
+  receiver del clon por su nombre terminal. El cuerpo del template abierto se difiere
+  (`callableCanBeAnalyzed`). Guard de inferencia de argumentos y genéricos cerrados sin regresión.
+
 ### Pendiente
 
-- **Ranking por constraints**: `extension Box<T> where T:Special` exige *generic namespace functions*.
-  Investigación (rondas 235-259): el parser acepta el `where` + propaga el genérico; el lookup
-  trata los parámetros genéricos como placeholder (`unknown type name 'T'` resuelto); la extensión
-  genérica se registra como namespace function. Falta el **modelo genérico**: procesar la firma
-  (receiver `Box<T>`) del template abierto y especializar `Twice<T>` a `Twice<I>` en el dispatch
-  (`b.Twice()` sobre `Box<I>`). ~40 líneas en `ProjectGenericModel` + dispatch.
 - **Índices por identidad**: `extensionBindingBySyntax_` es cache por nodo; cambiarlo a identidad.
 
 ## Nota

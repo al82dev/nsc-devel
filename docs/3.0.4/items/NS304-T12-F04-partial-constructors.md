@@ -1,26 +1,19 @@
 # NS304-T12-F04 — Constructores parciales
 
-- **Estado**: AUDITADO (constructores normales existen; parcial sin surface)
+- **Estado**: PARCIAL (firma + body definitorio fusionados; un solo initializer/base/this y unificación de firma/effects/required pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (firma + body — 2026-10-14)
 
-Contrato (tracking): *Implementar constructores parciales*.
-Plan T12-F04 (DeepSeekDocs): *sólo un body puede contener initializer o llamada base/this; unificar
-firma, effects y required/init obligations; aplicar cleanup parcial y `throws E` de T09 sin duplicar
-inicialización*.
+- **Parser** (`parseConstructorTail`): `partial` marca el constructor `partial-method` y acepta el
+  bodyless (`Foo();`) sin exigir body.
+- **Member model**: dos `partial-method` constructores con la misma `signatureKey` se fusionan (body
+  adjunto a la firma), reutilizando F02.
+- Verificado: `partial Foo();` + `partial Foo(){ X = 5; }` → `f.X` exit 5. Registrado `TL-LANG-418`
+  (PASS).
 
-Estado real:
+## Residual
 
-- Constructores normales + primary ctors (T09-F04) existen. Un constructor parcial (declaration +
-  implementation separadas) no existe.
-
-## Gap
-
-Falta el constructor parcial: un solo body con initializer/base/this, firma/effects/required/init
-unificados, y el cleanup parcial + `throws E` (T09-F09/F10) sin duplicar inicialización.
-
-## Nota
-
-F04 depende de F01/F02 (identidad/métodos) + T09 (required/init/throws). No es una surface nueva; es
-el emparejamiento parcial del constructor.
+- **Un solo body con initializer/base/this** + la unificación normativa de firma/effects/required/init
+  (hoy el emparejamiento es por `signatureKey`; no se valida el resto del contrato ni se prohíbe un
+  initializer en ambas partes).

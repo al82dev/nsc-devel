@@ -1,27 +1,18 @@
 # NS304-T12-F03 — Properties e indexers parciales
 
-- **Estado**: AUDITADO (sin properties/indexers parciales)
+- **Estado**: PARCIAL (property parcial firma+accessor fusionados; indexers y conflictos get/set/init/ref pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (property parcial — 2026-10-14)
 
-Contrato (tracking): *Implementar properties e indexers parciales*.
-Plan T12-F03 (DeepSeekDocs): *emparejar tipo, parámetros, accessors y mutabilidad; permitir separación
-de declaration y implementation conforme al contrato, pero no sintetizar storage o accessor faltante
-silenciosamente; diagnosticar get/set/init/ref conflict*.
+- **Parser** (`parsePropertyTail`): `partial` marca la property `partial-property` y cada accessor
+  `partial-method`; el `get;`/`set;` parcial no sintetiza auto-storage ni marca abstract.
+- **Member model**: dos `partial-property` con el mismo nombre fusionan (se conserva la primera);
+  los accessors `get_`/`set_` parciales se fusionan por `signatureKey` como en F02 (body adjunto).
+- Verificado: `partial int P { get; }` + `partial int P { get { return 5; } }` → `f.P` exit 5.
+  Registrado `TL-LANG-417` (PASS). No se sintetiza storage/accessor faltante.
 
-Estado real:
+## Residual
 
-- Properties/indexers normales existen (T08/T09). La separación parcial de declaration/implementation
-  de una property/indexer no existe.
-
-## Gap
-
-Falta emparejar tipo/parámetros/accessors/mutabilidad de properties/indexers parciales + la separación
-declaration/implementation (sin sintetizar storage/accessor silencioso) + el diagnóstico de
-get/set/init/ref conflict.
-
-## Nota
-
-F03 depende de F01/F02 (identidad + métodos) y de T08/T09 (properties). No es una surface nueva; es
-el emparejamiento parcial de accessors.
+- **Indexers parciales** y el **diagnóstico de get/set/init/ref conflict** (dos accessors del mismo
+  tipo con body, o accessor incompatible entre partes) — el emparejamiento normativo completo.

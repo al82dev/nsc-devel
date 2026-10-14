@@ -84,6 +84,16 @@ aún unwindea nativo SEH) y `?`/`Result` a través del await. Esos son el runtim
 - Verificado: `async Read(){ throw new Exception(); return 42; }` + `await Read()` → exit -1;
   sin throw → exit 42. Registrado `TL-LANG-376` (PASS). Commit `88d4bb60`.
 
-Queda (refinamiento runtime): el **rethrow/SEH** (propagar el error cargado al `catch` del caller,
-en vez de la señal determinista) y el camino `ReadyError` en el `AwaitFuture` async (propagar el
-error del hijo al future padre). Ambos acoplados a F09.
+### Cierre parcial (rethrow/SEH) — verificado 2026-10-14
+
+- El blocking await (contexto síncrono) con `try` recarga el slot de error (campo 4 del future) y lo
+  rethrowa nativo vía `lowerExceptionalTransfer`, en vez de la señal determinista `-1`.
+- El `AwaitFuture` HIR copia el `exceptionTargetRegionOrdinal` + `cleanupRegionOrdinals` del handler
+  activo (solo bloqueante, `loweringAsyncBody_ == false`); el lowering elige el rethrow cuando hay
+  catch y mantiene la señal `-1` cuando no lo hay.
+- Verificado: `async int Read() throws Exception { throw new Exception(); }` + `try { return await
+  Read(); } catch (Exception e) { return 7; }` → exit 7; sin catch → `-1` (TL-LANG-376 intacto).
+  Registrado `TL-LANG-413` (PASS).
+
+Queda (refinamiento runtime): el camino `ReadyError` en el `AwaitFuture` async (propagar el error del
+hijo al future padre). Acoplado a F09 (suspensión real).

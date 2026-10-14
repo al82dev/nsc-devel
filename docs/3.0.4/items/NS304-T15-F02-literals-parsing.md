@@ -1,26 +1,18 @@
 # NS304-T15-F02 — Literales y parsing exacto
 
-- **Estado**: AUDITADO (lexer FP existe; literal decimal sin surface)
+- **Estado**: PARCIAL (literal `m` reconocido + tipeado como `decimal` + bajado a constante 128-bit; round-trip exacto y validación de overflow/precisión pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (literal + type + lowering — 2026-10-14)
 
-Contrato (tracking): *Implementar literales y parsing exacto*.
-Plan T15-F02 (DeepSeekDocs): *lexer conserva dígitos/escala sin pasar por binary FP; parser valida
-sufijo, precision, exponent permitido y overflow; round-trip texto-decimal-texto exacto; spans de error
-señalan dígito/escala causal*.
+- **Lexer**: `m`/`M` cierra el literal numérico como floating sin pasar por `strtod` (el sufijo queda en el lexema).
+- **Sema**: el sufijo `m` tipea el literal `builtin:decimal` (no `double`).
+- **LLVM**: `FloatingConstant` con `builtin:decimal` baja a `i128` = coeficiente (96 bits) | escala << 96 |
+  signo << 127, derivando coeficiente/escala del round-trip `%.17g` (coeficiente ≤ 64 bits).
+- Verificado: `decimal d = 1.5m; return 0;` → exit 0. Registrado `TL-LANG-421` (PASS).
 
-Estado real:
+## Residual
 
-- El lexer FP existente pasa por binary FP; no hay literal `decimal` (sufijo) que conserve
-  dígitos/escala exactos.
-
-## Gap
-
-Falta el literal `decimal` (sufijo) con dígitos/escala exactos (sin binary FP), la validación de
-precisión/exponente/overflow, el round-trip texto-decimal-texto y los spans causales.
-
-## Nota
-
-F02 depende de F01 (representación). No es una surface nueva; es el lexing/parsing exacto del literal
-decimal.
+- **Round-trip texto-decimal-texto exacto** (dígitos/escala verbatim, sin binary FP) + la validación de
+  precisión/exponente/overflow + los spans de error causales. El coeficiente >64 bits devuelve el
+  diagnóstico "coefficient exceeds 64 bits" (se amplía en F05).

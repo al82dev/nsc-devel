@@ -1,26 +1,17 @@
 # NS304-T15-F07 — Consteval/runtime y lowering decimal
 
-- **Estado**: AUDITADO (consteval + lowering existen para enteros/FP; decimal sin integrar)
+- **Estado**: PARCIAL (const decimal materializado como i128 operativo; equivalencia consteval/runtime exhaustiva + intrinsics/helpers estáticos pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (const decimal — 2026-10-14)
 
-Contrato (tracking): *Implementar consteval/runtime y lowering*.
-Plan T15-F07 (DeepSeekDocs): *una sola semántica compartida o corpus diferencial exhaustivo; lowering
-usa intrinsics/helpers estáticos versionados con ABI estable; consteval y runtime producen mismo bit
-pattern o mismo error*.
+- **Wrapper LLVM-C**: declaré `LLVMConstIntOfArbitraryPrecision` en `LlvmCApi.h` (faltaba y es la
+  vía para constantes de 96/128 bits).
+- **Materialización**: `const decimal K = 1.5m;` baja a un `i128` = coeficiente (low 96) | escala<<96
+  (via `staticField.constantFloatingValue` + el helper `decimalCoefficientAndScale`).
+- Verificado: `const decimal K=1.5m; (int)K==1` → exit 0. Registrado `TL-LANG-428` (PASS).
 
-Estado real:
+## Residual
 
-- El consteval + el lowering existen para enteros/FP; `decimal` no tiene semántica compartida ni
-  lowering (intrinsics/helpers estáticos).
-
-## Gap
-
-Falta la semántica compartida de decimal (o corpus diferencial) + el lowering por intrinsics/helpers
-estáticos con ABI estable + la equivalencia consteval/runtime (mismo bit pattern o error).
-
-## Nota
-
-F07 depende de F04/F05 (aritmética/modos) + el consteval/lowering existente. No es una surface nueva;
-es el lowering + la equivalencia consteval/runtime del decimal.
+- La **equivalencia consteval/runtime exhaustiva** (mismo bit pattern o mismo error en todo el corpus)
+  + los intrinsics/helpers estáticos con ABI estable; el coeficiente >64 bits queda para F05.

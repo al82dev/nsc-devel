@@ -1,28 +1,15 @@
 # NS304-T16-F01 — Versiones definitivas HIR/MIR/NSMETA/runtime ABI
 
-- **Estado**: AUDITADO (LibraryMetadata/HIR/MIR con versiones históricas; matriz de cambios sin construir)
+- **Estado**: PARCIAL (versiones ABI por formato ya reservadas; matriz de cambios T03–T15 + feature bits/invariantes pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (reserva de versiones — 2026-10-14)
 
-Contrato (tracking): *Implementar versiones definitivas de formatos*.
-Plan T16-F01 (DeepSeekDocs): *construir matriz de cambios reales y reservar una sola versión por
-formato cuando sea necesario; definir feature bits, invariantes y rechazo de datos inconsistentes; no
-incrementar versión por documentación ni reutilizar bits*.
+- **Constantes ABI**: `kManglingAbiVersion`/`kObjectAbiVersion`/`kDelegateAbiVersion`/
+  `kExceptionAbiVersion` ya existen como "una sola versión por formato" en `LibraryMetadata.h`.
 
-Estado real:
+## Residual
 
-- `LibraryMetadata`, el codec/merger/API diff, los modelos HIR/MIR y el LLVM lowerer existen con
-  versiones históricas. No hay una matriz de cambios T03–T15 que reserve una sola versión por formato
-  ni feature bits/invariantes.
-
-## Gap
-
-Falta la matriz de cambios reales (T03–T15) + reservar una sola versión por formato + los feature
-bits/invariantes + el rechazo de datos inconsistentes (sin incrementar por documentación ni reutilizar
-bits).
-
-## Nota
-
-F01 es la base de T16 (antes de F02 writer/reader + F03 producer/consumer). Es la integración de las
-versiones de formatos; un hueco reabre su tanda causal T03–T15.
+- La **matriz de cambios reales (T03–T15)** que justifique cada bump + los **feature bits/invariantes**
+  + el **rechazo de datos inconsistentes** (sin incrementar por documentación ni reutilizar bits) —
+  el doc + la validación del codec.

@@ -1,27 +1,10 @@
 # NS304-T16-F05 — CodeView/PDB
 
-- **Estado**: AUDITADO (CodeView/PDB existe para básicos; construcciones nuevas sin representar)
+- **Estado**: AUDITADO (CodeView/PDB existe para básicos; construcciones T03–T15 sin representar)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Auditoría (2026-10-14)
 
-Contrato (tracking): *Implementar CodeView/PDB*.
-Plan T16-F05 (DeepSeekDocs): *representar closures/captures, patterns/bindings, async/generator frames,
-static initialization, spans/ref-like, decimal y generated source donde aplique; sequence points mapean
-a fuente lógica; locals visibles sólo cuando vivos; no emitir información falsa*.
-
-Estado real:
-
-- El CodeView/PDB existe para las construcciones básicas; closures/captures, patterns/bindings,
-  async/generator frames, static init, spans/ref-like, decimal y generated source no están
-  representados.
-
-## Gap
-
-Falta representar las construcciones nuevas (closures, patterns, frames async/generator, static init,
-spans/ref-like, decimal, generated source) + sequence points honestos + locals visibles sólo vivos.
-
-## Nota
-
-F05 depende de F01 (versiones) + el CodeView/PDB existente. No es una surface nueva; es el debug
-honesto de las construcciones T03–T15.
+- El hueco es la **representación debug** de las construcciones nuevas (closures/captures, patterns/
+  bindings, frames async/generator, static init, spans/ref-like, decimal, generated source) + sequence
+  points honestos + locals vivos — un vertical de debug info (no una feature de lenguaje aislable).

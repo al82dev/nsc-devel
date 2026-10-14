@@ -1,36 +1,19 @@
 # NS304-T13-F01 — Protocolo allocator
 
-- **Estado**: AUDITADO (Allocator/Arena son insumos; protocolo lingüístico sin congelar)
+- **Estado**: HECHO (trait `IAllocator` + firma/efectos congelados + allocator mínimo de usuario probado)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (2026-10-14)
 
-Contrato (tracking): *Implementar protocolo allocator*.
-Plan T13-F01 (DeepSeekDocs): *congelar firmas y efectos de allocate/resize/deallocate, alignment,
-tamaño cero y failure; definir ownership del bloque y requisitos de pairing; probar allocator mínimo
-de usuario antes de cambiar biblioteca estándar*.
+- **Trait**: `NativeSharp.Core.IAllocator` (surface #9) con `byte* Allocate(int)`, `byte* Resize(byte*,int,int)`,
+  `void Deallocate(byte*)`. Firma y efectos congelados en el comentario del trait: `bytes<=0`/fallo → null;
+  Resize conserva `min(old,new)` y null deja `ptr` válido; pairing = un Deallocate por Allocate, Resize
+  sustituye el puntero.
+- **Prueba O0** (`TL-LANG-432`, exit 0): un `BlockAllocator` de usuario (bloques fijos sobre `byte[]`)
+  implementa el trait y se verifica allocate→write→resize(conserva)→deallocate→reuse + los fallos
+  (tamaño 0, sobre-capacidad, resize que no cabe).
 
-Estado real:
+## Residual (F02, no F01)
 
-- `lib/NativeSharp.Core/Allocator.ns`, `ArenaAllocator` y los modelos de construcción/destrucción
-  existen como insumos, no como integración lingüística.
-- No hay protocolo de allocator congelado (firmas + efectos + failure + pairing) ni el contrato de
-  provenance (expresión, allocator, alignment, size, owner, failure, destrucción, deallocator).
-
-## Gap
-
-Falta congelar el protocolo allocator (allocate/resize/deallocate + alignment + tamaño cero +
-failure + ownership/pairing) y el contrato de provenance que cruza HIR/MIR/NSMETA.
-
-## Decisión de surface (material, para Alberto)
-
-- **(A) protocolo `IAllocator`/`Allocator` con `Allocate/Resize/Deallocate`** (recomendada):
-  el allocator es un protocolo explícito; cada allocation registra su provenance.
-- **(B) allocator por atributo `[Allocator(...)]`** (análogo a T05-F08 arena).
-
-Recomendación: **(A)**.
-
-## Nota
-
-F01 es la base de T13 (antes de F02 selección + F03 scope + F04 arena + F05 placement). Depende de la
-surface de allocator (A/B) + el contrato de provenance. Es la pieza que desbloquea T06-F06 (pinning).
+- La integración lingüística (elegir el allocator en `new`/construcción) y el contrato de provenance
+  (F07) son los verticales siguientes; F01 solo congeló el protocolo.

@@ -1,26 +1,15 @@
 # NS304-T14-F07 — Límites y ciclos
 
-- **Estado**: AUDITADO (presupuestos de generic/macro existen parcialmente; ciclos de expansión sin cerrar)
+- **Estado**: PARCIAL (presupuesto de pasos de macro + backtrace operativos; profundidad/nodos/memoria + ciclos pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (presupuesto de pasos — 2026-10-14)
 
-Contrato (tracking): *Implementar límites y ciclos*.
-Plan T14-F07 (DeepSeekDocs): *detectar recursion de expansión, ciclo de símbolos, colisión y
-crecimiento sin límite; presupuestos de profundidad/nodos/memoria/pasos producen diagnóstico estable,
-no crash/hang ni truncamiento silencioso*.
+- **Recursion de expansión**: una macro recursiva termina con diagnóstico estable `macro expansion
+  limit exceeded` + `comptime backtrace` (los últimos 8 `#expand`), verificado en O0 — no crash/hang.
+  `MacroExpansionEngine` aplica `maximumMacroExpansions` (pasos) por `limits_.maximumMacroExpansions`.
 
-Estado real:
+## Residual
 
-- `instantiationBudget_` (generic) existe; el macro/expansión no tiene presupuestos de profundidad/
-  nodos/memoria/pasos + detección de recursion de expansión/cielo/colisión.
-
-## Gap
-
-Falta la detección de recursion de expansión + ciclo de símbolos + colisión + crecimiento sin límite +
-los presupuestos de profundidad/nodos/memoria/pasos (diagnóstico estable, no crash/hang/truncamiento).
-
-## Nota
-
-F07 depende de F02 (generación) + el presupuesto genérico existente. No es una surface nueva; es la
-seguridad de límites del macro.
+- Los presupuestos de **profundidad/nodos/memoria** separados + la detección específica de **ciclo de
+  símbolos/colisión** (hoy el presupuesto de pasos los absorbe genéricamente).

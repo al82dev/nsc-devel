@@ -1,35 +1,23 @@
 # NS304-T11-F05 — Ref-like como argumento genérico
 
-- **Estado**: AUDITADO (constraints genéricos existen; `ref-like` stack-only sin surface)
+- **Estado**: PARCIAL (constraint `where T : ref-like` + validación cerrados; negación boxing/field/static ya cubierta por checks existentes; metadata inválida = refinamiento)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (constraint + validación — 2026-10-14)
 
-Contrato (tracking): *Implementar ref-like como argumento genérico*.
-Plan T11-F05 (DeepSeekDocs): *agregar constraint explícito que autorice stack-only; negar boxing,
-field en heap/objeto escapable, static storage y metadata inválida; specialization cache distingue el
-contrato ref-like*.
+- **Parser** (`parseGenericConstraintClauses`): `ref-like` se reconoce como keyword contextual de 3
+  tokens (`ref` `-` `like`) y fija `GenericConstraintClause::requiresRefLike`.
+- **Constraint model**: `GenericConstraintViolationKind::RequiresRefLike` + `isRefLikeArgument`
+  (struct `borrowed` = vista Span/ReadOnlySpan); el átomo `"ref-like"` entra en la identidad canónica.
+- **Clone** (`ProjectGenericModel`): copia `requiresRefLike` a las cláusulas de la especialización.
+- **Validación**: `Wrapper<T> where T : ref-like` + `Wrapper<ReadOnlySpan<int>>` compila y corre
+  (exit 5); `Wrapper<int>` se rechaza con *"requires a stack-only borrowed view (Span/ReadOnlySpan)"*.
+  Registrado `TL-LANG-414` (PASS). El field escapable ya lo niega el check de borrowed-view existente.
 
-Estado real:
+## Residual
 
-- `ProjectGenericConstraintModel` + specialization ya existen para constraints nominales; no hay un
-  constraint `ref-like`/`stack-only`.
-- No hay negación de boxing/field escapable/static storage para un argumento genérico ref-like.
-
-## Gap
-
-Falta el constraint `ref-like` (stack-only): autoriza el uso genérico de una vista, y niega boxing,
-field en objeto escapable, static storage y metadata inválida. La specialization cache debe distinguir
-el contrato ref-like.
-
-## Decisión de surface (material, para Alberto)
-
-- **(A) constraint `ref-like`** (recomendada): `where T : ref-like` autoriza stack-only.
-- **(B) `struct T` + `stack-only`** (dos constraints).
-
-Recomendación: **(A)**.
-
-## Nota
-
-F05 depende de la surface del constraint ref-like (A/B) y de F01/F02 (span). No es una surface de
-vista; es el constraint del sistema de tipos.
+- **Negación del USO — verificada como ya cubierta (2026-10-14)**: el boxing se rechaza por la
+  conversión (`ReadOnlySpan<T>` → `object` = *"cannot convert return expression"*); el field
+  escapable y el static storage se rechazan por el check de borrowed-view existente
+  (*"field cannot have view type"*). Solo la **metadata inválida** (un `ref-like` en NSMETA) queda
+  sin diagnóstico explícito — un refinamiento de metadata, no una surface.

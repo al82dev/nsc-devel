@@ -1,28 +1,20 @@
 # NS304-T12-F02 — Métodos parciales
 
-- **Estado**: AUDITADO (sin declaración/implementación separadas de members)
+- **Estado**: PARCIAL (declaración sin body + body definitorio fusionados; firma completa/effects/attributes/constraints pendientes)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (firma + body — 2026-10-14)
 
-Contrato (tracking): *Implementar métodos parciales*.
-Plan T12-F02 (DeepSeekDocs): *separar declaration/implementation; emparejar firma completa; definir
-cuándo el body es obligatorio u opcional y qué ocurre con la llamada a un método sin body; effects,
-defaults, attributes, generic constraints y ownership coinciden; dos bodies o dos declarations
-incompatibles son error determinista*.
+- **Parser** (`parseClassMember`): `partial` ante tipo de retorno de miembro marca el callable
+  `partial-method`; `parseMethodTail` acepta el bodyless parcial sin `abstract`.
+- **Member model**: dos `partial-method` con la misma `signatureKey` se **fusionan** (el body se
+  adjunta a la firma); dos bodies definitorios → *"partial method 'M' has more than one defining
+  body"*; llamada sin body → *"Stage 35 concrete OOP callable has no body"*.
+- Verificado: `partial int M();` + `partial int M(){ return 5; }` → `f.M()` exit 5. Registrado
+  `TL-LANG-416` (PASS).
 
-Estado real:
+## Residual
 
-- No hay surface de método parcial (declaración sin body + implementación separada). Un método con
-  `partial` no se parsea/empareja.
-
-## Gap
-
-Falta la separación declaration/implementation de métodos parciales + el emparejamiento de firma
-completa (effects/defaults/attributes/constraints/ownership) + el body obligatorio/opcional (llamada
-a método sin body) + el error determinista de dos bodies/declarations.
-
-## Nota
-
-F02 depende de F01 (identidad canónica) y es la surface de `partial` en métodos. No es una surface
-nueva de firma; es el emparejamiento + la regla del body opcional.
+- **Firma completa + emparejamiento normativo**: effects/defaults/attributes/generic constraints/
+  ownership de las dos partes deben coincidir; hoy se emparejan por `signatureKey` (nombre+aridad+
+  tipos) y no se valida la coincidencia del resto del contrato.
