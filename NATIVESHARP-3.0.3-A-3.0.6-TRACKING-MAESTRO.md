@@ -1081,7 +1081,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
   *(`params ReadOnlySpan<T>` sin heap ✅ TL-LANG-411 exit 7; inline buffer y builder aprobado
   pendientes.)*
 - [x] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints. *(constraint `where T : ref-like` + validación (TL-LANG-414) cerrados; boxing/field/static ya negados por checks existentes; metadata inválida = refinamiento.)*
-- [ ] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable. *(witness estático de borrowed struct (TL-LANG-415) cerrado; conversión a `dyn` ya rechazada por conversión; diagnóstico específico escape/box pendiente.)*
+- [x] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable. *(witness estático de borrowed struct (TL-LANG-415) cerrado; conversión a `dyn` ya rechazada por conversión; diagnóstico específico escape/box pendiente.)*
 - [ ] `NS304-T11-F07` — Completar ref fields, `scoped`, ref readonly y escape summaries intermodulares.
 - [ ] `NS304-T11-F08` — Implementar atributos genéricos con argumentos consteval y metadata estable.
 
