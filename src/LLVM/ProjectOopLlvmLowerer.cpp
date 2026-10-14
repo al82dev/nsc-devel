@@ -9158,6 +9158,23 @@ private:
                 if (base == nullptr) return nullptr;
                 LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
                 if (index == nullptr) return nullptr;
+                // NS304-T13-F06: a flexible-array index is bounds-checked against its `Length`
+                // member (byte offset in secondaryImmediate) before the raw element address is
+                // formed. The raw tier's no-bounds contract is the default; this is the one
+                // documented exception for trailing storage.
+                if (node->secondaryImmediate != 0)
+                {
+                    LLVMValueRef lengthAddress =
+                        byteOffset(base, node->secondaryImmediate, "flexible.length.addr");
+                    LLVMValueRef length = LLVMBuildLoad2(
+                        builder_, LLVMInt32TypeInContext(context_), lengthAddress, "flexible.length");
+                    LLVMValueRef lengthWide = LLVMBuildZExt(
+                        builder_, length, LLVMInt64TypeInContext(context_), "flexible.length.i64");
+                    LLVMValueRef inBounds = LLVMBuildICmp(
+                        builder_, LLVMIntULT, index, lengthWide, "flexible.inbounds");
+                    if (!emitGuard(inBounds, LlvmTrapReason::BoundsViolation, "flexible.index", error))
+                        return nullptr;
+                }
                 LLVMValueRef offset = LLVMBuildMul(
                     builder_, index,
                     LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),

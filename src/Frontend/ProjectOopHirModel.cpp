@@ -5,6 +5,7 @@
 #include "nativesharp/Sema/EffectContext.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
+#include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
@@ -1313,7 +1314,8 @@ bool ProjectOopHirModel::build(
     std::string& error,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::size_t workerCount,
-    const ProjectNamespaceFunctionModel* namespaceFunctionModel)
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+    const ProjectMetaprogrammingModel* metaprogrammingModel)
 {
     return buildImpl(
         nameLookup,
@@ -1327,6 +1329,7 @@ bool ProjectOopHirModel::build(
         genericConstraintModel,
         workerCount,
         namespaceFunctionModel,
+        metaprogrammingModel,
         std::nullopt,
         nullptr);
 }
@@ -1343,12 +1346,14 @@ bool ProjectOopHirModel::buildImpl(
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::size_t workerCount,
     const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+    const ProjectMetaprogrammingModel* metaprogrammingModel,
     std::optional<std::size_t> memberFilter,
     const ProjectOopHirModel* lookupSource)
 {
     error.clear();
     genericConstraintModel_ = genericConstraintModel;
     lookupSource_ = lookupSource;
+    metaprogrammingModel_ = metaprogrammingModel;
     if (built_)
     {
         error = "ProjectOopHirModel instances are single-use";
@@ -1445,6 +1450,7 @@ bool ProjectOopHirModel::buildImpl(
                     genericConstraintModel,
                     1,
                     namespaceFunctionModel,
+                    metaprogrammingModel,
                     memberOrdinal,
                     this);
                 result.errorRange = worker.lastErrorRange();
@@ -6168,6 +6174,48 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     address = makeNode(
                         ProjectOopHirNodeKind::RawElementAddress, expression, elementType);
                     address->elementTypeKey = elementType;
+                    // NS304-T13-F06: a flexible-array index must be bounds-checked against the
+                    // `Length` member named by [TrailingStorage(nameof(Length), ...)]. Resolve its
+                    // byte offset here so the raw element address can emit the runtime guard.
+                    if (baseIsFlexibleArray && metaprogrammingModel_ != nullptr &&
+                        baseSyntax != nullptr && baseSyntax->first() != nullptr &&
+                        inheritanceModel_ != nullptr && memberModel_ != nullptr &&
+                        objectLayoutModel_ != nullptr)
+                    {
+                        const MethodExpressionTypeBinding* receiverType =
+                            expressionType(baseSyntax->first());
+                        if (receiverType != nullptr)
+                        {
+                            const std::optional<std::size_t> structOrdinal =
+                                inheritanceModel_->typeOrdinalForTypeKey(receiverType->typeKey);
+                            if (structOrdinal.has_value())
+                            {
+                                for (const StaticAttributeInfo& attribute :
+                                     metaprogrammingModel_->attributes())
+                                {
+                                    if (attribute.identity != "TrailingStorage" ||
+                                        attribute.constantArguments.empty() ||
+                                        !attribute.typeOrdinal.has_value() ||
+                                        attribute.typeOrdinal != structOrdinal)
+                                    {
+                                        continue;
+                                    }
+                                    const std::span<const std::size_t> lengthMembers =
+                                        memberModel_->findMembers(
+                                            *structOrdinal, attribute.constantArguments[0]);
+                                    if (!lengthMembers.empty())
+                                    {
+                                        const ObjectFieldLayout* lengthLayout =
+                                            objectLayoutModel_->fieldLayoutForMember(
+                                                lengthMembers.front());
+                                        if (lengthLayout != nullptr)
+                                            address->secondaryIntegerValue = lengthLayout->offset;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     address->children.push_back(std::move(base));
                     address->children.push_back(std::move(index));
                     base = std::move(address);

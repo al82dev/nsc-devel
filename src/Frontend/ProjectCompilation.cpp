@@ -849,7 +849,7 @@ bool ProjectCompilation::compileProjectOopHir(
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),
-            compilationJobs_, namespaceFunctionModel_.get()))
+            compilationJobs_, namespaceFunctionModel_.get(), metaprogrammingModel_.get()))
     {
         return true;
     }

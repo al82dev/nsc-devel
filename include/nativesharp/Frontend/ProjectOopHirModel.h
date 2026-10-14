@@ -24,6 +24,7 @@
 namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
+class ProjectMetaprogrammingModel;
 
 enum class ProjectOopHirNodeKind
 {
@@ -777,7 +778,8 @@ public:
         std::string& error,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
         std::size_t workerCount = 1,
-        const ProjectNamespaceFunctionModel* namespaceFunctionModel = nullptr);
+        const ProjectNamespaceFunctionModel* namespaceFunctionModel = nullptr,
+        const ProjectMetaprogrammingModel* metaprogrammingModel = nullptr);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
@@ -803,6 +805,7 @@ private:
         const ProjectGenericConstraintModel* genericConstraintModel,
         std::size_t workerCount,
         const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+        const ProjectMetaprogrammingModel* metaprogrammingModel,
         std::optional<std::size_t> memberFilter,
         const ProjectOopHirModel* lookupSource);
 
@@ -1006,6 +1009,7 @@ private:
     const ProjectConstructionModel* constructionModel_ = nullptr;
     const ProjectObjectLayoutModel* objectLayoutModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
+    const ProjectMetaprogrammingModel* metaprogrammingModel_ = nullptr;
     const ProjectOopHirModel* lookupSource_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
