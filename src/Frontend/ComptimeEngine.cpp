@@ -366,15 +366,21 @@ bool parseConstantArguments(
         const std::string_view item = trim(text.substr(begin, cursor - begin));
         const bool quoted = item.size() >= 2 && item.front() == '"' && item.back() == '"';
         const bool boolean = item == "true" || item == "false";
+        // NS304-T13-F06: `nameof(Identifier)` in an attribute argument is a string constant carrying
+        // the identifier's spelling. Normalize it to the bare spelling so the consumer sees a name.
+        const bool nameofString = item.size() >= 8 && item.starts_with("nameof(") && item.ends_with(")");
         std::size_t digit = (!item.empty() && (item.front() == '+' || item.front() == '-')) ? 1 : 0;
         bool integer = digit < item.size();
         for (; integer && digit < item.size(); ++digit) integer = asciiDigit(item[digit]);
-        if ((!quoted && !boolean && !integer) || string)
+        if ((!quoted && !boolean && !integer && !nameofString) || string)
         {
             error = "attribute arguments must be string, boolean, or integer constants";
             return false;
         }
-        arguments.emplace_back(item);
+        if (nameofString)
+            arguments.emplace_back(item.substr(7, item.size() - 8));
+        else
+            arguments.emplace_back(item);
         begin = cursor + 1;
     }
     return true;

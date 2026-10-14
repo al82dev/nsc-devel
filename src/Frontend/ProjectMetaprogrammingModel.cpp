@@ -123,6 +123,10 @@ bool ProjectMetaprogrammingModel::build(
         ComptimeAttributeRetention::CompileTime});
     definitions.emplace("allow", Definition{everyDeclaration, true,
         ComptimeAttributeRetention::CompileTime});
+    // NS304-T13-F06: `[TrailingStorage(nameof(Length), nameof(Capacity))]` binds a `T[*]` flexible
+    // field to its explicit Length/Capacity members. Fields only, non-repeatable, compile-time.
+    definitions.emplace("TrailingStorage", Definition{
+        {ComptimeAttributeTarget::Field}, false, ComptimeAttributeRetention::CompileTime});
     for (const ProjectComptimeRecord& record : comptimeRecords)
     {
         for (const ComptimeAttributeDirective& directive : record.attributes)
