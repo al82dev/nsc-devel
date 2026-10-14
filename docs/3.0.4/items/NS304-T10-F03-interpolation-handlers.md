@@ -23,6 +23,13 @@ Estado real:
 Falta el protocolo de construcción (handler) que recibe los huecos sin concatenar strings
 temporalmente: `AppendLiteral`/`AppendFormatted`/finish/failure sobre stack/writer/custom sink.
 
+### Verificación (2026-10-14)
+
+- `Builder b = $"{1}"` da `cannot initialize local 'b' of type 'Builder' from 'string-literal'`: la
+  interpolación materializa una string (no baja a `AppendLiteral`/`AppendFormatted`). El tramo es
+  análogo al builder protocol de T09-F05 (core-op + `BlockExpression` + detección del target por
+  `AppendLiteral`/`AppendFormatted`/finish), reutilizando esa maquinaria.
+
 ## Decisión de surface (material, para Alberto)
 
 - **(A) handler por tipo target + `AppendLiteral`/`AppendFormatted`** (recomendada): el target de la
