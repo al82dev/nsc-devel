@@ -15322,6 +15322,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 true,
                 receiver.readonlyReceiver);
             result.assignable = !receiver.readonlyReceiver && !propertySetters.empty();
+            // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
+            const bool refGetter = std::any_of(
+                propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
+                {
+                    return ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].isReferenceReturn;
+                });
+            if (refGetter)
+            {
+                result.assignable = !receiver.readonlyReceiver;
+            }
             result.receiverSyntax = typeReceiver ? nullptr : expression->first();
             result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
             result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
