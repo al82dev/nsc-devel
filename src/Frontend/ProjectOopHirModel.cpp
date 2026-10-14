@@ -9148,6 +9148,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
             return node;
         }
     }
+    // NS304-T11-F02: a native string view (`StringView`) reuses the StringViewFromString core
+    // lowering (UTF-8 base+length). Two children signal the WHOLE string.
+    if (conversion.kind == ProjectConversionKind::View &&
+        conversion.sourceTypeKey == "builtin:string")
+    {
+        auto node = makeNode(
+            ProjectOopHirNodeKind::StringViewFromString, syntax, conversion.targetTypeKey);
+        node->elementTypeKey = "builtin:string";
+        node->children.push_back(std::move(value));
+        auto zero = makeNode(ProjectOopHirNodeKind::IntegerConstant, syntax, "builtin:int");
+        zero->integerValue = 0;
+        node->children.push_back(std::move(zero));
+        return node;
+    }
     auto node = makeNode(ProjectOopHirNodeKind::Conversion, syntax, conversion.targetTypeKey);
     node->conversion = conversion;
     node->children.push_back(std::move(value));

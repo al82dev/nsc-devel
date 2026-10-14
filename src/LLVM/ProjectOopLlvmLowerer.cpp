@@ -9790,15 +9790,10 @@ private:
             // as StringCharacterPointer; the count is the length operand.
             case frontend::ProjectOopMirNodeKind::StringViewFromString:
             {
-                if (node->children.size() != 3)
+                // NS304-T11-F02: two children mean the WHOLE string (count derives from the
+                // object's own length header); three children are the rest-capture form.
+                if (node->children.size() != 3 && node->children.size() != 2)
                     return failValue(error, "StringView rest capture requires receiver, start and length");
-                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
-                if (count == nullptr) return nullptr;
-                // An empty rest (count == 0) is valid and yields {null, 0}; it must not run the
-                // start < length bounds check, because a valid empty rest has start == length.
-                LLVMValueRef countIsZero = LLVMBuildICmp(
-                    builder_, LLVMIntEQ, count,
-                    LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0), "stringview.empty");
                 LLVMValueRef object = lowerExpression(node->children[0].get(), error);
                 if (object == nullptr) return nullptr;
                 object = checkedReceiver(object, error);
@@ -9807,6 +9802,15 @@ private:
                 if (index == nullptr) return nullptr;
                 LLVMValueRef length = LLVMBuildLoad2(
                     builder_, LLVMInt64TypeInContext(context_), object, "stringview.length");
+                LLVMValueRef count = node->children.size() == 3
+                    ? lowerExpression(node->children[2].get(), error)
+                    : length;
+                if (count == nullptr) return nullptr;
+                // An empty rest (count == 0) is valid and yields {null, 0}; it must not run the
+                // start < length bounds check, because a valid empty rest has start == length.
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count,
+                    LLVMConstInt(LLVMTypeOf(count), 0, 0), "stringview.empty");
                 LLVMValueRef inRange = LLVMBuildICmp(
                     builder_, LLVMIntULT, index, length, "stringview.inrange");
                 if (isSignedInteger(node->children[1]->typeKey))

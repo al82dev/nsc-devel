@@ -190,6 +190,25 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         }
     }
 
+    // NS304-T11-F02: a native string becomes a StringView view without copying (UTF-8 base+length).
+    if (sourceTypeKey == "builtin:string")
+    {
+        const auto terminal = [](std::string_view key) -> std::string_view
+        {
+            const std::size_t separator = key.find_last_of(".:+");
+            return separator == std::string_view::npos ? key : key.substr(separator + 1U);
+        };
+        if (terminal(targetTypeKey) == "StringView")
+        {
+            return ProjectImplicitConversion{
+                ProjectConversionKind::View,
+                7,
+                std::string(sourceTypeKey),
+                std::string(targetTypeKey),
+                std::nullopt};
+        }
+    }
+
     const ProjectImplicitConversion userDefined = findUserDefined(
         sourceTypeKey, targetTypeKey, true);
     if (userDefined.exists())
