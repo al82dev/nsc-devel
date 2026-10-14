@@ -1,6 +1,6 @@
 # NS304-T08-F02 — Extension properties con getter/setter/ref getter
 
-- **Estado**: PARCIAL; ABIERTO (getter por referencia)
+- **Estado**: CERRADO (getter/setter por valor + ref getter READ + WRITE through ref)
 - **Rama**: development
 
 ## Resultado
