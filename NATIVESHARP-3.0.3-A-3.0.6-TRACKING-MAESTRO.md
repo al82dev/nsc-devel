@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 63 | 42.86 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T08-F01..F04, T09-F01..F08, T10-F02/F04/F05/F07 cerrados |
+| B | 3.0.4 | 18 | 147 ítems | 65 | 44.22 % | `ACTIVA`; T00-T04 cerradas; T05-T11 con ítems cerrados; T08-F01..F05, T09-F01..F08, T10-F02/F04/F05/F07, T11-F01 cerrados |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -923,17 +923,17 @@ T00
 | T05 | Async/await productivo | 10 | 4 | 40 % |
 | T06 | Generadores síncronos | 8 | 3 | 37.5 % |
 | T07 | Async streams y concurrencia estructurada | 8 | 2 | 25 % |
-| T08 | Extension members y operadores | 7 | 4 | 57.14 % |
+| T08 | Extension members y operadores | 7 | 5 | 71.43 % |
 | T09 | Construcción, propiedades y eventos | 10 | 8 | 80 % |
 | T10 | Strings, null-awareness y nombres estáticos | 8 | 4 | 50 % |
-| T11 | Spans, referencias y genéricos modernos | 8 | 0 | 0 % |
+| T11 | Spans, referencias y genéricos modernos | 8 | 1 | 12.5 % |
 | T12 | Partial members y composición de fuente | 6 | 0 | 0 % |
 | T13 | Allocators, scope e in-place construction | 9 | 0 | 0 % |
 | T14 | Comptime, derive y generación higiénica | 8 | 0 | 0 % |
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **63** | **42.86 %** |
+| **Total** |  | **147** | **65** | **44.22 %** |
 
 ## B.2 Inventario exacto T00-T17
 
