@@ -8354,6 +8354,10 @@ ast::AstNode* Parser::parseConstructorTail(
     }
     expect(TokenKind::RightParen, "')'");
 
+    // NS304-T09-F10: a constructor may declare a typed error like any callable. The error type is
+    // preserved on the ConstructorDeclaration and consumed by ProjectMemberModel (declaredErrorTypeKey).
+    parseThrowsClause(constructor);
+
     if (consumeIf(TokenKind::Colon))
     {
         const SourceRange initializerBegin = tokens_[index_ - 1].range();
