@@ -1035,7 +1035,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(CERRADO: getter (`TL-LANG-324`), setter (`TL-LANG-330`), ref getter read+write (`TL-LANG-392/393`) — `setReference` en parser + getter ref direccionable sin setter.)*
 - [x] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(CERRADO: `static` en extension sin receptor (ns3-extension-static) + TP-PAR-538 + `T.Miembro()` vía StaticMethodGroup (TL-LANG-389).)*
 - [x] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos. *(CERRADO: `operator+` de extensión resuelve y baja como llamada de namespace (TL-LANG-394, exit 5).)*
-- [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(orphan rule (TL-LANG-403) + conformance duplicada + dispatch intermodular `e.F()`=5 (TL-LANG-404) cerrados; witness NSMETA pendiente.)*
+- [x] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(orphan rule (TL-LANG-403) + conformance duplicada + dispatch intermodular `e.F()`=5 (TL-LANG-404) + witness NSMETA (TL-LANG-406) cerrados.)*
 - [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión + visibilidad de bloque `public`/`internal` (TL-LANG-405) cerradas; ranking por constraints/índices pendientes.)*
 - [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia (NSMETA 1.32) + static/operator (bit 6) + consumo intermodular del operador (TL-LANG-399) cerrados; genéricos + prueba de cero layout mutation pendientes.)*
 

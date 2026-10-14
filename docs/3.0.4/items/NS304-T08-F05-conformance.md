@@ -1,6 +1,6 @@
 # NS304-T08-F05 — Conformance externa (orphan/coherence)
 
-- **Estado**: PARCIAL (orphan rule + conformance duplicada + dispatch intermodular cerrados; witness NSMETA pendiente)
+- **Estado**: CERRADO (orphan rule + conformance duplicada + dispatch intermodular + witness NSMETA)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -44,6 +44,13 @@ conformance retroactiva incompatible) y publicar el witness + constraints en NSM
 - **Witness + constraints NSMETA**: serializar el record de conformance (target + trait + impl
   methods) y reconstruirlo en un consumidor de 3 módulos (`e.F()`=5 a través de NSMETA). La
   serialización sola sería superficie desconectada; va acoplada a la reconstrucción del consumidor.
+
+### Verificación (witness NSMETA, TL-LANG-406)
+
+- NSMETA 1.40 añade `LibraryMetadataTraitImpl` (target + trait + impl methods). El productor lo
+  publica desde `externalTraitImplParts_` y el consumidor lo materializa como `impl Trait for Type`
+  en la fuente pública; el orphan rule + el registro de miembros reconstruyen el dispatch.
+- Tres módulos (tipo externo + impl + consumidor sin fuentes del impl) → `e.F()` **exit 5**.
 - Lo pendiente es el **vertical de reglas** (orphan: posesión de módulo del tipo/trait/extensión) +
   la **metadata NSMETA** (witness + constraints), no una surface nueva.
 
