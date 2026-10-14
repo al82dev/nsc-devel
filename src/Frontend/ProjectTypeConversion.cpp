@@ -17,12 +17,12 @@ namespace
 {
 using Pair = std::pair<std::string_view, std::string_view>;
 
-constexpr std::array<std::string_view, 15> kNumericTypes = {
+constexpr std::array<std::string_view, 16> kNumericTypes = {
     "builtin:sbyte",
     "builtin:byte", "builtin:char", "builtin:short", "builtin:ushort",
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
     "builtin:nint", "builtin:nuint", "builtin:i128", "builtin:u128",
-    "builtin:float", "builtin:double"};
+    "builtin:float", "builtin:double", "builtin:decimal"};
 
 constexpr std::array<std::string_view, 13> kIntegralTypes = {
     "builtin:sbyte",

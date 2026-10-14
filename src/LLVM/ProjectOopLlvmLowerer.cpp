@@ -14957,6 +14957,30 @@ private:
                 operation == lexer::TokenKind::Minus || operation == lexer::TokenKind::Star;
             return applyFloatingPointMode(result, contractable);
         }
+        if (operandType == "builtin:decimal")
+        {
+            // NS304-T15-F04: decimal is coefficient (low 96 bits) | scale (bits 96..101) | sign
+            // (bit 127). A plain i128 add would double the scale bits, so extract the coefficients,
+            // operate on them, and recombine with the scale taken from the left (equal-scale piece;
+            // mixed-scale alignment and rounding arrive in the next increment).
+            if (operation != lexer::TokenKind::Plus && operation != lexer::TokenKind::Minus)
+                return failValue(error, "unsupported decimal binary operation in Stage 34");
+            LLVMValueRef coefficientMask = LLVMConstInt(
+                LLVMIntTypeInContext(context_, 128), 0xFFFFFFFFFFFFFFFFull, 0);
+            LLVMValueRef leftCoefficient = LLVMBuildAnd(
+                builder_, left, coefficientMask, "decimal.left.coeff");
+            LLVMValueRef rightCoefficient = LLVMBuildAnd(
+                builder_, right, coefficientMask, "decimal.right.coeff");
+            LLVMValueRef combined = operation == lexer::TokenKind::Plus
+                ? LLVMBuildAdd(builder_, leftCoefficient, rightCoefficient, "decimal.coeff.add")
+                : LLVMBuildSub(builder_, leftCoefficient, rightCoefficient, "decimal.coeff.sub");
+            LLVMValueRef scaleShift = LLVMConstInt(
+                LLVMIntTypeInContext(context_, 128), 96, 0);
+            LLVMValueRef leftScale = LLVMBuildLShr(builder_, left, scaleShift, "decimal.scale");
+            LLVMValueRef scaleShifted = LLVMBuildShl(
+                builder_, leftScale, scaleShift, "decimal.scale.sh");
+            return LLVMBuildOr(builder_, combined, scaleShifted, "decimal.addsub");
+        }
         switch (operation)
         {
             case lexer::TokenKind::Plus: return LLVMBuildAdd(builder_, left, right, "add");
