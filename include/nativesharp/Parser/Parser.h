@@ -68,7 +68,7 @@ private:
 
     ast::AstNode* parseNamespaceMember();
     ast::AstNode* parseNamespaceDeclaration();
-    ast::AstNode* parseExtensionDeclaration();
+    ast::AstNode* parseExtensionDeclaration(lexer::TokenKind accessibility = lexer::TokenKind::Invalid);
     ast::AstNode* parseUsingDirective();
     // NativeSharp 3.0 T12-F02. Explicit imports lower to the existing using nodes so name
     // lookup, generic materialization and extension lookup all observe one deterministic table.

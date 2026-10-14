@@ -2697,6 +2697,17 @@ ast::AstNode* Parser::parseNamespaceMember()
         isAsync = true;
         consume();
     }
+    // NS304-T08-F06: `public`/`internal` on an extension block selects the namespace-function
+    // accessibility for every member (the receiver's methods keep their own visibility).
+    if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
+    {
+        const TokenKind accessibility = consume().kind();
+        if (atContextualKeyword("extension"))
+        {
+            return parseExtensionDeclaration(accessibility);
+        }
+        --index_;
+    }
     if (atContextualKeyword("extension"))
     {
         return parseExtensionDeclaration();
@@ -2847,7 +2858,7 @@ ast::AstNode* Parser::parseImportDirective(bool reexport)
     return node;
 }
 
-ast::AstNode* Parser::parseExtensionDeclaration()
+ast::AstNode* Parser::parseExtensionDeclaration(TokenKind accessibility)
 {
     const std::size_t beginIndex = index_;
     const SourceRange keywordRange = consume().range();
@@ -2916,6 +2927,15 @@ ast::AstNode* Parser::parseExtensionDeclaration()
             {
                 member->prependChild(makeReceiver());
                 member->setAuxiliaryText("ns3-extension");
+            }
+            if (accessibility != TokenKind::Invalid)
+            {
+                member->setTokenKind(accessibility);
+                member->addModifier(accessibility);
+            }
+            {
+                member->setTokenKind(accessibility);
+                member->addModifier(accessibility);
             }
             extension->addChild(member);
         }
