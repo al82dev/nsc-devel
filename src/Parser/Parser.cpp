@@ -6022,6 +6022,8 @@ ast::AstNode* Parser::parseClassMember(
     bool isAsync = false;
     TokenKind accessibility = TokenKind::Invalid;
     bool isPartial = false;
+    // NS304-T12-F02: a member-level `partial` (signature without body, or the defining body).
+    bool isPartialMember = false;
     bool isNew = false;
     bool isStatic = false;
     bool isReadonly = false;
@@ -6156,6 +6158,19 @@ ast::AstNode* Parser::parseClassMember(
                     "duplicate 'partial' modifier on nested type declaration");
             }
             isPartial = true;
+            continue;
+        }
+        // NS304-T12-F02: `partial` before a member return type declares a partial method signature
+        // or its defining body.
+        const bool partialMethodModifier = atContextualKeyword("partial") &&
+            (lexer::isBuiltinTypeKeyword(peek().kind()) || at(TokenKind::KwVoid) ||
+             at(TokenKind::Identifier) || atContextualKeyword("ref") ||
+             atContextualKeyword("out") || at(TokenKind::KwIn) ||
+             lexer::isOwnershipQualifierKeyword(peek().kind()));
+        if (partialMethodModifier)
+        {
+            consume();
+            isPartialMember = true;
             continue;
         }
         if ((atContextualKeyword("pack") || atContextualKeyword("align") ||
@@ -7193,7 +7208,7 @@ ast::AstNode* Parser::parseClassMember(
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             isExported, isExternC, isInline, isForceInline, isNoInline, isNoHeap, isUnsafe,
-            beginIndex);
+            beginIndex, false, isPartialMember);
         if (method != nullptr && isControlledSpecialization)
         {
             method->setAuxiliaryText("controlled-specialization");
@@ -7226,6 +7241,13 @@ ast::AstNode* Parser::parseClassMember(
             std::string marker = method->auxiliaryText();
             if (!marker.empty()) marker += ';';
             marker += "async";
+            method->setAuxiliaryText(std::move(marker));
+        }
+        if (method != nullptr && isPartialMember)
+        {
+            std::string marker = method->auxiliaryText();
+            if (!marker.empty()) marker += ';';
+            marker += "partial-method";
             method->setAuxiliaryText(std::move(marker));
         }
         return method;
@@ -8485,7 +8507,8 @@ ast::AstNode* Parser::parseMethodTail(
     bool isNoHeap,
     bool isUnsafe,
     std::size_t beginIndex,
-    bool allowBodyless)
+    bool allowBodyless,
+    bool isPartialMethod)
 {
     ast::AstNode* method = arena_.make<ast::AstNode>(
         ast::AstNodeKind::MethodDeclaration,
@@ -8594,10 +8617,10 @@ ast::AstNode* Parser::parseMethodTail(
     {
         method->setFirst(parseBlock());
     }
-    else if (allowBodyless)
+    else if (allowBodyless || isPartialMethod)
     {
         expect(TokenKind::Semicolon, "';'");
-        method->addModifier(TokenKind::KwAbstract);
+        if (!isPartialMethod) method->addModifier(TokenKind::KwAbstract);
     }
     else
     {

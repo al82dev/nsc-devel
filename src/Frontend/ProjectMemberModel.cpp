@@ -3118,6 +3118,31 @@ bool ProjectMemberModel::collectTypeMembers(
                         (symbol.kind != ClassMemberKind::Constructor ||
                          symbol.isStatic == previous.isStatic))
                     {
+                        // NS304-T12-F02: a partial method signature and its defining body merge.
+                        // Attach the body to the signature (which must carry no body) and drop the
+                        // defining declaration.
+                        const bool partialMerge =
+                            symbol.kind == ClassMemberKind::Method &&
+                            symbol.syntax != nullptr && previous.syntax != nullptr &&
+                            symbol.syntax->auxiliaryText().find("partial-method") != std::string::npos &&
+                            previous.syntax->auxiliaryText().find("partial-method") != std::string::npos;
+                        if (partialMerge)
+                        {
+                            if (previous.syntax->first() == nullptr && symbol.syntax->first() != nullptr)
+                                const_cast<ast::AstNode*>(previous.syntax)->setFirst(
+                                    symbol.syntax->first());
+                            else if (previous.syntax->first() != nullptr &&
+                                     symbol.syntax->first() != nullptr)
+                            {
+                                reportDuplicate(
+                                    symbol, previous, diagnostics,
+                                    "partial method '" + symbol.name +
+                                        "' has more than one defining body in type '" +
+                                        type.identity.fullyQualifiedName() + "'");
+                            }
+                            duplicate = true;
+                            break;
+                        }
                         const bool sameControlledFamily =
                             symbol.kind == ClassMemberKind::Method &&
                             genericModel_ != nullptr &&

@@ -234,7 +234,8 @@ private:
         bool isNoHeap,
           bool isUnsafe,
         std::size_t beginIndex,
-        bool allowBodyless = false);
+        bool allowBodyless = false,
+        bool isPartialMethod = false);
     ast::AstNode* parseEnumDeclaration();
     ast::AstNode* parseExternCDeclaration();
     ast::AstNode* parseFunctionOrGlobalVariable();

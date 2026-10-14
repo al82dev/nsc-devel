@@ -4141,6 +4141,44 @@ class Program
         }});
 }
 
+void registerPartialMethodCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-416", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "partial", "method", "merge", "signature", "body"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T12F02PartialMethod", "Exe", R"ns(
+partial class Foo
+{
+    public partial int M();
+    public partial int M() { return 5; }
+}
+class Program
+{
+    public static int Main()
+    {
+        Foo f = new Foo();
+        return f.M();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T12F02PartialMethod.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-416 a partial method signature + defining body must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-416 f.M() must dispatch through the merged body (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6824,6 +6862,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGenericExtensionDispatchCase(registry);
     registerRefLikeConstraintCase(registry);
     registerRefLikeTraitWitnessCase(registry);
+    registerPartialMethodCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
