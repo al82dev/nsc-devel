@@ -3505,6 +3505,51 @@ class Program
         }});
 }
 
+void registerInlineArrayConstGenericCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-401", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "inline-array", "fixed-buffer", "const-generic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T09InlineArrayConstGeneric", "Exe", R"ns(
+struct Fixed<const int N>
+{
+    public int[N] data;
+    public int Count() { return N; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Fixed<3> f = default(Fixed<3>);
+        f.data[0] = 2;
+        f.data[1] = 3;
+        f.data[2] = 4;
+        Fixed<2> g = default(Fixed<2>);
+        g.data[0] = 10;
+        g.data[1] = 20;
+        return f.data[0] + f.data[1] + f.data[2] + f.Count() + g.data[0] + g.data[1];
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T09InlineArrayConstGeneric.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-401 const-generic inline array must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-401 N must drive the layout arity and the value (2+3+4+3+10+20=42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6124,6 +6169,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionOperatorCase(registry);
     registerCollectionBuilderCase(registry);
     registerIntermodularExtensionOperatorCase(registry);
+    registerInlineArrayConstGenericCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
