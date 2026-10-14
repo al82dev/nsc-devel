@@ -14283,8 +14283,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 diagnostics,
                 true,
                 !staticProperty && contextHasReadonlyReceiver(methodMemberOrdinal));
+            // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
+            const bool refGetter = std::any_of(
+                propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
+                {
+                    return ordinal < memberModel_->members().size() &&
+                        memberModel_->members()[ordinal].isReferenceReturn;
+                });
             result.assignable = !contextHasReadonlyReceiver(methodMemberOrdinal) &&
-                !propertySetters.empty();
+                (!propertySetters.empty() || refGetter);
             return result;
         }
     }
