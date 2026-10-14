@@ -7158,6 +7158,46 @@ class Program
                 "TL-LANG-468 the thread-executor child write + source increment reach 42: " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
+
+    registry.add(TestCase{"TL-LANG-469", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "thread-executor", "sync", "shared", "reject"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07ThreadSyncNegative", "Exe", R"ns(
+using NativeSharp.Core;
+struct SendOnly { public ref mut int cell; }
+struct ThreadExec : IThreadExecutor
+{
+    public int Spawn(Future<void> task) { return 0; }
+    public int PollJoin(int handle) { return 0; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child(ref SendOnly value) { yield; }
+    public static int Main()
+    {
+        SendOnly value = default(SendOnly);
+        TaskScope<ThreadExec> scope = TaskScope<ThreadExec>.Create(new ThreadExec());
+        scope.Spawn(Child(ref value));
+        scope.Join();
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07ThreadSyncNegative.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    emitted.output.find("requires its referred type") != std::string::npos,
+                "TL-LANG-469 a shared capture of a non-Sync type must be rejected: " +
+                    emitted.error + emitted.output);
+        }});
 }
 
 void registerGeneratorEarlyStopCase(TestRegistry& registry)

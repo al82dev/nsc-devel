@@ -18046,6 +18046,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         typeIsSend = [&](const std::string& typeKey) -> bool
                         {
                             if (typeKey.ends_with("*")) return false;
+                            if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
+                            {
+                                const std::size_t colon = typeKey.find(':');
+                                return typeIsSend(typeKey.substr(colon + 1));
+                            }
                             const std::optional<std::size_t> typeOrdinal =
                                 namedTypeOrdinalForTypeKey(typeKey);
                             if (!typeOrdinal.has_value()) return true;
@@ -18055,6 +18060,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                     member.declaringTypeOrdinal != *typeOrdinal)
                                     continue;
                                 if (!typeIsSend(member.declaredTypeKey)) return false;
+                            }
+                            return true;
+                        };
+                        std::function<bool(const std::string&)> typeIsSync;
+                        typeIsSync = [&](const std::string& typeKey) -> bool
+                        {
+                            if (typeKey.ends_with("*")) return false;
+                            if (typeKey.starts_with("refmut:")) return false;
+                            if (typeKey.starts_with("ref:"))
+                            {
+                                const std::size_t colon = typeKey.find(':');
+                                return typeIsSync(typeKey.substr(colon + 1));
+                            }
+                            const std::optional<std::size_t> typeOrdinal =
+                                namedTypeOrdinalForTypeKey(typeKey);
+                            if (!typeOrdinal.has_value()) return true;
+                            for (const ClassMemberSymbol& member : memberModel_->members())
+                            {
+                                if (member.kind != ClassMemberKind::Field ||
+                                    member.declaringTypeOrdinal != *typeOrdinal)
+                                    continue;
+                                if (!typeIsSync(member.declaredTypeKey)) return false;
                             }
                             return true;
                         };
@@ -18092,6 +18119,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                         argument->range(),
                                         "future submitted to a thread executor is not Send: capture '" +
                                             source.name + "' has type '" + source.typeKey + "'");
+                                }
+                                else if (!typeIsSync(source.typeKey))
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidCall,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        argument->range(),
+                                        "shared capture '" + source.name +
+                                            "' requires its referred type '" + source.typeKey +
+                                            "' to be Sync");
                                 }
                             }
                         }

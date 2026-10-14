@@ -872,12 +872,31 @@ bool ProjectGenericConstraintModel::build(
                             continue;
                         language::ThreadSafetyMemberFacts memberFacts;
                         memberFacts.name = member.name;
-                        const bool rawPointer = member.declaredTypeKey.ends_with("*");
-                        memberFacts.kind = rawPointer
-                            ? language::ThreadSafetyMemberKind::RawPointer
-                            : language::ThreadSafetyMemberKind::Value;
-                        memberFacts.send = !rawPointer;
-                        memberFacts.sync = !rawPointer;
+                        if (member.declaredTypeKey.starts_with("refmut:"))
+                        {
+                            // NS304-T07-F07: un `ref mut T` es mutable -> Send del referido, no Sync.
+                            memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
+                            memberFacts.send = true;
+                            memberFacts.sync = false;
+                        }
+                        else if (member.declaredTypeKey.starts_with("ref:"))
+                        {
+                            memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
+                            memberFacts.send = true;
+                            memberFacts.sync = true;
+                        }
+                        else if (member.declaredTypeKey.ends_with("*"))
+                        {
+                            memberFacts.kind = language::ThreadSafetyMemberKind::RawPointer;
+                            memberFacts.send = false;
+                            memberFacts.sync = false;
+                        }
+                        else
+                        {
+                            memberFacts.kind = language::ThreadSafetyMemberKind::Value;
+                            memberFacts.send = true;
+                            memberFacts.sync = true;
+                        }
                         facts.members.push_back(std::move(memberFacts));
                     }
                     const language::ThreadSafetyDecision decision =
