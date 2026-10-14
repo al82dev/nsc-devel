@@ -3921,6 +3921,44 @@ class Program
         }});
 }
 
+void registerArrayToSpanConversionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-409", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "array", "span", "view", "conversion", "no-copy"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-409")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T11F02ArraySpan", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        int[] storage = new int[2];
+        storage[0] = 3; storage[1] = 4;
+        Span<int> mutableView = storage;
+        ReadOnlySpan<int> immutableView = storage;
+        return mutableView[0] + mutableView[1] + immutableView[0] + immutableView[1];
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const std::filesystem::path executable =
+                products.directory() / "T11F02ArraySpan.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-409 an array to Span/ReadOnlySpan view must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 14,
+                "TL-LANG-409 the whole-array views must preserve the elements (3+4+3+4=14): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6547,6 +6585,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTraitWitnessCase(registry);
     registerConstructorThrowsCase(registry);
     registerSpanViewConversionCase(registry);
+    registerArrayToSpanConversionCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
