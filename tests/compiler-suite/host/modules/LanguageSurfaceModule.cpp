@@ -4745,6 +4745,64 @@ class Program
         }});
 }
 
+void registerScopeStackCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-484", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "scope", "stack", "drop", "escape"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T13F03ScopeStack", "Exe", R"ns(
+class Enemy { public int X; public static int Drops; ~Enemy() { Drops += 1; } public Enemy(int x) { X = x; } }
+class Program
+{
+    public static int Main()
+    {
+        { scope Enemy temporary = new Enemy(42); if (temporary.X != 42) return 2; }
+        return Enemy.Drops == 1 ? 0 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T13F03ScopeStack.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-484 scope stack must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-484 scope object must construct and drop once (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerScopeEscapeRejectCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-485", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "scope", "stack", "escape", "return"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T13F03ScopeEscape", "Exe", R"ns(
+class Enemy { public int X; public Enemy(int x) { X = x; } }
+class Program
+{
+    public static Enemy Make() { scope Enemy temporary = new Enemy(42); return temporary; }
+    public static int Main() { return 0; }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T13F03ScopeEscape.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error.find("cannot be returned") != std::string::npos ||
+                     emitted.output.find("cannot be returned") != std::string::npos),
+                "TL-LANG-485 scope return must be rejected: " + emitted.error + emitted.output);
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9546,6 +9604,8 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalOverflowPolicyCase(registry);
     registerDecimalCheckedTrapCase(registry);
     registerDecimalUncheckedRejectCase(registry);
+    registerScopeStackCase(registry);
+    registerScopeEscapeRejectCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

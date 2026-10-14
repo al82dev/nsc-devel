@@ -2029,6 +2029,41 @@ bool ProjectOopHirModel::buildImpl(
             construction->storageOwnership = sema::OwnershipKind::None;
         }
 
+        // NS304-T13-F03: `scope T x = new T(args)` forces frame storage even with constructor
+        // arguments. Sema has already rejected escape, so the alloca cannot dangle.
+        for (ProjectOopHirNode* declaration : localDeclarations)
+        {
+            if (declaration == nullptr || !declaration->localOrdinal.has_value() ||
+                declaration->children.size() != 1 || declaration->children.front() == nullptr)
+            {
+                continue;
+            }
+            ProjectOopHirNode* construction = declaration->children.front().get();
+            if (construction->kind != ProjectOopHirNodeKind::ObjectConstruction ||
+                !construction->constructionOrdinal.has_value() ||
+                !construction->targetTypeOrdinal.has_value())
+            {
+                continue;
+            }
+            const MethodLocalSymbol* local = localSymbol(declaration->syntax);
+            const std::size_t targetTypeOrdinal = *construction->targetTypeOrdinal;
+            const ClassObjectLayout* layout = objectLayoutModel_ != nullptr
+                ? objectLayoutModel_->layoutForType(targetTypeOrdinal) : nullptr;
+            if (local == nullptr || !local->isScope || local->isStatic || local->isReference ||
+                layout == nullptr || layout->baseTypeOrdinal.has_value() || layout->size == 0 ||
+                layout->size > kMaximumPromotedObjectBytes ||
+                targetTypeOrdinal >= nameLookup.namedTypes().size() ||
+                nameLookup.namedTypes()[targetTypeOrdinal].isPrecompiled)
+            {
+                continue;
+            }
+            declaration->stackPromotedObject = true;
+            declaration->storageOwnership = sema::OwnershipKind::None;
+            construction->stackPromotedObject = true;
+            construction->localOrdinal = declaration->localOrdinal;
+            construction->storageOwnership = sema::OwnershipKind::None;
+        }
+
         // Object construction is deferred until after the proof so a noheap callable can use a
         // proven frame object. Every construction that remains heap-backed keeps item 321's exact
         // diagnostic and contract.
@@ -2632,12 +2667,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             node->staticLocal = local->isStatic;
             node->pinnedStorage = local->isPinned;
             node->ownership = local->ownership;
-            node->automaticDestruction = local->isRaii || local->requiresValueDrop;
+            node->automaticDestruction = local->isRaii || local->isScope || local->requiresValueDrop;
             node->objectLifetimeOwnership = local->objectLifetimeOwnership;
             node->storageOwnership = local->storageOwnership;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
-            if (!local->isStatic && (local->isRaii || local->requiresValueDrop))
+            if (!local->isStatic && (local->isRaii || local->isScope || local->requiresValueDrop))
             {
                 const MethodCleanupRegion* region = cleanupRegion(statement);
                 if (region == nullptr)

@@ -143,6 +143,10 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
+    // NS304-T13-F03: `scope T x = new T(...)` — the object's physical storage lives in the current
+    // frame (stack), never heap; the destructor runs once at lexical-scope exit and never calls the
+    // heap deallocator. Escape (return/capture/field/static) is rejected by Sema.
+    bool isScope = false;
     // This local stores a value type that did not opt into Copy. It shares the existing
     // path-sensitive moved-from sets with RAII owners, but it does not acquire a cleanup region
     // merely for being move-only.

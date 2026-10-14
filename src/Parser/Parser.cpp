@@ -10402,6 +10402,10 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon, bool isStat
     const bool isRaii = consumeIf(TokenKind::KwRaii);
     const bool isVolatile = consumeIf(TokenKind::KwVolatile);
     const bool isConst = consumeIf(TokenKind::KwConst);
+    // NS304-T13-F03: `scope Tipo x = ...` — contextual frame-storage modifier (no reserved keyword).
+    const bool isScope = atContextualKeyword("scope") &&
+        (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar);
+    if (isScope) consume();
     if (isRaii && isConst)
     {
         diagnostics_.report(
@@ -10446,6 +10450,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon, bool isStat
         synchronizeStatement();
         return nullptr;
     }
+    if (isScope) variable->setAuxiliaryText("local:scope");
     if (isStaticLocal) variable->addModifier(TokenKind::KwStatic);
     ast::AstNode* declarationList = nullptr;
     while (consumeIf(TokenKind::Comma))

@@ -6357,6 +6357,8 @@ void ProjectMethodBodyModel::analyzeVariable(
         (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
     const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
         foreachEnumeratorNeedsRaii || deferCaptureNeedsRaii;
+    // NS304-T13-F03: `scope` forces frame storage (never heap).
+    const bool isScope = variable->auxiliaryText() == "local:scope";
     const bool isVolatile = variable->hasModifier(TokenKind::KwVolatile);
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
@@ -6944,6 +6946,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
     }
     local.isRaii = isRaii;
+    local.isScope = isScope;
     local.isMoveOnly = isMoveOnly;
     local.callableTrait = pendingCallableTrait;
     local.requiresValueDrop = memberModel_->typeRequiresValueDrop(typeKey);
@@ -6951,6 +6954,13 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
+    // NS304-T13-F03: the frame object owns object destruction (exactly once at scope exit) while its
+    // storage is the frame itself, so there is no heap deallocator to call.
+    if (isScope)
+    {
+        local.objectLifetimeOwnership = sema::OwnershipKind::Owned;
+        local.storageOwnership = sema::OwnershipKind::None;
+    }
     if (pendingLocalBorrow.has_value())
     {
         local.localBorrowBindingOrdinal = localBorrowBindings_.size();
@@ -7088,10 +7098,10 @@ void ProjectMethodBodyModel::analyzeVariable(
         pendingLocalBorrow->localOrdinal = localOrdinal;
         localBorrowBindings_.push_back(std::move(*pendingLocalBorrow));
     }
-    if (!isStaticLocal && (isRaii || locals_[localOrdinal].requiresValueDrop))
+    if (!isStaticLocal && (isRaii || isScope || locals_[localOrdinal].requiresValueDrop))
     {
         const std::size_t cleanupOrdinal = createCleanupRegion(
-            isRaii
+            (isRaii || isScope)
                 ? MethodCleanupRegionKind::RaiiDestroy
                 : MethodCleanupRegionKind::ValueLocalDrop,
             variable,
@@ -8084,6 +8094,34 @@ void ProjectMethodBodyModel::analyzeReturn(
                 "view returned from an expanded parameter pack refers to temporary caller "
                 "stack storage and cannot escape the current method");
             return;
+        }
+    }
+    // NS304-T13-F03: a `scope` object is frame storage and can never escape via return.
+    {
+        std::vector<const ast::AstNode*> pending;
+        if (statement->first() != nullptr) pending.push_back(statement->first());
+        while (!pending.empty())
+        {
+            const ast::AstNode* current = pending.back();
+            pending.pop_back();
+            if (current == nullptr) continue;
+            if (current->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, current->text());
+                if (name.has_value() && name->kind == ScopeNameKind::Local &&
+                    name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidReturn,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->first()->range(),
+                        "scope object '" + locals_[name->semanticOrdinal].name +
+                            "' lives in the current frame and cannot be returned");
+                    return;
+                }
+            }
+            if (current->first() != nullptr) pending.push_back(current->first());
+            for (const ast::AstNode* child : current->children()) pending.push_back(child);
         }
     }
     if (method->declaredOwnership == sema::OwnershipKind::Borrowed)
