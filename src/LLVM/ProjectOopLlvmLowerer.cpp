@@ -8106,8 +8106,9 @@ private:
 
             case frontend::ProjectOopMirNodeKind::AsyncYieldValue:
             {
-                // NS304-T07-F02: the async-generator poll's yield. Entry: write the item + the demand
-                // future's result/state and return; resume: fall through to the next yield.
+                // NS304-T07-F02: the async-generator poll's yield. Entry: allocate the frame once,
+                // save live locals, write the item + the demand future's result/state and return;
+                // resume: restore the live locals and fall through to the next yield.
                 if (parameterStorage_.empty())
                     return fail(error, "async yield has no poll self parameter");
                 LLVMValueRef future = LLVMBuildLoad2(
@@ -8128,10 +8129,71 @@ private:
                     LLVMBuildICmp(builder_, LLVMIntEQ, iterState, prevState, "ayield.is.entry"),
                     entryBlock, resumeBlock);
 
+                const auto& frameLocals = currentMirFunction_ != nullptr
+                    ? currentMirFunction_->asyncFrameLocals
+                    : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
+
                 LLVMPositionBuilderAtEnd(builder_, entryBlock);
-                LLVMValueRef item = node->children.empty()
-                    ? nullptr : lowerExpression(node->children.front().get(), error);
-                if (!node->children.empty() && item == nullptr) return false;
+                // NS304-T07-F04: the async-generator's locals live in the async-iterator's frame,
+                // so a `ref` item references a persistent slot, not the poll's stack alloca.
+                LLVMValueRef frame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(asyncIter, 8, "ayield.frame.slot.addr"), "ayield.frame");
+                LLVMBasicBlockRef haveFrame = appendBlock("ayield.have.frame");
+                LLVMBasicBlockRef allocFrame = appendBlock("ayield.alloc.frame");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(
+                        builder_, LLVMIntEQ, frame,
+                        LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "ayield.frame.null"),
+                    allocFrame, haveFrame);
+                LLVMPositionBuilderAtEnd(builder_, allocFrame);
+                LLVMTypeRef frameType = LLVMArrayType2(
+                    LLVMInt8TypeInContext(context_), currentMirFunction_ != nullptr
+                        ? currentMirFunction_->asyncFrameSize : 0);
+                LLVMValueRef newFrame = entryBlockAlloca(frameType, 8, "ayield.frame.storage");
+                LLVMBuildStore(builder_, newFrame, byteOffset(asyncIter, 8, "ayield.frame.slot.store"));
+                LLVMBuildBr(builder_, haveFrame);
+                LLVMPositionBuilderAtEnd(builder_, haveFrame);
+                LLVMValueRef framePhi = LLVMBuildPhi(
+                    builder_, LLVMPointerTypeInContext(context_, 0), "ayield.frame.phi");
+                LLVMValueRef frameIncoming[] = { frame, newFrame };
+                LLVMBasicBlockRef frameBlocks[] = { entryBlock, allocFrame };
+                LLVMAddIncoming(framePhi, frameIncoming, frameBlocks, 2);
+                for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
+                {
+                    const auto localFound = localStorage_.find(localOrdinal);
+                    if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
+                    LLVMTypeRef localType = llvmType(typeKey, error);
+                    if (localType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_,
+                        LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local"),
+                        byteOffset(framePhi, offset, "ayield.frame.local.slot"));
+                }
+                LLVMValueRef item = nullptr;
+                if (!node->children.empty())
+                {
+                    const bool itemByReference =
+                        node->children.front()->kind == frontend::ProjectOopMirNodeKind::LocalAddress ||
+                        node->children.front()->kind == frontend::ProjectOopMirNodeKind::FieldAddress;
+                    if (itemByReference && node->children.front()->localOrdinal.has_value())
+                    {
+                        std::uint64_t itemOffset = 0;
+                        bool foundItemOffset = false;
+                        for (const auto& [lo, off, tk] : frameLocals)
+                            if (lo == *node->children.front()->localOrdinal)
+                            { itemOffset = off; foundItemOffset = true; break; }
+                        if (!foundItemOffset)
+                            return fail(error, "async ref item local has no frame slot");
+                        item = byteOffset(framePhi, itemOffset, "ayield.item.frame.slot");
+                    }
+                    else
+                    {
+                        item = lowerExpression(node->children.front().get(), error);
+                        if (item == nullptr) return false;
+                    }
+                }
                 if (item != nullptr)
                     LLVMBuildStore(builder_, item, byteOffset(asyncIter, 16, "ayield.item.addr"));
                 LLVMBuildStore(
@@ -8145,6 +8207,22 @@ private:
                 LLVMBuildRetVoid(builder_);
 
                 LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                LLVMValueRef resumeFrame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(asyncIter, 8, "ayield.resume.frame.addr"), "ayield.resume.frame");
+                for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
+                {
+                    const auto localFound = localStorage_.find(localOrdinal);
+                    if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
+                    LLVMTypeRef localType = llvmType(typeKey, error);
+                    if (localType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_,
+                        LLVMBuildLoad2(
+                            builder_, localType, byteOffset(resumeFrame, offset, "ayield.frame.local.slot"),
+                            "ayield.saved"),
+                        localFound->second);
+                }
                 return true;
             }
 

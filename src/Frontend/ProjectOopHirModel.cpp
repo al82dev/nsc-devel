@@ -4295,6 +4295,9 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     retSelf->children.push_back(std::move(selfReturn));
     constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
+    // NS304-T07-F04: the original callable is the async-generator constructor — it must allocate the
+    // frame (heap) so `ref` items reference persistent slots, not the poll's stack.
+    function.isGeneratorConstructor = true;
 
     std::vector<std::unique_ptr<ProjectOopHirFunction>> result;
     result.push_back(std::move(moveNext));
