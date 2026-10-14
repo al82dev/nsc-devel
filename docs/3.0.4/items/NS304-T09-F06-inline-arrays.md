@@ -15,8 +15,12 @@
 - **Length const genérico**: permitir `T[N]` donde `N` es un parámetro genérico (`const N`)
   requiere materializar el tamaño en el sistema de tipos (misma familia que el Span<T> de T03-F03).
 
-### Auditado ronda 113
+### Auditado ronda 113 + verificación 2026-10-14
 
-- El const genérico (`const N`) es un feature **transversal del type-system** (no específico de
-  inline arrays): exige materializar el valor const como parámetro de tipo + aridad en el layout.
-  Es un vertical grande; el fixed buffer con length literal (la base de F06) ya está cerrado.
+- El const genérico (`const N`) es un feature **transversal del type-system**: exige materializar el
+  valor const como parámetro de tipo + aridad en el layout.
+- El valor const YA es productivo como expresión (`Fixed<T, const int N> { int Count() { return N; } }`
+  + `Fixed<int, 0>`/`Fixed<int, 1>`; ver `FrontendGenericsFlowModule.cpp`).
+- El hueco concreto: `public int[N] data;` **no parsea** (`expected '(', found ';'` en el `[N]`): el
+  array count sólo acepta longitud literal, no un const genérico. La vertical es: parser (const expr
+  en el count) → Sema (materializar el valor const del argumento) → layout (aridad = valor const).
