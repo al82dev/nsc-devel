@@ -3550,6 +3550,50 @@ class Program
         }});
 }
 
+void registerNullConditionalUserIndexCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-402", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "indexer", "null-conditional", "user-indexer"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T10NullConditionalUserIndex", "Exe", R"ns(
+class Box
+{
+    public int this[int i]
+    {
+        get { return i * 2; }
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Box b = new Box();
+        int value = b?[3];
+        Box n = null;
+        int none = n?[3];
+        return value + none;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T10NullConditionalUserIndex.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-402 the null-conditional user indexer must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-402 b?[3]=6 (non-null) + n?[3]=0 (null) = 6: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6170,6 +6214,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCollectionBuilderCase(registry);
     registerIntermodularExtensionOperatorCase(registry);
     registerInlineArrayConstGenericCase(registry);
+    registerNullConditionalUserIndexCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
