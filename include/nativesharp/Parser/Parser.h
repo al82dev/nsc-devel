@@ -167,7 +167,8 @@ private:
         bool isSealed,
         std::size_t beginIndex,
         bool interfaceContext,
-        bool allowReadonlyGetter);
+        bool allowReadonlyGetter,
+        bool isReferenceReturn);
     ast::AstNode* parseIndexerTail(
         ast::TypeSyntax* elementType,
         lexer::TokenKind accessibility,

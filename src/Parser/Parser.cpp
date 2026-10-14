@@ -2939,6 +2939,8 @@ ast::AstNode* Parser::parseExtensionDeclaration()
                     ast::AstNodeKind::FunctionDeclaration, accessor->range());
                 function->setText(isGetter ? propertyName : accessor->text());
                 function->setTypeSyntax(cloneParsedType(arena_, accessor->typeSyntax()));
+                // NS304-T08-F02: preserve the accessor's `ref` (ref getter) on the lowered function.
+                function->setReference(accessor->isReference());
                 function->setFirst(accessor->first());
                 function->setTokenKind(accessor->tokenKind());
                 function->prependChild(makeReceiver());
@@ -5735,7 +5737,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
         }
         return parsePropertyTail(
             returnType, name, accessibility,
-            false, sawStatic, false, false, sawAbstract, false, beginIndex, true, false);
+            false, sawStatic, false, false, sawAbstract, false, beginIndex, true, false, false);
     }
 
     diagnostics_.report(
@@ -7165,14 +7167,8 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::LeftBrace))
     {
         rejectControlledSpecialization("a property");
-        if (isReferenceReturn)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                name.range(),
-                "ref return is valid only on an ordinary method in item 313");
-        }
+        // NS304-T08-F02: a ref-returning property is legal; `ref int ValueRef { get { return ref ...; } }`
+        // is a first-class member (the ref-returning check moves to the accessor lowering).
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -7192,7 +7188,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* property = parsePropertyTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            beginIndex, false, structContext && !isStatic);
+            beginIndex, false, structContext && !isStatic, isReferenceReturn);
         if (isReadonly && structContext && !isStatic && property != nullptr)
         {
             property->addModifier(TokenKind::KwReadonly);
@@ -7557,7 +7553,8 @@ ast::AstNode* Parser::parsePropertyTail(
     bool isSealed,
     std::size_t beginIndex,
     bool interfaceContext,
-    bool allowReadonlyGetter)
+    bool allowReadonlyGetter,
+    bool isReferenceReturn)
 {
     ast::AstNode* property = arena_.make<ast::AstNode>(
         ast::AstNodeKind::PropertyDeclaration, name.range());
@@ -7665,6 +7662,8 @@ ast::AstNode* Parser::parsePropertyTail(
             std::string("property:") + (getter ? "get:" : "set:") + propertyName +
                 (initOnly ? ":init" : ""),
             accessorRange);
+        // NS304-T08-F02: propagate the ref-returning flag to the getter accessor.
+        if (getter && isReferenceReturn) accessor->setReference(true);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
         if (accessorReadonly && getter && allowReadonlyGetter)
             accessor->addModifier(TokenKind::KwReadonly);
@@ -8744,7 +8743,7 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
         // NS304-T08-F02: extension property (`type Name { get/set }`).
         return parsePropertyTail(
             type, name, TokenKind::Invalid, false, false, false, false, false, false,
-            beginIndex, false, false);
+            beginIndex, false, false, isReferenceReturn);
     }
 
     if (isReferenceReturn)
