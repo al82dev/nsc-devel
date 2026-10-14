@@ -35,6 +35,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <array>
 
 namespace nativesharp::diagnostics
 {
@@ -1206,6 +1207,9 @@ struct MethodCoreBinding final
     // Item 306 only: CompareExchange has an independent failure order. It remains absent on
     // every legacy overload and on all single-order atomic operations.
     std::optional<std::uint8_t> atomicFailureMemoryOrder = std::nullopt;
+    // NS304-T09-F05: the CollectionBuilder core operation carries the CreateBuilder / Add /
+    // ToCollection member ordinals so the HIR can emit the builder call sequence.
+    std::array<std::size_t, 3> builderMemberOrdinals{};
 
 };
 

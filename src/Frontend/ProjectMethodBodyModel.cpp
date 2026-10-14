@@ -13469,6 +13469,45 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // NS304-T09-F05: `[a, b, c]` targets a native array or infers one from the
             // first homogeneous element. Every spread is materialized into fresh storage.
             const std::string explicitTarget = activeTargetTypeKey_;
+            // NS304-T09-F05: a collection expression targeting a builder type lowers to
+            // CreateBuilder -> Add(elements) -> ToCollection (no heap as fallback).
+            if (!explicitTarget.empty() && !ProjectTypeConversion::isNativeArray(explicitTarget) &&
+                inheritanceModel_ != nullptr && memberModel_ != nullptr)
+            {
+                const std::optional<std::size_t> typeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(explicitTarget);
+                if (typeOrdinal.has_value())
+                {
+                    const auto findMember = [&](std::string_view name, bool wantStatic)
+                        -> std::optional<std::size_t>
+                    {
+                        for (const std::size_t ordinal : memberModel_->findMembers(*typeOrdinal, name))
+                        {
+                            if (ordinal >= memberModel_->members().size()) continue;
+                            if (memberModel_->members()[ordinal].isStatic != wantStatic) continue;
+                            return ordinal;
+                        }
+                        return std::nullopt;
+                    };
+                    const std::optional<std::size_t> createBuilder = findMember("CreateBuilder", true);
+                    const std::optional<std::size_t> add = findMember("Add", false);
+                    const std::optional<std::size_t> toCollection = findMember("ToCollection", false);
+                    if (createBuilder.has_value() && add.has_value() && toCollection.has_value())
+                    {
+                        result.typeKey = explicitTarget;
+                        result.valid = true;
+                        MethodCoreBinding binding;
+                        binding.kind = MethodCoreOperationKind::CollectionBuilder;
+                        binding.syntax = expression;
+                        binding.methodMemberOrdinal = methodMemberOrdinal;
+                        binding.scopeOrdinal = scopeOrdinal;
+                        binding.resultTypeKey = explicitTarget;
+                        binding.builderMemberOrdinals = {*createBuilder, *add, *toCollection};
+                        coreBindings_.push_back(std::move(binding));
+                        break;
+                    }
+                }
+            }
             // NS304-T09-F05: a materialized spread contributes its native-array element type.
             {
                 const bool hasSpread = std::ranges::any_of(
