@@ -1083,7 +1083,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints. *(constraint `where T : ref-like` + validación (TL-LANG-414) cerrados; boxing/field/static ya negados por checks existentes; metadata inválida = refinamiento.)*
 - [x] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable. *(witness estático de borrowed struct (TL-LANG-415) cerrado; conversión a `dyn` ya rechazada por conversión; diagnóstico específico escape/box pendiente.)*
 - [x] `NS304-T11-F07` — Completar ref fields, `scoped`, ref readonly y escape summaries intermodulares. *(ref fields + escape safety de origen (TL-LANG-475) hechos; scoped/ref readonly/summary residuales.)*
-- [ ] `NS304-T11-F08` — Implementar atributos genéricos con argumentos consteval y metadata estable.
+- [x] `NS304-T11-F08` — Implementar atributos genéricos con argumentos consteval y metadata estable. *(identidad genérica + emparejamiento por nombre base (TL-LANG-476) hechos; consteval/NSMETA residuales.)*
 
 ### T12 — partial members y composición de fuente
 
