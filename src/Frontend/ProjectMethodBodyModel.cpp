@@ -24612,6 +24612,16 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                         "' cannot be captured by a lambda because the delegate may outlive its stack frame");
                 safe = false;
             }
+            if (local.isScope)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "scope object '" + local.name +
+                        "' cannot be captured by a lambda because it lives in the current frame");
+                safe = false;
+            }
             if (local.ownership == sema::OwnershipKind::Borrowed ||
                 ((*mode == language::CaptureMode::Copy ||
                   *mode == language::CaptureMode::Reference ||
