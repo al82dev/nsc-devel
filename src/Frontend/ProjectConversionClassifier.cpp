@@ -153,6 +153,43 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         }
     }
 
+    // NS304-T11-F02: a native array becomes a span/readonly-span view without copying. The element
+    // matches by sanitized spelling (`builtin:int` -> `int`, `type:F06::T` -> `T`).
+    if (const std::optional<std::string> sourceElement =
+            ProjectTypeConversion::nativeArrayElementType(sourceTypeKey))
+    {
+        const auto terminal = [](std::string_view key) -> std::string_view
+        {
+            const std::size_t separator = key.find_last_of(".:+");
+            return separator == std::string_view::npos ? key : key.substr(separator + 1U);
+        };
+        std::string sourceSpelling;
+        if (sourceElement->starts_with("builtin:"))
+            sourceSpelling = sourceElement->substr(8);
+        else
+            sourceSpelling = std::string(terminal(*sourceElement));
+        if (!sourceSpelling.empty())
+        {
+            const std::string targetTerminal = std::string(terminal(targetTypeKey));
+            const auto targetElementMatches = [&](std::string_view prefix) -> bool
+            {
+                if (!std::string_view(targetTerminal).starts_with(prefix)) return false;
+                const std::string_view rest = std::string_view(targetTerminal).substr(prefix.size());
+                const std::size_t hash = rest.rfind("__h");
+                return hash != std::string_view::npos && rest.substr(0, hash) == sourceSpelling;
+            };
+            if (targetElementMatches("Span__g1__") || targetElementMatches("ReadOnlySpan__g1__"))
+            {
+                return ProjectImplicitConversion{
+                    ProjectConversionKind::View,
+                    7,
+                    std::string(sourceTypeKey),
+                    std::string(targetTypeKey),
+                    std::nullopt};
+            }
+        }
+    }
+
     const ProjectImplicitConversion userDefined = findUserDefined(
         sourceTypeKey, targetTypeKey, true);
     if (userDefined.exists())

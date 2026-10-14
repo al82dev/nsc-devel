@@ -9846,13 +9846,10 @@ private:
             case frontend::ProjectOopMirNodeKind::SpanFromArray:
             case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromArray:
             {
-                if (node->children.size() != 3)
+                // NS304-T11-F02: two children mean the WHOLE array (count derives from the object's
+                // own length header); three children are the rest-capture form (explicit count).
+                if (node->children.size() != 3 && node->children.size() != 2)
                     return failValue(error, "Span rest capture requires receiver, start and length");
-                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
-                if (count == nullptr) return nullptr;
-                LLVMValueRef countIsZero = LLVMBuildICmp(
-                    builder_, LLVMIntEQ, count,
-                    LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0), "span.empty");
                 LLVMValueRef object = lowerExpression(node->children[0].get(), error);
                 if (object == nullptr) return nullptr;
                 object = checkedReceiver(object, error);
@@ -9861,6 +9858,13 @@ private:
                 if (index == nullptr) return nullptr;
                 LLVMValueRef length = LLVMBuildLoad2(
                     builder_, LLVMInt64TypeInContext(context_), object, "span.length");
+                LLVMValueRef count = node->children.size() == 3
+                    ? lowerExpression(node->children[2].get(), error)
+                    : length;
+                if (count == nullptr) return nullptr;
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count,
+                    LLVMConstInt(LLVMTypeOf(count), 0, 0), "span.empty");
                 LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "span.inrange");
                 if (isSignedInteger(node->children[1]->typeKey))
                 {

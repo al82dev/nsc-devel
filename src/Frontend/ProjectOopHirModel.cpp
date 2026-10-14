@@ -9120,6 +9120,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
         node->children.push_back(std::move(value));
         return node;
     }
+    // NS304-T11-F02: a native array view (`Span<T>`/`ReadOnlySpan<T>`) reuses the SpanFromArray
+    // core lowering (base+length, no temporary array). Two children signal the WHOLE array: the
+    // lowering derives count from the object's own length header.
+    if (conversion.kind == ProjectConversionKind::View &&
+        ProjectTypeConversion::isNativeArray(conversion.sourceTypeKey))
+    {
+        if (const std::optional<std::string> element =
+                ProjectTypeConversion::nativeArrayElementType(conversion.sourceTypeKey))
+        {
+            const auto terminal = [](std::string_view key) -> std::string_view
+            {
+                const std::size_t separator = key.find_last_of(".:+");
+                return separator == std::string_view::npos ? key : key.substr(separator + 1U);
+            };
+            const bool readOnly =
+                terminal(conversion.targetTypeKey).starts_with("ReadOnlySpan__g1__");
+            auto node = makeNode(
+                readOnly ? ProjectOopHirNodeKind::ReadOnlySpanFromArray
+                         : ProjectOopHirNodeKind::SpanFromArray,
+                syntax, conversion.targetTypeKey);
+            node->elementTypeKey = *element;
+            node->children.push_back(std::move(value));
+            auto zero = makeNode(ProjectOopHirNodeKind::IntegerConstant, syntax, "builtin:int");
+            zero->integerValue = 0;
+            node->children.push_back(std::move(zero));
+            return node;
+        }
+    }
     auto node = makeNode(ProjectOopHirNodeKind::Conversion, syntax, conversion.targetTypeKey);
     node->conversion = conversion;
     node->children.push_back(std::move(value));
