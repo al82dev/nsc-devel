@@ -34,4 +34,9 @@
 
 Recomendación: **(A)** — coherente con C# 12 y sin añadir una interface nominal.
 
+### Verificación (2026-10-13)
+
+- `int[] a = [1, 2, 3]` → exit 6 (la base de arrays nativos + spreads sigue productiva). El builder
+  protocol (surface A, ya decidida) queda como residual.
+
 
