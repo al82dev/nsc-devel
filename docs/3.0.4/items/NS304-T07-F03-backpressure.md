@@ -21,10 +21,10 @@ Estado real (tras F02):
 
 ## Gap
 
-- **Propagación de error**: `MoveNextAsync` devuelve `future:<bool>` **sin tipo de error**; el error
-  del async-generator (`AsyncIterator<T,E>` con `await` que falla) no viaja al future de demanda.
-- **Comportamiento después del terminal**: pedir otra demanda después del `result=false` no está
-  definido/verificado.
+- **Propagación de error runtime**: un `await` que falla dentro del async-generator no viaja al future
+  de demanda (acoplado a `throws E` del poll, F05/F07). El tipo `future:<bool>|<E>` ya es productivo.
+- **Comportamiento después del terminal**: CERRADO — el terminal es sticky (`TL-LANG-400`: una
+  demanda tras el `result=false` devuelve `false` otra vez, exit 1).
 
 ### Error tipado del future — verificado 2026-10-13
 
@@ -33,5 +33,5 @@ Estado real (tras F02):
 
 ## Nota
 
-El núcleo de F03 (backpressure + orden) ya lo entrega el diseño del poll de F02. El error tipado del
-future de demanda y el post-terminal son el refinamiento pendiente (acoplado al `throws E` de F01/F02).
+El núcleo de F03 (backpressure + orden + terminal sticky) ya lo entrega el diseño del poll de F02 +
+`TL-LANG-400`. El único residual es la propagación runtime del error (acoplado a `throws E` de F01/F02/F05).
