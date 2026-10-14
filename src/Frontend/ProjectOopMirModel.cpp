@@ -1294,8 +1294,8 @@ bool ProjectOopMirModel::build(
             false,
             abiPassingForSize(totalSize),
             false,
-            false,
-            {},
+            true,  // requiresDrop: the iterator carries a Drop function (field 4).
+            "__nativesharp_drop_iterator",
             std::move(fields)});
     }
     functionByMember_.resize(memberModel.members().size());

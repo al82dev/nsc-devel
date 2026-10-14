@@ -4906,7 +4906,22 @@ private:
             LLVMPositionBuilderAtEnd(builder_, entry);
             LLVMValueRef storage = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(storage, "storage", 7);
-            if (!emitValueDropAddress(
+            if (layout.typeKey.starts_with("iterator:") ||
+                layout.typeKey.starts_with("async-iterator:"))
+            {
+                // NS304-T06-F07: the iterator's drop glue dispatches through its Drop function
+                // pointer (field 4, offset 32) — the per-generator Gen$drop, not field drops.
+                LLVMValueRef dropFn = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(storage, 32, "drop.fn.addr"), "drop.fn");
+                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { storage };
+                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
+                    return fail(error, "iterator drop glue call failed");
+                LLVMBuildRetVoid(builder_);
+            }
+            else if (!emitValueDropAddress(
                     storage, layout.typeKey, "value.drop", error, false))
                 return false;
             if (!terminated()) LLVMBuildRetVoid(builder_);
@@ -8061,7 +8076,7 @@ private:
                     LLVMValueRef args[] = { byteOffset(frame, offset, "drop.slot") };
                     if (LLVMBuildCall2(
                             builder_, glue->second.functionType, glue->second.function,
-                            args, 1U, "drop.glue") == nullptr)
+                            args, 1U, "") == nullptr)
                         return fail(error, "drop glue call failed");
                 }
                 LLVMBuildBr(builder_, noFrame);
