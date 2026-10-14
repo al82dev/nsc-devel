@@ -18068,6 +18068,16 @@ private:
             }
         }
         constructionThisOverride_ = previousOverride;
+        // NS304-T13-F06: a trailing construction exposes the header struct BY VALUE; load it from
+        // the allocated pointer so the caller's value slot receives the initialized header.
+        if (targetType.kind == frontend::NamedTypeDeclarationKind::Struct &&
+            !node->typeKey.ends_with("*"))
+        {
+            LLVMTypeRef valueType = llvmType(node->typeKey, error);
+            if (valueType == nullptr)
+                return failValue(error, "trailing construction has no value layout");
+            return LLVMBuildLoad2(builder_, valueType, storage, "trailing.header");
+        }
         return storage;
     }
 

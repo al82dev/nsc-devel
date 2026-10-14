@@ -8731,9 +8731,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 decl->children.push_back(std::move(allocate));
                 block->children.push_back(std::move(decl));
 
+                // NS304-T13-F06: the trailing `trailing: capacity` child is the flexible-array
+                // extent, not a constructor argument; the result is the header struct BY VALUE.
+                const bool trailingConstruction = expression->auxiliaryText() == "trailing";
                 auto construction = makeNode(
                     ProjectOopHirNodeKind::PlacementConstruction, expression,
-                    binding->targetIsStruct
+                    (binding->targetIsStruct && !trailingConstruction)
                         ? binding->targetTypeKey + "*"
                         : binding->targetTypeKey);
                 construction->constructionOrdinal = ordinal;
@@ -8747,9 +8750,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
                 storage->localOrdinal = tempOrdinal;
                 construction->children.push_back(std::move(storage));
-                // NS304-T13-F06: the trailing `trailing: capacity` child is the flexible-array
-                // extent, not a constructor argument.
-                const bool trailingConstruction = expression->auxiliaryText() == "trailing";
                 const std::size_t constructorArgumentCount =
                     expression->children().size() - (trailingConstruction ? 1U : 0U);
                 for (std::size_t index = 0; index < constructorArgumentCount; ++index)
