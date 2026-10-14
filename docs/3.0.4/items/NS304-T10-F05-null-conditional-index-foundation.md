@@ -19,4 +19,9 @@
 ## Residual
 
 - **Indexador de usuario** `obj?[i]` sobre tipos con `this[...]`: sólo array nativo soportado.
+  Verificación 2026-10-14: el indexador ordinario `b[3]` sobre `class Box { int this[int i] }` SÍ
+  funciona (exit 6); `b?[3]` da `null-conditional index access ('obj?[i]') is only supported on
+  native arrays`. El tramo es: Sema detecta el indexador de usuario (receptor + índice → `get_`/`set_`
+  del `this[...]`) + HIR/LLVM emite el null-check y la llamada al accessor (análogo al array nativo,
+  pero con un member ordinal en lugar de bounds-check de array).
 
