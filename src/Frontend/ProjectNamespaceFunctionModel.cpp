@@ -222,6 +222,12 @@ bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
         syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
 }
 
+bool isStaticExtensionDeclaration(const ast::AstNode& syntax) noexcept
+{
+    return syntax.auxiliaryText() == "ns3-extension-static" ||
+        syntax.auxiliaryText().find("|ns3-extension-static") != std::string::npos;
+}
+
 bool compatibleDeclarations(
     const NamespaceFunctionSymbol& symbol,
     const NamespaceFunctionDeclaration& declaration,
@@ -370,6 +376,7 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.isExtension = isExtensionDeclaration(syntax);
+        candidate.isStaticExtension = isStaticExtensionDeclaration(syntax);
         candidate.operatorToken = lexer::TokenKind::Invalid;
         if (candidate.isExtension)
         {

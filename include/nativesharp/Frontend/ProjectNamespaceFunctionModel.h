@@ -66,6 +66,10 @@ struct NamespaceFunctionSymbol final
     bool isExportedC = false;
     bool isPrecompiled = false;
     bool isExtension = false;
+    // NS304-T08-F07: static extension (`ns3-extension-static`) has no implicit receiver; distinct
+    // from `isExtension` so NSMETA can publish the "static" marker and the consumer rebuilds it
+    // without discarding the first parameter as a receiver.
+    bool isStaticExtension = false;
     // NS304-T08-F04: for an extension operator, the operation token (Plus/Minus/...). Invalid for
     // non-operator extension functions.
     lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;

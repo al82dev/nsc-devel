@@ -166,6 +166,10 @@ inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
 // normal parameter record; consumers must reconstruct an extension block rather than publishing
 // the synthetic receiver as an ordinary free-function parameter.
 inline constexpr std::uint8_t kMetadataNamespaceFunctionExtension = 1U << 5U;
+// NS304-T08-F07 (NSMETA 1.32 addendum): bit 6 marks a STATIC extension (`ns3-extension-static`),
+// which has NO implicit receiver. Consumers reconstruct `extension T { static ... }` instead of
+// treating the first parameter as the receiver.
+inline constexpr std::uint8_t kMetadataNamespaceFunctionStaticExtension = 1U << 6U;
 
 inline constexpr std::uint8_t kMetadataTraitObjectObjectSafe = 1U << 0U;
 inline constexpr std::uint8_t kMetadataTraitObjectDescriptorMap = 1U << 1U;

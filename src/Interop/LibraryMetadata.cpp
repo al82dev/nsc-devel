@@ -1473,6 +1473,7 @@ bool buildMetadataModel(
                 function.declaredTypeSyntax->isDynamicTrait())
                 record.flags |= 16U;
             if (function.isExtension) record.flags |= kMetadataNamespaceFunctionExtension;
+            if (function.isStaticExtension) record.flags |= kMetadataNamespaceFunctionStaticExtension;
             record.namespaceName = function.namespaceName;
             record.name = function.name;
             record.signatureKey = function.signatureKey;

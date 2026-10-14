@@ -2616,6 +2616,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if (function.accessibility != 1U) continue;
         const bool extension =
             (function.flags & interop::kMetadataNamespaceFunctionExtension) != 0U;
+        const bool staticExtension =
+            (function.flags & interop::kMetadataNamespaceFunctionStaticExtension) != 0U;
         std::string returnType;
         if (!sourceTypeForMetadataKey(
                 metadata, function.declaredTypeKey, returnType, error))
@@ -2624,7 +2626,28 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         if (!function.namespaceName.empty())
             generated << "namespace " << function.namespaceName << std::endl << '{' << std::endl;
-        if (extension)
+        if (staticExtension)
+        {
+            // NS304-T08-F07: a static extension has no implicit receiver. The extended type is the
+            // first parameter's type (a static operator's first operand) since the receiver type
+            // is not published as a separate field.
+            if (function.parameters.empty())
+            {
+                error = "metadata static extension '" + function.namespaceName + "." +
+                        function.name + "' has no receiver type";
+                return false;
+            }
+            const std::string receiverTypeKey = function.parameters.front().typeKey;
+            const auto receiverAlias = extensionReceiverAliases.find(receiverTypeKey);
+            if (receiverAlias == extensionReceiverAliases.end())
+            {
+                error = "metadata static extension '" + function.namespaceName + "." +
+                        function.name + "' has no materialized receiver alias";
+                return false;
+            }
+            generated << "extension " << receiverAlias->second << std::endl << '{' << std::endl;
+        }
+        else if (extension)
         {
             if (function.parameters.empty())
             {
@@ -2665,6 +2688,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if ((function.flags & 8U) != 0U)
             generated << "extern C" << std::endl << '{' << std::endl;
         generated << "public ";
+        if (staticExtension) generated << "static ";
         if ((function.flags & 1U) != 0U)
             generated << "ref" << lifetimeAnnotation(function.returnLifetimeName) << ' ';
         generated << ownershipPrefix(function.declaredOwnership)
@@ -2672,7 +2696,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                   << function.name;
         emitLifetimeParameters(function.lifetimeParameters);
         generated << '(';
-        const std::size_t firstExplicitParameter = extension ? 1U : 0U;
+        const std::size_t firstExplicitParameter = (extension && !staticExtension) ? 1U : 0U;
         if (!emitParameterSlice(
                 function,
                 firstExplicitParameter,
