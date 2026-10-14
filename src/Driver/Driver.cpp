@@ -445,6 +445,45 @@ bool sourceTypeForMetadataKey(std::string typeKey, std::string &sourceType, std:
             return false;
         }
     }
+    else if (typeKey.starts_with("async-iterator:"))
+    {
+        // NS304-T07-F08: the opaque async-stream surface materializes as AsyncIterator<item, error>.
+        const std::string rest = typeKey.substr(std::string_view("async-iterator:").size());
+        const std::size_t pipe = rest.find('|');
+        const std::string itemKey = pipe == std::string::npos ? rest : rest.substr(0, pipe);
+        const std::string errorKey = pipe == std::string::npos ? std::string{} : rest.substr(pipe + 1);
+        std::string itemSource, errorSource;
+        if (!sourceTypeForMetadataKey(itemKey, itemSource, error)) return false;
+        if (!errorKey.empty() && !sourceTypeForMetadataKey(errorKey, errorSource, error)) return false;
+        sourceType = "AsyncIterator<" + itemSource;
+        if (!errorKey.empty()) sourceType += ", " + errorSource;
+        sourceType += ">";
+    }
+    else if (typeKey.starts_with("iterator:"))
+    {
+        // NS304-T06-F08: the opaque iterator surface materializes as Iterator<item> (or <item, error>).
+        const std::string rest = typeKey.substr(std::string_view("iterator:").size());
+        const std::size_t pipe = rest.find('|');
+        const std::string itemKey = pipe == std::string::npos ? rest : rest.substr(0, pipe);
+        const std::string errorKey = pipe == std::string::npos ? std::string{} : rest.substr(pipe + 1);
+        std::string itemSource, errorSource;
+        if (!sourceTypeForMetadataKey(itemKey, itemSource, error)) return false;
+        if (!errorKey.empty() && !sourceTypeForMetadataKey(errorKey, errorSource, error)) return false;
+        sourceType = "Iterator<" + itemSource;
+        if (!errorKey.empty()) sourceType += ", " + errorSource;
+        sourceType += ">";
+    }
+    else if (typeKey.starts_with("future:"))
+    {
+        // NS304-T05-F09: the opaque future surface materializes as Future<item>; the carried error
+        // type travels through the member's error contract (declaredErrorTypeKey), not the spelling.
+        const std::string rest = typeKey.substr(std::string_view("future:").size());
+        const std::size_t pipe = rest.find('|');
+        const std::string itemKey = pipe == std::string::npos ? rest : rest.substr(0, pipe);
+        std::string itemSource;
+        if (!sourceTypeForMetadataKey(itemKey, itemSource, error)) return false;
+        sourceType = "Future<" + itemSource + ">";
+    }
     else
     {
         error = "metadata-backed source import cannot materialize type key '" + typeKey + "'";

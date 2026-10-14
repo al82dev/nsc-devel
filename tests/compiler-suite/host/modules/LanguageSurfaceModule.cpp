@@ -7200,6 +7200,72 @@ class Program
         }});
 }
 
+void registerAsyncIteratorMetadataCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-470", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async-iterator", "nsmeta", "library-reference", "source-free", "intermodular"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T07AsyncIterMetadata", "Library", R"ns(
+public class Lib
+{
+    public static AsyncIterator<int, int> Gen()
+    {
+        yield return 1;
+        yield return 2;
+        yield return 3;
+    }
+}
+)ns");
+            const std::filesystem::path producerLibrary =
+                products.directory() / "T07AsyncIterMetadata.lib";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-lib", producerProject, producerLibrary,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-470 the async-iterator producer must build: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            std::error_code removalError;
+            std::filesystem::remove(producerProject, removalError);
+            std::filesystem::remove(
+                products.directory() / "T07AsyncIterMetadata.ns", removalError);
+
+            constexpr std::string_view libraryReference =
+                "<LibraryReference Include=\"T07AsyncIterMetadata.lib\"/>";
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T07AsyncIterMetadataConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Lib.Gen();
+        bool has = await it.MoveNextAsync();
+        int sum = 0;
+        while (has) { sum = sum + it.Current; has = await it.MoveNextAsync(); }
+        return sum;
+    }
+}
+)ns", libraryReference);
+            const std::filesystem::path consumerExecutable =
+                products.directory() / "T07AsyncIterMetadataConsumer.exe";
+            const external_program_support::Result consumer = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, consumerExecutable,
+                products.directory());
+            context.expect(consumer.started && consumer.exitCode == 0 && consumer.error.empty(),
+                "TL-LANG-470 the source-free async-iterator consumer must compile: " +
+                    consumer.error + consumer.output);
+            if (!consumer.started || consumer.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                consumerExecutable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 6,
+                "TL-LANG-470 the imported async-iterator must iterate to sum 6: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8970,6 +9036,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncGeneratorCancellationCase(registry);
     registerTaskScopeCase(registry);
     registerSendSyncCase(registry);
+    registerAsyncIteratorMetadataCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

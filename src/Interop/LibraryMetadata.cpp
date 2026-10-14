@@ -1349,6 +1349,22 @@ bool buildMetadataModel(
         {
             record.mangledName = function->mangledName;
         }
+        // NS304-T07-F08: an async/generator callable's physical entry is its CONSTRUCTOR (the
+        // original symbol). The $moveNext and $drop functions share the memberOrdinal and must
+        // never become the published callable identity — a consumer that imports this member must
+        // call the constructor, not the drop glue.
+        if (function == nullptr || !function->isGeneratorConstructor)
+        {
+            for (const frontend::ProjectOopMirFunction& candidate :
+                 compilation.oopMirModel()->functions())
+            {
+                if (candidate.memberOrdinal == ordinal && candidate.isGeneratorConstructor)
+                {
+                    record.mangledName = candidate.mangledName;
+                    break;
+                }
+            }
+        }
         if (metadata.formatMinor >= 13 && member.kind == frontend::ClassMemberKind::Method &&
             member.syntax != nullptr && function != nullptr &&
             function->genericSpecializationKey.empty() &&

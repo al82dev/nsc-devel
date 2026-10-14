@@ -2041,9 +2041,12 @@ bool ProjectOopHirModel::buildImpl(
         std::unique_ptr<ProjectOopHirFunction> moveNext;
         std::unique_ptr<ProjectOopHirFunction> drop;
         // NS304-T07-F02: an async generator is ONE machine (await + yield) — the async-generator
-        // split produces MoveNext (future) + poll + drop.
+        // split produces MoveNext (future) + poll + drop. A precompiled declaration (no lowered
+        // body) is NOT re-split: its facade symbols live in the referenced .lib, so the consumer
+        // calls them instead of synthesizing empty duplicates.
+        const bool hasBody = function.body != nullptr && !function.isImportedNative;
         const bool asyncGenerator =
-            !function.constructor && !function.destructor &&
+            hasBody && !function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator) &&
             function.effects.contains(sema::Effect::Async);
         if (asyncGenerator)
@@ -2056,13 +2059,13 @@ bool ProjectOopHirModel::buildImpl(
         }
         else
         {
-            if (!function.constructor && !function.destructor &&
+            if (hasBody && !function.constructor && !function.destructor &&
                 function.effects.contains(sema::Effect::Async))
             {
                 poll = splitAsyncFunction(function, error);
                 if (poll == nullptr) return false;
             }
-            if (!function.constructor && !function.destructor &&
+            if (hasBody && !function.constructor && !function.destructor &&
                 function.effects.contains(sema::Effect::Generator))
             {
                 auto split = splitGeneratorFunction(function, error);
