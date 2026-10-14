@@ -2529,6 +2529,10 @@ private:
     // NS304-T07-F06: locals whose address a TaskScope.Spawn(Child(ref value)) captured; alive until
     // a matching Join discharges them. Block exit while present rejects the dangling Future.
     std::unordered_set<std::size_t> scopedChildBorrows_;
+    // NS304-T11-F07: per-field storage origin recorded by a `field = ref storage` assignment, keyed
+    // by the ref field's member ordinal. The escape evaluator reads it so `ref`-returning member
+    // access propagates the storage origin (not the receiver struct value).
+    std::unordered_map<std::size_t, MethodEscapeOrigin> refFieldOrigins_;
     // C7 "definite assignment": the locals DEFINITELY assigned at the current point of the walk.
     // It travels with the ownership flow state (see OwnershipFlowSnapshot) because it needs
     // exactly the same control-flow discipline -- it is joined by INTERSECTION at every merge, so

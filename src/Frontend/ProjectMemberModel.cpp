@@ -2003,7 +2003,10 @@ bool ProjectMemberModel::collectTypeMembers(
                 (symbol.kind == ClassMemberKind::Constructor || symbol.kind == ClassMemberKind::Destructor)
                 ? sema::OwnershipKind::None
                 : ownershipKindFromSyntax(memberNode->typeSyntax());
-            symbol.isReferenceReturn = symbol.kind == ClassMemberKind::Method && memberNode->isReference();
+            // NS304-T11-F07: `ref T` is a reference return on a method AND a reference field on a
+            // field (a storage pointer). Both mark the member so escape analysis can reject a
+            // containing struct that would outlive the storage.
+            symbol.isReferenceReturn = memberNode->isReference();
             symbol.returnLifetimeName = memberNode->lifetimeName();
             for (const ast::LifetimeParameterSyntax& parameter : memberNode->lifetimeParameters())
                 symbol.lifetimeParameters.push_back(parameter.name);

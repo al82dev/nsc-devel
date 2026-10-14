@@ -7389,14 +7389,9 @@ ast::AstNode* Parser::parseClassMember(
             "export extern C is valid only on ordinary static methods in Stage 47");
     }
     rejectControlledSpecialization("a field");
-    if (isReferenceReturn)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            name.range(),
-            "ref return is valid only on a method, not a field");
-    }
+    // NS304-T11-F07: a `ref T` field is a first-class reference field (storage pointer). Its
+    // escape/lifetime rules are enforced by the escape-safety analysis, not by rejecting the
+    // modifier here.
 
     if (isVirtual || isOverride || isAbstract || isSealed)
     {
@@ -7429,6 +7424,7 @@ ast::AstNode* Parser::parseClassMember(
         name.range());
     field->setTypeSyntax(type);
     field->setText(std::string(name.lexeme()));
+    field->setReference(isReferenceReturn);
     ast::AstNode* bitWidth = nullptr;
     if (consumeIf(TokenKind::Colon))
     {
@@ -13982,6 +13978,11 @@ ast::AstNode* Parser::parseAssignmentExpression()
     }
 
     const TokenKind operation = consume().kind();
+    // NS304-T11-F07: `target = ref storage` stores the address of a storage into a ref field or
+    // ref local (distinct from a value copy). Only plain `=` accepts the `ref` marker.
+    const bool referenceAssignment = operation == TokenKind::Equal &&
+        atContextualKeyword("ref");
+    if (referenceAssignment) consume();
     ast::AstNode* right = parseAssignmentExpression();
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::AssignmentExpression,
@@ -13989,6 +13990,7 @@ ast::AstNode* Parser::parseAssignmentExpression()
     node->setTokenKind(operation);
     node->setFirst(left);
     node->setSecond(right);
+    node->setReference(referenceAssignment);
     return node;
 }
 

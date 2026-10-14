@@ -196,6 +196,26 @@ void ProjectReferenceEscapeEvaluator::startMember(
         result = {MethodEscapeOriginKind::CurrentReceiver, std::nullopt, std::nullopt, "this"};
         return;
     }
+    // NS304-T11-F07: a ref field exposes the storage recorded by its `= ref` assignment, not the
+    // receiver struct value (which is copied on return and would hide a dangling local).
+    if (const MethodNameBinding* binding = model_.nameBinding(expression, callableOrdinal_);
+        binding != nullptr && !binding->candidateMemberOrdinals.empty() &&
+        model_.memberModel_ != nullptr)
+    {
+        for (const std::size_t candidate : binding->candidateMemberOrdinals)
+        {
+            if (candidate >= model_.memberModel_->members().size()) continue;
+            if (!model_.memberModel_->members()[candidate].isReferenceReturn) continue;
+            const auto recorded = model_.refFieldOrigins_.find(candidate);
+            if (recorded != model_.refFieldOrigins_.end())
+            {
+                result = recorded->second;
+                return;
+            }
+            result = {MethodEscapeOriginKind::ExternalStorage, std::nullopt, std::nullopt, "static"};
+            return;
+        }
+    }
     if (model_.typeKeyIsStruct(typeKeyOf(receiver))) next = receiver;
 }
 

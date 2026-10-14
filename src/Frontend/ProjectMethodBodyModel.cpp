@@ -7868,6 +7868,32 @@ void ProjectMethodBodyModel::analyzeReturn(
         return;
     }
 
+    // NS304-T11-F07: a value struct carrying a ref field whose recorded storage is owned by the
+    // current stack frame cannot be returned — the struct copy would keep the dangling pointer.
+    if (memberModel_ != nullptr && inheritanceModel_ != nullptr)
+    {
+        const std::optional<std::size_t> returnedType =
+            inheritanceModel_->typeOrdinalForTypeKey(value.typeKey);
+        for (const auto& [fieldOrdinal, origin] : refFieldOrigins_)
+        {
+            if (fieldOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& field = memberModel_->members()[fieldOrdinal];
+            if (!field.isReferenceReturn) continue;
+            if (!returnedType.has_value() || field.declaringTypeOrdinal != *returnedType) continue;
+            if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal ||
+                origin.kind == MethodEscapeOriginKind::VariableLengthArray)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "cannot return a value whose ref field '" + field.name +
+                        "' aliases storage owned by the current stack frame");
+                return;
+            }
+        }
+    }
+
     if (value.boundMethodBorrowsReceiver &&
         (value.ownershipSourceLocalOrdinal.has_value() ||
          value.ownershipSourceParameterOrdinal.has_value()))
@@ -21561,6 +21587,34 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    // NS304-T11-F07: record the storage origin of a `field = ref storage` assignment keyed by the
+    // ref field's member ordinal, so the escape evaluator propagates the storage origin instead of
+    // the receiver struct value (which is copied on return and would hide the dangling storage).
+    if (expression->isReference() && expression->tokenKind() == TokenKind::Equal &&
+        expression->first() != nullptr && expression->second() != nullptr &&
+        memberModel_ != nullptr && inheritanceModel_ != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        expression->first()->first() != nullptr)
+    {
+        const ExpressionResult receiver = analyzeExpression(
+            expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (receiver.valid)
+        {
+            const std::optional<std::size_t> receiverType =
+                inheritanceModel_->typeOrdinalForTypeKey(receiver.typeKey);
+            if (receiverType.has_value())
+            {
+                for (const std::size_t fieldOrdinal :
+                     memberModel_->findMembers(*receiverType, expression->first()->text()))
+                {
+                    if (fieldOrdinal >= memberModel_->members().size()) continue;
+                    if (!memberModel_->members()[fieldOrdinal].isReferenceReturn) continue;
+                    refFieldOrigins_[fieldOrdinal] =
+                        referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
+                }
+            }
+        }
+    }
     if (expression->first() != nullptr && !activeIterationBorrows_.empty())
     {
         const std::optional<std::string> targetPlace =

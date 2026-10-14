@@ -7453,6 +7453,81 @@ class Program
         }});
 }
 
+void registerRefFieldEscapeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-475", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "ref-field", "escape", "borrow", "lifetime"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path okProject = products.writeProject(
+                "T11RefFieldOk", "Exe", R"ns(
+using NativeSharp.Core;
+struct RefHolder
+{
+    public ref int Field;
+}
+class Program
+{
+    public static int Main()
+    {
+        int x = 5;
+        RefHolder h = new RefHolder();
+        h.Field = ref x;
+        return h.Field;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path okExecutable =
+                products.directory() / "T11RefFieldOk.exe";
+            const external_program_support::Result ok = emitT01Product(
+                L"--emit-project-oop-exe", okProject, okExecutable, products.directory());
+            context.expect(ok.started && ok.exitCode == 0 && ok.error.empty(),
+                "TL-LANG-475 ref field store/read must compile: " + ok.error + ok.output);
+            if (!ok.started || ok.exitCode != 0) return;
+            const auto okRun = external_program_support::run(
+                okExecutable, {}, {}, products.directory());
+            context.expect(okRun.started && okRun.error.empty() && okRun.exitCode == 5,
+                "TL-LANG-475 h.Field = ref x; h.Field must read 5: " +
+                    okRun.error + okRun.output + " exit=" + std::to_string(okRun.exitCode));
+
+            const std::filesystem::path escapeProject = products.writeProject(
+                "T11RefFieldEscape", "Exe", R"ns(
+using NativeSharp.Core;
+struct RefHolder
+{
+    public ref int Field;
+    public static RefHolder Make()
+    {
+        int x = 5;
+        RefHolder h = new RefHolder();
+        h.Field = ref x;
+        return h;
+    }
+}
+class Program
+{
+    public static int Main()
+    {
+        RefHolder h = RefHolder.Make();
+        return h.Field;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path escapeExecutable =
+                products.directory() / "T11RefFieldEscape.exe";
+            const external_program_support::Result escaped = emitT01Product(
+                L"--emit-project-oop-exe", escapeProject, escapeExecutable, products.directory());
+            context.expect(
+                escaped.started && escaped.exitCode != 0 &&
+                    escaped.output.find("cannot return a value whose ref field") != std::string::npos,
+                "TL-LANG-475 returning a struct whose ref field aliases a local must be rejected: " +
+                    escaped.error + escaped.output);
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9228,6 +9303,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPartialFailureCase(registry);
     registerUtf8LiteralCase(registry);
     registerInterpolationHandlerCase(registry);
+    registerRefFieldEscapeCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
