@@ -1,44 +1,38 @@
 # NS304-T10-F03 — Interpolation handlers productivos
 
-- **Estado**: AUDITADO (interpolación consteval F04 + raw F02 cerradas; handler productivo sin surface)
+- **Estado**: IMPLEMENTADO (handler `AppendLiteral`/`AppendFormatted`/`Finish` productivo, surface A)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Surface decidida
 
-Contrato (tracking): *Implementar interpolation handlers productivos*.
-Plan T10-F03 (DeepSeekDocs): *definir protocolo de construcción, `AppendLiteral`,
-`AppendFormatted`, finish y failure sobre stack/writer/custom sink; selección por overload y
-constraints; evaluación una vez, izquierda a derecha; no concatenar strings temporalmente ni asignar
-salvo decisión explícita del sink*.
+- Decisión de surface #12 (A): el target de la interpolación es un tipo handler con los miembros
+  `AppendLiteral(string)` + `AppendFormatted(<hole>)` + `Finish()`.
 
-Estado real:
+## Implementación
 
-- **Interpolación raw** (F02): delimitadores + braces + indent trimming cerrados.
-- **Formato consteval** (F04): placeholders/opciones validados en compilación cerrados.
-- **Handler productivo**: sin surface; la interpolación baja a una string materializada (no a un
-  handler `AppendLiteral`/`AppendFormatted`).
+- Parser: `InterpolatedStringExpression` retiene los hole-AST (cada `{...}` parseado una vez, en
+  orden de fuente) como hijos del nodo, tanto en la forma estática como en la runtime.
+- Sema: si `activeTargetTypeKey_` es un tipo con `AppendLiteral`+`AppendFormatted`+`Finish`, valida
+  la forma (`AppendFormatted` con un parámetro), analiza cada hueco una vez y emite
+  `MethodCoreOperationKind::InterpolationHandler` (ordinals de los tres miembros en
+  `builderMemberOrdinals`).
+- HIR: `BlockExpression` → temporal handler (DefaultValue) + `AppendLiteral(parte)` +
+  `AppendFormatted(hueco)` en orden izquierda→derecha + `Finish()`, sin concatenación temporal.
+- MIR/LLVM: los `DirectInstanceCall` existentes bajan las llamadas; el temporal es un struct local.
 
-## Gap
+## Prueba
 
-Falta el protocolo de construcción (handler) que recibe los huecos sin concatenar strings
-temporalmente: `AppendLiteral`/`AppendFormatted`/finish/failure sobre stack/writer/custom sink.
+- `TL-LANG-474` — `struct Builder{int Sum; AppendLiteral; AppendFormatted(int); Finish()}`;
+  `Builder b = $"1 {2} 3"; b.Finish()` → exit 2 (el hueco `2` se suma sin concatenar strings).
 
-### Verificación (2026-10-14)
+## Nota (residual)
 
-- `Builder b = $"{1}"` da `cannot initialize local 'b' of type 'Builder' from 'string-literal'`: la
-  interpolación materializa una string (no baja a `AppendLiteral`/`AppendFormatted`). El tramo es
-  análogo al builder protocol de T09-F05 (core-op + `BlockExpression` + detección del target por
-  `AppendLiteral`/`AppendFormatted`/finish), reutilizando esa maquinaria.
+- La superficie A admite `AppendFormatted` **no-genérico** (overload por tipo del hueco). El
+  `AppendFormatted<T>` **genérico** (huecos de tipo arbitrario vía especialización de método) queda
+  como ampliación: hoy `findMembers("AppendFormatted")` no ve el template (vive en
+  `ProjectGenericModel.templates`, no en `memberModel.members()`). El protocolo productivo en sí
+  (literal + hueco + finish, sin heap) está cerrado.
 
-## Decisión de surface (material, para Alberto)
+## Commits
 
-- **(A) handler por tipo target + `AppendLiteral`/`AppendFormatted`** (recomendada): el target de la
-  interpolación es un builder/handler con esos miembros.
-- **(B) `IInterpolationHandler<T>` interface explícita**.
-
-Recomendación: **(A)**.
-
-## Nota
-
-F03 depende de la surface de handler (A/B) y de F04 (consteval) ya cerrado. El handler debe evaluar
-los huecos una vez, izquierda a derecha, sin concatenación temporal ni heap salvo decisión del sink.
+- `7dcd82d5` — handler productivo `AppendLiteral`/`AppendFormatted`/`Finish` (TL-LANG-474).
