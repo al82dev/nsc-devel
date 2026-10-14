@@ -1,17 +1,29 @@
 # NS304-T10-F01 — Literales UTF-8 tipados y forma allocation-free
 
-- **Estado**: PARCIAL (escapes UTF-8 vía T10-F08) / residual (tipo UTF-8 tipado `u8"..."`
-  / `Utf8`/`ReadOnlySpan<byte>`)
+- **Estado**: IMPLEMENTADO (`u8"..."` → `ReadOnlySpan<byte>`, bytes UTF-8 en constante estática)
 - **Rama**: development
 
-## Resultado
+## Surface
 
-- La codificación UTF-8 de los literales de cadena ya está cubierta por **T10-F08** (`\e`, `\u`/
-  `\U`, prueba noheap `TL-LANG-333`): un literal con escapes produce la secuencia UTF-8 correcta sin
-  asignación en runtime (constante de tiempo de compilación).
+- `u8"..."` es un literal **tipado**: produce `ReadOnlySpan<byte>` sobre los bytes UTF-8 del literal
+  (los escapes `\u`/`\U`/`\e`/`\x` decodifican a UTF-8). No es `string` ni asigna heap en runtime: el
+  lowering interna los bytes en un global estático y construye el struct `{ byte* start, int count }`.
+- `u8` sigue siendo el keyword de `byte`; `u8"` (seguido de comilla) es el prefijo del literal.
 
-## Residual
+## Implementación
 
-- **Tipo UTF-8 tipado**: `u8"..."` (literal UTF-8 con tipo distinto de `string`, p. ej.
-  `ReadOnlySpan<byte>`/`Utf8`) no existe; `u8` es hoy el keyword del tipo `byte`. Requiere lexer
-  (`u8"` como prefijo de literal) + un tipo UTF-8 dedicado y su conversión sin copia.
+- Lexer: `TokenKind::Utf8StringLiteral` + `Lexer::lexUtf8String` (`u8"` reconocido antes del
+  identifier/keyword).
+- Parser: `StringLiteralExpression` con `op=Utf8StringLiteral`.
+- Sema: `Utf8StringLiteral` → `MethodCoreOperationKind::Utf8StringLiteral`, tipo cerrado
+  `ReadOnlySpan<builtin:byte>` vía `closedTypeKeyForTemplate`.
+- HIR/MIR/LLVM: nodo `Utf8StringLiteral` → `ReadOnlySpan<byte> { start = &literal.bytes, count = N }`
+  (reutiliza `internStringLiteral`, sin heap).
+
+## Prueba
+
+- `TL-LANG-473` — `u8"hello".Length()` (5) + `u8"\u00E9".Length()` (2) → exit 52.
+
+## Commits
+
+- `82d85d29` — literal `u8"..."` como `ReadOnlySpan<byte>`.
