@@ -1319,10 +1319,10 @@ bool buildMetadataModel(
     });
 
     std::vector<std::string> missingPhysicalCallables;
-    for (const std::size_t ordinal : memberOrdinals)
+    const auto buildMemberRecord = [&](std::size_t ordinal, LibraryMetadataMember& record) -> bool
     {
         const frontend::ClassMemberSymbol& member = members[ordinal];
-        LibraryMetadataMember record;
+        record = LibraryMetadataMember{};
         record.kind = static_cast<std::uint8_t>(member.kind);
         record.accessibility = static_cast<std::uint8_t>(member.accessibility);
         record.flags = memberFlags(member);
@@ -1434,7 +1434,46 @@ bool buildMetadataModel(
                 record.constantBits = field.constantIntegerValue;
             }
         }
+        return true;
+    };
+
+    for (const std::size_t ordinal : memberOrdinals)
+    {
+        LibraryMetadataMember record;
+        if (!buildMemberRecord(ordinal, record)) return false;
         metadata.members.push_back(std::move(record));
+    }
+
+    // NS304-T08-F05: publish external trait conformances (the module owns the trait, not the type)
+    // so a consumer rebuilds the same impl without the producer's sources.
+    for (const frontend::NamedTypeDeclarationPart& part :
+         compilation.nameLookup()->externalTraitImplParts())
+    {
+        if (part.syntax == nullptr || part.syntax->typeSyntax() == nullptr) continue;
+        const std::optional<std::size_t> traitOrdinal =
+            compilation.nameLookup()->resolvedTypeOrdinal(part.syntax->typeSyntax());
+        if (!traitOrdinal.has_value()) continue;
+        std::optional<std::size_t> targetOrdinal;
+        for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+        {
+            if (types[ordinal].identity.name() == part.syntax->text())
+            {
+                targetOrdinal = ordinal;
+                break;
+            }
+        }
+        if (!targetOrdinal.has_value()) continue;
+        LibraryMetadataTraitImpl traitImpl;
+        traitImpl.targetTypeKey = typeKeyForOrdinal(types, *targetOrdinal);
+        traitImpl.traitTypeKey = typeKeyForOrdinal(types, *traitOrdinal);
+        for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+        {
+            if (members[ordinal].declaringTypeOrdinal != *targetOrdinal) continue;
+            LibraryMetadataMember record;
+            if (!buildMemberRecord(ordinal, record)) return false;
+            traitImpl.methods.push_back(std::move(record));
+        }
+        if (!traitImpl.methods.empty()) metadata.traitImpls.push_back(std::move(traitImpl));
     }
 
     if (!missingPhysicalCallables.empty())
@@ -2151,8 +2190,7 @@ std::vector<std::uint8_t> encodePayload(
         if (metadata.formatMinor >= 36) writer.text(type.dropGlueEntryName);
     }
 
-    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
-    for (const LibraryMetadataMember& member : metadata.members)
+    const auto writeMember = [&](const LibraryMetadataMember& member)
     {
         writer.u8(member.kind);
         writer.u8(member.accessibility);
@@ -2201,6 +2239,25 @@ std::vector<std::uint8_t> encodePayload(
         if (metadata.formatMinor >= 9) writer.text(member.constantText);
         if (metadata.formatMinor >= 10) writer.text(member.importDllName);
         if (metadata.formatMinor >= 13) writer.text(member.inlineSourceText);
+    };
+
+    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+    for (const LibraryMetadataMember& member : metadata.members)
+    {
+        writeMember(member);
+    }
+
+    // NSMETA 1.40 (NS304-T08-F05): external trait conformances.
+    writer.u32(static_cast<std::uint32_t>(metadata.traitImpls.size()));
+    for (const LibraryMetadataTraitImpl& traitImpl : metadata.traitImpls)
+    {
+        writer.text(traitImpl.targetTypeKey);
+        writer.text(traitImpl.traitTypeKey);
+        writer.u32(static_cast<std::uint32_t>(traitImpl.methods.size()));
+        for (const LibraryMetadataMember& member : traitImpl.methods)
+        {
+            writeMember(member);
+        }
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
@@ -2783,12 +2840,8 @@ bool decodePayload(
         metadata.types.push_back(std::move(type));
     }
 
-    if (!readCount(reader, count)) { error = "invalid metadata member count"; return false; }
-    metadata.members.clear();
-    metadata.members.reserve(count);
-    for (std::uint32_t index = 0; index < count; ++index)
+    const auto readMember = [&](LibraryMetadataMember& member) -> bool
     {
-        LibraryMetadataMember member;
         if (!reader.u8(member.kind) || !reader.u8(member.accessibility) || !reader.u32(member.flags) ||
             !reader.text(member.declaringTypeKey) || !reader.text(member.name) || !reader.text(member.signatureKey) ||
             !reader.text(member.declaredTypeKey) ||
@@ -2864,7 +2917,44 @@ bool decodePayload(
             error = "truncated metadata constant record";
             return false;
         }
+        return true;
+    };
+
+    if (!readCount(reader, count)) { error = "invalid metadata member count"; return false; }
+    metadata.members.clear();
+    metadata.members.reserve(count);
+    for (std::uint32_t index = 0; index < count; ++index)
+    {
+        LibraryMetadataMember member;
+        if (!readMember(member)) return false;
         metadata.members.push_back(std::move(member));
+    }
+
+    // NSMETA 1.40 (NS304-T08-F05): external trait conformances.
+    if (metadata.formatMinor >= 40)
+    {
+        if (!readCount(reader, count)) { error = "invalid metadata trait-impl count"; return false; }
+        metadata.traitImpls.clear();
+        metadata.traitImpls.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataTraitImpl traitImpl;
+            if (!reader.text(traitImpl.targetTypeKey) || !reader.text(traitImpl.traitTypeKey))
+            {
+                error = "truncated or invalid metadata trait-impl record";
+                return false;
+            }
+            std::uint32_t methodCount = 0;
+            if (!readCount(reader, methodCount)) { error = "invalid metadata trait-impl method count"; return false; }
+            traitImpl.methods.reserve(methodCount);
+            for (std::uint32_t methodIndex = 0; methodIndex < methodCount; ++methodIndex)
+            {
+                LibraryMetadataMember member;
+                if (!readMember(member)) return false;
+                traitImpl.methods.push_back(std::move(member));
+            }
+            metadata.traitImpls.push_back(std::move(traitImpl));
+        }
     }
 
     if (!readCount(reader, count)) { error = "invalid generic-template count"; return false; }

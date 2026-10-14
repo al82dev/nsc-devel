@@ -2760,6 +2760,33 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         generated << ';' << std::endl;
         if (!state.namespaceName.empty()) generated << '}' << std::endl;
     }
+    // NS304-T08-F05: external trait conformances become impl blocks so the consumer's orphan rule
+    // + member registration rebuild the same static dispatch surface over the external target.
+    for (const interop::LibraryMetadataTraitImpl &traitImpl : metadata.traitImpls)
+    {
+        std::string traitSource;
+        std::string targetSource;
+        if (!sourceTypeForMetadataKey(metadata, traitImpl.traitTypeKey, traitSource, error) ||
+            !sourceTypeForMetadataKey(metadata, traitImpl.targetTypeKey, targetSource, error))
+        {
+            return false;
+        }
+        generated << "impl " << traitSource << " for " << targetSource << "\n{\n";
+        for (const interop::LibraryMetadataMember &member : traitImpl.methods)
+        {
+            generated << "    ";
+            if (member.accessibility == kPublicAccessibility) generated << "public ";
+            std::string returnType;
+            if (!sourceTypeForMetadataKey(metadata, member.declaredTypeKey, returnType, error))
+                return false;
+            generated << returnType << ' ' << member.name << '(';
+            if (!emitParameters(member)) return false;
+            generated << ')';
+            if (!emitThrowsContract(member.declaredErrorTypeKey)) return false;
+            generated << ";\n";
+        }
+        generated << "}\n";
+    }
     source = generated.str();
     return true;
 }

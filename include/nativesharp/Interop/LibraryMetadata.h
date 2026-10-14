@@ -94,7 +94,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-inline constexpr std::uint16_t kMetadataFormatMinor = 39;
+inline constexpr std::uint16_t kMetadataFormatMinor = 40;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode
@@ -547,6 +547,16 @@ struct LibraryMetadataPlatformImport final
     std::string symbolName;
 };
 
+// NSMETA 1.40 (NS304-T08-F05). Una conformance `impl Trait for Type` cuyo target es un tipo
+// externo (el modulo posee el trait, no el tipo). El consumidor reconstruye el impl para que el
+// dispatch estatico sobre el tipo externo resuelva los metodos sin las fuentes del productor.
+struct LibraryMetadataTraitImpl final
+{
+    std::string targetTypeKey;
+    std::string traitTypeKey;
+    std::vector<LibraryMetadataMember> methods;
+};
+
 struct LibraryMetadata final
 {
     std::uint16_t formatMajor = kMetadataFormatMajor;
@@ -576,6 +586,7 @@ struct LibraryMetadata final
     std::array<std::uint8_t, 32> abiFingerprint{};
     std::vector<LibraryMetadataType> types;
     std::vector<LibraryMetadataMember> members;
+    std::vector<LibraryMetadataTraitImpl> traitImpls;
     std::vector<LibraryMetadataNamespaceFunction> namespaceFunctions;
     std::vector<LibraryMetadataNamespaceState> namespaceStates;
     std::vector<LibraryMetadataGenericTemplate> genericTemplates;
