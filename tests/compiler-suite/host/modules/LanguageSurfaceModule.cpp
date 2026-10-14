@@ -4685,6 +4685,41 @@ class Program
         }});
 }
 
+void registerDecimalMixedScaleRemCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-431", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "arithmetic", "rem", "mixed-scale", "alignment"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F04DecimalMixedScaleRem", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal a = 4.5m;
+        decimal b = 2m;
+        decimal c = a % b;
+        if ((int)(c * 10m) == 5) return 0;
+        return 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F04DecimalMixedScaleRem.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-431 mixed-scale decimal rem must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-431 4.5m%2m must align to 0.5 (max-scale alignment) (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7383,6 +7418,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
+    registerDecimalMixedScaleRemCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);

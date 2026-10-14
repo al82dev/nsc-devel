@@ -15011,33 +15011,8 @@ private:
                 LLVMValueRef rightDiff = LLVMBuildTrunc(
                     builder_, LLVMBuildSub(builder_, maxScale, rightScale, "decimal.align.rightdiff"),
                     lane, "decimal.align.rightdiff64");
-                auto pow10 = [&](LLVMValueRef exponent, const char* name) -> LLVMValueRef {
-                    LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
-                    LLVMBasicBlockRef header = appendBlock(std::string(name) + ".header");
-                    LLVMBasicBlockRef body = appendBlock(std::string(name) + ".body");
-                    LLVMBasicBlockRef exit = appendBlock(std::string(name) + ".exit");
-                    LLVMValueRef one = LLVMConstInt(lane, 1, 0);
-                    LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
-                    LLVMBuildBr(builder_, header);
-                    LLVMPositionBuilderAtEnd(builder_, header);
-                    LLVMValueRef accumulator = LLVMBuildPhi(builder_, lane, "decimal.pow10.acc");
-                    LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.rem");
-                    LLVMValueRef done = LLVMBuildICmp(
-                        builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
-                    LLVMBuildCondBr(builder_, done, exit, body);
-                    LLVMPositionBuilderAtEnd(builder_, body);
-                    LLVMValueRef nextAcc = LLVMBuildMul(builder_, accumulator, ten, "decimal.pow10.mul");
-                    LLVMValueRef nextRem = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
-                    LLVMBuildBr(builder_, header);
-                    LLVMAddIncoming(accumulator, &one, &preheader, 1);
-                    LLVMAddIncoming(accumulator, &nextAcc, &body, 1);
-                    LLVMAddIncoming(remaining, &exponent, &preheader, 1);
-                    LLVMAddIncoming(remaining, &nextRem, &body, 1);
-                    LLVMPositionBuilderAtEnd(builder_, exit);
-                    return accumulator;
-                };
-                LLVMValueRef leftMult = pow10(leftDiff, "decimal.align.left.pow10");
-                LLVMValueRef rightMult = pow10(rightDiff, "decimal.align.right.pow10");
+                LLVMValueRef leftMult = buildPow10(leftDiff, "decimal.align.left.pow10");
+                LLVMValueRef rightMult = buildPow10(rightDiff, "decimal.align.right.pow10");
                 LLVMValueRef leftAligned = LLVMBuildMul(
                     builder_, leftCoeff64, leftMult, "decimal.align.left");
                 LLVMValueRef rightAligned = LLVMBuildMul(
@@ -15101,17 +15076,33 @@ private:
             }
             else
             {
-                // rem: coefficient % coefficient (equal scale), result keeps the left scale.
+                // rem: align both coefficients to the max scale, then coefficient % coefficient.
+                LLVMValueRef rightScale = LLVMBuildLShr(
+                    builder_, right, scaleShift, "decimal.rem.right.scale");
+                LLVMValueRef scaleGe = LLVMBuildICmp(
+                    builder_, LLVMIntUGE, leftScale, rightScale, "decimal.rem.scale.ge");
+                LLVMValueRef maxScale = LLVMBuildSelect(
+                    builder_, scaleGe, leftScale, rightScale, "decimal.rem.scale.max");
                 LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
                 LLVMValueRef leftCoeff64 = LLVMBuildTrunc(
                     builder_, leftCoefficient, lane, "decimal.rem.left64");
                 LLVMValueRef rightCoeff64 = LLVMBuildTrunc(
                     builder_, rightCoefficient, lane, "decimal.rem.right64");
+                LLVMValueRef leftDiff = LLVMBuildTrunc(
+                    builder_, LLVMBuildSub(builder_, maxScale, leftScale, "decimal.rem.leftdiff"),
+                    lane, "decimal.rem.leftdiff64");
+                LLVMValueRef rightDiff = LLVMBuildTrunc(
+                    builder_, LLVMBuildSub(builder_, maxScale, rightScale, "decimal.rem.rightdiff"),
+                    lane, "decimal.rem.rightdiff64");
+                LLVMValueRef leftAligned = LLVMBuildMul(
+                    builder_, leftCoeff64, buildPow10(leftDiff, "decimal.rem.left.pow10"), "decimal.rem.left.align");
+                LLVMValueRef rightAligned = LLVMBuildMul(
+                    builder_, rightCoeff64, buildPow10(rightDiff, "decimal.rem.right.pow10"), "decimal.rem.right.align");
                 LLVMValueRef remainder = LLVMBuildURem(
-                    builder_, leftCoeff64, rightCoeff64, "decimal.rem");
+                    builder_, leftAligned, rightAligned, "decimal.rem");
                 combined = LLVMBuildZExt(
                     builder_, remainder, LLVMIntTypeInContext(context_, 128), "decimal.rem.wide");
-                effectiveScale = leftScale;
+                effectiveScale = maxScale;
             }
             LLVMValueRef scaleShifted = LLVMBuildShl(
                 builder_, effectiveScale, scaleShift, "decimal.scale.sh");
@@ -18581,6 +18572,35 @@ private:
     {
         const std::string name = stem + "." + std::to_string(blockCounter_++);
         return LLVMAppendBasicBlockInContext(context_, currentFunction_, name.c_str());
+    }
+
+    // NS304-T15-F04: 10^exponent as a runtime i64 loop (exponent 0..28).
+    LLVMValueRef buildPow10(LLVMValueRef exponent, const char* stem)
+    {
+        LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+        LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef header = appendBlock(std::string(stem) + ".header");
+        LLVMBasicBlockRef body = appendBlock(std::string(stem) + ".body");
+        LLVMBasicBlockRef exit = appendBlock(std::string(stem) + ".exit");
+        LLVMValueRef one = LLVMConstInt(lane, 1, 0);
+        LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
+        LLVMBuildBr(builder_, header);
+        LLVMPositionBuilderAtEnd(builder_, header);
+        LLVMValueRef accumulator = LLVMBuildPhi(builder_, lane, "decimal.pow10.acc");
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.rem");
+        LLVMValueRef done = LLVMBuildICmp(
+            builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
+        LLVMBuildCondBr(builder_, done, exit, body);
+        LLVMPositionBuilderAtEnd(builder_, body);
+        LLVMValueRef nextAcc = LLVMBuildMul(builder_, accumulator, ten, "decimal.pow10.mul");
+        LLVMValueRef nextRem = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
+        LLVMBuildBr(builder_, header);
+        LLVMAddIncoming(accumulator, &one, &preheader, 1);
+        LLVMAddIncoming(accumulator, &nextAcc, &body, 1);
+        LLVMAddIncoming(remaining, &exponent, &preheader, 1);
+        LLVMAddIncoming(remaining, &nextRem, &body, 1);
+        LLVMPositionBuilderAtEnd(builder_, exit);
+        return accumulator;
     }
 
     // Every real toolchain (clang included) marks EVERY defined function `uwtable` on a Windows
