@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 62 | 42.18 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T08-F01..F04, T09-F01..F08 (salvo F09/F10) cerrados |
+| B | 3.0.4 | 18 | 147 ítems | 63 | 42.86 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T08-F01..F04, T09-F01..F08, T10-F02/F04/F05/F07 cerrados |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -925,7 +925,7 @@ T00
 | T07 | Async streams y concurrencia estructurada | 8 | 2 | 25 % |
 | T08 | Extension members y operadores | 7 | 4 | 57.14 % |
 | T09 | Construcción, propiedades y eventos | 10 | 8 | 80 % |
-| T10 | Strings, null-awareness y nombres estáticos | 8 | 3 | 37.5 % |
+| T10 | Strings, null-awareness y nombres estáticos | 8 | 4 | 50 % |
 | T11 | Spans, referencias y genéricos modernos | 8 | 0 | 0 % |
 | T12 | Partial members y composición de fuente | 6 | 0 | 0 % |
 | T13 | Allocators, scope e in-place construction | 9 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **62** | **42.18 %** |
+| **Total** |  | **147** | **63** | **42.86 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -1059,7 +1059,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T10-F02` — Completar raw interpolated strings y delimitadores anidados. *(lexRawInterpolatedString con delimitador dinámico 3+ comillas, contenido crudo + huecos; TL-LEX-111 + TL-LANG-332.)*
 - [ ] `NS304-T10-F03` — Hacer productivos interpolation handlers con stack/writer/custom sink.
 - [x] `NS304-T10-F04` — Validar formato consteval e interpolación constante pura. *(handler estático T01-F06 + TL-LANG-336 literal hole.)*
-- [ ] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value + compound + token `?[` + READ/WRITE de array nativo (`arr?[i]`/`arr?[i]=v`) via NullConditionalArrayLoad/Store; receptor único, índice/RHS sólo non-null y PHI del resultado, TL-LANG-340/342/345 PASS 2026-10-13; indexador de usuario residual.)*
+- [x] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value + compound + token `?[` + READ/WRITE de array nativo (TL-LANG-340/342/345) + indexador de usuario `obj?[i]` via lowerResolvedCall nullConditional (TL-LANG-402).)*
 - [ ] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos. *(numérico + string concat (`obj?.Name += "x"`) via operation + applyBinaryOperation/concat; devuelve valor almacenado y libera string desplazado sólo en destino owned, TL-LANG-342/346 PASS 2026-10-13; ++/-- residual.)*
 - [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(AST conserva operando; GenericModel/NameLookup/Sema resuelven sin evaluar; HIR emite la constante sólo tras éxito. Evidencia focal 2026-10-13: TA-AST-025 y TL-LANG-331/350/353/356 PASS, con negativos de símbolo inexistente, inaccesibilidad y aridad.)*
 - [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; no-culture residual bloqueado en la feature.)*
