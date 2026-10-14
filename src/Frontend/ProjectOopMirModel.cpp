@@ -1268,10 +1268,27 @@ bool ProjectOopMirModel::build(
         constexpr std::uint64_t dropFnSize = 8;
         constexpr std::uint64_t dropFnAlignment = 8;
         const std::uint64_t dropFnOffset = alignUp(moveNextFnOffset + moveNextFnSize, dropFnAlignment);
+        // NS304-T06-F07: Iterator<T,E> carries an error slot (field 5) so a `throw` in the generator
+        // is propagated as a typed error, not a native unwind.
+        const std::optional<std::string_view> errorInner = language::iteratorErrorTypeKey(key);
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> errorLayout;
+        std::uint64_t errorOffset = 0;
+        if (errorInner.has_value())
+        {
+            errorLayout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, std::string(*errorInner));
+            if (!errorLayout.has_value())
+            {
+                error = "NativeSharp generator iterator has no error layout: " + key;
+                return false;
+            }
+            errorOffset = alignUp(dropFnOffset + dropFnSize, errorLayout->second);
+        }
         const std::uint64_t totalAlignment =
             std::max({stateAlignment, frameAlignment, itemLayout->second, moveNextFnAlignment,
-                      dropFnAlignment});
-        const std::uint64_t totalSize = alignUp(dropFnOffset + dropFnSize, totalAlignment);
+                      dropFnAlignment, errorLayout.has_value() ? errorLayout->second : 1U});
+        const std::uint64_t totalSize = alignUp(
+            errorLayout.has_value() ? errorOffset + errorLayout->first : dropFnOffset + dropFnSize,
+            totalAlignment);
         std::vector<ObjectFieldLayout> fields;
         fields.push_back(ObjectFieldLayout{
             0, 0, stateSize, stateAlignment, "builtin:int", std::nullopt, std::nullopt});
@@ -1286,6 +1303,12 @@ bool ProjectOopMirModel::build(
         fields.push_back(ObjectFieldLayout{
             4, dropFnOffset, dropFnSize, dropFnAlignment, "builtin:void*",
             std::nullopt, std::nullopt});
+        if (errorLayout.has_value())
+        {
+            fields.push_back(ObjectFieldLayout{
+                5, errorOffset, errorLayout->first, errorLayout->second,
+                std::string(*errorInner), std::nullopt, std::nullopt});
+        }
         structLayouts_.push_back(ProjectOopMirStructLayout{
             (std::numeric_limits<std::size_t>::max)(),
             key,
@@ -1816,7 +1839,7 @@ bool ProjectOopMirModel::build(
                 if (node == nullptr) return;
                 if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
                     node->localOrdinal.has_value() && !node->typeKey.empty() &&
-                    liveAcrossYield(*node->localOrdinal))
+                    (liveAcrossYield(*node->localOrdinal) || node->cleanupRegionOrdinal.has_value()))
                 {
                     const auto layout =
                         objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);

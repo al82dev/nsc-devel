@@ -3938,6 +3938,68 @@ ProjectOopHirModel::splitGeneratorFunction(
     // NS304-T06-F04: the MoveNext captures the original callable's parameters into its frame.
     moveNext->generatorParameterTypeKeys = function.parameterTypeKeys;
 
+    // NS304-T06-F07: `throw E;` becomes a typed generator error, not a native unwind:
+    // { self->error = E; return false; } (the consumer checks state/error and rethrows).
+    const std::optional<std::string_view> errorType = language::iteratorErrorTypeKey(iteratorKey);
+    if (errorType.has_value())
+    {
+        const auto rewriteThrows = [&](const auto& self, ProjectOopHirNode* node) -> void
+        {
+            if (node == nullptr) return;
+            for (auto& child : node->children)
+            {
+                if (child != nullptr && child->kind == ProjectOopHirNodeKind::Throw)
+                {
+                    auto block = makeNode(ProjectOopHirNodeKind::Block, child->syntax, "builtin:void");
+                    auto errorField = makeNode(
+                        ProjectOopHirNodeKind::FutureFieldAddress, child->syntax, std::string(*errorType));
+                    errorField->memberOrdinal = 5; // error (dropFn is index 4)
+                    errorField->elementTypeKey = iteratorKey;
+                    auto selfAddress = makeNode(
+                        ProjectOopHirNodeKind::ParameterValue, child->syntax, iteratorKey + "*");
+                    selfAddress->parameterOrdinal = 0;
+                    errorField->children.push_back(std::move(selfAddress));
+                    auto errorStore = makeNode(
+                        ProjectOopHirNodeKind::Assignment, child->syntax, std::string(*errorType));
+                    errorStore->operation = lexer::TokenKind::Equal;
+                    errorStore->children.push_back(std::move(errorField));
+                    errorStore->children.push_back(!child->children.empty()
+                        ? std::move(child->children[0])
+                        : makeNode(ProjectOopHirNodeKind::NullConstant, child->syntax, std::string(*errorType)));
+                    block->children.push_back(std::move(errorStore));
+                    auto stateField = makeNode(
+                        ProjectOopHirNodeKind::FutureFieldAddress, child->syntax, "builtin:int");
+                    stateField->memberOrdinal = 0; // state
+                    stateField->elementTypeKey = iteratorKey;
+                    auto stateSelf = makeNode(
+                        ProjectOopHirNodeKind::ParameterValue, child->syntax, iteratorKey + "*");
+                    stateSelf->parameterOrdinal = 0;
+                    stateField->children.push_back(std::move(stateSelf));
+                    auto errored = makeNode(ProjectOopHirNodeKind::IntegerConstant, child->syntax, "builtin:int");
+                    errored->integerValue = ~0ULL - 1ULL; // -2 = error
+                    auto stateStore = makeNode(
+                        ProjectOopHirNodeKind::Assignment, child->syntax, "builtin:int");
+                    stateStore->operation = lexer::TokenKind::Equal;
+                    stateStore->children.push_back(std::move(stateField));
+                    stateStore->children.push_back(std::move(errored));
+                    block->children.push_back(std::move(stateStore));
+                    auto retFalse = makeNode(ProjectOopHirNodeKind::Return, child->syntax, "builtin:bool");
+                    auto falseValue = makeNode(
+                        ProjectOopHirNodeKind::BooleanConstant, child->syntax, "builtin:bool");
+                    falseValue->booleanValue = false;
+                    retFalse->children.push_back(std::move(falseValue));
+                    block->children.push_back(std::move(retFalse));
+                    child = std::move(block);
+                }
+                else if (child != nullptr)
+                {
+                    self(self, child.get());
+                }
+            }
+        };
+        rewriteThrows(rewriteThrows, moveNext->body.get());
+    }
+
     // NS304-T06-F03: number the yields 1..N (the state set after each yield; 0 is the entry state)
     // and append the terminal `return false` after the last yield.
     std::size_t nextYieldState = 0;
@@ -6725,6 +6787,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     iteratorCore->resultTypeKey);
                 node->elementTypeKey = iteratorCore->elementTypeKey;
                 node->children.push_back(std::move(receiver));
+                // NS304-T06-F07: a MoveNext inside a try attaches the enclosing catch so a typed
+                // generator error (state == -2) rethrows into it instead of ending the loop.
+                if (!activeHirExceptionHandlers_.empty())
+                    node->exceptionTargetRegionOrdinal = activeHirExceptionHandlers_.back().hirRegionOrdinal;
                 return node;
             }
             const NamespaceFunctionCallBinding* namespaceCall =

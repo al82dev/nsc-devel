@@ -9941,7 +9941,43 @@ private:
                 LLVMTypeRef fnType = LLVMFunctionType(
                     LLVMInt1TypeInContext(context_), fnParams, 1, 0);
                 LLVMValueRef args[] = { self };
-                return LLVMBuildCall2(builder_, fnType, moveNextFn, args, 1U, "iterator.movenext.call");
+                LLVMValueRef result = LLVMBuildCall2(
+                    builder_, fnType, moveNextFn, args, 1U, "iterator.movenext.call");
+                // NS304-T06-F07: if the MoveNext errored (state == -2), rethrow the carried error
+                // into the enclosing catch instead of ending the loop normally.
+                const std::optional<std::string_view> errorInner =
+                    language::iteratorErrorTypeKey(node->elementTypeKey);
+                if (errorInner.has_value() && node->exceptionTargetRegionOrdinal.has_value())
+                {
+                    LLVMTypeRef intType = llvmType("builtin:int", error);
+                    LLVMValueRef state = LLVMBuildLoad2(
+                        builder_, intType, self, "iterator.movenext.state");
+                    LLVMValueRef erroredConst = LLVMConstInt(
+                        intType, static_cast<unsigned long long>(-2), 1);
+                    LLVMBasicBlockRef normalBlock = appendBlock("iterator.movenext.normal");
+                    LLVMBasicBlockRef errorBlock = appendBlock("iterator.movenext.error");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, state, erroredConst, "iterator.movenext.errored"),
+                        errorBlock, normalBlock);
+                    LLVMPositionBuilderAtEnd(builder_, errorBlock);
+                    std::uint64_t errorOffset = 0;
+                    if (const frontend::ProjectOopMirStructLayout* layout =
+                            structLayout(node->elementTypeKey))
+                    {
+                        for (const frontend::ObjectFieldLayout& field : layout->fields)
+                            if (field.memberOrdinal == 5) { errorOffset = field.offset; break; }
+                    }
+                    LLVMTypeRef errorType = llvmType(std::string(*errorInner), error);
+                    if (errorType == nullptr || errorOffset == 0)
+                        return failValue(error, "iterator MoveNext error propagation has no error slot");
+                    LLVMValueRef errorValue = LLVMBuildLoad2(
+                        builder_, errorType,
+                        byteOffset(self, errorOffset, "iterator.movenext.error.addr"), "iterator.movenext.error");
+                    if (!lowerExceptionalTransfer(errorValue, node, error)) return nullptr;
+                    LLVMPositionBuilderAtEnd(builder_, normalBlock);
+                }
+                return result;
             }
             case frontend::ProjectOopMirNodeKind::IteratorGetEnumerator:
             {

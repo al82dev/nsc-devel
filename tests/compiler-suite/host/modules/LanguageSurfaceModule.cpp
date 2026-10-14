@@ -6201,6 +6201,56 @@ class Program
         }});
 }
 
+void registerGeneratorTypedErrorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-443", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "throws", "error", "Iterator<T,E>", "typed"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T06GeneratorTypedError", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static Iterator<int, Exception> Fail() throws Exception
+    {
+        throw new Exception();
+        yield return 42;
+    }
+
+    public static Iterator<int, Exception> Ok() throws Exception
+    {
+        yield return 42;
+    }
+
+    public static int Main()
+    {
+        int r = 0;
+        try { foreach (int x in Fail()) { r += x; } }
+        catch (Exception e) { r += 7; }
+        foreach (int x in Ok()) { r += x; }
+        return r;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T06GeneratorTypedError.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-443 a typed generator error must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 49,
+                "TL-LANG-443 the typed error must rethrow into the catch (7 + 42 = 49): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7963,6 +8013,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorRefItemCase(registry);
     registerGeneratorRefMutItemCase(registry);
     registerGeneratorPinnedFrameCase(registry);
+    registerGeneratorTypedErrorCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
