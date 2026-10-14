@@ -6160,12 +6160,12 @@ ast::AstNode* Parser::parseClassMember(
             isPartial = true;
             continue;
         }
-        // NS304-T12-F02: `partial` before a member return type declares a partial method signature
-        // or its defining body.
+        // NS304-T12-F02/F05: `partial` before a member return type (or an event) declares a partial
+        // member signature or its defining body.
         const bool partialMethodModifier = atContextualKeyword("partial") &&
             (lexer::isBuiltinTypeKeyword(peek().kind()) || at(TokenKind::KwVoid) ||
              at(TokenKind::Identifier) || atContextualKeyword("ref") ||
-             atContextualKeyword("out") || at(TokenKind::KwIn) ||
+             atContextualKeyword("out") || at(TokenKind::KwIn) || at(TokenKind::KwEvent) ||
              lexer::isOwnershipQualifierKeyword(peek().kind()));
         if (partialMethodModifier)
         {
@@ -6830,7 +6830,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "events support accessibility and optional static only; volatile applies only to fields");
         }
-        return parseEventTail(accessibility, isNew, isStatic, beginIndex);
+        return parseEventTail(accessibility, isNew, isStatic, beginIndex, isPartialMember);
     }
 
     // Items 324-325. `struct/union { ... } field;` is one source declaration with two semantic identities:
@@ -7453,7 +7453,8 @@ ast::AstNode* Parser::parseEventTail(
     TokenKind accessibility,
     bool isNew,
     bool isStatic,
-    std::size_t beginIndex)
+    std::size_t beginIndex,
+    bool isPartial)
 {
     const SourceRange eventRange = consume().range(); // event
     if (!canStartTypeAt(index_))
@@ -7477,7 +7478,7 @@ ast::AstNode* Parser::parseEventTail(
     ast::AstNode* event = arena_.make<ast::AstNode>(ast::AstNodeKind::EventDeclaration, eventRange);
     event->setText(std::string(name.lexeme()));
     event->setTypeSyntax(eventType);
-    event->setAuxiliaryText("event");
+    event->setAuxiliaryText(isPartial ? "event;partial-event" : "event");
     if (accessibility != TokenKind::Invalid)
     {
         event->setTokenKind(accessibility);
@@ -7522,7 +7523,8 @@ ast::AstNode* Parser::parseEventTail(
                 ast::AstNodeKind::MethodDeclaration, accessorRange);
             accessor->setText((isAdd ? "add_" : "remove_") + std::string(name.lexeme()));
             accessor->setAuxiliaryText(
-                (isAdd ? "event:add:" : "event:remove:") + std::string(name.lexeme()));
+                (isAdd ? "event:add:" : "event:remove:") + std::string(name.lexeme()) +
+                (isPartial ? ";partial-method" : ""));
             accessor->setTypeSyntax(arena_.make<ast::TypeSyntax>(
                 accessorRange, TokenKind::KwVoid, "void"));
             ast::AstNode* value = arena_.make<ast::AstNode>(

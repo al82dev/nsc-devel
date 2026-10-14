@@ -3111,8 +3111,17 @@ bool ProjectMemberModel::collectTypeMembers(
                         continue;
                     }
                     const ClassMemberSymbol& previous = members_[previousOrdinal];
-                    if (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
-                        previous.kind == ClassMemberKind::Field || previous.kind == ClassMemberKind::Event)
+                    // NS304-T12-F05: a partial event (and its synthesized backing storage) merges;
+                    // the add/remove accessors merge in the ordinary method path (F02).
+                    const bool partialEventMerge =
+                        symbol.syntax != nullptr && previous.syntax != nullptr &&
+                        ((symbol.syntax->auxiliaryText().find("partial-event") != std::string::npos &&
+                          previous.syntax->auxiliaryText().find("partial-event") != std::string::npos) ||
+                         (symbol.syntax->auxiliaryText().find("event-backing:") != std::string::npos &&
+                          previous.syntax->auxiliaryText().find("event-backing:") != std::string::npos));
+                    if ((symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
+                         previous.kind == ClassMemberKind::Field || previous.kind == ClassMemberKind::Event) &&
+                        !partialEventMerge)
                     {
                         reportDuplicate(
                             symbol,
@@ -3121,6 +3130,11 @@ bool ProjectMemberModel::collectTypeMembers(
                             "member name '" + symbol.name +
                                 "' conflicts with an existing member in class '" +
                                 type.identity.fullyQualifiedName() + "'");
+                        duplicate = true;
+                        break;
+                    }
+                    if (partialEventMerge)
+                    {
                         duplicate = true;
                         break;
                     }

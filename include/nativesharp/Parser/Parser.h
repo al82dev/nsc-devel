@@ -153,7 +153,8 @@ private:
         lexer::TokenKind accessibility,
         bool isNew,
         bool isStatic,
-        std::size_t beginIndex);
+        std::size_t beginIndex,
+        bool isPartial = false);
     ast::AstNode* parseDestructorTail(std::string_view className, std::size_t beginIndex);
     ast::AstNode* parsePropertyTail(
         ast::TypeSyntax* propertyType,

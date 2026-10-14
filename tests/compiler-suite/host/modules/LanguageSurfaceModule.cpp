@@ -4256,6 +4256,52 @@ class Program
         }});
 }
 
+void registerPartialEventCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-419", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "partial", "event", "add", "remove", "merge"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T12F05PartialEvent", "Exe", R"ns(
+public delegate void Handler(int x);
+partial class Foo
+{
+    public int Result;
+    public partial event Handler Changed;
+    public partial event Handler Changed
+    {
+        add { Result += 1; }
+        remove { Result += 2; }
+    }
+}
+class Program
+{
+    public static int Main()
+    {
+        Foo f = new Foo();
+        f.Changed += (int x) => { };
+        f.Changed -= (int x) => { };
+        return f.Result;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T12F05PartialEvent.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-419 a partial event with add/remove must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-419 add(+1) then remove(+2) must dispatch the merged accessors (exit 3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6942,6 +6988,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPartialMethodCase(registry);
     registerPartialPropertyCase(registry);
     registerPartialConstructorCase(registry);
+    registerPartialEventCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
