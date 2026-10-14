@@ -42,17 +42,23 @@ F03 trazada y siguiente acción T03-F04 sin afirmar certificación global.
 
 ## 3. Estado ejecutivo
 
+> **Reconciliación (2026-10-14):** este handover es un corte histórico en 25/147. El estado vigente
+> es **60/147 (40.82 %)** según el tracking maestro (`NATIVESHARP-3.0.3-A-3.0.6-TRACKING-MAESTRO.md`),
+> con T00-T04 cerrados y T05-T10 con ítems cerrados (T07-F01/F02, T08-F01..F04, T09-F05, T10-F02/
+> F04/F07). La tabla siguiente conserva el corte original.
+
 | Dimensión | Estado al corte |
 |---|---|
 | Parte B | `PAUSADA POR INSTRUCCIÓN DEL USUARIO` |
 | Plan completo | 147 ítems, T00–T17 |
-| Cerrados | 25/147 |
-| Pendientes | 122/147 |
+| Cerrados (al corte) | 25/147 |
+| Cerrados (vigente) | 60/147 (ver tracking maestro) |
+| Pendientes (vigente) | 87/147 |
 | T00 | 8/8, cerrado |
 | T01 | 8/8, cerrado |
 | T02 | 6/6, cerrado |
-| T03 | 3/8, F01–F03 cerrados |
-| Siguiente ítem | `NS304-T03-F04` |
+| T03 | 8/8, cerrado (F01–F08) |
+| Siguiente ítem (al corte) | `NS304-T03-F04` |
 | Batería completa de Parte B | No ejecutada; reservada para después de T17 |
 | Rama de trabajo | `development` |
 | Último cierre secuencial | `691661767ce15a158492ff36eb65335654c8f0ab` (`NS304-T03-F03`) |
