@@ -14850,7 +14850,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
 
     const auto bindExtension = [&]() -> bool
     {
-        if (typeReceiver || namespaceFunctionModel_ == nullptr) return false;
+        if (namespaceFunctionModel_ == nullptr) return false;
         const NamespaceFunctionReferenceBinding* extension =
             namespaceFunctionModel_->extensionBinding(expression);
         if (extension == nullptr) return false;
@@ -14860,7 +14860,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         {
             if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
             const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
-            if (candidate.parameters.empty()) continue;
+            if (candidate.parameters.empty())
+            {
+                // NS304-T08-F03: a static extension member (no receiver) is reachable via T.Miembro().
+                if (!typeReceiver) continue;
+                methods.push_back(namespaceCallableBase_ + functionOrdinal);
+                continue;
+            }
+            if (typeReceiver) continue;
             const MethodParameterSymbol& receiverParameter = candidate.parameters.front();
             const std::string& receiverTarget =
                 receiverParameter.passKind == ParameterPassKind::Value
@@ -14877,6 +14884,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             methods.push_back(namespaceCallableBase_ + functionOrdinal);
         }
         if (methods.empty()) return false;
+
+        // NS304-T08-F03: a static extension member is a plain static method group (no receiver).
+        if (typeReceiver)
+        {
+            result.valid = allowMethodGroup;
+            result.methodGroup = true;
+            result.methodCandidates = methods;
+            result.typeKey = "<method-group>";
+            recordNameBinding(MethodNameBinding{
+                MethodNameBindingKind::StaticMethodGroup,
+                expression,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                expression->text(),
+                "<method-group>",
+                std::nullopt,
+                std::nullopt,
+                methods,
+                nullptr,
+                std::string{},
+                std::optional<std::size_t>{},
+                false});
+            if (!allowMethodGroup)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "static extension member '" + expression->text() +
+                        "' can only be used as a call target");
+            }
+            return true;
+        }
 
         result = receiver;
         result.typeKey = "<extension-method-group>";
@@ -16227,6 +16267,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         {
             return analyzeNamespaceFunctionCall(
                 expression, *extension, methodMemberOrdinal, scopeOrdinal, diagnostics, &callee);
+        }
+    }
+    // NS304-T08-F03: a static extension member (StaticMethodGroup with no receiver) resolves as a
+    // direct namespace call, not the instance method resolution.
+    if (!callee.extensionMethodGroup && callee.methodGroup && callee.receiverSyntax == nullptr &&
+        namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceFunctionReferenceBinding* extension =
+                namespaceFunctionModel_->extensionBinding(expression->first());
+            extension != nullptr)
+        {
+            return analyzeNamespaceFunctionCall(
+                expression, *extension, methodMemberOrdinal, scopeOrdinal, diagnostics, nullptr);
         }
     }
 
