@@ -6572,6 +6572,43 @@ class Program
         }});
 }
 
+void registerAsyncGeneratorCancellationCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-455", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "cancel", "MoveNextAsync", "terminal"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGenCancel", "Exe", R"ns(
+class Program
+{
+    public static AsyncIterator<int, int> Gen() { yield return 1; yield return 2; }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        it.Cancel();
+        bool h2 = await it.MoveNextAsync();
+        return h2 ? 1 : 7;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGenCancel.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-455 the cancelled async generator must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-455 it.Cancel() must make the next demand return false (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8339,6 +8376,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncGeneratorRefItemCase(registry);
     registerAsyncGeneratorRefBorrowRejectCase(registry);
     registerAsyncGeneratorMoveOnlyItemCase(registry);
+    registerAsyncGeneratorCancellationCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
