@@ -1,6 +1,7 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
 
@@ -41,11 +42,13 @@ int main()
                      baseline.find("target_release=3.0.0\n") != std::string::npos &&
                      baseline.find("status=pending-final-baseline\n") != std::string::npos,
         "migration baseline identifies its frozen source, current target and pending gate");
-    tests.expect(baseline.find("nsmeta=1.39\n") != std::string::npos &&
-                     baseline.find("native_abi=1.0\n") != std::string::npos &&
-                     baseline.find("runtime_abi=1.2\n") != std::string::npos &&
-                     baseline.find("runtime_symbol_set=4\n") != std::string::npos &&
-                     baseline.find("mir_schema=1.30\n") != std::string::npos,
+    tests.expect(baseline.find("nsmeta=" +
+            std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
+            std::to_string(nativesharp::interop::kMetadataFormatMinor) + "\n") != std::string::npos &&
+            baseline.find("native_abi=1.0\n") != std::string::npos &&
+            baseline.find("runtime_abi=1.2\n") != std::string::npos &&
+            baseline.find("runtime_symbol_set=4\n") != std::string::npos &&
+            baseline.find("mir_schema=1.30\n") != std::string::npos,
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=1\n") != std::string::npos &&
                      baseline.find("migration_notes=1\n") != std::string::npos &&

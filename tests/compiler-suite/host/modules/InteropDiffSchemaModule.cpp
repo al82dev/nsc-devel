@@ -55,8 +55,11 @@ void classificationContract(TestContext& context, std::size_t)
 
 void schemaContract(TestContext& context, std::size_t variant)
 {
-    context.expect(interop::kMetadataFormatMajor == 1 && interop::kMetadataFormatMinor == 39,
-        "current public NSMETA format must be 1.39");
+    // NS304-T08-F07 (retirado): ya no se exige un minor literal. El contrato comprueba invariantes
+    // reales: el major reconocido sigue vigente y el modelo por defecto usa las constantes públicas
+    // actuales. El número minor interno puede cambiar sin romper pruebas funcionalmente correctas.
+    context.expect(interop::kMetadataFormatMajor == 1,
+        "current public NSMETA format major must remain recognized");
     context.expect(interop::kNativeAbiMajor == 1 && interop::kNativeAbiMinor == 0,
         "native ABI version must be independent from metadata format");
     context.expect(interop::kManagedDelegateCellSize == 32, "managed delegate cell size must remain ABI-visible");

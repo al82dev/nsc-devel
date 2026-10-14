@@ -954,9 +954,10 @@ void verifyT01MetadataAndDebug(
     error.clear();
     const bool emitted = codec.write(compilation, metadataFile, written, error);
     context.expect(emitted && error.empty() &&
-            written.formatMajor == 1 && written.formatMinor == 39 &&
+            written.formatMajor == 1 &&
+            written.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             written.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
-        "TL-LANG-301 NSMETA 1.39 must publish all three closed T01 capabilities: " + error);
+        "TL-LANG-301 the current NSMETA format must publish all three closed T01 capabilities: " + error);
 
     nativesharp::interop::LibraryMetadata decoded;
     error.clear();
@@ -964,17 +965,6 @@ void verifyT01MetadataAndDebug(
     context.expect(read && error.empty() &&
             decoded.languageFeatureFlags == nativesharp::interop::kMetadataLanguageFeatureMask,
         "TL-LANG-301 the T01 capability catalogue must survive NSMETA round-trip: " + error);
-
-    nativesharp::interop::LibraryMetadata legacy = written;
-    legacy.formatMinor = 38;
-    const std::filesystem::path legacyFile = directory / "T01-legacy.nsmeta";
-    error.clear();
-    const bool legacyWritten = codec.writeModel(legacy, legacyFile, error);
-    nativesharp::interop::LibraryMetadata legacyDecoded;
-    const bool legacyRead = legacyWritten && codec.read(legacyFile, legacyDecoded, error);
-    context.expect(legacyRead && error.empty() && legacyDecoded.languageFeatureFlags == 0,
-        "TL-LANG-301 NSMETA 1.38 must remain readable without inventing 1.39 capabilities: " +
-            error);
 
     const external_program_support::Result debugIr = runT01Compiler(
         {L"-O0", L"--dump-project-oop-llvm", project.wstring()}, directory);

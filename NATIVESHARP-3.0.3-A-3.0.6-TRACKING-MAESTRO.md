@@ -1037,7 +1037,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos. *(CERRADO: `operator+` de extensión resuelve y baja como llamada de namespace (TL-LANG-394, exit 5).)*
 - [x] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(orphan rule (TL-LANG-403) + conformance duplicada + dispatch intermodular `e.F()`=5 (TL-LANG-404) + witness NSMETA (TL-LANG-406) cerrados.)*
 - [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión + visibilidad de bloque `public`/`internal` (TL-LANG-405) + ranking por constraints — dispatch de extensión genérica `Box<T> where T:Special` (TL-LANG-412) cerrados; índices por identidad pendientes.)*
-- [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia (NSMETA 1.32) + static/operator (bit 6) + consumo intermodular del operador (TL-LANG-399) cerrados; genéricos + prueba de cero layout mutation pendientes.)*
+- [ ] `NS304-T08-F07` — ~~Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation.~~ **RETIRADO DEL ALCANCE DE 3.0.4** (decisión del usuario 2026-10-14). *Motivo: NSMETA continúa como infraestructura interna, pero su versionado deja de ser una feature/gate independiente. Conservado: publicación/consumo intermodular indispensable y cero mutación de layout. Eliminado: incremento/versionado del formato como objetivo, compatibilidad histórica adicional y gates ligados al número minor. Lo ya cerrado (instancia NSMETA 1.32, static/operator bit 6, consumo intermodular del operador TL-LANG-399) permanece vigente como funcionalidad, no como campaña de versionado.)*
 
 ### T09 — construcción, propiedades y eventos
 
@@ -1131,8 +1131,8 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 ### T16 — integración ABI, metadata, debug y self-host
 
-- [ ] `NS304-T16-F01` — Consolidar versiones definitivas de HIR, MIR, NSMETA y runtime ABI. *(versiones ABI por formato ya reservadas; matriz T03–T15 + feature bits/invariantes pendientes.)*
-- [ ] `NS304-T16-F02` — Actualizar writer/reader y compatibilidad de metadata 3.0 previa. *(codec + rechazo de versión futura operativos; fixtures binarios + round-trip de campos nuevos pendientes.)*
+- [ ] `NS304-T16-F01` — Consolidar versiones definitivas de HIR, MIR y runtime ABI. *(versiones ABI por formato ya reservadas; matriz T03–T15 + feature bits/invariantes pendientes. NSMETA retirado de la matriz de versionado por decisión del usuario — ver T08-F07.)*
+- [ ] `NS304-T16-F02` — Actualizar writer/reader de metadata 3.0. *(codec + rechazo de versión futura operativos; fixtures binarios + round-trip de campos nuevos pendientes. La compatibilidad histórica adicional de NSMETA queda retirada del alcance de 3.0.4.)*
 - [ ] `NS304-T16-F03` — Validar producer/consumer sin source reference por feature pública. *(auditado: corpus de pruebas intermodulares por feature T03–T15, depende de F02.)*
 - [ ] `NS304-T16-F04` — Validar EXE/DLL, exports, callbacks, unload y ownership cross-module. *(auditado: corpus cross-module de ownership + unload, depende de F03.)*
 - [ ] `NS304-T16-F05` — Completar CodeView/PDB de closures, patterns, async, generators y static init. *(auditado: vertical de debug info de las construcciones T03–T15.)*
