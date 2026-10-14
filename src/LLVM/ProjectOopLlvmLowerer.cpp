@@ -14964,7 +14964,8 @@ private:
             // operate on them, and recombine. add/sub keep the (equal) left scale; mul adds the two
             // scales. div/rem + mixed-scale alignment and rounding arrive in a later increment.
             if (operation != lexer::TokenKind::Plus && operation != lexer::TokenKind::Minus &&
-                operation != lexer::TokenKind::Star && operation != lexer::TokenKind::Slash)
+                operation != lexer::TokenKind::Star && operation != lexer::TokenKind::Slash &&
+                operation != lexer::TokenKind::Percent)
                 return failValue(error, "unsupported decimal binary operation in Stage 34");
             LLVMValueRef coefficientMask = LLVMConstInt(
                 LLVMIntTypeInContext(context_, 128), 0xFFFFFFFFFFFFFFFFull, 0);
@@ -14995,7 +14996,7 @@ private:
                 effectiveScale = LLVMBuildAdd(
                     builder_, leftScale, rightScale, "decimal.scale.add");
             }
-            else
+            else if (operation == lexer::TokenKind::Slash)
             {
                 // div: equal-scale alignment = leftCoefficient * 10 / rightCoefficient, result keeps
                 // the left scale. The division goes through a 64-bit lane (128-bit would need
@@ -15011,6 +15012,20 @@ private:
                     builder_, numerator, rightCoeff64, "decimal.div.quotient");
                 combined = LLVMBuildZExt(
                     builder_, quotient, LLVMIntTypeInContext(context_, 128), "decimal.div.wide");
+                effectiveScale = leftScale;
+            }
+            else
+            {
+                // rem: coefficient % coefficient (equal scale), result keeps the left scale.
+                LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+                LLVMValueRef leftCoeff64 = LLVMBuildTrunc(
+                    builder_, leftCoefficient, lane, "decimal.rem.left64");
+                LLVMValueRef rightCoeff64 = LLVMBuildTrunc(
+                    builder_, rightCoefficient, lane, "decimal.rem.right64");
+                LLVMValueRef remainder = LLVMBuildURem(
+                    builder_, leftCoeff64, rightCoeff64, "decimal.rem");
+                combined = LLVMBuildZExt(
+                    builder_, remainder, LLVMIntTypeInContext(context_, 128), "decimal.rem.wide");
                 effectiveScale = leftScale;
             }
             LLVMValueRef scaleShifted = LLVMBuildShl(
