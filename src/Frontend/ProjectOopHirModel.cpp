@@ -485,6 +485,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return std::nullopt;
     case MethodCoreOperationKind::CollectionBuilder:
         return std::nullopt;
+    case MethodCoreOperationKind::NullConditionalUserIndex:
+        return std::nullopt;
     }
 
     // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
@@ -5731,6 +5733,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(receiver));
                 node->children.push_back(std::move(index));
                 return node;
+            }
+            // NS304-T10-F05: `receiver?[index]` sobre un indexador de usuario — null-check +
+            // llamada al get_Item (receptor evaluado una vez por lowerResolvedCall).
+            if (core != nullptr && core->kind == MethodCoreOperationKind::NullConditionalUserIndex)
+            {
+                if (addressContext)
+                {
+                    error = "T10-F05 null-conditional user index is not addressable";
+                    return nullptr;
+                }
+                const MethodCallBinding* indexerCall = callBinding(expression);
+                if (indexerCall == nullptr ||
+                    indexerCall->resolution != MethodCallResolutionKind::Resolved ||
+                    !indexerCall->selectedMemberOrdinal.has_value())
+                {
+                    error = "T10-F05 null-conditional user index has no resolved get_Item accessor";
+                    return nullptr;
+                }
+                std::vector<const ast::AstNode*> arguments;
+                if (!expression->children().empty())
+                    arguments.assign(expression->children().begin(), expression->children().end());
+                else if (expression->second() != nullptr)
+                    arguments.push_back(expression->second());
+                return lowerResolvedCall(indexerCall, arguments, nullptr, true);
             }
             // C2.1 "fixed arrays": inline, unmanaged element access -- `fixedArrayField[i]` and
             // `rawPointer[i]`. The only difference between the two is how the BASE ADDRESS is

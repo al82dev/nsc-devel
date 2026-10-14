@@ -1149,7 +1149,11 @@ enum class MethodCoreOperationKind
     IteratorDrop,
     IteratorMoveNextAsync,
     // NS304-T09-F05: a collection expression targeting a builder (CreateBuilder/Add/ToCollection).
-    CollectionBuilder
+    CollectionBuilder,
+    // NS304-T10-F05: a null-conditional index over a USER indexer (`obj?[i]`). The receiver is
+    // null-checked and get_Item runs only on the non-null path (lowered via lowerResolvedCall with
+    // nullConditional=true).
+    NullConditionalUserIndex
 };
 
 struct MethodCoreBinding final

@@ -13456,6 +13456,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 break;
             }
 
+            // NS304-T10-F05: a USER indexer (`this[...]`) supports the null-conditional form: the
+            // receiver is null-checked and get_Item runs only on the non-null path.
+            const std::optional<std::size_t> receiverType = base.valid
+                ? accessorReceiverTypeOrdinalForTypeKey(base.typeKey) : std::nullopt;
+            if (receiverType.has_value() && indices.size() == 1 && indices.front().valid)
+            {
+                const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+                if (caller != nullptr)
+                {
+                    const std::size_t accessingTypeOrdinal = caller->declaringTypeOrdinal;
+                    const std::vector<std::size_t> getters = stage38AccessorCandidates(
+                        *receiverType, "get_Item", false, true, false,
+                        accessingTypeOrdinal, *receiverType);
+                    if (!getters.empty())
+                    {
+                        const bool interfaceCall = interfaceModel_ != nullptr &&
+                            interfaceModel_->isInterface(*receiverType);
+                        result = resolveSyntheticCall(
+                            expression, methodMemberOrdinal, scopeOrdinal, "get_Item", getters,
+                            indices, expression->first(), base.typeKey, receiverType, false,
+                            interfaceCall, diagnostics, true, base.readonlyReceiver);
+                        const std::vector<std::size_t> setters = stage38AccessorCandidates(
+                            *receiverType, "set_Item", false, false, false,
+                            accessingTypeOrdinal, *receiverType);
+                        const bool referenceGetter = result.addressable;
+                        result.assignable = result.valid && !base.readonlyReceiver &&
+                            (referenceGetter || !setters.empty());
+                        result.addressable = false;
+                        result.receiverSyntax = expression->first();
+                        result.receiverTypeKey = base.typeKey;
+                        result.receiverTypeOrdinal = receiverType;
+                        if (result.valid)
+                        {
+                            coreBindings_.push_back(MethodCoreBinding{
+                                MethodCoreOperationKind::NullConditionalUserIndex,
+                                expression, methodMemberOrdinal, scopeOrdinal,
+                                result.typeKey, result.typeKey,
+                                true, std::nullopt, std::nullopt});
+                        }
+                        break;
+                    }
+                }
+            }
+
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
@@ -26257,6 +26301,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorDrop: return "iterator-drop";
         case MethodCoreOperationKind::IteratorMoveNextAsync: return "iterator-move-next-async";
         case MethodCoreOperationKind::CollectionBuilder: return "collection-builder";
+        case MethodCoreOperationKind::NullConditionalUserIndex: return "null-conditional-user-index";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";
