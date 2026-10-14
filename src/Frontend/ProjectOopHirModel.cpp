@@ -8695,6 +8695,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         if (layout != nullptr) size = layout->size;
                     }
                 }
+                // NS304-T13-F06: the allocated extent is the header plus Capacity*sizeof(T). The
+                // flexible element size is 1 byte here because `T[*]` only admits trivial elements
+                // whose identity size is consulted below via the field's element type.
+                if (expression->auxiliaryText() == "trailing" && !expression->children().empty())
+                {
+                    const MethodExpressionTypeBinding* capacityType =
+                        expressionType(expression->children().back());
+                    if (capacityType != nullptr && capacityType->integerConstant.has_value())
+                    {
+                        size += static_cast<std::size_t>(capacityType->integerConstant->value);
+                    }
+                }
                 const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
                 auto block = makeNode(
                     ProjectOopHirNodeKind::BlockExpression, expression, binding->targetTypeKey);
