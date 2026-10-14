@@ -3166,6 +3166,50 @@ class Program
         }});
 }
 
+void registerRefPropertyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-392", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "property", "ref", "getter"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08RefProperty", "Exe", R"ns(
+struct Box
+{
+    public int Value;
+    public ref int ValueRef
+    {
+        get { return ref this.Value; }
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Box b = new Box();
+        b.Value = 42;
+        int x = b.ValueRef;
+        return x;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08RefProperty.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-392 a ref-returning property getter must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-392 the ref getter must read through the reference (exit 42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5739,6 +5783,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerStaticExtensionMemberCase(registry);
     registerIteratorErrorSurfaceCase(registry);
     registerForeachTeardownCase(registry);
+    registerRefPropertyCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
