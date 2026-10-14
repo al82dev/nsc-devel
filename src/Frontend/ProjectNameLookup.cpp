@@ -819,13 +819,43 @@ void ProjectNameLookup::finalizePredeclarations(
 
         if (!primaryIndex.has_value())
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidBaseType,
-                diagnostics::DiagnosticSeverity::Error,
-                pendingTypes_[groupBegin].part.range,
-                "sealed trait coherence rejects this impl: target class '" +
-                    pendingTypes_[groupBegin].identity.fullyQualifiedName() +
-                    "' is not declared by this module");
+            // NS304-T08-F05: orphan rule — the module may own the trait even when it does not own
+            // the target type. `impl LocalTrait for ExternalType` is coherent when the trait is
+            // declared by this module; owning neither is the orphan rejection.
+            bool traitOwned = false;
+            for (std::size_t index = groupBegin; index < groupEnd; ++index)
+            {
+                const PendingTypeDeclaration& pending = pendingTypes_[index];
+                if (!isTraitImplementationPart(pending.part) || pending.part.syntax == nullptr)
+                    continue;
+                const ast::TypeSyntax* trait = pending.part.syntax->typeSyntax();
+                if (trait == nullptr || trait->baseName().empty()) continue;
+                const std::string& traitName = trait->baseName();
+                const std::size_t implProject = pending.part.projectOrdinal;
+                for (const PendingTypeDeclaration& local : pendingTypes_)
+                {
+                    if (local.part.syntax == nullptr ||
+                        local.part.syntax->kind() != ast::AstNodeKind::InterfaceDeclaration)
+                        continue;
+                    if (local.part.projectOrdinal == implProject &&
+                        local.part.syntax->text() == traitName)
+                    {
+                        traitOwned = true;
+                        break;
+                    }
+                }
+                if (traitOwned) break;
+            }
+            if (!traitOwned)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidBaseType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    pendingTypes_[groupBegin].part.range,
+                    "orphan impl: the module owns neither the target type '" +
+                        pendingTypes_[groupBegin].identity.fullyQualifiedName() +
+                        "' nor the trait");
+            }
             groupBegin = groupEnd;
             continue;
         }
