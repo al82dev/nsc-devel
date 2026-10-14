@@ -4396,7 +4396,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
             expression,
             binding->resultTypeKey);
-        node->memberOrdinal = selectedMemberOrdinal;
+        // NS304-T08-F04: a namespace-callable adapter (extension operator) targets the namespace
+        // function, not a class member (memberOrdinal >= members().size()).
+        if (binding->staticCall && memberModel_ != nullptr &&
+            selectedMemberOrdinal >= memberModel_->members().size())
+        {
+            node->namespaceFunctionOrdinal =
+                selectedMemberOrdinal - memberModel_->members().size();
+            node->memberOrdinal.reset();
+        }
+        else
+        {
+            node->memberOrdinal = selectedMemberOrdinal;
+        }
         node->baseReceiver = binding->baseReceiver;
         node->interfaceDispatch = interfaceDispatch;
         node->nullConditionalCall = nullConditional;

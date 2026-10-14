@@ -1075,16 +1075,14 @@ bool ProjectMethodBodyModel::build(
         adapter.parameterEscapeSummary = function.parameterEscapeSummary;
         adapter.isVariadic = function.isVariadic;
         adapter.inliningPolicy = function.inliningPolicy;
-        // NS304-T08-F04: an extension operator adapter is a user operator with its trait key.
-        adapter.isUserOperator = function.operatorToken != lexer::TokenKind::Invalid;
-        if (adapter.isUserOperator)
+        // NS304-T08-F04: an extension operator adapter is a user operator with its trait key. The
+        // operator is detected by its operator method name (op_Addition), not the operatorToken.
         {
-            if (const language::OperatorTraitContract* contract =
-                    language::operatorTraitContractForMethod(function.name, function.parameters.size());
-                contract != nullptr)
-            {
+            const language::OperatorTraitContract* contract =
+                language::operatorTraitContractForMethod(function.name, function.parameters.size());
+            adapter.isUserOperator = contract != nullptr;
+            if (adapter.isUserOperator)
                 adapter.operatorTraitKey = std::string(contract->langItem);
-            }
         }
         namespaceCallableAdapters_.push_back(std::move(adapter));
     }
