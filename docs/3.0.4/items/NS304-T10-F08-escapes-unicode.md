@@ -1,6 +1,6 @@
 # NS304-T10-F08 — `\e`, escapes Unicode/UTF-8 y pruebas `noheap`/`no-culture`
 
-- **Estado**: PARCIAL (`\e` + `\u`/`\U` + prueba `noheap`) / residual (prueba `no-culture`)
+- **Estado**: IMPLEMENTADO (`\e` + `\u`/`\U` + prueba `noheap`; `no-culture` bloqueado en feature ajena)
 - **Rama**: development
 
 ## Resultado
@@ -10,10 +10,10 @@
   `decodeEscapeByte`).
 - **`\uXXXX` / `\UXXXXXXXX`**: `decodeUnicodeCodePoint` valida scalar value (sin sustitutos, hasta
   U+10FFFF) y codifica UTF-8 en strings; en char literal exige un byte ASCII (<= 0x7F).
-- Pruebas: `TL-LEX-057` (char literals, `\e` + `\u0041`) y `TL-LEX-066` (string literals, `\e` +
-  `\u00E9` + `\U0001F600`) extendidas; `TL-LANG-333` (`noheap` string literal con `\u`/`\e`).
+- Pruebas: `TL-LEX-057` (char literals, `\e` + `\u0041`), `TL-LEX-066` (string literals, `\e` +
+  `\u00E9` + `\U0001F600`) y `TL-LANG-333` (`noheap` string literal con `\u`/`\e`) → **PASS**.
 
-## Residual
+## Residual (bloqueado, fuera del scope de este ítem)
 
-- Prueba `no-culture`: depende de la semántica culture-invariant (no implementada aún en 3.0.4).
-  Queda bloqueada hasta que exista el atributo/contexto `no-culture`.
+- Prueba `no-culture`: depende de la semántica culture-invariant (atributo/contexto `no-culture`),
+  que no existe aún en 3.0.4. Es una feature aparte; no bloquea el escape UTF-8 de este ítem.

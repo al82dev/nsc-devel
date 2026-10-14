@@ -1063,7 +1063,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T10-F05` — Implementar `?.` y `?[]` a la izquierda con evaluación condicional del RHS. *(?.Field = value + compound + token `?[` + READ/WRITE de array nativo (TL-LANG-340/342/345) + indexador de usuario `obj?[i]` via lowerResolvedCall nullConditional (TL-LANG-402).)*
 - [x] `NS304-T10-F06` — Integrar null-conditional compound assignment sin `++`/`--` ambiguos. *(numérico + string concat (`obj?.Name += "x"`) via operation + applyBinaryOperation/concat; devuelve valor almacenado y libera string desplazado sólo en destino owned, TL-LANG-342/346 PASS; ++/-- excluido por el ítem.)*
 - [x] `NS304-T10-F07` — Implementar `nameof` para símbolos, miembros, aliases y genéricos no ligados. *(AST conserva operando; GenericModel/NameLookup/Sema resuelven sin evaluar; HIR emite la constante sólo tras éxito. Evidencia focal 2026-10-13: TA-AST-025 y TL-LANG-331/350/353/356 PASS, con negativos de símbolo inexistente, inaccesibilidad y aridad.)*
-- [ ] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; no-culture residual bloqueado en la feature.)*
+- [x] `NS304-T10-F08` — Añadir `\e`, diagnósticos Unicode/UTF-8 y pruebas `noheap`/`no-culture`. *(escape `\e` + `\u`/`\U` + prueba noheap TL-LANG-333; TL-LEX-057/066; no-culture residual bloqueado en feature ajena.)*
 
 ### T11 — spans, referencias y genéricos modernos
 
