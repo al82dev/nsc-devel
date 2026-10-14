@@ -3594,6 +3594,78 @@ class Program
         }});
 }
 
+void registerOrphanCoherenceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-403", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trait", "impl", "orphan", "coherence"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T08OrphanProducer", "Library", R"ns(
+public class External { }
+
+public trait ExternalTrait
+{
+    int F();
+}
+)ns");
+            const std::filesystem::path traitOwnedProject = products.writeProject(
+                "T08OrphanTraitOwned", "Exe", R"ns(
+trait Local
+{
+    int F();
+}
+
+impl Local for External
+{
+    public int F() { return 5; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"T08OrphanProducer.nsproj\"/>");
+            const std::filesystem::path traitOwnedExecutable =
+                products.directory() / "T08OrphanTraitOwned.exe";
+            const external_program_support::Result traitOwned = emitT01Product(
+                L"--emit-project-oop-exe", traitOwnedProject, traitOwnedExecutable,
+                products.directory());
+            context.expect(traitOwned.started && traitOwned.exitCode == 0 &&
+                    traitOwned.error.empty(),
+                "TL-LANG-403 a trait-owned impl over an external type must compile: " +
+                    traitOwned.error + traitOwned.output);
+
+            const std::filesystem::path orphanProject = products.writeProject(
+                "T08OrphanRejected", "Exe", R"ns(
+impl ExternalTrait for External
+{
+    public int F() { return 5; }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"T08OrphanProducer.nsproj\"/>");
+            const std::filesystem::path orphanExecutable =
+                products.directory() / "T08OrphanRejected.exe";
+            const external_program_support::Result orphan = emitT01Product(
+                L"--emit-project-oop-exe", orphanProject, orphanExecutable,
+                products.directory());
+            context.expect(orphan.started && orphan.exitCode != 0 &&
+                    orphan.output.find("orphan impl") != std::string::npos,
+                "TL-LANG-403 an impl owning neither type nor trait must be rejected as orphan: " +
+                    orphan.error + orphan.output);
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6215,6 +6287,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerIntermodularExtensionOperatorCase(registry);
     registerInlineArrayConstGenericCase(registry);
     registerNullConditionalUserIndexCase(registry);
+    registerOrphanCoherenceCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
