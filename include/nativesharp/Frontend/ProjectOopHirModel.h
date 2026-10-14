@@ -728,6 +728,10 @@ struct ProjectOopHirFunction final
     std::uint64_t closureLayoutSize = 0;
     std::uint64_t closureLayoutAlignment = 1;
     std::vector<std::size_t> capturedLocalOrdinals;
+    // NS304-T06-F04: generator parameters captured into the frame (original callable's parameter
+    // type keys, in original order); the constructor allocates the frame and stores them.
+    std::vector<std::string> generatorParameterTypeKeys;
+    bool isGeneratorConstructor = false;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;
     std::string genericSpecializationKey;

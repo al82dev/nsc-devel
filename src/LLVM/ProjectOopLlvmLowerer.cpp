@@ -7715,6 +7715,41 @@ private:
             case frontend::ProjectOopMirNodeKind::OwnedParameterCleanup:
                 return true;
 
+            case frontend::ProjectOopMirNodeKind::GeneratorFrameInit:
+            {
+                // NS304-T06-F04: allocate the frame, store the captured parameters, and set
+                // self.frame (after the `self` default initializer, which zeroed the struct).
+                if (!node->localOrdinal.has_value())
+                    return fail(error, "generator frame init missing self local ordinal");
+                const auto selfFound = localStorage_.find(*node->localOrdinal);
+                if (selfFound == localStorage_.end() || selfFound->second == nullptr)
+                    return fail(error, "generator frame init self storage missing");
+                LLVMValueRef selfAlloca = selfFound->second;
+                if (currentMirFunction_ == nullptr)
+                    return fail(error, "generator frame init missing current function");
+                LLVMValueRef size = LLVMConstInt(
+                    LLVMInt64TypeInContext(context_), currentMirFunction_->asyncFrameSize, 0);
+                LLVMValueRef allocArgs[] = {size};
+                LLVMValueRef frame = buildNoUnwindCall(
+                    allocationFunctionType_, allocationFunction_, allocArgs, 1, "gen.frame.alloc");
+                if (frame == nullptr)
+                    return fail(error, "generator constructor frame allocation failed");
+                LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
+                for (const auto& [paramOrdinal, offset, typeKey] :
+                     currentMirFunction_->asyncFrameParameters)
+                {
+                    const auto paramFound = parameterStorage_.find(paramOrdinal);
+                    if (paramFound == parameterStorage_.end() || paramFound->second == nullptr) continue;
+                    LLVMTypeRef paramType = llvmType(typeKey, error);
+                    if (paramType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_,
+                        LLVMBuildLoad2(builder_, paramType, paramFound->second, "gen.param"),
+                        byteOffset(frame, offset, "gen.frame.param"));
+                }
+                return true;
+            }
+
             case frontend::ProjectOopMirNodeKind::LocalDeclaration:
             {
                 if (node->typeKey == "builtin:never")
@@ -9362,6 +9397,32 @@ private:
             case frontend::ProjectOopMirNodeKind::ParameterValue:
             {
                 if (!node->parameterOrdinal.has_value()) return failValue(error, "parameter value missing ordinal");
+                // NS304-T06-F04: a $moveNext/$poll captures the original callable's parameters into
+                // the frame (stored by the constructor). Read the captured parameter from the frame
+                // slot instead of the (now-shifted) parameter storage.
+                if (currentMirFunction_ != nullptr &&
+                    !currentMirFunction_->asyncFrameParameters.empty())
+                {
+                    for (const auto& [paramOrdinal, offset, typeKey] :
+                         currentMirFunction_->asyncFrameParameters)
+                    {
+                        if (paramOrdinal == *node->parameterOrdinal)
+                        {
+                            LLVMValueRef self = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                                "param.self");
+                            LLVMValueRef frame = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0),
+                                byteOffset(self, 8, "param.frame.addr"), "param.frame");
+                            LLVMTypeRef capturedType = llvmType(typeKey, error);
+                            return capturedType != nullptr
+                                ? LLVMBuildLoad2(
+                                      builder_, capturedType,
+                                      byteOffset(frame, offset, "param.frame.slot"), "param.frame.load")
+                                : nullptr;
+                        }
+                    }
+                }
                 LLVMValueRef address = parameterStorage_[*node->parameterOrdinal];
                 LLVMTypeRef type = llvmType(node->typeKey, error);
                 return type != nullptr && address != nullptr ? LLVMBuildLoad2(builder_, type, address, "param.load") : nullptr;
@@ -12522,6 +12583,7 @@ private:
             case frontend::ProjectOopMirNodeKind::SuspendPoint:
             case frontend::ProjectOopMirNodeKind::YieldValue:
             case frontend::ProjectOopMirNodeKind::YieldBreak:
+            case frontend::ProjectOopMirNodeKind::GeneratorFrameInit:
             case frontend::ProjectOopMirNodeKind::DropFrame:
             case frontend::ProjectOopMirNodeKind::AsyncYieldValue:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");

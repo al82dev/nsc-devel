@@ -754,6 +754,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::PollAddress: return "poll-address";
         case ProjectOopMirNodeKind::YieldValue: return "yield-value";
         case ProjectOopMirNodeKind::YieldBreak: return "yield-break";
+        case ProjectOopMirNodeKind::GeneratorFrameInit: return "generator-frame-init";
         case ProjectOopMirNodeKind::IteratorCurrent: return "iterator-current";
         case ProjectOopMirNodeKind::IteratorMoveNext: return "iterator-move-next";
         case ProjectOopMirNodeKind::IteratorGetEnumerator: return "iterator-get-enumerator";
@@ -1563,6 +1564,8 @@ bool ProjectOopMirModel::build(
         function.returnTypeKey = source.returnTypeKey;
         function.errorTypeKey = source.errorTypeKey;
         function.frameStorage = source.frameStorage;
+        function.isGeneratorConstructor = source.isGeneratorConstructor;
+        function.generatorParameterTypeKeys = source.generatorParameterTypeKeys;
         function.returnOwnership = source.returnOwnership;
         function.parameterNames = source.parameterNames;
         function.parameterTypeKeys = source.parameterTypeKeys;
@@ -1754,8 +1757,9 @@ bool ProjectOopMirModel::build(
             frameSize = alignUp(frameSize, 8);
             function.asyncFrameSize = frameSize;
         }
-        // NS304-T06-F04: frame size for MoveNext = the locals that must survive a yield
-        // (conservatively every declared local; offsets recorded).
+        // NS304-T06-F04: frame size for MoveNext = the locals live across a YieldValue (precise
+        // def-use liveness, analogous to the async poll in T05-F04); a local whose last use precedes
+        // every yield is omitted.
         if (function.mangledName.ends_with("$moveNext"))
         {
             const auto frameAlignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
@@ -1763,12 +1767,56 @@ bool ProjectOopMirModel::build(
                 if (alignment <= 1) return value;
                 return (value + alignment - 1) / alignment * alignment;
             };
+            std::uint64_t order = 0;
+            std::unordered_map<std::size_t, std::uint64_t> localDefinition;
+            std::unordered_map<std::size_t, std::uint64_t> localLastUse;
+            std::unordered_map<std::size_t, std::uint64_t> parameterLastUse;
+            std::vector<std::uint64_t> yieldOrders;
+            const auto walkLiveness = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                const std::uint64_t here = order++;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value())
+                {
+                    if (!localDefinition.contains(*node->localOrdinal))
+                        localDefinition[*node->localOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::LocalValue &&
+                    node->localOrdinal.has_value())
+                {
+                    localLastUse[*node->localOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::ParameterValue &&
+                    node->parameterOrdinal.has_value())
+                {
+                    parameterLastUse[*node->parameterOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::YieldValue)
+                {
+                    yieldOrders.push_back(here);
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            walkLiveness(walkLiveness, function.body.get());
+            const auto liveAcrossYield = [&](std::size_t localOrdinal) -> bool
+            {
+                const auto definition = localDefinition.find(localOrdinal);
+                const auto lastUse = localLastUse.find(localOrdinal);
+                if (definition == localDefinition.end() || lastUse == localLastUse.end())
+                    return false;
+                for (const std::uint64_t yield : yieldOrders)
+                    if (definition->second < yield && yield < lastUse->second) return true;
+                return false;
+            };
             std::uint64_t frameSize = 0;
             const auto sumLocals = [&](const auto& self, const ProjectOopMirNode* node) -> void
             {
                 if (node == nullptr) return;
                 if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-                    node->localOrdinal.has_value() && !node->typeKey.empty())
+                    node->localOrdinal.has_value() && !node->typeKey.empty() &&
+                    liveAcrossYield(*node->localOrdinal))
                 {
                     const auto layout =
                         objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
@@ -1784,6 +1832,27 @@ bool ProjectOopMirModel::build(
                     self(self, child.get());
             };
             sumLocals(sumLocals, function.body.get());
+            // NS304-T06-F04: capture the original parameters that are live across a yield (a
+            // parameter is live if it is used after any yield) so the constructor can store them.
+            for (std::size_t parameter = 0; parameter < function.generatorParameterTypeKeys.size();
+                 ++parameter)
+            {
+                const auto lastUse = parameterLastUse.find(parameter);
+                if (lastUse == parameterLastUse.end()) continue;
+                bool live = false;
+                for (const std::uint64_t yield : yieldOrders)
+                    if (yield < lastUse->second) { live = true; break; }
+                if (!live) continue;
+                const auto layout = objectLayoutModel.valueLayoutForTypeKey(
+                    nameLookup, function.generatorParameterTypeKeys[parameter]);
+                if (layout.has_value())
+                {
+                    frameSize = frameAlignUp(frameSize, layout->second);
+                    function.asyncFrameParameters.emplace_back(
+                        parameter, frameSize, function.generatorParameterTypeKeys[parameter]);
+                    frameSize += layout->first;
+                }
+            }
             frameSize = frameAlignUp(frameSize, 8);
             function.asyncFrameSize = frameSize;
         }
@@ -1878,6 +1947,37 @@ bool ProjectOopMirModel::build(
             {
                 candidate.asyncFrameLocals = function.asyncFrameLocals;
                 candidate.asyncFrameSize = function.asyncFrameSize;
+                break;
+            }
+        }
+    }
+
+    // NS304-T06-F04: the generator constructor inherits the $moveNext's frame layout + captured
+    // parameter slots so it can allocate the frame and store the parameters.
+    for (ProjectOopMirFunction& function : functions_)
+    {
+        if (!function.mangledName.ends_with("$moveNext")) continue;
+        const std::string constructorName =
+            function.mangledName.substr(0, function.mangledName.size() - 9);
+        for (ProjectOopMirFunction& candidate : functions_)
+        {
+            if (candidate.mangledName == constructorName && candidate.isGeneratorConstructor)
+            {
+                candidate.asyncFrameLocals = function.asyncFrameLocals;
+                candidate.asyncFrameParameters = function.asyncFrameParameters;
+                candidate.asyncFrameSize = function.asyncFrameSize;
+                // Insert the frame-init node right after the `self` declaration (its default
+                // initializer zeroes the struct, so the frame store must follow it).
+                if (candidate.body != nullptr && !candidate.body->children.empty() &&
+                    candidate.body->children[0]->kind == ProjectOopMirNodeKind::LocalDeclaration)
+                {
+                    auto frameInit = std::make_unique<ProjectOopMirNode>();
+                    frameInit->kind = ProjectOopMirNodeKind::GeneratorFrameInit;
+                    frameInit->typeKey = "builtin:void";
+                    frameInit->localOrdinal = candidate.body->children[0]->localOrdinal;
+                    candidate.body->children.insert(
+                        candidate.body->children.begin() + 1, std::move(frameInit));
+                }
                 break;
             }
         }

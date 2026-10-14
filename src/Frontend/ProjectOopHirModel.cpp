@@ -3920,6 +3920,8 @@ ProjectOopHirModel::splitGeneratorFunction(
     moveNext->parameterPassKinds.push_back(ParameterPassKind::Value);
     moveNext->parameterOwnerships.push_back(sema::OwnershipKind::None);
     moveNext->body = std::move(function.body);
+    // NS304-T06-F04: the MoveNext captures the original callable's parameters into its frame.
+    moveNext->generatorParameterTypeKeys = function.parameterTypeKeys;
 
     // NS304-T06-F03: number the yields 1..N (the state set after each yield; 0 is the entry state)
     // and append the terminal `return false` after the last yield.
@@ -3986,6 +3988,9 @@ ProjectOopHirModel::splitGeneratorFunction(
     retSelf->children.push_back(std::move(selfReturn));
     constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
+    // NS304-T06-F04: the original callable is now the generator constructor — it must allocate the
+    // frame and store the captured parameters.
+    function.isGeneratorConstructor = true;
 
     // Drop: `void Gen$drop(iterator<T>* self)` destroys the frame's live locals on early stop.
     // The drop-glue body is emitted by the LLVM from the MoveNext's frame locals.

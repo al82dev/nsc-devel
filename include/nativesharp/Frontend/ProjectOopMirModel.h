@@ -162,6 +162,10 @@ enum class ProjectOopMirNodeKind
     YieldValue,
     // NS304-T06-F03: `yield break` of a synchronous generator. No children.
     YieldBreak,
+    // NS304-T06-F04: the generator constructor must allocate the frame and store the captured
+    // parameters into the iterator's `self` local (lowered by the LLVM using asyncFrameSize +
+    // asyncFrameParameters). `localOrdinal` is the iterator `self` local.
+    GeneratorFrameInit,
     // NS304-T06-F08: iterator protocol nodes (Current/MoveNext/GetEnumerator). One child each.
     IteratorCurrent,
     IteratorMoveNext,
@@ -833,6 +837,14 @@ struct ProjectOopMirFunction final
     std::uint64_t asyncFrameSize = 0; // poll functions only: bytes needed to hold awaited futures
     // NS304-T05-F04: locals that must survive a suspension, with their byte offset and type key.
     std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameLocals;
+    // NS304-T06-F04: generator parameters that must survive a yield (captured into the frame),
+    // with their byte offset and type key. parameterOrdinal refers to the ORIGINAL callable.
+    std::vector<std::tuple<std::size_t, std::uint64_t, std::string>> asyncFrameParameters;
+    // NS304-T06-F04: true for the generator CONSTRUCTOR (the original callable) — it must allocate
+    // the frame and store the parameters so $moveNext/$poll can read them.
+    bool isGeneratorConstructor = false;
+    // NS304-T06-F04: original callable's parameter type keys (for $moveNext/$poll frame slots).
+    std::vector<std::string> generatorParameterTypeKeys;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
     std::vector<ParameterPassKind> parameterPassKinds;
