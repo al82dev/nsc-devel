@@ -3959,6 +3959,42 @@ class Program
         }});
 }
 
+void registerStringToStringViewCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-410", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "string", "stringview", "view", "conversion", "no-copy"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-410")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T11F02StringView", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        string text = "hello";
+        StringView view = text;
+        return view.Length();
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const std::filesystem::path executable =
+                products.directory() / "T11F02StringView.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-410 a string to StringView view must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-410 the string view must preserve the length (hello=5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6586,6 +6622,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerConstructorThrowsCase(registry);
     registerSpanViewConversionCase(registry);
     registerArrayToSpanConversionCase(registry);
+    registerStringToStringViewCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
