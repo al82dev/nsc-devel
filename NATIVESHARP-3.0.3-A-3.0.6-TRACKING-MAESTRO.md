@@ -1124,7 +1124,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T15-F03` — Implementar identidad, layout, ABI, mangling, NSMETA y FFI permitido. *(tipo/layout/pass-return/mangling del decimal operativos (TL-LANG-422); metadata versionada + FFI con representación declarada pendientes.)*
 - [ ] `NS304-T15-F04` — Implementar aritmética, comparación y redondeo. *(add/sub/rem con escalas mixtas + mul/div (TL-LANG-423/424/426/427/430/431); rounding + escala mixta en div + overflow de escala pendientes.)*
 - [ ] `NS304-T15-F05` — Integrar overflow checked/wrapping/saturating donde esté definido. *(overflow del coeficiente atrapado (TL-LANG-429); modos explícitos checked/saturating pendientes.)*
-- [ ] `NS304-T15-F06` — Implementar conversiones enteras/FP/decimal y ranking de overload. *(decimal→entero truncado (TL-LANG-425) operativo; entero→decimal + decimal↔FP + ranking pendientes.)*
+- [x] `NS304-T15-F06` — Implementar conversiones enteras/FP/decimal y ranking de overload. *(cast a decimal + integral↔decimal + decimal↔FP + NaN/∞ trap + ranking (TL-LANG-479/480, exit 0/145); coeficiente >64 bits y escala >19 → T15-F05.)*
 - [ ] `NS304-T15-F07` — Unificar consteval/runtime y bajar a intrinsics o helpers versionados. *(const decimal materializado como i128 (TL-LANG-428); equivalencia consteval/runtime exhaustiva + helpers estáticos pendientes.)*
 - [ ] `NS304-T15-F08` — Integrar formatting/parsing, traits numéricos, generics y bordes. *(core-op `DecimalToString` plumbing armado; emisión de dígitos del lowering pendiente.)*
 
