@@ -8280,6 +8280,29 @@ private:
                             args, 1U, "") == nullptr)
                         return fail(error, "drop glue call failed");
                 }
+                // NS304-T07-F04: the async-iterator's frame is heap (allocated by the constructor's
+                // GeneratorFrameInit). Release it exactly once and null it + park the terminal state
+                // so a second destruction never re-drops or re-frees. The sync iterator is left alone
+                // here: its foreach teardown still owns the frame twice (T06-F08 double-owner), so a
+                // shared free would double-free; that repair is a separate causal commit.
+                const bool asyncIterator = currentMirFunction_ != nullptr &&
+                    !currentMirFunction_->parameterTypeKeys.empty() &&
+                    currentMirFunction_->parameterTypeKeys[0].starts_with("async-iterator:");
+                if (asyncIterator)
+                {
+                    if (deallocationFunction_ == nullptr || deallocationFunctionType_ == nullptr)
+                        return fail(error, "async iterator drop deallocation is unavailable");
+                    LLVMValueRef freeArgs[] = { frame };
+                    buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    LLVMBuildStore(
+                        builder_, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)),
+                        byteOffset(self, 8, "drop.frame.null.store"));
+                    LLVMTypeRef dropStateType = llvmType("builtin:int", error);
+                    if (dropStateType == nullptr) return false;
+                    LLVMBuildStore(
+                        builder_, LLVMConstInt(dropStateType, static_cast<unsigned long long>(-1), 1),
+                        self);
+                }
                 LLVMBuildBr(builder_, noFrame);
                 LLVMPositionBuilderAtEnd(builder_, noFrame);
                 return true;

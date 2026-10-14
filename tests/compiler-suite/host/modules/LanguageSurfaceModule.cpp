@@ -6536,6 +6536,40 @@ class Program
                 "TL-LANG-453 a second move(it.Current) must be rejected: " +
                     rejected.error + rejected.output);
         }});
+
+    registry.add(TestCase{"TL-LANG-454", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "async-generator", "drop", "frame", "idempotent"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncGenDropIdempotent", "Exe", R"ns(
+class Program
+{
+    public static AsyncIterator<int, int> Gen() { yield return 1; }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool h = await it.MoveNextAsync();
+        it.Drop();
+        it.Drop();
+        return 7;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncGenDropIdempotent.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-454 the async iterator double Drop must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-454 the second Drop must not re-free the frame (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
 }
 
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
