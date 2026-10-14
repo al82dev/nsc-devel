@@ -3776,6 +3776,56 @@ class Program
         }});
 }
 
+void registerTraitWitnessCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-406", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trait", "impl", "conformance", "witness", "nsmeta", "intermodular"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path typeProject = products.writeProject(
+                "T08WitnessType", "Library", R"ns(
+public class External { }
+)ns");
+            const std::filesystem::path implProject = products.writeProject(
+                "T08WitnessImpl", "Library", R"ns(
+public trait Local
+{
+    int F();
+}
+
+impl Local for External
+{
+    public int F() { return 5; }
+}
+)ns", "<ProjectReference Include=\"T08WitnessType.nsproj\"/>");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T08WitnessConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        External e = new External();
+        return e.F();
+    }
+}
+)ns", "<ProjectReference Include=\"T08WitnessImpl.nsproj\"/>\n"
+        "<ProjectReference Include=\"T08WitnessType.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T08WitnessConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-406 the NSMETA conformance witness must compile the consumer: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-406 e.F() must dispatch through the NSMETA witness (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6399,6 +6449,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerNullConditionalUserIndexCase(registry);
     registerOrphanCoherenceCase(registry);
     registerExtensionVisibilityCase(registry);
+    registerTraitWitnessCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
