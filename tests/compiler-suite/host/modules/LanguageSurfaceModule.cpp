@@ -3453,6 +3453,58 @@ class Program
         }});
 }
 
+void registerIntermodularExtensionOperatorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-399", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "operator", "nsmeta", "intermodular"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T08OpProducer", "Library", R"ns(
+public struct Vector
+{
+    public int X;
+}
+
+extension Vector
+{
+    public static int operator+(Vector a, Vector b)
+    {
+        return a.X + b.X;
+    }
+}
+)ns");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T08OpConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Vector a = new Vector();
+        Vector b = new Vector();
+        a.X = 2;
+        b.X = 3;
+        int c = a + b;
+        return c;
+    }
+}
+)ns", "<ProjectReference Include=\"T08OpProducer.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T08OpConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-399 the intermodular operator must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-399 a + b must dispatch to the producer's extension operator (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6030,6 +6082,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerRefPropertyWriteCase(registry);
     registerExtensionOperatorCase(registry);
     registerCollectionBuilderCase(registry);
+    registerIntermodularExtensionOperatorCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
