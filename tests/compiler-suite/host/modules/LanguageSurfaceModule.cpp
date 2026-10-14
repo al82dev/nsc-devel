@@ -3304,6 +3304,155 @@ class Program
         }});
 }
 
+namespace
+{
+    constexpr const char* collectionBuilderPrelude = R"ns(
+struct MyList
+{
+    public int Count;
+    public static int Log;
+    public static MyList CreateBuilder()
+    {
+        MyList m = new MyList();
+        return m;
+    }
+    public void Add(int x)
+    {
+        Count = Count + x;
+        Log = Log * 10 + x;
+    }
+    public MyList ToCollection()
+    {
+        return this;
+    }
+}
+)ns";
+}
+
+void registerCollectionBuilderCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-395", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "builder"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::string source = std::string(collectionBuilderPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        MyList l = [2, 3];
+        return l.Count;
+    }
+}
+)ns";
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionBuilderMulti", "Exe", source);
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionBuilderMulti.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-395 the builder must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-395 [2, 3] must Add(2)+Add(3) (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-396", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "builder", "zero", "one", "nesting"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::string source = std::string(collectionBuilderPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        MyList z = [];
+        MyList o = [7];
+        MyList a = [10, 20];
+        MyList b = [30, 40];
+        return z.Count + o.Count + a.Count + b.Count;
+    }
+}
+)ns";
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionBuilderShapes", "Exe", source);
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionBuilderShapes.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-396 zero/one/nesting must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 107,
+                "TL-LANG-396 0 + 7 + 30 + 70 = 107 (exit 107): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-397", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "builder", "order", "side-effects"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::string source = std::string(collectionBuilderPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        MyList.Log = 0;
+        MyList m = [1, 2, 3];
+        return MyList.Log;
+    }
+}
+)ns";
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionBuilderOrder", "Exe", source);
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionBuilderOrder.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-397 order program must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 123,
+                "TL-LANG-397 Add must run 1,2,3 in source order (Log=123): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-398", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "collection", "builder", "diagnostic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::string source = std::string(collectionBuilderPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        MyList l = [1.5];
+        return l.Count;
+    }
+}
+)ns";
+            const std::filesystem::path project = products.writeProject(
+                "T09CollectionBuilderInvalid", "Exe", source);
+            const std::filesystem::path executable =
+                products.directory() / "T09CollectionBuilderInvalid.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(
+                emitted.started && emitted.exitCode != 0 &&
+                    emitted.output.find("error") != std::string::npos,
+                "TL-LANG-398 a non-int element must be rejected with a diagnostic: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5880,6 +6029,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerRefPropertyCase(registry);
     registerRefPropertyWriteCase(registry);
     registerExtensionOperatorCase(registry);
+    registerCollectionBuilderCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
