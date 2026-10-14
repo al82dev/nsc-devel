@@ -1071,7 +1071,9 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T11-F01` — Elevar slice/span mutable e inmutable a tipos de conversion ranking.
   *(vista `Span<T>`→`ReadOnlySpan<T>` unidireccional, rank 6, lowering estructural; inversa
   rechazada; TL-LANG-408 exit 7.)*
-- [ ] `NS304-T11-F02` — Definir conversiones array/buffer/string/slice sin copia ni extensión de lifetime.
+- [~] `NS304-T11-F02` — Definir conversiones array/buffer/string/slice sin copia ni extensión de lifetime.
+  *(array→`Span<T>`/`ReadOnlySpan<T>` sin copia ✅, TL-LANG-409 exit 14; buffer/string→slice y
+  lifetime pendientes.)*
 - [ ] `NS304-T11-F03` — Integrar spans en extension receiver, inferencia y conversiones compuestas.
 - [ ] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
 - [ ] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints.
