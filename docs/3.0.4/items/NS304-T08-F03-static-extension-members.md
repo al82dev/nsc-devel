@@ -1,6 +1,6 @@
 # NS304-T08-F03 — Métodos, propiedades y constantes estáticos de extensión
 
-- **Estado**: PARCIAL (parser de función estática sin receptor) / residual (lookup Sema `T.Miembro()`)
+- **Estado**: CERRADO (parser + directo/import + `T.Miembro()`)
 - **Rama**: development
 
 ## Resultado
@@ -16,4 +16,12 @@
   Verificado ronda 101. La invocación directa `Twice()` (mismo scope) y por `using Suite` SÍ pasan
   (exit 7) tras el fix de namespace global (T08-F01). Falta registrar la estática de extensión en el
   lookup del TIPO EXTENDIDO. Propiedades y constantes estáticas: mismas rutas pendientes.
+
+### Cierre `T.Miembro()` — verificado 2026-10-13
+
+- `bindExtension` maneja el `typeReceiver`: la estática (0 params) forma un `StaticMethodGroup` sin
+  receiver; `analyzeCall` rutea el group estático a `analyzeNamespaceFunctionCall` sin forwarded
+  receiver (el path del método de instancia no aplica).
+- Verificado: `extension Box { static Twice() } ... Box.Twice()` → exit 7. `TL-LANG-389` PASS.
+  Commits `e2f747a4`, `f56ff7b3`.
 
