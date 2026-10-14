@@ -233,6 +233,10 @@ struct ClassMemberSymbol final
     // `name`; overload resolution must not use that historical spelling as the language contract.
     std::string operatorTraitKey;
     bool isUserConversion = false;
+    // NS304-T13-F06: for a `T[*]` flexible-array field carrying `[TrailingStorage(nameof(Length),
+    // nameof(Capacity))]`, the spelling of the `Length` member (first argument). Downstream stages
+    // resolve it to its byte offset for the runtime `index < Length` bounds guard.
+    std::string trailingLengthFieldName;
     bool isImplicitUserConversion = false;
     // Bloque 1 item 9 (ownership-aware properties/indexers). Set on BOTH accessors of a
     // property or indexer whose declared type carries the `owned` qualifier.
