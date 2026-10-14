@@ -20,7 +20,9 @@
 
 ## Residual
 
-- **Getter por referencia** (`ref` en extension property): pendiente. Requiere que el accessor
-  `get_` retorne por referencia y que la asignación reescrita mantenga la dirección del receptor
-  mutable (hoy el receptor viaja por valor).
+- **Getter por referencia** (`ref` en extension property): pendiente. Verificado (ronda 100):
+  `extension Box { public ref int ValueRef { get { return ref this.Value; } } }` falla con
+  `return ref is valid only inside a ref-returning method` + `left side of assignment is not
+  assignable`. Requiere que el accessor `get_` retorne por referencia (`isReferenceReturn`) y que
+  la asignación reescrita mantenga la dirección del receptor mutable (hoy el receptor viaja por valor).
 - La evidencia de getter/setter por valor no cierra el contrato completo de F02.
