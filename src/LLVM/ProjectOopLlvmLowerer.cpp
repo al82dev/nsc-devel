@@ -15007,6 +15007,30 @@ private:
                     builder_, right, scaleShift, "decimal.right.scale");
                 effectiveScale = LLVMBuildAdd(
                     builder_, leftScale, rightScale, "decimal.scale.add");
+                // NS304-T15-F05: the coefficient must stay within 96 bits; a wider product corrupts
+                // the scale bits, so trap instead of silently wrapping.
+                if (trapFunction_ != nullptr && trapFunctionType_ != nullptr)
+                {
+                    std::uint64_t maskWords[2] = { 0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull };
+                    LLVMValueRef mask96 = LLVMConstIntOfArbitraryPrecision(
+                        LLVMIntTypeInContext(context_, 128), 2, maskWords);
+                    LLVMValueRef overflow = LLVMBuildICmp(
+                        builder_, LLVMIntUGT, combined, mask96, "decimal.mul.overflow");
+                    LLVMBasicBlockRef okBlock = appendBlock("decimal.mul.ok");
+                    LLVMBasicBlockRef trapBlock = appendBlock("decimal.mul.trap");
+                    LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
+
+                    LLVMPositionBuilderAtEnd(builder_, trapBlock);
+                    LLVMValueRef reason = LLVMConstInt(
+                        LLVMInt32TypeInContext(context_),
+                        static_cast<std::uint64_t>(LlvmTrapReason::DecimalOverflow),
+                        0);
+                    LLVMValueRef trapArguments[] = { reason };
+                    buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+                    LLVMBuildUnreachable(builder_);
+
+                    LLVMPositionBuilderAtEnd(builder_, okBlock);
+                }
             }
             else if (operation == lexer::TokenKind::Slash)
             {

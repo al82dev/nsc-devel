@@ -40,6 +40,8 @@ enum class LlvmTrapReason : std::uint32_t
     // T07-F06 assert(false). Kept distinct from unreachable() so crash telemetry preserves intent.
     AssertionFailed = 15,
     // T07-F06 explicit unreachable(). Reaching it is a program defect, not an optimizer hint.
-    Unreachable = 16
+    Unreachable = 16,
+    // T15-F05: decimal coefficient arithmetic overflowed the 96-bit coefficient. Exit 128 + 17.
+    DecimalOverflow = 17
 };
 }
