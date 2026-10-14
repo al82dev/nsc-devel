@@ -6251,6 +6251,51 @@ class Program
         }});
 }
 
+void registerGeneratorIntermodularCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-444", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "iterator", "moveNextFn", "intermodular", "abi"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T06IteratorProducer", "Library", R"ns(
+public class Async
+{
+    public static Iterator<int> Gen()
+    {
+        yield return 1;
+        yield return 2;
+    }
+}
+)ns");
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T06IteratorConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Iterator<int> it = Async.Gen();
+        int sum = 0;
+        while (it.MoveNext()) { sum += it.Current; }
+        return sum;
+    }
+}
+)ns", "<ProjectReference Include=\"T06IteratorProducer.nsproj\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T06IteratorConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-444 the intermodular iterator must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 3,
+                "TL-LANG-444 the opaque iterator must be consumed across modules via its moveNextFn (1 + 2 = 3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8014,6 +8059,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorRefMutItemCase(registry);
     registerGeneratorPinnedFrameCase(registry);
     registerGeneratorTypedErrorCase(registry);
+    registerGeneratorIntermodularCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
