@@ -1037,7 +1037,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos. *(CERRADO: `operator+` de extensión resuelve y baja como llamada de namespace (TL-LANG-394, exit 5).)*
 - [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(nominal `impl Trait for Class` productivo; orphan + NSMETA witness pendientes.)*
 - [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión productiva; ranking/índices pendientes.)*
-- [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia publicada (NSMETA 1.32); static+operador sin bit "static" = deuda intermodular.)*
+- [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia (NSMETA 1.32) + static/operator (bit 6) + consumo intermodular del operador (TL-LANG-399) cerrados; genéricos + prueba de cero layout mutation pendientes.)*
 
 ### T09 — construcción, propiedades y eventos
 
