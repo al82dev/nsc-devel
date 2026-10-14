@@ -1,6 +1,6 @@
 # NS304-T08-F04 — Operadores mediante witnesses
 
-- **Estado**: AUDITADO (operador normal productivo; operador extension sin witness)
+- **Estado**: CERRADO (operador de extensión resuelve + baja como llamada)
 - **Rama**: development
 
 ## Auditoría (línea base)
