@@ -24,6 +24,12 @@ Estado real:
 Falta el ranking normativo (filtrar por imports/visibilidad/constraints + rankear sin orden de
 archivo) y los índices incrementales por identidad (invalidables, no cache textual).
 
+### Verificación (2026-10-13)
+
+- La precedencia nominal-antes-extensión y el despacho básico de extensión funcionan
+  (`extension Box { int Twice() }` → `b.Twice()` exit 1). Lo pendiente es el ranking/ambigüedad
+  normativos y los índices por identidad (un vertical de determinismo, no una surface).
+
 ## Nota
 
 F06 depende de la precedencia (ya en orden) + el ranking + los índices. No es una surface nueva; es
