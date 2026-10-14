@@ -4803,6 +4803,36 @@ class Program
         }});
 }
 
+void registerScopeFieldStoreRejectCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-486", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "scope", "stack", "escape", "field"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T13F03ScopeFieldStore", "Exe", R"ns(
+class Enemy { public int X; public Enemy(int x) { X = x; } }
+class Holder { public Enemy e; }
+class Program
+{
+    public static int Main()
+    {
+        Holder h = new Holder();
+        { scope Enemy temporary = new Enemy(42); h.e = temporary; }
+        return 0;
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T13F03ScopeFieldStore.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error.find("cannot be stored in a field") != std::string::npos ||
+                     emitted.output.find("cannot be stored in a field") != std::string::npos),
+                "TL-LANG-486 scope field store must be rejected: " + emitted.error + emitted.output);
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9606,6 +9636,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalUncheckedRejectCase(registry);
     registerScopeStackCase(registry);
     registerScopeEscapeRejectCase(registry);
+    registerScopeFieldStoreRejectCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

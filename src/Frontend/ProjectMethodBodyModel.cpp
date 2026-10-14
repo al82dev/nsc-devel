@@ -21716,6 +21716,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             }
         }
     }
+    // NS304-T13-F03: a `scope` object cannot be stored in a field/static (it would outlive its frame).
+    if (expression->first() != nullptr && expression->second() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        std::vector<const ast::AstNode*> pending;
+        pending.push_back(expression->second());
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr) continue;
+            if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, node->text());
+                if (name.has_value() && name->kind == ScopeNameKind::Local &&
+                    name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->second()->range(),
+                        "scope object '" + locals_[name->semanticOrdinal].name +
+                            "' cannot be stored in a field or static because it would outlive its frame");
+                    break;
+                }
+            }
+            if (node->first() != nullptr) pending.push_back(node->first());
+            for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        }
+    }
     if (expression->first() != nullptr && !activeIterationBorrows_.empty())
     {
         const std::optional<std::string> targetPlace =
