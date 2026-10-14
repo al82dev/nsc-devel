@@ -3254,6 +3254,56 @@ class Program
         }});
 }
 
+void registerExtensionOperatorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-394", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "operator", "static"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08ExtensionOperator", "Exe", R"ns(
+struct Vector
+{
+    public int X;
+}
+
+extension Vector
+{
+    static int operator+(Vector a, Vector b)
+    {
+        return a.X + b.X;
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        Vector a = new Vector();
+        Vector b = new Vector();
+        a.X = 2;
+        b.X = 3;
+        int c = a + b;
+        return c;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08ExtensionOperator.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-394 the extension operator must compile and dispatch: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 5,
+                "TL-LANG-394 a + b must dispatch to the extension operator (exit 5): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5829,6 +5879,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerForeachTeardownCase(registry);
     registerRefPropertyCase(registry);
     registerRefPropertyWriteCase(registry);
+    registerExtensionOperatorCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
