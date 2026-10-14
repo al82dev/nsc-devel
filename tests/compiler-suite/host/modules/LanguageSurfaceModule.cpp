@@ -4512,6 +4512,41 @@ class Program
         }});
 }
 
+void registerDecimalDivideCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-426", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "arithmetic", "div", "scale-align"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F04DecimalDivide", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal a = 1.5m;
+        decimal b = 2.5m;
+        decimal c = a / b;
+        if ((int)(c * 10m) == 6) return 0;
+        return 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F04DecimalDivide.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-426 decimal divide must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-426 1.5m/2.5m must be 0.6 (scale-aligned coefficient) (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7205,6 +7240,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalArithmeticCase(registry);
     registerDecimalMultiplyCase(registry);
     registerDecimalToIntCase(registry);
+    registerDecimalDivideCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
