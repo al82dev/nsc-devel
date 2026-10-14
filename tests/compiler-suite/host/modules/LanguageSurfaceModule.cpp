@@ -6296,6 +6296,113 @@ class Program
         }});
 }
 
+void registerAsyncGeneratorRefItemCase(TestRegistry& registry)
+{
+    const auto addRefCase = [&](std::string id, std::string projectName, std::string source,
+                                int expectedExit, std::string expectText)
+    {
+        registry.add(TestCase{id, "CL-LANG-020", "Host.Language", "integration", "PR",
+            {"language", "yield", "async-generator", "ref", "item", "MoveNextAsync", "Current"},
+            [source = std::move(source), expectedExit, expectText = std::move(expectText),
+             projectName = std::move(projectName), id = std::move(id)](TestContext& context) {
+                TemporaryT01Products products;
+                const std::filesystem::path project =
+                    products.writeProject(projectName, "Exe", source);
+                const std::filesystem::path executable =
+                    products.directory() / (projectName + ".exe");
+                const external_program_support::Result emitted = emitT01Product(
+                    L"--emit-project-oop-exe", project, executable, products.directory());
+                context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                    id + " must compile: " + emitted.error + emitted.output);
+                if (!emitted.started || emitted.exitCode != 0) return;
+                const auto result = external_program_support::run(
+                    executable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() &&
+                    result.exitCode == static_cast<unsigned long>(expectedExit),
+                    id + " " + expectText + ": " + result.error + result.output +
+                        " exit=" + std::to_string(result.exitCode));
+            }});
+    };
+
+    addRefCase("TL-LANG-445", "T07AsyncGenRefRead", R"ns(
+class Program
+{
+    public static AsyncIterator<ref int, int> Gen()
+    {
+        int x = 10;
+        yield return x;
+    }
+    public static int Main()
+    {
+        AsyncIterator<ref int, int> it = Gen();
+        bool has = await it.MoveNextAsync();
+        ref int v = ref it.Current;
+        return v;
+    }
+}
+)ns", 10, "the ref item must read through to the persistent frame slot (exit 10)");
+
+    addRefCase("TL-LANG-446", "T07AsyncGenRefMutWrite", R"ns(
+class Program
+{
+    public static AsyncIterator<ref mut int, int> Gen()
+    {
+        int x = 10;
+        yield return x;
+    }
+    public static int Main()
+    {
+        AsyncIterator<ref mut int, int> it = Gen();
+        bool has = await it.MoveNextAsync();
+        ref int v = ref it.Current;
+        v = 42;
+        return v;
+    }
+}
+)ns", 42, "the ref mut item must write through to the frame slot (exit 42)");
+
+    addRefCase("TL-LANG-447", "T07AsyncGenRefStableFrame", R"ns(
+class Program
+{
+    public static AsyncIterator<ref int, int> Gen()
+    {
+        int x = 100;
+        yield return x;
+        int y = 20;
+        yield return y;
+    }
+    public static int Main()
+    {
+        AsyncIterator<ref int, int> it = Gen();
+        int first = 0;
+        bool h1 = await it.MoveNextAsync();
+        { ref int a = ref it.Current; first = a; }
+        bool h2 = await it.MoveNextAsync();
+        { ref int b = ref it.Current; return first + b; }
+    }
+}
+)ns", 120, "two ref items must share the same stable frame (100 + 20 = 120)");
+
+    addRefCase("TL-LANG-448", "T07AsyncGenRefAwaitBody", R"ns(
+class Program
+{
+    public static async int Fetch() { return 42; }
+    public static AsyncIterator<ref int, int> Gen()
+    {
+        int x = await Fetch();
+        yield return x;
+    }
+    public static int Main()
+    {
+        AsyncIterator<ref int, int> it = Gen();
+        bool has = await it.MoveNextAsync();
+        ref int v = ref it.Current;
+        return v;
+    }
+}
+)ns", 42, "the single await+yield machine must keep working with a ref item (exit 42)");
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8060,6 +8167,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorPinnedFrameCase(registry);
     registerGeneratorTypedErrorCase(registry);
     registerGeneratorIntermodularCase(registry);
+    registerAsyncGeneratorRefItemCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

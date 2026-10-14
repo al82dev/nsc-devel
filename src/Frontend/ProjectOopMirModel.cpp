@@ -1667,7 +1667,8 @@ bool ProjectOopMirModel::build(
                 {
                     localLastUse[*node->localOrdinal] = here;
                 }
-                else if (node->kind == ProjectOopMirNodeKind::SuspendPoint)
+                else if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
+                         node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
                 {
                     suspendOrders.push_back(here);
                 }

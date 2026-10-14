@@ -3277,16 +3277,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             node->integerValue = 0;
             if (statement->first() != nullptr)
             {
-                // NS304-T06-F05: a `ref`/`ref mut` item yields the ADDRESS of the local (the item is
-                // a reference into the frame), not a copy of its value.
+                // NS304-T06-F05/T07-F04: a `ref`/`ref mut` item yields the ADDRESS of the local (the
+                // item is a reference into the frame), not a copy of its value. Both the synchronous
+                // `Iterator<ref T>` and the `AsyncIterator<ref T, E>` share the inner-type surface.
                 bool itemByReference = false;
                 if (memberModel_ != nullptr && memberOrdinal < memberModel_->members().size())
                 {
                     const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-                    if (const std::optional<std::string_view> inner =
-                            language::iteratorInnerTypeKey(member.declaredTypeKey);
-                        inner.has_value() &&
-                        (inner->starts_with("ref:") || inner->starts_with("refmut:")))
+                    std::optional<std::string_view> itemInner =
+                        language::iteratorInnerTypeKey(member.declaredTypeKey);
+                    if (!itemInner.has_value())
+                        itemInner = language::asyncIteratorInnerTypeKey(member.declaredTypeKey);
+                    if (itemInner.has_value() &&
+                        (itemInner->starts_with("ref:") || itemInner->starts_with("refmut:")))
                     {
                         itemByReference = true;
                     }

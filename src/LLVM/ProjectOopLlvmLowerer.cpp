@@ -8134,32 +8134,31 @@ private:
                     : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
 
                 LLVMPositionBuilderAtEnd(builder_, entryBlock);
-                // NS304-T07-F04: the async-generator's locals live in the async-iterator's frame,
-                // so a `ref` item references a persistent slot, not the poll's stack alloca.
+                // NS304-T07-F04: the async-generator's locals live in the async-iterator's PERSISTENT
+                // frame (allocated by the constructor via GeneratorFrameInit). A null frame here is an
+                // internal invariant violation, never recoverable with a stack alloca.
                 LLVMValueRef frame = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(asyncIter, 8, "ayield.frame.slot.addr"), "ayield.frame");
-                LLVMBasicBlockRef haveFrame = appendBlock("ayield.have.frame");
-                LLVMBasicBlockRef allocFrame = appendBlock("ayield.alloc.frame");
+                LLVMBasicBlockRef frameOk = appendBlock("ayield.frame.ok");
+                LLVMBasicBlockRef frameTrap = appendBlock("ayield.frame.trap");
                 LLVMBuildCondBr(
                     builder_,
                     LLVMBuildICmp(
                         builder_, LLVMIntEQ, frame,
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "ayield.frame.null"),
-                    allocFrame, haveFrame);
-                LLVMPositionBuilderAtEnd(builder_, allocFrame);
-                LLVMTypeRef frameType = LLVMArrayType2(
-                    LLVMInt8TypeInContext(context_), currentMirFunction_ != nullptr
-                        ? currentMirFunction_->asyncFrameSize : 0);
-                LLVMValueRef newFrame = entryBlockAlloca(frameType, 8, "ayield.frame.storage");
-                LLVMBuildStore(builder_, newFrame, byteOffset(asyncIter, 8, "ayield.frame.slot.store"));
-                LLVMBuildBr(builder_, haveFrame);
-                LLVMPositionBuilderAtEnd(builder_, haveFrame);
-                LLVMValueRef framePhi = LLVMBuildPhi(
-                    builder_, LLVMPointerTypeInContext(context_, 0), "ayield.frame.phi");
-                LLVMValueRef frameIncoming[] = { frame, newFrame };
-                LLVMBasicBlockRef frameBlocks[] = { entryBlock, allocFrame };
-                LLVMAddIncoming(framePhi, frameIncoming, frameBlocks, 2);
+                    frameTrap, frameOk);
+                LLVMPositionBuilderAtEnd(builder_, frameTrap);
+                if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                    return fail(error, "async yield frame invariant trap is unavailable");
+                {
+                    LLVMValueRef trapReason = LLVMConstInt(
+                        LLVMInt32TypeInContext(context_), static_cast<std::uint64_t>(0x7F04), 0);
+                    LLVMValueRef trapArguments[] = {trapReason};
+                    buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+                    LLVMBuildUnreachable(builder_);
+                }
+                LLVMPositionBuilderAtEnd(builder_, frameOk);
                 for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
                 {
                     const auto localFound = localStorage_.find(localOrdinal);
@@ -8169,7 +8168,7 @@ private:
                     LLVMBuildStore(
                         builder_,
                         LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local"),
-                        byteOffset(framePhi, offset, "ayield.frame.local.slot"));
+                        byteOffset(frame, offset, "ayield.frame.local.slot"));
                 }
                 LLVMValueRef item = nullptr;
                 if (!node->children.empty())
@@ -8186,7 +8185,7 @@ private:
                             { itemOffset = off; foundItemOffset = true; break; }
                         if (!foundItemOffset)
                             return fail(error, "async ref item local has no frame slot");
-                        item = byteOffset(framePhi, itemOffset, "ayield.item.frame.slot");
+                        item = byteOffset(frame, itemOffset, "ayield.item.frame.slot");
                     }
                     else
                     {
