@@ -1078,7 +1078,9 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
   *(extension receiver concreto `ReadOnlySpan<int>` + inferencia de argumento genérico
   `First<T>(ReadOnlySpan<T>)` ya funcionan; pendiente receiver genérico `extension ReadOnlySpan<T>`
   (muro del F06 ranking) + vistas anidadas/lifetime.)*
-- [ ] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
+- [~] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
+  *(`params ReadOnlySpan<T>` sin heap ✅ TL-LANG-411 exit 7; inline buffer y builder aprobado
+  pendientes.)*
 - [ ] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints.
 - [ ] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable.
 - [ ] `NS304-T11-F07` — Completar ref fields, `scoped`, ref readonly y escape summaries intermodulares.
