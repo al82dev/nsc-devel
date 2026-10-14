@@ -899,22 +899,21 @@ void ProjectMethodBodyModel::analyzeCallable(
     analyzeConstructorInitializer(callable, callableOrdinal, rootScopeOrdinal, diagnostics);
     analyzeBlock(
         callable.syntax->first(), callableOrdinal, rootScopeOrdinal, false, diagnostics);
-    // NS304-T05-F05: a borrowed or pinned local cannot cross a suspension. The frame saves the
-    // local's bytes, but the borrow/pin identity (a re-localizable view, or a fixed address) is
-    // not preserved across the poll return, so such a local across `await`/`yield` would be a
-    // dangling/relocated reference. Reject it conservatively (precise def-use liveness is a
-    // refinement).
+    // NS304-T05-F05: a pinned local cannot cross a suspension — its fixed-address identity is not
+    // preserved across the poll return (the local moves to the frame and back). A borrowed local
+    // IS allowed when its source is re-localizable to a frame slot; the MIR drags the borrow's
+    // source into the frame and rejects a borrow whose source is a parameter/field (no slot).
     if (callable.effects.contains(sema::Effect::Async) && !awaitExpressions_.empty())
     {
         for (const MethodLocalSymbol& local : locals())
         {
-            if (local.ownership == sema::OwnershipKind::Borrowed || local.isPinned)
+            if (local.isPinned)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     local.range,
-                    "async function cannot hold a borrowed or pinned local across a suspension "
+                    "async function cannot hold a pinned local across a suspension "
                     "(NS304-T05-F05)");
             }
         }

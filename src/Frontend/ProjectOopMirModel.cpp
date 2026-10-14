@@ -1657,6 +1657,73 @@ bool ProjectOopMirModel::build(
                     if (definition->second < suspend && suspend < lastUse->second) return true;
                 return false;
             };
+            // NS304-T05-F05: a borrow that is live across a suspension drags its SOURCE into the
+            // frame (the borrow's origin must survive the poll return for the borrow to stay
+            // valid). Collect borrow->source edges; a source that is a local is re-localizable,
+            // a source that is a parameter/field has no slot and is rejected.
+            std::unordered_map<std::size_t, std::size_t> borrowSource;
+            std::unordered_set<std::size_t> borrowNonLocalSource;
+            const auto walkBorrows = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value() && !node->children.empty())
+                {
+                    const ProjectOopMirNode* init = node->children[0].get();
+                    if (init != nullptr && init->kind == ProjectOopMirNodeKind::BorrowValue)
+                    {
+                        if (init->localOrdinal.has_value())
+                            borrowSource[*node->localOrdinal] = *init->localOrdinal;
+                        else
+                            borrowNonLocalSource.insert(*node->localOrdinal);
+                    }
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            walkBorrows(walkBorrows, function.body.get());
+
+            // Final live set = directly-live locals plus every source of a live borrow (so the
+            // borrow's origin survives and the borrow stays valid after resume).
+            std::unordered_set<std::size_t> liveSet;
+            const auto collectLive = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value() && liveAcrossSuspension(*node->localOrdinal))
+                {
+                    liveSet.insert(*node->localOrdinal);
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            collectLive(collectLive, function.body.get());
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+                for (const auto& [borrowedLocal, sourceLocal] : borrowSource)
+                {
+                    if (liveSet.contains(borrowedLocal) && !liveSet.contains(sourceLocal))
+                    {
+                        liveSet.insert(sourceLocal);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Reject a borrow of a non-local (parameter/field) that crosses a suspension: there is
+            // no frame slot to keep its origin alive.
+            for (const std::size_t borrowedLocal : borrowNonLocalSource)
+            {
+                if (liveAcrossSuspension(borrowedLocal))
+                {
+                    functionError = "async function cannot hold a borrowed view of a parameter or "
+                                    "field across a suspension (NS304-T05-F05)";
+                    return function;
+                }
+            }
+
             const auto alignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
             {
                 if (alignment <= 1) return value;
@@ -1667,7 +1734,7 @@ bool ProjectOopMirModel::build(
                 if (node == nullptr) return;
                 if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
                     node->localOrdinal.has_value() && !node->typeKey.empty() &&
-                    liveAcrossSuspension(*node->localOrdinal))
+                    liveSet.contains(*node->localOrdinal))
                 {
                     const auto layout =
                         objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);

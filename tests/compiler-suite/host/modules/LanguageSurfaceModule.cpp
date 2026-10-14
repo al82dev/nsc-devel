@@ -5163,11 +5163,11 @@ class Program
 void registerAsyncBorrowRejectCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-374", "CL-LANG-020", "Host.Language", "integration", "PR",
-        {"language", "async", "borrow", "suspend", "reject", "pinning"},
+        {"language", "async", "borrow", "suspend", "survive", "frame"},
         [](TestContext& context) {
             TemporaryT01Products products;
             const std::filesystem::path project = products.writeProject(
-                "T05AsyncBorrowReject", "Exe", R"ns(
+                "T05AsyncBorrowSurvive", "Exe", R"ns(
 class Box { public int Value; public Box() { Value = 10; } }
 class Program
 {
@@ -5181,17 +5181,56 @@ class Program
 
     public static int Main()
     {
+        return await Read();
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T05AsyncBorrowSurvive.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-374 a borrowed local across a suspension must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                products.directory() / "T05AsyncBorrowSurvive.exe", {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 10,
+                "TL-LANG-374 a borrowed local across a suspension must survive (view.Value=10): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerAsyncBorrowParameterRejectCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-434", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "borrow", "suspend", "parameter", "reject"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncBorrowParameterReject", "Exe", R"ns(
+class Box { public int Value; public Box() { Value = 10; } }
+class Program
+{
+    public static async int Read(Box box)
+    {
+        borrowed Box view = box;
+        yield;
+        return view.Value;
+    }
+
+    public static int Main()
+    {
         return 42;
     }
 }
 )ns");
             const external_program_support::Result emitted = emitT01Product(
                 L"--emit-project-oop-exe", project,
-                products.directory() / "T05AsyncBorrowReject.exe", products.directory());
+                products.directory() / "T05AsyncBorrowParameterReject.exe", products.directory());
             context.expect(emitted.started && emitted.exitCode != 0 &&
                     (emitted.error + emitted.output).find(
-                        "borrowed or pinned local across a suspension") != std::string::npos,
-                "TL-LANG-374 a borrowed local across a suspension must be rejected: " +
+                        "borrowed local source parameter") != std::string::npos,
+                "TL-LANG-434 a borrowed view of a parameter across a suspension must be rejected: " +
                     emitted.error + emitted.output);
         }});
 }
@@ -7564,6 +7603,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncLivenessCase(registry);
     registerAsyncPreciseLivenessCase(registry);
     registerAsyncBorrowRejectCase(registry);
+    registerAsyncBorrowParameterRejectCase(registry);
     registerAsyncThrowsCase(registry);
     registerAsyncThrowErrorCase(registry);
     registerAsyncRethrowCase(registry);
