@@ -16342,7 +16342,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         // NS304-T07-F02: MoveNextAsync returns the future of the next demand (future:<bool>).
         const std::string resultTypeKey = isMoveNext
             ? "builtin:bool"
-            : isMoveNextAsync ? language::futureTypeKey("builtin:bool") : "builtin:void";
+            : isMoveNextAsync ? language::futureTypeKey("builtin:bool")
+            : isDrop ? "builtin:void" : callee.receiverTypeKey;
         coreBindings_.push_back(MethodCoreBinding{
             isMoveNext ? MethodCoreOperationKind::IteratorMoveNext
                        : isMoveNextAsync ? MethodCoreOperationKind::IteratorMoveNextAsync
