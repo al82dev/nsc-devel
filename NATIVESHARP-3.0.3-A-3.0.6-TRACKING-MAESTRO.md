@@ -1074,7 +1074,10 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [~] `NS304-T11-F02` — Definir conversiones array/buffer/string/slice sin copia ni extensión de lifetime.
   *(array→`Span`/`ReadOnlySpan` ✅ TL-LANG-409 exit 14; string→`StringView` ✅ TL-LANG-410 exit 5;
   buffer→slice y lifetime pendientes.)*
-- [ ] `NS304-T11-F03` — Integrar spans en extension receiver, inferencia y conversiones compuestas.
+- [~] `NS304-T11-F03` — Integrar spans en extension receiver, inferencia y conversiones compuestas.
+  *(extension receiver concreto `ReadOnlySpan<int>` + inferencia de argumento genérico
+  `First<T>(ReadOnlySpan<T>)` ya funcionan; pendiente receiver genérico `extension ReadOnlySpan<T>`
+  (muro del F06 ranking) + vistas anidadas/lifetime.)*
 - [ ] `NS304-T11-F04` — Implementar `params` sobre span, inline buffer y builder aprobado.
 - [ ] `NS304-T11-F05` — Permitir tipos ref-like/stack-only como argumentos genéricos bajo constraints.
 - [ ] `NS304-T11-F06` — Permitir tipos ref-like implementar traits sin `dyn` escapable.
