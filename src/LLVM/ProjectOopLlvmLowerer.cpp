@@ -17917,6 +17917,54 @@ private:
             return LLVMBuildPtrToInt(builder_, value, destination, "ptrtoint");
         if (sourceWidth != 0 && targetIsAddress)
             return LLVMBuildIntToPtr(builder_, value, destination, "inttoptr");
+        // NS304-T15-F06: decimal -> integer = coefficient (low 96 bits) / 10^scale, truncated toward
+        // zero. 10^scale is built with a runtime loop because the scale is dynamic (0..28). The
+        // division is widened through a 64-bit lane (the 128-bit divide would need __udivti3).
+        if (source == "builtin:decimal" && targetWidth != 0)
+        {
+            LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+            LLVMValueRef coefficientMask = LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0);
+            LLVMValueRef coefficient = LLVMBuildAnd(builder_, value, coefficientMask, "decimal.coeff");
+            LLVMValueRef scaleShift = LLVMConstInt(wide, 96, 0);
+            LLVMValueRef scale = LLVMBuildLShr(builder_, value, scaleShift, "decimal.scale");
+
+            LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+            LLVMValueRef coefficientLane = LLVMBuildTrunc(
+                builder_, coefficient, lane, "decimal.coeff64");
+            LLVMValueRef scaleLane = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
+
+            LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+            LLVMBasicBlockRef header = LLVMAppendBasicBlockInContext(
+                context_, currentFunction_, "decimal.pow10.header");
+            LLVMBasicBlockRef body = LLVMAppendBasicBlockInContext(
+                context_, currentFunction_, "decimal.pow10.body");
+            LLVMBasicBlockRef exit = LLVMAppendBasicBlockInContext(
+                context_, currentFunction_, "decimal.pow10.exit");
+            LLVMValueRef one = LLVMConstInt(lane, 1, 0);
+            LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
+            LLVMBuildBr(builder_, header);
+
+            LLVMPositionBuilderAtEnd(builder_, header);
+            LLVMValueRef divisor = LLVMBuildPhi(builder_, lane, "decimal.pow10.div");
+            LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.scale");
+            LLVMValueRef done = LLVMBuildICmp(
+                builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
+            LLVMBuildCondBr(builder_, done, exit, body);
+
+            LLVMPositionBuilderAtEnd(builder_, body);
+            LLVMValueRef nextDivisor = LLVMBuildMul(builder_, divisor, ten, "decimal.pow10.mul");
+            LLVMValueRef nextRemaining = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
+            LLVMBuildBr(builder_, header);
+
+            LLVMAddIncoming(divisor, &one, &preheader, 1);
+            LLVMAddIncoming(divisor, &nextDivisor, &body, 1);
+            LLVMAddIncoming(remaining, &scaleLane, &preheader, 1);
+            LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
+
+            LLVMPositionBuilderAtEnd(builder_, exit);
+            LLVMValueRef quotient = LLVMBuildUDiv(builder_, coefficientLane, divisor, "decimal.quotient");
+            return LLVMBuildTrunc(builder_, quotient, destination, "trunc.decimal");
+        }
         return failValue(error, "unsupported Stage 34 LLVM conversion from '" + std::string(source) + "' to '" + std::string(target) + "'");
     }
 
