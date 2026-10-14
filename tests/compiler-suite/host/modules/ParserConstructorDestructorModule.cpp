@@ -49,13 +49,15 @@ void testThisInitializer(TestContext& context)
 
 void testConstructorNoHeapThrows(TestContext& context)
 {
-    // Constructor throws is not a current Parser capability. The plan row combines it with
-    // noheap, so this test characterizes the real boundary instead of inventing the feature.
+    // NS304-T09-F10: a constructor declares a typed error like any callable. The error TypeSyntax
+    // is preserved beside the noheap modifier; semantic validation of the error type happens later.
     DeclarationFixture fixture("class C { noheap C() throws Error { } }", {"Error"});
     AstNode* const node = member(fixture);
     context.expect(node != nullptr && node->hasModifier(TokenKind::KwNoHeap) &&
-            node->throwsTypeSyntax() == nullptr && !fixture.diagnostics().empty(),
-        "TP-PAR-261 noheap constructor must retain its flag while typed throws remains rejected");
+            node->throwsTypeSyntax() != nullptr &&
+            node->throwsTypeSyntax()->baseName() == "Error" &&
+            fixture.diagnostics().empty(),
+        "TP-PAR-261 noheap constructor must retain its flag and preserve the typed throws error");
 }
 
 void testDifferentConstructorName(TestContext& context)

@@ -3826,6 +3826,63 @@ class Program
         }});
 }
 
+void registerConstructorThrowsCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-407", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "constructor", "throws", "error", "typed"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                     "NumericParsing.ns", "String.ns", "Exception.ns"})
+            {
+                std::error_code copyError;
+                std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                    std::filesystem::copy_options::overwrite_existing, copyError);
+                context.expect(!copyError,
+                    "TL-LANG-407 must stage NativeSharp.Core/" + std::string(file) + ": " +
+                        copyError.message());
+                if (copyError) return;
+            }
+            const std::filesystem::path project = products.writeProject(
+                "T09F10CtorThrows", "Exe", R"ns(
+using NativeSharp.Core;
+
+class E : Exception { }
+
+class C
+{
+    public C() throws E { }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        C c = new C();
+        return 0;
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T09F10CtorThrows.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-407 a typed throws constructor must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-407 a typed throws constructor must run (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6450,6 +6507,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerOrphanCoherenceCase(registry);
     registerExtensionVisibilityCase(registry);
     registerTraitWitnessCase(registry);
+    registerConstructorThrowsCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
