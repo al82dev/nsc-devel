@@ -3278,6 +3278,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             // state index, assigned by splitGeneratorFunction (the MoveNext rewrite).
             auto node = makeNode(ProjectOopHirNodeKind::YieldValue, statement, "builtin:void");
             node->integerValue = 0;
+            // NS304-T07-F05: a `yield return` inside a try/finally suspends while the finally is
+            // still active; capture those regions directly so a cooperative cancellation runs them
+            // once. (Not a structured exit, so the structuredExitBinding path does not apply.)
+            node->cleanupRegionOrdinals.assign(
+                activeHirCleanupRegions_.begin(), activeHirCleanupRegions_.end());
+            node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
             if (statement->first() != nullptr)
             {
                 // NS304-T06-F05/T07-F04: a `ref`/`ref mut` item yields the ADDRESS of the local (the
@@ -3809,6 +3815,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         // poll stores the item + the demand future's result/state; integerValue is the resume state.
         auto node = makeNode(ProjectOopHirNodeKind::AsyncYieldValue, body->syntax, "builtin:void");
         node->integerValue = body->integerValue;
+        // NS304-T07-F05: the cancellation path must run the same finally/defer as the terminal
+        // return, so carry the yield's cleanup regions.
+        node->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
+        node->cleanupContinuationKind = body->cleanupContinuationKind;
         if (!body->children.empty() && body->children[0] != nullptr)
             node->children.push_back(std::move(body->children[0]));
         return node;

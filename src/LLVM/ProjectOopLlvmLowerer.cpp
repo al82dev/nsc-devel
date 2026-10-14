@@ -8131,6 +8131,14 @@ private:
                     LLVMBuildICmp(builder_, LLVMIntEQ, iterState, cancelledConst, "ayield.is.cancelled"),
                     cancelledBlock, runBlock);
                 LLVMPositionBuilderAtEnd(builder_, cancelledBlock);
+                // NS304-T07-F05: a cooperative cancellation runs the active finally/defer once
+                // before parking the iterator, exactly like the terminal return.
+                for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0; --index)
+                {
+                    if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error))
+                        return false;
+                    if (terminated()) return true;
+                }
                 LLVMBuildStore(
                     builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
                     byteOffset(future, 16, "ayield.cancelled.result"));
