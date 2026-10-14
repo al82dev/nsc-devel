@@ -21,6 +21,8 @@
   valor const como parámetro de tipo + aridad en el layout.
 - El valor const YA es productivo como expresión (`Fixed<T, const int N> { int Count() { return N; } }`
   + `Fixed<int, 0>`/`Fixed<int, 1>`; ver `FrontendGenericsFlowModule.cpp`).
-- El hueco concreto: `public int[N] data;` **no parsea** (`expected '(', found ';'` en el `[N]`): el
-  array count sólo acepta longitud literal, no un const genérico. La vertical es: parser (const expr
-  en el count) → Sema (materializar el valor const del argumento) → layout (aridad = valor const).
+- **Hueco base (corregido)**: el fixed buffer como **FIELD** no parsea — `public int[3] data;`
+  falla con `expected '(', found ';'` (el parser trata `[3] data` como método/propiedad, no como
+  campo). El LOCAL `int[3] a = default;` sí funciona. Sobre esa base, `int[N] data;` añade la const
+  expr en el count. La vertical es: parser (campo con array count) → Sema (materializar el valor
+  const del argumento) → layout (aridad = valor const).
