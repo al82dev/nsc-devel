@@ -15590,6 +15590,23 @@ ast::AstNode* Parser::parseNameOfExpression()
     return expression;
 }
 
+// NS304-T15-F05: `checked(expr)` / `saturating(expr)`. The policy is preserved on the node's
+// auxiliaryText; the wrapped expression is the single child.
+ast::AstNode* Parser::parseOverflowPolicyExpression()
+{
+    const lexer::Token& policyToken = consume();
+    const std::string policy = std::string(policyToken.lexeme());
+    expect(TokenKind::LeftParen, "'(' after '" + policy + "'");
+    ast::AstNode* operand = parseExpression();
+    expect(TokenKind::RightParen, "')' after '" + policy + "' operand");
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::OverflowPolicyExpression,
+        join(policyToken.range(), tokens_[index_ - 1U].range()));
+    node->setFirst(operand);
+    node->setAuxiliaryText(policy);
+    return node;
+}
+
 ast::AstNode* Parser::parsePrimaryExpression()
 {
     if (startsParenthesizedBlock("match"))
@@ -15615,6 +15632,10 @@ ast::AstNode* Parser::parsePrimaryExpression()
     }
     if (atContextualKeyword("nameof") && peek().kind() == TokenKind::LeftParen)
         return parseNameOfExpression();
+    if ((atContextualKeyword("checked") || atContextualKeyword("saturating") ||
+         atContextualKeyword("unchecked") || atContextualKeyword("wrapping")) &&
+        peek().kind() == TokenKind::LeftParen)
+        return parseOverflowPolicyExpression();
     const lexer::Token& token = current();
     ast::AstNodeKind kind = ast::AstNodeKind::IdentifierExpression;
 

@@ -1278,6 +1278,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::MatchExpression: return "match-expression";
         case ProjectOopHirNodeKind::MatchArm: return "match-arm";
         case ProjectOopHirNodeKind::MatchValue: return "match-value";
+        case ProjectOopHirNodeKind::OverflowPolicy: return "overflow-policy";
     }
     return "unknown";
 }
@@ -5170,6 +5171,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
             node->stringValue = expression->text();
+            return node;
+        }
+
+        case ast::AstNodeKind::OverflowPolicyExpression:
+        {
+            auto operand = lowerExpression(expression->first(), memberOrdinal, addressContext, error);
+            if (operand == nullptr) return nullptr;
+            auto node = makeNode(
+                ProjectOopHirNodeKind::OverflowPolicy, expression, operand->typeKey);
+            node->stringValue = expression->auxiliaryText();
+            node->children.push_back(std::move(operand));
             return node;
         }
 

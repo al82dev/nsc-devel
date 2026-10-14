@@ -184,7 +184,10 @@ enum class AstNodeKind
     // NativeSharp 3.0 T10-F07. first() preserves the source operand; typeSyntaxes() preserves
     // explicit generic arguments. Semantic analysis resolves that syntax without evaluating it
     // before the node becomes a compile-time string constant.
-    NameOfExpression
+    NameOfExpression,
+    // NS304-T15-F05. `checked(expr)` / `saturating(expr)`. first() is the wrapped expression and
+    // auxiliaryText() is the policy spelling ("checked" or "saturating").
+    OverflowPolicyExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

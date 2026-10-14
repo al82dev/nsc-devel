@@ -344,6 +344,7 @@ private:
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
     ast::AstNode* parseNameOfExpression();
+    ast::AstNode* parseOverflowPolicyExpression();
     ast::AstNode* parseCollectionExpression();
     ast::AstNode* parseComprehensionExpression();
     ast::AstNode* parseComprehensionYieldStatement();

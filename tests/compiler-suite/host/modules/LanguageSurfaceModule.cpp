@@ -4650,6 +4650,101 @@ class Program
         }});
 }
 
+void registerDecimalOverflowPolicyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-481", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "overflow", "saturating"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F05DecimalSaturating", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal pos = saturating(1e15m * 1e15m);
+        decimal neg = saturating((-1e15m) * 1e15m);
+        if (pos <= 0m) return 1;
+        if (neg >= 0m) return 2;
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F05DecimalSaturating.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-481 saturating decimal must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-481 saturating decimal must clamp to Max/Min (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerDecimalCheckedTrapCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-482", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "overflow", "checked"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F05DecimalChecked", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal d = checked(1e15m * 1e15m);
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F05DecimalChecked.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-482 checked decimal must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.exitCode == 145,
+                "TL-LANG-482 checked decimal overflow must trap (exit 145): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerDecimalUncheckedRejectCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-483", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "overflow", "unchecked", "wrapping"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F05DecimalUnchecked", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal d = unchecked(1e15m * 1e15m);
+        return 0;
+    }
+}
+)ns");
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project,
+                products.directory() / "T15F05DecimalUnchecked.exe", products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    (emitted.error.find("is not allowed for decimal arithmetic") != std::string::npos ||
+                     emitted.output.find("is not allowed for decimal arithmetic") != std::string::npos),
+                "TL-LANG-483 unchecked/wrapping decimal must be rejected: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9448,6 +9543,9 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalDivideMixedScaleCase(registry);
     registerDecimalConversionsCase(registry);
     registerDecimalNaNRejectionCase(registry);
+    registerDecimalOverflowPolicyCase(registry);
+    registerDecimalCheckedTrapCase(registry);
+    registerDecimalUncheckedRejectCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

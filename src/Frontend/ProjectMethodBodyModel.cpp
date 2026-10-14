@@ -10034,6 +10034,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = "builtin:char";
             result.valid = true;
             break;
+        case ast::AstNodeKind::OverflowPolicyExpression:
+        {
+            const std::string policy = expression->auxiliaryText();
+            if (policy == "unchecked" || policy == "wrapping")
+            {
+                // NS304-T15-F05: decimal has no modular arithmetic, so these two policies are
+                // rejected outright (they would silently turn overflow into wrapping).
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "overflow policy '" + policy + "' is not allowed for decimal arithmetic");
+                break;
+            }
+            if (policy != "checked" && policy != "saturating")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "unsupported overflow policy '" + policy + "'");
+                break;
+            }
+            if (expression->first() == nullptr)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "overflow policy expression requires an operand");
+                break;
+            }
+            result = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+                allowMethodGroup, allowEvent, allowMove, allowConstructorPropertyWrite);
+            break;
+        }
         case ast::AstNodeKind::NameOfExpression:
         {
             const ast::AstNode* target = expression->first();

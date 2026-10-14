@@ -9536,6 +9536,17 @@ private:
                 return node->referenceResult
                     ? matchValueStack_.back().second
                     : matchValueStack_.back().first;
+            case frontend::ProjectOopMirNodeKind::OverflowPolicy:
+            {
+                // NS304-T15-F05: the policy scopes the operations inside the wrapped expression.
+                // `saturating`/`checked`/`unchecked`/`wrapping` reach the decimal ops via this
+                // single-threaded flag; wrapping/unchecked for decimal are rejected in Sema.
+                const std::string previous = currentOverflowPolicy_;
+                currentOverflowPolicy_ = node->stringValue;
+                LLVMValueRef result = lowerExpression(node->children.front().get(), error);
+                currentOverflowPolicy_ = previous;
+                return result;
+            }
             case frontend::ProjectOopMirNodeKind::NullCoalescing:
                 return lowerNullCoalescing(node, error);
             case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
@@ -15275,9 +15286,19 @@ private:
         if (node->operation == lexer::TokenKind::Bang) return LLVMBuildNot(builder_, value, "not");
         if (node->operation == lexer::TokenKind::Tilde) return LLVMBuildNot(builder_, value, "bitnot");
         if (node->operation == lexer::TokenKind::Minus)
+        {
+            // NS304-T15-F05: decimal negation flips the sign bit (127), not the two's complement.
+            if (node->typeKey == "builtin:decimal")
+            {
+                std::uint64_t signWords[2] = { 0, 0x8000000000000000ull };
+                LLVMValueRef signBit = LLVMConstIntOfArbitraryPrecision(
+                    LLVMIntTypeInContext(context_, 128), 2, signWords);
+                return LLVMBuildXor(builder_, value, signBit, "decimal.neg");
+            }
             return isFloating(node->typeKey)
                 ? applyFloatingPointMode(LLVMBuildFNeg(builder_, value, "fneg"))
                 : LLVMBuildNeg(builder_, value, "neg");
+        }
         return failValue(error, "unsupported unary operation in Stage 34 LLVM lowering");
     }
 
@@ -15385,7 +15406,7 @@ private:
                         operation,
                         portableSimd.has_value()
                             ? portableSimd->laneKind == language::SimdLaneKind::SignedInteger
-                            : isSignedInteger(operandType)),
+                            : (isSignedInteger(operandType) || operandType == "builtin:decimal")),
                     left, right, "icmp");
         }
         if (floating)
@@ -15502,29 +15523,62 @@ private:
                     builder_, right, scaleShift, "decimal.right.scale");
                 effectiveScale = LLVMBuildAdd(
                     builder_, leftScale, rightScale, "decimal.scale.add");
-                // NS304-T15-F05: the coefficient must stay within 96 bits; a wider product corrupts
-                // the scale bits, so trap instead of silently wrapping.
-                if (trapFunction_ != nullptr && trapFunctionType_ != nullptr)
+                // NS304-T15-F05: the coefficient must stay within 96 bits. The default (checked)
+                // policy traps DecimalOverflow; `saturating(expr)` yields MaxValue/MinValue.
                 {
                     std::uint64_t maskWords[2] = { 0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull };
-                    LLVMValueRef mask96 = LLVMConstIntOfArbitraryPrecision(
-                        LLVMIntTypeInContext(context_, 128), 2, maskWords);
+                    LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+                    LLVMValueRef mask96 = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
                     LLVMValueRef overflow = LLVMBuildICmp(
                         builder_, LLVMIntUGT, combined, mask96, "decimal.mul.overflow");
+                    LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
                     LLVMBasicBlockRef okBlock = appendBlock("decimal.mul.ok");
                     LLVMBasicBlockRef trapBlock = appendBlock("decimal.mul.trap");
                     LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
 
                     LLVMPositionBuilderAtEnd(builder_, trapBlock);
-                    LLVMValueRef reason = LLVMConstInt(
-                        LLVMInt32TypeInContext(context_),
-                        static_cast<std::uint64_t>(LlvmTrapReason::DecimalOverflow),
-                        0);
-                    LLVMValueRef trapArguments[] = { reason };
-                    buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
-                    LLVMBuildUnreachable(builder_);
+                    if (currentOverflowPolicy_ == "saturating")
+                    {
+                        LLVMValueRef leftSign = LLVMBuildLShr(
+                            builder_, left, LLVMConstInt(wide, 127, 0), "decimal.mul.leftsign");
+                        LLVMValueRef rightSign = LLVMBuildLShr(
+                            builder_, right, LLVMConstInt(wide, 127, 0), "decimal.mul.rightsign");
+                        LLVMValueRef sign = LLVMBuildAnd(
+                            builder_, LLVMBuildXor(builder_, leftSign, rightSign, "decimal.mul.signxor"),
+                            LLVMConstInt(wide, 1, 0), "decimal.mul.sign");
+                        LLVMValueRef saturated = LLVMBuildOr(
+                            builder_, mask96,
+                            LLVMBuildShl(builder_, sign, LLVMConstInt(wide, 127, 0), "decimal.mul.signshift"),
+                            "decimal.mul.saturated");
+                        LLVMBuildBr(builder_, okBlock);
 
-                    LLVMPositionBuilderAtEnd(builder_, okBlock);
+                        LLVMPositionBuilderAtEnd(builder_, okBlock);
+                        LLVMValueRef phi = LLVMBuildPhi(builder_, wide, "decimal.mul.result");
+                        LLVMValueRef scalePhi = LLVMBuildPhi(builder_, wide, "decimal.mul.scale");
+                        LLVMValueRef normalCombined[] = { combined };
+                        LLVMValueRef satCombined[] = { saturated };
+                        LLVMValueRef normalScale[] = { effectiveScale };
+                        LLVMValueRef satScale[] = { LLVMConstInt(wide, 0, 0) };
+                        LLVMAddIncoming(phi, normalCombined, &preheader, 1);
+                        LLVMAddIncoming(phi, satCombined, &trapBlock, 1);
+                        LLVMAddIncoming(scalePhi, normalScale, &preheader, 1);
+                        LLVMAddIncoming(scalePhi, satScale, &trapBlock, 1);
+                        combined = phi;
+                        effectiveScale = scalePhi;
+                    }
+                    else
+                    {
+                        if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                            return failValue(error, "decimal multiply overflow but no trap is configured");
+                        LLVMValueRef reason = LLVMConstInt(
+                            LLVMInt32TypeInContext(context_),
+                            static_cast<std::uint64_t>(LlvmTrapReason::DecimalOverflow), 0);
+                        LLVMValueRef trapArguments[] = { reason };
+                        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+                        LLVMBuildUnreachable(builder_);
+
+                        LLVMPositionBuilderAtEnd(builder_, okBlock);
+                    }
                 }
             }
             else if (operation == lexer::TokenKind::Slash)
@@ -19642,6 +19696,9 @@ private:
     // T03-F03. The value/address pair for each nested match governing expression. The value is
     // computed once; generated MatchValue nodes select the representation their HIR context needs.
     std::vector<std::pair<LLVMValueRef, LLVMValueRef>> matchValueStack_;
+    // NS304-T15-F05. Active overflow policy for the wrapped expression ("checked"/"saturating",
+    // empty outside). The decimal arithmetic ops consult this single-threaded flag.
+    std::string currentOverflowPolicy_;
     std::vector<ExceptionHandlerContext> exceptionHandlerStack_;
     std::vector<FuncletContext> funcletStack_;
     std::vector<LoopTargets> loopStack_;

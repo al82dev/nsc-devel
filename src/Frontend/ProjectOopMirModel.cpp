@@ -961,6 +961,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::MatchExpression: return "match-expression";
         case ProjectOopMirNodeKind::MatchArm: return "match-arm";
         case ProjectOopMirNodeKind::MatchValue: return "match-value";
+        case ProjectOopMirNodeKind::OverflowPolicy: return "overflow-policy";
     }
     return "unknown";
 }
@@ -2667,6 +2668,10 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::MatchValue:
             result->kind = ProjectOopMirNodeKind::MatchValue;
+            break;
+        case ProjectOopHirNodeKind::OverflowPolicy:
+            result->kind = ProjectOopMirNodeKind::OverflowPolicy;
+            result->stringValue = node->stringValue;
             break;
         case ProjectOopHirNodeKind::NullCoalescing:
             result->kind = ProjectOopMirNodeKind::NullCoalescing;

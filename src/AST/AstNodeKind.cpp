@@ -114,6 +114,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(YieldBreakStatement);
         NS_AST_KIND(SuspendStatement);
         NS_AST_KIND(NameOfExpression);
+        NS_AST_KIND(OverflowPolicyExpression);
 #undef NS_AST_KIND
     }
 

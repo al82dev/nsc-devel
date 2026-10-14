@@ -424,7 +424,9 @@ enum class ProjectOopMirNodeKind
     // T03-F03. Explicit expression match; see the corresponding HIR nodes for child shape.
     MatchExpression,
     MatchArm,
-    MatchValue
+    MatchValue,
+    // NS304-T15-F05. `checked(expr)`/`saturating(expr)`; one operand and the policy string.
+    OverflowPolicy
 };
 
 struct ProjectOopMirNode final
