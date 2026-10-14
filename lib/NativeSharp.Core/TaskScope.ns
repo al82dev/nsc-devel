@@ -7,23 +7,29 @@ namespace NativeSharp.Core
     // implementa IExecutor no se convierte implicitamente al trait; el parametro TExecutor fija el
     // executor concreto y su constraint garantiza el protocolo Spawn/PollJoin/Cancel.
     //
-    // Todo hijo se registra via Spawn y debe unirse antes de salir: Join recorre los hijos en
-    // orden inverso de spawn y los une. El fallo de un hijo (future en estado de error) marca el
-    // scope como fallado.
+    // Estado: 0 = Open, 1 = Joining, 2 = Closed. Todo hijo se registra via Spawn y debe unirse
+    // antes de salir: Join recorre los hijos en orden inverso de spawn y los une una sola vez.
+    // El fallo de un hijo (PollJoin=1) marca el scope fallado y cancela+une los restantes. El
+    // destructor cancela+une los hijos que queden activos (orden inverso), cada operacion como
+    // maximo una vez, sin doble cleanup.
     public struct TaskScope<TExecutor> where TExecutor : IExecutor
     {
         private TExecutor executor;
         private int[] handles;
+        private bool[] active;
         private int count;
         private bool failed;
+        private int state;
 
         public static TaskScope<TExecutor> Create(TExecutor executor)
         {
             TaskScope<TExecutor> scope;
             scope.executor = move(executor);
             scope.handles = new int[8];
+            scope.active = new bool[8];
             scope.count = 0;
             scope.failed = false;
+            scope.state = 0;
             return move(scope);
         }
 
@@ -36,30 +42,88 @@ namespace NativeSharp.Core
             if (count == handles.Length)
             {
                 int[] grown = new int[handles.Length * 2];
+                bool[] grownActive = new bool[handles.Length * 2];
                 for (int i = 0; i < count; i = i + 1)
                 {
                     grown[i] = handles[i];
+                    grownActive[i] = active[i];
                 }
                 handles = grown;
+                active = grownActive;
             }
             handles[count] = executor.Spawn(task);
+            active[count] = true;
             count = count + 1;
+        }
+
+        private void JoinOne(int index)
+        {
+            if (!active[index]) { return; }
+            int status = executor.PollJoin(handles[index]);
+            while (status == -1)
+            {
+                status = executor.PollJoin(handles[index]);
+            }
+            active[index] = false;
+            if (status == 1)
+            {
+                failed = true;
+            }
         }
 
         public void Join()
         {
+            if (state == 2) { return; }
+            state = 1;
             for (int i = count - 1; i >= 0; i = i - 1)
             {
+                if (!active[i]) { continue; }
                 int status = executor.PollJoin(handles[i]);
                 while (status == -1)
                 {
                     status = executor.PollJoin(handles[i]);
                 }
+                active[i] = false;
                 if (status == 1)
                 {
                     failed = true;
+                    // El fallo de un hijo cancela y une los restantes (orden inverso), sin
+                    // abandonar ningun handle activo.
+                    for (int j = i - 1; j >= 0; j = j - 1)
+                    {
+                        if (!active[j]) { continue; }
+                        executor.Cancel(handles[j]);
+                        int st = executor.PollJoin(handles[j]);
+                        while (st == -1)
+                        {
+                            st = executor.PollJoin(handles[j]);
+                        }
+                        active[j] = false;
+                        if (st == 1) { failed = true; }
+                    }
                 }
             }
+            state = 2;
+        }
+
+        ~TaskScope()
+        {
+            if (state == 2) { return; }
+            for (int i = count - 1; i >= 0; i = i - 1)
+            {
+                if (active[i])
+                {
+                    executor.Cancel(handles[i]);
+                    int st = executor.PollJoin(handles[i]);
+                    while (st == -1)
+                    {
+                        st = executor.PollJoin(handles[i]);
+                    }
+                    active[i] = false;
+                    if (st == 1) { failed = true; }
+                }
+            }
+            state = 2;
         }
     }
 }

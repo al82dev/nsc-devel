@@ -6766,6 +6766,104 @@ class Program
                 "TL-LANG-459 Child(ref value) must write through to the source (41->42): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
+
+    registry.add(TestCase{"TL-LANG-462", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "task-scope", "destructor", "cleanup", "reverse-order"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07TaskScopeCleanup", "Exe", R"ns(
+using NativeSharp.Core;
+struct TrackingExecutor : IExecutor
+{
+    public int Spawn(Future<void> task) { Program.SpawnCount = Program.SpawnCount + 1; return Program.SpawnCount - 1; }
+    public int PollJoin(int handle) { Program.JoinLog[Program.JoinCount] = handle; Program.JoinCount = Program.JoinCount + 1; return 0; }
+    public void Cancel(int handle) { Program.CancelLog[Program.CancelCount] = handle; Program.CancelCount = Program.CancelCount + 1; }
+}
+class Program
+{
+    public static int SpawnCount;
+    public static int[] JoinLog = new int[16];
+    public static int JoinCount;
+    public static int[] CancelLog = new int[16];
+    public static int CancelCount;
+    public static async void Child() { }
+    public static int Main()
+    {
+        {
+            TaskScope<TrackingExecutor> scope = TaskScope<TrackingExecutor>.Create(new TrackingExecutor());
+            scope.Spawn(Child());
+            scope.Spawn(Child());
+            scope.Spawn(Child());
+        }
+        bool ok = CancelCount == 3 && JoinCount == 3 &&
+            CancelLog[0] == 2 && CancelLog[1] == 1 && CancelLog[2] == 0 &&
+            JoinLog[0] == 2 && JoinLog[1] == 1 && JoinLog[2] == 0;
+        return ok ? 7 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07TaskScopeCleanup.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-462 the task scope cleanup must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-462 the destructor must Cancel+Join children in reverse spawn order once (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-463", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "task-scope", "join", "idempotent"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07TaskScopeIdempotent", "Exe", R"ns(
+using NativeSharp.Core;
+struct CountingExecutor : IExecutor
+{
+    public int Spawn(Future<void> task) { return 0; }
+    public int PollJoin(int handle) { Program.Joins = Program.Joins + 1; return 0; }
+    public void Cancel(int handle) { Program.Cancels = Program.Cancels + 1; }
+}
+class Program
+{
+    public static int Joins;
+    public static int Cancels;
+    public static async void Child() { }
+    public static int Main()
+    {
+        TaskScope<CountingExecutor> scope = TaskScope<CountingExecutor>.Create(new CountingExecutor());
+        scope.Spawn(Child());
+        scope.Join();
+        scope.Join();
+        return (Joins == 1 && Cancels == 0) ? 7 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07TaskScopeIdempotent.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-463 the idempotent Join must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-463 a second Join must not re-join (one PollJoin, zero Cancel): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
 }
 
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
