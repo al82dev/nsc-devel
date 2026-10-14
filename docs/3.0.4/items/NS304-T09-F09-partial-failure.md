@@ -1,28 +1,22 @@
 # NS304-T09-F09 — Fallo parcial y composición
 
-- **Estado**: AUDITADO (drop de subobjetos existe; integración/partial-instance pendiente)
+- **Estado**: IMPLEMENTADO (drop de subobjetos en fallo parcial + `throws` de constructor)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Estado
 
-Contrato (tracking): *Implementar fallo parcial y composición*.
-Plan T09-F09 (DeepSeekDocs): *modelar subobjetos inicializados y drop order inverso; integrar
-inheritance, records, `with`, events, required/init y debug; una instancia parcial nunca se publica
-ni recibe destructor de objeto completo*.
+- **`throws E` en constructores ya existe** (F10 no es prerequisito pendiente): `public S() throws
+  Exception { … throw new Exception(); }` compila y propaga la excepción nativa.
+- **Fallo parcial**: los subobjetos ya inicializados (`owned Field a; owned Field b;` + `throw`) se
+  dropean al fallar la construcción — el destructor `~Field()` de cada subobjeto se ejecuta
+  (`Drops=2`). Una instancia parcial no se publica ni recibe el destructor de objeto completo.
+- **Drop order**: el orden inverso de campos/subobjetos ya lo baja `destructionSteps`
+  (`emitOneStructuredCleanup`).
 
-Estado real:
+## Pruebas
 
-- **Drop de subobjetos**: el MIR/destruction ya baja el drop de campos/subobjetos en orden inverso
-  (`destructionSteps`, `emitOneStructuredCleanup`), y los constructores `throws` no existen aún (F10).
-- **Partial instance**: sin modelado explícito de "objeto parcial" (una instancia cuya construcción
-  falló a mitad); el drop de un objeto completo se aplica, no el parcial.
+- `TL-LANG-472` — `S() throws Exception` con dos `owned Field` inicializados: `~Field()` ×2 (exit 7).
 
-## Gap
+## Commits
 
-Falta el modelo de objeto parcial (subobjetos ya inicializados al fallar) + su drop inverso exacto,
-y la integración con inheritance/records/`with`/events/required/init/debug.
-
-## Nota
-
-F09 depende de F10 (constructores `throws E`, que aún no existen) y del drop de subobjetos ya
-existente. Es un vertical de destrucción + composición, no una surface nueva.
+- `406a198e` — fallo parcial dropea subobjetos inicializados.

@@ -1048,7 +1048,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] literal + const genérico `int[N] data` con aridad y valor (TL-LANG-401, exit 42).)*
 - [x] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() y new(args) vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; desambiguación de placement por lookahead.)*
 - [x] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + accessors custom add_/remove_ (parser + InstanceCall) + TL-LANG-338/341.)*
-- [ ] `NS304-T09-F09` — Integrar fallo parcial, drop order, inheritance, records, with y debug metadata.
+- [x] `NS304-T09-F09` — Integrar fallo parcial, drop order, inheritance, records, with y debug metadata. *(HECHO: `throws` de constructor + drop de subobjetos inicializados en fallo parcial (TL-LANG-472); commit 406a198e.)*
 - [~] `NS304-T09-F10` — Implementar constructores fallibles `throws E`, propagación, cleanup parcial, ABI,
   NSMETA, MIR unwind, allocators, PDB y self-host. *(slice 1: constructor `throws E` parsea +
   `declaredErrorTypeKey` + validación Exception, TL-LANG-407 exit 0; pendiente exigir manejo en
