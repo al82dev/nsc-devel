@@ -14990,15 +14990,64 @@ private:
             LLVMValueRef leftScale = LLVMBuildLShr(builder_, left, scaleShift, "decimal.scale");
             LLVMValueRef combined = nullptr;
             LLVMValueRef effectiveScale = nullptr;
-            if (operation == lexer::TokenKind::Plus)
+            if (operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus)
             {
-                combined = LLVMBuildAdd(builder_, leftCoefficient, rightCoefficient, "decimal.coeff.add");
-                effectiveScale = leftScale;
-            }
-            else if (operation == lexer::TokenKind::Minus)
-            {
-                combined = LLVMBuildSub(builder_, leftCoefficient, rightCoefficient, "decimal.coeff.sub");
-                effectiveScale = leftScale;
+                // NS304-T15-F04 mixed scales: align both coefficients to the max scale by multiplying
+                // each by 10^(max - its scale), then add/sub the aligned coefficients.
+                LLVMValueRef rightScale = LLVMBuildLShr(
+                    builder_, right, scaleShift, "decimal.right.scale");
+                LLVMValueRef scaleGe = LLVMBuildICmp(
+                    builder_, LLVMIntUGE, leftScale, rightScale, "decimal.scale.ge");
+                LLVMValueRef maxScale = LLVMBuildSelect(
+                    builder_, scaleGe, leftScale, rightScale, "decimal.scale.max");
+                LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
+                LLVMValueRef leftCoeff64 = LLVMBuildTrunc(
+                    builder_, leftCoefficient, lane, "decimal.align.left64");
+                LLVMValueRef rightCoeff64 = LLVMBuildTrunc(
+                    builder_, rightCoefficient, lane, "decimal.align.right64");
+                LLVMValueRef leftDiff = LLVMBuildTrunc(
+                    builder_, LLVMBuildSub(builder_, maxScale, leftScale, "decimal.align.leftdiff"),
+                    lane, "decimal.align.leftdiff64");
+                LLVMValueRef rightDiff = LLVMBuildTrunc(
+                    builder_, LLVMBuildSub(builder_, maxScale, rightScale, "decimal.align.rightdiff"),
+                    lane, "decimal.align.rightdiff64");
+                auto pow10 = [&](LLVMValueRef exponent, const char* name) -> LLVMValueRef {
+                    LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+                    LLVMBasicBlockRef header = appendBlock(std::string(name) + ".header");
+                    LLVMBasicBlockRef body = appendBlock(std::string(name) + ".body");
+                    LLVMBasicBlockRef exit = appendBlock(std::string(name) + ".exit");
+                    LLVMValueRef one = LLVMConstInt(lane, 1, 0);
+                    LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
+                    LLVMBuildBr(builder_, header);
+                    LLVMPositionBuilderAtEnd(builder_, header);
+                    LLVMValueRef accumulator = LLVMBuildPhi(builder_, lane, "decimal.pow10.acc");
+                    LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.rem");
+                    LLVMValueRef done = LLVMBuildICmp(
+                        builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
+                    LLVMBuildCondBr(builder_, done, exit, body);
+                    LLVMPositionBuilderAtEnd(builder_, body);
+                    LLVMValueRef nextAcc = LLVMBuildMul(builder_, accumulator, ten, "decimal.pow10.mul");
+                    LLVMValueRef nextRem = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
+                    LLVMBuildBr(builder_, header);
+                    LLVMAddIncoming(accumulator, &one, &preheader, 1);
+                    LLVMAddIncoming(accumulator, &nextAcc, &body, 1);
+                    LLVMAddIncoming(remaining, &exponent, &preheader, 1);
+                    LLVMAddIncoming(remaining, &nextRem, &body, 1);
+                    LLVMPositionBuilderAtEnd(builder_, exit);
+                    return accumulator;
+                };
+                LLVMValueRef leftMult = pow10(leftDiff, "decimal.align.left.pow10");
+                LLVMValueRef rightMult = pow10(rightDiff, "decimal.align.right.pow10");
+                LLVMValueRef leftAligned = LLVMBuildMul(
+                    builder_, leftCoeff64, leftMult, "decimal.align.left");
+                LLVMValueRef rightAligned = LLVMBuildMul(
+                    builder_, rightCoeff64, rightMult, "decimal.align.right");
+                LLVMValueRef aligned = operation == lexer::TokenKind::Plus
+                    ? LLVMBuildAdd(builder_, leftAligned, rightAligned, "decimal.coeff.add")
+                    : LLVMBuildSub(builder_, leftAligned, rightAligned, "decimal.coeff.sub");
+                combined = LLVMBuildZExt(
+                    builder_, aligned, LLVMIntTypeInContext(context_, 128), "decimal.coeff.wide");
+                effectiveScale = maxScale;
             }
             else if (operation == lexer::TokenKind::Star)
             {
