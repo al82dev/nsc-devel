@@ -2993,6 +2993,46 @@ class Program
         }});
 }
 
+void registerGlobalNamespaceExtensionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-388", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "method", "global-namespace"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T08ExtensionGlobal", "Exe", R"ns(
+extension int
+{
+    public int Double()
+    {
+        return this * 2;
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        return 21.Double();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T08ExtensionGlobal.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-388 a global-namespace extension must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-388 the global-namespace extension must dispatch (exit 42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -5562,6 +5602,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerClosureErrorThrowCase(registry);
     registerClosureDropOracleCase(registry);
     registerExtensionMethodCase(registry);
+    registerGlobalNamespaceExtensionCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
