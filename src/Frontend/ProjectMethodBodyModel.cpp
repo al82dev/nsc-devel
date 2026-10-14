@@ -13188,8 +13188,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
 
                 bool argumentsValid = true;
-                for (const ast::AstNode* argument : expression->children())
+                // NS304-T13-F06: the trailing `trailing: capacity` child is not a constructor
+                // argument; it is the flexible-array extent and is validated separately.
+                const bool trailingConstruction = expression->auxiliaryText() == "trailing";
+                const std::size_t constructorArgumentCount =
+                    expression->children().size() - (trailingConstruction ? 1U : 0U);
+                for (std::size_t argumentIndex = 0;
+                     argumentIndex < constructorArgumentCount; ++argumentIndex)
                 {
+                    const ast::AstNode* argument = expression->children()[argumentIndex];
                     const ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
                         /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
@@ -13212,8 +13219,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 // though its placement operand is T*: physically both are the object address,
                 // while logically this lets `placed.Member` use the class contract instead of
                 // treating the address as a pointer-to-reference slot.
+                // NS304-T13-F06: a `trailing:` construction yields the header struct BY VALUE (the
+                // header plus its flexible tail is addressed through that value).
                 result.typeKey = target != nullptr &&
-                        target->kind == NamedTypeDeclarationKind::Class
+                        (target->kind == NamedTypeDeclarationKind::Class || trailingConstruction)
                     ? targetType
                     : requiredStorageType;
                 result.valid = constructible && storageValid && argumentsValid &&
