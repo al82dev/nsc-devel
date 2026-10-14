@@ -1125,7 +1125,10 @@ void ProjectConstructionModel::bindConstruction(
         candidate.accessible = constructorAccessible(constructor, callerMemberOrdinal, false);
         anyAccessible = anyAccessible || candidate.accessible;
         const NamedConstructorArgumentMap argumentMapping =
-            mapConstructorArguments(expression->children(), constructor);
+            mapConstructorArguments(
+                std::span<ast::AstNode* const>(
+                    expression->children().data(), constructorArgumentCount),
+                constructor);
         const bool matchingArity = argumentMapping.valid;
         anyMatchingArity = anyMatchingArity || matchingArity;
         if (!candidate.accessible || !matchingArity)
