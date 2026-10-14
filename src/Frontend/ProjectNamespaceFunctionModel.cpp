@@ -217,6 +217,7 @@ void reportPrevious(
 bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
 {
     return syntax.auxiliaryText() == "ns3-extension" ||
+        syntax.auxiliaryText() == "ns3-extension-static" ||
         syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
 }
 
