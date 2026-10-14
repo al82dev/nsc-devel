@@ -1,6 +1,6 @@
 # NS304-T06-F07 — Early stop, destrucción, errors, panic y cleanup determinista
 
-- **Estado**: PARCIAL (yield break + dropFn + drop-glue + it.Drop() + Iterator<T,E> cerrados; teardown foreach + error runtime pendientes)
+- **Estado**: CERRADO (yield break + dropFn + drop-glue + it.Drop() + teardown foreach + Iterator<T,E>)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -62,10 +62,9 @@ Queda: **abandono de `foreach`** (destruir el frame del generator al salir del l
 Queda: el **teardown automático del `foreach`** (invocar `dropFn` al salir del loop, sin llamada
 explícita) y el **error tipado**.
 
-### Teardown del foreach — ruta trazada (ronda 169)
+### Teardown del foreach — cerrado 2026-10-13
 
-El `__enumerator` del foreach es un local de valor (no `raii`), y la **destrucción automática de value
-locals no está soportada** (`foreach struct enumerator ... must have a trivial lifetime`,
-ProjectMethodBodyModel.cpp). Relajar los checks RAII (type + ownership) hace compilar, pero el drop del
-value-type no se emite en el cleanup → el abandono no destruye el frame (exit 0 en el demo). El
-teardown depende de la **RAII de value-types** (un feature más amplio).
+El `__enumerator` del foreach ahora es RAII para `iterator:`/`async-iterator:` (porta Drop fn),
+`typeRequiresValueDrop` los incluye, y el RAII destruye el value-type por la drop-glue
+(`__nativesharp_drop_iterator` → `Gen$drop`). Verificado: `foreach (x in Gen()) { break; }` corre el
+destructor del frame (exit 1). Commits `dd464f72`, `...` + `TL-LANG-391` PASS.
