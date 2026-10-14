@@ -4114,7 +4114,15 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
         error = "async generator return type is not an async-iterator surface: " + iteratorKey;
         return {};
     }
-    const std::string futureKey = language::futureTypeKey("builtin:bool");
+    const std::string futureKey = language::futureTypeKey(
+        "builtin:bool",
+        language::asyncIteratorErrorTypeKey(iteratorKey).has_value()
+            ? std::string(*language::asyncIteratorErrorTypeKey(iteratorKey))
+            : std::string{});
+    const std::string errorTypeKey =
+        language::asyncIteratorErrorTypeKey(iteratorKey).has_value()
+            ? std::string(*language::asyncIteratorErrorTypeKey(iteratorKey))
+            : std::string{};
     const ast::AstNode* syntax = function.body->syntax;
 
     // NS304-T07-F02: number the yields 1..N (state after each yield) and append the terminal
@@ -4149,7 +4157,7 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     poll->mangledName = function.mangledName + "$moveNext$poll";
     poll->debugDisplayName = function.debugDisplayName + "$moveNext$poll";
     poll->returnTypeKey = "builtin:void";
-    poll->errorTypeKey = function.errorTypeKey;
+    poll->errorTypeKey = errorTypeKey;
     poll->effects = function.effects;
     poll->returnOwnership = sema::OwnershipKind::None;
     poll->parameterNames.push_back("self");
@@ -4171,7 +4179,7 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     moveNext->mangledName = function.mangledName + "$moveNext";
     moveNext->debugDisplayName = function.debugDisplayName + "$moveNext";
     moveNext->returnTypeKey = futureKey;
-    moveNext->errorTypeKey = function.errorTypeKey;
+    moveNext->errorTypeKey = errorTypeKey;
     moveNext->effects = function.effects;
     moveNext->returnOwnership = sema::OwnershipKind::None;
     moveNext->parameterNames.push_back("self");
