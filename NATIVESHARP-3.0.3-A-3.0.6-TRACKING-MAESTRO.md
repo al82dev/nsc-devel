@@ -1015,7 +1015,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T06-F04` — Calcular locals vivos, captures, ownership y drop flags por suspensión. *(PARCIAL conservativo: frame + save/restore de locals cerrados; captures/ownership/drop flags + liveness precisa pendientes.)*
 - [ ] `NS304-T06-F05` — Soportar items por value, move, ref y ref mut con lifetime asociado.
 - [ ] `NS304-T06-F06` — Integrar pinning y construcción in-place para frames autoreferenciales.
-- [ ] `NS304-T06-F07` — Implementar early stop, destrucción, errors, panic y cleanup determinista. *(PARCIAL: drop en yield break + dropFn + drop-glue + it.Drop() cerrados; teardown automático de foreach + error tipado pendientes.)*
+- [ ] `NS304-T06-F07` — Implementar early stop, destrucción, errors, panic y cleanup determinista. *(PARCIAL: drop en yield break + dropFn + drop-glue + it.Drop() + teardown foreach + Iterator<T,E> cerrados; panic determinista pendiente.)*
 - [ ] `NS304-T06-F08` — Congelar iterator ABI/NSMETA, LLVM, PDB y consumo por `foreach`. *(PARCIAL: ABI + MoveNext/Current/GetEnumerator + foreach cerrados; NSMETA/PDB/intermodular pendientes.)*
 
 ### T07 — async streams y concurrencia estructurada
