@@ -1,6 +1,6 @@
 # NS304-T07-F03 — Backpressure y orden
 
-- **Estado**: PARCIAL (una demanda → un item ya lo garantiza el poll; orden observado; error/terminal = refinamiento)
+- **Estado**: PARCIAL (backpressure/orden ✅; error tipado del future ✅; post-terminal = refinamiento)
 - **Rama**: development
 
 ## Auditoría (línea base)
@@ -25,6 +25,11 @@ Estado real (tras F02):
   del async-generator (`AsyncIterator<T,E>` con `await` que falla) no viaja al future de demanda.
 - **Comportamiento después del terminal**: pedir otra demanda después del `result=false` no está
   definido/verificado.
+
+### Error tipado del future — verificado 2026-10-13
+
+- `MoveNextAsync` ahora devuelve `future:<bool>|<E>` (el error E del async-iterator). Commit `5ddc9132`.
+  La propagación runtime (un `await` que falla) depende de F05 (cancelación/error) + `throws` del poll.
 
 ## Nota
 
