@@ -39,9 +39,12 @@ archivo) y los índices incrementales por identidad (invalidables, no cache text
 
 ### Pendiente
 
-- **Ranking por constraints**: `extension Box<T> where T:Special` exige *generic namespace functions*
-  (`predeclareNode`/`ProjectGenericModel` no registran funciones genéricas); tras eso, el constraint
-  debe entrar en `signatureKey` y el ranking en `bindExtension`.
+- **Ranking por constraints**: `extension Box<T> where T:Special` exige *generic namespace functions*.
+  Investigación (rondas 235-259): el parser acepta el `where` + propaga el genérico; el lookup
+  trata los parámetros genéricos como placeholder (`unknown type name 'T'` resuelto); la extensión
+  genérica se registra como namespace function. Falta el **modelo genérico**: procesar la firma
+  (receiver `Box<T>`) del template abierto y especializar `Twice<T>` a `Twice<I>` en el dispatch
+  (`b.Twice()` sobre `Box<I>`). ~40 líneas en `ProjectGenericModel` + dispatch.
 - **Índices por identidad**: `extensionBindingBySyntax_` es cache por nodo; cambiarlo a identidad.
 
 ## Nota
