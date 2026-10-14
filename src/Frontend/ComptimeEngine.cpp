@@ -319,7 +319,14 @@ bool attributeIdentity(std::string_view text) noexcept
 {
     if (text.empty() || (!asciiAlpha(text.front()) && text.front() != '_')) return false;
     for (const char value : text)
-        if (!identifierByte(value) && value != '.') return false;
+    {
+        // NS304-T11-F08: a generic attribute identity carries `<...>` type arguments and `::`
+        // module qualifiers. They are validated (consteval, non-ref-like, closed) downstream;
+        // here we only admit the spelling so the identity can be matched and serialized.
+        if (!identifierByte(value) && value != '.' && value != '<' && value != '>' &&
+            value != ',' && value != ':' && value != ' ')
+            return false;
+    }
     return true;
 }
 

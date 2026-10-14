@@ -10,6 +10,16 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// NS304-T11-F08: strip `<...>` generic arguments from an attribute identity so a use `Tag<int>`
+// matches its `attribute Tag<T>` definition. The generic arguments themselves are validated
+// (consteval, non-ref-like) at the use site below.
+std::string attributeBaseName(std::string_view identity)
+{
+    const std::size_t generic = identity.find('<');
+    return generic == std::string_view::npos
+        ? std::string(identity) : std::string(identity.substr(0, generic));
+}
+
 StaticMemberKind staticKind(ClassMemberKind kind) noexcept
 {
     switch (kind)
@@ -118,7 +128,7 @@ bool ProjectMetaprogrammingModel::build(
         for (const ComptimeAttributeDirective& directive : record.attributes)
         {
             if (!directive.isDefinition) continue;
-            if (!definitions.emplace(directive.identity,
+            if (!definitions.emplace(attributeBaseName(directive.identity),
                     Definition{directive.targets, directive.repeatable, directive.retention}).second)
             {
                 error_ = "duplicate attribute definition '" + directive.identity + "'";
@@ -133,7 +143,7 @@ bool ProjectMetaprogrammingModel::build(
         for (const ComptimeAttributeDirective& directive : record.attributes)
         {
             if (directive.isDefinition) continue;
-            const auto definition = definitions.find(directive.identity);
+            const auto definition = definitions.find(attributeBaseName(directive.identity));
             if (definition == definitions.end())
             {
                 error_ = "attribute use refers to undefined attribute '" + directive.identity + "'";
