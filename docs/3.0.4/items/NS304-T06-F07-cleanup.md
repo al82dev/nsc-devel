@@ -1,6 +1,6 @@
 # NS304-T06-F07 — Early stop, destrucción, errors, panic y cleanup determinista
 
-- **Estado**: PARCIAL (drop en yield break + it.Drop() + drop-glue cerrados; teardown automático de foreach + error tipado pendientes)
+- **Estado**: PARCIAL (yield break + dropFn + drop-glue + it.Drop() + Iterator<T,E> cerrados; teardown foreach + error runtime pendientes)
 - **Rama**: development
 
 ## Auditoría (línea base)
