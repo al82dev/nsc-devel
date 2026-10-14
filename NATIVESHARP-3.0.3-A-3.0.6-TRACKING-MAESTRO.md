@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 60 | 40.82 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T07-F01/F02, T08-F01..F04, T09-F05 cerrados |
+| B | 3.0.4 | 18 | 147 ítems | 61 | 41.50 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T07-F01/F02, T08-F01..F04, T09-F01/F02/F03/F05/F06/F07/F08 cerrados |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -924,7 +924,7 @@ T00
 | T06 | Generadores síncronos | 8 | 3 | 37.5 % |
 | T07 | Async streams y concurrencia estructurada | 8 | 2 | 25 % |
 | T08 | Extension members y operadores | 7 | 4 | 57.14 % |
-| T09 | Construcción, propiedades y eventos | 10 | 6 | 60 % |
+| T09 | Construcción, propiedades y eventos | 10 | 7 | 70 % |
 | T10 | Strings, null-awareness y nombres estáticos | 8 | 3 | 37.5 % |
 | T11 | Spans, referencias y genéricos modernos | 8 | 0 | 0 % |
 | T12 | Partial members y composición de fuente | 6 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **60** | **40.82 %** |
+| **Total** |  | **147** | **61** | **41.50 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -1046,7 +1046,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible. *(backing `__nsc_backing_<name>$stage38` determinista + layout de campo regular; ya satisfecho por síntesis existente.)*
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record + class primary ctor promote-to-fields + orden textual + TL-LANG-337/344; semántica params-in-scope C# 12 residual.)*
 - [x] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito. *(CERRADO: AST+parser+target-typed/var/común + spreads ordenados (TL-LANG-347/348/349/354) + builder protocol surface A ruta mínima `CreateBuilder→Add→ToCollection` sin heap (TL-LANG-395/396/397/398).)*
-- [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] con length literal + TL-LANG-308/309/310; length const genérico residual (sistema de tipos).)*
+- [x] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] literal + const genérico `int[N] data` con aridad y valor (TL-LANG-401, exit 42).)*
 - [x] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() y new(args) vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; desambiguación de placement por lookahead.)*
 - [x] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + accessors custom add_/remove_ (parser + InstanceCall) + TL-LANG-338/341.)*
 - [ ] `NS304-T09-F09` — Integrar fallo parcial, drop order, inheritance, records, with y debug metadata.
