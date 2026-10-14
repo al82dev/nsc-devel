@@ -11,7 +11,9 @@
 
 ## Residual
 
-- **Lookup Sema**: la función estática de extensión se registra en el namespace de la extensión pero
-  no es invocable (ni `Twice()` directo —fuera de scope— ni `T.Twice()`); falta resolver la
-  invocación `T.Miembro()`/directa. Propiedades y constantes estáticas: mismas rutas pendientes.
+- **Lookup Sema**: la invocación `T.Miembro()` (type-qualified) no resuelve: `extension Box { static
+  int Twice() } ... Box.Twice()` → `receiver/type 'Box' has no compatible member named 'Twice'`.
+  Verificado ronda 101. La invocación directa `Twice()` (mismo scope) y por `using Suite` SÍ pasan
+  (exit 7) tras el fix de namespace global (T08-F01). Falta registrar la estática de extensión en el
+  lookup del TIPO EXTENDIDO. Propiedades y constantes estáticas: mismas rutas pendientes.
 
