@@ -1,0 +1,11 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Sync -- NS304-T07-F07. Surface #7: marker trait de acceso compartido entre
+    // threads. La conformidad se deriva ESTRUCTURALMENTE: un tipo es Sync cuando todos sus campos
+    // relevantes lo son y no contiene raw pointers. El trait existe para constraints `where T : Sync`.
+    public trait Sync
+    {
+    }
+}

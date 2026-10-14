@@ -1,0 +1,12 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.IThreadExecutor -- NS304-T07-F07. Surface #7: un executor que puede mover un
+    // Future a OTRO thread. Implementar IExecutor solo es un executor local/single-thread (no exige
+    // Send). Implementar IThreadExecutor (ademas de IExecutor) activa la verificacion de que el
+    // frame/captures del Future sean Send (y Sync para captures compartidas) antes de Spawn.
+    public trait IThreadExecutor : IExecutor
+    {
+    }
+}

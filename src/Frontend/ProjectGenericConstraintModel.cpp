@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -854,7 +855,36 @@ bool ProjectGenericConstraintModel::build(
                 }
 
                 bool satisfied = false;
-                if (constraint->kind == NamedTypeDeclarationKind::Interface)
+                const bool sendMarker = constraint->identity.name() == "Send";
+                const bool syncMarker = constraint->identity.name() == "Sync";
+                if ((sendMarker || syncMarker) &&
+                    (argument->kind == NamedTypeDeclarationKind::Class ||
+                     argument->kind == NamedTypeDeclarationKind::Struct))
+                {
+                    // NS304-T07-F07: Send/Sync derivan estructuralmente — un tipo es Send/Sync
+                    // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
+                    language::ThreadSafetyTypeFacts facts;
+                    facts.typeName = argument->identity.name();
+                    for (const ClassMemberSymbol& member : memberModel.members())
+                    {
+                        if (member.kind != ClassMemberKind::Field ||
+                            member.declaringTypeOrdinal != argumentOrdinal)
+                            continue;
+                        language::ThreadSafetyMemberFacts memberFacts;
+                        memberFacts.name = member.name;
+                        const bool rawPointer = member.declaredTypeKey.ends_with("*");
+                        memberFacts.kind = rawPointer
+                            ? language::ThreadSafetyMemberKind::RawPointer
+                            : language::ThreadSafetyMemberKind::Value;
+                        memberFacts.send = !rawPointer;
+                        memberFacts.sync = !rawPointer;
+                        facts.members.push_back(std::move(memberFacts));
+                    }
+                    const language::ThreadSafetyDecision decision =
+                        language::evaluateThreadSafety(facts);
+                    satisfied = sendMarker ? decision.send : decision.sync;
+                }
+                else if (constraint->kind == NamedTypeDeclarationKind::Interface)
                 {
                     // Dos caminos, y hacen falta los dos: una CLASE la implementa, y una INTERFAZ
                     // la extiende. `includeIdentity` es true en el segundo porque `where T : IFoo`

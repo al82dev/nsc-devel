@@ -1,0 +1,12 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Send -- NS304-T07-F07. Surface #7: marker trait de transferencia entre
+    // threads. La conformidad se deriva ESTRUCTURALMENTE (no hace falta declarar `: Send`): un tipo
+    // es Send cuando todos sus campos relevantes lo son y no contiene raw pointers. El trait existe
+    // para poder escribir constraints explícitos `where T : Send`.
+    public trait Send
+    {
+    }
+}

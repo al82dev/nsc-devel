@@ -6952,6 +6952,83 @@ class Program
         }});
 }
 
+void registerSendSyncCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-464", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "send", "sync", "trait", "structural", "constraint"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07SendSyncPositive", "Exe", R"ns(
+using NativeSharp.Core;
+struct Safe { public int x; public int y; }
+struct Holder<T> where T : Send
+{
+    public T value;
+}
+class Program
+{
+    public static int Main()
+    {
+        Holder<Safe> h;
+        h.value = new Safe();
+        return 7;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07SendSyncPositive.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-464 a struct of safe fields must satisfy where T : Send structurally: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-464 the structural Send program must run (exit 7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+
+    registry.add(TestCase{"TL-LANG-465", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "send", "raw-pointer", "reject", "constraint"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07SendSyncRawNegative", "Exe", R"ns(
+using NativeSharp.Core;
+struct Raw { public byte* p; }
+struct Holder<T> where T : Send
+{
+    public T value;
+}
+class Program
+{
+    public static int Main()
+    {
+        Holder<Raw> h;
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07SendSyncRawNegative.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode != 0 &&
+                    emitted.output.find("does not implement it") != std::string::npos,
+                "TL-LANG-465 a raw-pointer struct must not derive Send structurally: " +
+                    emitted.error + emitted.output);
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8721,6 +8798,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncGeneratorMoveOnlyItemCase(registry);
     registerAsyncGeneratorCancellationCase(registry);
     registerTaskScopeCase(registry);
+    registerSendSyncCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
