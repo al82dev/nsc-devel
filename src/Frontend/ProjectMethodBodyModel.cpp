@@ -20458,6 +20458,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                 return overloaded;
             }
             return {};
+            return {};
         }
     }
 
@@ -25651,6 +25652,12 @@ const ClassMemberSymbol* ProjectMethodBodyModel::methodSymbol(
     const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
     return functionOrdinal < namespaceCallableAdapters().size()
         ? &namespaceCallableAdapters()[functionOrdinal] : nullptr;
+}
+
+const ClassMemberSymbol* ProjectMethodBodyModel::callableSymbol(
+    std::size_t methodMemberOrdinal) const noexcept
+{
+    return methodSymbol(methodMemberOrdinal);
 }
 
 std::span<const ClassMemberSymbol>

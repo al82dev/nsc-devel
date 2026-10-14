@@ -1605,6 +1605,8 @@ public:
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
     bool isBuilt() const noexcept;
+    // NS304-T08-F04: resolves a callable ordinal to a class member or a namespace-callable adapter.
+    const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
 
 private:
     enum class ScopeNameKind

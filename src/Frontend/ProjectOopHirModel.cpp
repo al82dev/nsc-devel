@@ -4414,12 +4414,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
         {
             const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
-            const bool implicitOperatorReference = memberModel_ != nullptr &&
-                selectedMemberOrdinal < memberModel_->members().size() &&
-                memberModel_->members()[selectedMemberOrdinal].isUserOperator &&
-                index < memberModel_->members()[selectedMemberOrdinal].parameters.size() &&
-                memberModel_->members()[selectedMemberOrdinal].parameters[index].passKind !=
-                    ParameterPassKind::Value;
+            const ClassMemberSymbol* operatorMember = callableSymbol(selectedMemberOrdinal);
+            const bool implicitOperatorReference = operatorMember != nullptr &&
+                operatorMember->isUserOperator &&
+                index < operatorMember->parameters.size() &&
+                operatorMember->parameters[index].passKind != ParameterPassKind::Value;
             auto argument = preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
                 ? std::move(preloweredLast)
                 : lowerExpression(
@@ -4436,14 +4435,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 hasOwnedTemporary);
             node->children.push_back(std::move(argument));
         }
-        if (memberModel_ == nullptr ||
-            selectedMemberOrdinal >= memberModel_->members().size())
+        const ClassMemberSymbol* selectedMemberPtr = callableSymbol(selectedMemberOrdinal);
+        if (selectedMemberPtr == nullptr)
         {
             error = "NSC-LIMIT-020 selected call has no callable metadata";
             return nullptr;
         }
-        const ClassMemberSymbol& selectedMember =
-            memberModel_->members()[selectedMemberOrdinal];
+        const ClassMemberSymbol& selectedMember = *selectedMemberPtr;
         for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
         {
             const std::size_t parameterIndex = argumentSyntaxes.size() + index;
@@ -5044,8 +5042,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             const MethodCallBinding* operatorCall = callBinding(expression);
             if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
                 operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
-                *operatorCall->selectedMemberOrdinal < memberModel_->members().size() &&
-                memberModel_->members()[*operatorCall->selectedMemberOrdinal].isUserOperator)
+                callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
+                callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator)
             {
                 return lowerResolvedCall(operatorCall, {expression->first()});
             }
@@ -5474,8 +5472,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             const MethodCallBinding* operatorCall = callBinding(expression);
             if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
                 operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
-                *operatorCall->selectedMemberOrdinal < memberModel_->members().size() &&
-                memberModel_->members()[*operatorCall->selectedMemberOrdinal].isUserOperator)
+                callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
+                callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator)
             {
                 return lowerResolvedCall(operatorCall, {expression->first(), expression->second()});
             }
@@ -9846,6 +9844,15 @@ bool ProjectOopHirModel::isClassReferenceType(std::string_view typeKey) const no
         }
     }
     return false;
+}
+
+const ClassMemberSymbol* ProjectOopHirModel::callableSymbol(std::size_t ordinal) const noexcept
+{
+    if (methodBodyModel_ != nullptr) return methodBodyModel_->callableSymbol(ordinal);
+    if (memberModel_ == nullptr) return nullptr;
+    if (ordinal < memberModel_->members().size())
+        return &memberModel_->members()[ordinal];
+    return nullptr;
 }
 
 bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcept

@@ -972,6 +972,8 @@ private:
         std::string& error);
     bool isClassReferenceType(std::string_view typeKey) const noexcept;
     bool isReferenceType(std::string_view typeKey) const noexcept;
+    // NS304-T08-F04: resolves a member ordinal to a class member or a namespace-callable adapter.
+    const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;
