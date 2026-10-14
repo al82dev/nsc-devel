@@ -1854,7 +1854,8 @@ bool ProjectOopMirModel::build(
                             staticField.constantBooleanValue = *value;
                         }
                     }
-                    else if (field.declaredTypeKey == "builtin:float" || field.declaredTypeKey == "builtin:double")
+                    else if (field.declaredTypeKey == "builtin:float" || field.declaredTypeKey == "builtin:double" ||
+                             field.declaredTypeKey == "builtin:decimal")
                     {
                         const std::optional<double> value = floatingConstantValue(initializer.value.get(), staticFields_);
                         if (value.has_value())

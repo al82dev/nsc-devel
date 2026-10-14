@@ -1457,7 +1457,8 @@ bool ProjectMethodBodyModel::build(
             field.declaredTypeKey != "builtin:bool" &&
             field.declaredTypeKey != "builtin:float" &&
             field.declaredTypeKey != "builtin:double" &&
-            field.declaredTypeKey != "builtin:string")
+            field.declaredTypeKey != "builtin:string" &&
+            field.declaredTypeKey != "builtin:decimal")
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,

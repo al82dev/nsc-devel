@@ -2845,6 +2845,18 @@ private:
                 {
                     initializer = LLVMConstReal(type, field.constantFloatingValue);
                 }
+                else if (field.typeKey == "builtin:decimal")
+                {
+                    // 128-bit decimal const: coefficient (low 96) | scale (bits 96..101).
+                    std::uint64_t coefficient = 0;
+                    int scale = 0;
+                    if (!decimalCoefficientAndScale(field.constantFloatingValue, coefficient, scale))
+                        return fail(error, "decimal const coefficient exceeds 64 bits in Stage 37");
+                    std::uint64_t words[2];
+                    words[0] = coefficient;
+                    words[1] = static_cast<std::uint64_t>(scale) << 32;
+                    initializer = LLVMConstIntOfArbitraryPrecision(type, 2, words);
+                }
                 else if (field.typeKey == "builtin:string")
                 {
                     initializer = internStringLiteral(field.constantStringValue, error);

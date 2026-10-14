@@ -682,6 +682,12 @@ LLVMTypeRef LLVMFunctionType(
     LLVMBool variadic);
 
 LLVMValueRef LLVMConstInt(LLVMTypeRef integerType, unsigned long long value, LLVMBool signExtend);
+// NS304-T15-F07: wide integer constants (the 96/128-bit decimal coefficient and scale). This was
+// missing from the manual wrapper; it is a standard LLVM-C entry.
+LLVMValueRef LLVMConstIntOfArbitraryPrecision(
+    LLVMTypeRef integerType,
+    unsigned wordCount,
+    const std::uint64_t* words);
 LLVMValueRef LLVMConstReal(LLVMTypeRef realType, double value);
 LLVMValueRef LLVMConstNull(LLVMTypeRef type);
 LLVMValueRef LLVMConstArray2(
