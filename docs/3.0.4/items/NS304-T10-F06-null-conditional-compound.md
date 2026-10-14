@@ -1,6 +1,6 @@
 # NS304-T10-F06 — Null-conditional compound assignment (sin `++`/`--`)
 
-- **Estado**: PARCIAL (`obj?.Field += x` numérico + string concat) / residual (`++`/`--`)
+- **Estado**: IMPLEMENTADO (numérico + string concat; `++`/`--` excluido por el ítem)
 - **Rama**: development
 
 ## Resultado
@@ -12,9 +12,9 @@
   (numérico) o concat de cadena. El resultado es el valor efectivamente almacenado; en destino
   `owned string`, la cadena desplazada no nula se libera por la ruta canónica antes del store.
 - Pruebas: `TL-LANG-342` (RHS omitido en null y resultado compound `15`) y `TL-LANG-346`
-  (`owned string`, resultado/store de longitud `11`, reemplazo y destrucción sin crash) → **PASS**
-  (2026-10-13).
+  (`owned string`, resultado/store de longitud `11`, reemplazo y destrucción sin crash) → **PASS**.
 
 ## Residual
 
-- **`++`/`--`**: postfix/prefijo sobre null-conditional sigue fuera (ambiguo, excluido por el ítem).
+- **`++`/`--`**: postfix/prefijo sobre null-conditional queda fuera — ambiguo y **excluido por el
+  propio ítem** ("sin `++`/`--` ambiguos").
