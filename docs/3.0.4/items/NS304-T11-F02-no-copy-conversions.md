@@ -1,23 +1,19 @@
 # NS304-T11-F02 — Conversiones sin copia
 
-- **Estado**: PARCIAL (array→`Span<T>`/`ReadOnlySpan<T>` sin copia ✅; buffer/string→slice pendiente)
+- **Estado**: PARCIAL (array→`Span`/`ReadOnlySpan` ✅; string→`StringView` ✅; buffer→slice y lifetime pendiente)
 - **Rama**: development
 
-## Resultado (slice array→span — 2026-10-14)
+## Resultado (2026-10-14)
 
-- `ProjectConversionClassifier::classifyImplicit`: `builtin:<T>[]` → `Span<T>`/`ReadOnlySpan<T>` como
-  conversión `View` (rank 7), con el elemento emparejado por spelling sanitizado (`builtin:int`→`int`).
-- Lowering reutiliza `SpanFromArray`/`ReadOnlySpanFromArray` existente: `wrapImplicitConversion`
-  sintetiza `[array, 0]` (2 hijos = array completo) y el LLVM deriva `count` de la cabecera de
-  longitud del propio objeto. Sin arreglo temporal ni copia de heap.
-- Prueba puntual **TL-LANG-409** (exit 14: `int[]{3,4}` → `Span<int>`+`ReadOnlySpan<int>` preserva
-  3+4+3+4) + guards TL-LANG-359/360/408 PASS. La inversa (span→array) sigue sin regla.
+- **array→span**: `builtin:<T>[]` → `Span<T>`/`ReadOnlySpan<T>` (`View` rank 7), lowering reutiliza
+  `SpanFromArray` con 2 hijos (array completo, count derivado de la cabecera). TL-LANG-409 exit 14.
+- **string→StringView**: `builtin:string` → `StringView` (`View` rank 7), lowering reutiliza
+  `StringViewFromString` con 2 hijos (cadena completa). TL-LANG-410 exit 5.
+- Sin arreglo temporal ni copia de heap. La inversa (span→array, StringView→string) sigue sin regla.
 
 ## Residual
 
-- **buffer/string → slice**: `StringView` (y buffer) → `Span`/`ReadOnlySpan` sin copia todavía no
-  integrados (requieren la operación núcleo de cadena, análoga a `SpanFromArray`).
-- **Lifetime (destino ≤ fuente)** y provenance completa.
+- **buffer → slice** (bloque/stackalloc crudo) y **lifetime (destino ≤ fuente)** + provenance completa.
 
 ## Auditoría (línea base)
 
@@ -28,13 +24,13 @@ storage mutable; lifetime destino no excede fuente*.
 
 Estado real:
 
-- `Span.ns`/`StringView` son vistas insumo; la conversión array → slice ya está integrada al
-  classifier y al lowering `SpanFromArray` (sin copia). StringView/buffer pendientes.
+- `Span.ns`/`StringView` son vistas insumo; la conversión array y string → slice ya está integrada
+  al classifier y al lowering sin copia. Buffer (bloque crudo) pendiente.
 
 ## Gap
 
-Falta la conversión sin copia de buffer/string → slice y las reglas de lifetime (destino ≤ fuente).
-El slice array→span quedó cerrado.
+Falta la conversión sin copia de buffer → slice y las reglas de lifetime (destino ≤ fuente).
+Los slices array→span y string→StringView quedaron cerrados.
 
 ## Nota
 
