@@ -1040,7 +1040,11 @@ void ProjectConstructionModel::bindConstruction(
     binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
 
     const std::vector<MethodExpressionTypeBinding>& argumentTypes = site.argumentTypes;
-    if (!site.argumentsTyped || argumentTypes.size() != expression->children().size())
+    // NS304-T13-F06: the trailing `trailing: capacity` child is not a constructor argument.
+    const bool trailingConstruction = expression->auxiliaryText() == "trailing";
+    const std::size_t constructorArgumentCount =
+        expression->children().size() - (trailingConstruction ? 1U : 0U);
+    if (!site.argumentsTyped || argumentTypes.size() != constructorArgumentCount)
     {
         binding.resolution = ConstructionResolutionKind::NoViableCandidate;
         constructions_.push_back(std::move(binding));
