@@ -4368,6 +4368,44 @@ class Program
         }});
 }
 
+void registerDecimalManglingCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-422", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "mangling", "overload", "abi"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F03DecimalMangling", "Exe", R"ns(
+class Program
+{
+    public static decimal M(decimal d) { return d; }
+    public static long M(long l) { return l; }
+    public static int Main()
+    {
+        decimal d = 1.5m;
+        long l = 3;
+        decimal r = M(d);
+        long s = M(l);
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F03DecimalMangling.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-422 a decimal and a long overload must mangle distinctly: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-422 the decimal overload must dispatch (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7057,6 +7095,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPartialEventCase(registry);
     registerDecimalRepresentationCase(registry);
     registerDecimalLiteralCase(registry);
+    registerDecimalManglingCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
