@@ -12229,6 +12229,8 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::ResultPropagation:
                 return lowerResultPropagation(node, error);
+            case frontend::ProjectOopMirNodeKind::BlockExpression:
+                return lowerBlockExpression(node, error);
 
             // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
             //
@@ -15383,6 +15385,31 @@ private:
         LLVMBasicBlockRef blocks[] = {valueExit, fallbackExit};
         LLVMAddIncoming(phi, values, blocks, 2);
         return phi;
+    }
+
+    // NS304-T09-F05: a sequenced expression (Block that yields a value). Every child except the
+    // last is a statement (LocalDeclaration/ExpressionStatement); the last child is the result
+    // expression lowered by the expression path.
+    LLVMValueRef lowerBlockExpression(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.empty())
+        {
+            return failValue(error, "block expression has no result");
+        }
+        for (std::size_t index = 0; index + 1U < node->children.size(); ++index)
+        {
+            if (node->children[index] != nullptr &&
+                !lowerStatement(node->children[index].get(), error))
+            {
+                return nullptr;
+            }
+        }
+        if (node->children.back() == nullptr)
+        {
+            return failValue(error, "block expression result is missing");
+        }
+        return lowerExpression(node->children.back().get(), error);
     }
 
     // T07-F01 `carrier?`. The carrier is evaluated and spilled exactly once. The public variant

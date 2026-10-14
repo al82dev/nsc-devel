@@ -684,6 +684,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
     switch (kind)
     {
         case ProjectOopMirNodeKind::Block: return "block";
+        case ProjectOopMirNodeKind::BlockExpression: return "block-expression";
         case ProjectOopMirNodeKind::LocalDeclaration: return "local-declaration";
         case ProjectOopMirNodeKind::AggregateInitialize: return "aggregate-initialize";
         case ProjectOopMirNodeKind::AggregateSpreadStore: return "aggregate-spread-store";
@@ -2288,6 +2289,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     switch (node->kind)
     {
         case ProjectOopHirNodeKind::Block: result->kind = ProjectOopMirNodeKind::Block; break;
+        case ProjectOopHirNodeKind::BlockExpression: result->kind = ProjectOopMirNodeKind::BlockExpression; break;
         case ProjectOopHirNodeKind::LocalDeclaration: result->kind = ProjectOopMirNodeKind::LocalDeclaration; break;
         case ProjectOopHirNodeKind::ExpressionStatement: result->kind = ProjectOopMirNodeKind::ExpressionStatement; break;
         case ProjectOopHirNodeKind::InlineAssembly:

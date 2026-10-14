@@ -54,6 +54,9 @@ const char* projectOopMirAbiPassingName(ProjectOopMirAbiPassing passing) noexcep
 enum class ProjectOopMirNodeKind
 {
     Block,
+    // NS304-T09-F05: a sequenced expression (Block that yields a value). Same shape as Block, but
+    // the LAST child is the value expression.
+    BlockExpression,
     LocalDeclaration,
     ExpressionStatement,
     // NativeSharp 2.0 item 298. Mirrors the structured HIR assembly contract without reparsing

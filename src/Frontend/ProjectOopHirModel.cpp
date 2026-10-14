@@ -1000,6 +1000,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
     switch (kind)
     {
         case ProjectOopHirNodeKind::Block: return "block";
+        case ProjectOopHirNodeKind::BlockExpression: return "block-expression";
         case ProjectOopHirNodeKind::LocalDeclaration: return "local-declaration";
         case ProjectOopHirNodeKind::ExpressionStatement: return "expression-statement";
         case ProjectOopHirNodeKind::InlineAssembly: return "inline-assembly";
@@ -8133,6 +8134,59 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(ProjectOopHirNodeKind::RawAllocation, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
                 return node;
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::CollectionBuilder)
+            {
+                if (addressContext)
+                {
+                    error = "collection builder result is a value, not addressable storage";
+                    return nullptr;
+                }
+                const std::string tempTypeKey = core->resultTypeKey;
+                const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
+
+                auto block = makeNode(
+                    ProjectOopHirNodeKind::BlockExpression, expression, core->resultTypeKey);
+
+                // CreateBuilder() static call initializes the compiler-generated temporary.
+                auto create = makeNode(ProjectOopHirNodeKind::StaticCall, expression, tempTypeKey);
+                create->memberOrdinal = core->builderMemberOrdinals[0];
+                auto declaration = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration, expression, tempTypeKey);
+                declaration->localOrdinal = tempOrdinal;
+                declaration->stringValue = "builder";
+                declaration->children.push_back(std::move(create));
+                block->children.push_back(std::move(declaration));
+
+                // Add(element) instance calls over the temporary, preserving source order.
+                for (const ast::AstNode* child : expression->children())
+                {
+                    auto element = lowerExpression(child, memberOrdinal, false, error);
+                    if (element == nullptr) return nullptr;
+                    auto add = makeNode(ProjectOopHirNodeKind::InstanceCall, child, "builtin:void");
+                    add->memberOrdinal = core->builderMemberOrdinals[1];
+                    auto addReceiver = makeNode(
+                        ProjectOopHirNodeKind::LocalAddress, expression, tempTypeKey + "*");
+                    addReceiver->localOrdinal = tempOrdinal;
+                    add->children.push_back(std::move(addReceiver));
+                    add->children.push_back(std::move(element));
+                    auto statement = makeNode(
+                        ProjectOopHirNodeKind::ExpressionStatement, child, "builtin:void");
+                    statement->children.push_back(std::move(add));
+                    block->children.push_back(std::move(statement));
+                }
+
+                // ToCollection() instance call yields the result value.
+                auto toCollection = makeNode(
+                    ProjectOopHirNodeKind::InstanceCall, expression, core->resultTypeKey);
+                toCollection->memberOrdinal = core->builderMemberOrdinals[2];
+                auto toCollectionReceiver = makeNode(
+                    ProjectOopHirNodeKind::LocalAddress, expression, tempTypeKey + "*");
+                toCollectionReceiver->localOrdinal = tempOrdinal;
+                toCollection->children.push_back(std::move(toCollectionReceiver));
+                block->children.push_back(std::move(toCollection));
+
+                return block;
             }
             if (core == nullptr ||
                 (core->kind != MethodCoreOperationKind::ArrayAllocation &&

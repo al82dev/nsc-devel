@@ -28,6 +28,10 @@ class ProjectGenericConstraintModel;
 enum class ProjectOopHirNodeKind
 {
     Block,
+    // NS304-T09-F05: a sequenced expression — a Block that yields a value. All but the last child
+    // are statements (LocalDeclaration/ExpressionStatement); the LAST child is the result
+    // expression, lowered by the expression path. Used by the collection builder.
+    BlockExpression,
     LocalDeclaration,
     ExpressionStatement,
     // NativeSharp 2.0 item 298. The complete, already-validated integrated-assembly contract.

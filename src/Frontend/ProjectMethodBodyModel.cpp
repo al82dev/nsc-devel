@@ -13494,8 +13494,47 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const std::optional<std::size_t> toCollection = findMember("ToCollection", false);
                     if (createBuilder.has_value() && add.has_value() && toCollection.has_value())
                     {
+                        // NS304-T09-F05: validate the builder shape and each element against the
+                        // Add parameter, so the HIR lowers the elements with their real types.
+                        const ClassMemberSymbol& addMember = memberModel_->members()[*add];
+                        bool elementsValid = addMember.parameters.size() == 1U;
+                        if (!elementsValid)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "a collection builder Add must take exactly one parameter");
+                        }
+                        if (elementsValid)
+                        {
+                            for (const ast::AstNode* child : expression->children())
+                            {
+                                if (child == nullptr) continue;
+                                ExpressionResult elementValue = analyzeExpression(
+                                    child, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                                    false, false, true);
+                                if (!elementValue.valid ||
+                                    !classifyImplicit(
+                                        elementValue.typeKey, addMember.parameters[0].typeKey,
+                                        elementValue.integerConstant).exists())
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidConversion,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        child->range(),
+                                        "collection expression element is not implicitly convertible to '" +
+                                            addMember.parameters[0].typeKey + "'");
+                                    elementsValid = false;
+                                }
+                            }
+                        }
                         result.typeKey = explicitTarget;
-                        result.valid = true;
+                        result.valid = elementsValid;
+                        if (!result.valid)
+                        {
+                            return result;
+                        }
                         MethodCoreBinding binding;
                         binding.kind = MethodCoreOperationKind::CollectionBuilder;
                         binding.syntax = expression;
