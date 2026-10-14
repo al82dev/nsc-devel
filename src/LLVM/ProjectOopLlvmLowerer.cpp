@@ -20,6 +20,7 @@
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/Language/MemoryModel.h"
@@ -9479,17 +9480,53 @@ private:
                     LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
                     LLVMBuildBr(builder_, loopMerge);
 
-                    // NS304-T05-F07: the future errored (state == -2). The full rethrow (unwind the
-                    // carried error into the caller's catch) is the runtime refinement; for now the
-                    // blocking await signals the error deterministically instead of a native unwind.
+                    // NS304-T05-F07 rethrow: the future errored (state == -2). Load the carried
+                    // error slot and rethrow it into the enclosing catch (native unwind) instead of
+                    // the deterministic -1 signal.
                     LLVMPositionBuilderAtEnd(builder_, loopError);
-                    LLVMBuildBr(builder_, loopMerge);
+                    const std::optional<std::string_view> blockingErrorInner =
+                        language::futureErrorTypeKey(node->elementTypeKey);
+                    const std::string blockingErrorKey = blockingErrorInner.has_value()
+                        ? std::string(*blockingErrorInner) : std::string{};
+                    LLVMTypeRef blockingErrorType =
+                        blockingErrorKey.empty() ? nullptr : llvmType(blockingErrorKey, error);
+                    std::uint64_t errorOffset = 0;
+                    if (const frontend::ProjectOopMirStructLayout* blockingLayout =
+                            structLayout(node->elementTypeKey))
+                    {
+                        for (const frontend::ObjectFieldLayout& field : blockingLayout->fields)
+                            if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
+                    }
+                    if (node->exceptionTargetRegionOrdinal.has_value() &&
+                        blockingErrorType != nullptr && errorOffset != 0)
+                    {
+                        LLVMValueRef blockingException = LLVMBuildLoad2(
+                            builder_, blockingErrorType,
+                            byteOffset(slot, errorOffset, "await.error.addr"), "await.error");
+                        if (blockingException == nullptr) return nullptr;
+                        if (!lowerExceptionalTransfer(blockingException, node, error)) return nullptr;
+                    }
+                    else
+                    {
+                        // No enclosing catch (or a non-throwing future): keep the deterministic
+                        // signal, which the caller observes as the defined error exit.
+                        LLVMBuildBr(builder_, loopMerge);
+                    }
 
                     LLVMPositionBuilderAtEnd(builder_, loopMerge);
                     LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, blockingResultType, "await.value");
-                    LLVMValueRef incomingValues[] = { readyValue, LLVMConstInt(blockingResultType, static_cast<unsigned long long>(-1), 1) };
-                    LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
-                    LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
+                    if (node->exceptionTargetRegionOrdinal.has_value() &&
+                        blockingErrorType != nullptr && errorOffset != 0)
+                    {
+                        LLVMAddIncoming(awaitPhi, &readyValue, &loopDone, 1);
+                    }
+                    else
+                    {
+                        LLVMValueRef incomingValues[] = {
+                            readyValue, LLVMConstInt(blockingResultType, static_cast<unsigned long long>(-1), 1) };
+                        LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
+                        LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
+                    }
                     return awaitPhi;
                 }
 

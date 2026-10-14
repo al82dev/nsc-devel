@@ -4509,6 +4509,57 @@ class Program
         }});
 }
 
+void registerAsyncRethrowCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-413", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "throws", "throw", "error", "future", "rethrow"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            std::error_code copyError;
+            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                     "NumericParsing.ns", "String.ns", "Exception.ns"})
+            {
+                copyError.clear();
+                std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                    std::filesystem::copy_options::overwrite_existing, copyError);
+            }
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncRethrow", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static async int Read() throws Exception
+    {
+        throw new Exception();
+        return 42;
+    }
+
+    public static int Main()
+    {
+        try { return await Read(); }
+        catch (Exception e) { return 7; }
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncRethrow.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-413 a blocking await inside try must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-413 the future error must rethrow into the catch: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncAwaitVariableCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-377", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6706,6 +6757,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncBorrowRejectCase(registry);
     registerAsyncThrowsCase(registry);
     registerAsyncThrowErrorCase(registry);
+    registerAsyncRethrowCase(registry);
     registerAsyncAwaitVariableCase(registry);
     registerAsyncFutureTypeCase(registry);
     registerExtensionPropertyCase(registry);

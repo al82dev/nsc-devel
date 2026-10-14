@@ -8914,6 +8914,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             // -> blocking await (integerValue = 0, poll once and read the result).
             await->integerValue = loweringAsyncBody_ ? 1 : 0;
             await->children.push_back(std::move(call));
+            // NS304-T05-F07 rethrow: a BLOCKING await inside a try rethrows the future's error slot
+            // into the enclosing catch, exactly like a `throw`. The async suspend path is separate.
+            if (!loweringAsyncBody_ && !activeHirExceptionHandlers_.empty())
+            {
+                const std::size_t retainedDepth = activeHirExceptionHandlers_.back().retainedCleanupDepth;
+                for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
+                    await->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
+                await->exceptionTargetRegionOrdinal =
+                    activeHirExceptionHandlers_.back().hirRegionOrdinal;
+            }
             return await;
         }
 
