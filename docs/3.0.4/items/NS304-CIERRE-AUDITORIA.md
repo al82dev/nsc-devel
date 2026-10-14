@@ -41,8 +41,11 @@ casos_sin_evidencia == 0
 
 ## Residuales de implementación (sin surface externa)
 
-- T06-F07 teardown automático de `foreach` (dropFn per-generator) + NSMETA/PDB (T05/T06/T07/T08/T16).
-- T08-F03 `T.Miembro()` (arity fino del StaticMethodGroup) + T08-F02 ref getter.
+- ~~T08-F03 `T.Miembro()`~~ → **CERRADO** (ronda 166, `StaticMethodGroup` sin receiver).
+- ~~`GetEnumerator` del iterator devolvía `void`~~ → **FIX** (regresión ronda 88, restaurado ronda 168).
+- T06-F07 teardown automático de `foreach` → depende de **RAII de value-types** (feature amplio).
+- T08-F02 ref getter → depende de **ref-returning property** (feature amplio).
+- NSMETA/PDB (T05/T06/T07/T08/T16) → cola de metadata compartida.
 - T07-F03 error tipado del future de demanda (acoplado a #3/#4).
 
 ## Criterio de reanudación
