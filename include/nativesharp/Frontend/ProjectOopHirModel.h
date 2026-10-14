@@ -737,6 +737,8 @@ struct ProjectOopHirFunction final
     // Empty for non-throwing callables. The current Windows x64 profile uses native EH ABI 1;
     // this key is the statically declared payload bound checked by callers and metadata users.
     std::string errorTypeKey;
+    // NS304-T05-F08: async frame storage selected by [FrameStorage(...)].
+    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;

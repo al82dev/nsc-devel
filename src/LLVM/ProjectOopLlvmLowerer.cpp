@@ -651,6 +651,7 @@ private:
         LLVMTypeRef functionType = nullptr;
         LLVMMetadataRef subprogram = nullptr;
         std::uint64_t asyncFrameSize = 0;
+        language::FrameStorage asyncFrameStorage = language::FrameStorage::CallerStack;
     };
 
     enum class FuncletKind
@@ -3441,7 +3442,8 @@ private:
             }
             if (subprogram != nullptr) LLVMSetSubprogram(llvmFunction, subprogram);
             functions_[function.mangledName] =
-                FunctionInfo{llvmFunction, functionType, subprogram, function.asyncFrameSize};
+                FunctionInfo{llvmFunction, functionType, subprogram, function.asyncFrameSize,
+                             function.frameStorage};
         }
         return true;
     }
@@ -9451,6 +9453,7 @@ private:
                     LLVMBuildStore(builder_, value, slot);
                     LLVMValueRef blockingFunction = nullptr;
                     LLVMTypeRef blockingFunctionType = nullptr;
+                    LLVMValueRef heapFrame = nullptr;
                     if (node->calleeName.empty())
                     {
                         // NS304-T05-F09: await over a future VARIABLE — resolve the poll from the
@@ -9479,9 +9482,27 @@ private:
                         // futures across suspension) so its suspend path has valid storage.
                         if (blockingFound->second.asyncFrameSize > 0)
                         {
-                            LLVMTypeRef frameType = LLVMArrayType2(
-                                LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
-                            LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
+                            const bool frameOnHeap =
+                                blockingFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
+                                blockingFound->second.asyncFrameStorage == language::FrameStorage::CallerArena;
+                            LLVMValueRef frameSlot = nullptr;
+                            if (frameOnHeap)
+                            {
+                                LLVMValueRef size = LLVMConstInt(
+                                    LLVMInt64TypeInContext(context_), blockingFound->second.asyncFrameSize, 0);
+                                LLVMValueRef allocArgs[] = {size};
+                                frameSlot = buildNoUnwindCall(
+                                    allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.frame.heap");
+                                if (frameSlot == nullptr)
+                                    return failValue(error, "await future could not reserve heap frame storage");
+                                heapFrame = frameSlot;
+                            }
+                            else
+                            {
+                                LLVMTypeRef frameType = LLVMArrayType2(
+                                    LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
+                                frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
+                            }
                             if (frameSlot == nullptr)
                                 return failValue(error, "await future could not reserve frame storage");
                             LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
@@ -9537,12 +9558,24 @@ private:
                         builder_, blockingResultType,
                         byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
                     LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
+                    if (heapFrame != nullptr)
+                    {
+                        LLVMValueRef freeArgs[] = {heapFrame};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
                     LLVMBuildBr(builder_, loopMerge);
 
                     // NS304-T05-F07 rethrow: the future errored (state == -2). Load the carried
                     // error slot and rethrow it into the enclosing catch (native unwind) instead of
                     // the deterministic -1 signal.
                     LLVMPositionBuilderAtEnd(builder_, loopError);
+                    if (heapFrame != nullptr)
+                    {
+                        LLVMValueRef freeArgs[] = {heapFrame};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
                     const std::optional<std::string_view> blockingErrorInner =
                         language::futureErrorTypeKey(node->elementTypeKey);
                     const std::string blockingErrorKey = blockingErrorInner.has_value()
@@ -9608,6 +9641,14 @@ private:
                     carrier, structAlignmentFor(node->elementTypeKey), "await.child");
                 if (childSlot == nullptr)
                     return failValue(error, "await future could not reserve child storage");
+                // NS304-T05-F08: the awaited producer's frame storage (heap vs stack) is a compile-time
+                // property, hoisted so both the entry allocation and the terminal free agree.
+                const auto entryFound = functions_.find(node->calleeName);
+                const bool childFrameOnHeap = entryFound != functions_.end() &&
+                    (entryFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
+                     entryFound->second.asyncFrameStorage == language::FrameStorage::CallerArena);
+                const std::uint64_t childFrameSize =
+                    entryFound != functions_.end() ? entryFound->second.asyncFrameSize : 0;
 
                 // 1. Select: entry (self->state == 0) → fresh child; resume → self->frame (slot 0).
                 LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "await.self.state");
@@ -9625,12 +9666,25 @@ private:
                 if (fresh == nullptr) return nullptr;
                 LLVMBuildStore(builder_, fresh, childSlot);
                 // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
-                const auto entryFound = functions_.find(node->calleeName);
-                if (entryFound != functions_.end() && entryFound->second.asyncFrameSize > 0)
+                if (childFrameSize > 0)
                 {
-                    LLVMTypeRef frameType = LLVMArrayType2(
-                        LLVMInt8TypeInContext(context_), entryFound->second.asyncFrameSize);
-                    LLVMValueRef frameSlot = entryBlockAlloca(frameType, 8, "await.child.frame");
+                    LLVMValueRef frameSlot = nullptr;
+                    if (childFrameOnHeap)
+                    {
+                        LLVMValueRef size = LLVMConstInt(
+                            LLVMInt64TypeInContext(context_), childFrameSize, 0);
+                        LLVMValueRef allocArgs[] = {size};
+                        frameSlot = buildNoUnwindCall(
+                            allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.child.frame.heap");
+                        if (frameSlot == nullptr)
+                            return failValue(error, "await future could not reserve child heap frame storage");
+                    }
+                    else
+                    {
+                        LLVMTypeRef frameType = LLVMArrayType2(
+                            LLVMInt8TypeInContext(context_), childFrameSize);
+                        frameSlot = entryBlockAlloca(frameType, 8, "await.child.frame");
+                    }
                     if (frameSlot == nullptr)
                         return failValue(error, "await future could not reserve child frame storage");
                     LLVMBuildStore(builder_, frameSlot, byteOffset(childSlot, 8, "await.child.frame.field"));
@@ -9681,28 +9735,11 @@ private:
                     return failValue(error, "async poll call failed");
 
                 // 2. Check pending: child.state == -1 (ready) → extract; child.state == -2
-                // (ReadyError) → propagate the error to the parent; else suspend.
+                // (ReadyError) → propagate the error to the parent; else suspend. The error path
+                // only exists for a throwing future (one with an error slot).
                 LLVMValueRef childState = LLVMBuildLoad2(
                     builder_, intType, childSlot, "await.child.state");
                 LLVMValueRef readyConst = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
-                LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
-                LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
-                LLVMBasicBlockRef errorCheckBlock = appendBlock("await.errorcheck");
-                LLVMBasicBlockRef errorBlock = appendBlock("await.error");
-                LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
-                LLVMBuildCondBr(
-                    builder_,
-                    LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
-                    readyBlock, errorCheckBlock);
-
-                // ReadyError: child errored. Propagate the carried error into the parent future's
-                // error slot and mark the parent errored (state == -2) — no native unwind.
-                LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
-                LLVMBuildCondBr(
-                    builder_,
-                    LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
-                    errorBlock, suspendBlock);
-                LLVMPositionBuilderAtEnd(builder_, errorBlock);
                 const std::optional<std::string_view> errorInner =
                     language::futureErrorTypeKey(node->elementTypeKey);
                 const std::string errorKey = errorInner.has_value()
@@ -9715,14 +9752,51 @@ private:
                     for (const frontend::ObjectFieldLayout& field : errorLayout->fields)
                         if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
                 }
-                if (errorType == nullptr || errorOffset == 0)
-                    return failValue(error, "async await error propagation has no error slot");
-                LLVMValueRef childError = LLVMBuildLoad2(
-                    builder_, errorType,
-                    byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
-                LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
-                LLVMBuildStore(builder_, errorConst, self);
-                LLVMBuildRetVoid(builder_);
+                const bool hasErrorSlot = errorType != nullptr && errorOffset != 0;
+
+                LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
+                LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
+                if (!hasErrorSlot)
+                {
+                    // Non-throwing child: only ready vs suspend.
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
+                        readyBlock, suspendBlock);
+                }
+                else
+                {
+                    // ReadyError: child errored. Propagate the carried error into the parent
+                    // future's error slot and mark the parent errored (state == -2) — no unwind.
+                    LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
+                    LLVMBasicBlockRef errorCheckBlock = appendBlock("await.errorcheck");
+                    LLVMBasicBlockRef errorBlock = appendBlock("await.error");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
+                        readyBlock, errorCheckBlock);
+                    LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
+                        errorBlock, suspendBlock);
+                    LLVMPositionBuilderAtEnd(builder_, errorBlock);
+                    LLVMValueRef childError = LLVMBuildLoad2(
+                        builder_, errorType,
+                        byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
+                    LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
+                    LLVMBuildStore(builder_, errorConst, self);
+                    if (childFrameOnHeap)
+                    {
+                        LLVMValueRef childFramePtr = LLVMBuildLoad2(
+                            builder_, LLVMPointerTypeInContext(context_, 0),
+                            byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
+                        LLVMValueRef freeArgs[] = {childFramePtr};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
+                    LLVMBuildRetVoid(builder_);
+                }
 
                 // Suspend: save child in self->frame + state=N + ret void.
                 LLVMPositionBuilderAtEnd(builder_, suspendBlock);
@@ -9739,6 +9813,15 @@ private:
                 LLVMPositionBuilderAtEnd(builder_, readyBlock);
                 LLVMTypeRef resultType = llvmType(node->typeKey, error);
                 if (resultType == nullptr) return nullptr;
+                if (childFrameOnHeap)
+                {
+                    LLVMValueRef childFramePtr = LLVMBuildLoad2(
+                        builder_, LLVMPointerTypeInContext(context_, 0),
+                        byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
+                    LLVMValueRef freeArgs[] = {childFramePtr};
+                    buildNoUnwindCall(
+                        deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                }
                 return LLVMBuildLoad2(
                     builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
                     "await.result");

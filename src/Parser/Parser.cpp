@@ -2698,6 +2698,28 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
 
 ast::AstNode* Parser::parseNamespaceMember()
 {
+    // NS304-T05-F08: `[FrameStorage(Stack|Arena|Heap)]` attribute selects the async frame storage
+    // (surface #1). It is parsed here and recorded in the callable marker for the member model.
+    std::string frameStorage;
+    if (at(TokenKind::LeftBracket))
+    {
+        consume();
+        if (at(TokenKind::Identifier) && current().lexeme() == "FrameStorage")
+        {
+            consume();
+            expect(TokenKind::LeftParen, "'(' after FrameStorage");
+            if (at(TokenKind::Identifier))
+                frameStorage = std::string(consume().lexeme());
+            else
+                expect(TokenKind::Identifier, "FrameStorage argument (Stack, Arena or Heap)");
+            expect(TokenKind::RightParen, "')' after FrameStorage argument");
+            expect(TokenKind::RightBracket, "']' after FrameStorage");
+        }
+        else
+        {
+            --index_;
+        }
+    }
     // NS304-T05-F01: `async` se consume como modifier (ya no se rechaza con NS3049) y se guarda
     // como marcador "async" en el auxiliaryText del callable global; el lowering es T05-F03.
     bool isAsync = false;
@@ -2746,6 +2768,11 @@ ast::AstNode* Parser::parseNamespaceMember()
         std::string marker = declaration->auxiliaryText();
         if (!marker.empty()) marker += ';';
         marker += "async";
+        if (!frameStorage.empty())
+        {
+            marker += ";framestorage:";
+            marker += frameStorage;
+        }
         declaration->setAuxiliaryText(std::move(marker));
     }
     return declaration;
@@ -6018,6 +6045,27 @@ ast::AstNode* Parser::parseClassMember(
 {
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
+    // NS304-T05-F08: `[FrameStorage(Stack|Arena|Heap)]` attribute selects the async frame storage.
+    std::string frameStorage;
+    if (at(TokenKind::LeftBracket))
+    {
+        consume();
+        if (at(TokenKind::Identifier) && current().lexeme() == "FrameStorage")
+        {
+            consume();
+            expect(TokenKind::LeftParen, "'(' after FrameStorage");
+            if (at(TokenKind::Identifier))
+                frameStorage = std::string(consume().lexeme());
+            else
+                expect(TokenKind::Identifier, "FrameStorage argument (Stack, Arena or Heap)");
+            expect(TokenKind::RightParen, "')' after FrameStorage argument");
+            expect(TokenKind::RightBracket, "']' after FrameStorage");
+        }
+        else
+        {
+            --index_;
+        }
+    }
     bool isAsync = false;
     TokenKind accessibility = TokenKind::Invalid;
     bool isPartial = false;
@@ -7240,6 +7288,11 @@ ast::AstNode* Parser::parseClassMember(
             std::string marker = method->auxiliaryText();
             if (!marker.empty()) marker += ';';
             marker += "async";
+            if (!frameStorage.empty())
+            {
+                marker += ";framestorage:";
+                marker += frameStorage;
+            }
             method->setAuxiliaryText(std::move(marker));
         }
         if (method != nullptr && isPartialMember)

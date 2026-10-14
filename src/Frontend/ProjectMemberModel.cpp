@@ -1944,7 +1944,7 @@ bool ProjectMemberModel::collectTypeMembers(
             // (`future:<T>`) y lleva Effect::Async. El lowering productivo es F03.
             const bool isAsyncMethod = symbol.kind == ClassMemberKind::Method &&
                 (memberNode->auxiliaryText() == "async" ||
-                 memberNode->auxiliaryText().ends_with(";async"));
+                 memberNode->auxiliaryText().starts_with("async;"));
             symbol.declaredTypeSyntax = memberNode->typeSyntax();
             symbol.declaredTypeKey = symbol.kind == ClassMemberKind::Constructor
                 ? "type:" + type.identity.key()
@@ -1961,6 +1961,29 @@ bool ProjectMemberModel::collectTypeMembers(
                 // (`future:<T>|<E>`), so the error is not silently discarded.
                 symbol.declaredTypeKey = language::futureTypeKey(
                     symbol.declaredTypeKey, symbol.declaredErrorTypeKey);
+                // NS304-T05-F08: read [FrameStorage(Stack|Arena|Heap)] from the marker.
+                const std::string_view metadata = memberNode->auxiliaryText();
+                const std::size_t storagePos = metadata.find("framestorage:");
+                if (storagePos != std::string_view::npos)
+                {
+                    const std::size_t nameBegin = storagePos + std::string("framestorage:").size();
+                    const std::size_t nameEnd = metadata.find(';', nameBegin);
+                    const std::string_view storageName = metadata.substr(
+                        nameBegin, nameEnd == std::string_view::npos
+                            ? std::string_view::npos : nameEnd - nameBegin);
+                    if (storageName == "Stack") symbol.frameStorage = language::FrameStorage::CallerStack;
+                    else if (storageName == "Arena") symbol.frameStorage = language::FrameStorage::CallerArena;
+                    else if (storageName == "Heap") symbol.frameStorage = language::FrameStorage::ExplicitHeap;
+                    else
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            symbol.range,
+                            "unknown FrameStorage '" + std::string(storageName) +
+                                "' (expected Stack, Arena or Heap)");
+                    }
+                }
             }
             symbol.ffiUnwindPolicy = memberNode->ffiUnwindPolicy();
             symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&

@@ -5480,6 +5480,52 @@ class Program
         }});
 }
 
+void registerAsyncFrameStorageHeapCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-437", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "frame", "storage", "FrameStorage", "heap", "explicit"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T05AsyncFrameStorageHeap", "Exe", R"ns(
+class Program
+{
+    [FrameStorage(Heap)]
+    public static async int Inner()
+    {
+        int x = 20;
+        yield;
+        return x + 1;
+    }
+
+    public static async int Outer()
+    {
+        return await Inner();
+    }
+
+    public static int Main()
+    {
+        int a = await Inner();
+        int b = await Outer();
+        return a + b;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T05AsyncFrameStorageHeap.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-437 [FrameStorage(Heap)] async must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-437 [FrameStorage(Heap)] async must run with an explicit heap frame (blocking + nested await, exit 42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerAsyncAwaitVariableCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-377", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7701,6 +7747,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncThrowErrorCase(registry);
     registerAsyncRethrowCase(registry);
     registerAsyncNestedErrorPropagationCase(registry);
+    registerAsyncFrameStorageHeapCase(registry);
     registerAsyncAwaitVariableCase(registry);
     registerAsyncFutureTypeCase(registry);
     registerExtensionPropertyCase(registry);

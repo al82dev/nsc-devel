@@ -1678,6 +1678,7 @@ bool ProjectOopHirModel::buildImpl(
             ? "builtin:void"
             : member.declaredTypeKey;
         function.errorTypeKey = member.declaredErrorTypeKey;
+        function.frameStorage = member.frameStorage;
         function.returnOwnership = (function.constructor || function.destructor)
             ? sema::OwnershipKind::None
             : member.declaredOwnership;

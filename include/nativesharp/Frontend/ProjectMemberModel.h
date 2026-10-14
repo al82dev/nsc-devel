@@ -8,6 +8,7 @@
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/InliningPolicy.h"
 #include "nativesharp/Language/OwnershipSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Sema/OwnershipKind.h"
 #include "nativesharp/Sema/EffectContext.h"
 
@@ -146,6 +147,8 @@ struct ClassMemberSymbol final
     // callable type/effect contract while the physical Windows x64 return ABI stays unchanged.
     const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
     std::string declaredErrorTypeKey;
+    // NS304-T05-F08: async frame storage selected by [FrameStorage(...)] (default CallerStack).
+    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
     bool declaredPointerPointeeReadonly = false;
     bool declaredPointerNullable = true;
     bool declaredPointerHasProvenance = true;
