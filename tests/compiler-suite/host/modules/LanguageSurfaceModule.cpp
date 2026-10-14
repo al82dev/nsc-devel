@@ -6161,6 +6161,46 @@ class Program
         }});
 }
 
+void registerGeneratorPinnedFrameCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-442", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "ref", "pinning", "frame", "stability"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06GeneratorPinnedFrame", "Exe", R"ns(
+class Program
+{
+    public static Iterator<ref int> Gen()
+    {
+        int x = 10;
+        yield return x;
+        yield return x;
+    }
+
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (ref int v in Gen()) { sum += v; }
+        return sum;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06GeneratorPinnedFrame.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-442 a self-referential pinned frame must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 20,
+                "TL-LANG-442 the pinned frame must stay stable across yields (10 + 10 = 20): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7922,6 +7962,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorParameterCaptureCase(registry);
     registerGeneratorRefItemCase(registry);
     registerGeneratorRefMutItemCase(registry);
+    registerGeneratorPinnedFrameCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
