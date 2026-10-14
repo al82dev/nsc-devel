@@ -23,6 +23,14 @@ Estado real:
 Falta congelar la regla orphan/coherence para la conformance externa (dos impls visibles, ciclos,
 conformance retroactiva incompatible) y publicar el witness + constraints en NSMETA.
 
+### Verificación (2026-10-13)
+
+- La conformance nominal `impl Trait for Class` **funciona** (exit 5); el impl duplicado se rechaza
+  por firma (`duplicate method signature`). El target debe ser **clase no estática** (un struct da
+  `trait impl target must be a non-static class`).
+- Lo pendiente es el **vertical de reglas** (orphan: posesión de módulo del tipo/trait/extensión) +
+  la **metadata NSMETA** (witness + constraints), no una surface nueva.
+
 ## Nota
 
 F05 es la coherence de la conformance externa (operador extension, F04). Es un vertical de reglas +
