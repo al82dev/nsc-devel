@@ -1,28 +1,33 @@
 # NS304-T11-F07 — Ref fields, scoped y summaries
 
-- **Estado**: AUDITADO (lifetime/escape nominal existen; ref fields/scoped intermodular pendientes)
+- **Estado**: IMPLEMENTADO (ref fields con escape safety de origen de storage; scoped/ref readonly/summary residuales)
 - **Rama**: development
+
+## Resultado (ref fields + escape safety — 2026-10-14)
+
+- **Parser**: `ref T Field` (campo referencia) y `target = ref storage` (asignación por referencia).
+- **MemberModel**: `isReferenceReturn` marca también campos `ref T` (no solo métodos).
+- **Sema** (`analyzeAssignment`): un `field = ref storage` registra el `MethodEscapeOrigin` del storage
+  por ordinal del campo (`refFieldOrigins_`).
+- **Escape evaluator** (`startMember`): el acceso a un campo ref devuelve el origen registrado del
+  storage, no el receiver struct (que se copia al retornar y ocultaría el dangling).
+- **Return** (`analyzeReturnStatement`): retornar un struct valor cuyo ref field aliasa storage del
+  frame actual se rechaza (`cannot return a value whose ref field 'F' aliases storage owned by the
+  current stack frame`); el alias a un parámetro `ref` (storage externo) se permite.
+- Prueba: `TL-LANG-475` — store/read de ref field (exit 5) + rechazo del escape → **PASS**.
+
+## Residual (fuera del surface)
+
+- **`scoped`**: la anotación de lifetime acotado no está modelada.
+- **`ref readonly`**: el campo referencia inmutable (`ref readonly T`) no está modelado.
+- **Summary intermodular**: NSMETA no publica aún orígenes de retorno/`scoped` de ref fields.
 
 ## Auditoría (línea base)
 
 Contrato (tracking): *Implementar ref fields, scoped y summaries*.
 Plan T11-F07 (DeepSeekDocs): *completar definite assignment, mutabilidad, reborrow y escape de ref
-fields; publicar summary intermodular suficiente: orígenes de retorno, relación entre parámetros,
-`scoped` y lifetime; consumer sin fuentes rechaza el mismo escape que producer*.
+fields; publicar summary intermodular suficiente*.
 
-Estado real:
+## Commits
 
-- `lifetimeParameters`/`parameterEscapeSummary` ya existen en los símbolos (lifetime/escape nominal).
-- Ref fields (campos de referencia) + `scoped`: sin modelado de reborrow/escape específico.
-- Summary intermodular: sin publicación de orígenes de retorno/`scoped` para ref fields.
-
-## Gap
-
-Falta el modelado de ref fields (definite assignment, mutabilidad, reborrow, escape) + `scoped`, y el
-summary intermodular (orígenes de retorno + relación entre parámetros + `scoped`/lifetime) para que el
-consumer rechace el mismo escape sin fuentes.
-
-## Nota
-
-F07 depende de F05 (ref-like) + el lifetime/escape ya existente. No es una surface nueva; es el
-completar del escape safety intermodular de ref fields.
+- `d5264d8d` — ref fields con escape safety de origen de storage (TL-LANG-475).
