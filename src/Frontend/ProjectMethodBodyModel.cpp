@@ -26178,6 +26178,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorGetEnumerator: return "iterator-get-enumerator";
         case MethodCoreOperationKind::IteratorDrop: return "iterator-drop";
         case MethodCoreOperationKind::IteratorMoveNextAsync: return "iterator-move-next-async";
+        case MethodCoreOperationKind::CollectionBuilder: return "collection-builder";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";

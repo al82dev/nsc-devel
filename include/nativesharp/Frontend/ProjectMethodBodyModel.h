@@ -1146,7 +1146,9 @@ enum class MethodCoreOperationKind
     IteratorCurrent,
     IteratorGetEnumerator,
     IteratorDrop,
-    IteratorMoveNextAsync
+    IteratorMoveNextAsync,
+    // NS304-T09-F05: a collection expression targeting a builder (CreateBuilder/Add/ToCollection).
+    CollectionBuilder
 };
 
 struct MethodCoreBinding final

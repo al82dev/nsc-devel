@@ -483,6 +483,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::IteratorDrop:
     case MethodCoreOperationKind::IteratorMoveNextAsync:
         return std::nullopt;
+    case MethodCoreOperationKind::CollectionBuilder:
+        return std::nullopt;
     }
 
     // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
