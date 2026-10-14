@@ -4720,6 +4720,100 @@ class Program
         }});
 }
 
+void registerAllocatorProtocolCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-432", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "trait", "IAllocator", "protocol", "pointer", "pairing"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F01AllocatorProtocol", "Exe", R"ns(
+using NativeSharp.Core;
+
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    private owned bool[] used;
+    private int blockSize;
+    private int blockCount;
+
+    public BlockAllocator(int size, int count)
+    {
+        blockSize = (size + 7) / 8 * 8;
+        blockCount = count;
+        pool = new byte[blockSize * blockCount];
+        used = new bool[blockCount];
+    }
+
+    public byte* Allocate(int bytes)
+    {
+        if (bytes <= 0 || bytes > blockSize) return null;
+        for (int i = 0; i < blockCount; i++)
+        {
+            if (!used[i]) { used[i] = true; byte* b = Spans.Of<byte>(pool).Data(); return b + i * blockSize; }
+        }
+        return null;
+    }
+
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes)
+    {
+        if (ptr == null || newBytes <= 0) return null;
+        if (newBytes <= blockSize) return ptr;
+        return null;
+    }
+
+    public void Deallocate(byte* ptr)
+    {
+        if (ptr == null) return;
+        byte* base0 = Spans.Of<byte>(pool).Data();
+        for (int i = 0; i < blockCount; i++)
+        {
+            if (ptr == base0 + i * blockSize) { used[i] = false; return; }
+        }
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator a = new BlockAllocator(16, 8);
+        if (a.Allocate(0) != null) return 1;
+        if (a.Allocate(20) != null) return 2;
+        byte* p = a.Allocate(8);
+        if (p == null) return 3;
+        p[0] = 42;
+        p[1] = 7;
+        byte* q = a.Resize(p, 8, 12);
+        if (q == null) return 4;
+        if (q[0] != 42 || q[1] != 7) return 5;
+        if (a.Resize(p, 8, 20) != null) return 6;
+        a.Deallocate(q);
+        byte* r = a.Allocate(8);
+        if (r == null) return 7;
+        if (r != q) return 8;
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F01AllocatorProtocol.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-432 IAllocator protocol must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-432 IAllocator allocate/resize/deallocate must pair and reuse (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7419,6 +7513,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
+    registerAllocatorProtocolCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
