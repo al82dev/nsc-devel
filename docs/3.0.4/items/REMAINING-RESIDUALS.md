@@ -1,30 +1,35 @@
 # Parte B 3.0.4 — residuales pendientes (estado de sesión)
 
-Resumen honesto de lo que queda tras ~56 commits. Los ítems cerrados/avanzados están en el
-`NATIVESHARP-3.0.3-A-3.0.6-TRACKING-MAESTRO.md` (marcas `[x]`).
+Resumen honesto de lo que queda. Los ítems cerrados/avanzados están en el
+`NATIVESHARP-3.0.3-A-3.0.6-TRACKING-MAESTRO.md` (marcas `[x]`). Cerrados hasta ahora: T00-T04
+(38/147) + T05-F01/F02/F03/F10 + T06-F01/F02/F03 + T07-F01/F02 + T08-F01..F04 + T09-F01/F02/F03/
+F05/F07/F08 + T10-F02/F04/F07 = **60/147 (40.82 %)**.
 
 ## Residuos acotados (multi-capa media)
 
-- **T08-F03** — lookup Sema de `T.Miembro()` estático de extensión. Causa raíz: en
-  `ProjectNameLookup::predeclareNode` la predeclaración de funciones de namespace exige
-  `!namespaceSegments.empty()`; la función estática de extensión en scope global cae en ese hueco
-  (namespace vacío) y no se indexa como función global.
-- **T09-F05** — builder protocol; las formas de array nativo, incluido single-spread, ya
-  materializan almacenamiento independiente.
+- **T08-F07 (NSMETA static/operator)** — la extensión estática y el operador marcan el flag
+  `kMetadataNamespaceFunctionExtension` (NSMETA 1.32) sin un bit "static"; el consumidor los
+  reconstruye como extensión de instancia y descarta el primer parámetro (operador intermodular
+  roto). Fix acotado: bit "static" en `LibraryMetadataNamespaceFunction::flags` o no marcar
+  `isExtension` en `ns3-extension-static` + prueba de consumo intermodular.
+- **T07-F03** — backpressure/terminalidad/orden observables (el error tipado `<E>` ya es productivo).
 
 ## Bloques duros (multi-capa grande)
 
-- **T05-F03+ / T06-F02+ / T07** — state machines async/generator/async-streams (transformación
-  productiva a HIR/MIR, frame layout, liveness, unwind).
-- **T03-F03** — Span/ReadOnlySpan sobre array/inline (bloqueado: `ensureTypeSpecialization` no
-  materializa el tipo desde cuerpos de método; clave cerrada correcta).
-- **T15** — decimal.
-- **T10-F01** — literales UTF-8 tipados (`u8"..."`/`Utf8`/`ReadOnlySpan<byte>`).
-- **T10-F03** — interpolation handlers productivos (stack/writer/custom sink).
-- **T11-T17** — spans/ref-like, partial members, allocators, scope/in-place, concurrency, async
-  iterators, etc.
+- **T05-F04..F09 / T06-F04..F08 / T07-F04..F08** — liveness precisa, pinning, drop en error/
+  cancelación, backpressure, task scope, Send/Sync, metadata/debug de async frames.
+- **T03-F03 (Span/ReadOnlySpan)** — bloqueado: `ensureTypeSpecialization` no materializa el tipo
+  desde cuerpos de método.
+- **T09-F06** — length const genérico (`const N`) — vertical de type-system.
+- **T09-F09/F10** — `throws E` constructors, cleanup parcial, ABI/NSMETA/unwind.
+- **T10-F01** — literales UTF-8 tipados (`u8"..."`).
+- **T10-F03** — interpolation handlers productivos.
+- **T10-F05** — indexador de usuario (la base `?[]` nativo ya está).
+- **T11-T17** — spans/ref-like, partial members, allocators, comptime, decimal, ABI/metadata/debug,
+  conformidad C# 14/Beef y cierre (suite O0 final reservada a Alberto, T17-F08).
 
 ## Nota
 
-Los commits aislados por ítem (`deepseek - ...`) y las pruebas puntuales (`TL-LANG-*`, `TP-PAR-*`,
-`TL-LEX-*`, `TA-AST-*`) se mantienen verdes: `TL-LANG-300..356` sin fallos a la fecha.
+Las 12 decisiones de surface están fijadas en `NS304-DECISIONES-SURFACE.md` (no bloquean). Los
+commits aislados por ítem y las pruebas puntuales (`TL-LANG-*`, `TP-PAR-*`, `TL-LEX-*`, `TA-AST-*`)
+se mantienen verdes.

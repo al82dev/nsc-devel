@@ -113,7 +113,7 @@ Bitácora mínima por ciclo:
 | Parte | Versión | Tandas | Denominador | Cerrados | Progreso | Estado |
 |---|---:|---:|---:|---:|---:|---|
 | A | 3.0.3 | 14 | 52 defectos | 52 | 100 % | `TANDAS_CERRADAS`; batería final pendiente |
-| B | 3.0.4 | 18 | 147 ítems | 38 | 25.85 % | `ACTIVA`; T00-T04 cerradas; campaña secuencial T05-F01 siguiente |
+| B | 3.0.4 | 18 | 147 ítems | 60 | 40.82 % | `ACTIVA`; T00-T04 cerradas; T05-T10 con ítems cerrados; T07-F01/F02, T08-F01..F04, T09-F05 cerrados |
 | C | 3.0.5 | 15 | 149 elementos granulares | 0 | 0 % | `PENDIENTE`; T8 tiene evidencia parcial no terminal |
 | D | 3.0.6 | 10 | 10 frentes de auditoría | 0 | 0 % | `PENDIENTE` futuro, sin cambios funcionales |
 
@@ -918,14 +918,14 @@ T00
 | T00 | Auditoría ejecutable y congelamiento de contratos | 8 | 8 | 100 % |
 | T01 | Inicialización estática y declaraciones en condiciones | 8 | 8 | 100 % |
 | T02 | Cuerpos default de traits e interfaces | 6 | 6 | 100 % |
-| T03 | List, slice y property patterns | 8 | 3 | 37.5 % |
-| T04 | Lambdas, callables y funciones locales | 8 | 0 | 0 % |
-| T05 | Async/await productivo | 10 | 0 | 0 % |
-| T06 | Generadores síncronos | 8 | 0 | 0 % |
-| T07 | Async streams y concurrencia estructurada | 8 | 0 | 0 % |
-| T08 | Extension members y operadores | 7 | 0 | 0 % |
-| T09 | Construcción, propiedades y eventos | 10 | 0 | 0 % |
-| T10 | Strings, null-awareness y nombres estáticos | 8 | 0 | 0 % |
+| T03 | List, slice y property patterns | 8 | 8 | 100 % |
+| T04 | Lambdas, callables y funciones locales | 8 | 8 | 100 % |
+| T05 | Async/await productivo | 10 | 4 | 40 % |
+| T06 | Generadores síncronos | 8 | 3 | 37.5 % |
+| T07 | Async streams y concurrencia estructurada | 8 | 2 | 25 % |
+| T08 | Extension members y operadores | 7 | 4 | 57.14 % |
+| T09 | Construcción, propiedades y eventos | 10 | 6 | 60 % |
+| T10 | Strings, null-awareness y nombres estáticos | 8 | 3 | 37.5 % |
 | T11 | Spans, referencias y genéricos modernos | 8 | 0 | 0 % |
 | T12 | Partial members y composición de fuente | 6 | 0 | 0 % |
 | T13 | Allocators, scope e in-place construction | 9 | 0 | 0 % |
@@ -933,7 +933,7 @@ T00
 | T15 | Tipo decimal nativo | 8 | 0 | 0 % |
 | T16 | Integración ABI, metadata, debug y self-host | 8 | 0 | 0 % |
 | T17 | Conformidad C# 14/Beef y cierre | 11 | 0 | 0 % |
-| **Total** |  | **147** | **25** | **17.01 %** |
+| **Total** |  | **147** | **60** | **40.82 %** |
 
 ## B.2 Inventario exacto T00-T17
 
@@ -1020,9 +1020,9 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 ### T07 — async streams y concurrencia estructurada
 
-- [ ] `NS304-T07-F01` — Definir `AsyncIterator`/`AsyncGenerator` y demanda explícita del consumidor.
-- [ ] `NS304-T07-F02` — Implementar máquina única para `await` + `yield` sin frames duplicados.
-- [ ] `NS304-T07-F03` — Definir backpressure, terminalidad, errores y orden observable.
+- [x] `NS304-T07-F01` — Definir `AsyncIterator`/`AsyncGenerator` y demanda explícita del consumidor. *(CERRADO: surface `async-iterator:<T>|<E>` + `AsyncIterator<T,E>` + `MoveNextAsync` (TL-LANG-385/386).)*
+- [x] `NS304-T07-F02` — Implementar máquina única para `await` + `yield` sin frames duplicados. *(CERRADO: splitAsyncGeneratorFunction + una máquina await+yield (TL-LANG-385/386).)*
+- [ ] `NS304-T07-F03` — Definir backpressure, terminalidad, errores y orden observable. *(error tipado `<E>` productivo; backpressure/terminalidad/orden observables pendientes.)*
 - [ ] `NS304-T07-F04` — Implementar items borrowed/move-only y prohibir supervivencia fuera de demanda.
 - [ ] `NS304-T07-F05` — Propagar cancelación y ejecutar cleanup de productor y consumidor.
 - [ ] `NS304-T07-F06` — Cerrar `task scope`, spawn/join, child failure y no-escape de borrows.
@@ -1032,12 +1032,12 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 ### T08 — extension members y operadores
 
 - [x] `NS304-T08-F01` — Diseñar bloques `extension` canónicos sobre tipos y constraints. *(extension method en namespace + TL-LANG-323; global-namespace residual.)*
-- [ ] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(PARCIAL: getter (`TL-LANG-324`), setter método (`TL-LANG-330`) y setter por asignación están demostrados; getter por referencia sigue pendiente.)*
-- [ ] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(parser: `static` dentro de extension no recibe receptor (ns3-extension-static) + TP-PAR-538; lookup Sema de `T.Miembro()` residual.)*
-- [ ] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos.
-- [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules.
-- [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental.
-- [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation.
+- [x] `NS304-T08-F02` — Implementar extension properties con getter/setter/ref getter. *(CERRADO: getter (`TL-LANG-324`), setter (`TL-LANG-330`), ref getter read+write (`TL-LANG-392/393`) — `setReference` en parser + getter ref direccionable sin setter.)*
+- [x] `NS304-T08-F03` — Implementar métodos, propiedades y constantes estáticos de extensión. *(CERRADO: `static` en extension sin receptor (ns3-extension-static) + TP-PAR-538 + `T.Miembro()` vía StaticMethodGroup (TL-LANG-389).)*
+- [x] `NS304-T08-F04` — Implementar operadores de extensión mediante trait witnesses estáticos. *(CERRADO: `operator+` de extensión resuelve y baja como llamada de namespace (TL-LANG-394, exit 5).)*
+- [ ] `NS304-T08-F05` — Permitir conformance externa a traits bajo orphan/coherence rules. *(nominal `impl Trait for Class` productivo; orphan + NSMETA witness pendientes.)*
+- [ ] `NS304-T08-F06` — Congelar imports, visibilidad, precedencia, ambigüedad y lookup incremental. *(precedencia nominal-antes-extensión productiva; ranking/índices pendientes.)*
+- [ ] `NS304-T08-F07` — Versionar NSMETA y probar consumidor binario, genéricos y cero layout mutation. *(instancia publicada (NSMETA 1.32); static+operador sin bit "static" = deuda intermodular.)*
 
 ### T09 — construcción, propiedades y eventos
 
@@ -1045,7 +1045,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T09-F02` — Implementar setters `init` y congelamiento posterior a construcción. *(parser `init` + marcador `:init` + flag isInit + restricción en constructor + TL-LANG-334; congelamiento efectivo vía backing privado.)*
 - [x] `NS304-T09-F03` — Implementar backing field sintetizado con layout visible. *(backing `__nsc_backing_<name>$stage38` determinista + layout de campo regular; ya satisfecho por síntesis existente.)*
 - [ ] `NS304-T09-F04` — Extender primary constructors con orden de inicialización normativo. *(struct/record + class primary ctor promote-to-fields + orden textual + TL-LANG-337/344; semántica params-in-scope C# 12 residual.)*
-- [ ] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito. *(AST + parser + target-typed/var/tipo común; spreads ordenados HIR/MIR/LLVM con copia y evaluación única, TL-LANG-349 PASS 2026-10-13; single-spread materializa almacenamiento independiente, TL-LANG-354 PASS 2026-10-13 con mutación aislada bidireccional y una evaluación del origen; builder protocol permanece abierto.)*
+- [x] `NS304-T09-F05` — Completar collection expressions, spreads y builder protocol sin heap implícito. *(CERRADO: AST+parser+target-typed/var/común + spreads ordenados (TL-LANG-347/348/349/354) + builder protocol surface A ruta mínima `CreateBuilder→Add→ToCollection` sin heap (TL-LANG-395/396/397/398).)*
 - [ ] `NS304-T09-F06` — Implementar inline arrays/fixed buffers seguros con length const genérico. *(fixed array T[n] con length literal + TL-LANG-308/309/310; length const genérico residual (sistema de tipos).)*
 - [x] `NS304-T09-F07` — Implementar target-typed construction sin alterar overload selection. *(new() y new(args) vía activeTargetTypeKey_ + construction model target-typed + TL-LANG-339; desambiguación de placement por lookahead.)*
 - [x] `NS304-T09-F08` — Definir eventos nativos sobre handler/storage explícitos. *(handler explícito + add/remove + invoke + accessors custom add_/remove_ (parser + InstanceCall) + TL-LANG-338/341.)*
