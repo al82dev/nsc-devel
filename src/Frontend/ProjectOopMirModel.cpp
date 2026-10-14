@@ -11,6 +11,7 @@
 #include <limits>
 #include <string_view>
 #include <span>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -1615,9 +1616,47 @@ bool ProjectOopMirModel::build(
             };
             sumAwaited(sumAwaited, function.body.get());
 
-            // Locals that cross a suspension: every declared local is kept alive conservatively
-            // (the precise liveness refinement can shrink this later). Offsets follow the awaited
-            // futures and are aligned to each local's natural alignment.
+            // NS304-T05-F04 precise liveness: only locals that are live ACROSS a suspension
+            // (defined before a SuspendPoint and used after it) get a frame slot. A local whose
+            // last use precedes every suspension does not survive the suspend and is omitted, so
+            // the frame no longer pays for dead locals.
+            std::uint64_t order = 0;
+            std::unordered_map<std::size_t, std::uint64_t> localDefinition;
+            std::unordered_map<std::size_t, std::uint64_t> localLastUse;
+            std::vector<std::uint64_t> suspendOrders;
+            const auto walkLiveness = [&](const auto& self, const ProjectOopMirNode* node) -> void
+            {
+                if (node == nullptr) return;
+                const std::uint64_t here = order++;
+                if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+                    node->localOrdinal.has_value())
+                {
+                    if (!localDefinition.contains(*node->localOrdinal))
+                        localDefinition[*node->localOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::LocalValue &&
+                    node->localOrdinal.has_value())
+                {
+                    localLastUse[*node->localOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::SuspendPoint)
+                {
+                    suspendOrders.push_back(here);
+                }
+                for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
+                    self(self, child.get());
+            };
+            walkLiveness(walkLiveness, function.body.get());
+            const auto liveAcrossSuspension = [&](std::size_t localOrdinal) -> bool
+            {
+                const auto definition = localDefinition.find(localOrdinal);
+                const auto lastUse = localLastUse.find(localOrdinal);
+                if (definition == localDefinition.end() || lastUse == localLastUse.end())
+                    return false;
+                for (const std::uint64_t suspend : suspendOrders)
+                    if (definition->second < suspend && suspend < lastUse->second) return true;
+                return false;
+            };
             const auto alignUp = [](std::uint64_t value, std::uint64_t alignment) -> std::uint64_t
             {
                 if (alignment <= 1) return value;
@@ -1627,7 +1666,8 @@ bool ProjectOopMirModel::build(
             {
                 if (node == nullptr) return;
                 if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-                    node->localOrdinal.has_value() && !node->typeKey.empty())
+                    node->localOrdinal.has_value() && !node->typeKey.empty() &&
+                    liveAcrossSuspension(*node->localOrdinal))
                 {
                     const auto layout =
                         objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
