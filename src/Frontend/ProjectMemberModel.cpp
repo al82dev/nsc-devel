@@ -1186,8 +1186,11 @@ bool ProjectMemberModel::typeTransitivelyHasCustomDestructor(std::string_view ty
 
 bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 {
+    // NS304-T06-F07: iterator/async-iterator carry a Drop function pointer and therefore always
+    // require a value drop (the drop glue dispatches through it), like a custom-destructor struct.
     return typeTransitivelyOwnsStorage(typeKey) ||
-        typeTransitivelyHasCustomDestructor(typeKey);
+        typeTransitivelyHasCustomDestructor(typeKey) ||
+        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:");
 }
 
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const

@@ -6302,8 +6302,10 @@ void ProjectMethodBodyModel::analyzeVariable(
     // A foreach enumerator has an automatic lifetime whose representation follows the inferred
     // GetEnumerator() result. Reference-shaped results retain the established RAII cleanup path;
     // value-shaped results are ordinary stack locals and therefore allocate nothing.
+    // NS304-T06-F07: an iterator enumerator is RAII too (it carries a Drop function pointer).
     const bool foreachEnumeratorNeedsRaii = isForeachEnumerator &&
-        (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
+        (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate ||
+         typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:"));
     const bool deferCaptureNeedsRaii = isDeferValueCapture &&
         (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
     const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
@@ -6367,7 +6369,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                 : "reference local requires an initializer naming mutable addressable storage");
     }
     if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" && !managedDelegate &&
-        !raiiOwnsNativeArrayBuffer)
+        !raiiOwnsNativeArrayBuffer &&
+        !typeKey.starts_with("iterator:") && !typeKey.starts_with("async-iterator:"))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
@@ -6377,7 +6380,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                 " requires a NativeSharp class/interface reference, managed delegate, native string, or native array buffer");
     }
     if (isForeachEnumerator && typeKeyIsStruct(typeKey) &&
-        !elementTypeHasTrivialLifetime(typeKey))
+        !elementTypeHasTrivialLifetime(typeKey) &&
+        !typeKey.starts_with("iterator:") && !typeKey.starts_with("async-iterator:"))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
@@ -6522,7 +6526,9 @@ void ProjectMethodBodyModel::analyzeVariable(
             variable->first()->kind() != ast::AstNodeKind::NewExpression &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression &&
             variable->first()->kind() != ast::AstNodeKind::NullLiteralExpression &&
-            !ownedReturningInitializer && !initializer.ownershipFreshOwner)
+            !ownedReturningInitializer && !initializer.ownershipFreshOwner &&
+            !(isForeachEnumerator &&
+              (typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:"))))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
