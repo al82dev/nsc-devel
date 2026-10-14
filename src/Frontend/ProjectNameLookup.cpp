@@ -885,7 +885,12 @@ void ProjectNameLookup::finalizePredeclarations(
             {
                 return isTraitImplementationPart(pending.part);
             });
-        if (hasTraitImplementation &&
+        // NS304-T11-F06: a borrowed (ref-like) struct view is a valid static witness target.
+        const bool isBorrowedStructTarget =
+            primary.part.kind == NamedTypeDeclarationKind::Struct &&
+            primary.part.syntax != nullptr &&
+            primary.part.syntax->auxiliaryText().find("borrowedview") != std::string::npos;
+        if (hasTraitImplementation && !isBorrowedStructTarget &&
             (primary.part.kind != NamedTypeDeclarationKind::Class || primary.part.isStatic))
         {
             const auto implementation = std::find_if(
