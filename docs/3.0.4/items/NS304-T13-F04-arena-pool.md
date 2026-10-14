@@ -1,10 +1,26 @@
 # NS304-T13-F04 — Arena/pool contextual
 
-- **Estado**: AUDITADO (ArenaAllocator es insumo; propagación del contexto a builders/containers pendiente)
+- **Estado**: IMPLEMENTADO (`ArenaAllocator` implementa `IAllocator`; propagación explícita vía F02)
 - **Rama**: development
 
-## Auditoría (2026-10-14)
+## Resultado (2026-10-14)
 
-- `ArenaAllocator` existe como insumo; el hueco es el **plumbing del contexto explícito** a builders/
-  containers (quién destruye + cuándo se libera el bloque, sin global/thread-local oculto) + arenas
-  anidadas + error parcial — un vertical ancho que depende de F01/F02.
+- **Protocolo**: `ArenaAllocator` ahora declara `: Allocator, IAllocator`. La clase histórica
+  `Allocator` se conserva y sus consumidores no cambian; `IAllocator` es el protocolo canónico para
+  consumidores nuevos.
+- **`Allocate(int)`**: conserva el reparto incremental actual (encadena bloques, alineación a 8).
+- **`Resize(byte* ptr, int oldBytes, int newBytes)`**: valida tamaños; `newBytes <= oldBytes` conserva
+  el puntero; un crecimiento reparte un bloque nuevo, copia `min(old,new)` con `Spans.CopyTo` y consume
+  el puntero viejo (la memoria física vieja permanece hasta `Reset`).
+- **`Deallocate(byte* ptr)`**: decrementa `asignacionesActivas` (obligación lógica terminada), sin
+  recuperar bytes individuales.
+- **`Reset()`**: ya invalida todos los bloques de golpe (sin cambio).
+- **Propagación**: `new (allocator) T(...)` (F02) usa exactamente el allocator recibido; no hay
+  herencia implícita de allocator ni global/thread-local.
+- Verificado: `TL-LANG-487` — `new (arena) A(42)` construye (`a.X == 42`), `Resize` conserva bytes,
+  `Deallocate` baja la cuenta activa (exit 0). Guards 477/484/485/486 PASS.
+
+## Commits
+
+- `697226dd` — `ArenaAllocator` como `IAllocator` (Resize/Deallocate) + corrección del rechazo de
+  retorno de `scope` (sólo el valor retornado directo escapa).
