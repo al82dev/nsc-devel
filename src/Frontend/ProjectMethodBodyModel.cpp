@@ -10268,6 +10268,34 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
         }
         case ast::AstNodeKind::StringLiteralExpression:
+            if (expression->tokenKind() == lexer::TokenKind::Utf8StringLiteral)
+            {
+                // NS304-T10-F01: `u8"..."` is a typed UTF-8 literal — a ReadOnlySpan<byte> over the
+                // literal's UTF-8 bytes, emitted as a compile-time constant (no runtime heap).
+                const std::string spanKey = genericModel_ != nullptr
+                    ? genericModel_->closedTypeKeyForTemplate("ReadOnlySpan", "builtin:byte")
+                    : std::string{};
+                if (spanKey.empty())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "u8 literal requires NativeSharp.Core.ReadOnlySpan");
+                    return result;
+                }
+                result.typeKey = spanKey;
+                result.valid = true;
+                coreBindings_.push_back(MethodCoreBinding{
+                    MethodCoreOperationKind::Utf8StringLiteral,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    spanKey,
+                    "builtin:byte",
+                    false, std::nullopt, std::nullopt});
+                break;
+            }
             result.typeKey = "string-literal";
             result.valid = true;
             coreBindings_.push_back(MethodCoreBinding{
@@ -26520,6 +26548,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::NullConditionalArrayElement: return "null-conditional-array-element";
         case MethodCoreOperationKind::RawElement: return "raw-element";
         case MethodCoreOperationKind::StringLiteral: return "string-literal";
+        case MethodCoreOperationKind::Utf8StringLiteral: return "utf8-string-literal";
         case MethodCoreOperationKind::StringLength: return "string-length";
         case MethodCoreOperationKind::StringElement: return "string-element";
         case MethodCoreOperationKind::StringConcat: return "string-concat";

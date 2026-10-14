@@ -15627,6 +15627,11 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::StringLiteral:
             kind = ast::AstNodeKind::StringLiteralExpression;
             break;
+        case TokenKind::Utf8StringLiteral:
+            // NS304-T10-F01: a typed UTF-8 literal reuses the string literal expression; the token
+            // kind distinguishes its ReadOnlySpan<byte> type in Sema.
+            kind = ast::AstNodeKind::StringLiteralExpression;
+            break;
         case TokenKind::InterpolatedStringLiteral:
             kind = ast::AstNodeKind::InterpolatedStringExpression;
             break;

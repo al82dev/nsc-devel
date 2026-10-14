@@ -7373,6 +7373,43 @@ class Program
         }});
 }
 
+void registerUtf8LiteralCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-473", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "utf8", "literal", "readonly-span", "allocation-free"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T10Utf8Literal", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        ReadOnlySpan<byte> ascii = u8"hello";
+        ReadOnlySpan<byte> accented = u8"\u00E9";
+        return ascii.Length() * 10 + accented.Length();
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T10Utf8Literal.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-473 the u8 literal must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 52,
+                "TL-LANG-473 u8 literals must carry UTF-8 bytes (5 + 2) as ReadOnlySpan<byte>: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9146,6 +9183,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncIteratorMetadataCase(registry);
     registerAsyncIteratorPdbCase(registry);
     registerPartialFailureCase(registry);
+    registerUtf8LiteralCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

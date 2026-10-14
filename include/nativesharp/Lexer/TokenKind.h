@@ -13,6 +13,8 @@ enum class TokenKind
     FloatingLiteral,
     CharacterLiteral,
     StringLiteral,
+    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>), not the `byte` keyword.
+    Utf8StringLiteral,
     // Raw physical-line records emitted only between the outer braces of contextual `asm {}`.
     // Their lexemes retain source bytes exactly; parsing and validation happen in later layers.
     AssemblyText,

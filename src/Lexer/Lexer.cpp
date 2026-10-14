@@ -208,7 +208,12 @@ Token Lexer::nextToken()
     }
 
     Token token = Token(TokenKind::Invalid, range(begin, begin), {});
-    if (isIdentifierStart(current()))
+    if (current() == 'u' && peek() == '8' && peek(2) == '"')
+    {
+        // NS304-T10-F01: `u8"..."` is a typed UTF-8 literal, not the `byte` keyword + string.
+        token = lexUtf8String(begin);
+    }
+    else if (isIdentifierStart(current()))
     {
         token = lexIdentifierOrKeyword(begin);
     }
@@ -651,13 +656,20 @@ Token Lexer::lexCharacter(std::uint32_t begin)
     return Token(TokenKind::CharacterLiteral, range(begin, offset_), text(begin, offset_), value);
 }
 
+Token Lexer::lexUtf8String(std::uint32_t begin)
+{
+    advance(); // 'u'
+    advance(); // '8'
+    Token string = lexString(begin);
+    return Token(TokenKind::Utf8StringLiteral, string.range(), string.lexeme(), string.value());
+}
+
 Token Lexer::lexString(std::uint32_t begin)
 {
     if (current() == '"' && peek() == '"' && peek(2) == '"')
     {
         return lexRawString(begin);
     }
-
     advance();
     std::string decoded;
     bool valid = true;

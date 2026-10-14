@@ -189,6 +189,9 @@ enum class ProjectOopMirNodeKind
     NullConstant,
     DefaultValue,
     StringLiteral,
+    // NS304-T10-F01: `u8"..."` — ReadOnlySpan<byte> over the literal's UTF-8 bytes (static bytes +
+    // count, no heap). stringValue = bytes, integerValue = byte count.
+    Utf8StringLiteral,
     ArrayAllocate,
     RangeArrayAllocate,
     ArrayLength,

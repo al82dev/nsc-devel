@@ -772,6 +772,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::NullConstant: return "null-constant";
         case ProjectOopMirNodeKind::DefaultValue: return "default-value";
         case ProjectOopMirNodeKind::StringLiteral: return "string-literal";
+        case ProjectOopMirNodeKind::Utf8StringLiteral: return "utf8-string-literal";
         case ProjectOopMirNodeKind::ArrayAllocate: return "array-allocate";
         case ProjectOopMirNodeKind::RangeArrayAllocate: return "range-array-allocate";
         case ProjectOopMirNodeKind::ArrayLength: return "array-length";
@@ -2849,6 +2850,13 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::DefaultValue: result->kind = ProjectOopMirNodeKind::DefaultValue; break;
         case ProjectOopHirNodeKind::StringLiteral:
             result->kind = ProjectOopMirNodeKind::StringLiteral;
+            break;
+        case ProjectOopHirNodeKind::Utf8StringLiteral:
+            result->kind = ProjectOopMirNodeKind::Utf8StringLiteral;
+            result->typeKey = node->typeKey;
+            result->elementTypeKey = node->elementTypeKey;
+            result->stringValue = node->stringValue;
+            result->integerValue = node->integerValue;
             break;
         case ProjectOopHirNodeKind::ArrayLength:
             result->kind = ProjectOopMirNodeKind::ArrayLength;

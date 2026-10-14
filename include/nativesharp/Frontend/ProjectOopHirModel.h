@@ -192,6 +192,9 @@ enum class ProjectOopHirNodeKind
     NullConstant,
     DefaultValue,
     StringLiteral,
+    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>); stringValue holds the
+    // UTF-8 bytes, elementTypeKey the span type, integerValue the byte count.
+    Utf8StringLiteral,
     ArrayAllocation,
     RangeArrayAllocation,
     // CC1 fase 4B -- `stackalloc T[n]`. Un hijo: el contador. `elementTypeKey` es T. El MIR le

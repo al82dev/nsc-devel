@@ -660,6 +660,9 @@ enum class MethodCoreOperationKind
     // length-prefixed, bounds-checked native array.
     RawElement,
     StringLiteral,
+    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal that lowers to ReadOnlySpan<byte> (static
+    // bytes + count), allocation-free.
+    Utf8StringLiteral,
     StringLength,
     StringElement,
     StringConcat,

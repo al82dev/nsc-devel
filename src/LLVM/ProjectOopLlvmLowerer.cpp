@@ -10298,6 +10298,8 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::StringLiteral:
                 return lowerStringLiteral(node, error);
+            case frontend::ProjectOopMirNodeKind::Utf8StringLiteral:
+                return lowerUtf8StringLiteral(node, error);
             case frontend::ProjectOopMirNodeKind::ArrayAllocate:
                 return lowerArrayAllocate(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayAllocate:
@@ -14470,6 +14472,30 @@ private:
     LLVMValueRef lowerStringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         return internStringLiteral(node->stringValue, error);
+    }
+
+    LLVMValueRef lowerUtf8StringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        // NS304-T10-F01: u8"..." is a ReadOnlySpan<byte> { byte* start, int count } over the
+        // interned UTF-8 bytes. The string literal global is {i64 length, [N+1 x i8] bytes}, so the
+        // span's start points at the byte array field and count is the literal's byte length.
+        LLVMValueRef global = internStringLiteral(node->stringValue, error);
+        if (global == nullptr) return nullptr;
+        // The literal global is {i64 length, [N+1 x i8] bytes}; its byte array begins at offset 8.
+        LLVMValueRef bytesField = byteOffset(global, 8, "utf8.span.bytes");
+        LLVMValueRef count = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), node->integerValue, 0);
+        LLVMTypeRef carrier = llvmType(node->typeKey, error);
+        if (carrier == nullptr) return nullptr;
+        const unsigned alignment = structAlignmentFor(node->typeKey);
+        LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "utf8.span.init");
+        if (slot == nullptr)
+            return failValue(error, "utf8 literal could not reserve span storage");
+        LLVMBuildStore(builder_, bytesField, byteOffset(slot, 0, "utf8.span.start.addr"));
+        LLVMBuildStore(builder_, count, byteOffset(slot, 8, "utf8.span.count.addr"));
+        LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "utf8.span.init.value");
+        if (alignment > 1U) LLVMSetAlignment(loaded, alignment);
+        return loaded;
     }
 
     LLVMValueRef nullableStringLength(LLVMValueRef value, std::string_view stem)

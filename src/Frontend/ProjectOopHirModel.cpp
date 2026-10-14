@@ -398,6 +398,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::NullConditionalArrayElement:
     case MethodCoreOperationKind::RawElement:
     case MethodCoreOperationKind::StringLiteral:
+    case MethodCoreOperationKind::Utf8StringLiteral:
     case MethodCoreOperationKind::StringLength:
     case MethodCoreOperationKind::StringElement:
     case MethodCoreOperationKind::ConsoleWriteLine:
@@ -1085,6 +1086,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::NullConstant: return "null-constant";
         case ProjectOopHirNodeKind::DefaultValue: return "default-value";
         case ProjectOopHirNodeKind::StringLiteral: return "string-literal";
+        case ProjectOopHirNodeKind::Utf8StringLiteral: return "utf8-string-literal";
         case ProjectOopHirNodeKind::ArrayAllocation: return "array-allocation";
         case ProjectOopHirNodeKind::RangeArrayAllocation: return "range-array-allocation";
         case ProjectOopHirNodeKind::ArrayLength: return "array-length";
@@ -5148,6 +5150,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 error = "Stage 41 string literals are immutable references and are not addressable values";
                 return nullptr;
+            }
+            if (expression->tokenKind() == lexer::TokenKind::Utf8StringLiteral)
+            {
+                // NS304-T10-F01: u8"..." is a ReadOnlySpan<byte> over the literal's UTF-8 bytes.
+                const MethodCoreBinding* binding = coreBinding(expression);
+                const std::string spanKey = binding != nullptr
+                    ? binding->resultTypeKey : std::string{};
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::Utf8StringLiteral, expression,
+                    spanKey.empty() ? "builtin:byte" : spanKey);
+                node->stringValue = expression->text();
+                node->elementTypeKey = "builtin:byte";
+                node->integerValue = node->stringValue.size();
+                return node;
             }
             auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
             node->stringValue = expression->text();
