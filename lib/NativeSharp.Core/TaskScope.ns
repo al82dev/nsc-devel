@@ -20,11 +20,11 @@ namespace NativeSharp.Core
         public static TaskScope<TExecutor> Create(TExecutor executor)
         {
             TaskScope<TExecutor> scope;
-            scope.executor = executor;
+            scope.executor = move(executor);
             scope.handles = new int[8];
             scope.count = 0;
             scope.failed = false;
-            return scope;
+            return move(scope);
         }
 
         public bool Failed() { return failed; }

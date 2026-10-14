@@ -3698,7 +3698,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     std::size_t selfParameterOrdinal,
     std::string_view resultTypeKey,
     std::string_view futureKey,
-    std::string& error)
+    std::string& error,
+    bool topLevel)
 {
     if (body == nullptr)
     {
@@ -3753,61 +3754,63 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         block->children.push_back(std::move(synthesizedReturn));
         return block;
     }
-    if (body->kind == ProjectOopHirNodeKind::Return)
+    const auto rewriteReturn = [&](std::unique_ptr<ProjectOopHirNode> ret)
+        -> std::unique_ptr<ProjectOopHirNode>
     {
-        // `return v;` -> { self->result = v; self->state = 1 (ready); return; }
-        auto block = makeNode(ProjectOopHirNodeKind::Block, body->syntax, "builtin:void");
-
+        // `return v;` -> { self->result = v; self->state = -1 (ready); return; }
+        auto block = makeNode(ProjectOopHirNodeKind::Block, ret->syntax, "builtin:void");
         const auto selfParameter = [&]() -> std::unique_ptr<ProjectOopHirNode>
         {
             auto self = makeNode(
-                ProjectOopHirNodeKind::ParameterValue, body->syntax, std::string(futureKey) + "*");
+                ProjectOopHirNodeKind::ParameterValue, ret->syntax, std::string(futureKey) + "*");
             self->parameterOrdinal = selfParameterOrdinal;
             return self;
         };
-
         auto resultField = makeNode(
-            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, std::string(resultTypeKey));
+            ProjectOopHirNodeKind::FutureFieldAddress, ret->syntax, std::string(resultTypeKey));
         resultField->memberOrdinal = 2; // result
         resultField->elementTypeKey = futureKey;
         resultField->children.push_back(selfParameter());
-
-        std::unique_ptr<ProjectOopHirNode> value = !body->children.empty()
-            ? std::move(body->children[0])
-            : makeNode(ProjectOopHirNodeKind::DefaultValue, body->syntax, std::string(resultTypeKey));
-
-        auto resultStore = makeNode(
-            ProjectOopHirNodeKind::Assignment, body->syntax, std::string(resultTypeKey));
-        resultStore->operation = lexer::TokenKind::Equal;
-        resultStore->children.push_back(std::move(resultField));
-        resultStore->children.push_back(std::move(value));
-        block->children.push_back(std::move(resultStore));
-
+        std::unique_ptr<ProjectOopHirNode> value = !ret->children.empty()
+            ? std::move(ret->children[0])
+            : makeNode(ProjectOopHirNodeKind::DefaultValue, ret->syntax, std::string(resultTypeKey));
+        // NS304-T07-F06: a Future<void> has no result slot — emitting a store through a void field
+        // fails and drops the state store, leaving the poll stuck. Only store a non-void result.
+        if (resultTypeKey != "builtin:void")
+        {
+            auto resultStore = makeNode(
+                ProjectOopHirNodeKind::Assignment, ret->syntax, std::string(resultTypeKey));
+            resultStore->operation = lexer::TokenKind::Equal;
+            resultStore->children.push_back(std::move(resultField));
+            resultStore->children.push_back(std::move(value));
+            block->children.push_back(std::move(resultStore));
+        }
         auto stateField = makeNode(
-            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, "builtin:int");
+            ProjectOopHirNodeKind::FutureFieldAddress, ret->syntax, "builtin:int");
         stateField->memberOrdinal = 0; // state
         stateField->elementTypeKey = futureKey;
         stateField->children.push_back(selfParameter());
-
-        auto ready = makeNode(ProjectOopHirNodeKind::IntegerConstant, body->syntax, "builtin:int");
+        auto ready = makeNode(ProjectOopHirNodeKind::IntegerConstant, ret->syntax, "builtin:int");
         ready->integerValue = ~0ULL; // ready = -1 (uniform); pending/resume states are 1..N
-
         auto stateStore = makeNode(
-            ProjectOopHirNodeKind::Assignment, body->syntax, "builtin:int");
+            ProjectOopHirNodeKind::Assignment, ret->syntax, "builtin:int");
         stateStore->operation = lexer::TokenKind::Equal;
         stateStore->children.push_back(std::move(stateField));
         stateStore->children.push_back(std::move(ready));
         block->children.push_back(std::move(stateStore));
-
         // NS304-T05-F06: the synthesized `return;` must carry the original return's cleanup
-        // regions, so owned locals drop exactly once on completion (the drop rides the non-local
-        // exit's cleanupRegionOrdinals).
+        // regions, so owned locals drop exactly once on completion.
         auto synthesizedReturn = makeNode(
-            ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
-        synthesizedReturn->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
-        synthesizedReturn->cleanupContinuationKind = body->cleanupContinuationKind;
+            ProjectOopHirNodeKind::Return, ret->syntax, "builtin:void");
+        synthesizedReturn->cleanupRegionOrdinals = ret->cleanupRegionOrdinals;
+        synthesizedReturn->cleanupContinuationKind = ret->cleanupContinuationKind;
         block->children.push_back(std::move(synthesizedReturn));
         return block;
+    };
+
+    if (body->kind == ProjectOopHirNodeKind::Return)
+    {
+        return rewriteReturn(std::move(body));
     }
     if (body->kind == ProjectOopHirNodeKind::YieldValue)
     {
@@ -3826,10 +3829,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     for (auto& child : body->children)
     {
         child = rewriteAsyncPollReturns(
-            std::move(child), selfParameterOrdinal, resultTypeKey, futureKey, error);
+            std::move(child), selfParameterOrdinal, resultTypeKey, futureKey, error, false);
         if (child == nullptr)
         {
             return nullptr;
+        }
+    }
+    // NS304-T07-F06: a TOP-LEVEL body that falls off the end (implicit return) still parks the
+    // ready state (state = -1); without it a blocking await polls forever. Nested blocks (e.g. the
+    // finally body) must not get the terminal. A rewritten Throw/Return already ends in a Block
+    // whose last child is a Return, and a Yield ends in AsyncYieldValue.
+    if (topLevel && body->kind == ProjectOopHirNodeKind::Block)
+    {
+        bool terminal = false;
+        if (!body->children.empty())
+        {
+            const ProjectOopHirNode* last = body->children.back().get();
+            if (last->kind == ProjectOopHirNodeKind::AsyncYieldValue)
+            {
+                terminal = true;
+            }
+            else if (last->kind == ProjectOopHirNodeKind::Block && !last->children.empty() &&
+                     last->children.back()->kind == ProjectOopHirNodeKind::Return)
+            {
+                terminal = true;
+            }
+        }
+        if (!terminal)
+        {
+            auto implicitReturn = makeNode(
+                ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
+            body->children.push_back(rewriteReturn(std::move(implicitReturn)));
         }
     }
     return body;
@@ -3877,6 +3907,9 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     {
         return nullptr;
     }
+    // NS304-T07-F06: the poll captures the original callable's parameters into its frame (the
+    // constructor stores them), so a `ref`/`in` parameter used after a `yield` reaches the source.
+    poll->generatorParameterTypeKeys = function.parameterTypeKeys;
 
     // Constructor: `future<T> self = default; self.pollFn = F$poll; return self;` -- lazy, never
     // runs the body, but carries the poll function pointer so `await` over a variable works.
@@ -3908,6 +3941,9 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     retSelf->children.push_back(std::move(selfReturn));
     constructorBody->children.push_back(std::move(retSelf));
     function.body = std::move(constructorBody);
+    // NS304-T07-F06: the original callable is now the async constructor — it allocates the frame
+    // and stores the captured parameters (ref/in used after a yield), like the generator does.
+    function.isGeneratorConstructor = true;
     return poll;
 }
 

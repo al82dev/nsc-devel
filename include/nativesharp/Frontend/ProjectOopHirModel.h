@@ -843,7 +843,8 @@ private:
         std::size_t selfParameterOrdinal,
         std::string_view resultTypeKey,
         std::string_view futureKey,
-        std::string& error);
+        std::string& error,
+        bool topLevel = true);
 
     // NS304-T05-F03: splits an async function into a lazy constructor (function.body becomes
     // `return default(future:<T>)`) and a poll function (returned; runs the body and stores the

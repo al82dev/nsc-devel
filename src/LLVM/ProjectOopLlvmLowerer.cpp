@@ -9560,7 +9560,10 @@ private:
                     for (const auto& [paramOrdinal, offset, typeKey] :
                          currentMirFunction_->asyncFrameParameters)
                     {
-                        if (paramOrdinal == *node->parameterOrdinal)
+                        // NS304-T07-F06: match both the ordinal AND the physical type so the poll's
+                        // own `self` (ordinal 0, future:<T>*) never aliases a captured ref parameter
+                        // (ordinal 0, T*).
+                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
                         {
                             LLVMValueRef self = LLVMBuildLoad2(
                                 builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
@@ -9569,11 +9572,21 @@ private:
                                 builder_, LLVMPointerTypeInContext(context_, 0),
                                 byteOffset(self, 8, "param.frame.addr"), "param.frame");
                             LLVMTypeRef capturedType = llvmType(typeKey, error);
-                            return capturedType != nullptr
-                                ? LLVMBuildLoad2(
-                                      builder_, capturedType,
-                                      byteOffset(frame, offset, "param.frame.slot"), "param.frame.load")
-                                : nullptr;
+                            if (capturedType == nullptr) return nullptr;
+                            LLVMValueRef frameValue = LLVMBuildLoad2(
+                                builder_, capturedType,
+                                byteOffset(frame, offset, "param.frame.slot"), "param.frame.load");
+                            // NS304-T07-F06: a captured `ref` parameter stores the ADDRESS in the
+                            // frame slot (typeKey is the pointer), but the USE evaluates to the
+                            // pointee. Dereference once so the read is the pointed-to value.
+                            if (typeKey.ends_with("*") && !node->typeKey.ends_with("*"))
+                            {
+                                LLVMTypeRef pointeeType = llvmType(node->typeKey, error);
+                                if (pointeeType == nullptr) return nullptr;
+                                return LLVMBuildLoad2(
+                                    builder_, pointeeType, frameValue, "param.frame.deref");
+                            }
+                            return frameValue;
                         }
                     }
                 }
@@ -9630,7 +9643,41 @@ private:
                 return load;
             }
             case frontend::ProjectOopMirNodeKind::ParameterAddress:
-                return node->parameterOrdinal.has_value() ? parameterStorage_[*node->parameterOrdinal] : nullptr;
+            {
+                if (!node->parameterOrdinal.has_value()) return nullptr;
+                // NS304-T07-F06: in $moveNext/$poll a captured parameter lives in the frame. A
+                // captured `ref` parameter stores the ADDRESS in its slot; returning that loaded
+                // pointer lets a store write through to the original. A value parameter returns
+                // the slot address itself.
+                if (currentMirFunction_ != nullptr &&
+                    !currentMirFunction_->asyncFrameParameters.empty())
+                {
+                    for (const auto& [paramOrdinal, offset, typeKey] :
+                         currentMirFunction_->asyncFrameParameters)
+                    {
+                        // NS304-T07-F06: ordinal + physical type must both match (see ParameterValue).
+                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
+                        {
+                            LLVMValueRef self = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                                "paramaddr.self");
+                            LLVMValueRef frame = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0),
+                                byteOffset(self, 8, "paramaddr.frame.addr"), "paramaddr.frame");
+                            LLVMValueRef slot = byteOffset(frame, offset, "paramaddr.frame.slot");
+                            if (typeKey.ends_with("*"))
+                            {
+                                LLVMTypeRef slotType = llvmType(typeKey, error);
+                                if (slotType == nullptr) return nullptr;
+                                return LLVMBuildLoad2(
+                                    builder_, slotType, slot, "paramaddr.frame.ptr");
+                            }
+                            return slot;
+                        }
+                    }
+                }
+                return parameterStorage_[*node->parameterOrdinal];
+            }
             case frontend::ProjectOopMirNodeKind::LocalAddress:
                 return node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
             case frontend::ProjectOopMirNodeKind::FieldAddress:
@@ -9767,11 +9814,19 @@ private:
 
                     // Ready: load the result and merge with the error path.
                     LLVMPositionBuilderAtEnd(builder_, loopDone);
-                    LLVMTypeRef blockingResultType = llvmType(node->typeKey, error);
-                    if (blockingResultType == nullptr) return nullptr;
-                    LLVMValueRef readyValue = LLVMBuildLoad2(
-                        builder_, blockingResultType,
-                        byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
+                    // NS304-T07-F06: `await future;` on a Future<void> has no result slot to read —
+                    // the poll runs the future to completion and the statement discards the value.
+                    const bool voidResult = node->typeKey == "builtin:void";
+                    LLVMTypeRef blockingResultType = nullptr;
+                    LLVMValueRef readyValue = nullptr;
+                    if (!voidResult)
+                    {
+                        blockingResultType = llvmType(node->typeKey, error);
+                        if (blockingResultType == nullptr) return nullptr;
+                        readyValue = LLVMBuildLoad2(
+                            builder_, blockingResultType,
+                            byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
+                    }
                     LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
                     if (heapFrame != nullptr)
                     {
@@ -9821,6 +9876,12 @@ private:
                     }
 
                     LLVMPositionBuilderAtEnd(builder_, loopMerge);
+                    if (voidResult)
+                    {
+                        // A blocking await of a Future<void> runs it to completion and yields no
+                        // value; the expression statement discards the placeholder below.
+                        return LLVMConstNull(LLVMInt8TypeInContext(context_));
+                    }
                     LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, blockingResultType, "await.value");
                     if (node->exceptionTargetRegionOrdinal.has_value() &&
                         blockingErrorType != nullptr && errorOffset != 0)

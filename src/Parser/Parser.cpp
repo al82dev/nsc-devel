@@ -9582,6 +9582,20 @@ ast::AstNode* Parser::parseStatement()
         // NS304-T04-F06: funcion local `type name (...)` baja a lambda con tipo natural.
         return parseLocalFunctionAsLambda();
     }
+    if (atContextualKeyword("await"))
+    {
+        // NS304-T07-F06: `await future;` (un Future<void>) es una sentencia de expresion -- un
+        // poll bloqueante del future -- y no una declaracion de variable con un tipo `await`.
+        const std::size_t beginIndex = index_;
+        ast::AstNode* expression = parseExpression();
+        ast::AstNode* statement = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ExpressionStatement,
+            expression != nullptr ? expression->range() : current().range());
+        statement->setFirst(expression);
+        expect(TokenKind::Semicolon, "';' after await expression");
+        statement->setRange(tokenRangeFrom(beginIndex));
+        return statement;
+    }
     if ((atContextualKeyword("pin") &&
          (peek().kind() == TokenKind::KwRaii ||
           (peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref"))) ||

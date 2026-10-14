@@ -6729,6 +6729,43 @@ class Program
                 "TL-LANG-458 a failing child must mark the scope failed (exit 7): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
+
+    registry.add(TestCase{"TL-LANG-459", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "ref", "capture", "future", "yield", "child"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T07AsyncRefCapture", "Exe", R"ns(
+class Program
+{
+    public static async void Child(ref int value)
+    {
+        yield;
+        value = value + 1;
+    }
+    public static int Main()
+    {
+        int value = 41;
+        Future<void> f = Child(ref value);
+        await f;
+        return value;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T07AsyncRefCapture.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-459 the ref-capturing async child must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-459 Child(ref value) must write through to the source (41->42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
 }
 
 void registerGeneratorEarlyStopCase(TestRegistry& registry)

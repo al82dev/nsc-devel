@@ -1652,6 +1652,7 @@ bool ProjectOopMirModel::build(
             std::uint64_t order = 0;
             std::unordered_map<std::size_t, std::uint64_t> localDefinition;
             std::unordered_map<std::size_t, std::uint64_t> localLastUse;
+            std::unordered_map<std::size_t, std::uint64_t> parameterLastUse;
             std::vector<std::uint64_t> suspendOrders;
             const auto walkLiveness = [&](const auto& self, const ProjectOopMirNode* node) -> void
             {
@@ -1668,6 +1669,11 @@ bool ProjectOopMirModel::build(
                     node->localOrdinal.has_value())
                 {
                     localLastUse[*node->localOrdinal] = here;
+                }
+                else if (node->kind == ProjectOopMirNodeKind::ParameterValue &&
+                    node->parameterOrdinal.has_value())
+                {
+                    parameterLastUse[*node->parameterOrdinal] = here;
                 }
                 else if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
                          node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
@@ -1781,6 +1787,28 @@ bool ProjectOopMirModel::build(
                     self(self, child.get());
             };
             sumLocals(sumLocals, function.body.get());
+            // NS304-T07-F06: capture the original callable's parameters that are live across a
+            // suspension (used after any SuspendPoint/AsyncYieldValue) so the async constructor can
+            // store them into the frame — mirroring the $moveNext parameter capture below.
+            for (std::size_t parameter = 0;
+                 parameter < function.generatorParameterTypeKeys.size(); ++parameter)
+            {
+                const auto lastUse = parameterLastUse.find(parameter);
+                if (lastUse == parameterLastUse.end()) continue;
+                bool live = false;
+                for (const std::uint64_t suspend : suspendOrders)
+                    if (suspend < lastUse->second) { live = true; break; }
+                if (!live) continue;
+                const auto layout = objectLayoutModel.valueLayoutForTypeKey(
+                    nameLookup, function.generatorParameterTypeKeys[parameter]);
+                if (layout.has_value())
+                {
+                    frameSize = alignUp(frameSize, layout->second);
+                    function.asyncFrameParameters.emplace_back(
+                        parameter, frameSize, function.generatorParameterTypeKeys[parameter]);
+                    frameSize += layout->first;
+                }
+            }
             frameSize = alignUp(frameSize, 8);
             function.asyncFrameSize = frameSize;
         }
@@ -2019,6 +2047,37 @@ bool ProjectOopMirModel::build(
         if (!function.mangledName.ends_with("$moveNext$poll")) continue;
         const std::string constructorName =
             function.mangledName.substr(0, function.mangledName.size() - 14);
+        for (ProjectOopMirFunction& candidate : functions_)
+        {
+            if (candidate.mangledName == constructorName && candidate.isGeneratorConstructor)
+            {
+                candidate.asyncFrameLocals = function.asyncFrameLocals;
+                candidate.asyncFrameParameters = function.asyncFrameParameters;
+                candidate.asyncFrameSize = function.asyncFrameSize;
+                if (candidate.body != nullptr && !candidate.body->children.empty() &&
+                    candidate.body->children[0]->kind == ProjectOopMirNodeKind::LocalDeclaration)
+                {
+                    auto frameInit = std::make_unique<ProjectOopMirNode>();
+                    frameInit->kind = ProjectOopMirNodeKind::GeneratorFrameInit;
+                    frameInit->typeKey = "builtin:void";
+                    frameInit->localOrdinal = candidate.body->children[0]->localOrdinal;
+                    candidate.body->children.insert(
+                        candidate.body->children.begin() + 1, std::move(frameInit));
+                }
+                break;
+            }
+        }
+    }
+
+    // NS304-T07-F06: the async constructor inherits the $poll's frame layout so it can allocate the
+    // frame and store the captured parameters (ref/in used after a yield). Excludes $moveNext$poll
+    // (the async-generator poll, handled above).
+    for (ProjectOopMirFunction& function : functions_)
+    {
+        if (!function.mangledName.ends_with("$poll")) continue;
+        if (function.mangledName.ends_with("$moveNext$poll")) continue;
+        const std::string constructorName =
+            function.mangledName.substr(0, function.mangledName.size() - 5);
         for (ProjectOopMirFunction& candidate : functions_)
         {
             if (candidate.mangledName == constructorName && candidate.isGeneratorConstructor)
