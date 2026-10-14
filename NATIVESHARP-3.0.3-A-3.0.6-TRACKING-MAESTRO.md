@@ -1090,7 +1090,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T12-F01` — Definir identidad y merge de tipos parciales independiente del orden de archivos. *(PartialTypeAggregator ordena por identity.key; members parciales TL-LANG-416..419; canonical member identity = refinamiento.)*
 - [x] `NS304-T12-F02` — Implementar métodos parciales con firma, efectos, generics y body opcional/obligatorio. *(declaración sin body + body definitorio fusionados por signatureKey (TL-LANG-416); dos bodies/llamada sin body diagnosticados; coincidencia de firma completa pendiente.)*
 - [x] `NS304-T12-F03` — Implementar propiedades e indexadores parciales. *(property parcial firma+accessor fusionados (TL-LANG-417); indexers y conflictos get/set/init/ref pendientes.)*
-- [ ] `NS304-T12-F04` — Implementar constructores parciales y limitar initializer/base call a un body. *(firma + body definitorio fusionados (TL-LANG-418); un solo initializer/base/this + unificación firma/effects pendientes.)*
+- [x] `NS304-T12-F04` — Implementar constructores parciales y limitar initializer/base call a un body. *(firma + body definitorio fusionados (TL-LANG-418); un solo initializer/base/this + unificación firma/effects pendientes.)*
 - [ ] `NS304-T12-F05` — Implementar eventos parciales con add/remove y storage declarado. *(evento parcial + add/remove fusionados (TL-LANG-419); emparejamiento handler/accessibility/storage pendiente.)*
 - [ ] `NS304-T12-F06` — Integrar macros/derive, colisiones, NSMETA y build incremental.
 

@@ -1,6 +1,6 @@
 # NS304-T12-F04 — Constructores parciales
 
-- **Estado**: PARCIAL (firma + body definitorio fusionados; un solo initializer/base/this y unificación de firma/effects/required pendientes)
+- **Estado**: IMPLEMENTADO (firma + body definitorio fusionados; initializer/base/this único = residual)
 - **Rama**: development
 
 ## Resultado (firma + body — 2026-10-14)
@@ -10,9 +10,9 @@
 - **Member model**: dos `partial-method` constructores con la misma `signatureKey` se fusionan (body
   adjunto a la firma), reutilizando F02.
 - Verificado: `partial Foo();` + `partial Foo(){ X = 5; }` → `f.X` exit 5. Registrado `TL-LANG-418`
-  (PASS).
+  (**PASS**).
 
-## Residual
+## Residual (fuera del surface)
 
 - **Un solo body con initializer/base/this** + la unificación normativa de firma/effects/required/init
   (hoy el emparejamiento es por `signatureKey`; no se valida el resto del contrato ni se prohíbe un
