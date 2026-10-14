@@ -3277,7 +3277,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             node->integerValue = 0;
             if (statement->first() != nullptr)
             {
-                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
+                // NS304-T06-F05: a `ref`/`ref mut` item yields the ADDRESS of the local (the item is
+                // a reference into the frame), not a copy of its value.
+                bool itemByReference = false;
+                if (memberModel_ != nullptr && memberOrdinal < memberModel_->members().size())
+                {
+                    const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                    if (const std::optional<std::string_view> inner =
+                            language::iteratorInnerTypeKey(member.declaredTypeKey);
+                        inner.has_value() &&
+                        (inner->starts_with("ref:") || inner->starts_with("refmut:")))
+                    {
+                        itemByReference = true;
+                    }
+                }
+                auto value = lowerExpression(
+                    statement->first(), memberOrdinal, itemByReference, error);
                 if (value == nullptr) return nullptr;
                 node->children.push_back(std::move(value));
             }
@@ -4673,7 +4688,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             if (core != nullptr && core->kind == MethodCoreOperationKind::IteratorCurrent)
             {
-                if (addressContext)
+                // NS304-T06-F05: a `ref:`/`refmut:` item Current IS a reference into the frame, so
+                // taking it in address context is allowed (it yields the reference, not a value).
+                const bool itemByReference = core->resultTypeKey.starts_with("ref:") ||
+                    core->resultTypeKey.starts_with("refmut:");
+                if (addressContext && !itemByReference)
                 {
                     error = "iterator Current is an intrinsic value and is not addressable";
                     return nullptr;

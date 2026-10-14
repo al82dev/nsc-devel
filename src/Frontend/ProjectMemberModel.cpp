@@ -1557,6 +1557,11 @@ std::string ProjectMemberModel::canonicalTypeKey(
             }
         }
     }
+    // NS304-T06-F05: `ref T` / `ref mut T` — the item-by-reference qualifier prefixes the key.
+    if (syntax->referenceQualifier() == ast::ReferenceQualifierSyntaxKind::Ref)
+        result = "ref:" + result;
+    else if (syntax->referenceQualifier() == ast::ReferenceQualifierSyntaxKind::RefMut)
+        result = "refmut:" + result;
     return result;
 }
 

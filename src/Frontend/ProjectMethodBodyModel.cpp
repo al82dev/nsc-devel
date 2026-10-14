@@ -5276,14 +5276,25 @@ void ProjectMethodBodyModel::analyzeStatement(
                 {
                     const ExpressionResult yielded = analyzeExpression(
                         statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                    if (yielded.valid && yielded.typeKey != std::string(*itemInner))
+                    if (yielded.valid)
                     {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidOperand,
-                            diagnostics::DiagnosticSeverity::Error,
-                            statement->first()->range(),
-                            "generator yields '" + yielded.typeKey +
-                                "' but its item type is '" + std::string(*itemInner) + "' (NS304-T06-F02)");
+                        // NS304-T06-F05: a `ref`/`ref mut` item (`ref:<T>`/`refmut:<T>`) yields a
+                        // reference to a local; the value type is the inner `<T>`.
+                        const std::string itemType(*itemInner);
+                        const bool itemByRef = itemType.starts_with("ref:");
+                        const bool itemByRefMut = itemType.starts_with("refmut:");
+                        const std::string itemValueType = itemByRef
+                            ? itemType.substr(4)
+                            : itemByRefMut ? itemType.substr(7) : itemType;
+                        if (yielded.typeKey != itemValueType)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                statement->first()->range(),
+                                "generator yields '" + yielded.typeKey +
+                                    "' but its item type is '" + std::string(*itemInner) + "' (NS304-T06-F02)");
+                        }
                     }
                 }
                 // NS304-T06-F03: the yield is valid; the productive state-machine lowering is the
@@ -6551,8 +6562,11 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         if (isReferenceLocal && initializer.valid)
         {
-            if (!initializer.addressable ||
-                (!isReadonlyReference && !initializer.assignable))
+            // NS304-T06-F05: a `ref:`/`refmut:` item IS an addressable reference into the frame.
+            const bool itemByReference = initializer.typeKey.starts_with("ref:") ||
+                initializer.typeKey.starts_with("refmut:");
+            if ((!initializer.addressable && !itemByReference) ||
+                (!isReadonlyReference && !initializer.assignable && !itemByReference))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -6564,12 +6578,22 @@ void ProjectMethodBodyModel::analyzeVariable(
             }
             if (initializer.typeKey != typeKey)
             {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidConversion,
-                    diagnostics::DiagnosticSeverity::Error,
-                    variable->first()->range(),
-                    "reference-local initializer type '" + initializer.typeKey +
-                        "' must exactly match declared type '" + typeKey + "'");
+                // NS304-T06-F05: a `ref T`/`ref mut T` foreach binding unwraps the item's reference
+                // qualifier before comparing the referent type.
+                std::string initializerReferent = initializer.typeKey;
+                if (initializerReferent.starts_with("ref:"))
+                    initializerReferent = initializerReferent.substr(4);
+                else if (initializerReferent.starts_with("refmut:"))
+                    initializerReferent = initializerReferent.substr(7);
+                if (initializerReferent != typeKey)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        variable->first()->range(),
+                        "reference-local initializer type '" + initializer.typeKey +
+                            "' must exactly match declared type '" + typeKey + "'");
+                }
             }
             pendingReferenceEscapeOrigin =
                 referenceEscapeOriginOfExpression(variable->first(), scopeOrdinal);

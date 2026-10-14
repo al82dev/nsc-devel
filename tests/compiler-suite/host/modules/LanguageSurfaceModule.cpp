@@ -6085,6 +6085,82 @@ class Program
         }});
 }
 
+void registerGeneratorRefItemCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-440", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "ref", "foreach", "item", "reference"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06GeneratorRefItem", "Exe", R"ns(
+class Program
+{
+    public static Iterator<ref int> Gen()
+    {
+        int x = 10;
+        yield return x;
+    }
+
+    public static int Main()
+    {
+        foreach (ref int v in Gen()) { return v; }
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06GeneratorRefItem.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-440 an Iterator<ref T> item must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 10,
+                "TL-LANG-440 the ref item must reference the frame local (exit 10): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerGeneratorRefMutItemCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-441", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "yield", "generator", "ref mut", "foreach", "item", "reference"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T06GeneratorRefMutItem", "Exe", R"ns(
+class Program
+{
+    public static Iterator<ref mut int> Gen()
+    {
+        int x = 10;
+        yield return x;
+    }
+
+    public static int Main()
+    {
+        foreach (ref mut int v in Gen()) { v = 42; return v; }
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T06GeneratorRefMutItem.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-441 an Iterator<ref mut T> item must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-441 the ref mut item must write through to the frame local (exit 42): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7844,6 +7920,8 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerGeneratorConsumerCase(registry);
     registerGeneratorLivenessCase(registry);
     registerGeneratorParameterCaptureCase(registry);
+    registerGeneratorRefItemCase(registry);
+    registerGeneratorRefMutItemCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

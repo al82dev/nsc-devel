@@ -31,6 +31,15 @@ enum class TypeModifierSyntaxKind
     FlexibleArray
 };
 
+// NS304-T06-F05: `ref T` / `ref mut T` as a type-level qualifier (an item by reference), distinct
+// from ownership (`borrowed`) and from a declaration's leading `ref` return marker.
+enum class ReferenceQualifierSyntaxKind
+{
+    None,
+    Ref,
+    RefMut
+};
+
 enum class FunctionTypeCarrierSyntaxKind
 {
     Pointer,
@@ -92,6 +101,10 @@ public:
 
     OwnershipQualifierSyntaxKind ownershipQualifier() const noexcept;
     void setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) noexcept;
+
+    // NS304-T06-F05: `ref` / `ref mut` item-mode qualifier on a type (Iterator<ref T>).
+    ReferenceQualifierSyntaxKind referenceQualifier() const noexcept;
+    void setReferenceQualifier(ReferenceQualifierSyntaxKind qualifier) noexcept;
 
     // T06-F04: `borrowed[a] T` binds a borrowed field/view to named lifetime `a` without
     // changing the physical type identity.
@@ -224,6 +237,7 @@ private:
     lexer::TokenKind baseTokenKind_;
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
+    ReferenceQualifierSyntaxKind referenceQualifier_ = ReferenceQualifierSyntaxKind::None;
     std::string lifetimeName_;
     bool isDynamicTrait_ = false;
     bool isOpaqueResult_ = false;

@@ -1143,6 +1143,27 @@ ast::TypeSyntax* Parser::parseType()
         }
     }
 
+    // NS304-T06-F05: `ref T` / `ref mut T` is the item-by-reference type qualifier (Iterator<ref T>).
+    ast::ReferenceQualifierSyntaxKind referenceQualifier = ast::ReferenceQualifierSyntaxKind::None;
+    if (atContextualKeyword("ref"))
+    {
+        const bool refMut = peek().kind() == TokenKind::Identifier && peek().lexeme() == "mut";
+        if (canStartTypeAt(index_ + 1U) || (refMut && canStartTypeAt(index_ + 2U)))
+        {
+            const lexer::Token& refToken = consume();
+            if (refMut)
+            {
+                consume();
+                referenceQualifier = ast::ReferenceQualifierSyntaxKind::RefMut;
+            }
+            else
+            {
+                referenceQualifier = ast::ReferenceQualifierSyntaxKind::Ref;
+            }
+            qualifierRange = refToken.range();
+        }
+    }
+
     bool dynamicTrait = false;
     SourceRange dynamicRange = current().range();
     if (atContextualKeyword("dyn") && canStartTypeAt(index_ + 1U))
@@ -1513,6 +1534,7 @@ ast::TypeSyntax* Parser::parseType()
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
         completeRange, baseKind, std::move(baseName));
     type->setOwnershipQualifier(ownershipQualifier);
+    type->setReferenceQualifier(referenceQualifier);
     type->setLifetimeName(std::move(lifetimeName));
     type->setDynamicTrait(dynamicTrait);
     type->setOpaqueResult(opaqueResult);

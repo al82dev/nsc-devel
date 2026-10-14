@@ -8046,7 +8046,14 @@ private:
                 if (!node->children.empty() && item == nullptr) return false;
                 if (item != nullptr)
                 {
-                    LLVMTypeRef itemType = llvmType(node->children.front()->typeKey, error);
+                    // NS304-T06-F05: a `ref`/`ref mut` item yields an ADDRESS (the child is a
+                    // LocalAddress/FieldAddress), so the item slot stores the pointer itself.
+                    const bool itemByReference =
+                        node->children.front()->kind == frontend::ProjectOopMirNodeKind::LocalAddress ||
+                        node->children.front()->kind == frontend::ProjectOopMirNodeKind::FieldAddress;
+                    LLVMTypeRef itemType = itemByReference
+                        ? LLVMPointerTypeInContext(context_, 0)
+                        : llvmType(node->children.front()->typeKey, error);
                     if (itemType == nullptr) return false;
                     LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
                 }
@@ -18303,6 +18310,9 @@ private:
             return LLVMIntTypeInContext(context_, 128);
         if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
         if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
+        // NS304-T06-F05: `ref:<T>` / `refmut:<T>` is a reference (a pointer into the frame).
+        if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
+            return LLVMPointerTypeInContext(context_, 0);
         if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
         {
             LLVMTypeRef lane = simd->mask
