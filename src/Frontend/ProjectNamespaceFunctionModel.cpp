@@ -20,6 +20,17 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// NS304-T08-F06: stable source identity for the extension binding index. Reusing the AST node
+// pointer as a key is a textual cache that goes stale under incremental re-parses; the source
+// location (file + begin offset) is the invalidation-stable identity.
+std::uint64_t extensionSourceIdentity(const ast::AstNode* node) noexcept
+{
+    if (node == nullptr) return 0U;
+    const SourceLocation begin = node->range().begin();
+    return (static_cast<std::uint64_t>(begin.fileId().value()) << 32) |
+        static_cast<std::uint64_t>(begin.offset());
+}
+
 sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
     if (syntax == nullptr) return sema::OwnershipKind::None;
@@ -1015,7 +1026,8 @@ bool ProjectNamespaceFunctionModel::build(
                     binding.candidateFunctionOrdinals = std::move(candidates);
                     binding.extension = true;
                     binding.receiverSyntax = node->first();
-                    extensionBindingBySyntax_.emplace(node, extensionBindings_.size());
+                    extensionBindingBySyntax_.emplace(
+                        extensionSourceIdentity(node), extensionBindings_.size());
                     extensionBindings_.push_back(std::move(binding));
                 }
             }
@@ -1288,7 +1300,7 @@ const NamespaceFunctionReferenceBinding* ProjectNamespaceFunctionModel::referenc
 const NamespaceFunctionReferenceBinding* ProjectNamespaceFunctionModel::extensionBinding(
     const ast::AstNode* memberSyntax) const noexcept
 {
-    const auto found = extensionBindingBySyntax_.find(memberSyntax);
+    const auto found = extensionBindingBySyntax_.find(extensionSourceIdentity(memberSyntax));
     if (found == extensionBindingBySyntax_.end()) return nullptr;
     return &extensionBindings_[found->second];
 }

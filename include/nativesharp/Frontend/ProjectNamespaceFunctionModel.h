@@ -186,7 +186,9 @@ private:
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;
     std::vector<NamespaceFunctionReferenceBinding> extensionBindings_;
-    std::unordered_map<const ast::AstNode*, std::size_t> extensionBindingBySyntax_;
+    // NS304-T08-F06: indexed by source identity (file + begin offset), not by AST node pointer, so
+    // the incremental binding survives re-parses that replace the node allocation.
+    std::unordered_map<std::uint64_t, std::size_t> extensionBindingBySyntax_;
     std::vector<NamespaceStateReferenceBinding> stateReferenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> stateReferenceBindingBySyntax_;
     bool built_ = false;
