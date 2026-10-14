@@ -3883,6 +3883,44 @@ class Program
         }});
 }
 
+void registerSpanViewConversionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-408", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "span", "view", "conversion", "mutability"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            if (!stageT03ListPatternCore(context, products, "TL-LANG-408")) return;
+            const std::filesystem::path project = products.writeProject(
+                "T11F01SpanView", "Exe", R"ns(
+using NativeSharp.Core;
+class Program
+{
+    public static int Main()
+    {
+        int[] storage = new int[2];
+        storage[0] = 3; storage[1] = 4;
+        Span<int> mutableView = Spans.Of<int>(storage);
+        ReadOnlySpan<int> immutableView = mutableView;
+        return immutableView[0] + immutableView[1];
+    }
+}
+)ns", kT03ListPatternCoreItems);
+            const std::filesystem::path executable =
+                products.directory() / "T11F01SpanView.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-408 a Span view to ReadOnlySpan must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-408 the view must preserve the elements (3+4=7): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -6508,6 +6546,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionVisibilityCase(registry);
     registerTraitWitnessCase(registry);
     registerConstructorThrowsCase(registry);
+    registerSpanViewConversionCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
