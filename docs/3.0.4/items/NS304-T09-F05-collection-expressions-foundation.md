@@ -21,6 +21,17 @@
 
 ## Residual
 
-- **Builder protocol**: fuera de esta base.
+- **Builder protocol**: fuera de esta base. Auditado ronda 112: el target type se resuelve ANTES de
+  elegir builder (ya productivo para arrays nativos); falta el protocolo builder (capacidad/storage/
+  failure explícitos + `Add`/`ToCollection` + cleanup parcial ante spread/builder fallido, sin heap
+  como fallback).
+
+### Decisión de surface (material, para Alberto)
+
+- **(A) atributo `[CollectionBuilder]` + método estático `CreateBuilder`** (recomendada): el builder
+  se declara por atributo y se resuelve por protocolo.
+- **(B) interface `ICollectionBuilder<T>`** explícita.
+
+Recomendación: **(A)** — coherente con C# 12 y sin añadir una interface nominal.
 
 
