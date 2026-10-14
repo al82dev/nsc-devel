@@ -1004,6 +1004,10 @@ void ProjectConstructionModel::bindConstruction(
     }
 
     binding.targetIsStruct = targetIsStruct;
+    binding.allocatorSelection =
+        site.kind == ProjectConstructionSiteKind::Allocator;
+    binding.allocatorTypeKey = site.allocatorTypeKey;
+    binding.allocatorAllocateMemberOrdinal = site.allocatorAllocateMemberOrdinal;
     binding.targetTypeOrdinal = *targetOrdinal;
     binding.targetTypeKey = site.targetTypeKey;
     if (nameLookup_->namedTypes()[*targetOrdinal].isAbstract)

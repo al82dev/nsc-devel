@@ -155,6 +155,11 @@ struct ObjectConstructionBinding final
     // same candidates, same overload rules, same argument conversions -- so only this flag and
     // the lowering differ. See ProjectOopHirModel's ObjectCreationExpression case.
     bool targetIsStruct = false;
+    // NS304-T13-F02: `new (allocator) T(...)` where `allocator : IAllocator`. The HIR desugars to
+    // `allocator.Allocate(size)` + placement construction on the returned pointer.
+    bool allocatorSelection = false;
+    std::string allocatorTypeKey;
+    std::optional<std::size_t> allocatorAllocateMemberOrdinal;
     std::string targetTypeKey;
     std::vector<std::size_t> explicitConstructorMemberOrdinals;
     std::vector<ConstructorCandidateBinding> evaluatedCandidates;

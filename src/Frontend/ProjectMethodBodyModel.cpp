@@ -13083,16 +13083,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 const std::string requiredStorageType = targetType + "*";
                 bool storageValid = storage.valid && !storage.methodGroup;
-                if (storageValid && storage.typeKey != requiredStorageType)
+                // NS304-T13-F02: `new (allocator) T(args)` with `allocator : IAllocator` is allocator
+                // selection, not raw placement against a T* destination.
+                if (storageValid && inheritanceModel_ != nullptr && interfaceModel_ != nullptr)
                 {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidConversion,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->first()->range(),
-                        "placement construction of '" + targetType +
-                            "' requires destination storage of exact type '" +
-                            requiredStorageType + "'");
-                    storageValid = false;
+                    const std::optional<std::size_t> storageType =
+                        inheritanceModel_->typeOrdinalForTypeKey(storage.typeKey);
+                    const std::optional<std::size_t> allocatorTrait = namedTypeOrdinalForTypeKey(
+                        "type:NativeSharpCore::NativeSharp.Core.IAllocator");
+                    if (storageType.has_value() && allocatorTrait.has_value() &&
+                        interfaceModel_->classImplementsInterface(*storageType, *allocatorTrait))
+                    {
+                        site.kind = ProjectConstructionSiteKind::Allocator;
+                        site.allocatorTypeKey = storage.typeKey;
+                        for (const std::size_t memberOrdinal :
+                             memberModel_->findMembers(*storageType, "Allocate"))
+                        {
+                            if (memberOrdinal >= memberModel_->members().size()) continue;
+                            if (memberModel_->members()[memberOrdinal].isStatic) continue;
+                            site.allocatorAllocateMemberOrdinal = memberOrdinal;
+                            break;
+                        }
+                    }
+                }
+                if (storageValid && site.kind != ProjectConstructionSiteKind::Allocator)
+                {
+                    if (storage.typeKey != requiredStorageType)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidConversion,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->first()->range(),
+                            "placement construction of '" + targetType +
+                                "' requires destination storage of exact type '" +
+                                requiredStorageType + "'");
+                        storageValid = false;
+                    }
                 }
 
                 bool argumentsValid = true;

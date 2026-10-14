@@ -7562,6 +7562,52 @@ class Program
         }});
 }
 
+void registerAllocatorSelectionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-477", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "IAllocator", "new", "placement", "construction"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F02AllocatorSelection", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        A a = new (alloc) A(42);
+        return a.X;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F02AllocatorSelection.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-477 allocator selection must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-477 new (alloc) A(42) must construct through the allocator: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9339,6 +9385,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerInterpolationHandlerCase(registry);
     registerRefFieldEscapeCase(registry);
     registerGenericAttributeCase(registry);
+    registerAllocatorSelectionCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);

@@ -8622,6 +8622,109 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             const auto ordinal = static_cast<std::size_t>(
                 binding - constructionModel_->constructions().data());
+            // NS304-T13-F02: allocator selection desugars to `allocator.Allocate(size)` + placement
+            // construction on the returned pointer (no direct LLVM call, which would cross code
+            // units). The placement node is built below with a local `byte*` as storage.
+            if (binding->allocatorSelection && binding->allocatorAllocateMemberOrdinal.has_value())
+            {
+                if (addressContext)
+                {
+                    error = "allocator construction result is a value, not addressable storage";
+                    return nullptr;
+                }
+                std::size_t size = 0;
+                if (objectLayoutModel_ != nullptr)
+                {
+                    if (binding->targetIsStruct)
+                    {
+                        const auto* layout =
+                            objectLayoutModel_->structLayoutForType(binding->targetTypeOrdinal);
+                        if (layout != nullptr) size = layout->size;
+                    }
+                    else
+                    {
+                        const auto* layout =
+                            objectLayoutModel_->layoutForType(binding->targetTypeOrdinal);
+                        if (layout != nullptr) size = layout->size;
+                    }
+                }
+                const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
+                auto block = makeNode(
+                    ProjectOopHirNodeKind::BlockExpression, expression, binding->targetTypeKey);
+
+                auto allocate = makeNode(
+                    ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
+                allocate->memberOrdinal = *binding->allocatorAllocateMemberOrdinal;
+                // A struct allocator is stored by value, so `Allocate` needs its address; a class
+                // allocator is a reference and needs the loaded value (the reference pointer).
+                bool allocatorIsStruct = false;
+                if (inheritanceModel_ != nullptr && nameLookup_ != nullptr)
+                {
+                    const std::optional<std::size_t> allocatorOrdinal =
+                        inheritanceModel_->typeOrdinalForTypeKey(binding->allocatorTypeKey);
+                    if (allocatorOrdinal.has_value() &&
+                        *allocatorOrdinal < nameLookup_->namedTypes().size())
+                    {
+                        allocatorIsStruct = nameLookup_->namedTypes()[*allocatorOrdinal].kind ==
+                            NamedTypeDeclarationKind::Struct;
+                    }
+                }
+                auto receiver = lowerExpression(
+                    expression->first(), memberOrdinal, allocatorIsStruct, error);
+                if (receiver == nullptr) return nullptr;
+                allocate->children.push_back(std::move(receiver));
+                auto sizeArg = makeNode(
+                    ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+                sizeArg->integerValue = size;
+                allocate->children.push_back(std::move(sizeArg));
+                auto decl = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
+                decl->localOrdinal = tempOrdinal;
+                decl->stringValue = "allocator.bytes";
+                decl->children.push_back(std::move(allocate));
+                block->children.push_back(std::move(decl));
+
+                auto construction = makeNode(
+                    ProjectOopHirNodeKind::PlacementConstruction, expression,
+                    binding->targetIsStruct
+                        ? binding->targetTypeKey + "*"
+                        : binding->targetTypeKey);
+                construction->constructionOrdinal = ordinal;
+                construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                construction->storageOwnership = sema::OwnershipKind::Borrowed;
+                construction->targetTypeOrdinal = binding->targetTypeOrdinal;
+                construction->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
+                    ? binding->selectedConstructorMemberOrdinal
+                    : binding->implicitDefaultBaseConstructorMemberOrdinal;
+                auto storage = makeNode(
+                    ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
+                storage->localOrdinal = tempOrdinal;
+                construction->children.push_back(std::move(storage));
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    auto argument = lowerExpression(
+                        expression->children()[index], memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    if (index < binding->selectedConversions.size() &&
+                        binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                    {
+                        argument = wrapImplicitConversion(
+                            std::move(argument), binding->selectedConversions[index],
+                            expression->children()[index]);
+                    }
+                    if (index >= binding->selectedArgumentParameterOrdinals.size())
+                    {
+                        error = "named construction argument has no selected parameter ordinal";
+                        return nullptr;
+                    }
+                    construction->children.push_back(std::move(argument));
+                    construction->argumentParameterOrdinals.push_back(
+                        binding->selectedArgumentParameterOrdinals[index]);
+                }
+                construction->argumentCount = construction->argumentParameterOrdinals.size();
+                block->children.push_back(std::move(construction));
+                return block;
+            }
             auto node = makeNode(
                 placement
                     ? ProjectOopHirNodeKind::PlacementConstruction

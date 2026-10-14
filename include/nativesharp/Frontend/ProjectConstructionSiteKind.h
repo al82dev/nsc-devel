@@ -7,6 +7,9 @@ namespace nativesharp::frontend
 enum class ProjectConstructionSiteKind
 {
     Object,
-    Placement
+    Placement,
+    // NS304-T13-F02: `new (allocator) T(args)` where `allocator : IAllocator`. The HIR desugars to
+    // `allocator.Allocate(size)` + placement construction on the returned pointer.
+    Allocator
 };
 }

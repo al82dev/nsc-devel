@@ -22,6 +22,9 @@ struct ProjectConstructionSite final
     ProjectConstructionSiteKind kind = ProjectConstructionSiteKind::Object;
     std::string targetTypeKey;
     std::optional<std::size_t> targetTypeOrdinal;
+    // NS304-T13-F02: the allocator operand type for an `Allocator` site (`new (allocator) T(...)`).
+    std::string allocatorTypeKey;
+    std::optional<std::size_t> allocatorAllocateMemberOrdinal;
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsTyped = false;
 };
