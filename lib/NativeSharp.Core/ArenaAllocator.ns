@@ -46,7 +46,7 @@ namespace NativeSharp.Core
     // necesita cualquier `long`, `double` o puntero de x64. Repartir sin alinear funcionaria hoy
     // en x86-64 para casi todo y seria una bomba de relojeria en cuanto algo pidiera una lectura
     // alineada o se cambiara de arquitectura.
-    public class ArenaAllocator : Allocator
+    public class ArenaAllocator : Allocator, IAllocator
     {
         private owned ArenaBlock primero;
         private ArenaBlock actual;
@@ -147,6 +147,33 @@ namespace NativeSharp.Core
             asignacionesTotales = asignacionesTotales + 1;
             asignacionesActivas = asignacionesActivas + 1;
             return entregado;
+        }
+
+        // NS304-T13-F04. `IAllocator.Resize`. Los bloques de una arena no se mueven, asi que un
+        // `newBytes <= oldBytes` puede conservar el puntero tal cual; un crecimiento no puede
+        // ampliarse en el sitio, asi que reparte un bloque nuevo, copia min(old,new) y consume el
+        // puntero viejo (la memoria fisica vieja queda en la arena hasta Reset).
+        public byte* Resize(byte* ptr, int oldBytes, int newBytes)
+        {
+            if (ptr == null || oldBytes < 0 || newBytes < 0) { return null; }
+            if (newBytes <= oldBytes) { return ptr; }
+
+            byte* nuevo = Allocate(newBytes);
+            if (nuevo == null) { return null; }
+
+            Spans.OfRaw<byte>(ptr, oldBytes).CopyTo(Spans.OfRaw<byte>(nuevo, oldBytes));
+            asignacionesActivas = asignacionesActivas - 1;
+            return nuevo;
+        }
+
+        // NS304-T13-F04. `IAllocator.Deallocate`. Termina la obligacion logica de la asignacion; la
+        // arena no recupera bytes individuales (solo Reset lo hace de golpe).
+        public void Deallocate(byte* ptr)
+        {
+            if (ptr != null && asignacionesActivas > 0)
+            {
+                asignacionesActivas = asignacionesActivas - 1;
+            }
         }
 
         // Rebobina TODOS los bloques a cero SIN liberar la memoria, y vuelve al primero. Eso es lo

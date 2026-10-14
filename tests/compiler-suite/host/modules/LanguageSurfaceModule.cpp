@@ -4833,6 +4833,52 @@ class Program
         }});
 }
 
+void registerArenaAllocatorIAllocatorCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-487", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "IAllocator", "arena", "resize", "deallocate"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F04ArenaAllocator", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class Program
+{
+    public static int Main()
+    {
+        scope ArenaAllocator arena = new ArenaAllocator();
+        A a = new (arena) A(42);
+        if (a.X != 42) return 1;
+        byte* p = arena.Allocate(8);
+        Span<byte> s = Spans.OfRaw<byte>(p, 8);
+        s[0] = 1; s[1] = 2; s[7] = 8;
+        byte* q = arena.Resize(p, 8, 64);
+        Span<byte> t = Spans.OfRaw<byte>(q, 64);
+        if (t[0] != 1 || t[1] != 2 || t[7] != 8) return 2;
+        arena.Deallocate(q);
+        return arena.ActiveAllocationCount() == 1 ? 0 : 3;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F04ArenaAllocator.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-487 ArenaAllocator as IAllocator must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-487 ArenaAllocator Resize/Deallocate must hold (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9637,6 +9683,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerScopeStackCase(registry);
     registerScopeEscapeRejectCase(registry);
     registerScopeFieldStoreRejectCase(registry);
+    registerArenaAllocatorIAllocatorCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

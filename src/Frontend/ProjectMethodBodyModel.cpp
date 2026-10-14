@@ -8096,32 +8096,23 @@ void ProjectMethodBodyModel::analyzeReturn(
             return;
         }
     }
-    // NS304-T13-F03: a `scope` object is frame storage and can never escape via return.
+    // NS304-T13-F03: a `scope` object is frame storage and can never escape via return. Only the
+    // returned value itself (a direct identifier naming the scope object) escapes; a field read or
+    // a method call on it produces a copy and is legal.
+    if (statement->first() != nullptr &&
+        statement->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        std::vector<const ast::AstNode*> pending;
-        if (statement->first() != nullptr) pending.push_back(statement->first());
-        while (!pending.empty())
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, statement->first()->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local &&
+            name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
         {
-            const ast::AstNode* current = pending.back();
-            pending.pop_back();
-            if (current == nullptr) continue;
-            if (current->kind() == ast::AstNodeKind::IdentifierExpression)
-            {
-                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, current->text());
-                if (name.has_value() && name->kind == ScopeNameKind::Local &&
-                    name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidReturn,
-                        diagnostics::DiagnosticSeverity::Error,
-                        statement->first()->range(),
-                        "scope object '" + locals_[name->semanticOrdinal].name +
-                            "' lives in the current frame and cannot be returned");
-                    return;
-                }
-            }
-            if (current->first() != nullptr) pending.push_back(current->first());
-            for (const ast::AstNode* child : current->children()) pending.push_back(child);
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "scope object '" + locals_[name->semanticOrdinal].name +
+                    "' lives in the current frame and cannot be returned");
+            return;
         }
     }
     if (method->declaredOwnership == sema::OwnershipKind::Borrowed)
