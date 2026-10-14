@@ -4403,6 +4403,26 @@ void ProjectMethodBodyModel::analyzeBlock(
         analyzeStatement(statement, methodMemberOrdinal, activeScope, diagnostics);
         restoreOwnershipFlow(terminatedState);
     }
+    // NS304-T07-F06: a scoped child borrow of a local that dies here (block exit) is a dangling
+    // Future. Reject it unless a Join already discharged the borrow.
+    if (!scopedChildBorrows_.empty())
+    {
+        const std::span<const MethodLocalSymbol> frameLocals = locals();
+        for (std::size_t ordinal = 0; ordinal < frameLocals.size(); ++ordinal)
+        {
+            if (frameLocals[ordinal].scopeOrdinal == activeScope &&
+                scopedChildBorrows_.contains(ordinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    block->range(),
+                    "scoped child borrow outlives its source; join or cancel the TaskScope "
+                    "before leaving the source lifetime");
+                break;
+            }
+        }
+    }
     for (std::size_t index = activeCleanupRegions_.size(); index > cleanupDepthAtEntry; --index)
     {
         recordNormalCleanupContinuation(
@@ -17962,6 +17982,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
+
+    // NS304-T07-F06: TaskScope.Join discharges the scoped child borrows; TaskScope.Spawn of an
+    // async child that captures a `ref value` registers the borrow of that source local. Block exit
+    // while a borrow is still registered rejects the dangling Future.
+    if (call.methodName == "Join")
+    {
+        scopedChildBorrows_.clear();
+    }
+    else if (call.methodName == "Spawn")
+    {
+        for (const ast::AstNode* argument : expression->children())
+        {
+            if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression)
+                continue;
+            const MethodCallBinding* childCall = callBinding(argument, methodMemberOrdinal);
+            if (childCall == nullptr || !childCall->selectedMemberOrdinal.has_value()) continue;
+            if (*childCall->selectedMemberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& child =
+                memberModel_->members()[*childCall->selectedMemberOrdinal];
+            for (std::size_t childArgOrdinal = 0; childArgOrdinal < argument->children().size();
+                 ++childArgOrdinal)
+            {
+                if (childArgOrdinal >= child.parameters.size() ||
+                    child.parameters[childArgOrdinal].passKind != ParameterPassKind::Ref)
+                    continue;
+                const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+                    argument->children()[childArgOrdinal], scopeOrdinal);
+                if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+                    origin.ordinal.has_value())
+                {
+                    scopedChildBorrows_.insert(*origin.ordinal);
+                }
+            }
+        }
+    }
+
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
     call.selectedArgumentSyntaxes.reserve(selected.argumentParameterOrdinals.size());
