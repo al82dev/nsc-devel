@@ -1027,8 +1027,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [ ] `NS304-T07-F05` — Propagar cancelación y ejecutar cleanup de productor y consumidor. *(HECHO: it.Cancel() (TL-LANG-455) + finally en cancelación (TL-LANG-456); commits 2048bd8a/52ce22f. Error del productor = T07-F03; CancellationToken explícito = ampliación T07-F07.)*
 - [x] `NS304-T07-F06` — Cerrar `task scope`, spawn/join, child failure y no-escape de borrows. *(HECHO: TaskScope/IExecutor (TL-LANG-457/458), captura ref (TL-LANG-459), provenance no-escape (TL-LANG-460/461), Join idempotente + destructor inverso (TL-LANG-462/463); commits a0121a53/9cc14132/87dd975d.)*
 - [x] `NS304-T07-F07` — Verificar `Send`/`Sync`, cambio de thread y executor elegido por protocolo. *(HECHO: Send/Sync estructural (TL-LANG-464/465), IThreadExecutor enforcement (TL-LANG-466..469); commits 02b27eb0/3cd6f9f6/cabec748.)*
-- [ ] `NS304-T07-F08` — Emitir metadata/debug de logical stacks, suspension points y async frames.
-
+- [x] `NS304-T07-F08` — Emitir metadata/debug de logical stacks, suspension points y async frames. *(HECHO: consumo precompilado sin fuentes (TL-LANG-470) + PDB async frames (TL-LANG-471); commits f9ee933f/fbcd1335.)*
 ### T08 — extension members y operadores
 
 - [x] `NS304-T08-F01` — Diseñar bloques `extension` canónicos sobre tipos y constraints. *(extension method en namespace + TL-LANG-323; global-namespace residual.)*

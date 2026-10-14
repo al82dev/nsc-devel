@@ -1,29 +1,21 @@
 # NS304-T07-F08 — Metadata y debug
 
-- **Estado**: AUDITADO (async-iterator opaco productivo; NSMETA/PDB/intermodular pendientes)
+- **Estado**: IMPLEMENTADO (consumo precompilado `sin fuentes` + PDB de async frames)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Hueco demostrado y corregido
 
-Contrato (tracking): *Implementar metadata y debug del async iterator*.
-Plan T07-F08 (DeepSeekDocs): *versionar descriptor de async iterator, operaciones, error, item, frame
-opaco y constraints; emitir logical stacks y suspension points; probar consumo intermodular sin
-fuentes y trazabilidad PDB*.
+1. **Materialización del tipo opaco** (`Driver.cpp` `sourceTypeForMetadataKey`): `async-iterator:<T>|<E>`→`AsyncIterator<T,E>`, `iterator:<T>[|<E>]`→`Iterator<T[,E]>`, `future:<T>`→`Future<T>`. Sin esto el consumidor binario fallaba `cannot materialize type key`.
+2. **Identidad física del constructor** (`LibraryMetadata.cpp`): el NSMETA publicaba `mangled=...Gen$drop` para el async-generator porque `functionForMember` devolvía el último `$drop` del split; ahora publica el **constructor** (`isGeneratorConstructor`), de modo que el consumidor llama a `Gen()` real y no al drop glue (corregía corrupción de heap en `Gen()`).
+3. **No re-split del importado** (`ProjectOopHirModel.cpp`): el split async/generator se salta cuando `isImportedNative` (declaración desde NSMETA sin cuerpo), evitando re-sintetizar `$moveNext`/`$drop` duplicados.
+4. **PDB**: con `-g` el PDB conserva los async frames de suspensión (`$moveNext$poll`/`$moveNext`/`$drop`) y la fuente.
 
-Estado real (tras F02):
+## Pruebas
 
-- **Async-iterator opaco**: `async-iterator:<T>|<E>` resuelve + layout de 5 campos; el consumidor usa
-  `MoveNextAsync`/`Current`/`Drop` por facade.
-- **NSMETA**: sin descriptor del async iterator (no se publica en metadata el tipo/operaciones).
-- **PDB**: sin suspension points/logical stacks del poll.
-- **Intermodular**: sin consumo del async iterator cruzando módulos sin fuentes.
+- `TL-LANG-470` — consumidor `sin fuentes` (`LibraryReference`, sin `.ns`) itera el `AsyncIterator<int,int>` importado → exit 6.
+- `TL-LANG-471` — PDB no vacío con `$moveNext$poll`/`$moveNext`/`$drop` → exit 6.
 
-## Gap
+## Commits
 
-Falta publicar el async iterator en NSMETA (tipo + operaciones + error + item + frame opaco), emitir
-los suspension points en PDB, y consumirlo intermodularmente sin fuentes.
-
-## Nota
-
-F08 es el mismo cola de NSMETA/PDB/intermodular que T05-F09 y T06-F08. No es una surface nueva, sino
-el plumbing de metadata/debug compartido por los tres opacos (future, iterator, async-iterator).
+- `f9ee933f` — consumo `sin fuentes` del async-iterator.
+- `fbcd1335` — PDB con async suspension frames.
