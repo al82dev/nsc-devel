@@ -10,6 +10,7 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 
 #include "nativesharp/AST/AstNodeKind.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -486,6 +487,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::IteratorCancel:
         return std::nullopt;
     case MethodCoreOperationKind::CollectionBuilder:
+        return std::nullopt;
+    case MethodCoreOperationKind::InterpolationHandler:
         return std::nullopt;
     case MethodCoreOperationKind::NullConditionalUserIndex:
         return std::nullopt;
@@ -5172,6 +5175,83 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::InterpolatedStringExpression:
         {
+            if (const MethodCoreBinding* core = coreBinding(expression);
+                core != nullptr && core->kind == MethodCoreOperationKind::InterpolationHandler)
+            {
+                if (addressContext)
+                {
+                    error = "an interpolation handler result is a value, not addressable storage";
+                    return nullptr;
+                }
+                const std::string handlerType = core->resultTypeKey;
+                const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
+                auto block = makeNode(
+                    ProjectOopHirNodeKind::BlockExpression, expression, handlerType);
+
+                auto declaration = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration, expression, handlerType);
+                declaration->localOrdinal = tempOrdinal;
+                declaration->stringValue = "handler";
+                declaration->children.push_back(makeNode(
+                    ProjectOopHirNodeKind::DefaultValue, expression, handlerType));
+                block->children.push_back(std::move(declaration));
+
+                std::vector<language::InterpolationPart> parts;
+                std::string parseError;
+                if (!language::parseStaticInterpolation(expression->text(), parts, parseError))
+                {
+                    error = std::move(parseError);
+                    return nullptr;
+                }
+                std::size_t holeIndex = 0;
+                for (const language::InterpolationPart& part : parts)
+                {
+                    const bool isHole = part.kind == language::InterpolationPartKind::Hole;
+                    const std::size_t memberOrdinal =
+                        isHole ? core->builderMemberOrdinals[1] : core->builderMemberOrdinals[0];
+                    std::unique_ptr<ProjectOopHirNode> argument;
+                    if (isHole)
+                    {
+                        if (holeIndex >= expression->children().size())
+                        {
+                            error = "interpolation handler hole has no expression";
+                            return nullptr;
+                        }
+                        argument = lowerExpression(
+                            expression->children()[holeIndex++], memberOrdinal, false, error);
+                        if (argument == nullptr) return nullptr;
+                    }
+                    else
+                    {
+                        argument = makeNode(
+                            ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
+                        argument->stringValue = part.text;
+                    }
+                    auto call = makeNode(
+                        ProjectOopHirNodeKind::InstanceCall, expression, "builtin:void");
+                    call->memberOrdinal = memberOrdinal;
+                    auto receiver = makeNode(
+                        ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
+                    receiver->localOrdinal = tempOrdinal;
+                    call->children.push_back(std::move(receiver));
+                    call->children.push_back(std::move(argument));
+                    auto statement = makeNode(
+                        ProjectOopHirNodeKind::ExpressionStatement, expression, "builtin:void");
+                    statement->children.push_back(std::move(call));
+                    block->children.push_back(std::move(statement));
+                }
+
+                auto finish = makeNode(
+                    ProjectOopHirNodeKind::InstanceCall, expression, handlerType);
+                finish->memberOrdinal = core->builderMemberOrdinals[2];
+                auto finishReceiver = makeNode(
+                    ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
+                finishReceiver->localOrdinal = tempOrdinal;
+                finish->children.push_back(std::move(finishReceiver));
+                block->children.push_back(std::move(finish));
+
+                return block;
+            }
             if (addressContext)
             {
                 error = "a static interpolated string is immutable and not addressable";

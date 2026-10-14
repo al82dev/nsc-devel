@@ -663,6 +663,9 @@ enum class MethodCoreOperationKind
     // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal that lowers to ReadOnlySpan<byte> (static
     // bytes + count), allocation-free.
     Utf8StringLiteral,
+    // NS304-T10-F03: an interpolated string targeting a handler type lowers to
+    // AppendLiteral(parts) + AppendFormatted(holes) + Finish(), with no temporary concatenation.
+    InterpolationHandler,
     StringLength,
     StringElement,
     StringConcat,

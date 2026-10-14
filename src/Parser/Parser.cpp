@@ -15832,6 +15832,37 @@ ast::AstNode* Parser::parsePrimaryExpression()
             }
             node->setIntegerValue(parts.size());
 
+            // NS304-T10-F03: retain the hole expressions on the interpolation node (parsed once,
+            // in source order) so a handler target can lower them one by one. This runs for both
+            // the fully-static and the runtime form.
+            {
+                std::vector<std::string> holeKnownTypes;
+                holeKnownTypes.reserve(knownTypeNames_.size());
+                for (const std::string& name : knownTypeNames_) holeKnownTypes.push_back(name);
+                for (const language::InterpolationPart& part : parts)
+                {
+                    if (part.kind != language::InterpolationPartKind::Hole) continue;
+                    const std::uint32_t tokenOffset = token.range().begin().offset();
+                    const std::uint64_t requestedOffset =
+                        static_cast<std::uint64_t>(tokenOffset) + 2U + part.expressionOffset;
+                    const std::size_t prefix =
+                        requestedOffset <=
+                                static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
+                            ? static_cast<std::size_t>(requestedOffset)
+                            : static_cast<std::size_t>(tokenOffset);
+                    std::string fragment(prefix, ' ');
+                    fragment += part.text;
+                    source::SourceFile fragmentSource(
+                        token.range().begin().fileId(), "<interpolation-hole>", std::move(fragment));
+                    lexer::Lexer fragmentLexer(fragmentSource, diagnostics_);
+                    const std::vector<lexer::Token> fragmentTokens = fragmentLexer.lexAll();
+                    Parser fragmentParser(fragmentTokens, arena_, diagnostics_, holeKnownTypes);
+                    ast::AstNode* hole = fragmentParser.parseExpression();
+                    if (hole == nullptr) hole = makeErrorExpression();
+                    node->addChild(hole);
+                }
+            }
+
             const bool fullyStatic = std::ranges::all_of(parts, isStaticInterpolationHole);
             if (fullyStatic) return node;
 

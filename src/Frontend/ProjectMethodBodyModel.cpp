@@ -10309,6 +10309,78 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
         case ast::AstNodeKind::InterpolatedStringExpression:
         {
+            // NS304-T10-F03: an interpolation targeting a handler type lowers to
+            // AppendLiteral(parts) + AppendFormatted(holes) + Finish(), with no temporary
+            // concatenation. Only the fully-static form falls through to the consteval handler.
+            const std::string handlerTarget = activeTargetTypeKey_;
+            if (!handlerTarget.empty() && inheritanceModel_ != nullptr && memberModel_ != nullptr)
+            {
+                const std::optional<std::size_t> typeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(handlerTarget);
+                if (typeOrdinal.has_value())
+                {
+                    const auto findMember = [&](std::string_view name) -> std::optional<std::size_t>
+                    {
+                        for (const std::size_t ordinal :
+                             memberModel_->findMembers(*typeOrdinal, name))
+                        {
+                            if (ordinal >= memberModel_->members().size()) continue;
+                            return ordinal;
+                        }
+                        return std::nullopt;
+                    };
+                    const std::optional<std::size_t> appendLiteral = findMember("AppendLiteral");
+                    const std::optional<std::size_t> appendFormatted = findMember("AppendFormatted");
+                    const std::optional<std::size_t> finish = findMember("Finish");
+                    if (appendLiteral.has_value() && appendFormatted.has_value() && finish.has_value())
+                    {
+                        const ClassMemberSymbol& formattedMember =
+                            memberModel_->members()[*appendFormatted];
+                        bool holesValid = formattedMember.parameters.size() == 1U;
+                        if (!holesValid)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "an interpolation handler AppendFormatted must take exactly one parameter");
+                        }
+                        if (holesValid)
+                        {
+                            // NS304-T10-F03: analyze each hole once, in source order, so the HIR
+                            // lowers it with its real type (mirrors the collection builder element
+                            // pass). The parser already retained the holes as the node children.
+                            for (const ast::AstNode* hole : expression->children())
+                            {
+                                if (hole == nullptr) continue;
+                                ExpressionResult holeValue = analyzeExpression(
+                                    hole, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                                    false, false, true);
+                                if (!holeValue.valid)
+                                {
+                                    holesValid = false;
+                                    break;
+                                }
+                            }
+                        }
+                        result.typeKey = handlerTarget;
+                        result.valid = holesValid;
+                        if (result.valid)
+                        {
+                            MethodCoreBinding binding;
+                            binding.kind = MethodCoreOperationKind::InterpolationHandler;
+                            binding.syntax = expression;
+                            binding.methodMemberOrdinal = methodMemberOrdinal;
+                            binding.scopeOrdinal = scopeOrdinal;
+                            binding.resultTypeKey = handlerTarget;
+                            binding.builderMemberOrdinals = {
+                                *appendLiteral, *appendFormatted, *finish};
+                            coreBindings_.push_back(std::move(binding));
+                        }
+                        break;
+                    }
+                }
+            }
             // T01-F06 first allocation-free handler: every hole is a compile-time scalar and the
             // complete answer is interned exactly like a source string literal. Runtime holes are
             // rejected instead of silently selecting String.Concat (which would allocate heap in
@@ -26609,6 +26681,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::IteratorMoveNextAsync: return "iterator-move-next-async";
         case MethodCoreOperationKind::IteratorCancel: return "iterator-cancel";
         case MethodCoreOperationKind::CollectionBuilder: return "collection-builder";
+        case MethodCoreOperationKind::InterpolationHandler: return "interpolation-handler";
         case MethodCoreOperationKind::NullConditionalUserIndex: return "null-conditional-user-index";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
