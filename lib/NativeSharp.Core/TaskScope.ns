@@ -1,0 +1,61 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.TaskScope<TExecutor> -- NS304-T07-F06. Surface #6: scope estructurado de
+    // tareas hijas sobre un executor (surface #7). El tipo es generico porque un struct que
+    // implementa IExecutor no se convierte implicitamente al trait; el parametro TExecutor fija el
+    // executor concreto y su constraint garantiza el protocolo Spawn/PollJoin/Cancel.
+    //
+    // Todo hijo se registra via Spawn y debe unirse antes de salir: Join recorre los hijos en
+    // orden inverso de spawn y los une. El fallo de un hijo (future en estado de error) marca el
+    // scope como fallado.
+    public struct TaskScope<TExecutor> where TExecutor : IExecutor
+    {
+        private TExecutor executor;
+        private int[] handles;
+        private int count;
+        private bool failed;
+
+        public static TaskScope<TExecutor> Create(TExecutor executor)
+        {
+            TaskScope<TExecutor> scope;
+            scope.executor = executor;
+            scope.handles = new int[8];
+            scope.count = 0;
+            scope.failed = false;
+            return scope;
+        }
+
+        public bool Failed() { return failed; }
+
+        public int ChildCount() { return count; }
+
+        public void Spawn(Future<void> task)
+        {
+            if (count == handles.Length)
+            {
+                int[] grown = new int[handles.Length * 2];
+                for (int i = 0; i < count; i = i + 1)
+                {
+                    grown[i] = handles[i];
+                }
+                handles = grown;
+            }
+            handles[count] = executor.Spawn(task);
+            count = count + 1;
+        }
+
+        public void Join()
+        {
+            for (int i = count - 1; i >= 0; i = i - 1)
+            {
+                bool done = executor.PollJoin(handles[i]);
+                while (!done)
+                {
+                    done = executor.PollJoin(handles[i]);
+                }
+            }
+        }
+    }
+}

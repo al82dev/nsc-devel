@@ -6648,6 +6648,55 @@ class Program
         }});
 }
 
+void registerTaskScopeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-457", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "task-scope", "spawn", "join", "executor", "trait"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T07TaskScopeJoin", "Exe", R"ns(
+using NativeSharp.Core;
+struct InlineExecutor : IExecutor
+{
+    public int spawned;
+    public int joined;
+    public InlineExecutor() { spawned = 0; joined = 0; }
+    public int Spawn(Future<void> task) { spawned = spawned + 1; return spawned - 1; }
+    public bool PollJoin(int handle) { joined = joined + 1; return true; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child() { }
+    public static int Main()
+    {
+        TaskScope<InlineExecutor> scope = TaskScope<InlineExecutor>.Create(new InlineExecutor());
+        scope.Spawn(Child());
+        scope.Spawn(Child());
+        scope.Join();
+        return scope.ChildCount();
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T07TaskScopeJoin.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-457 the task scope must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 2,
+                "TL-LANG-457 Spawn must register two children and Join must run (count=2): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerGeneratorEarlyStopCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-383", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -8416,6 +8465,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncGeneratorRefBorrowRejectCase(registry);
     registerAsyncGeneratorMoveOnlyItemCase(registry);
     registerAsyncGeneratorCancellationCase(registry);
+    registerTaskScopeCase(registry);
     registerGeneratorEarlyStopCase(registry);
     registerGeneratorDropCase(registry);
     registerAsyncGeneratorSyncCase(registry);
