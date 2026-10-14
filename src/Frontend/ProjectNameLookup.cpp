@@ -452,6 +452,11 @@ std::span<const NamedTypeDeclaration> ProjectNameLookup::namedTypes() const noex
     return namedTypes_;
 }
 
+std::span<const NamedTypeDeclarationPart> ProjectNameLookup::externalTraitImplParts() const noexcept
+{
+    return externalTraitImplParts_;
+}
+
 std::span<const NamespaceFunctionDeclaration> ProjectNameLookup::namespaceFunctions() const noexcept
 {
     return namespaceFunctions_;
@@ -855,6 +860,18 @@ void ProjectNameLookup::finalizePredeclarations(
                     "orphan impl: the module owns neither the target type '" +
                         pendingTypes_[groupBegin].identity.fullyQualifiedName() +
                         "' nor the trait");
+            }
+            else
+            {
+                // NS304-T08-F05: the module owns the trait, so the conformance over the external
+                // target is coherent. Keep the trait-impl parts for the member model to register
+                // on the external target's member surface.
+                for (std::size_t index = groupBegin; index < groupEnd; ++index)
+                {
+                    const PendingTypeDeclaration& pending = pendingTypes_[index];
+                    if (isTraitImplementationPart(pending.part))
+                        externalTraitImplParts_.push_back(pending.part);
+                }
             }
             groupBegin = groupEnd;
             continue;

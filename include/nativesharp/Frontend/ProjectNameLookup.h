@@ -208,6 +208,9 @@ public:
     std::span<const NamespaceFunctionDeclaration> namespaceFunctions() const noexcept;
     std::span<const NamespaceStateDeclaration> namespaceStates() const noexcept;
     std::span<const TypeNameBinding> bindings() const noexcept;
+    // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,
+    // not the type). The member model registers their methods on the external target.
+    std::span<const NamedTypeDeclarationPart> externalTraitImplParts() const noexcept;
 
     const NamedTypeDeclaration* resolvedDeclaration(const ast::TypeSyntax* syntax) const noexcept;
     std::optional<std::size_t> resolvedTypeOrdinal(const ast::TypeSyntax* syntax) const noexcept;
@@ -336,6 +339,7 @@ private:
     std::vector<std::unique_ptr<ModuleDeclarationSpace>> modules_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
     std::vector<NamedTypeDeclaration> namedTypes_;
+    std::vector<NamedTypeDeclarationPart> externalTraitImplParts_;
     std::vector<NamespaceFunctionDeclaration> namespaceFunctions_;
     std::vector<NamespaceStateDeclaration> namespaceStates_;
     std::vector<TypeNameBinding> bindings_;

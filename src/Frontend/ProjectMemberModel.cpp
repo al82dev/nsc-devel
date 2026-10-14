@@ -663,6 +663,28 @@ bool ProjectMemberModel::build(
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
 
+    // NS304-T08-F05: register the trait-impl methods over external targets (the module owns the
+    // trait, not the type). Each part targets an external type by name; its methods join that
+    // type's member surface.
+    for (const NamedTypeDeclarationPart& part : nameLookup.externalTraitImplParts())
+    {
+        if (part.syntax == nullptr) continue;
+        const std::string targetName = part.syntax->text();
+        std::optional<std::size_t> targetOrdinal;
+        for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+        {
+            if (nameLookup.namedTypes()[ordinal].identity.name() == targetName)
+            {
+                targetOrdinal = ordinal;
+                break;
+            }
+        }
+        if (!targetOrdinal.has_value()) continue;
+        NamedTypeDeclaration extended = nameLookup.namedTypes()[*targetOrdinal];
+        extended.parts.push_back(part);
+        collectTypeMembers(*targetOrdinal, extended, nameLookup, diagnostics);
+    }
+
     // Method-body shards share this model. Complete the ownership closure while build() is still
     // single-threaded so every later query is a read-only lookup instead of a lazy cache write.
     buildTransitiveOwnershipCache();
