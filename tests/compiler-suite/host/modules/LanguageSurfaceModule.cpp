@@ -4441,6 +4441,43 @@ class Program
         }});
 }
 
+void registerDecimalMultiplyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-424", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "arithmetic", "mul", "commutativity"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F04DecimalMultiply", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal a = 1.5m;
+        decimal b = 2.5m;
+        decimal c = a + b;
+        decimal p = a * b;
+        decimal q = b * a;
+        if (c - a == b && p == q) return 0;
+        return 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T15F04DecimalMultiply.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-424 decimal multiply must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-424 a*b == b*a must hold (scale-add multiply) (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerLocalFunctionCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-325", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7132,6 +7169,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalLiteralCase(registry);
     registerDecimalManglingCase(registry);
     registerDecimalArithmeticCase(registry);
+    registerDecimalMultiplyCase(registry);
     registerLocalFunctionCase(registry);
     registerLocalFunctionRecursionCase(registry);
     registerLambdaAttributeCase(registry);
