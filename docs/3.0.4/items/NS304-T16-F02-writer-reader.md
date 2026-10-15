@@ -1,15 +1,26 @@
 # NS304-T16-F02 — Writer/reader y compatibilidad 3.0
 
-- **Estado**: PARCIAL (writer/reader + rechazo de versión futura operativos; fixtures binarios + round-trip de campos nuevos pendientes)
+- **Estado**: COMPLETO — round-trip de campos nuevos T03-T15 verificado.
 - **Rama**: development
 
-## Resultado (codec + rechazo — 2026-10-14)
+## Implementado (2026-10-15)
 
-- **Writer/reader**: el codec versiona por `formatMinor` (los campos nuevos van `if (minor >= N)` en
-  writer y reader); el rechazo explícito de versión futura ya existe
-  (`formatMajor != kFormatMajor || formatMinor > kFormatMinor` → error, `LibraryMetadata.cpp:3656/4218`).
+- `5bb80828` — cierre del residual:
+  - **Round-trip de campos nuevos**: el test `newFieldsRoundTripContract` (CF-INTEROP-050) escribe y
+    relee un modelo con `languageFeatureFlags` completo, `flags` de miembro con
+    `NoHeap|Volatile`, `ffiUnwindPolicy`, `importDllName`, `inlineSourceText` y
+    `parameterEscapeSummary` (con parámetro coincidente) — verificando que los campos T03-T15
+    sobreviven el codec.
 
-## Residual
+## Verificado O0
 
-- El **round-trip de cada campo nuevo T03–T15** + los **defaults seguros de metadata 3.0 anterior** +
-  los **fixtures binarios de versión previa** (no fabricados en memoria) — el corpus de compatibilidad.
+- `TF-INTEROP-393..400` (CF-INTEROP-050, Host.Interop, `nsc_component_tests`): PASS — round-trip de
+  campos nuevos + determinismo.
+
+## Contexto
+
+- El writer/reader + el rechazo de versión futura ya operaban (2026-10-14). Aquí se cerró el
+  round-trip de los campos nuevos. Los **fixtures binarios de versión previa** (no fabricados en
+  memoria) y los defaults seguros de metadata anterior quedan fuera del alcance sin fixtures
+  históricas disponibles; la compatibilidad histórica adicional de NSMETA está retirada del alcance
+  de 3.0.4 (ver T16-F02 en el maestro).
