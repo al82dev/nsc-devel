@@ -30,7 +30,10 @@ StaticMemberKind staticKind(ClassMemberKind kind) noexcept
     case ClassMemberKind::Destructor: return StaticMemberKind::Destructor;
     case ClassMemberKind::Event: return StaticMemberKind::Event;
     }
-    return StaticMemberKind::Field;
+    // NS304-T14-F01: a new ClassMemberKind without a visitor/introspection mapping must fail
+    // loudly instead of silently collapsing to Field. The switch above is exhaustive for the
+    // kinds admitted in v3.0.4; reaching this trap is the defensive gate the audit requested.
+    std::abort();
 }
 
 std::string unquote(std::string_view value)
@@ -90,9 +93,22 @@ bool ProjectMetaprogrammingModel::build(
         {
             if (memberOrdinal >= members.members().size()) return false;
             const ClassMemberSymbol& member = members.members()[memberOrdinal];
-            type.members.push_back({memberOrdinal, staticKind(member.kind), member.name,
-                member.declaredTypeKey, member.signatureKey,
-                member.accessibility == ClassMemberAccessibility::Public, member.isStatic});
+            StaticMemberInfo info;
+            info.memberOrdinal = memberOrdinal;
+            info.kind = staticKind(member.kind);
+            info.name = member.name;
+            info.typeKey = member.declaredTypeKey;
+            info.signatureKey = member.signatureKey;
+            info.isPublic = member.accessibility == ClassMemberAccessibility::Public;
+            info.isStatic = member.isStatic;
+            info.isReadonly = member.isReadonly;
+            info.isConst = member.isConst;
+            info.isVolatile = member.isVolatile;
+            info.declaredOwnership = member.declaredOwnership;
+            info.genericTemplateKey = member.genericTemplateKey;
+            info.sourcePath = member.sourcePath;
+            info.frameStorage = member.frameStorage;
+            type.members.push_back(std::move(info));
         }
         std::ranges::sort(type.members, {}, &StaticMemberInfo::memberOrdinal);
         types_.push_back(std::move(type));

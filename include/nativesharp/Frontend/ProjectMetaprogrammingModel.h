@@ -28,6 +28,14 @@ struct StaticMemberInfo final
     std::string signatureKey;
     bool isPublic = false;
     bool isStatic = false;
+    // NS304-T14-F01: typed descriptors (modifiers / ownership / generics / source origin).
+    bool isReadonly = false;
+    bool isConst = false;
+    bool isVolatile = false;
+    sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
+    std::string genericTemplateKey;
+    std::string sourcePath;
+    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
 };
 
 struct StaticTypeInfo final

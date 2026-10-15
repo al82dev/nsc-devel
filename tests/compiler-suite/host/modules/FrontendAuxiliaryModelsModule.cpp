@@ -285,6 +285,46 @@ void inlinePolicyOracle(TestContext& context, std::size_t variant)
 }
 }
 
+void typedDescriptorsOracle(TestContext& context, std::size_t variant)
+{
+    const std::string source = R"ns(
+namespace Suite
+{
+    public class Item
+    {
+        public readonly int flag;
+        public const int K = 7;
+        public volatile int counter;
+        public owned byte[] buffer;
+        public Item() { flag = 1; buffer = new byte[4]; }
+    }
+}
+)ns";
+    expectProjectStage(context, 64, variant, ProjectStage::ObjectLayouts, source,
+        [](TestContext& test, const ProjectCompilation& compilation)
+        {
+            const ProjectMetaprogrammingModel* model = compilation.metaprogrammingModel();
+            test.expect(model != nullptr && model->isBuilt(),
+                "typed introspection must publish a built catalog");
+            if (model == nullptr) return;
+            bool sawFlag = false, sawK = false, sawCounter = false, sawBuffer = false;
+            for (const StaticTypeInfo& type : model->types())
+            {
+                for (const StaticMemberInfo& member : type.members)
+                {
+                    if (member.name == "flag") sawFlag = member.isReadonly;
+                    else if (member.name == "K") sawK = member.isConst;
+                    else if (member.name == "counter") sawCounter = member.isVolatile;
+                    else if (member.name == "buffer")
+                        sawBuffer = member.declaredOwnership == nativesharp::sema::OwnershipKind::Owned;
+                }
+            }
+            test.expect(sawFlag && sawK && sawCounter && sawBuffer,
+                "typed introspection must capture readonly/const/volatile modifiers and owned storage");
+        },
+        emptyMetaprogrammingOracle);
+}
+
 void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
 {
     addMatrix(registry, 46, "unit", escapeOriginOracle);
@@ -297,5 +337,6 @@ void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
     addMatrix(registry, 53, "component", metaprogrammingOracle);
     addMatrix(registry, 54, "component", opaqueResultOracle);
     addMatrix(registry, 55, "unit", inlinePolicyOracle);
+    addMatrix(registry, 64, "component", typedDescriptorsOracle);
 }
 }
