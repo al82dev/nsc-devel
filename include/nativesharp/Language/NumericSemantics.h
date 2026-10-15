@@ -81,6 +81,10 @@ std::optional<Decimal128Bits> evaluateDecimalArithmetic(
     DecimalArithmeticOperation operation,
     std::string& error) noexcept;
 
+// NS304-T15-F08: the culture-free decimal→text emission ("±<int>.<frac>") — the same digit
+// emission that String.ToString(decimal) lowers to. No locale and no binary floating point.
+std::string decimalToStringText(const Decimal128Bits& value) noexcept;
+
 struct IntegerType final { unsigned bits = 32; bool isSigned = true; };
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept;
 std::optional<std::uint64_t> parseIntegerLiteralMagnitude(std::string_view spelling, std::string& error);

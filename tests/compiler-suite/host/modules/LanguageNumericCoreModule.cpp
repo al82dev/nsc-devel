@@ -335,6 +335,21 @@ void registerDecimalArithmeticHelperCase(TestRegistry& registry)
     });
 }
 
+void registerDecimalToStringCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-507", [](TestContext& context) {
+        const auto oneFive = makeDecimal128Bits(15, 0, 1, false);
+        const auto negative = makeDecimal128Bits(1, 0, 3, true);
+        const auto zero = makeDecimal128Bits(0, 0, 0, false);
+        const auto whole = makeDecimal128Bits(42, 0, 0, false);
+        context.expect(decimalToStringText(*oneFive) == "1.5" &&
+                decimalToStringText(*negative) == "-0.001" &&
+                decimalToStringText(*zero) == "0" &&
+                decimalToStringText(*whole) == "42",
+            "TL-LANG-507 decimal to text must emit culture-free digits with sign and scale");
+    });
+}
+
 void registerLanguageNumericCoreModule(TestRegistry& registry)
 {
     registerLiteralFitsCase(registry);
@@ -351,5 +366,6 @@ void registerLanguageNumericCoreModule(TestRegistry& registry)
     registerSignedResultCase(registry);
     registerDecimalLiteralParseCase(registry);
     registerDecimalArithmeticHelperCase(registry);
+    registerDecimalToStringCase(registry);
 }
 }

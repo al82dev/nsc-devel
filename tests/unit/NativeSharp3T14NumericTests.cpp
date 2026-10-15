@@ -116,5 +116,15 @@ int main()
         *tiny, *tenth, DecimalArithmeticOperation::Multiply, error);
     tests.expect(!overflow.has_value() && error.find("scale exceeds 28") != std::string::npos,
         "decimal multiply scale overflow above 28 is rejected");
+
+    const auto onePointFiveText = makeDecimal128Bits(15, 0, 1, false);
+    const auto negativeText = makeDecimal128Bits(1, 0, 3, true);
+    const auto zeroText = makeDecimal128Bits(0, 0, 0, false);
+    const auto wholeText = makeDecimal128Bits(42, 0, 0, false);
+    tests.expect(decimalToStringText(*onePointFiveText) == "1.5" &&
+            decimalToStringText(*negativeText) == "-0.001" &&
+            decimalToStringText(*zeroText) == "0" &&
+            decimalToStringText(*wholeText) == "42",
+        "decimal to text emits culture-free digits with sign and scale");
     return tests.result();
 }

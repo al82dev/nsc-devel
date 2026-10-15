@@ -324,6 +324,49 @@ std::optional<Decimal128Bits> evaluateDecimalArithmetic(
         resultNegative);
 }
 
+std::string decimalToStringText(const Decimal128Bits& value) noexcept
+{
+    const DecimalCoefficient coefficient = decimalCoefficient(value);
+    const unsigned scale = decimalScale(value);
+    const bool negative = decimalIsNegative(value);
+
+    std::string digits;
+    if (coefficient == 0)
+    {
+        digits = "0";
+    }
+    else
+    {
+        DecimalCoefficient remaining = coefficient;
+        while (remaining > 0)
+        {
+            digits.push_back(static_cast<char>('0' + static_cast<int>(remaining % 10U)));
+            remaining /= 10U;
+        }
+        std::reverse(digits.begin(), digits.end());
+    }
+
+    std::string result;
+    if (negative) result.push_back('-');
+    if (scale == 0)
+    {
+        result += digits;
+    }
+    else if (scale >= digits.size())
+    {
+        result += "0.";
+        result.append(scale - digits.size(), '0');
+        result += digits;
+    }
+    else
+    {
+        result += digits.substr(0, digits.size() - scale);
+        result.push_back('.');
+        result += digits.substr(digits.size() - scale);
+    }
+    return result;
+}
+
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept
 {
     if (type.bits == 0 || type.bits > 64) return false;
