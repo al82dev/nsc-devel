@@ -2213,6 +2213,28 @@ private:
         deallocationFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), freeParams, 1, 0);
         deallocationFunction_ = LLVMAddFunction(module_, kDeallocationFunctionName, deallocationFunctionType_);
 
+        // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI
+        // void(void* context, void* ptr); the default thunk ignores context and forwards to
+        // __nativesharp_free(ptr). Built inline (the runtime library is out of scope), so it is a
+        // real function pointer that can be stored in the object header.
+        {
+            LLVMTypeRef thunkParams[] = {ptr, ptr};
+            allocatorFreeThunkType_ = LLVMFunctionType(
+                LLVMVoidTypeInContext(context_), thunkParams, 2, 0);
+            allocatorFreeThunkFunction_ = LLVMAddFunction(
+                module_, "__nativesharp_allocator_free_thunk", allocatorFreeThunkType_);
+            LLVMSetLinkage(allocatorFreeThunkFunction_, LLVMInternalLinkage);
+            LLVMValueRef thunkPtrParam = LLVMGetParam(allocatorFreeThunkFunction_, 1);
+            LLVMBasicBlockRef thunkEntry = LLVMAppendBasicBlockInContext(
+                context_, allocatorFreeThunkFunction_, "entry");
+            LLVMPositionBuilderAtEnd(builder_, thunkEntry);
+            LLVMValueRef freeArgs[] = {thunkPtrParam};
+            LLVMBuildCall2(
+                builder_, deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+            LLVMBuildRetVoid(builder_);
+            applyFunctionAttribute(allocatorFreeThunkFunction_, "nounwind");
+        }
+
         LLVMTypeRef consoleParams[] = {ptr, LLVMInt32TypeInContext(context_)};
         consoleWriteLineFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), consoleParams, 2, 0);
         consoleWriteLineFunction_ = LLVMAddFunction(module_, kConsoleWriteLineFunctionName, consoleWriteLineFunctionType_);
@@ -17927,6 +17949,8 @@ private:
             return failValue(error, "Macro A allocation cannot resolve its class descriptor");
         }
         LLVMBuildStore(builder_, descriptorValue, object);
+        if (!storeDefaultAllocatorProvenance(object, node->typeKey, error))
+            return nullptr;
 
         if (!node->calleeName.empty())
         {
@@ -18052,6 +18076,8 @@ private:
             LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
             if (node->alignment > 1U)
                 LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
+            if (!storeDefaultAllocatorProvenance(storage, node->typeKey, error))
+                return nullptr;
         }
 
         if (!node->calleeName.empty())
@@ -18919,6 +18945,28 @@ private:
         return nullptr;
     }
 
+    // NS304-T13-F07: initialize the object header's provenance slots to the canonical default
+    // (null context + free thunk). Called before the constructor so every throwing path already
+    // observes a valid provenance.
+    bool storeDefaultAllocatorProvenance(
+        LLVMValueRef object, std::string_view typeKey, std::string& error)
+    {
+        const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+        if (layout == nullptr)
+            return fail(error,
+                "NS304-T13-F07 default provenance has no class layout for " + std::string(typeKey));
+        if (allocatorFreeThunkFunction_ == nullptr)
+            return fail(error, "NS304-T13-F07 default provenance has no free thunk");
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef contextAddress =
+            byteOffset(object, layout->allocatorContextOffset, "allocator.context");
+        LLVMBuildStore(builder_, LLVMConstNull(pointerType), contextAddress);
+        LLVMValueRef thunkAddress =
+            byteOffset(object, layout->deallocateThunkOffset, "allocator.thunk");
+        LLVMBuildStore(builder_, allocatorFreeThunkFunction_, thunkAddress);
+        return true;
+    }
+
     bool isStructValue(std::string_view typeKey) const noexcept
     {
         return structLayout(typeKey) != nullptr;
@@ -19428,6 +19476,10 @@ private:
     LLVMTypeRef allocationFunctionType_ = nullptr;
     LLVMValueRef deallocationFunction_ = nullptr;
     LLVMTypeRef deallocationFunctionType_ = nullptr;
+    // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI void(void* context, void* ptr);
+    // the default thunk ignores context and forwards to __nativesharp_free.
+    LLVMValueRef allocatorFreeThunkFunction_ = nullptr;
+    LLVMTypeRef allocatorFreeThunkType_ = nullptr;
     LLVMValueRef consoleWriteLineFunction_ = nullptr;
     LLVMTypeRef consoleWriteLineFunctionType_ = nullptr;
     LLVMValueRef consoleReadLineFunction_ = nullptr;
