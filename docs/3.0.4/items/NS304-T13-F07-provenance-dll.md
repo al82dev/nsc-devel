@@ -1,62 +1,39 @@
 # NS304-T13-F07 — Provenance intermodular/DLL
 
-- **Estado**: FASE 1 — contrato e invariantes asentados (implementación por fases)
+- **Estado**: EN CURSO — núcleo IMPLEMENTADO (provenance en header + deallocate por allocator); pendientes: fallo de ctor y cross-module.
 - **Rama**: development
 
 ## Hueco concreto (demostrado)
 
-`owned A a = new (alloc) A(42);` (clase, `alloc : IAllocator`) → al droppear `a`, el destructor corre
-(`Drops==1`) pero `alloc.Deallocate` no se llama (`Deallocs==0`). La provenance del allocator no viaja con
-el objeto. En LLVM, `emitRaiiDestroy` usa el descriptor campo 7 (destruye vida, deja storage) porque
-`storageOwnership == Borrowed`, pero nadie llama `alloc.Deallocate(storage)`.
+`owned A a = new (alloc) A(42);` → al droppear `a`, `alloc.Deallocate` no se llamaba (`Deallocs==0`).
+**Cerrado**: ahora `Deallocs==1` y `Drops==1`; el objeto conserva el allocator en su header.
 
-## Decisión (recibida)
+## Implementado (commits)
 
-Header persistente con **contexto del allocator** + **thunk de deallocation con ABI estable** (no un
-simple puntero a función, no un ordinal de miembro dependiente del productor). Cumple escape/retorno/
-reasignación/almacenamiento/cross-module.
+- `74ce52ef` FASE 1: contrato ABI (header prependido: descriptor@0, context@8, thunk@16; payload@24).
+- `dced1bfb` FASE 2: `ClassObjectLayout` + offsets + tamaño (+16B) con autoridad única; herencia/campos OK.
+- `7726a11e` FASE 3a: provenance default (null + free thunk) en construcción; thunk `void(void*,void*)` internal.
+- `8c8f54c1` FASE 3b+4: provenance custom (context + thunk por tipo de allocator) + deallocación unificada (campo 7 + thunk).
+- `5c4a11bb` test focal TL-LANG-492 (drop llama `Deallocate` del mismo allocator; herencia + no-doble-free).
 
-## FASE 1 — Contrato e invariantes
+## Verificado O0
 
-1. **Header por objeto clase** (prependido, el objeto apunta al inicio del bloque = descriptor):
-   - offset 0: `descriptor` (vtable) — existente.
-   - offset 8: `allocatorContext` (`void*`) — instancia concreta del allocator, o `null` para el predeterminado.
-   - offset 16: `deallocateThunk` (`void(void* context, void* ptr)`) — ABI estable.
-   - payload (campos de usuario) empieza en offset 24.
+- Custom allocator: `Deallocs==1` por drop; mismo allocator (context en header). PASS.
+- Default `new T()`: comportamiento previo (destructor + free). PASS.
+- Herencia (`B : A`): destructor base + derivado, `Deallocs` correcto. PASS.
+- No-doble-free: drop una vez. PASS.
 
-2. **Tamaño total** = `headerSize(8) + 16 + payload`. `Allocate` recibe el tamaño completo y `Deallocate`
-   recibe **el mismo puntero** (inicio del bloque). El puntero visible de objeto y el puntero devuelto al
-   allocator son **idénticos** (no hay offset split).
+## Pendiente
 
-3. **Thunk ABI**: `void deallocate_thunk(void* context, void* ptr)`.
-   - Predeterminado: `context == null`, thunk = free del runtime (ignora context).
-   - Personalizado: el compilador genera un thunk por tipo de allocator que hace
-     `((T*)context)->Deallocate((byte*)ptr)`.
+1. **Fallo de constructor** (focal #6): si el ctor lanza tras `Allocate`, la reserva debe recuperarse con la
+   MISMA provenance. Hoy `Deallocs` no se incrementa en ese camino (fuga del bloque del allocator). Requiere
+   una región de cleanup sobre el storage enganchada al unwind del ctor.
+2. **Escape/retorno** (focal #3): el retorno de un placement-constructed object está bloqueado por un error
+   de surface previo ("owned return requires an ownership-transfer expression"), no por la provenance.
+3. **Cross-module** (FASE 5): thunk ABI estable ya definido; falta la prueba productor/consumidor.
+4. **Vida del allocator** (FASE 6): regla contractual documentada (contexto crudo; entidad estable en pruebas).
 
-4. **Estado predeterminado**: `allocatorContext = null`, `deallocateThunk = runtime_free_thunk`.
-   Todo `new T(...)` sin allocator lo inicializa así (comportamiento previo conservado).
+## ABI de provenance (fijo)
 
-5. **Vida del allocator**: el contexto almacenado es una referencia cruda sin ownership. Invariante: un
-   objeto creado con `new (alloc) T(...)` no puede sobrevivir a su allocator. En esta pasada la regla es
-   **contractual + entidad estable**: las pruebas focales usan un allocator global/heap-owned que vive
-   más que el objeto; el `scope ArenaAllocator` local queda sujeto a una comprobación de escape por
-   provenance (pendiente, documentada, no silenciada).
-
-6. **Doble liberación**: el cleanup guard (slot del owner a `null` antes del drop) sigue siendo la
-   autoridad de "exactamente una vez"; el thunk solo se invoca desde ese camino.
-
-7. **Fallo de constructor**: si el ctor lanza tras `Allocate`, la liberación usa la MISMA provenance
-   (thunk + contexto) ya inicializada en el header antes de invocar el ctor.
-
-## Pendiente (implementación, por fases)
-
-- FASE 2: `ClassObjectLayout` + autoridad única de offsets/tamaños.
-- FASE 3: construcción (`Allocate` tamaño completo, inicializar provenance antes del ctor, rollback).
-- FASE 4: destrucción (drop-glue una vez → leer provenance → invocar thunk → impedir doble free).
-- FASE 5: cross-module (descriptor/NSMETA solo si hace falta capacidad, sin gate de versión).
-- FASE 6: vida del allocator (escape por provenance).
-
-## Commits
-
-- `843268c1` preparación semántica (`allocatorDeallocateMemberOrdinal`) — no cierra.
-- `f83f8d5c` evidencia diagnóstica — no cierra.
+`void deallocate_thunk(void* context, void* ptr)`; default `context=null, thunk=free`; custom
+`((T*)context)->Deallocate((byte*)ptr)` generado por tipo de allocator (internal linkage).
