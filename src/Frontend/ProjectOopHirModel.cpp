@@ -8867,7 +8867,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         binding->selectedArgumentParameterOrdinals[index]);
                 }
                 construction->argumentCount = construction->argumentParameterOrdinals.size();
-                block->children.push_back(std::move(construction));
+                // NS304-T13-F08: `failure: null` — wrap the construction in a null-check so that an
+                // Allocate returning null yields a null result and the constructor never runs.
+                if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Null)
+                {
+                    const std::string resultType = construction->typeKey;
+                    auto bytesValue = makeNode(
+                        ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
+                    bytesValue->localOrdinal = tempOrdinal;
+                    auto nullBytes = makeNode(
+                        ProjectOopHirNodeKind::NullConstant, expression, "builtin:byte*");
+                    auto compare = makeNode(
+                        ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
+                    compare->operation = lexer::TokenKind::BangEqual;
+                    compare->children.push_back(std::move(bytesValue));
+                    compare->children.push_back(std::move(nullBytes));
+                    auto nullResult = makeNode(
+                        ProjectOopHirNodeKind::NullConstant, expression, resultType);
+                    auto conditional = makeNode(
+                        ProjectOopHirNodeKind::Conditional, expression, resultType);
+                    conditional->children.push_back(std::move(compare));
+                    conditional->children.push_back(std::move(construction));
+                    conditional->children.push_back(std::move(nullResult));
+                    block->children.push_back(std::move(conditional));
+                }
+                else
+                {
+                    block->children.push_back(std::move(construction));
+                }
                 return block;
             }
             auto node = makeNode(
