@@ -25,6 +25,8 @@ struct ProjectConstructionSite final
     // NS304-T13-F02: the allocator operand type for an `Allocator` site (`new (allocator) T(...)`).
     std::string allocatorTypeKey;
     std::optional<std::size_t> allocatorAllocateMemberOrdinal;
+    // NS304-T13-F07: the allocator's Deallocate member (the provenance pair of Allocate).
+    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsTyped = false;
 };

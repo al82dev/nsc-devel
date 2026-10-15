@@ -160,6 +160,8 @@ struct ObjectConstructionBinding final
     bool allocatorSelection = false;
     std::string allocatorTypeKey;
     std::optional<std::size_t> allocatorAllocateMemberOrdinal;
+    // NS304-T13-F07: the allocator's Deallocate member (provenance pair of Allocate).
+    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
     std::string targetTypeKey;
     std::vector<std::size_t> explicitConstructorMemberOrdinals;
     std::vector<ConstructorCandidateBinding> evaluatedCandidates;

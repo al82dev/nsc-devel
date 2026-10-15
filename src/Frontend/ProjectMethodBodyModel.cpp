@@ -13170,6 +13170,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             site.allocatorAllocateMemberOrdinal = memberOrdinal;
                             break;
                         }
+                        // NS304-T13-F07: the provenance pair -- which Deallocate releases the
+                        // bytes this Allocate hands out.
+                        for (const std::size_t memberOrdinal :
+                             memberModel_->findMembers(*storageType, "Deallocate"))
+                        {
+                            if (memberOrdinal >= memberModel_->members().size()) continue;
+                            if (memberModel_->members()[memberOrdinal].isStatic) continue;
+                            site.allocatorDeallocateMemberOrdinal = memberOrdinal;
+                            break;
+                        }
                     }
                 }
                 if (storageValid && site.kind != ProjectConstructionSiteKind::Allocator)
