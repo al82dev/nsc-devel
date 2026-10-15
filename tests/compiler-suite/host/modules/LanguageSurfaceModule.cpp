@@ -5677,6 +5677,65 @@ class Program
         }});
 }
 
+void registerProducerConsumerDecimalCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-508", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "producer", "consumer", "library-reference", "cross-module"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T16F03DecimalProducer", "Library", R"ns(
+namespace Api
+{
+    public class Calculator
+    {
+        public static decimal Double(decimal value) { return value + value; }
+    }
+}
+)ns");
+            const std::filesystem::path producerLibrary =
+                products.directory() / "T16F03DecimalProducer.lib";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-lib", producerProject, producerLibrary, products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-508 the decimal producer must build: " + producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            std::error_code removalError;
+            std::filesystem::remove(producerProject, removalError);
+            std::filesystem::remove(products.directory() / "T16F03DecimalProducer.ns", removalError);
+
+            constexpr std::string_view libraryReference =
+                "<LibraryReference Include=\"T16F03DecimalProducer.lib\"/>";
+            const std::filesystem::path consumerProject = products.writeProject(
+                "T16F03DecimalConsumer", "Exe", R"ns(
+using Api;
+class Program
+{
+    public static int Main()
+    {
+        decimal d = Calculator.Double(1.5m);
+        return (int)(d * 10m) == 30 ? 0 : 1;
+    }
+}
+)ns", libraryReference);
+            const std::filesystem::path consumerExecutable =
+                products.directory() / "T16F03DecimalConsumer.exe";
+            const external_program_support::Result consumer = emitT01Product(
+                L"--emit-project-oop-exe", consumerProject, consumerExecutable,
+                products.directory());
+            context.expect(consumer.started && consumer.exitCode == 0 && consumer.error.empty(),
+                "TL-LANG-508 a source-free consumer must use the imported decimal method: " +
+                    consumer.error + consumer.output);
+            if (!consumer.started || consumer.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                consumerExecutable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-508 the imported decimal method must execute cross-module (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10428,6 +10487,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalConstCase(registry);
     registerDecimalFfiCase(registry);
     registerDecimalRoundingCase(registry);
+    registerProducerConsumerDecimalCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
