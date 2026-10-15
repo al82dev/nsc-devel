@@ -5103,6 +5103,56 @@ class Program
         }});
 }
 
+void registerAllocatorProvenanceDeallocateCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-492", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "provenance", "deallocate", "header", "inheritance", "drop"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F07AllocatorProvenance", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public static int Drops; ~A() { Drops = Drops + 1; } public A(int x) { X = x; } }
+class B : A { public int Y; public B(int x, int y) : base(x) { Y = y; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public int Deallocs;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(4096);
+        { owned B b = new (alloc) B(3, 4); }
+        { owned A a = new (alloc) A(8); }
+        // two objects, two destructor runs (B's base A + A), two Deallocate calls, no double-free.
+        return (A.Drops == 2 && alloc.Deallocs == 2) ? 0 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F07AllocatorProvenance.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-492 allocator provenance must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-492 object drop must call the same allocator's Deallocate once per object: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9912,6 +9962,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTrailingStorageBoundsTrapCase(registry);
     registerTrailingStorageLengthNotCapacityCase(registry);
     registerPlacementRollbackCase(registry);
+    registerAllocatorProvenanceDeallocateCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);
