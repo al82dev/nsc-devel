@@ -8958,34 +8958,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     }
                     resultType = binding->allocatorResultCarrierTypeKey;
 
-                    const ProjectOopHirFunction* okFn = functionForMember(
-                        *binding->allocatorResultOkFactoryMemberOrdinal);
-                    const ProjectOopHirFunction* errFn = functionForMember(
-                        *binding->allocatorResultErrorFactoryMemberOrdinal);
-                    if (okFn == nullptr || errFn == nullptr)
-                    {
-                        error = "T13-F08 result: factory function missing ok=" +
-                            std::to_string(okFn != nullptr) + " err=" +
-                            std::to_string(errFn != nullptr) +
-                            " okOrd=" + std::to_string(*binding->allocatorResultOkFactoryMemberOrdinal) +
-                            " errOrd=" + std::to_string(*binding->allocatorResultErrorFactoryMemberOrdinal) +
-                            " okAnalyzed=" + std::to_string(methodBodyModel_->callableBodyAnalyzed(
-                                *binding->allocatorResultOkFactoryMemberOrdinal)) +
-                            " errAnalyzed=" + std::to_string(methodBodyModel_->callableBodyAnalyzed(
-                                *binding->allocatorResultErrorFactoryMemberOrdinal));
-                        return nullptr;
-                    }
-                    if (!okFn->isStatic || !errFn->isStatic)
-                    {
-                        error = "T13-F08 result: factory not static ok=" +
-                            std::to_string(okFn->isStatic) + " err=" + std::to_string(errFn->isStatic);
-                        return nullptr;
-                    }
-
                     // Error(AllocationFailure.OutOfMemory)
                     auto errorArg = makeNode(
-                        ProjectOopHirNodeKind::IntegerConstant, expression,
-                        "type:NativeSharpCore::NativeSharp.Core.AllocationFailure");
+                        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
                     errorArg->integerValue = 0;
                     auto errorCall = makeNode(
                         ProjectOopHirNodeKind::StaticCall, expression,
