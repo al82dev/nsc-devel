@@ -3801,6 +3801,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
 
         auto synthesizedReturn = makeNode(
             ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
+        // NS304-T17-F09: the throw's synthesized `return;` must carry the throw's cleanup regions
+        // (owned locals + finally), exactly like rewriteReturn, so they run once on the error path.
+        synthesizedReturn->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
+        synthesizedReturn->cleanupContinuationKind = body->cleanupContinuationKind;
         block->children.push_back(std::move(synthesizedReturn));
         return block;
     }
