@@ -76,8 +76,8 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
     {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
         "thread-safe once initialization with reentrancy and terminal failure"},
-    {Language3Feature::Decimal, "decimal", Language3Disposition::PlannedFor304,
-        "requires a frozen value ABI plus arithmetic, overflow, conversion and formatting contracts"},
+    {Language3Feature::Decimal, "decimal", Language3Disposition::Implemented,
+        "frozen 128-bit value ABI (coefficient 96 + scale + sign) with arithmetic, overflow, conversion, formatting and FFI contracts"},
     {Language3Feature::ExtensionMethods, "extension-methods", Language3Disposition::Implemented,
         "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
@@ -343,8 +343,8 @@ std::string expectedManifest()
         "list-patterns=planned-3.0.4:requires exhaustiveness and usefulness analysis integrated with borrow "
         "and move semantics\n"
         "static-constructors=implemented:thread-safe once initialization with reentrancy and terminal failure\n"
-        "decimal=planned-3.0.4:requires a frozen value ABI plus arithmetic, overflow, conversion and formatting "
-        "contracts\n"
+        "decimal=implemented:frozen 128-bit value ABI (coefficient 96 + scale + sign) with arithmetic, overflow, "
+        "conversion, formatting and FFI contracts\n"
         "extension-methods=implemented:static namespace extensions with deterministic import lookup and no "
         "receiver-type mutation\n"
         "trait-operators=implemented:stable lang-item witnesses with builtin precedence and intrinsic "
@@ -458,8 +458,8 @@ void registerUnavailableDiagnosticCase(TestRegistry& registry)
             context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
-        context.expect(planned == 6 && deferred == 0 && rejected == 1,
-            "TL-LANG-160 the catalog must expose six nonproductive 3.0.4 plans and one rejected feature");
+        context.expect(planned == 5 && deferred == 0 && rejected == 1,
+            "TL-LANG-160 the catalog must expose five nonproductive 3.0.4 plans and one rejected feature");
     });
 }
 
