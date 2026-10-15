@@ -484,6 +484,11 @@ struct ProjectOopMirNode final
     bool hasTrailingLengthBounds = false;
     // NS304-T13-F06: Length's byte offset relative to the flexible-array base (can be negative).
     std::int64_t trailingLengthRelativeOffset = 0;
+    // NS304-T13-F07: allocator provenance attached to a placement construction.
+    std::optional<std::size_t> allocatorContextLocalOrdinal;
+    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
+    std::optional<std::size_t> allocatorTypeOrdinal;
+    std::string allocatorDeallocateCalleeName;
     std::uint64_t resultSuccessTag = 0;
     std::uint64_t resultErrorTag = 0;
     std::uint64_t resultReturnErrorTag = 0;

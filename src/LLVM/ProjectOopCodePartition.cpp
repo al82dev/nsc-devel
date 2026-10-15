@@ -232,6 +232,9 @@ bool ProjectOopCodePartition::build(
         addMember(node->resultErrorFactoryMemberOrdinal, dependencies);
         addMember(node->resultErrorConversionMemberOrdinal, dependencies);
         addMember(node->disposeImplementationMemberOrdinal, dependencies);
+        // NS304-T13-F07: the placement construction references the allocator's Deallocate member for
+        // its generated thunk, so that member must be declared in the same code unit.
+        addMember(node->allocatorDeallocateMemberOrdinal, dependencies);
         if (node->automaticDestruction)
         {
             std::unordered_set<std::size_t> visiting;

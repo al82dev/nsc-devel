@@ -2547,6 +2547,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->resultErrorConversionMemberOrdinal =
         node->resultErrorConversionMemberOrdinal;
     result->localOrdinal = node->localOrdinal;
+    result->allocatorContextLocalOrdinal = node->allocatorContextLocalOrdinal;
+    result->allocatorDeallocateMemberOrdinal = node->allocatorDeallocateMemberOrdinal;
+    result->allocatorTypeOrdinal = node->allocatorTypeOrdinal;
+    if (node->allocatorDeallocateMemberOrdinal.has_value() && hirModel_ != nullptr)
+    {
+        const ProjectOopHirFunction* target =
+            hirModel_->functionForMember(*node->allocatorDeallocateMemberOrdinal);
+        if (target != nullptr) result->allocatorDeallocateCalleeName = target->mangledName;
+    }
     result->parameterOrdinal = node->parameterOrdinal;
     result->constructionOrdinal = node->constructionOrdinal;
     result->targetTypeOrdinal = node->targetTypeOrdinal;

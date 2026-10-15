@@ -18108,13 +18108,30 @@ private:
             LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
             if (node->alignment > 1U)
                 LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
-            // Raw placement borrows its storage: no deallocation (null context + null thunk).
-            // The allocator case (FASE 3b) overwrites these with the concrete allocator + thunk.
+            // NS304-T13-F07: allocator provenance. A custom `new (alloc) T(...)` stores the concrete
+            // allocator context + its generated deallocate thunk; raw placement borrows its storage
+            // (null context + null thunk = no release).
             {
                 LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-                if (!storeAllocatorProvenance(
-                        storage, node->typeKey,
-                        LLVMConstNull(pointerType), LLVMConstNull(pointerType), error))
+                LLVMValueRef context = LLVMConstNull(pointerType);
+                LLVMValueRef thunk = LLVMConstNull(pointerType);
+                if (node->allocatorContextLocalOrdinal.has_value() &&
+                    node->allocatorDeallocateMemberOrdinal.has_value() &&
+                    node->allocatorTypeOrdinal.has_value())
+                {
+                    const auto found = localStorage_.find(*node->allocatorContextLocalOrdinal);
+                    if (found == localStorage_.end() || found->second == nullptr)
+                        return failValue(error,
+                            "NS304-T13-F07 allocator provenance has no context storage");
+                    context = LLVMBuildLoad2(
+                        builder_, pointerType, found->second, "allocator.context.load");
+                    thunk = allocatorDeallocateThunk(
+                        *node->allocatorTypeOrdinal,
+                        node->allocatorDeallocateCalleeName,
+                        error);
+                    if (thunk == nullptr) return nullptr;
+                }
+                if (!storeAllocatorProvenance(storage, node->typeKey, context, thunk, error))
                     return nullptr;
             }
         }
@@ -19007,6 +19024,47 @@ private:
         return true;
     }
 
+    // NS304-T13-F07: generate (and cache) the per-allocator-type deallocate thunk
+    // void(void* context, void* ptr) { <T>::Deallocate(context, ptr); }. Internal linkage, so each
+    // module carries its own copy; the function pointer stored in the header stays valid in the
+    // final binary.
+    LLVMValueRef allocatorDeallocateThunk(
+        std::size_t allocatorTypeOrdinal,
+        std::string_view deallocateCalleeName,
+        std::string& error)
+    {
+        const auto existing = allocatorThunks_.find(allocatorTypeOrdinal);
+        if (existing != allocatorThunks_.end()) return existing->second;
+        const auto target = functions_.find(std::string(deallocateCalleeName));
+        if (target == functions_.end())
+        {
+            fail(error, "NS304-T13-F07 allocator Deallocate target not declared: " +
+                std::string(deallocateCalleeName));
+            return nullptr;
+        }
+        LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
+        LLVMTypeRef thunkParams[] = {
+            LLVMPointerTypeInContext(context_, 0), LLVMPointerTypeInContext(context_, 0)};
+        LLVMTypeRef thunkType =
+            LLVMFunctionType(LLVMVoidTypeInContext(context_), thunkParams, 2, 0);
+        const std::string thunkName =
+            "__nativesharp_allocator_deallocate_" + std::to_string(allocatorTypeOrdinal);
+        LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
+        LLVMSetLinkage(thunk, LLVMInternalLinkage);
+        LLVMValueRef contextParam = LLVMGetParam(thunk, 0);
+        LLVMValueRef pointerParam = LLVMGetParam(thunk, 1);
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, thunk, "entry");
+        LLVMPositionBuilderAtEnd(builder_, entry);
+        LLVMValueRef args[] = {contextParam, pointerParam};
+        LLVMBuildCall2(builder_, target->second.functionType, target->second.function, args, 2, "");
+        LLVMBuildRetVoid(builder_);
+        applyFunctionAttribute(thunk, "nounwind");
+        allocatorThunks_[allocatorTypeOrdinal] = thunk;
+        if (savedBlock != nullptr)
+            LLVMPositionBuilderAtEnd(builder_, savedBlock);
+        return thunk;
+    }
+
     bool isStructValue(std::string_view typeKey) const noexcept
     {
         return structLayout(typeKey) != nullptr;
@@ -19738,6 +19796,8 @@ private:
     LLVMTypeRef interfaceMapType_ = nullptr;
     LLVMTypeRef destructionEntryFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> descriptorGlobals_;
+    // NS304-T13-F07: per-allocator-type deallocate thunks (void(void* context, void* ptr)).
+    std::unordered_map<std::size_t, LLVMValueRef> allocatorThunks_;
     std::unordered_map<std::size_t, FunctionInfo> descriptorAccessorFunctions_;
     // Imported descriptors are only promised through their PE-safe accessor. Local descendants
     // of those descriptors also use their accessors so the complete base chain is initialized

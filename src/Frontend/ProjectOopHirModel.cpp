@@ -8765,30 +8765,49 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     }
                 }
                 const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
+                const std::size_t contextOrdinal = nextSyntheticLocalOrdinal_++;
                 auto block = makeNode(
                     ProjectOopHirNodeKind::BlockExpression, expression, binding->targetTypeKey);
 
-                auto allocate = makeNode(
-                    ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
-                allocate->memberOrdinal = *binding->allocatorAllocateMemberOrdinal;
                 // A struct allocator is stored by value, so `Allocate` needs its address; a class
                 // allocator is a reference and needs the loaded value (the reference pointer).
                 bool allocatorIsStruct = false;
+                std::optional<std::size_t> allocatorTypeOrdinal;
                 if (inheritanceModel_ != nullptr && nameLookup_ != nullptr)
                 {
-                    const std::optional<std::size_t> allocatorOrdinal =
+                    allocatorTypeOrdinal =
                         inheritanceModel_->typeOrdinalForTypeKey(binding->allocatorTypeKey);
-                    if (allocatorOrdinal.has_value() &&
-                        *allocatorOrdinal < nameLookup_->namedTypes().size())
+                    if (allocatorTypeOrdinal.has_value() &&
+                        *allocatorTypeOrdinal < nameLookup_->namedTypes().size())
                     {
-                        allocatorIsStruct = nameLookup_->namedTypes()[*allocatorOrdinal].kind ==
+                        allocatorIsStruct =
+                            nameLookup_->namedTypes()[*allocatorTypeOrdinal].kind ==
                             NamedTypeDeclarationKind::Struct;
                     }
                 }
                 auto receiver = lowerExpression(
                     expression->first(), memberOrdinal, allocatorIsStruct, error);
                 if (receiver == nullptr) return nullptr;
-                allocate->children.push_back(std::move(receiver));
+                const std::string allocatorReceiverTypeKey = receiver->typeKey;
+
+                // NS304-T13-F07: store the allocator reference once so `Allocate` (now) and the
+                // header provenance (construction, below) share the SAME evaluated value -- no
+                // double evaluation of a non-local allocator expression.
+                auto contextDecl = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration, expression, allocatorReceiverTypeKey);
+                contextDecl->localOrdinal = contextOrdinal;
+                contextDecl->stringValue = "allocator.context";
+                contextDecl->children.push_back(std::move(receiver));
+                block->children.push_back(std::move(contextDecl));
+
+                auto contextValue = makeNode(
+                    ProjectOopHirNodeKind::LocalValue, expression, allocatorReceiverTypeKey);
+                contextValue->localOrdinal = contextOrdinal;
+
+                auto allocate = makeNode(
+                    ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
+                allocate->memberOrdinal = *binding->allocatorAllocateMemberOrdinal;
+                allocate->children.push_back(std::move(contextValue));
                 auto sizeArg = makeNode(
                     ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
                 sizeArg->integerValue = size;
@@ -8815,6 +8834,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 construction->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
                     ? binding->selectedConstructorMemberOrdinal
                     : binding->implicitDefaultBaseConstructorMemberOrdinal;
+                // NS304-T13-F07: allocator provenance for the header (context + generated thunk).
+                construction->allocatorContextLocalOrdinal = contextOrdinal;
+                construction->allocatorDeallocateMemberOrdinal =
+                    binding->allocatorDeallocateMemberOrdinal;
+                construction->allocatorTypeOrdinal = allocatorTypeOrdinal;
                 auto storage = makeNode(
                     ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
                 storage->localOrdinal = tempOrdinal;

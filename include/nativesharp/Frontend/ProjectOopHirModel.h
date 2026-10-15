@@ -607,6 +607,12 @@ struct ProjectOopHirNode final
     // NS304-T13-F06: Length's byte offset RELATIVE TO the flexible-array base address (which is
     // the Data field, not the struct head), so it can be negative.
     std::int64_t trailingLengthRelativeOffset = 0;
+    // NS304-T13-F07: allocator provenance attached to a placement construction (`new (alloc) T(...)`).
+    // contextOrdinal is the temp local holding the allocator reference; the member ordinal names its
+    // Deallocate; typeOrdinal drives the generated per-allocator deallocate thunk.
+    std::optional<std::size_t> allocatorContextLocalOrdinal;
+    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
+    std::optional<std::size_t> allocatorTypeOrdinal;
     std::uint64_t resultSuccessTag = 0;
     std::uint64_t resultErrorTag = 0;
     std::uint64_t resultReturnErrorTag = 0;
