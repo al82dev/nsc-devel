@@ -1,0 +1,15 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Result<T, E> -- NS304-T13-F08.
+    //
+    // Variant publica de dos casos, reutilizando el protocolo estructural de Result que el
+    // compilador ya reconoce (`resolveResultCarrier`): `Ok` lleva el exito, `Error` el fallo.
+    // Se instancia como `Result<owned T, AllocationFailure>` para el perfil `failure: result`:
+    // el payload de `Ok` es `owned T` (conserva provenance y se libera exactamente una vez) y el
+    // de `Error` es el motivo `AllocationFailure`.
+    public variant Result<T, E>
+    {
+        Ok(T),
+        Error(E)
+    }
+}

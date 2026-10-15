@@ -1,0 +1,13 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.AllocationFailure -- NS304-T13-F08.
+    //
+    // El perfil explicito de fallo de allocation (`new (allocator, failure: ...) T(...)`) publica
+    // un motivo estable y pequeno cuando `IAllocator.Allocate` devuelve null. Inicialmente solo
+    // existe `OutOfMemory`; la lista puede crecer con motivos concretos sin romper el contrato
+    // (el consumidor debe tratar los valores desconocidos como un fallo generico, nunca ignorarlos).
+    public enum AllocationFailure
+    {
+        OutOfMemory = 0
+    }
+}

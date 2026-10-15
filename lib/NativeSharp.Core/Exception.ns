@@ -95,6 +95,18 @@ namespace NativeSharp.Core
             : base(message, move(innerException)) { }
     }
 
+    // NS304-T13-F08: excepcion publica especifica del perfil `failure: throws`. Se lanza cuando
+    // `IAllocator.Allocate` devuelve null y el sitio de construccion eligio propagar el fallo como
+    // excepcion. No lleva allocation secundaria propia: el mensaje queda vacio por defecto para
+    // que materializar la excepcion no reintroduzca un fallback oculto de memoria.
+    public class AllocationFailureException : Exception
+    {
+        public AllocationFailureException() : base() { }
+        public AllocationFailureException(string message) : base(message) { }
+        public AllocationFailureException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
     // Mirrors System.ArgumentOutOfRangeException: an index/count argument fell outside the
     // receiver's valid range. NativeSharp's own array bounds checks already trap on raw native
     // index expressions (a hard runtime fault, not a catchable exception); collection methods
