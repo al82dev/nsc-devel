@@ -6085,6 +6085,37 @@ class Program
         }});
 }
 
+void registerHiddenCostAuditCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-518", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "cost", "audit", "mir", "stackalloc", "hidden"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T17F07HiddenCost", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int* stack = stackalloc int[2];
+        stack[0] = 7;
+        return stack[0];
+    }
+}
+)ns");
+            const external_program_support::Result cost = runT01Compiler(
+                {L"--explain-project-costs", project.wstring()}, products.directory());
+            context.expect(cost.started && cost.exitCode == 0 && cost.error.empty(),
+                "TL-LANG-518 the MIR cost audit must run: " + cost.error + cost.output);
+            if (!cost.started || cost.exitCode != 0) return;
+            context.expect(
+                cost.output.find("cause: stack <- stack-allocation") != std::string::npos &&
+                    cost.output.find("cause: heap <- allocate-and-construct") == std::string::npos,
+                "TL-LANG-518 a stack-only Main must audit its stack cost with no hidden heap construct: " +
+                    cost.output);
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10846,6 +10877,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerPatternsGenericsMoveOnlySliceCase(registry);
     registerExtensionsPartialComptimeCase(registry);
     registerAllocatorsGeneratorsContainersNoheapCase(registry);
+    registerHiddenCostAuditCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
