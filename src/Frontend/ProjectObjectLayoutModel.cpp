@@ -955,7 +955,10 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     const TypeLayout reference = classReferenceLayout();
     const std::optional<std::size_t> baseType = inheritanceModel_->baseTypeOrdinal(typeOrdinal);
 
-    std::uint64_t offset = reference.size;
+    // NS304-T13-F07: allocator provenance (context pointer + deallocate thunk) lives inside the
+    // object header, between the descriptor and the user payload. Both slots are pointer-sized.
+    const std::uint64_t provenanceSize = 2 * reference.size;
+    std::uint64_t offset = reference.size + provenanceSize;
     std::uint64_t aggregateAlignment = reference.alignment;
     std::uint64_t baseSubobjectSize = 0;
     if (baseType.has_value())
@@ -982,7 +985,9 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     ClassObjectLayout layout;
     layout.typeOrdinal = typeOrdinal;
     layout.typeKey = "type:" + type.identity.key();
-    layout.headerSize = reference.size;
+    layout.headerSize = reference.size + provenanceSize;
+    layout.allocatorContextOffset = reference.size;
+    layout.deallocateThunkOffset = 2 * reference.size;
     layout.baseTypeOrdinal = baseType;
     layout.baseSubobjectSize = baseSubobjectSize;
     layout.referenceSize = reference.size;

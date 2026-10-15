@@ -1106,6 +1106,8 @@ bool ProjectOopMirModel::build(
             layout.size,
             layout.alignment,
             layout.headerSize,
+            layout.allocatorContextOffset,
+            layout.deallocateThunkOffset,
             layout.baseTypeOrdinal,
             layout.baseSubobjectSize,
             layout.referenceSize,

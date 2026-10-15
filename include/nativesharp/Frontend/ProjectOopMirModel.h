@@ -601,6 +601,9 @@ struct ProjectOopMirClassLayout final
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
     std::uint64_t headerSize = 0;
+    // NS304-T13-F07: allocator provenance slots inside the object header.
+    std::uint64_t allocatorContextOffset = 0;
+    std::uint64_t deallocateThunkOffset = 0;
     std::optional<std::size_t> baseTypeOrdinal;
     std::uint64_t baseSubobjectSize = 0;
     std::uint64_t referenceSize = 0;
