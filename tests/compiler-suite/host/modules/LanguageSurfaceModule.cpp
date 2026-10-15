@@ -5153,6 +5153,132 @@ class Program
         }});
 }
 
+void registerAllocatorProvenanceConstructorFailureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-493", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "provenance", "constructor", "unwind", "deallocate"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F07ConstructorFailure", "Exe", R"ns(
+using NativeSharp.Core;
+class Failing { public Failing() throws Exception { throw new Exception(); } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public int Deallocs;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        try { owned Failing value = new (alloc) Failing(); } catch { }
+        return alloc.Deallocs == 1 ? 0 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F07ConstructorFailure.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-493 allocator constructor-failure cleanup must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-493 a throwing constructor must deallocate through the same provenance: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerAllocatorProvenanceCrossModuleCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-494", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "provenance", "cross-module", "owned", "return", "drop"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path producerProject = products.writeProject(
+                "T13F07Producer", "SharedLibrary", R"ns(
+using NativeSharp.Core;
+public class Product
+{
+    public int Value;
+    public Product(int value) { Value = value; }
+}
+public class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public int Deallocs;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+}
+public class ProductFactory
+{
+    public static owned Product Make(BlockAllocator alloc, int value)
+    {
+        owned Product product = new (alloc) Product(value);
+        return move(product);
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path producerRuntime =
+                products.directory() / "T13F07Producer.dll";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-dll", producerProject, producerRuntime,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-494 allocator-provenance DLL producer must compile: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+
+            const std::filesystem::path consumer = products.writeProject(
+                "T13F07Consumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        {
+            owned Product product = ProductFactory.Make(alloc, 42);
+            if (product.Value != 42) return 2;
+        }
+        return alloc.Deallocs == 1 ? 0 : 1;
+    }
+}
+)ns", "<LibraryReference Include=\"T13F07Producer.lib\" "
+                "Runtime=\"T13F07Producer.dll\"/>"
+                "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F07Consumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumer, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-494 DLL consumer of allocator provenance must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-494 an owned return must retain the loaded DLL thunk and caller allocator: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9963,6 +10089,8 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTrailingStorageLengthNotCapacityCase(registry);
     registerPlacementRollbackCase(registry);
     registerAllocatorProvenanceDeallocateCase(registry);
+    registerAllocatorProvenanceConstructorFailureCase(registry);
+    registerAllocatorProvenanceCrossModuleCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

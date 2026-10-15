@@ -18146,13 +18146,42 @@ private:
             constructorArguments.push_back(storage);
             constructorArguments.insert(
                 constructorArguments.end(), orderedArguments.begin(), orderedArguments.end());
-            if (buildPotentiallyThrowingCall(
+            LLVMBasicBlockRef allocatorFailureCleanup = nullptr;
+            if (targetType.kind == frontend::NamedTypeDeclarationKind::Class &&
+                node->allocatorContextLocalOrdinal.has_value() &&
+                node->allocatorDeallocateMemberOrdinal.has_value() &&
+                node->allocatorTypeOrdinal.has_value())
+            {
+                LLVMBasicBlockRef outerUnwind = buildCurrentUnwindDestination(error);
+                if (!error.empty()) return nullptr;
+                allocatorFailureCleanup = emitAllocatorConstructionFailureCleanup(
+                    storage, node->typeKey, outerUnwind, error);
+                if (allocatorFailureCleanup == nullptr) return nullptr;
+                LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+            }
+            if (allocatorFailureCleanup != nullptr)
+            {
+                LLVMBasicBlockRef normalBlock = appendBlock("placement.ctor.cont");
+                LLVMValueRef invoke = buildInvokeInCurrentFunclet(
                     constructor->second.functionType,
                     constructor->second.function,
                     constructorArguments.data(),
                     static_cast<unsigned>(constructorArguments.size()),
-                    "",
-                    error) == nullptr && !error.empty())
+                    normalBlock,
+                    allocatorFailureCleanup,
+                    "");
+                if (invoke == nullptr)
+                    return failValue(error,
+                        "NS304-T13-F07 failed to emit allocator constructor invoke");
+                LLVMPositionBuilderAtEnd(builder_, normalBlock);
+            }
+            else if (buildPotentiallyThrowingCall(
+                         constructor->second.functionType,
+                         constructor->second.function,
+                         constructorArguments.data(),
+                         static_cast<unsigned>(constructorArguments.size()),
+                         "",
+                         error) == nullptr && !error.empty())
             {
                 return nullptr;
             }
@@ -19022,6 +19051,66 @@ private:
             byteOffset(object, layout->deallocateThunkOffset, "allocator.thunk");
         LLVMBuildStore(builder_, thunk, thunkAddress);
         return true;
+    }
+
+    // NS304-T13-F07: a custom allocator owns the raw block as soon as Allocate succeeds. If the
+    // constructor unwinds, its own cleanup has already destroyed every initialized subobject; this
+    // caller-side cleanuppad must therefore release only the block, through the provenance stored
+    // in the header, and then continue the original unwind without running the object destructor.
+    LLVMBasicBlockRef emitAllocatorConstructionFailureCleanup(
+        LLVMValueRef object,
+        std::string_view typeKey,
+        LLVMBasicBlockRef outerUnwind,
+        std::string& error)
+    {
+        const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+        if (layout == nullptr)
+        {
+            error = "NS304-T13-F07 constructor failure has no class layout for " +
+                std::string(typeKey);
+            return nullptr;
+        }
+        LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
+        if (sourceBlock == nullptr)
+        {
+            error = "NS304-T13-F07 constructor failure has no source block";
+            return nullptr;
+        }
+
+        LLVMValueRef parentPad = activeFuncletPad();
+        LLVMBasicBlockRef cleanupBlock = appendBlock("placement.ctor.failure");
+        LLVMPositionBuilderAtEnd(builder_, cleanupBlock);
+        LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
+            builder_, parentPad, nullptr, 0, "placement.ctor.failure.pad");
+        if (cleanupPad == nullptr)
+        {
+            LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+            error = "NS304-T13-F07 failed to create constructor failure cleanuppad";
+            return nullptr;
+        }
+
+        funcletStack_.push_back(FuncletContext{
+            cleanupPad,
+            FuncletKind::Cleanup,
+            activeCleanupRegions_.size(),
+            nullptr,
+            outerUnwind});
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef thunkAddress =
+            byteOffset(object, layout->deallocateThunkOffset, "placement.failure.thunk.addr");
+        LLVMValueRef thunk =
+            LLVMBuildLoad2(builder_, pointerType, thunkAddress, "placement.failure.thunk");
+        LLVMValueRef contextAddress =
+            byteOffset(object, layout->allocatorContextOffset, "placement.failure.context.addr");
+        LLVMValueRef context =
+            LLVMBuildLoad2(builder_, pointerType, contextAddress, "placement.failure.context");
+        LLVMValueRef deallocateArguments[] = {context, object};
+        buildNoUnwindCall(
+            allocatorFreeThunkType_, thunk, deallocateArguments, 2, "");
+        LLVMBuildCleanupRet(builder_, cleanupPad, outerUnwind);
+        funcletStack_.pop_back();
+        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        return cleanupBlock;
     }
 
     // NS304-T13-F07: generate (and cache) the per-allocator-type deallocate thunk
