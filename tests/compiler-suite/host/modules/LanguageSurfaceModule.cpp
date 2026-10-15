@@ -5951,6 +5951,47 @@ class Program
         }});
 }
 
+void registerPatternsGenericsMoveOnlySliceCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-515", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "patterns", "generics", "move-only", "borrowed", "slice"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T17F04PatternsGenerics", "Exe", R"ns(
+using NativeSharp.Core;
+public class Cell { public int Value; public Cell(int v) { Value = v; } }
+class Program
+{
+    public static T First<T>(ReadOnlySpan<T> values) { return values[0]; }
+    public static Cell Make(int v) { owned Cell c = new Cell(v); return move(c); }
+    public static int Main()
+    {
+        int[] values = new int[] { 42, 1 };
+        int first = First<int>(values);
+        Cell moved = Make(first);
+        return match (moved.Value) { 42 => 42, _ => 0 };
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T17F04PatternsGenerics.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-515 the patterns+generics+move-only+slice fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-515 generics + borrowed slice + move-only + pattern must combine (exit 42)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10709,6 +10750,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCSharp14MatrixCase(registry);
     registerBeefVariantCase(registry);
     registerAsyncOwnershipErrorCancelCase(registry);
+    registerPatternsGenericsMoveOnlySliceCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
