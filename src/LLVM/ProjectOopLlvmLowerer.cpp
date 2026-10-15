@@ -6555,16 +6555,13 @@ private:
             return fail(error, "Stage 49 RAII cleanup has no class-descriptor destruction ABI");
         }
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "raii.descriptor");
-        const bool destroysObjectInPlace =
-            node->stackPromotedObject || node->placementConstructed ||
-            (node->objectLifetimeOwnership == sema::OwnershipKind::Owned &&
-             node->storageOwnership == sema::OwnershipKind::Borrowed);
-        const unsigned destructionEntryIndex = destroysObjectInPlace ? 7U : 5U;
+        // NS304-T13-F07: object lifetime is always destroyed in place (descriptor field 7); storage
+        // release is then driven by the header's provenance thunk, so default heap, custom
+        // allocator, raw placement and stack-promoted storage share one release path.
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
-            builder_, descriptorType_, descriptor, destructionEntryIndex,
-            destroysObjectInPlace ? "raii.object.entry.addr" : "raii.entry.addr");
+            builder_, descriptorType_, descriptor, 7, "raii.object.entry.addr");
         LLVMValueRef destructionEntry = LLVMBuildLoad2(
-            builder_, ptr, entryAddress, "raii.entry");
+            builder_, ptr, entryAddress, "raii.object.entry");
         LLVMValueRef arguments[] = {value};
         if (buildPotentiallyThrowingCall(
                 destructionEntryFunctionType_, destructionEntry, arguments, 1, "", error) == nullptr &&
@@ -6572,7 +6569,34 @@ private:
         {
             return false;
         }
-        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        if (terminated())
+        {
+            return true;
+        }
+        // Read the provenance thunk; a null thunk means borrowed/stack storage with no release.
+        const frontend::ProjectOopMirClassLayout* layout = classLayout(node->typeKey);
+        if (layout == nullptr)
+        {
+            return fail(error,
+                "NS304-T13-F07 raii cleanup has no class layout for " + node->typeKey);
+        }
+        LLVMValueRef thunkAddress =
+            byteOffset(value, layout->deallocateThunkOffset, "raii.thunk.addr");
+        LLVMValueRef thunk = LLVMBuildLoad2(builder_, ptr, thunkAddress, "raii.thunk");
+        LLVMValueRef hasThunk = LLVMBuildICmp(
+            builder_, LLVMIntNE, thunk, LLVMConstNull(ptr), "raii.hasthunk");
+        LLVMBasicBlockRef deallocBlock = appendBlock("raii.dealloc");
+        LLVMBasicBlockRef deallocDoneBlock = appendBlock("raii.dealloc.done");
+        LLVMBuildCondBr(builder_, hasThunk, deallocBlock, deallocDoneBlock);
+        LLVMPositionBuilderAtEnd(builder_, deallocBlock);
+        LLVMValueRef contextAddress =
+            byteOffset(value, layout->allocatorContextOffset, "raii.context.addr");
+        LLVMValueRef context = LLVMBuildLoad2(builder_, ptr, contextAddress, "raii.context");
+        LLVMValueRef deallocArgs[] = {context, value};
+        buildNoUnwindCall(allocatorFreeThunkType_, thunk, deallocArgs, 2, "");
+        LLVMBuildBr(builder_, deallocDoneBlock);
+        LLVMPositionBuilderAtEnd(builder_, deallocDoneBlock);
+        LLVMBuildBr(builder_, doneBlock);
         LLVMPositionBuilderAtEnd(builder_, doneBlock);
         return true;
     }
@@ -17949,8 +17973,16 @@ private:
             return failValue(error, "Macro A allocation cannot resolve its class descriptor");
         }
         LLVMBuildStore(builder_, descriptorValue, object);
-        if (!storeDefaultAllocatorProvenance(object, node->typeKey, error))
-            return nullptr;
+        {
+            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+            // Stack-promoted storage is a frame alloca: no heap deallocation (null thunk). Heap
+            // objects get the default free thunk.
+            LLVMValueRef thunk = node->stackPromotedObject
+                ? LLVMConstNull(pointerType) : allocatorFreeThunkFunction_;
+            if (!storeAllocatorProvenance(
+                    object, node->typeKey, LLVMConstNull(pointerType), thunk, error))
+                return nullptr;
+        }
 
         if (!node->calleeName.empty())
         {
@@ -18076,8 +18108,15 @@ private:
             LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
             if (node->alignment > 1U)
                 LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
-            if (!storeDefaultAllocatorProvenance(storage, node->typeKey, error))
-                return nullptr;
+            // Raw placement borrows its storage: no deallocation (null context + null thunk).
+            // The allocator case (FASE 3b) overwrites these with the concrete allocator + thunk.
+            {
+                LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+                if (!storeAllocatorProvenance(
+                        storage, node->typeKey,
+                        LLVMConstNull(pointerType), LLVMConstNull(pointerType), error))
+                    return nullptr;
+            }
         }
 
         if (!node->calleeName.empty())
@@ -18945,25 +18984,26 @@ private:
         return nullptr;
     }
 
-    // NS304-T13-F07: initialize the object header's provenance slots to the canonical default
-    // (null context + free thunk). Called before the constructor so every throwing path already
-    // observes a valid provenance.
-    bool storeDefaultAllocatorProvenance(
-        LLVMValueRef object, std::string_view typeKey, std::string& error)
+    // NS304-T13-F07: initialize the object header's provenance slots (allocator context + deallocate
+    // thunk) before the constructor so every throwing path already observes a valid provenance.
+    // A null thunk means "no deallocation" (raw placement / stack-promoted storage).
+    bool storeAllocatorProvenance(
+        LLVMValueRef object,
+        std::string_view typeKey,
+        LLVMValueRef context,
+        LLVMValueRef thunk,
+        std::string& error)
     {
         const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
         if (layout == nullptr)
             return fail(error,
-                "NS304-T13-F07 default provenance has no class layout for " + std::string(typeKey));
-        if (allocatorFreeThunkFunction_ == nullptr)
-            return fail(error, "NS304-T13-F07 default provenance has no free thunk");
-        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+                "NS304-T13-F07 provenance has no class layout for " + std::string(typeKey));
         LLVMValueRef contextAddress =
             byteOffset(object, layout->allocatorContextOffset, "allocator.context");
-        LLVMBuildStore(builder_, LLVMConstNull(pointerType), contextAddress);
+        LLVMBuildStore(builder_, context, contextAddress);
         LLVMValueRef thunkAddress =
             byteOffset(object, layout->deallocateThunkOffset, "allocator.thunk");
-        LLVMBuildStore(builder_, allocatorFreeThunkFunction_, thunkAddress);
+        LLVMBuildStore(builder_, thunk, thunkAddress);
         return true;
     }
 
