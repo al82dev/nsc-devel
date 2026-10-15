@@ -41,6 +41,7 @@ int main()
     stack->immediate = 32;
     function.body->children.push_back(std::move(stack));
     function.body->children.push_back(node(ProjectOopMirNodeKind::AllocateAndConstruct));
+    function.body->children.push_back(node(ProjectOopMirNodeKind::PlacementConstruct));
     function.body->children.push_back(node(ProjectOopMirNodeKind::MoveValue));
     function.body->children.push_back(node(ProjectOopMirNodeKind::InterfaceInstanceCall));
     function.body->children.push_back(node(ProjectOopMirNodeKind::CoreMutexLock));
@@ -57,9 +58,10 @@ int main()
     const ProjectCostReport report = exploreProjectCosts(functions);
     tests.expect(report.functions.size() == 1 &&
             report.functions[0].staticStackBytesLowerBound == 32 &&
+            report.functions[0].arenaAllocationSites == 1 &&
             report.functions[0].heapAllocationSites == 1 &&
             report.functions[0].moveSites == 1 && report.functions[0].dropSites == 1,
-        "cost explorer derives stack, heap, move and cleanup costs from MIR");
+        "cost explorer derives stack, arena, heap, move and cleanup costs from MIR");
     tests.expect(report.functions[0].dynamicDispatchSites == 1 &&
             report.functions[0].lockSites == 1 && report.functions[0].atomicSites == 1 &&
             report.functions[0].unwindSites == 2 && report.functions[0].monomorphizations == 1,
@@ -68,7 +70,8 @@ int main()
     const std::string json = projectCostReportJson(report);
     tests.expect(text.find("NSCOST 1.0") != std::string::npos &&
             text.find("cause: heap <- allocate-and-construct") != std::string::npos &&
-            text.find("totals heap-sites=1") != std::string::npos,
+            text.find("cause: arena <- placement-construct") != std::string::npos &&
+            text.find("totals arena-sites=1 heap-sites=1") != std::string::npos,
         "text cost report includes deterministic causal chains and totals");
     tests.expect(json.find("\"schema\":\"NSCOST 1.0\"") != std::string::npos &&
             json.find("\"dynamicDispatchSites\":1") != std::string::npos &&

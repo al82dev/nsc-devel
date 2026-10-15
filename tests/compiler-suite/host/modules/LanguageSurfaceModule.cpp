@@ -5476,6 +5476,53 @@ class Program
         }});
 }
 
+void registerCostReportCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-499", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "cost", "report", "stack", "arena", "heap"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F09CostReport", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        { scope A s = new A(1); }
+        A h = new A(2);
+        BlockAllocator ba = new BlockAllocator(1024);
+        A a = new (ba) A(3);
+        return h.X + a.X;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const external_program_support::Result cost = runT01Compiler(
+                {L"--explain-project-costs", project.wstring()}, products.directory());
+            context.expect(cost.started && cost.exitCode == 0 && cost.error.empty(),
+                "TL-LANG-499 cost report must run: " + cost.error + cost.output);
+            if (!cost.started || cost.exitCode != 0) return;
+            context.expect(
+                cost.output.find("arena-sites=1") != std::string::npos &&
+                cost.output.find("heap-sites=") != std::string::npos &&
+                cost.output.find("stack-bytes-lower-bound=") != std::string::npos &&
+                cost.output.find("cause: arena <- placement-construct") != std::string::npos,
+                "TL-LANG-499 cost report must demonstrate stack/arena/heap: " + cost.output);
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10292,6 +10339,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAllocationFailureThrowsCase(registry);
     registerAllocationFailurePanicCase(registry);
     registerAllocationFailureResultCase(registry);
+    registerCostReportCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

@@ -13,6 +13,7 @@ struct ProjectFunctionCosts final
 {
     std::string function;
     std::uint64_t staticStackBytesLowerBound = 0;
+    std::uint64_t arenaAllocationSites = 0;
     std::uint64_t heapAllocationSites = 0;
     std::uint64_t copySites = 0;
     std::uint64_t moveSites = 0;

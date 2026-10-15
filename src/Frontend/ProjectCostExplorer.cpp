@@ -80,6 +80,10 @@ void visit(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
             costs.staticStackBytesLowerBound += node.variableLengthArray ? 0 : node.immediate;
             addCause(costs, "stack", node.kind);
             break;
+        case ProjectOopMirNodeKind::PlacementConstruct:
+            ++costs.arenaAllocationSites;
+            addCause(costs, "arena", node.kind);
+            break;
         case ProjectOopMirNodeKind::RawAllocation:
         case ProjectOopMirNodeKind::ArrayAllocate:
         case ProjectOopMirNodeKind::RangeArrayAllocate:
@@ -149,6 +153,7 @@ void visit(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
 void add(ProjectFunctionCosts& target, const ProjectFunctionCosts& source)
 {
     target.staticStackBytesLowerBound += source.staticStackBytesLowerBound;
+    target.arenaAllocationSites += source.arenaAllocationSites;
     target.heapAllocationSites += source.heapAllocationSites;
     target.copySites += source.copySites;
     target.moveSites += source.moveSites;
@@ -177,6 +182,7 @@ std::string escapeJson(std::string_view value)
 void appendJsonCosts(std::string& result, const ProjectFunctionCosts& costs)
 {
     result += "\"stackBytesLowerBound\":" + std::to_string(costs.staticStackBytesLowerBound);
+    result += ",\"arenaAllocationSites\":" + std::to_string(costs.arenaAllocationSites);
     result += ",\"heapAllocationSites\":" + std::to_string(costs.heapAllocationSites);
     result += ",\"copySites\":" + std::to_string(costs.copySites);
     result += ",\"moveSites\":" + std::to_string(costs.moveSites);
@@ -233,6 +239,7 @@ std::string projectCostReportText(const ProjectCostReport& report)
     {
         result += "function " + costs.function + "\n";
         result += "  stack-bytes-lower-bound=" + std::to_string(costs.staticStackBytesLowerBound) + "\n";
+        result += "  arena-sites=" + std::to_string(costs.arenaAllocationSites) + "\n";
         result += "  heap-sites=" + std::to_string(costs.heapAllocationSites) + "\n";
         result += "  copies=" + std::to_string(costs.copySites) + " moves=" +
             std::to_string(costs.moveSites) + " drops=" + std::to_string(costs.dropSites) + "\n";
@@ -243,7 +250,8 @@ std::string projectCostReportText(const ProjectCostReport& report)
             " monomorphizations=" + std::to_string(costs.monomorphizations) + "\n";
         for (const std::string& cause : costs.causes) result += "  cause: " + cause + "\n";
     }
-    result += "totals heap-sites=" + std::to_string(report.totals.heapAllocationSites) +
+    result += "totals arena-sites=" + std::to_string(report.totals.arenaAllocationSites) +
+        " heap-sites=" + std::to_string(report.totals.heapAllocationSites) +
         " copies=" + std::to_string(report.totals.copySites) +
         " moves=" + std::to_string(report.totals.moveSites) +
         " drops=" + std::to_string(report.totals.dropSites) +
