@@ -355,7 +355,10 @@ bool isStage47CAbiType(
         typeKey == "builtin:int" || typeKey == "builtin:uint" ||
         typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
         typeKey == "builtin:nint" || typeKey == "builtin:nuint" ||
-        typeKey == "builtin:float" || typeKey == "builtin:double")
+        typeKey == "builtin:float" || typeKey == "builtin:double" ||
+        // NS304-T15-F03: decimal crosses the C ABI as the DECLARED 128-bit carrier (NS_Decimal),
+        // not an assumed externally-compatible layout.
+        typeKey == "builtin:decimal")
     {
         return true;
     }

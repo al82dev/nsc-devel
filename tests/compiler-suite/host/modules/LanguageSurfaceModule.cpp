@@ -5593,6 +5593,36 @@ class Program
         }});
 }
 
+void registerDecimalFfiCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-504", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "ffi", "c-header", "representation"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F03DecimalFfi", "Library", R"ns(
+class Program
+{
+    public static export extern C decimal Add(decimal a, decimal b) { return a + b; }
+}
+)ns");
+            const std::filesystem::path header = products.directory() / "T15F03DecimalFfi.h";
+            const external_program_support::Result emitted = runT01Compiler(
+                {L"--emit-project-host-header", project.wstring(), L"-o", header.wstring()},
+                products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-504 a decimal C header must emit: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            std::ifstream input(header);
+            const std::string text((std::istreambuf_iterator<char>(input)),
+                std::istreambuf_iterator<char>());
+            context.expect(text.find("NS_Decimal") != std::string::npos &&
+                    text.find("NS_Decimal NS_CALL Add(NS_Decimal a, NS_Decimal b)") !=
+                        std::string::npos,
+                "TL-LANG-504 decimal must cross the C ABI as the declared NS_Decimal carrier");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10342,6 +10372,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCostReportCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
+    registerDecimalFfiCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);

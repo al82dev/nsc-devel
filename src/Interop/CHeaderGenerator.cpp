@@ -227,6 +227,9 @@ std::string hostType(std::string_view typeKey, const HostContext& context, std::
     else if (coreKey == "builtin:nuint") result = "uintptr_t";
     else if (coreKey == "builtin:float") result = "float";
     else if (coreKey == "builtin:double") result = "double";
+    // NS304-T15-F03: decimal is expressed as a DECLARED 128-bit carrier (see the NS_Decimal
+    // typedef emitted in the header), not an assumed externally-compatible __int128 layout.
+    else if (coreKey == "builtin:decimal") result = "NS_Decimal";
     else
     {
         const NamedTypeDeclaration* named = namedTypeForCoreKey(coreKey, context.names);
@@ -854,6 +857,11 @@ bool CHeaderGenerator::writeHeader(
     out << "/* ABI: Windows x64 C. bool/byte/char use one-byte uint8_t carriers. */\n"
            "/* Classes/interfaces are opaque pointer-sized handles. Struct layout is asserted below. */\n"
            "/* No hidden marshaling, retention or GC occurs at this boundary. Ownership is API-defined. */\n\n";
+    // NS304-T15-F03: the decimal representation is declared, not assumed. The 128-bit carrier is
+    // coefficient (low 96 bits) | scale (bits 96..101) | sign (bit 127); reserved bits are zero.
+    out << "/* NS304-T15-F03: declared decimal carrier (128-bit). lo = coefficient bits 0..63,\n"
+           "   hi = coefficient bits 64..95 | scale bits 96..101 | sign bit 127. */\n"
+           "typedef struct { uint64_t lo; uint64_t hi; } NS_Decimal;\n\n";
 
     const std::set<std::string> reachable = collectReachableHostTypes(context);
     const auto namedTypes = context.names.namedTypes();
