@@ -5788,6 +5788,43 @@ class Program
         }});
 }
 
+void registerDecimalDebugCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-510", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "debug", "codeview", "pdb"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T16F05DecimalDebug", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal d = 1.5m;
+        return (int)(d * 10m) == 15 ? 0 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T16F05DecimalDebug.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-510 the decimal debug build must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const std::filesystem::path pdb = products.directory() / "T16F05DecimalDebug.pdb";
+            context.expect(std::filesystem::is_regular_file(pdb) &&
+                    std::filesystem::file_size(pdb) > 0U,
+                "TL-LANG-510 the decimal debug build must retain a non-empty PDB");
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-510 the decimal debug build must run to 0: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10541,6 +10578,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalRoundingCase(registry);
     registerProducerConsumerDecimalCase(registry);
     registerCrossModuleBorrowCase(registry);
+    registerDecimalDebugCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);

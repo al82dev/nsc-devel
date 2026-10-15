@@ -1682,6 +1682,10 @@ private:
             type = basic("float", 32, LLVMDWARFTypeEncodingFloat);
         else if (typeKey == "builtin:double")
             type = basic("double", 64, LLVMDWARFTypeEncodingFloat);
+        // NS304-T16-F05: decimal is a 128-bit carrier (coefficient 96 + scale + sign); the debug
+        // type is an unsigned 128-bit basic type so the CodeView/PDB names it "decimal".
+        else if (typeKey == "builtin:decimal")
+            type = basic("decimal", 128, LLVMDWARFTypeEncodingUnsigned);
         else if (!typeKey.empty() && typeKey.back() == '*')
         {
             const std::string_view pointeeKey = typeKey.substr(0, typeKey.size() - 1);
