@@ -62,10 +62,52 @@ void frozenAbiContract(TestContext& context, std::size_t variant)
 }
 }
 
+void newFieldsRoundTripContract(TestContext& context, std::size_t variant)
+{
+    auto metadata = minimalMetadata("Codec.NewFields");
+    metadata.languageFeatureFlags = interop::kMetadataLanguageFeatureMask;
+    metadata.types.push_back(publicStruct("type:Value", "Codec.Value"));
+    interop::LibraryMetadataMember member;
+    member.declaringTypeKey = "type:Value";
+    member.name = "Method";
+    member.signatureKey = "Method()";
+    member.declaredTypeKey = "builtin:int";
+    member.flags = interop::kMetadataMemberNoHeap | interop::kMetadataMemberVolatile;
+    member.ffiUnwindPolicy = 2;
+    member.importDllName = "kernel32.dll";
+    member.inlineSourceText = "int Method() { return 1; }";
+    interop::LibraryMetadataParameter parameter;
+    parameter.name = "value";
+    parameter.typeKey = "builtin:int";
+    member.parameters.push_back(parameter);
+    member.parameterEscapeSummary.push_back(interop::LibraryMetadataEscapeClass::NoEscape);
+    metadata.members.push_back(member);
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() /
+        ("nsc-host-interop-newfields-" + std::to_string(variant) + ".nsmeta");
+    interop::LibraryMetadataCodec codec;
+    std::string error;
+    context.expect(codec.writeModel(metadata, path, error),
+        "new-field model must encode successfully: " + error);
+    interop::LibraryMetadata decoded;
+    context.expect(codec.read(path, decoded, error), "new-field model must decode successfully");
+    context.expect(decoded.languageFeatureFlags == metadata.languageFeatureFlags &&
+            decoded.members.size() == 1 &&
+            decoded.members.front().flags == member.flags &&
+            decoded.members.front().ffiUnwindPolicy == member.ffiUnwindPolicy &&
+            decoded.members.front().importDllName == member.importDllName &&
+            decoded.members.front().inlineSourceText == member.inlineSourceText &&
+            decoded.members.front().parameterEscapeSummary == member.parameterEscapeSummary,
+        "the T03-T15 metadata fields must survive the codec round-trip");
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+}
+
 void registerInteropCodecModule(TestRegistry& registry)
 {
     addInteropContract(registry, 34, "unit", deterministicProjectionContract);
     addInteropContract(registry, 35, "unit", payloadRoundTripContract);
     addInteropContract(registry, 39, "unit", frozenAbiContract);
+    addInteropContract(registry, 50, "unit", newFieldsRoundTripContract);
 }
 }
