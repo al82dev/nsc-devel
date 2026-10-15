@@ -5623,6 +5623,60 @@ class Program
         }});
 }
 
+void registerDecimalRoundingCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-505", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "arithmetic", "rounding", "scale", "overflow"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T15F04DecimalRounding", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal q = 0.5m / 3m;
+        return (int)(q * 100m) == 17 ? 0 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable = products.directory() / "T15F04DecimalRounding.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-505 decimal rounding must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-505 0.5m/3m must round half-up to 0.17 (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+
+            const std::filesystem::path overflowProject = products.writeProject(
+                "T15F04ScaleOverflow", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        decimal e = 0.0000000000000000000000000001m * 0.1m;
+        return 0;
+    }
+}
+)ns");
+            const std::filesystem::path overflowExe = products.directory() / "T15F04ScaleOverflow.exe";
+            const external_program_support::Result overflowEmitted = emitT01Product(
+                L"--emit-project-oop-exe", overflowProject, overflowExe, products.directory());
+            context.expect(overflowEmitted.started && overflowEmitted.exitCode == 0,
+                "TL-LANG-505 scale overflow must compile: " + overflowEmitted.error + overflowEmitted.output);
+            if (!overflowEmitted.started || overflowEmitted.exitCode != 0) return;
+            const auto overflow = external_program_support::run(
+                overflowExe, {}, {}, products.directory());
+            context.expect(overflow.started && overflow.exitCode == 145,
+                "TL-LANG-505 scale overflow (scale 29) must trap DecimalOverflow (exit 145): " +
+                    overflow.error + overflow.output + " exit=" + std::to_string(overflow.exitCode));
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10373,6 +10427,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalFfiCase(registry);
+    registerDecimalRoundingCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);

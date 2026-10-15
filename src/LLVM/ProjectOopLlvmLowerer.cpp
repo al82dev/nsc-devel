@@ -15633,6 +15633,8 @@ private:
                     builder_, right, scaleShift, "decimal.right.scale");
                 effectiveScale = LLVMBuildAdd(
                     builder_, leftScale, rightScale, "decimal.scale.add");
+                if (!emitDecimalScaleOverflow(effectiveScale, "decimal.mul.scale", error))
+                    return nullptr;
                 // NS304-T15-F05: the coefficient must stay within 96 bits. The default (checked)
                 // policy traps DecimalOverflow; `saturating(expr)` yields MaxValue/MinValue.
                 {
@@ -15697,8 +15699,8 @@ private:
                 // numerator = leftCoeff * 10^(rightScale - leftScale + target) / rightCoeff.
                 // This preserves the exact quotient when the scales differ (1.5m / 2m -> 75e-2)
                 // and keeps the equal-scale result at its natural scale (1.5m / 2.5m -> 6e-1).
-                // Periodic division still truncates (rounding is a later F04 increment). 64-bit
-                // lane: __udivti3 is not linked.
+                // NS304-T15-F04: the quotient is rounded half-up, so 1/3 rounds to the target
+                // precision instead of truncating. 64-bit lane: __udivti3 is not linked.
                 LLVMValueRef rightScale = LLVMBuildLShr(
                     builder_, right, scaleShift, "decimal.div.right.scale");
                 LLVMValueRef scaleGe = LLVMBuildICmp(
@@ -15711,6 +15713,8 @@ private:
                     builder_, scaleGt, LLVMIntTypeInContext(context_, 128), "decimal.div.guard");
                 LLVMValueRef target = LLVMBuildAdd(
                     builder_, maxScale, guard, "decimal.div.scale.target");
+                if (!emitDecimalScaleOverflow(target, "decimal.div.scale", error))
+                    return nullptr;
                 LLVMValueRef exponent = LLVMBuildSub(
                     builder_, LLVMBuildAdd(builder_, target, rightScale, "decimal.div.exp.a"),
                     leftScale, "decimal.div.exponent");
@@ -15724,8 +15728,12 @@ private:
                 LLVMValueRef numerator = LLVMBuildMul(
                     builder_, leftCoeff64, buildPow10(exponent64, "decimal.div.pow10"),
                     "decimal.div.num");
+                LLVMValueRef half = LLVMBuildLShr(
+                    builder_, rightCoeff64, LLVMConstInt(lane, 1, 0), "decimal.div.half");
+                LLVMValueRef rounded = LLVMBuildAdd(
+                    builder_, numerator, half, "decimal.div.roundnum");
                 LLVMValueRef quotient = LLVMBuildUDiv(
-                    builder_, numerator, rightCoeff64, "decimal.div.quotient");
+                    builder_, rounded, rightCoeff64, "decimal.div.quotient");
                 combined = LLVMBuildZExt(
                     builder_, quotient, LLVMIntTypeInContext(context_, 128), "decimal.div.wide");
                 effectiveScale = target;
@@ -19534,6 +19542,31 @@ private:
     }
 
     // NS304-T15-F04: 10^exponent as a runtime i64 loop (exponent 0..28).
+    // NS304-T15-F04: the decimal scale must stay 0..28. `mul` adds scales and `div` can bump the
+    // scale by one guard, so either can exceed 28; that is a decimal overflow, not silent wrap.
+    bool emitDecimalScaleOverflow(LLVMValueRef effectiveScale, const char* stem, std::string& error)
+    {
+        LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef scale28 = LLVMConstInt(wide, 28, 0);
+        LLVMValueRef overflow = LLVMBuildICmp(
+            builder_, LLVMIntUGT, effectiveScale, scale28,
+            (std::string(stem) + ".overflow").c_str());
+        LLVMBasicBlockRef okBlock = appendBlock(std::string(stem) + ".ok");
+        LLVMBasicBlockRef trapBlock = appendBlock(std::string(stem) + ".trap");
+        LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
+        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+            return fail(error, "decimal scale overflow but no trap is configured");
+        LLVMValueRef reason = LLVMConstInt(
+            LLVMInt32TypeInContext(context_),
+            static_cast<std::uint64_t>(LlvmTrapReason::DecimalOverflow), 0);
+        LLVMValueRef trapArguments[] = { reason };
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        LLVMBuildUnreachable(builder_);
+        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        return true;
+    }
+
     LLVMValueRef buildPow10(LLVMValueRef exponent, const char* stem)
     {
         LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
