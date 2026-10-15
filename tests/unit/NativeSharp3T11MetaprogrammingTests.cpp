@@ -1,8 +1,11 @@
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
+#include "nativesharp/Language/MetaprogrammingGeneration.h"
 
 #include "../support/TestContext.h"
 
 #include <array>
+#include <string>
+#include <vector>
 
 int main()
 {
@@ -41,5 +44,33 @@ int main()
     ComptimeBudget budget(100, 1024, 8);
     tests.expect(budget.consume(50, 256, 4, error) && !budget.consume(51, 1, 1, error),
         "comptime step, memory, and recursion budgets fail deterministically");
+
+    MetaprogrammingAstBuilder builder;
+    const GeneratedDeclaration field = builder.buildField(
+        "Cache", "int", 3, "Main.ns", false, false, true);
+    tests.expect(field.valid() && field.kind == GeneratedDeclarationKind::Member &&
+            field.name.spelling == "Cache" && field.name.scopeId == 3 &&
+            field.isReadonly && field.originPath == "Main.ns",
+        "generated field carries origin, hygiene scope, modifiers, and a stable ID");
+
+    const GeneratedDeclaration reserved = builder.buildField("__nsc_secret", "int", 1, "Main.ns");
+    tests.expect(!reserved.valid() && reserved.error.find("reserved") != std::string::npos,
+        "generated declarations cannot forge the reserved __nsc_ namespace");
+
+    const GeneratedDeclaration empty = builder.buildMethod("", "int", 1, "Main.ns");
+    tests.expect(!empty.valid(), "generated declarations reject empty names");
+
+    const GeneratedDeclaration impl = builder.buildImpl("IValue", "Pair", 5, "Main.ns");
+    tests.expect(impl.valid() && impl.kind == GeneratedDeclarationKind::Impl &&
+            impl.name.spelling == "IValue" && impl.typeKey == "Pair",
+        "generated impl carries its trait and target type");
+
+    const GeneratedDeclaration helper = builder.buildHelper("Aux", "int", 2, "Main.ns", true);
+    tests.expect(helper.valid() && helper.kind == GeneratedDeclarationKind::Helper && helper.isPublic,
+        "generated helper carries its type and accessibility");
+
+    const std::vector<HygienicName> existing = {{"Cache", 3}, {"Other", 3}};
+    tests.expect(builder.wouldCollide(existing, field) && !builder.wouldCollide(existing, helper),
+        "generated declarations collide with an existing same-scope binding only when spelled identically");
     return tests.result();
 }

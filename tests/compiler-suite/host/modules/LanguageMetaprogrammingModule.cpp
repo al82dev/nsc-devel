@@ -1,5 +1,6 @@
 #include "nsc_suite/TestRegistry.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
+#include "nativesharp/Language/MetaprogrammingGeneration.h"
 
 #include <array>
 #include <string>
@@ -223,6 +224,42 @@ void registerComptimeBudgetCase(TestRegistry& registry)
 }
 }
 
+void registerGeneratedDeclarationCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-500", [](TestContext& context) {
+        const MetaprogrammingAstBuilder builder;
+        const GeneratedDeclaration field = builder.buildField(
+            "Cache", "int", 3, "Main.ns", false, false, true);
+        context.expect(field.valid() && field.kind == GeneratedDeclarationKind::Member &&
+                field.name.spelling == "Cache" && field.name.scopeId == 3 &&
+                field.isReadonly && field.originPath == "Main.ns",
+            "TL-LANG-500 a generated field must carry origin, hygiene scope, modifiers, and a stable ID");
+
+        const GeneratedDeclaration reserved = builder.buildField("__nsc_secret", "int", 1, "Main.ns");
+        context.expect(!reserved.valid() && reserved.error.find("reserved") != std::string::npos,
+            "TL-LANG-500 generated declarations must not forge the reserved __nsc_ namespace");
+
+        const GeneratedDeclaration empty = builder.buildMethod("", "int", 1, "Main.ns");
+        context.expect(!empty.valid(),
+            "TL-LANG-500 generated declarations must reject an empty name");
+
+        const GeneratedDeclaration impl = builder.buildImpl("IValue", "Pair", 5, "Main.ns");
+        context.expect(impl.valid() && impl.kind == GeneratedDeclarationKind::Impl &&
+                impl.name.spelling == "IValue" && impl.typeKey == "Pair",
+            "TL-LANG-500 a generated impl must carry its trait and target type");
+
+        const GeneratedDeclaration helper = builder.buildHelper("Aux", "int", 2, "Main.ns", true);
+        context.expect(helper.valid() && helper.kind == GeneratedDeclarationKind::Helper &&
+                helper.isPublic,
+            "TL-LANG-500 a generated helper must carry its type and accessibility");
+
+        const std::vector<HygienicName> existing = {{"Cache", 3}, {"Other", 3}};
+        context.expect(builder.wouldCollide(existing, field) &&
+                !builder.wouldCollide(existing, helper),
+            "TL-LANG-500 the same-scope binder gate must collide only on identical spelling");
+    });
+}
+
 void registerLanguageMetaprogrammingModule(TestRegistry& registry)
 {
     registerVisibleMembersCase(registry);
@@ -235,5 +272,6 @@ void registerLanguageMetaprogrammingModule(TestRegistry& registry)
     registerComptimeIdentityCase(registry);
     registerDiagnosticCodeCase(registry);
     registerComptimeBudgetCase(registry);
+    registerGeneratedDeclarationCase(registry);
 }
 }

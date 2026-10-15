@@ -1,7 +1,9 @@
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
+#include "nativesharp/Language/MetaprogrammingGeneration.h"
 
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 
 namespace nativesharp::language
 {
@@ -87,5 +89,111 @@ bool ComptimeBudget::consume(
     steps_ -= steps;
     bytes_ -= bytes;
     return true;
+}
+
+namespace
+{
+bool reservedGeneratedName(std::string_view spelling)
+{
+    return spelling.starts_with("__nsc_");
+}
+
+GeneratedDeclaration finish(GeneratedDeclaration declaration)
+{
+    if (declaration.name.spelling.empty())
+        declaration.error = "generated declaration name must not be empty";
+    else if (reservedGeneratedName(declaration.name.spelling))
+        declaration.error = "generated declaration may not use the reserved __nsc_ namespace";
+    else if (declaration.originPath.empty())
+        declaration.error = "generated declaration must carry a source origin";
+    return declaration;
+}
+}
+
+GeneratedDeclaration MetaprogrammingAstBuilder::buildField(
+    std::string name,
+    std::string typeKey,
+    std::size_t hygieneScope,
+    std::string originPath,
+    bool isPublic,
+    bool isStatic,
+    bool isReadonly) const
+{
+    GeneratedDeclaration declaration;
+    declaration.kind = GeneratedDeclarationKind::Member;
+    declaration.name = HygienicName{std::move(name), hygieneScope};
+    declaration.typeKey = std::move(typeKey);
+    declaration.originPath = std::move(originPath);
+    declaration.isPublic = isPublic;
+    declaration.isStatic = isStatic;
+    declaration.isReadonly = isReadonly;
+    if (declaration.typeKey.empty())
+        declaration.error = "generated field type must not be empty";
+    return finish(std::move(declaration));
+}
+
+GeneratedDeclaration MetaprogrammingAstBuilder::buildMethod(
+    std::string name,
+    std::string typeKey,
+    std::size_t hygieneScope,
+    std::string originPath,
+    bool isPublic,
+    bool isStatic) const
+{
+    GeneratedDeclaration declaration;
+    declaration.kind = GeneratedDeclarationKind::Member;
+    declaration.name = HygienicName{std::move(name), hygieneScope};
+    declaration.typeKey = std::move(typeKey);
+    declaration.originPath = std::move(originPath);
+    declaration.isPublic = isPublic;
+    declaration.isStatic = isStatic;
+    if (declaration.typeKey.empty())
+        declaration.error = "generated method return type must not be empty";
+    return finish(std::move(declaration));
+}
+
+GeneratedDeclaration MetaprogrammingAstBuilder::buildImpl(
+    std::string traitName,
+    std::string targetTypeKey,
+    std::size_t hygieneScope,
+    std::string originPath) const
+{
+    GeneratedDeclaration declaration;
+    declaration.kind = GeneratedDeclarationKind::Impl;
+    declaration.name = HygienicName{std::move(traitName), hygieneScope};
+    declaration.typeKey = std::move(targetTypeKey);
+    declaration.originPath = std::move(originPath);
+    declaration.isPublic = true;
+    if (declaration.typeKey.empty())
+        declaration.error = "generated impl target type must not be empty";
+    return finish(std::move(declaration));
+}
+
+GeneratedDeclaration MetaprogrammingAstBuilder::buildHelper(
+    std::string name,
+    std::string typeKey,
+    std::size_t hygieneScope,
+    std::string originPath,
+    bool isPublic) const
+{
+    GeneratedDeclaration declaration;
+    declaration.kind = GeneratedDeclarationKind::Helper;
+    declaration.name = HygienicName{std::move(name), hygieneScope};
+    declaration.typeKey = std::move(typeKey);
+    declaration.originPath = std::move(originPath);
+    declaration.isPublic = isPublic;
+    if (declaration.typeKey.empty())
+        declaration.error = "generated helper type must not be empty";
+    return finish(std::move(declaration));
+}
+
+bool MetaprogrammingAstBuilder::wouldCollide(
+    const std::vector<HygienicName>& existing,
+    const GeneratedDeclaration& declaration) noexcept
+{
+    return std::any_of(existing.begin(), existing.end(), [&](const HygienicName& other)
+    {
+        return sameBinding(other, declaration.name);
+    });
 }
 }
