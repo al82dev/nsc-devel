@@ -5844,6 +5844,39 @@ void registerDecimalTokenParityCase(TestRegistry& registry)
         }});
 }
 
+void registerCSharp14MatrixCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-512", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "csharp14", "extension", "fixture", "conformance", "matrix"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T17F01CSharp14Extension", "Exe", R"ns(
+extension string { public int WordCount() { return 1; } }
+class Program
+{
+    public static int Main()
+    {
+        string value = "hello";
+        return value.WordCount() == 1 ? 0 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T17F01CSharp14Extension.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-512 the NativeSharp extension-block fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-512 the C# 14 extension capability is linked to a productive NativeSharp fixture (exit 0)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10599,6 +10632,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCrossModuleBorrowCase(registry);
     registerDecimalDebugCase(registry);
     registerDecimalTokenParityCase(registry);
+    registerCSharp14MatrixCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
