@@ -1,6 +1,6 @@
 # NS304-T13-F08 — Failure policy
 
-- **Estado**: PARCIAL (noheap + rechazo de heap allocation operativos; perfil explícito de failure pendiente)
+- **Estado**: PARCIAL — `failure: null|panic|throws` implementados y verificados; `failure: result` bloqueado por defecto de compilador (variant genérico cross-module).
 - **Rama**: development
 
 ## SCOPE LOCK de reanudación
@@ -27,13 +27,39 @@
 - **Criterio de cierre**: contrato implementado, casos focales PASS, expediente/tracking/lista
   coherentes, commit local aislado.
 
-## Resultado (noheap — 2026-10-14)
+## Implementado (2026-10-15)
 
-- **noheap**: el efecto `noheap` rechaza la construcción heap directa (`NS3030: noheap callable 'Make'
-  cannot contain direct heap allocation 'object-construction'`) y el capture de closure que asigna
-  entorno — ya operativo.
+- `a9b9d266` WIP parser `failure:` + plumbing Sema (`ProjectAllocatorFailureProfile`).
+- `75e3b969` `failure: null` — `Allocate` null ⇒ resultado null, ctor no ejecutado.
+- `b4a2ce92` `failure: panic` — `Allocate` null ⇒ panic del proyecto (exit 142).
+- `b3cf24b1` tipos Core `AllocationFailure` (enum `OutOfMemory`) + `AllocationFailureException : Exception` + `Result<T,E>` (variant `Ok(T)/Error(E)`).
+- `5034c0e7` `failure: throws` — `Allocate` null ⇒ `AllocationFailureException` (factory `Create()`); `Throw` admitido como expresión (rama "never" del `Conditional`).
+- `e2047eab` casos focales TL-LANG-495 (null), 496 (throws), 497 (panic) — PASS O0.
+
+## Verificado O0
+
+- TL-LANG-495 (null): PASS — null + ctor no ejecutado con allocator fallido; construye normal con válido.
+- TL-LANG-496 (throws): PASS — `AllocationFailureException` capturada.
+- TL-LANG-497 (panic): PASS — panic exit 142.
+- Guard TL-LANG-492 (T13-F07 drop normal): PASS.
+
+## Bloqueo de `failure: result`
+
+El contrato requiere `Result<owned T, AllocationFailure>` como **variant genérica pública en Core**.
+Verificado que el compilador **no resuelve un variant genérico desde otro módulo**:
+
+- `Optional<int>` (struct genérico de Core, 1 param) → resuelve cross-module.
+- `KeyValuePair<TKey,TValue>` (struct genérico de Core, 2 params) → resuelve cross-module.
+- `Result<T,E>` (variant genérico de Core) → error de parse `expected expression` en el consumidor
+  (`Result<int,int>` no se reconoce como tipo). El variant genérico **local** sí funciona (tests
+  unitarios); el defecto es el cruce de módulo.
+
+Causa raíz apuntada: el nombre del variant genérico no entra en el conjunto de nombres de tipo que el
+parser usa para desambiguar `T<...> var` (declaración) frente a una llamada genérica (expresión)
+(`Parser::knownTypeNames_` alimentado desde NSMETA). No se maquilló ni se sustituyó por un ABI inventado.
 
 ## Residual
 
-- El **perfil explícito** que integra null/Result/`throws`/panic por construcción + el cleanup exacto
-  de argumento/storage/subobjetos en todas las salidas.
+- `failure: result` — requiere `Result<T,E>` cross-module; bloqueado por el defecto de variant genérico.
+- Regla de vida del allocator del contrato §6 del handover: documentada en T13-F07, aplica igual aquí.
+
