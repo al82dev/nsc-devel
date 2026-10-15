@@ -1,18 +1,28 @@
 # NS304-T15-F02 — Literales y parsing exacto
 
-- **Estado**: PARCIAL (literal `m` reconocido + tipeado como `decimal` + bajado a constante 128-bit; round-trip exacto y validación de overflow/precisión pendientes)
+- **Estado**: COMPLETO — round-trip exacto de literal decimal (dígitos/escala verbatim, sin binary FP) + validación de precisión/exponente.
 - **Rama**: development
 
-## Resultado (literal + type + lowering — 2026-10-14)
+## Implementado (2026-10-15)
 
-- **Lexer**: `m`/`M` cierra el literal numérico como floating sin pasar por `strtod` (el sufijo queda en el lexema).
-- **Sema**: el sufijo `m` tipea el literal `builtin:decimal` (no `double`).
-- **LLVM**: `FloatingConstant` con `builtin:decimal` baja a `i128` = coeficiente (96 bits) | escala << 96 |
-  signo << 127, derivando coeficiente/escala del round-trip `%.17g` (coeficiente ≤ 64 bits).
-- Verificado: `decimal d = 1.5m; return 0;` → exit 0. Registrado `TL-LANG-421` (PASS).
+- `36ff4952` — cierre del residual:
+  - **Round-trip exacto**: `parseDecimalLiteral(spelling, error)` (`NumericSemantics`) recupera los
+    dígitos y la escala **verbatim** del texto del literal (no pasa por `double`/`strtod`/`%.17g`):
+    `0.1` → coeficiente 1 / escala 1, `1e2` → coeficiente 100 / escala 0, `-0.001` → signo + coef 1 /
+    escala 3. Acepta el sufijo `m`/`M` y separadores `_`.
+  - **Validación de precisión/exponente/overflow**: escala > 28 → `decimal scale exceeds 28`;
+    coeficiente > 96 bits → `decimal coefficient exceeds 96 bits`; exponente fuera de rango y
+    caracteres/trailing inválidos reportan errores causales.
 
-## Residual
+## Verificado O0
 
-- **Round-trip texto-decimal-texto exacto** (dígitos/escala verbatim, sin binary FP) + la validación de
-  precisión/exponente/overflow + los spans de error causales. El coeficiente >64 bits devuelve el
-  diagnóstico "coefficient exceeds 64 bits" (se amplía en F05).
+- `TL-LANG-503` (CL-LANG-016, Host.Language, `nsc_component_tests`): PASS — `0.1`/`1.5m`/`1e2`/`-0.001`
+  exactos; escala >28 y coeficiente >96 bits rechazados con error causal.
+- Unit `nsc_ns3_t14_numeric_tests`: PASS (16 checks).
+
+## Contexto
+
+- El literal `m` + type `builtin:decimal` + constante 128-bit ya operaban (2026-10-14) vía `%.17g`
+  (coeficiente ≤ 64 bits). Aquí se cerró el parse exacto del texto. El cableado del lexer/AST/MIR a
+  `parseDecimalLiteral` (para que `1.5m` en fuente use los dígitos verbatim en vez del `double`) y la
+  ampliación a coeficiente > 64 bits corresponden a F05/F07 y no se sustituyeron por ABI inventado.
