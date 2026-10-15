@@ -2803,9 +2803,10 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             }
             result->immediate = layout->first;
             result->alignment = layout->second;
-            // NS304-T13-F06: the byte offset of the flexible array's `Length` member, resolved by
-            // the HIR from [TrailingStorage(...)]; the raw element address emits `index < Length`.
-            result->secondaryImmediate = node->secondaryIntegerValue;
+            // NS304-T13-F06: the flexible array's `Length` bounds-check data, resolved by the HIR
+            // from [TrailingStorage(...)]; the raw element address emits `index < Length`.
+            result->hasTrailingLengthBounds = node->hasTrailingLengthBounds;
+            result->trailingLengthRelativeOffset = node->trailingLengthRelativeOffset;
             result->kind = ProjectOopMirNodeKind::RawElementAddress;
             break;
         }

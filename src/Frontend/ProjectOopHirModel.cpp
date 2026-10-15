@@ -6174,9 +6174,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     address = makeNode(
                         ProjectOopHirNodeKind::RawElementAddress, expression, elementType);
                     address->elementTypeKey = elementType;
-                    // NS304-T13-F06: a flexible-array index must be bounds-checked against the
-                    // `Length` member named by [TrailingStorage(nameof(Length), ...)]. Resolve its
-                    // byte offset here so the raw element address can emit the runtime guard.
+                    // NS304-T13-F06: a flexible-array index bounds-checks against its `Length`
+                    // member named by [TrailingStorage(nameof(Length), ...)]. Resolve its byte
+                    // offset here so the raw element address can emit the runtime guard.
                     if (baseIsFlexibleArray && metaprogrammingModel_ != nullptr &&
                         baseSyntax != nullptr && baseSyntax->first() != nullptr &&
                         inheritanceModel_ != nullptr && memberModel_ != nullptr &&
@@ -6203,13 +6203,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                                     const std::span<const std::size_t> lengthMembers =
                                         memberModel_->findMembers(
                                             *structOrdinal, attribute.constantArguments[0]);
-                                    if (!lengthMembers.empty())
+                                    if (!lengthMembers.empty() &&
+                                        attribute.memberOrdinal.has_value())
                                     {
                                         const ObjectFieldLayout* lengthLayout =
                                             objectLayoutModel_->fieldLayoutForMember(
                                                 lengthMembers.front());
-                                        if (lengthLayout != nullptr)
-                                            address->secondaryIntegerValue = lengthLayout->offset;
+                                        const ObjectFieldLayout* dataLayout =
+                                            objectLayoutModel_->fieldLayoutForMember(
+                                                *attribute.memberOrdinal);
+                                        if (lengthLayout != nullptr && dataLayout != nullptr)
+                                        {
+                                            address->hasTrailingLengthBounds = true;
+                                            address->trailingLengthRelativeOffset =
+                                                static_cast<std::int64_t>(lengthLayout->offset) -
+                                                static_cast<std::int64_t>(dataLayout->offset);
+                                        }
                                     }
                                     break;
                                 }

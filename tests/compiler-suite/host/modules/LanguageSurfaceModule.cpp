@@ -4879,6 +4879,175 @@ class Program
         }});
 }
 
+void registerTrailingStorageCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-488", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trailing", "storage", "flexible", "bounds"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F06TrailingStorage", "Exe", R"ns(
+using NativeSharp.Core;
+struct Packet
+{
+    public int Length;
+    public int Capacity;
+    #[TrailingStorage(nameof(Length), nameof(Capacity))]
+    public byte[*] Data;
+    public Packet(int length, int capacity) { Length = length; Capacity = capacity; }
+}
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        Packet p = new (alloc, trailing: 8) Packet(4, 8);
+        if (p.Length != 4) return 1;
+        if (p.Capacity != 8) return 2;
+        p.Data[0] = 8;
+        if (p.Data[0] != 8) return 3;
+        p.Data[3] = 7;
+        if (p.Data[3] != 7) return 4;
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F06TrailingStorage.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-488 trailing storage must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-488 trailing storage header + Data + extent must hold (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerTrailingStorageBoundsTrapCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-489", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trailing", "storage", "flexible", "bounds", "trap"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F06TrailingBounds", "Exe", R"ns(
+using NativeSharp.Core;
+struct Packet
+{
+    public int Length;
+    public int Capacity;
+    #[TrailingStorage(nameof(Length), nameof(Capacity))]
+    public byte[*] Data;
+    public Packet(int length, int capacity) { Length = length; Capacity = capacity; }
+}
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        Packet p = new (alloc, trailing: 8) Packet(4, 8);
+        p.Data[4] = 7;
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F06TrailingBounds.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-489 trailing bounds must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.exitCode == 132,
+                "TL-LANG-489 Data[Length] must trap (exit 132 BoundsViolation): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerTrailingStorageLengthNotCapacityCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-490", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "trailing", "storage", "flexible", "bounds", "length"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F06TrailingLengthNotCapacity", "Exe", R"ns(
+using NativeSharp.Core;
+struct Packet
+{
+    public int Length;
+    public int Capacity;
+    #[TrailingStorage(nameof(Length), nameof(Capacity))]
+    public byte[*] Data;
+    public Packet(int length, int capacity) { Length = length; Capacity = capacity; }
+}
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        Packet p = new (alloc, trailing: 8) Packet(2, 8);
+        p.Data[1] = 3;
+        if (p.Data[1] != 3) return 9;
+        p.Data[5] = 1;
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F06TrailingLengthNotCapacity.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-490 trailing length-vs-capacity must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.exitCode == 132,
+                "TL-LANG-490 Data[index>=Length] must trap even when index<Capacity (exit 132): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9684,6 +9853,9 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerScopeEscapeRejectCase(registry);
     registerScopeFieldStoreRejectCase(registry);
     registerArenaAllocatorIAllocatorCase(registry);
+    registerTrailingStorageCase(registry);
+    registerTrailingStorageBoundsTrapCase(registry);
+    registerTrailingStorageLengthNotCapacityCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

@@ -9161,11 +9161,13 @@ private:
                 // NS304-T13-F06: a flexible-array index is bounds-checked against its `Length`
                 // member (byte offset in secondaryImmediate) before the raw element address is
                 // formed. The raw tier's no-bounds contract is the default; this is the one
-                // documented exception for trailing storage.
-                if (node->secondaryImmediate != 0)
+                // documented exception for trailing storage. `hasTrailingLengthBounds` separates
+                // presence from value so a Length field at offset 0 is still honored.
+                if (node->hasTrailingLengthBounds)
                 {
-                    LLVMValueRef lengthAddress =
-                        byteOffset(base, node->secondaryImmediate, "flexible.length.addr");
+                    LLVMValueRef lengthAddress = byteOffset(
+                        base, static_cast<std::uint64_t>(node->trailingLengthRelativeOffset),
+                        "flexible.length.addr");
                     LLVMValueRef length = LLVMBuildLoad2(
                         builder_, LLVMInt32TypeInContext(context_), lengthAddress, "flexible.length");
                     LLVMValueRef lengthWide = LLVMBuildZExt(

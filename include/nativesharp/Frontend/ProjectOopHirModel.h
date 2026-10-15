@@ -600,6 +600,13 @@ struct ProjectOopHirNode final
     // T01-F05 AggregateElement descriptors under AggregateSpread use this as the source-relative
     // byte offset while integerValue remains the destination-absolute offset.
     std::uint64_t secondaryIntegerValue = 0;
+    // NS304-T13-F06: a RawElementAddress over a flexible array carries the byte offset of its
+    // `Length` member in secondaryIntegerValue; this flag separates presence from value so a
+    // Length field at offset 0 stays distinguishable from "no bounds check".
+    bool hasTrailingLengthBounds = false;
+    // NS304-T13-F06: Length's byte offset RELATIVE TO the flexible-array base address (which is
+    // the Data field, not the struct head), so it can be negative.
+    std::int64_t trailingLengthRelativeOffset = 0;
     std::uint64_t resultSuccessTag = 0;
     std::uint64_t resultErrorTag = 0;
     std::uint64_t resultReturnErrorTag = 0;

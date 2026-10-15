@@ -479,6 +479,11 @@ struct ProjectOopMirNode final
     // `lock_` field's byte offset. See ProjectOopLlvmLowerer.cpp's CoreMonitorWait case for where
     // both offsets get consumed (two GEPs off one already-lowered receiver pointer).
     std::uint64_t secondaryImmediate = 0;
+    // NS304-T13-F06: a RawElementAddress over a flexible array bounds-checks against its `Length`
+    // member (byte offset in secondaryImmediate); this flag separates presence from value.
+    bool hasTrailingLengthBounds = false;
+    // NS304-T13-F06: Length's byte offset relative to the flexible-array base (can be negative).
+    std::int64_t trailingLengthRelativeOffset = 0;
     std::uint64_t resultSuccessTag = 0;
     std::uint64_t resultErrorTag = 0;
     std::uint64_t resultReturnErrorTag = 0;

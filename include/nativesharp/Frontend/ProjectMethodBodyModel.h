@@ -1228,10 +1228,6 @@ struct MethodCoreBinding final
     // NS304-T09-F05: the CollectionBuilder core operation carries the CreateBuilder / Add /
     // ToCollection member ordinals so the HIR can emit the builder call sequence.
     std::array<std::size_t, 3> builderMemberOrdinals{};
-    // NS304-T13-F06: for a flexible-array `RawElement` index, the byte offset of the `Length`
-    // field named by `[TrailingStorage(nameof(Length), ...)]`. When present, the raw element
-    // address emits a runtime `index < Length` bounds guard.
-    std::optional<std::uint64_t> boundsLengthOffset = std::nullopt;
 
 };
 
