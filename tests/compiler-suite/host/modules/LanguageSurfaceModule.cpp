@@ -5048,6 +5048,61 @@ class Program
         }});
 }
 
+void registerPlacementRollbackCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-491", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "placement", "rollback", "throws", "constructor", "drop", "subobject"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F05PlacementRollback", "Exe", R"ns(
+using NativeSharp.Core;
+struct Field { public static int Drops; ~Field() { Drops = Drops + 1; } }
+struct S
+{
+    public owned Field a;
+    public S(int fail) throws Exception { a = new Field(); if (fail > 0) throw new Exception(); }
+}
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        try { S s1 = new S(1); } catch { }
+        BlockAllocator alloc = new BlockAllocator(1024);
+        try { S* s2 = new (alloc) S(1); } catch { }
+        byte[] buf = new byte[64];
+        S* storage = (S*)Spans.Of<byte>(buf).Data();
+        try { S* s3 = new (storage) S(1); } catch { }
+        return Field.Drops == 3 ? 0 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F05PlacementRollback.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-491 placement rollback must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-491 partial-failure rollback must drop once per object/placement/raw (Drops=3): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -9856,6 +9911,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerTrailingStorageCase(registry);
     registerTrailingStorageBoundsTrapCase(registry);
     registerTrailingStorageLengthNotCapacityCase(registry);
+    registerPlacementRollbackCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);
