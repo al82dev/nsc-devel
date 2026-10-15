@@ -325,6 +325,35 @@ namespace Suite
         emptyMetaprogrammingOracle);
 }
 
+void macroContextOracle(TestContext& context, std::size_t variant)
+{
+    const auto typed = MacroExpansionEngine().expand(
+        "#macro make() expression { 40 + 2 } int v = #expand make();");
+    if (variant == 4)
+    {
+        const auto bad = MacroExpansionEngine().expand(
+            "#macro bad() nonsense { 1 } void F() { #expand bad(); }");
+        context.expect(!bad.success && bad.error.find(
+                "macro context must be statement, expression, member, or type") != std::string::npos,
+            "an unknown macro context is rejected before the AST is published");
+        return;
+    }
+    context.expect(typed.success && typed.expansions.size() == 1 &&
+            typed.expansions[0].context == MacroExpansionContext::Expression &&
+            typed.expansions[0].macroName == "make",
+        "a macro can declare an expression context and the record carries it");
+    const auto memberContext = MacroExpansionEngine().expand(
+        "#macro field() member { public int X; } class C { #expand field(); }");
+    context.expect(memberContext.success && memberContext.expansions.size() == 1 &&
+            memberContext.expansions[0].context == MacroExpansionContext::Member,
+        "a member-context macro records the member kind");
+    const auto statement = MacroExpansionEngine().expand(
+        "#macro log() statement { int t = 1; } void F() { #expand log(); }");
+    context.expect(statement.success && statement.expansions.size() == 1 &&
+            statement.expansions[0].context == MacroExpansionContext::Statement,
+        "an omitted context defaults to statement");
+}
+
 void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
 {
     addMatrix(registry, 46, "unit", escapeOriginOracle);
@@ -338,5 +367,6 @@ void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
     addMatrix(registry, 54, "component", opaqueResultOracle);
     addMatrix(registry, 55, "unit", inlinePolicyOracle);
     addMatrix(registry, 64, "component", typedDescriptorsOracle);
+    addMatrix(registry, 65, "unit", macroContextOracle);
 }
 }

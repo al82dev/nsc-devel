@@ -11,6 +11,7 @@ struct Definition final
 {
     std::vector<std::string> parameters;
     std::string body;
+    MacroExpansionContext context = MacroExpansionContext::Statement;
 };
 
 bool identifierStart(char value) noexcept
@@ -189,13 +190,27 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
             std::string_view(result.source).substr(cursor + 1, parametersEnd - cursor - 1), valid);
         cursor = parametersEnd + 1;
         skipSpace(result.source, cursor);
+        MacroExpansionContext context = MacroExpansionContext::Statement;
+        if (cursor < result.source.size() && result.source[cursor] != '{')
+        {
+            std::string keyword;
+            if (!readIdentifier(result.source, cursor, keyword))
+            { result.error = "macro context requires an identifier"; return result; }
+            if (keyword == "statement") context = MacroExpansionContext::Statement;
+            else if (keyword == "expression") context = MacroExpansionContext::Expression;
+            else if (keyword == "member") context = MacroExpansionContext::Member;
+            else if (keyword == "type") context = MacroExpansionContext::Type;
+            else
+            { result.error = "macro context must be statement, expression, member, or type"; return result; }
+        }
+        skipSpace(result.source, cursor);
         if (cursor >= result.source.size() || result.source[cursor] != '{')
         { result.error = "macro definition requires a token-tree body"; return result; }
         const std::size_t bodyEnd = matching(result.source, cursor, '{', '}');
         if (bodyEnd == std::string::npos)
         { result.error = "unterminated macro body"; return result; }
         if (!definitions.emplace(name, Definition{std::move(parameters),
-                result.source.substr(cursor + 1, bodyEnd - cursor - 1)}).second)
+                result.source.substr(cursor + 1, bodyEnd - cursor - 1), context}).second)
         { result.error = "duplicate macro definition '" + name + "'"; return result; }
         for (std::size_t index = search; index <= bodyEnd; ++index)
             if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
@@ -240,7 +255,8 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
         if (!error.empty()) { result.error = error; return result; }
         const std::size_t invocationLength = end + 1 - invocation;
         result.source.replace(invocation, invocationLength, expansion);
-        result.expansions.push_back({name, invocation, invocationLength, expansion.size(), scope});
+        result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
+            scope, definition->second.context});
     }
     result.success = true;
     return result;

@@ -64,6 +64,23 @@ public class Calculator
             std::string::npos && recursive.error.find("comptime backtrace") != std::string::npos,
         "recursive macro expansion stops at a deterministic bound");
 
+    const auto typed = MacroExpansionEngine().expand(
+        "#macro make() expression { 40 + 2 } int v = #expand make();");
+    tests.expect(typed.success && typed.expansions.size() == 1 &&
+            typed.expansions[0].context == MacroExpansionContext::Expression &&
+            typed.expansions[0].macroName == "make",
+        "a macro can declare an expression context and the record carries it");
+    const auto memberContext = MacroExpansionEngine().expand(
+        "#macro field() member { public int X; } class C { #expand field(); }");
+    tests.expect(memberContext.success && memberContext.expansions.size() == 1 &&
+            memberContext.expansions[0].context == MacroExpansionContext::Member,
+        "a member-context macro records the member kind");
+    const auto bad = MacroExpansionEngine().expand(
+        "#macro bad() nonsense { 1 } void F() { #expand bad(); }");
+    tests.expect(!bad.success && bad.error.find("macro context must be statement, expression, member, or type") !=
+            std::string::npos,
+        "an unknown macro context is rejected before the AST is published");
+
     std::filesystem::remove_all(root, ignored);
     return tests.result();
 }
