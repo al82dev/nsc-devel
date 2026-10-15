@@ -68,5 +68,29 @@ int main()
         "strong numeric newtypes are zero-overhead but never dimensionally magical");
     tests.expect(integerSemanticsSelfCheck(),
         "integer policies pass an independent exhaustive int8 reference check");
+
+    const auto zeroPointOne = parseDecimalLiteral("0.1", error);
+    tests.expect(zeroPointOne.has_value() && error.empty() &&
+            zeroPointOne->coefficientLow == 1 && zeroPointOne->coefficientHigh == 0 &&
+            zeroPointOne->scale == 1 && !zeroPointOne->negative,
+        "0.1 parses to the exact coefficient 1 / scale 1 without binary floating point");
+    const auto onePointFive = parseDecimalLiteral("1.5m", error);
+    tests.expect(onePointFive.has_value() && onePointFive->coefficientLow == 15 &&
+            onePointFive->scale == 1,
+        "1.5m parses to coefficient 15 / scale 1 and accepts the suffix");
+    const auto hundred = parseDecimalLiteral("1e2", error);
+    tests.expect(hundred.has_value() && hundred->coefficientLow == 100 && hundred->scale == 0,
+        "1e2 normalizes the exponent into the coefficient");
+    const auto negative = parseDecimalLiteral("-0.001", error);
+    tests.expect(negative.has_value() && negative->coefficientLow == 1 &&
+            negative->scale == 3 && negative->negative,
+        "-0.001 preserves the sign and the fractional scale");
+    const auto bigScale = parseDecimalLiteral("0.00000000000000000000000000001", error);
+    tests.expect(!bigScale.has_value() && error.find("scale exceeds 28") != std::string::npos,
+        "a scale above 28 is rejected with a causal error");
+    const auto tooBig = parseDecimalLiteral(
+        "12345678901234567890123456789012345678901234567890", error);
+    tests.expect(!tooBig.has_value() && error.find("coefficient exceeds 96 bits") != std::string::npos,
+        "a coefficient above 96 bits is rejected with a causal error");
     return tests.result();
 }

@@ -147,6 +147,109 @@ std::optional<std::uint64_t> decimal128StableHash(Decimal128Bits value) noexcept
     return hash;
 }
 
+std::optional<DecimalLiteralValue> parseDecimalLiteral(
+    std::string_view spelling,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (spelling.empty())
+    {
+        error = "decimal literal must not be empty";
+        return std::nullopt;
+    }
+    std::size_t cursor = 0;
+    bool negative = false;
+    if (spelling[cursor] == '-' || spelling[cursor] == '+')
+    {
+        negative = spelling[cursor] == '-';
+        ++cursor;
+    }
+    std::string digits;
+    int fractionalDigits = 0;
+    bool sawDigit = false;
+    bool sawDot = false;
+    for (; cursor < spelling.size(); ++cursor)
+    {
+        const char value = spelling[cursor];
+        if (value == '_') continue;
+        if (value == '.')
+        {
+            if (sawDot) { error = "decimal literal has more than one decimal point"; return std::nullopt; }
+            sawDot = true;
+            continue;
+        }
+        if (value == 'e' || value == 'E' || value == 'm' || value == 'M') break;
+        if (value < '0' || value > '9')
+        { error = "decimal literal has an invalid digit"; return std::nullopt; }
+        digits.push_back(value);
+        sawDigit = true;
+        if (sawDot) ++fractionalDigits;
+    }
+    if (!sawDigit)
+    { error = "decimal literal requires at least one digit"; return std::nullopt; }
+    int exponent = 0;
+    if (cursor < spelling.size() && (spelling[cursor] == 'e' || spelling[cursor] == 'E'))
+    {
+        ++cursor;
+        bool exponentNegative = false;
+        if (cursor < spelling.size() && (spelling[cursor] == '-' || spelling[cursor] == '+'))
+        {
+            exponentNegative = spelling[cursor] == '-';
+            ++cursor;
+        }
+        if (cursor >= spelling.size())
+        { error = "decimal exponent requires digits"; return std::nullopt; }
+        for (; cursor < spelling.size(); ++cursor)
+        {
+            const char value = spelling[cursor];
+            if (value == '_') continue;
+            if (value < '0' || value > '9')
+            { error = "decimal exponent has an invalid digit"; return std::nullopt; }
+            if (exponent > 1000)
+            { error = "decimal exponent is out of range"; return std::nullopt; }
+            exponent = exponent * 10 + (value - '0');
+        }
+        if (exponentNegative) exponent = -exponent;
+    }
+    if (cursor < spelling.size() && (spelling[cursor] == 'm' || spelling[cursor] == 'M')) ++cursor;
+    if (cursor != spelling.size())
+    { error = "decimal literal has trailing characters"; return std::nullopt; }
+
+    const std::size_t first = digits.find_first_not_of('0');
+    if (first == std::string::npos)
+    {
+        return DecimalLiteralValue{0, 0, 0, false};
+    }
+    digits = digits.substr(first);
+    DecimalCoefficient coefficient = 0;
+    for (const char value : digits)
+    {
+        coefficient = coefficient * 10U + static_cast<unsigned>(value - '0');
+        if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U))
+        { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
+    }
+    int scale = fractionalDigits - exponent;
+    if (scale < 0)
+    {
+        for (int index = 0; index < -scale; ++index)
+        {
+            if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U) / 10U)
+            { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
+            coefficient *= 10U;
+        }
+        scale = 0;
+    }
+    if (scale > static_cast<int>(DecimalMaximumScale))
+    { error = "decimal scale exceeds 28"; return std::nullopt; }
+
+    DecimalLiteralValue result;
+    result.coefficientLow = static_cast<std::uint64_t>(coefficient);
+    result.coefficientHigh = static_cast<std::uint32_t>(coefficient >> 64U);
+    result.scale = static_cast<unsigned>(scale);
+    result.negative = negative;
+    return result;
+}
+
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept
 {
     if (type.bits == 0 || type.bits > 64) return false;

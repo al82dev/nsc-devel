@@ -275,6 +275,36 @@ void registerSignedResultCase(TestRegistry& registry)
 }
 }
 
+void registerDecimalLiteralParseCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-503", [](TestContext& context) {
+        std::string error;
+        const auto zeroPointOne = parseDecimalLiteral("0.1", error);
+        context.expect(zeroPointOne.has_value() && error.empty() &&
+                zeroPointOne->coefficientLow == 1 && zeroPointOne->coefficientHigh == 0 &&
+                zeroPointOne->scale == 1 && !zeroPointOne->negative,
+            "TL-LANG-503 0.1 must parse to exact coefficient 1 / scale 1 without binary floating point");
+        const auto onePointFive = parseDecimalLiteral("1.5m", error);
+        context.expect(onePointFive.has_value() && onePointFive->coefficientLow == 15 &&
+                onePointFive->scale == 1,
+            "TL-LANG-503 1.5m must parse to coefficient 15 / scale 1 and accept the suffix");
+        const auto hundred = parseDecimalLiteral("1e2", error);
+        context.expect(hundred.has_value() && hundred->coefficientLow == 100 && hundred->scale == 0,
+            "TL-LANG-503 1e2 must normalize the exponent into the coefficient");
+        const auto negative = parseDecimalLiteral("-0.001", error);
+        context.expect(negative.has_value() && negative->coefficientLow == 1 &&
+                negative->scale == 3 && negative->negative,
+            "TL-LANG-503 -0.001 must preserve the sign and the fractional scale");
+        const auto bigScale = parseDecimalLiteral("0.00000000000000000000000000001", error);
+        context.expect(!bigScale.has_value() && error.find("scale exceeds 28") != std::string::npos,
+            "TL-LANG-503 a scale above 28 must be rejected with a causal error");
+        const auto tooBig = parseDecimalLiteral(
+            "12345678901234567890123456789012345678901234567890", error);
+        context.expect(!tooBig.has_value() && error.find("coefficient exceeds 96 bits") != std::string::npos,
+            "TL-LANG-503 a coefficient above 96 bits must be rejected with a causal error");
+    });
+}
+
 void registerLanguageNumericCoreModule(TestRegistry& registry)
 {
     registerLiteralFitsCase(registry);
@@ -289,5 +319,6 @@ void registerLanguageNumericCoreModule(TestRegistry& registry)
     registerDivisionCase(registry);
     registerShiftCase(registry);
     registerSignedResultCase(registry);
+    registerDecimalLiteralParseCase(registry);
 }
 }
