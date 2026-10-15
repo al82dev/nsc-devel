@@ -312,10 +312,14 @@ void collectTypeSeedsInScope(
         const bool traitType = tokens[index].kind() == TokenKind::Identifier &&
             tokens[index].lexeme() == "trait" && index + 1U < tokens.size() &&
             tokens[index + 1U].kind() == TokenKind::Identifier;
+        const bool variantType = tokens[index].kind() == TokenKind::Identifier &&
+            tokens[index].lexeme() == "variant" && index + 1U < tokens.size() &&
+            tokens[index + 1U].kind() == TokenKind::Identifier;
         if (tokens[index].kind() == TokenKind::KwStruct ||
             (tokens[index].kind() == TokenKind::Identifier &&
              tokens[index].lexeme() == "union") ||
             traitType ||
+            variantType ||
             opaqueType ||
             tokens[index].kind() == TokenKind::KwClass ||
             tokens[index].kind() == TokenKind::KwInterface ||
