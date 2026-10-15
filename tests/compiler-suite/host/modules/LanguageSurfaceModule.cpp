@@ -6030,6 +6030,61 @@ class Program
         }});
 }
 
+void registerAllocatorsGeneratorsContainersNoheapCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-517", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "generator", "container", "noheap", "stackalloc"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T17F06AllocatorsGenerators", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        yield return n;
+    }
+    public static int Main()
+    {
+        BlockAllocator alloc = new BlockAllocator(1024);
+        A a = new (alloc) A(42);
+        int* stack = stackalloc int[2];
+        stack[0] = a.X;
+        int[] container = new int[] { stack[0] };
+        AsyncIterator<int, int> it = Gen(container[0]);
+        bool h = await it.MoveNextAsync();
+        return h ? 42 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T17F06AllocatorsGenerators.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-517 the allocators+generators+containers+noheap fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-517 allocator + stackalloc + container + generator must combine (exit 42)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10790,6 +10845,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAsyncOwnershipErrorCancelCase(registry);
     registerPatternsGenericsMoveOnlySliceCase(registry);
     registerExtensionsPartialComptimeCase(registry);
+    registerAllocatorsGeneratorsContainersNoheapCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
