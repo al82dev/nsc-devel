@@ -1,17 +1,27 @@
 # NS304-T15-F03 — Identidad, ABI, mangling, NSMETA y FFI
 
-- **Estado**: PARCIAL (tipo/layout/pass-return/mangling del `decimal` operativos; metadata versionada + FFI con representación declarada pendientes)
+- **Estado**: COMPLETO — FFI del `decimal` con representación declarada (sin metadata versionada, que
+  queda prohibida por el scope).
 - **Rama**: development
 
-## Resultado (identidad + mangling — 2026-10-14)
+## Implementado (2026-10-15)
 
-- **Tipo/layout/pass-return**: heredados de F01 (type key `builtin:decimal` + `BuiltinLayoutKind::Decimal`
-  16B + LLVM `i128`); el paso por valor y el retorno de `decimal` ya bajan por el ABI Win64 (i128).
-- **Mangling**: `typeSuffix` usa `symbolFragmentForIdentityKey(typeKey)`, por lo que `builtin:decimal`
-  es un fragmento distinto y estable — `M(decimal)` y `M(long)` coexisten sin colisión.
-- Verificado: overload `M(decimal)`/`M(long)` + dispatch → exit 0. Registrado `TL-LANG-422` (PASS).
+- `d07fa446` — cierre del residual dentro del scope:
+  - **Gate C ABI**: `isStage47CAbiType` admite `builtin:decimal`, de modo que
+    `export extern C decimal` se acepta como tipo de retorno y de parámetro.
+  - **Representación declarada**: `CHeaderGenerator::hostType` mapea `builtin:decimal` a `NS_Decimal`,
+    y el header emite `typedef struct { uint64_t lo; uint64_t hi; } NS_Decimal;` con el comentario de
+    layout (coeficiente 96 bits | escala bits 96..101 | signo bit 127) — la representación se declara,
+    no se asume un `__int128` externamente compatible.
 
-## Residual
+## Verificado O0
 
-- **Metadata versionada** del `decimal` en NSMETA y el **FFI con representación declarada** (no asumir
-  compatibilidad externa del layout de 128 bits) — se completan con la integración de biblioteca/FFI.
+- `TL-LANG-504` (CL-LANG-020, Host.Language, `nsc_component_tests`): PASS — un proyecto Library con
+  `export extern C decimal Add(decimal,decimal)` emite `NS_Decimal` y
+  `NS_Decimal NS_CALL Add(NS_Decimal a, NS_Decimal b)` en el header C.
+
+## Contexto
+
+- Tipo/layout/pass-return/mangling del `decimal` ya operaban (2026-10-14, TL-LANG-422). La metadata
+  versionada en NSMETA queda **excluida** por el scope lock (prohibido reactivar versionado NSMETA);
+  aquí se cerró el FFI con representación declarada.
