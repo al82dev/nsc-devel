@@ -9,7 +9,7 @@ namespace NativeSharp.Core
     // de `Error` es el motivo `AllocationFailure`.
     public variant Result<T, E>
     {
-        Ok(T),
+        Ok(owned T),
         Error(E)
     }
 }
