@@ -8215,12 +8215,36 @@ private:
                 LLVMPositionBuilderAtEnd(builder_, cancelledBlock);
                 // NS304-T07-F05: a cooperative cancellation runs the active finally/defer once
                 // before parking the iterator, exactly like the terminal return.
+                // NS304-T17-F09: emitOneStructuredCleanup mutates the SHARED lowerer state
+                // (activeCleanupRegions_ resize, and a finally body may touch funcletStack_).
+                // The cancelled path is a separate LLVM branch: the entry/resume paths follow
+                // below and the sibling statements after this yield are lowered next, so that
+                // mutation must not leak into them. Snapshot and restore, exactly like
+                // lowerStructuredExit. Without this, a second (conditional) yield inside the
+                // same try/finally found its cleanup regions already popped by the first
+                // yield's cancelled branch and failed with "Stage 45.10 structured exit
+                // references an inactive cleanup region".
+                const std::vector<std::size_t> savedCancelledActive = activeCleanupRegions_;
+                const std::vector<FuncletContext> savedCancelledFunclets = funcletStack_;
+                const auto restoreCancelledState = [&]()
+                {
+                    activeCleanupRegions_ = savedCancelledActive;
+                    funcletStack_ = savedCancelledFunclets;
+                };
                 for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0; --index)
                 {
                     if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error))
+                    {
+                        restoreCancelledState();
                         return false;
-                    if (terminated()) return true;
+                    }
+                    if (terminated())
+                    {
+                        restoreCancelledState();
+                        return true;
+                    }
                 }
+                restoreCancelledState();
                 LLVMBuildStore(
                     builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
                     byteOffset(future, 16, "ayield.cancelled.result"));
