@@ -6116,6 +6116,48 @@ class Program
         }});
 }
 
+void registerTypedDeriveFixtureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-519", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "derive", "record", "equality", "hash", "print", "clone", "no-reflection"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T14F08TypedDerive", "Exe", R"ns(
+public record struct Pair derive(Equality, Hash, Print, Clone)
+{
+    public int X;
+    public int Y;
+}
+class Program
+{
+    public static int Main()
+    {
+        Pair left = { 20, 22 };
+        Pair right = left.Clone();
+        if (left != right) return 1;
+        if (!left.Equals(right)) return 2;
+        if (left.GetHashCode() != right.GetHashCode()) return 3;
+        if (left.ToString() != "Pair") return 4;
+        return 42;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T14F08TypedDerive.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-519 the typed derive fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-519 derived Equality/Hash/Print/Clone members must work without reflection (exit 42)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10878,6 +10920,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerExtensionsPartialComptimeCase(registry);
     registerAllocatorsGeneratorsContainersNoheapCase(registry);
     registerHiddenCostAuditCase(registry);
+    registerTypedDeriveFixtureCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
