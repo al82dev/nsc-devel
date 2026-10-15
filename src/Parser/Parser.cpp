@@ -14859,9 +14859,12 @@ ast::AstNode* Parser::parseUnaryExpression()
             ast::AstNode* storage = parseExpression();
             // NS304-T13-F06: `new (allocator, trailing: capacity) T(...)` — the contextual
             // `trailing:` capacity is the flexible-array extent, not a constructor argument.
+            // NS304-T13-F08: `new (allocator, failure: panic|null|result|throws) T(...)` — the
+            // explicit allocation-failure profile.
             bool hasTrailing = false;
             ast::AstNode* trailingCapacity = nullptr;
-            if (consumeIf(TokenKind::Comma))
+            std::string failureProfile;
+            while (consumeIf(TokenKind::Comma))
             {
                 if (atContextualKeyword("trailing") && peek().kind() == TokenKind::Colon)
                 {
@@ -14869,11 +14872,26 @@ ast::AstNode* Parser::parseUnaryExpression()
                     consume();
                     trailingCapacity = parseExpression();
                     hasTrailing = trailingCapacity != nullptr;
+                    continue;
                 }
-                else
+                if (atContextualKeyword("failure") && peek().kind() == TokenKind::Colon)
                 {
-                    expect(TokenKind::Colon, "':' after 'trailing'");
+                    consume();
+                    consume();
+                    if (atContextualKeyword("panic") || atContextualKeyword("result") ||
+                        atContextualKeyword("throws") || current().kind() == TokenKind::KwNull)
+                    {
+                        failureProfile = current().lexeme();
+                        consume();
+                    }
+                    else
+                    {
+                        expect(TokenKind::Colon, "'panic', 'null', 'result' or 'throws' after 'failure:'");
+                    }
+                    continue;
                 }
+                expect(TokenKind::Colon, "':' after placement option");
+                break;
             }
             expect(TokenKind::RightParen, "')' after placement storage");
             ast::TypeSyntax* type = parseAllocationElementType();
@@ -14885,6 +14903,10 @@ ast::AstNode* Parser::parseUnaryExpression()
             if (hasTrailing)
             {
                 creation->setAuxiliaryText("trailing");
+            }
+            if (!failureProfile.empty())
+            {
+                creation->setAllocatorFailureProfile(failureProfile);
             }
             if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
             {

@@ -162,6 +162,8 @@ struct ObjectConstructionBinding final
     std::optional<std::size_t> allocatorAllocateMemberOrdinal;
     // NS304-T13-F07: the allocator's Deallocate member (provenance pair of Allocate).
     std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
+    // NS304-T13-F08: the explicit failure profile (None when `failure:` is absent).
+    ProjectAllocatorFailureProfile allocatorFailureProfile = ProjectAllocatorFailureProfile::None;
     std::string targetTypeKey;
     std::vector<std::size_t> explicitConstructorMemberOrdinals;
     std::vector<ConstructorCandidateBinding> evaluatedCandidates;

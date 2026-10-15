@@ -13180,6 +13180,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             site.allocatorDeallocateMemberOrdinal = memberOrdinal;
                             break;
                         }
+                        // NS304-T13-F08: the explicit allocation-failure profile.
+                        const std::string& profile = expression->allocatorFailureProfile();
+                        if (profile == "null")
+                            site.allocatorFailureProfile = ProjectAllocatorFailureProfile::Null;
+                        else if (profile == "result")
+                            site.allocatorFailureProfile = ProjectAllocatorFailureProfile::Result;
+                        else if (profile == "throws")
+                            site.allocatorFailureProfile = ProjectAllocatorFailureProfile::Throws;
+                        else if (profile == "panic")
+                            site.allocatorFailureProfile = ProjectAllocatorFailureProfile::Panic;
                     }
                 }
                 if (storageValid && site.kind != ProjectConstructionSiteKind::Allocator)

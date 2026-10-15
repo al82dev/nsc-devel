@@ -132,6 +132,13 @@ public:
     const std::string& argumentName() const noexcept;
     void setArgumentName(std::string name);
 
+    // NS304-T13-F08. Present only on a PlacementConstructionExpression that spells
+    // `failure: panic|null|result|throws`. Stores the profile name ("panic"/"null"/"result"/
+    // "throws"); empty means no explicit profile. Independent from auxiliaryText ("trailing")
+    // so a construction can carry both a trailing extent and a failure profile.
+    const std::string& allocatorFailureProfile() const noexcept;
+    void setAllocatorFailureProfile(std::string profile);
+
     lexer::TokenKind tokenKind() const noexcept;
     void setTokenKind(lexer::TokenKind kind) noexcept;
 
@@ -218,6 +225,7 @@ private:
     std::string text_;
     std::string auxiliaryText_;
     std::string argumentName_;
+    std::string allocatorFailureProfile_;
     lexer::TokenKind tokenKind_ = lexer::TokenKind::Invalid;
     std::vector<lexer::TokenKind> modifiers_;
     TypeSyntax* typeSyntax_ = nullptr;

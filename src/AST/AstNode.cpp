@@ -20,6 +20,8 @@ const std::string& AstNode::auxiliaryText() const noexcept { return auxiliaryTex
 void AstNode::setAuxiliaryText(std::string text) { auxiliaryText_ = std::move(text); }
 const std::string& AstNode::argumentName() const noexcept { return argumentName_; }
 void AstNode::setArgumentName(std::string name) { argumentName_ = std::move(name); }
+const std::string& AstNode::allocatorFailureProfile() const noexcept { return allocatorFailureProfile_; }
+void AstNode::setAllocatorFailureProfile(std::string profile) { allocatorFailureProfile_ = std::move(profile); }
 lexer::TokenKind AstNode::tokenKind() const noexcept { return tokenKind_; }
 void AstNode::setTokenKind(lexer::TokenKind kind) noexcept { tokenKind_ = kind; }
 void AstNode::addModifier(lexer::TokenKind kind) { modifiers_.push_back(kind); }
