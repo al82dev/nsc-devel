@@ -608,6 +608,11 @@ struct LibraryMetadata final
     std::vector<LibraryMetadataPlatformImport> platformImports;
 };
 
+// NS304-T16-F01: the consolidated metadata invariants — reserved feature bits must be zero and the
+// frozen ABI contract must hold exactly. Rejects inconsistent data without bumping for documentation
+// or reusing bits.
+bool verifyLibraryMetadataInvariants(const LibraryMetadata& metadata, std::string& error) noexcept;
+
 class LibraryMetadataCodec final
 {
 public:

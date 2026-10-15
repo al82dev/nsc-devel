@@ -3621,6 +3621,16 @@ bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error
 }
 }
 
+bool verifyLibraryMetadataInvariants(const LibraryMetadata& metadata, std::string& error) noexcept
+{
+    if ((metadata.languageFeatureFlags & ~kMetadataLanguageFeatureMask) != 0U)
+    {
+        error = "NativeSharp metadata invariant: reserved language feature bits are set";
+        return false;
+    }
+    return verifyFrozenAbiContract(metadata, error);
+}
+
 bool LibraryMetadataCodec::write(
     const frontend::ProjectCompilation& compilation,
     const std::filesystem::path& destination,

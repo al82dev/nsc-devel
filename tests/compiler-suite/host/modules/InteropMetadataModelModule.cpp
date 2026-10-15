@@ -80,11 +80,30 @@ void genericCanonicalizationContract(TestContext& context, std::size_t)
 }
 }
 
+void verifyInvariantsContract(TestContext& context, std::size_t)
+{
+    auto consistent = minimalMetadata();
+    std::string error;
+    context.expect(interop::verifyLibraryMetadataInvariants(consistent, error),
+        "a consistent metadata model must pass the consolidated invariants");
+    auto reserved = minimalMetadata();
+    reserved.languageFeatureFlags = 0x80000000U;
+    context.expect(!interop::verifyLibraryMetadataInvariants(reserved, error) &&
+            error.find("reserved language feature bits") != std::string::npos,
+        "reserved language feature bits must be rejected without reusing bits");
+    auto versionMismatch = minimalMetadata();
+    versionMismatch.manglingAbiVersion = 999;
+    context.expect(!interop::verifyLibraryMetadataInvariants(versionMismatch, error) &&
+            error.find("mangling ABI") != std::string::npos,
+        "an ABI version mismatch must be rejected exactly");
+}
+
 void registerInteropMetadataModelModule(TestRegistry& registry)
 {
     addInteropContract(registry, 25, "unit", enumMappingContract);
     addInteropContract(registry, 26, "unit", defaultValueContract);
     addInteropContract(registry, 27, "unit", flagsSignatureContract);
     addInteropContract(registry, 28, "integration", genericCanonicalizationContract);
+    addInteropContract(registry, 49, "unit", verifyInvariantsContract);
 }
 }
