@@ -9704,9 +9704,26 @@ private:
                             LLVMValueRef self = LLVMBuildLoad2(
                                 builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                                 "param.self");
-                            LLVMValueRef frame = LLVMBuildLoad2(
-                                builder_, LLVMPointerTypeInContext(context_, 0),
-                                byteOffset(self, 8, "param.frame.addr"), "param.frame");
+                            // NS304-T17-F09: the async-generator poll's `self` is the demand future.
+                            // Its frame (offset 8) is the ITERATOR, and the iterator's frame (offset 8)
+                            // is the generator frame that holds the captured parameters — one extra
+                            // dereference relative to $moveNext/$drop, whose `self` IS the iterator.
+                            LLVMValueRef frame = nullptr;
+                            if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+                            {
+                                LLVMValueRef iterator = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(self, 8, "param.iter.addr"), "param.iter");
+                                frame = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(iterator, 8, "param.frame.addr"), "param.frame");
+                            }
+                            else
+                            {
+                                frame = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(self, 8, "param.frame.addr"), "param.frame");
+                            }
                             LLVMTypeRef capturedType = llvmType(typeKey, error);
                             if (capturedType == nullptr) return nullptr;
                             LLVMValueRef frameValue = LLVMBuildLoad2(

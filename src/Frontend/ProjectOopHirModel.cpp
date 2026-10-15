@@ -4266,6 +4266,11 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     poll->parameterTypeKeys.push_back(futureKey + "*");
     poll->parameterPassKinds.push_back(ParameterPassKind::Value);
     poll->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    // NS304-T17-F09: the async-generator poll captures the original callable's parameters into the
+    // frame (stored by the constructor), exactly like splitAsyncFunction does for an async method.
+    // Without this the poll's asyncFrameParameters stays empty and a `ParameterValue` (e.g. `n` in
+    // `if (n < 0) yield return -1`) falls back to the poll's `self` future pointer — a garbage read.
+    poll->generatorParameterTypeKeys = function.parameterTypeKeys;
     poll->body = rewriteAsyncPollReturns(
         std::move(function.body), 0, "builtin:bool", futureKey, error);
     if (poll->body == nullptr) return {};
