@@ -5422,6 +5422,60 @@ class Program
         }});
 }
 
+void registerAllocationFailureResultCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-498", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "failure", "result"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F08FailureResult", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class NullAllocator : IAllocator
+{
+    public byte* Allocate(int bytes) { return null; }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator ba = new BlockAllocator(1024);
+        Result<A, AllocationFailure> ok = new (ba, failure: result) A(7);
+        NullAllocator na = new NullAllocator();
+        Result<A, AllocationFailure> fail = new (na, failure: result) A(9);
+        return (ok.IsOk() && fail.IsError()) ? 0 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F08FailureResult.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-498 failure:result must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-498 failure:result must wrap Ok on success and Error on null: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10237,6 +10291,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAllocationFailureNullCase(registry);
     registerAllocationFailureThrowsCase(registry);
     registerAllocationFailurePanicCase(registry);
+    registerAllocationFailureResultCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);

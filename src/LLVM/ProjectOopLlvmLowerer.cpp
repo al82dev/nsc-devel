@@ -5189,8 +5189,40 @@ private:
                 1,
                 "");
             LLVMValueRef freeArguments[] = {releasingObject};
+            // NS304-T13-F08: release storage through the provenance thunk, exactly like
+            // emitRaiiDestroy, so a custom allocator, the default heap and raw placement share one
+            // release path. The previous unconditional GC free corrupted pooled objects.
+            const std::string releasingTypeKey =
+                "type:" + nameLookup_.namedTypes()[table.typeOrdinal].identity.key();
+            const frontend::ProjectOopMirClassLayout* releasingLayout = classLayout(releasingTypeKey);
+            if (releasingLayout == nullptr)
+            {
+                return fail(error, "NS304-T13-F08 delete entry has no class layout for " + releasingTypeKey);
+            }
+            LLVMValueRef releasingThunkAddress = byteOffset(
+                releasingObject, releasingLayout->deallocateThunkOffset, "delete.thunk.addr");
+            LLVMValueRef releasingThunk = LLVMBuildLoad2(
+                builder_, ptr, releasingThunkAddress, "delete.thunk");
+            LLVMValueRef releasingHasThunk = LLVMBuildICmp(
+                builder_, LLVMIntNE, releasingThunk, LLVMConstNull(ptr), "delete.hasthunk");
+            LLVMBasicBlockRef releasingDeallocBlock = appendBlock("delete.dealloc");
+            LLVMBasicBlockRef releasingGcFreeBlock = appendBlock("delete.gcfree");
+            LLVMBasicBlockRef releasingDeallocDoneBlock = appendBlock("delete.dealloc.done");
+            LLVMBuildCondBr(builder_, releasingHasThunk, releasingDeallocBlock, releasingGcFreeBlock);
+            LLVMPositionBuilderAtEnd(builder_, releasingDeallocBlock);
+            LLVMValueRef releasingContextAddress = byteOffset(
+                releasingObject, releasingLayout->allocatorContextOffset, "delete.context.addr");
+            LLVMValueRef releasingContext = LLVMBuildLoad2(
+                builder_, ptr, releasingContextAddress, "delete.context");
+            LLVMValueRef releasingDeallocArgs[] = {releasingContext, releasingObject};
+            buildNoUnwindCall(
+                allocatorFreeThunkType_, releasingThunk, releasingDeallocArgs, 2, "");
+            LLVMBuildBr(builder_, releasingDeallocDoneBlock);
+            LLVMPositionBuilderAtEnd(builder_, releasingGcFreeBlock);
             buildNoUnwindCall(
                 deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+            LLVMBuildBr(builder_, releasingDeallocDoneBlock);
+            LLVMPositionBuilderAtEnd(builder_, releasingDeallocDoneBlock);
             LLVMBuildRetVoid(builder_);
         }
         currentDebugSubprogram_ = nullptr;
