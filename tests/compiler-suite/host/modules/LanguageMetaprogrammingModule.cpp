@@ -260,6 +260,25 @@ void registerGeneratedDeclarationCase(TestRegistry& registry)
     });
 }
 
+void registerGeneratedIdentityCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-501", [](TestContext& context) {
+        context.expect(generatedMemberIdentity("Demo.Pair", "Clone") == "Demo.Pair::Clone",
+            "TL-LANG-501 a generated member must unify to the source fully-qualified identity form");
+        context.expect(sameGeneratedIdentity(
+                generatedMemberIdentity("Demo.Pair", "Clone"),
+                generatedMemberIdentity("Demo.Pair", "Clone")),
+            "TL-LANG-501 identical generated identities must compare equal");
+        context.expect(!sameGeneratedIdentity("Demo.Pair::Clone", "Demo.Pair::ToString"),
+            "TL-LANG-501 distinct generated identities must not compare equal");
+        context.expect(generatedMemberIdentity("Demo.Pair", "Clone") ==
+                generatedMemberIdentity("Demo.Pair", "Clone"),
+            "TL-LANG-501 generated identity is deterministic for cycle resolution");
+        context.expect(generatedMemberIdentity("", "") == "::",
+            "TL-LANG-501 empty enclosing and member identities retain the exact separator form");
+    });
+}
+
 void registerLanguageMetaprogrammingModule(TestRegistry& registry)
 {
     registerVisibleMembersCase(registry);
@@ -273,5 +292,6 @@ void registerLanguageMetaprogrammingModule(TestRegistry& registry)
     registerDiagnosticCodeCase(registry);
     registerComptimeBudgetCase(registry);
     registerGeneratedDeclarationCase(registry);
+    registerGeneratedIdentityCase(registry);
 }
 }

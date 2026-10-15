@@ -72,5 +72,11 @@ int main()
     const std::vector<HygienicName> existing = {{"Cache", 3}, {"Other", 3}};
     tests.expect(builder.wouldCollide(existing, field) && !builder.wouldCollide(existing, helper),
         "generated declarations collide with an existing same-scope binding only when spelled identically");
+
+    tests.expect(generatedMemberIdentity("Demo.Pair", "Clone") == "Demo.Pair::Clone" &&
+            sameGeneratedIdentity(generatedMemberIdentity("Demo.Pair", "Clone"),
+                generatedMemberIdentity("Demo.Pair", "Clone")) &&
+            !sameGeneratedIdentity("Demo.Pair::Clone", "Demo.Pair::ToString"),
+        "generated members unify to a deterministic fully-qualified identity for partial/extension merge");
     return tests.result();
 }

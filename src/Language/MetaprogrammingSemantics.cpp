@@ -196,4 +196,16 @@ bool MetaprogrammingAstBuilder::wouldCollide(
         return sameBinding(other, declaration.name);
     });
 }
+
+std::string generatedMemberIdentity(
+    std::string_view enclosingTypeIdentity,
+    std::string_view memberName)
+{
+    return std::string(enclosingTypeIdentity) + "::" + std::string(memberName);
+}
+
+bool sameGeneratedIdentity(std::string_view left, std::string_view right) noexcept
+{
+    return left == right;
+}
 }
