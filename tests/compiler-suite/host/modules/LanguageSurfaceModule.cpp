@@ -5910,6 +5910,47 @@ class Program
         }});
 }
 
+void registerAsyncOwnershipErrorCancelCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-514", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "ownership", "errors", "cancellation", "finally"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T17F03AsyncCancel", "Exe", R"ns(
+class Program
+{
+    public static int Log;
+    public static AsyncIterator<int, int> Gen()
+    {
+        try { yield return 1; }
+        finally { Log += 1; }
+    }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        it.Cancel();
+        bool h2 = await it.MoveNextAsync();
+        return !h2 && Log == 1 ? 7 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T17F03AsyncCancel.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-514 the async+ownership+error+cancellation fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 7,
+                "TL-LANG-514 cancellation must run the owned finally cleanup once and return false (exit 7)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10667,6 +10708,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalTokenParityCase(registry);
     registerCSharp14MatrixCase(registry);
     registerBeefVariantCase(registry);
+    registerAsyncOwnershipErrorCancelCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
