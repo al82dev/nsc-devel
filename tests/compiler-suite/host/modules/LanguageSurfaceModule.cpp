@@ -5736,6 +5736,58 @@ class Program
         }});
 }
 
+void registerCrossModuleBorrowCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-509", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "ownership", "borrow", "owned", "cross-module", "dll", "drop"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path producerProject = products.writeProject(
+                "T16F04BorrowProducer", "SharedLibrary", R"ns(
+public class Product { public int Value; public Product(int value) { Value = value; } }
+public class ProductFactory
+{
+    public static owned Product Make(int value) { return new Product(value); }
+    public static int Read(in Product product) { return product.Value; }
+}
+)ns");
+            const std::filesystem::path producerRuntime =
+                products.directory() / "T16F04BorrowProducer.dll";
+            const external_program_support::Result producer = emitT01Product(
+                L"--emit-project-oop-dll", producerProject, producerRuntime,
+                products.directory());
+            context.expect(producer.started && producer.exitCode == 0 && producer.error.empty(),
+                "TL-LANG-509 the borrow DLL producer must compile: " +
+                    producer.error + producer.output);
+            if (!producer.started || producer.exitCode != 0) return;
+            const std::filesystem::path consumer = products.writeProject(
+                "T16F04BorrowConsumer", "Exe", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        owned Product product = ProductFactory.Make(42);
+        return ProductFactory.Read(in product) == 42 ? 0 : 1;
+    }
+}
+)ns", "<LibraryReference Include=\"T16F04BorrowProducer.lib\" "
+                "Runtime=\"T16F04BorrowProducer.dll\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T16F04BorrowConsumer.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", consumer, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-509 the borrow DLL consumer must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-509 an owned return must drop and an in borrow must read cross-module (exit 0): " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10488,6 +10540,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalFfiCase(registry);
     registerDecimalRoundingCase(registry);
     registerProducerConsumerDecimalCase(registry);
+    registerCrossModuleBorrowCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
