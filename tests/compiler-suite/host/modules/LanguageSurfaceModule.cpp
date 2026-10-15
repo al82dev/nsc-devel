@@ -5877,6 +5877,39 @@ class Program
         }});
 }
 
+void registerBeefVariantCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-513", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "beef", "variant", "tag", "payload", "fixture", "conformance"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T17F02BeefVariant", "Exe", R"ns(
+public variant Value { Num(int), Text(int) }
+class Program
+{
+    public static int Main()
+    {
+        Value v = Value.Num(42);
+        return match (v) { Num(n) => n, Text(t) => t };
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T17F02BeefVariant.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-513 the Beef variant fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-513 the Beef non-allocating variant maps to a productive NativeSharp tagged variant (exit 42)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10633,6 +10666,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerDecimalDebugCase(registry);
     registerDecimalTokenParityCase(registry);
     registerCSharp14MatrixCase(registry);
+    registerBeefVariantCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
