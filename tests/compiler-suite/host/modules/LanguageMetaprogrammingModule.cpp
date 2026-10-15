@@ -279,6 +279,30 @@ void registerGeneratedIdentityCase(TestRegistry& registry)
     });
 }
 
+void registerComptimeCacheKeyCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-502", [](TestContext& context) {
+        const std::array<ComptimeCapability, 5> allCaps = {
+            ComptimeCapability::ReadDeclaredFile, ComptimeCapability::ReadDeclaredEnvironment,
+            ComptimeCapability::Clock, ComptimeCapability::Random, ComptimeCapability::Ffi};
+        const std::array<ComptimeInput, 2> inputs = {{{"A", "11"}, {"B", "22"}}};
+        const std::string key = comptimeCacheKey(allCaps, inputs, "src-digest");
+        context.expect(key == comptimeCacheKey(allCaps, inputs, "src-digest") &&
+                key.find("comptime-cache-v1|caps=0,1,") == 0 &&
+                key.find("source=src-digest") != std::string::npos,
+            "TL-LANG-502 the cache key is deterministic and excludes clock/network/global state");
+        const std::array<ComptimeCapability, 2> hermeticCaps = {
+            ComptimeCapability::ReadDeclaredFile, ComptimeCapability::ReadDeclaredEnvironment};
+        context.expect(comptimeCacheKey(hermeticCaps, inputs, "s") ==
+                comptimeCacheKey(allCaps, inputs, "s"),
+            "TL-LANG-502 non-hermetic capabilities do not change the hermetic cache key");
+        const std::array<ComptimeInput, 0> empty;
+        context.expect(comptimeCacheKey(hermeticCaps, empty, "s") ==
+                "comptime-cache-v1|caps=0,1,|comptime-input-v1||source=s",
+            "TL-LANG-502 an empty input set retains the exact versioned key form");
+    });
+}
+
 void registerLanguageMetaprogrammingModule(TestRegistry& registry)
 {
     registerVisibleMembersCase(registry);
@@ -293,5 +317,6 @@ void registerLanguageMetaprogrammingModule(TestRegistry& registry)
     registerComptimeBudgetCase(registry);
     registerGeneratedDeclarationCase(registry);
     registerGeneratedIdentityCase(registry);
+    registerComptimeCacheKeyCase(registry);
 }
 }

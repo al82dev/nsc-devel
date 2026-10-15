@@ -66,6 +66,24 @@ std::string comptimeInputIdentity(std::span<const ComptimeInput> inputs)
     return result;
 }
 
+std::string comptimeCacheKey(
+    std::span<const ComptimeCapability> capabilities,
+    std::span<const ComptimeInput> inputs,
+    std::string_view sourceDigest)
+{
+    std::vector<int> hermetic;
+    for (const ComptimeCapability capability : capabilities)
+        if (capabilityAllowedInHermeticProfile(capability))
+            hermetic.push_back(static_cast<int>(capability));
+    std::ranges::sort(hermetic);
+    hermetic.erase(std::unique(hermetic.begin(), hermetic.end()), hermetic.end());
+    std::string result = "comptime-cache-v1|caps=";
+    for (const int capability : hermetic) result += std::to_string(capability) + ",";
+    result += "|" + comptimeInputIdentity(inputs);
+    result += "|source=" + std::string(sourceDigest);
+    return result;
+}
+
 bool validPackageDiagnosticCode(std::string_view package, std::string_view code) noexcept
 {
     return !package.empty() && !code.empty() && !code.starts_with("NS3") && code.starts_with(package);

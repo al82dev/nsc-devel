@@ -78,5 +78,19 @@ int main()
                 generatedMemberIdentity("Demo.Pair", "Clone")) &&
             !sameGeneratedIdentity("Demo.Pair::Clone", "Demo.Pair::ToString"),
         "generated members unify to a deterministic fully-qualified identity for partial/extension merge");
+
+    const std::array<ComptimeCapability, 5> allCaps = {
+        ComptimeCapability::ReadDeclaredFile, ComptimeCapability::ReadDeclaredEnvironment,
+        ComptimeCapability::Clock, ComptimeCapability::Random, ComptimeCapability::Ffi};
+    const std::array<ComptimeInput, 2> inputs = {{{"A", "11"}, {"B", "22"}}};
+    const std::string key = comptimeCacheKey(allCaps, inputs, "src-digest");
+    tests.expect(key == comptimeCacheKey(allCaps, inputs, "src-digest") &&
+            key.find("comptime-cache-v1|caps=0,1,") == 0 &&
+            key.find("source=src-digest") != std::string::npos,
+        "the cache key is deterministic and excludes non-hermetic clock/network/global state");
+    const std::array<ComptimeCapability, 2> hermeticCaps = {
+        ComptimeCapability::ReadDeclaredFile, ComptimeCapability::ReadDeclaredEnvironment};
+    tests.expect(comptimeCacheKey(hermeticCaps, inputs, "s") == comptimeCacheKey(allCaps, inputs, "s"),
+        "non-hermetic capabilities do not change the hermetic cache key");
     return tests.result();
 }

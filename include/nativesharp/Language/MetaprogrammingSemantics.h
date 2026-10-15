@@ -42,6 +42,15 @@ struct ComptimeInput final { std::string identity; std::string contentDigest; };
 bool capabilityAllowedInHermeticProfile(ComptimeCapability capability) noexcept;
 std::string comptimeInputIdentity(std::span<const ComptimeInput> inputs);
 
+// NS304-T14-F06: the complete cache key of a macro evaluation — the declared capabilities, the
+// declared inputs, and the source digest, without clock/network/cwd/global state, so clean and
+// incremental builds share the identical key. Non-hermetic capabilities (Clock/Random/Ffi) are
+// excluded from the key because they are not reproducible declared inputs.
+std::string comptimeCacheKey(
+    std::span<const ComptimeCapability> capabilities,
+    std::span<const ComptimeInput> inputs,
+    std::string_view sourceDigest);
+
 bool validPackageDiagnosticCode(std::string_view package, std::string_view code) noexcept;
 
 class ComptimeBudget final
