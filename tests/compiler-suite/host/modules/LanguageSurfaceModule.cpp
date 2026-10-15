@@ -6158,6 +6158,136 @@ class Program
         }});
 }
 
+void registerAsyncOwnedFinallyConditionalYieldCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-520", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "async", "owned", "finally", "conditional-yield", "cleanup", "regression"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+
+            constexpr std::string_view logAndResource = R"ns(
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+)ns";
+            constexpr std::string_view generator = R"ns(
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) yield return -1; }
+        finally { Log.FinallyCount += 1; }
+    }
+)ns";
+
+            const auto runScenario = [&](std::string_view name, std::string_view body,
+                                        std::uint32_t expectedExit, std::string_view label)
+            {
+                const std::string source = std::string(logAndResource) +
+                    "class Program\n{\n" + std::string(generator) + std::string(body) + "\n}\n";
+                const std::filesystem::path project = products.writeProject(name, "Exe", source);
+                const std::filesystem::path executable =
+                    products.directory() / (std::string(name) + ".exe");
+                const external_program_support::Result emitted = emitT01Product(
+                    L"--emit-project-oop-exe", project, executable, products.directory());
+                context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                    std::string(label) + " must compile: " + emitted.error + emitted.output);
+                if (!emitted.started || emitted.exitCode != 0) return;
+                const auto result = external_program_support::run(
+                    executable, {}, {}, products.directory());
+                context.expect(
+                    result.started && result.error.empty() && result.exitCode == expectedExit,
+                    std::string(label) + " must exit " + std::to_string(expectedExit) + ": " +
+                        result.error + result.output + " exit=" + std::to_string(result.exitCode));
+            };
+
+            // D: natural termination, condition false and true -- values, finally once, drop once.
+            runScenario("T17F09NaturalFalse", R"ns(
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(5);
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return (h1 && !h2 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+)ns", 0, "TL-LANG-520 natural termination (condition false)");
+
+            // E: cancellation after the first suspension.
+            runScenario("T17F09CancelFirst", R"ns(
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(-5);
+        bool h1 = await it.MoveNextAsync();
+        it.Cancel();
+        bool h2 = await it.MoveNextAsync();
+        return (!h2 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+)ns", 0, "TL-LANG-520 cancellation after first suspension");
+
+            // G: a suspension alone must not advance the cleanup counters yet.
+            runScenario("T17F09SuspendNoCleanup", R"ns(
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(5);
+        bool h1 = await it.MoveNextAsync();
+        int finallyAfterYield = Log.FinallyCount;
+        int dropAfterYield = Log.DropCount;
+        return (h1 && finallyAfterYield == 0 && dropAfterYield == 0) ? 0 : 1;
+    }
+)ns", 0, "TL-LANG-520 a suspension must not run cleanup yet");
+
+            // F: exception inside the try after a resume -- finally once, drop once.
+            const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+            std::error_code copyError;
+            for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                     "NumericParsing.ns", "String.ns", "Exception.ns"})
+            {
+                copyError.clear();
+                std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                    std::filesystem::copy_options::overwrite_existing, copyError);
+            }
+            const std::filesystem::path exceptionProject = products.writeProject(
+                "T17F09Exception", "Exe", R"ns(
+using NativeSharp.Core;
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, Exception> Gen(int n) throws Exception
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) throw new Exception(); }
+        finally { Log.FinallyCount += 1; }
+    }
+    public static int Main() throws Exception
+    {
+        AsyncIterator<int, Exception> it = Gen(-5);
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return (h1 && !h2 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+            const std::filesystem::path exceptionExecutable =
+                products.directory() / "T17F09Exception.exe";
+            const external_program_support::Result exceptionEmitted = emitT01Product(
+                L"--emit-project-oop-exe", exceptionProject, exceptionExecutable,
+                products.directory());
+            context.expect(exceptionEmitted.started && exceptionEmitted.exitCode == 0 &&
+                    exceptionEmitted.error.empty(),
+                "TL-LANG-520 exception after resume must compile: " +
+                    exceptionEmitted.error + exceptionEmitted.output);
+            if (exceptionEmitted.started && exceptionEmitted.exitCode == 0)
+            {
+                const auto result = external_program_support::run(
+                    exceptionExecutable, {}, {}, products.directory());
+                context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                    "TL-LANG-520 exception after resume must run finally+drop exactly once (exit 0)");
+            }
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10916,6 +11046,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerCSharp14MatrixCase(registry);
     registerBeefVariantCase(registry);
     registerAsyncOwnershipErrorCancelCase(registry);
+    registerAsyncOwnedFinallyConditionalYieldCase(registry);
     registerPatternsGenericsMoveOnlySliceCase(registry);
     registerExtensionsPartialComptimeCase(registry);
     registerAllocatorsGeneratorsContainersNoheapCase(registry);

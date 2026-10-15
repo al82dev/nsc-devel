@@ -18,9 +18,18 @@
 | DLL | async-iterator producer/consumer sin fuentes (`TL-LANG-470`) |
 | cancellation | `Cancel()` + terminal false (`TL-LANG-514`, `TL-LANG-455`) |
 
-## Nota de defecto encontrado
+## Nota de defecto encontrado — CORREGIDO en T17-F09
 
 - La combinación `owned` local (p.ej. `byte[]`) + `try/finally` + `yield` condicional dentro del
-  generador dispara `Stage 45.10 structured exit references an inactive cleanup region`. Es un
-  defecto del lowering async (T07), fuera del alcance de T17-F03; queda anotado para la corrección en
-  T17-F09, sin stubs ni silenciarlo.
+  generador disparaba `Stage 45.10 structured exit references an inactive cleanup region`.
+- **Causa raíz**: en `ProjectOopLlvmLowerer.cpp`, la rama `cancelled` del `AsyncYieldValue` ejecutaba
+  `emitOneStructuredCleanup`, que muta el estado compartido `activeCleanupRegions_` (y, vía el cuerpo
+  del `finally`, `funcletStack_`). Esa rama es un bloque LLVM independiente: las ramas entry/resume y
+  los hermanos que le siguen (el `if` con el segundo `yield`) se bajan después, así que la mutación se
+  filtraba y el segundo yield encontraba sus regiones ya desapiladas.
+- **Corrección**: snapshot/restore de `activeCleanupRegions_` y `funcletStack_` alrededor del bucle de
+  cleanup de la rama `cancelled` (igual que `lowerStructuredExit`), sin debilitar la validación ni
+  omitir cleanup.
+- **Regresión**: `TL-LANG-520` (terminación natural, cancelación tras primer punto, suspensión sin
+  cleanup, excepción tras reanudar).
+
