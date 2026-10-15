@@ -1,6 +1,6 @@
 # NS304-T13-F08 — Failure policy
 
-- **Estado**: PARCIAL — `failure: null|panic|throws` implementados y verificados; `failure: result` bloqueado por defecto de compilador (variant genérico cross-module).
+- **Estado**: COMPLETO — `failure: null|panic|throws|result` implementados y verificados O0.
 - **Rama**: development
 
 ## SCOPE LOCK de reanudación
@@ -21,9 +21,6 @@
 - **Validación autorizada**: recompilar `nsc` y `nsc_component_tests` sólo en targets necesarios;
   ejecutar individualmente los casos focales nuevos y guards causales (TL-LANG-492/493/494 si la
   ruta cambia), siempre O0 y con temporales en `A:`. No batería, no baseline, no deploy.
-- **Riesgo técnico principal**: materialización de especializaciones genéricas implícitas y typing
-  contextual de la construction expression en el modo `result` (handover §7). No sustituir por ABI
-  interno inventado.
 - **Criterio de cierre**: contrato implementado, casos focales PASS, expediente/tracking/lista
   coherentes, commit local aislado.
 
@@ -32,34 +29,41 @@
 - `a9b9d266` WIP parser `failure:` + plumbing Sema (`ProjectAllocatorFailureProfile`).
 - `75e3b969` `failure: null` — `Allocate` null ⇒ resultado null, ctor no ejecutado.
 - `b4a2ce92` `failure: panic` — `Allocate` null ⇒ panic del proyecto (exit 142).
-- `b3cf24b1` tipos Core `AllocationFailure` (enum `OutOfMemory`) + `AllocationFailureException : Exception` + `Result<T,E>` (variant `Ok(T)/Error(E)`).
+- `b3cf24b1` tipos Core `AllocationFailure` (enum `OutOfMemory`) + `AllocationFailureException : Exception` + `Result<T,E>` (variant `Ok(owned T)/Error(E)`).
 - `5034c0e7` `failure: throws` — `Allocate` null ⇒ `AllocationFailureException` (factory `Create()`); `Throw` admitido como expresión (rama "never" del `Conditional`).
 - `e2047eab` casos focales TL-LANG-495 (null), 496 (throws), 497 (panic) — PASS O0.
+- `f12cd57b` fix del defecto de variant genérico cross-module: `collectTypeSeedsInScope` no sembraba
+  `variant` (sólo struct/class/interface/enum/union/trait/opaque type), por lo que `Result<T,E>`
+  no entraba en `knownTypeNames_` del parser consumidor.
+- `90ee0ec2` `Result.Ok` con payload `owned T` (`Ok(owned T)`), para `Result<owned T, AllocationFailure>`.
+- `12c8fa92` `failure: result` completo — síntesis de `Result<T,AllocationFailure>` en parser/fase
+  genérica, `Ok`/`Error` factories resueltos en Sema, envoltura en HIR y **fix de provenance**: el
+  entry "delete" (field 5) del descriptor hacía free GC incondicional; ahora lee la thunk de
+  provenance del header (como `emitRaiiDestroy`) y cae al free GC sólo si no hay thunk. Caso focal
+  TL-LANG-498 (result).
 
 ## Verificado O0
 
 - TL-LANG-495 (null): PASS — null + ctor no ejecutado con allocator fallido; construye normal con válido.
 - TL-LANG-496 (throws): PASS — `AllocationFailureException` capturada.
 - TL-LANG-497 (panic): PASS — panic exit 142.
+- TL-LANG-498 (result): PASS — `Ok` con allocator válido, `Error` con allocator null.
 - Guard TL-LANG-492 (T13-F07 drop normal): PASS.
 
-## Bloqueo de `failure: result`
+## Resolución del bloqueo de `failure: result`
 
-El contrato requiere `Result<owned T, AllocationFailure>` como **variant genérica pública en Core**.
-Verificado que el compilador **no resuelve un variant genérico desde otro módulo**:
+El bloqueo previo tenía dos causas, ambas resueltas:
 
-- `Optional<int>` (struct genérico de Core, 1 param) → resuelve cross-module.
-- `KeyValuePair<TKey,TValue>` (struct genérico de Core, 2 params) → resuelve cross-module.
-- `Result<T,E>` (variant genérico de Core) → error de parse `expected expression` en el consumidor
-  (`Result<int,int>` no se reconoce como tipo). El variant genérico **local** sí funciona (tests
-  unitarios); el defecto es el cruce de módulo.
-
-Causa raíz apuntada: el nombre del variant genérico no entra en el conjunto de nombres de tipo que el
-parser usa para desambiguar `T<...> var` (declaración) frente a una llamada genérica (expresión)
-(`Parser::knownTypeNames_` alimentado desde NSMETA). No se maquilló ni se sustituyó por un ABI inventado.
+1. **Variant genérico cross-module** (`f12cd57b`): `collectTypeSeedsInScope` (que siembra los
+   nombres de tipo para el parser) reconocía `struct/class/interface/enum/union/trait/opaque type`
+   pero no `variant` (palabra contextual). Al no sembrar `Result`, el parser consumidor lo trataba
+   como llamada genérica y fallaba con `expected expression`.
+2. **Provenance del allocator a través del variant genérico** (`12c8fa92`): el drop del payload
+   `owned A` de `Result<A,AllocationFailure>` pasaba por el entry "delete" (field 5) del descriptor,
+   que liberaba por free GC incondicional. Para un objeto pooled (`new (allocator, ...)`) ese free
+   GC corrompía el heap (exit `0xC0000374`). El entry ahora lee `deallocateThunkOffset` +
+   `allocatorContextOffset` del header y llama la thunk del allocator; sin thunk cae al free GC.
 
 ## Residual
 
-- `failure: result` — requiere `Result<T,E>` cross-module; bloqueado por el defecto de variant genérico.
 - Regla de vida del allocator del contrato §6 del handover: documentada en T13-F07, aplica igual aquí.
-
