@@ -378,6 +378,27 @@ void macroSourceMappingOracle(TestContext& context, std::size_t variant)
         "the expansion backtrace navigates to both invocation and template without fictitious spans");
 }
 
+void macroCycleOracle(TestContext& context, std::size_t variant)
+{
+    if (variant == 4)
+    {
+        const auto cyclic = MacroExpansionEngine(3).expand(
+            "#macro again(value) { #expand again($value) } void F(){ #expand again(1) }");
+        context.expect(!cyclic.success && cyclic.error.find("macro cycle detected") != std::string::npos,
+            "a self-recursive macro is diagnosed as a specific symbol cycle");
+        return;
+    }
+    const auto mutual = MacroExpansionEngine(3).expand(
+        "#macro a() { #expand b() } #macro b() { #expand a() } void F(){ #expand a() }");
+    context.expect(!mutual.success && mutual.error.find("macro expansion limit exceeded") !=
+            std::string::npos && mutual.error.find("comptime backtrace") != std::string::npos,
+        "mutual recursion still stops at the deterministic step bound with a backtrace");
+    const auto deep = MacroExpansionEngine(64, 2).expand(
+        "#macro a() { #expand b() } #macro b() { #expand a() } void F(){ #expand a() }");
+    context.expect(!deep.success && deep.error.find("depth limit exceeded") != std::string::npos,
+        "a separate nesting-depth budget bounds mutual recursion independently of the step budget");
+}
+
 void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
 {
     addMatrix(registry, 46, "unit", escapeOriginOracle);
@@ -393,5 +414,6 @@ void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
     addMatrix(registry, 64, "component", typedDescriptorsOracle);
     addMatrix(registry, 65, "unit", macroContextOracle);
     addMatrix(registry, 66, "unit", macroSourceMappingOracle);
+    addMatrix(registry, 67, "unit", macroCycleOracle);
 }
 }

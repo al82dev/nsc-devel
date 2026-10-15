@@ -58,11 +58,19 @@ public class Calculator
     const auto reserved = MacroExpansionEngine().expand("void F(){ int __nsc_macro_1_temp = 0; }");
     tests.expect(!reserved.success && reserved.error.find("reserved") != std::string::npos,
         "source cannot forge the compiler-reserved hygienic namespace");
-    const auto recursive = MacroExpansionEngine(3).expand(
+    const auto cyclic = MacroExpansionEngine(3).expand(
         "#macro again(value) { #expand again($value) } void F(){ #expand again(1) }");
-    tests.expect(!recursive.success && recursive.error.find("macro expansion limit exceeded") !=
-            std::string::npos && recursive.error.find("comptime backtrace") != std::string::npos,
-        "recursive macro expansion stops at a deterministic bound");
+    tests.expect(!cyclic.success && cyclic.error.find("macro cycle detected") != std::string::npos,
+        "a self-recursive macro is diagnosed as a specific symbol cycle");
+    const auto mutual = MacroExpansionEngine(3).expand(
+        "#macro a() { #expand b() } #macro b() { #expand a() } void F(){ #expand a() }");
+    tests.expect(!mutual.success && mutual.error.find("macro expansion limit exceeded") !=
+            std::string::npos && mutual.error.find("comptime backtrace") != std::string::npos,
+        "mutual recursion still stops at the deterministic step bound with a backtrace");
+    const auto deep = MacroExpansionEngine(64, 2).expand(
+        "#macro a() { #expand b() } #macro b() { #expand a() } void F(){ #expand a() }");
+    tests.expect(!deep.success && deep.error.find("depth limit exceeded") != std::string::npos,
+        "a separate nesting-depth budget bounds mutual recursion independently of the step budget");
 
     const auto typed = MacroExpansionEngine().expand(
         "#macro make() expression { 40 + 2 } int v = #expand make();");

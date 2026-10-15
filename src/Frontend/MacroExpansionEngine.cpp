@@ -149,8 +149,10 @@ std::string instantiate(
 }
 }
 
-MacroExpansionEngine::MacroExpansionEngine(std::size_t maximumExpansions) noexcept
-    : maximumExpansions_(maximumExpansions) {}
+MacroExpansionEngine::MacroExpansionEngine(
+    std::size_t maximumExpansions,
+    std::size_t maximumDepth) noexcept
+    : maximumExpansions_(maximumExpansions), maximumDepth_(maximumDepth) {}
 
 MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
 {
@@ -253,9 +255,15 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
         if (!valid || arguments.size() != definition->second.parameters.size())
         { result.error = "macro argument count does not match definition '" + name + "'"; return result; }
         ++scope;
+        if (scope > maximumDepth_)
+        { result.error = "macro expansion depth limit exceeded"; return result; }
         std::string error;
         std::string expansion = instantiate(definition->second, arguments, scope, error);
         if (!error.empty()) { result.error = error; return result; }
+        // NS304-T14-F07: a macro whose body expands itself is a symbol cycle, diagnosed
+        // specifically instead of being absorbed by the step budget.
+        if (expansion.find("#expand " + name) != std::string::npos)
+        { result.error = "macro cycle detected: '" + name + "' expands to itself"; return result; }
         const std::size_t invocationLength = end + 1 - invocation;
         result.source.replace(invocation, invocationLength, expansion);
         result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
