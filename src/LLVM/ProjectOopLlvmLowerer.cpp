@@ -12792,6 +12792,20 @@ private:
                 }
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
+            case frontend::ProjectOopMirNodeKind::Throw:
+            {
+                // NS304-T13-F08: a `Throw` used as an EXPRESSION (a `Conditional` failure branch).
+                // lowerExceptionalTransfer already terminates the block with a trap + unreachable;
+                // the dummy value below is never observed by any phi (the branch never falls
+                // through).
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                    return failValue(error, "Stage 45.10 throw expression MIR requires one exception value");
+                LLVMValueRef exception = lowerExpression(node->children.front().get(), error);
+                if (exception == nullptr) return nullptr;
+                if (terminated()) return nullptr;
+                if (!lowerExceptionalTransfer(exception, node, error)) return nullptr;
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
             case frontend::ProjectOopMirNodeKind::Unreachable:
             {
                 if (!node->children.empty() || node->typeKey != "builtin:never" ||
@@ -12915,7 +12929,6 @@ private:
             case frontend::ProjectOopMirNodeKind::CatchRegion:
             case frontend::ProjectOopMirNodeKind::FinallyRegion:
             case frontend::ProjectOopMirNodeKind::UsingRegion:
-            case frontend::ProjectOopMirNodeKind::Throw:
             case frontend::ProjectOopMirNodeKind::Rethrow:
             case frontend::ProjectOopMirNodeKind::CleanupContinuation:
             case frontend::ProjectOopMirNodeKind::OwnedParameterCleanup:

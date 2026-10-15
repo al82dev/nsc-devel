@@ -105,6 +105,14 @@ namespace NativeSharp.Core
         public AllocationFailureException(string message) : base(message) { }
         public AllocationFailureException(string message, owned Exception innerException)
             : base(message, move(innerException)) { }
+
+        // NS304-T13-F08: fabrica publica para el perfil `failure: throws`. El compilador la invoca
+        // para materializar la excepcion exactamente una vez por fallo de allocation, sin que el
+        // lowering tenga que sintetizar una construccion de objeto a mano.
+        public static owned AllocationFailureException Create()
+        {
+            return new AllocationFailureException();
+        }
     }
 
     // Mirrors System.ArgumentOutOfRangeException: an index/count argument fell outside the

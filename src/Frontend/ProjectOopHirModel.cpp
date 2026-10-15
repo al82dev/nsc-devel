@@ -8902,6 +8902,51 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         whenFalse->cleanupRegionOrdinals.push_back(
                             activeHirCleanupRegions_[index - 1]);
                 }
+                else if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Throws)
+                {
+                    constexpr std::string_view exceptionTypeKey =
+                        "type:NativeSharpCore::NativeSharp.Core.AllocationFailureException";
+                    const std::optional<std::size_t> exceptionType =
+                        inheritanceModel_ != nullptr
+                            ? inheritanceModel_->typeOrdinalForTypeKey(std::string(exceptionTypeKey))
+                            : std::nullopt;
+                    if (!exceptionType.has_value() || memberModel_ == nullptr)
+                    {
+                        error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException";
+                        return nullptr;
+                    }
+                    std::optional<std::size_t> createMethod;
+                    for (const std::size_t memberOrdinal :
+                         memberModel_->findMembers(*exceptionType, "Create"))
+                    {
+                        if (memberOrdinal >= memberModel_->members().size()) continue;
+                        if (!memberModel_->members()[memberOrdinal].isStatic) continue;
+                        createMethod = memberOrdinal;
+                        break;
+                    }
+                    if (!createMethod.has_value())
+                    {
+                        error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()";
+                        return nullptr;
+                    }
+                    auto createCall = makeNode(
+                        ProjectOopHirNodeKind::StaticCall, expression, std::string(exceptionTypeKey));
+                    createCall->memberOrdinal = *createMethod;
+
+                    whenFalse = makeNode(
+                        ProjectOopHirNodeKind::Throw, expression, "builtin:never");
+                    whenFalse->exceptionTypeOrdinal = *exceptionType;
+                    whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+                    const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
+                        ? 0 : activeHirExceptionHandlers_.back().retainedCleanupDepth;
+                    for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
+                        whenFalse->cleanupRegionOrdinals.push_back(
+                            activeHirCleanupRegions_[index - 1]);
+                    if (!activeHirExceptionHandlers_.empty())
+                        whenFalse->exceptionTargetRegionOrdinal =
+                            activeHirExceptionHandlers_.back().hirRegionOrdinal;
+                    whenFalse->children.push_back(std::move(createCall));
+                }
                 else
                 {
                     error = "NS304-T13-F08 allocator failure profile is not implemented yet";
