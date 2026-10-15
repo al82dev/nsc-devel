@@ -5825,6 +5825,25 @@ class Program
         }});
 }
 
+void registerDecimalTokenParityCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-511", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "decimal", "token", "lexer", "parity", "selfhost"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path source = products.directory() / "T16F06TokenParity.ns";
+            {
+                std::ofstream output(source);
+                output << "class Program { public static int Main() { decimal d = 1.5m; return 0; } }\n";
+            }
+            const external_program_support::Result tokens = runT01Compiler(
+                {L"--dump-tokens", source.wstring()}, products.directory());
+            context.expect(tokens.started &&
+                    tokens.output.find("FloatingLiteral \"1.5m\"") != std::string::npos,
+                "TL-LANG-511 the host lexer must keep the m suffix in the decimal lexeme (selfhost parity oracle)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10579,6 +10598,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerProducerConsumerDecimalCase(registry);
     registerCrossModuleBorrowCase(registry);
     registerDecimalDebugCase(registry);
+    registerDecimalTokenParityCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);

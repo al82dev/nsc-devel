@@ -231,7 +231,9 @@ namespace NativeSharp.Compiler.Lexer
                     while (DecimalDigit(Current())) { Advance(); }
                     if (exponentBegin == offset) { invalid = true; }
                 }
-                if (Current() == 'f' || Current() == 'F') { floating = true; Advance(); }
+                // NS304-T16-F06: `m`/`M` marks an exact decimal literal; the selfhost lexer
+                // accepts it as a floating literal (the same lexeme contract as the host lexer).
+                if (Current() == 'f' || Current() == 'F' || Current() == 'm' || Current() == 'M') { floating = true; Advance(); }
                 if (floating)
                 {
                     Add(invalid ? TokenKind.Invalid : TokenKind.FloatingLiteral, begin);
