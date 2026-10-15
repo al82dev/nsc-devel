@@ -38,8 +38,14 @@
   generador async; (b) en `ProjectOopLlvmLowerer.cpp`, `ParameterValue` añade la indirección del
   iterador (el `self` del `$moveNext$poll` es el future → future.frame = iterador → iterador.frame =
   frame del generador) para leer el parámetro del frame correcto.
+- **Causa raíz 3** (excepción en el try tras reanudar): en `rewriteAsyncPollReturns`, el `throw E`
+  se reescribe a `{ self->error = E; self->state = -2; return; }` pero el `return` sintetizado NO
+  heredaba `cleanupRegionOrdinals`/`cleanupContinuationKind` del `Throw`, así que el `finally` y el
+  Drop del owned local no se ejecutaban en el camino de error.
+- **Corrección 3**: el `return` sintetizado del `throw` hereda las cleanup regions del `Throw` (igual
+  que `rewriteReturn`), de modo que finally y Drop corren exactamente una vez en el error.
 - **Regresión**: `TL-LANG-520` (terminación natural cond-false/true con ítems exactos, cancelación tras
-  primer y segundo punto, suspensión sin cleanup). Guards: `TL-LANG-514`, `TL-LANG-455`, `TL-LANG-456`,
-  `TL-LANG-470`.
+  primer y segundo punto, suspensión sin cleanup, excepción tras reanudar). Guards: `TL-LANG-514`,
+  `TL-LANG-455`, `TL-LANG-456`, `TL-LANG-470`.
 
 

@@ -6257,6 +6257,60 @@ public class Resource { ~Resource() { Log.DropCount += 1; } }
         return (h1 && finallyAfterYield == 0 && dropAfterYield == 0) ? 0 : 1;
     }
 )ns", 0, "TL-LANG-520 a suspension must not run cleanup yet");
+
+            // F: exception inside the try after a resume -- finally once, drop once.
+            {
+                const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+                const std::filesystem::path coreDir = repository / "lib/NativeSharp.Core";
+                std::error_code copyError;
+                for (const char* file : {"Object.ns", "Number.ns", "NumericLimits.ns",
+                         "NumericParsing.ns", "String.ns", "Exception.ns"})
+                {
+                    copyError.clear();
+                    std::filesystem::copy_file(coreDir / file, products.directory() / file,
+                        std::filesystem::copy_options::overwrite_existing, copyError);
+                }
+                const std::filesystem::path exceptionProject = products.writeProject(
+                    "T17F09Exception", "Exe", R"ns(
+using NativeSharp.Core;
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, Exception> Gen(int n) throws Exception
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) throw new Exception(); }
+        finally { Log.FinallyCount += 1; }
+    }
+    public static int Main() throws Exception
+    {
+        AsyncIterator<int, Exception> it = Gen(-5);
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return (h1 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+}
+)ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
+                    "<Compile Include=\"NumericLimits.ns\"/><Compile Include=\"NumericParsing.ns\"/>"
+                    "<Compile Include=\"String.ns\"/><Compile Include=\"Exception.ns\"/>");
+                const std::filesystem::path exceptionExecutable =
+                    products.directory() / "T17F09Exception.exe";
+                const external_program_support::Result exceptionEmitted = emitT01Product(
+                    L"--emit-project-oop-exe", exceptionProject, exceptionExecutable,
+                    products.directory());
+                context.expect(exceptionEmitted.started && exceptionEmitted.exitCode == 0 &&
+                        exceptionEmitted.error.empty(),
+                    "TL-LANG-520 exception after resume must compile: " +
+                        exceptionEmitted.error + exceptionEmitted.output);
+                if (exceptionEmitted.started && exceptionEmitted.exitCode == 0)
+                {
+                    const auto result = external_program_support::run(
+                        exceptionExecutable, {}, {}, products.directory());
+                    context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                        "TL-LANG-520 exception after resume must run finally+drop exactly once (exit 0)");
+                }
+            }
         }});
 }
 
