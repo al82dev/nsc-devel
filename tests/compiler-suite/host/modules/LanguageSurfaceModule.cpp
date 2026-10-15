@@ -5992,6 +5992,44 @@ class Program
         }});
 }
 
+void registerExtensionsPartialComptimeCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-516", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "extension", "partial", "comptime", "metadata"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path project = products.writeProject(
+                "T17F05ExtensionsPartial", "Exe", R"ns(
+partial class Foo
+{
+    public partial int M();
+    public partial int M() { return #run(21); }
+}
+extension Foo { public int Twice() { return this.M() * 2; } }
+class Program
+{
+    public static int Main()
+    {
+        Foo f = new Foo();
+        return f.Twice();
+    }
+}
+)ns");
+            const std::filesystem::path executable =
+                products.directory() / "T17F05ExtensionsPartial.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-516 the extensions+partial+comptime fixture must compile: " +
+                    emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 42,
+                "TL-LANG-516 extension (this.M) + partial method + comptime #run must combine (exit 42)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10751,6 +10789,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerBeefVariantCase(registry);
     registerAsyncOwnershipErrorCancelCase(registry);
     registerPatternsGenericsMoveOnlySliceCase(registry);
+    registerExtensionsPartialComptimeCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);
