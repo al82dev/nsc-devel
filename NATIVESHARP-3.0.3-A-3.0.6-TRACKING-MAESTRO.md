@@ -1101,7 +1101,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 - [x] `NS304-T13-F03` — Implementar construcción `scope`/stack con escape y drop automático. *(scope Tipo x = new T(args) → alloca frame + drop una vez (TL-LANG-484) + retorno/captura/campo rechazados (TL-LANG-485/486).)*
 - [x] `NS304-T13-F04` — Implementar arena/pool explícito y propagación a builders/containers. *(ArenaAllocator : Allocator, IAllocator con Resize/Deallocate (TL-LANG-487); propagación explícita vía F02 new (allocator) T(...), sin herencia implícita.)*
 - [ ] `NS304-T13-F05` — Completar placement/in-place con rollback ante fallo parcial. *(auditado: drop inverso existe; placement + rollback pendientes.)*
-- [ ] `NS304-T13-F06` — Implementar trailing/append storage con layout consteval y bounds. *(auditado: layout consteval existe; cola variable + ABI pendientes.)*
+- [x] `NS304-T13-F06` — Implementar trailing/append storage con layout consteval y bounds. *(construcción new (alloc, trailing:N) + header por valor + Data[i] + extensión header+Capacity·sizeof(T) + guard index<Length→BoundsViolation (TL-LANG-488/489/490).)*
 - [ ] `NS304-T13-F07` — Verificar provenance allocator/deallocator entre módulos y DLL. *(auditado: contrato de deallocator no publicado; plumbing intermodular pendiente.)*
 - [ ] `NS304-T13-F08` — Integrar allocation failure con `Result`, `throws`, panic y `noheap`. *(noheap + rechazo de heap allocation operativos; perfil explícito de failure pendiente.)*
 - [ ] `NS304-T13-F09` — Emitir cost report que demuestre stack/arena/heap elegido. *(auditado: noheap verifica ausencia; reporte estructurado + allocator instrumentado pendientes.)*
