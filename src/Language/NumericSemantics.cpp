@@ -7,8 +7,30 @@
 
 namespace nativesharp::language
 {
+static_assert(sizeof(Decimal128Bits) == 16);
+static_assert(alignof(Decimal128Bits) == 8);
+
 namespace
 {
+using DecimalCoefficient = unsigned __int128;
+
+DecimalCoefficient decimalCoefficient(Decimal128Bits value) noexcept
+{
+    const DecimalCoefficient upper = decimalCoefficientHigh(value);
+    return (upper << 64U) | value.low;
+}
+
+Decimal128Bits replaceDecimalCoefficient(
+    Decimal128Bits value,
+    DecimalCoefficient coefficient) noexcept
+{
+    value.low = static_cast<std::uint64_t>(coefficient);
+    const std::uint64_t coefficientHigh = static_cast<std::uint64_t>(coefficient >> 64U);
+    value.high &= ~DecimalCoefficientHighMask;
+    value.high |= coefficientHigh & DecimalCoefficientHighMask;
+    return value;
+}
+
 std::uint64_t unsignedMaximum(unsigned bits) noexcept
 {
     return bits == 64 ? std::numeric_limits<std::uint64_t>::max() :
@@ -26,6 +48,103 @@ std::int64_t signedMaximum(unsigned bits) noexcept
     return bits == 64 ? std::numeric_limits<std::int64_t>::max() :
         (std::int64_t{1} << (bits - 1U)) - 1;
 }
+}
+
+std::optional<Decimal128Bits> makeDecimal128Bits(
+    std::uint64_t coefficientLow,
+    std::uint32_t coefficientHigh,
+    unsigned scale,
+    bool negative) noexcept
+{
+    if (scale > DecimalMaximumScale)
+    {
+        return std::nullopt;
+    }
+
+    Decimal128Bits result;
+    result.low = coefficientLow;
+    result.high = static_cast<std::uint64_t>(coefficientHigh);
+    result.high |= static_cast<std::uint64_t>(scale) << 32U;
+    if (negative)
+    {
+        result.high |= DecimalSignMask;
+    }
+    return result;
+}
+
+bool decimal128BitsAreValid(Decimal128Bits value) noexcept
+{
+    return (value.high & DecimalReservedMask) == 0 &&
+        decimalScale(value) <= DecimalMaximumScale;
+}
+
+std::uint32_t decimalCoefficientHigh(Decimal128Bits value) noexcept
+{
+    return static_cast<std::uint32_t>(value.high & DecimalCoefficientHighMask);
+}
+
+unsigned decimalScale(Decimal128Bits value) noexcept
+{
+    return static_cast<unsigned>((value.high & DecimalScaleMask) >> 32U);
+}
+
+bool decimalIsNegative(Decimal128Bits value) noexcept
+{
+    return (value.high & DecimalSignMask) != 0;
+}
+
+std::optional<Decimal128Bits> normalizeDecimal128Bits(Decimal128Bits value) noexcept
+{
+    if (!decimal128BitsAreValid(value))
+    {
+        return std::nullopt;
+    }
+
+    DecimalCoefficient coefficient = decimalCoefficient(value);
+    unsigned scale = decimalScale(value);
+    if (coefficient == 0)
+    {
+        return Decimal128Bits{};
+    }
+
+    while (scale != 0 && coefficient % 10U == 0)
+    {
+        coefficient /= 10U;
+        --scale;
+    }
+
+    value = replaceDecimalCoefficient(value, coefficient);
+    value.high &= ~DecimalScaleMask;
+    value.high |= static_cast<std::uint64_t>(scale) << 32U;
+    return value;
+}
+
+bool decimal128ValuesEqual(Decimal128Bits left, Decimal128Bits right) noexcept
+{
+    const auto normalizedLeft = normalizeDecimal128Bits(left);
+    const auto normalizedRight = normalizeDecimal128Bits(right);
+    return normalizedLeft.has_value() && normalizedRight.has_value() &&
+        normalizedLeft->low == normalizedRight->low &&
+        normalizedLeft->high == normalizedRight->high;
+}
+
+std::optional<std::uint64_t> decimal128StableHash(Decimal128Bits value) noexcept
+{
+    const auto normalized = normalizeDecimal128Bits(value);
+    if (!normalized.has_value())
+    {
+        return std::nullopt;
+    }
+
+    constexpr std::uint64_t offset = 14695981039346656037ull;
+    constexpr std::uint64_t prime = 1099511628211ull;
+    std::uint64_t hash = offset;
+    for (unsigned index = 0; index < 8; ++index)
+    {
+        hash = (hash ^ ((normalized->low >> (index * 8U)) & 0xFFU)) * prime;
+        hash = (hash ^ ((normalized->high >> (index * 8U)) & 0xFFU)) * prime;
+    }
+    return hash;
 }
 
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept

@@ -10,6 +10,51 @@
 
 namespace nativesharp::language
 {
+inline constexpr unsigned DecimalCoefficientBits = 96;
+inline constexpr unsigned DecimalMaximumScale = 28;
+inline constexpr std::uint64_t DecimalCoefficientHighMask = 0x00000000FFFFFFFFull;
+inline constexpr std::uint64_t DecimalScaleMask = 0x0000003F00000000ull;
+inline constexpr std::uint64_t DecimalSignMask = 0x8000000000000000ull;
+inline constexpr std::uint64_t DecimalReservedMask = 0x7FFFFFC000000000ull;
+
+// Stores the exact NativeSharp decimal payload as two little-endian 64-bit words.
+// `low` contains coefficient bits 0..63. `high` contains coefficient bits 64..95,
+// scale bits 96..101, reserved zero bits 102..126, and the sign at bit 127.
+struct Decimal128Bits final
+{
+    std::uint64_t low = 0;
+    std::uint64_t high = 0;
+};
+
+// Packs a finite decimal payload. Every successful result has zero reserved bits and scale <= 28.
+std::optional<Decimal128Bits> makeDecimal128Bits(
+    std::uint64_t coefficientLow,
+    std::uint32_t coefficientHigh,
+    unsigned scale,
+    bool negative) noexcept;
+
+// Rejects payloads that safe NativeSharp code cannot construct: reserved bits or scale above 28.
+bool decimal128BitsAreValid(Decimal128Bits value) noexcept;
+
+// Extracts the upper 32 coefficient bits without including scale, reserved, or sign bits.
+std::uint32_t decimalCoefficientHigh(Decimal128Bits value) noexcept;
+
+// Extracts the stored base-10 scale in the inclusive range 0..28 for valid payloads.
+unsigned decimalScale(Decimal128Bits value) noexcept;
+
+// Reports the independent sign bit. Zero may carry a sign before normalization.
+bool decimalIsNegative(Decimal128Bits value) noexcept;
+
+// Produces the numeric canonical form without mutating the stored operand. Trailing coefficient
+// zeroes are removed while scale permits; every zero becomes positive with scale zero.
+std::optional<Decimal128Bits> normalizeDecimal128Bits(Decimal128Bits value) noexcept;
+
+// Compares finite decimal values numerically, so distinct stored scales compare equal after normalization.
+bool decimal128ValuesEqual(Decimal128Bits left, Decimal128Bits right) noexcept;
+
+// Hashes the normalized numeric value. Numerically equal valid decimals always receive the same hash.
+std::optional<std::uint64_t> decimal128StableHash(Decimal128Bits value) noexcept;
+
 struct IntegerType final { unsigned bits = 32; bool isSigned = true; };
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept;
 std::optional<std::uint64_t> parseIntegerLiteralMagnitude(std::string_view spelling, std::string& error);

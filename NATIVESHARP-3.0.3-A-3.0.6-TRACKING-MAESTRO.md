@@ -1119,7 +1119,7 @@ oficial hasta que la campaña llegue a ese ítem y cierre su consolidado.
 
 ### T15 — tipo decimal nativo
 
-- [ ] `NS304-T15-F01` — Congelar 128 bits: coeficiente 96 bits, escala 0-28, signo, sin NaN/infinito. *(tipo builtin `decimal` + layout 16B (TL-LANG-420) cerrados; contrato numérico/invariantes + ABI classification pendientes.)*
+- [x] `NS304-T15-F01` — Congelar 128 bits: coeficiente 96 bits, escala 0-28, signo, sin NaN/infinito. *(cerrado: autoridad `Decimal128Bits`, validación de estados reservados, normalización/equality/hash, asserts 16B/align8, prueba unitaria 10/10 y TL-LANG-420 PASS; sin versionamiento NSMETA.)*
 - [ ] `NS304-T15-F02` — Implementar lexer, literales, sufijos, parsing y round-trip exacto. *(literal `m` + type `builtin:decimal` + constante 128-bit (TL-LANG-421) cerrados; round-trip exacto + overflow/precisión pendientes.)*
 - [ ] `NS304-T15-F03` — Implementar identidad, layout, ABI, mangling, NSMETA y FFI permitido. *(tipo/layout/pass-return/mangling del decimal operativos (TL-LANG-422); metadata versionada + FFI con representación declarada pendientes.)*
 - [ ] `NS304-T15-F04` — Implementar aritmética, comparación y redondeo. *(add/sub/rem con escalas mixtas + mul/div (TL-LANG-423/424/426/427/430/431); rounding + escala mixta en div + overflow de escala pendientes.)*
