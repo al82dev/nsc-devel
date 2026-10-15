@@ -250,6 +250,80 @@ std::optional<DecimalLiteralValue> parseDecimalLiteral(
     return result;
 }
 
+std::optional<Decimal128Bits> evaluateDecimalArithmetic(
+    const Decimal128Bits& left,
+    const Decimal128Bits& right,
+    DecimalArithmeticOperation operation,
+    std::string& error) noexcept
+{
+    error.clear();
+    const DecimalCoefficient leftCoefficient = decimalCoefficient(left);
+    const DecimalCoefficient rightCoefficient = decimalCoefficient(right);
+    const unsigned leftScale = decimalScale(left);
+    const unsigned rightScale = decimalScale(right);
+    const bool leftNegative = decimalIsNegative(left);
+    const bool rightNegative = decimalIsNegative(right);
+
+    const auto pow10 = [](unsigned exponent) noexcept
+    {
+        DecimalCoefficient result = 1;
+        for (unsigned index = 0; index < exponent; ++index) result *= 10U;
+        return result;
+    };
+
+    DecimalCoefficient resultCoefficient = 0;
+    unsigned resultScale = 0;
+    bool resultNegative = false;
+    if (operation == DecimalArithmeticOperation::Add ||
+        operation == DecimalArithmeticOperation::Subtract ||
+        operation == DecimalArithmeticOperation::Remainder)
+    {
+        const unsigned maxScale = std::max(leftScale, rightScale);
+        const DecimalCoefficient leftAligned = leftCoefficient * pow10(maxScale - leftScale);
+        const DecimalCoefficient rightAligned = rightCoefficient * pow10(maxScale - rightScale);
+        if (operation == DecimalArithmeticOperation::Add)
+            resultCoefficient = leftAligned + rightAligned;
+        else if (operation == DecimalArithmeticOperation::Subtract)
+            resultCoefficient = leftAligned - rightAligned;
+        else
+            // 64-bit lane: __umodti3 is not linked, matching the LLVM lowering.
+            resultCoefficient = static_cast<std::uint64_t>(leftAligned) %
+                static_cast<std::uint64_t>(rightAligned);
+        resultScale = maxScale;
+        resultNegative = leftNegative;
+    }
+    else if (operation == DecimalArithmeticOperation::Multiply)
+    {
+        resultCoefficient = leftCoefficient * rightCoefficient;
+        resultScale = leftScale + rightScale;
+        resultNegative = leftNegative != rightNegative;
+    }
+    else
+    {
+        const unsigned targetScale =
+            std::max(leftScale, rightScale) + (leftScale > rightScale ? 1U : 0U);
+        const unsigned exponent = targetScale + rightScale - leftScale;
+        const std::uint64_t leftCoeff64 = static_cast<std::uint64_t>(leftCoefficient);
+        const std::uint64_t rightCoeff64 = static_cast<std::uint64_t>(rightCoefficient);
+        std::uint64_t numerator = leftCoeff64;
+        for (unsigned index = 0; index < exponent; ++index) numerator *= 10U;
+        // 64-bit lane (__udivti3 not linked) + round half-up.
+        resultCoefficient = (numerator + rightCoeff64 / 2U) / rightCoeff64;
+        resultScale = targetScale;
+        resultNegative = leftNegative != rightNegative;
+    }
+
+    if (resultScale > DecimalMaximumScale)
+    { error = "decimal scale exceeds 28"; return std::nullopt; }
+    if (resultCoefficient > ((DecimalCoefficient{1} << 96U) - 1U))
+    { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
+    return makeDecimal128Bits(
+        static_cast<std::uint64_t>(resultCoefficient),
+        static_cast<std::uint32_t>(resultCoefficient >> 64U),
+        resultScale,
+        resultNegative);
+}
+
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept
 {
     if (type.bits == 0 || type.bits > 64) return false;

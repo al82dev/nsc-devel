@@ -305,6 +305,36 @@ void registerDecimalLiteralParseCase(TestRegistry& registry)
     });
 }
 
+void registerDecimalArithmeticHelperCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-506", [](TestContext& context) {
+        std::string error;
+        const auto oneFive = makeDecimal128Bits(15, 0, 1, false);
+        const auto two = makeDecimal128Bits(2, 0, 0, false);
+        const auto three = makeDecimal128Bits(3, 0, 0, false);
+        const auto half = makeDecimal128Bits(5, 0, 1, false);
+        const auto add = evaluateDecimalArithmetic(
+            *oneFive, *two, DecimalArithmeticOperation::Add, error);
+        context.expect(add.has_value() && error.empty() && decimalScale(*add) == 1 &&
+                add->low == 35,
+            "TL-LANG-506 the shared helper must add with max-scale alignment (1.5+2=3.5)");
+        const auto div = evaluateDecimalArithmetic(
+            *half, *three, DecimalArithmeticOperation::Divide, error);
+        context.expect(div.has_value() && decimalScale(*div) == 2 && div->low == 17,
+            "TL-LANG-506 the shared helper must divide with half-up rounding (0.5/3=0.17)");
+        const auto mul = evaluateDecimalArithmetic(
+            *oneFive, *two, DecimalArithmeticOperation::Multiply, error);
+        context.expect(mul.has_value() && decimalScale(*mul) == 1 && mul->low == 30,
+            "TL-LANG-506 the shared helper must multiply by summing scales (1.5*2=3.0)");
+        const auto tiny = makeDecimal128Bits(1, 0, 28, false);
+        const auto tenth = makeDecimal128Bits(1, 0, 1, false);
+        const auto overflow = evaluateDecimalArithmetic(
+            *tiny, *tenth, DecimalArithmeticOperation::Multiply, error);
+        context.expect(!overflow.has_value() && error.find("scale exceeds 28") != std::string::npos,
+            "TL-LANG-506 the shared helper must reject scale overflow above 28");
+    });
+}
+
 void registerLanguageNumericCoreModule(TestRegistry& registry)
 {
     registerLiteralFitsCase(registry);
@@ -320,5 +350,6 @@ void registerLanguageNumericCoreModule(TestRegistry& registry)
     registerShiftCase(registry);
     registerSignedResultCase(registry);
     registerDecimalLiteralParseCase(registry);
+    registerDecimalArithmeticHelperCase(registry);
 }
 }

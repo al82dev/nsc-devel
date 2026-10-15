@@ -70,6 +70,17 @@ std::optional<DecimalLiteralValue> parseDecimalLiteral(
     std::string_view spelling,
     std::string& error) noexcept;
 
+// NS304-T15-F07: the single static helper for decimal arithmetic (the stable ABI that consteval and
+// runtime both use, so they cannot diverge). Coefficients operate on magnitudes (sign is bit 127);
+// add/sub/rem align to the max scale, mul sums scales, div computes the target scale and rounds
+// half-up. Scale must stay 0..28 and the coefficient must fit 96 bits.
+enum class DecimalArithmeticOperation { Add, Subtract, Multiply, Divide, Remainder };
+std::optional<Decimal128Bits> evaluateDecimalArithmetic(
+    const Decimal128Bits& left,
+    const Decimal128Bits& right,
+    DecimalArithmeticOperation operation,
+    std::string& error) noexcept;
+
 struct IntegerType final { unsigned bits = 32; bool isSigned = true; };
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept;
 std::optional<std::uint64_t> parseIntegerLiteralMagnitude(std::string_view spelling, std::string& error);

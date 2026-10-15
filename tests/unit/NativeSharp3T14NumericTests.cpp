@@ -92,5 +92,29 @@ int main()
         "12345678901234567890123456789012345678901234567890", error);
     tests.expect(!tooBig.has_value() && error.find("coefficient exceeds 96 bits") != std::string::npos,
         "a coefficient above 96 bits is rejected with a causal error");
+
+    const auto oneFiveBits = makeDecimal128Bits(15, 0, 1, false);
+    const auto twoBits = makeDecimal128Bits(2, 0, 0, false);
+    const auto threeBits = makeDecimal128Bits(3, 0, 0, false);
+    const auto halfBits = makeDecimal128Bits(5, 0, 1, false);
+    const auto addResult = evaluateDecimalArithmetic(
+        *oneFiveBits, *twoBits, DecimalArithmeticOperation::Add, error);
+    tests.expect(addResult.has_value() && error.empty() && decimalScale(*addResult) == 1 &&
+            addResult->low == 35 && decimalCoefficientHigh(*addResult) == 0,
+        "decimal add aligns to the max scale (1.5 + 2 = 3.5)");
+    const auto divResult = evaluateDecimalArithmetic(
+        *halfBits, *threeBits, DecimalArithmeticOperation::Divide, error);
+    tests.expect(divResult.has_value() && decimalScale(*divResult) == 2 && divResult->low == 17,
+        "decimal divide rounds half-up to the target scale (0.5 / 3 = 0.17)");
+    const auto mulResult = evaluateDecimalArithmetic(
+        *oneFiveBits, *twoBits, DecimalArithmeticOperation::Multiply, error);
+    tests.expect(mulResult.has_value() && decimalScale(*mulResult) == 1 && mulResult->low == 30,
+        "decimal multiply sums scales (1.5 * 2 = 3.0)");
+    const auto tiny = makeDecimal128Bits(1, 0, 28, false);
+    const auto tenth = makeDecimal128Bits(1, 0, 1, false);
+    const auto overflow = evaluateDecimalArithmetic(
+        *tiny, *tenth, DecimalArithmeticOperation::Multiply, error);
+    tests.expect(!overflow.has_value() && error.find("scale exceeds 28") != std::string::npos,
+        "decimal multiply scale overflow above 28 is rejected");
     return tests.result();
 }
