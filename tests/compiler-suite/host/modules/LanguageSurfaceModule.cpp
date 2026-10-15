@@ -5279,6 +5279,149 @@ class Program
         }});
 }
 
+void registerAllocationFailureNullCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-495", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "failure", "null", "construction"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F08FailureNull", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public static int Ctors; public int X; public A(int x) { X = x; Ctors = Ctors + 1; } }
+class BlockAllocator : IAllocator
+{
+    private owned byte[] pool;
+    public BlockAllocator(int size) { pool = new byte[size]; }
+    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class NullAllocator : IAllocator
+{
+    public byte* Allocate(int bytes) { return null; }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        BlockAllocator ba = new BlockAllocator(1024);
+        A ok = new (ba, failure: null) A(7);
+        NullAllocator na = new NullAllocator();
+        A fail = new (na, failure: null) A(9);
+        return (ok != null && ok.X == 7 && fail == null && A.Ctors == 1) ? 0 : 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F08FailureNull.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-495 failure:null must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-495 failure:null must yield null and skip the ctor when Allocate is null: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerAllocationFailureThrowsCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-496", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "failure", "throws", "exception"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F08FailureThrows", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class NullAllocator : IAllocator
+{
+    public byte* Allocate(int bytes) { return null; }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        NullAllocator na = new NullAllocator();
+        try { A a = new (na, failure: throws) A(42); }
+        catch (AllocationFailureException) { return 0; }
+        return 1;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F08FailureThrows.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-496 failure:throws must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-496 failure:throws must throw AllocationFailureException on null: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
+void registerAllocationFailurePanicCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-497", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "allocator", "failure", "panic"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path repository(NSC_SUITE_REPOSITORY_ROOT);
+            const std::string coreProject =
+                (repository / "lib/NativeSharp.Core/NativeSharp.Core.nsproj").generic_string();
+            const std::filesystem::path project = products.writeProject(
+                "T13F08FailurePanic", "Exe", R"ns(
+using NativeSharp.Core;
+class A { public int X; public A(int x) { X = x; } }
+class NullAllocator : IAllocator
+{
+    public byte* Allocate(int bytes) { return null; }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        NullAllocator na = new NullAllocator();
+        A a = new (na, failure: panic) A(42);
+        return 0;
+    }
+}
+)ns", "<ProjectReference Include=\"" + coreProject + "\"/>");
+            const std::filesystem::path executable =
+                products.directory() / "T13F08FailurePanic.exe";
+            const external_program_support::Result emitted = emitT01Product(
+                L"--emit-project-oop-exe", project, executable, products.directory());
+            context.expect(emitted.started && emitted.exitCode == 0 && emitted.error.empty(),
+                "TL-LANG-497 failure:panic must compile: " + emitted.error + emitted.output);
+            if (!emitted.started || emitted.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                executable, {}, {}, products.directory());
+            context.expect(result.started && result.exitCode == 142,
+                "TL-LANG-497 failure:panic must panic (exit 142) when Allocate is null: " +
+                    result.error + result.output + " exit=" + std::to_string(result.exitCode));
+        }});
+}
+
 void registerDecimalRemainderCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-427", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10091,6 +10234,9 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAllocatorProvenanceDeallocateCase(registry);
     registerAllocatorProvenanceConstructorFailureCase(registry);
     registerAllocatorProvenanceCrossModuleCase(registry);
+    registerAllocationFailureNullCase(registry);
+    registerAllocationFailureThrowsCase(registry);
+    registerAllocationFailurePanicCase(registry);
     registerDecimalRemainderCase(registry);
     registerDecimalConstCase(registry);
     registerDecimalOverflowCase(registry);
