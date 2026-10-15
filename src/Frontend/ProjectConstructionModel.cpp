@@ -1010,6 +1010,9 @@ void ProjectConstructionModel::bindConstruction(
     binding.allocatorAllocateMemberOrdinal = site.allocatorAllocateMemberOrdinal;
     binding.allocatorDeallocateMemberOrdinal = site.allocatorDeallocateMemberOrdinal;
     binding.allocatorFailureProfile = site.allocatorFailureProfile;
+    binding.allocatorResultOkFactoryMemberOrdinal = site.allocatorResultOkFactoryMemberOrdinal;
+    binding.allocatorResultErrorFactoryMemberOrdinal = site.allocatorResultErrorFactoryMemberOrdinal;
+    binding.allocatorResultCarrierTypeKey = site.allocatorResultCarrierTypeKey;
     binding.targetTypeOrdinal = *targetOrdinal;
     binding.targetTypeKey = site.targetTypeKey;
     if (nameLookup_->namedTypes()[*targetOrdinal].isAbstract)

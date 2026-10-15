@@ -14908,6 +14908,17 @@ ast::AstNode* Parser::parseUnaryExpression()
             {
                 creation->setAllocatorFailureProfile(failureProfile);
             }
+            // NS304-T13-F08 `failure: result`: synthesize the closed type use
+            // `Result<T, AllocationFailure>` so the generic phase materializes its specialization.
+            if (failureProfile == "result")
+            {
+                ast::TypeSyntax* resultType = arena_.make<ast::TypeSyntax>(
+                    type->range(), TokenKind::Identifier, "Result");
+                resultType->addTypeArgument(cloneParsedType(arena_, type));
+                resultType->addTypeArgument(arena_.make<ast::TypeSyntax>(
+                    type->range(), TokenKind::Identifier, "AllocationFailure"));
+                creation->addTypeSyntax(resultType);
+            }
             if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
             {
                 if (!at(TokenKind::RightParen))

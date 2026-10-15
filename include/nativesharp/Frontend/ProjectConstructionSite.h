@@ -39,6 +39,10 @@ struct ProjectConstructionSite final
     std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
     // NS304-T13-F08: the explicit failure profile (None when `failure:` is absent).
     ProjectAllocatorFailureProfile allocatorFailureProfile = ProjectAllocatorFailureProfile::None;
+    // NS304-T13-F08 `failure: result`: the Ok/Error factory members of Result<T,E>.
+    std::optional<std::size_t> allocatorResultOkFactoryMemberOrdinal;
+    std::optional<std::size_t> allocatorResultErrorFactoryMemberOrdinal;
+    std::string allocatorResultCarrierTypeKey;
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsTyped = false;
 };

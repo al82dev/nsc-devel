@@ -991,6 +991,8 @@ void ProjectMethodBodyModel::collectCallableDiscoveries(
         if (binding.errorConversionMemberOrdinal.has_value())
             result.addDiscoveredCallable(*binding.errorConversionMemberOrdinal);
     }
+    for (const std::size_t factoryOrdinal : shard.resultFactoryDiscoveries_)
+        result.addDiscoveredCallable(factoryOrdinal);
 }
 
 bool ProjectMethodBodyModel::build(
@@ -13233,6 +13235,29 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             argumentResult));
                     }
                 }
+                // NS304-T13-F08 `failure: result`: resolve the closed Result<T,E> carrier (the
+                // synthesized type use) and its Ok/Error factories before the site is consumed.
+                const bool resultFailureProfile = expression->allocatorFailureProfile() == "result";
+                std::string resultCarrierTypeKey;
+                if (resultFailureProfile && !expression->typeSyntaxes().empty() &&
+                    expression->typeSyntaxes()[0] != nullptr)
+                {
+                    resultCarrierTypeKey = memberModel_->canonicalTypeKey(
+                        expression->typeSyntaxes()[0], *nameLookup_);
+                    site.allocatorResultCarrierTypeKey = resultCarrierTypeKey;
+                    if (const std::optional<MethodResultPropagationBinding> carrier =
+                            resolveResultCarrier(resultCarrierTypeKey))
+                    {
+                        site.allocatorResultOkFactoryMemberOrdinal =
+                            carrier->sourceSuccessFactoryMemberOrdinal;
+                        site.allocatorResultErrorFactoryMemberOrdinal =
+                            carrier->returnErrorFactoryMemberOrdinal;
+                        resultFactoryDiscoveries_.push_back(
+                            carrier->sourceSuccessFactoryMemberOrdinal);
+                        resultFactoryDiscoveries_.push_back(
+                            carrier->returnErrorFactoryMemberOrdinal);
+                    }
+                }
                 recordConstructionSite(std::move(site));
                 // A placed struct is exposed through the raw T* that names its supplied storage.
                 // A class expression keeps NativeSharp's ordinary class-reference type even
@@ -13245,6 +13270,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         (target->kind == NamedTypeDeclarationKind::Class || trailingConstruction)
                     ? targetType
                     : requiredStorageType;
+                // NS304-T13-F08 `failure: result`: the expression type is the closed Result<T,E>.
+                if (resultFailureProfile && !resultCarrierTypeKey.empty())
+                {
+                    result.typeKey = resultCarrierTypeKey;
+                }
                 result.valid = constructible && storageValid && argumentsValid &&
                     !isErrorType(targetType);
                 if (result.valid)
@@ -26124,6 +26154,7 @@ ProjectMethodBodyModel::resolveResultCarrier(std::string_view typeKey) const
     binding.sourceSuccessTestMemberOrdinal = *success.test;
     binding.sourceSuccessExtractorMemberOrdinal = *success.extractor;
     binding.sourceErrorExtractorMemberOrdinal = *error.extractor;
+    binding.sourceSuccessFactoryMemberOrdinal = *success.factory;
     binding.returnErrorFactoryMemberOrdinal = *error.factory;
     return binding;
 }

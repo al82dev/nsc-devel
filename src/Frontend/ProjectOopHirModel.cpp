@@ -8875,7 +8875,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     block->children.push_back(std::move(construction));
                     return block;
                 }
-                const std::string resultType = construction->typeKey;
+                std::string resultType = construction->typeKey;
                 auto bytesValue = makeNode(
                     ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
                 bytesValue->localOrdinal = tempOrdinal;
@@ -8946,6 +8946,61 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         whenFalse->exceptionTargetRegionOrdinal =
                             activeHirExceptionHandlers_.back().hirRegionOrdinal;
                     whenFalse->children.push_back(std::move(createCall));
+                }
+                else if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Result)
+                {
+                    if (!binding->allocatorResultOkFactoryMemberOrdinal.has_value() ||
+                        !binding->allocatorResultErrorFactoryMemberOrdinal.has_value() ||
+                        binding->allocatorResultCarrierTypeKey.empty())
+                    {
+                        error = "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories";
+                        return nullptr;
+                    }
+                    resultType = binding->allocatorResultCarrierTypeKey;
+
+                    const ProjectOopHirFunction* okFn = functionForMember(
+                        *binding->allocatorResultOkFactoryMemberOrdinal);
+                    const ProjectOopHirFunction* errFn = functionForMember(
+                        *binding->allocatorResultErrorFactoryMemberOrdinal);
+                    if (okFn == nullptr || errFn == nullptr)
+                    {
+                        error = "T13-F08 result: factory function missing ok=" +
+                            std::to_string(okFn != nullptr) + " err=" +
+                            std::to_string(errFn != nullptr) +
+                            " okOrd=" + std::to_string(*binding->allocatorResultOkFactoryMemberOrdinal) +
+                            " errOrd=" + std::to_string(*binding->allocatorResultErrorFactoryMemberOrdinal) +
+                            " okAnalyzed=" + std::to_string(methodBodyModel_->callableBodyAnalyzed(
+                                *binding->allocatorResultOkFactoryMemberOrdinal)) +
+                            " errAnalyzed=" + std::to_string(methodBodyModel_->callableBodyAnalyzed(
+                                *binding->allocatorResultErrorFactoryMemberOrdinal));
+                        return nullptr;
+                    }
+                    if (!okFn->isStatic || !errFn->isStatic)
+                    {
+                        error = "T13-F08 result: factory not static ok=" +
+                            std::to_string(okFn->isStatic) + " err=" + std::to_string(errFn->isStatic);
+                        return nullptr;
+                    }
+
+                    // Error(AllocationFailure.OutOfMemory)
+                    auto errorArg = makeNode(
+                        ProjectOopHirNodeKind::IntegerConstant, expression,
+                        "type:NativeSharpCore::NativeSharp.Core.AllocationFailure");
+                    errorArg->integerValue = 0;
+                    auto errorCall = makeNode(
+                        ProjectOopHirNodeKind::StaticCall, expression,
+                        binding->allocatorResultCarrierTypeKey);
+                    errorCall->memberOrdinal = *binding->allocatorResultErrorFactoryMemberOrdinal;
+                    errorCall->children.push_back(std::move(errorArg));
+                    whenFalse = std::move(errorCall);
+
+                    // Ok(construction)
+                    auto okCall = makeNode(
+                        ProjectOopHirNodeKind::StaticCall, expression,
+                        binding->allocatorResultCarrierTypeKey);
+                    okCall->memberOrdinal = *binding->allocatorResultOkFactoryMemberOrdinal;
+                    okCall->children.push_back(std::move(construction));
+                    construction = std::move(okCall);
                 }
                 else
                 {

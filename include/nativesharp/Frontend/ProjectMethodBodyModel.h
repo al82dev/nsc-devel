@@ -1415,6 +1415,8 @@ struct MethodResultPropagationBinding final
     std::size_t sourceSuccessExtractorMemberOrdinal = 0;
     std::size_t sourceErrorExtractorMemberOrdinal = 0;
     std::size_t returnErrorFactoryMemberOrdinal = 0;
+    // NS304-T13-F08: the Ok factory of the SOURCE carrier (used to wrap an owned value on success).
+    std::size_t sourceSuccessFactoryMemberOrdinal = 0;
     std::optional<std::size_t> errorConversionMemberOrdinal;
 };
 
@@ -2594,6 +2596,8 @@ private:
     std::vector<MethodEventBinding> eventBindings_;
     std::vector<MethodOptionalCarrierBinding> optionalCarrierBindings_;
     std::vector<MethodResultPropagationBinding> resultPropagationBindings_;
+    // NS304-T13-F08: Result<T,E> Ok/Error factory ordinals a placement `failure: result` calls.
+    std::vector<std::size_t> resultFactoryDiscoveries_;
     std::vector<MethodRangeSliceBinding> rangeSliceBindings_;
     std::vector<MethodCallBinding> calls_;
     ProjectCallableBindingIndex callBindingIndex_;
