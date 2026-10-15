@@ -1,61 +1,16 @@
 # NS304-T05-F04 — Frame layout, discriminante, liveness y storage de locals suspendidos
 
-- **Estado**: PARCIAL (liveness conservativa cerrada; liveness precisa = refinamiento)
+- **Estado**: HECHO (liveness precisa def-use por suspensión implementada y verificada)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (liveness precisa — 2026-10-14)
 
-Contrato (tracking): *calcular frame layout, discriminante, liveness y storage de locals suspendidos*.
-
-Estado real tras F03 (cerrado):
-
-- **Frame layout**: HECHO en F03. `ProjectOopMirModel` publica el layout uniforme
-  `future:<T> = { i32 state@0; void* frame@8; T result@16 }` y, para cada poll, `asyncFrameSize`
-  = suma de los tamaños de los futures esperados (los `AwaitFuture` del cuerpo).
-- **Discriminante**: HECHO en F03. `state` con encoding uniforme `0` created, `-1` ready,
-  `1..N` resume (suspend tras await i). El `await` chequea `child.state == -1` sin conocer el
-  conteo del hijo.
-- **Storage**: HECHO en F03 (caller-stack). El `await` (sync y async) aloca el frame del productor
-  esperado y lo guarda en `future.frame@8`; no hay heap implícito.
-- **Liveness**: NO HECHO. Sólo los futures hijo se guardan en el frame. Un **local que cruza el
-  await** (definido antes, usado después) NO se guarda/restaura.
-
-## Gap demostrable
-
-`async int F(){ int y = 10; int x = await G(); return x + y; }` — `y` está vivo a través del await.
-Hoy el suspend/resume guarda sólo el future hijo; `y` se pierde al reanudar (el stack del poll se
-destruye al suspender) y `x + y` lee basura. Es un resultado incorrecto silencioso.
-
-**Acoplamiento**: el defecto SÓLO se observa cuando el `await` suspende de verdad. Con F03 los
-futures completan sincrónicamente (no hay primitiva pendiente), así que el gap de liveness no se
-ejecuta en runtime todavía. La primitiva pendiente es F09.
-
-## Plan
-
-1. Computar la liveness por await: qué locals (ordinales) están vivos a través de cada `AwaitFuture`
-   (definidos antes, usados después), y asignarles slot en el frame (tras los futures hijo).
-2. Ampliar el frame por-función: `asyncFrameSize` = futures hijo + slots de locals vivos.
-3. En el suspend/resume (`AwaitFuture`), guardar/restaurar los locals vivos a/desde el frame,
-   junto al future hijo.
-
-## Prueba puntual
-
-`async int F(){ int y = 10; int x = await G(); return x + y; }` debe conservar `y` a través del
-await y devolver `x + 10` tras una suspensión real (necesita la primitiva pendiente de F09 para
-ejercer el camino).
+- **Liveness precisa**: `ProjectOopMirModel` calcula por DFS def-use qué locals están vivos a través
+  de cada `SuspendPoint` (definidos antes, usados después); solo esos reciben slot en el frame.
+  Un local cuyo último uso precede toda suspensión queda **fuera** del frame (frame más pequeño).
+- **Prueba O0** (`TL-LANG-433`, exit 10): `async Read(){ int live=10; int dead=5; yield; return live; }`
+  — `live` sobrevive a la suspensión y `dead` se omite. Guard `TL-LANG-373` sigue PASS.
 
 ## Nota
 
-F04 depende de F09 para la ejecución runtime (la suspensión real); sin F09 el liveness es un
-transform no ejercido. Se implementará el transform aquí y se validará la ejecución cuando F09
-aporte la primitiva pendiente.
-
-### Avance (liveness conservativa) — verificado 2026-10-13
-
-- MIR: `asyncFrameLocals = {localOrdinal, offset, typeKey}` por cada local declarado del poll;
-  `asyncFrameSize` ahora incluye sus tamaños (tras los futures esperados).
-- LLVM `SuspendPoint`: guarda cada local vivo en el frame al suspender y lo restaura al reanudar.
-- Verificado: `async Read(){ int value=10; yield; return value; }` + `Main(){ return await Read(); }`
-  ejecuta exit 10 (el local sobrevive). Registrado `TL-LANG-373` (PASS). Commit `62692eec`.
-- **Nota de precisión**: es conservativa (guarda TODOS los locals, no sólo los vivos por def-use).
-  El refinamiento a liveness precisa (encoger el frame) queda como mejora.
+F04 depende de F09 para ejercer la suspensión real vía await (la prueba usa `yield`).

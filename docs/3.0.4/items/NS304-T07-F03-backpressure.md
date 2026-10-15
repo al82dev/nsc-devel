@@ -35,3 +35,13 @@ Estado real (tras F02):
 
 El núcleo de F03 (backpressure + orden + terminal sticky) ya lo entrega el diseño del poll de F02 +
 `TL-LANG-400`. El único residual es la propagación runtime del error (acoplado a `throws E` de F01/F02/F05).
+
+### Cierre (future tipado `future:<bool>|<E>`) — verificado 2026-10-14
+
+- `splitAsyncGeneratorFunction` ahora devuelve `future:<bool>|<E>` (el error E del `AsyncIterator<T,E>`)
+  y propaga `errorTypeKey` al poll y al MoveNext — alineando el código con el cierre "Error tipado del
+  future" (commit 5ddc9132), que no estaba en el código.
+- Guards `TL-LANG-386/387/400` PASS (sin regresión). Commit `a2e88354`.
+
+Queda: la **propagación runtime** (un `await` que falla dentro del async-generator → future de
+demanda) — acoplada a F05 (cancelación/error) + `throws` del poll, que se cierra en T07-F05.

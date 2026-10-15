@@ -64,7 +64,23 @@ explícita) y el **error tipado**.
 
 ### Teardown del foreach — cerrado 2026-10-13
 
-El `__enumerator` del foreach ahora es RAII para `iterator:`/`async-iterator:` (porta Drop fn),
+El `__enumerator` del foreach es RAII para `iterator:`/`async-iterator:` (porta Drop fn),
 `typeRequiresValueDrop` los incluye, y el RAII destruye el value-type por la drop-glue
 (`__nativesharp_drop_iterator` → `Gen$drop`). Verificado: `foreach (x in Gen()) { break; }` corre el
-destructor del frame (exit 1). Commits `dd464f72`, `...` + `TL-LANG-391` PASS.
+destructor del frame (exit 1). `TL-LANG-391` PASS.
+
+### Cierre (error tipado `Iterator<T,E>`) — verificado 2026-10-14
+
+- **Surface (#3 FINAL)**: `Iterator<T,E>` → `iterator:<T>|<E>`; el iterator lleva un slot de error
+  (campo 5, tras dropFn).
+- **Throw → error tipado**: `splitGeneratorFunction` reescribe `throw E` → `{ self->error = E;
+  self->state = -2; return false; }` (no unwind nativo).
+- **Consumidor**: `IteratorMoveNext` (LLVM) comprueba `state == -2` y rethrowa el error al catch
+  (con el `exceptionTargetRegionOrdinal` adjuntado por el HIR).
+- **Fix de liveness**: el frame del MoveNext ahora incluye los locals con destructor
+  (`cleanupRegionOrdinal`), aunque no se lean — necesario para el teardown del foreach.
+- Verificado: `Fail(){ throw; }` + `try{foreach(Fail())}catch{7}` + `foreach(Ok()){42}` → exit 49.
+  Registrado `TL-LANG-443` (PASS). Guards `TL-LANG-383/384/391/439` PASS. Commit `0787da78`.
+
+Queda: **panic** (camino SEH explícito del generator, no como `throws E`) — es el camino de
+terminación explícito, análogo al async.

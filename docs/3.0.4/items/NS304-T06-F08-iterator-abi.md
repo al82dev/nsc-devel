@@ -17,3 +17,13 @@
 
 Queda (cola del ABI): **NSMETA** (publicar el iterator en metadata), **PDB** (state/locals en debug) y
 **consumo intermodular** (iterator opaco cruzando módulos).
+
+### Cierre (consumo intermodular) — verificado 2026-10-14
+
+- **Intermodular**: un iterator opaco cruza módulos — el producer (Library) devuelve `iterator:<T>`
+  con su `moveNextFn` y el consumer (Exe) lo consume vía `MoveNext()`/`Current` (ProjectReference).
+  Verificado: `Gen(){ yield 1; yield 2; }` en Library + `while (it.MoveNext()) sum += it.Current`
+  en Exe → exit 3. Registrado `TL-LANG-444` (PASS).
+
+Queda (cola de infraestructura): **NSMETA** (publicar el iterator en metadata) y **PDB** (state/locals
+en debug) — son infraestructura de metadata/debug, no un hueco funcional del ABI.

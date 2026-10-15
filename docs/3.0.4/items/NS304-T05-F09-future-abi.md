@@ -76,6 +76,19 @@ explícito y el **consumo intermodular** (future opaco cruzando módulos). Esos 
 Queda (cola del ABI): runtime **resume/drop** explícito y **consumo intermodular** de un future
 opaco.
 
+### Cierre (consumo intermodular) — verificado 2026-10-14
+
+- **Intermodular**: un future opaco cruza módulos — el producer (Library) devuelve `future:<T>` con
+  su `pollFn` y el consumer (Exe) lo consume vía `await` (ProjectReference). Verificado:
+  `Async.Make(){ yield; return 5; }` en Library + `await Async.Make()` en Exe → exit 5. Registrado
+  `TL-LANG-438` (PASS).
+- **Resume**: el resume es la re-invocación del `pollFn` (estado por future); ya ejercido por
+  `TL-LANG-371` (suspend→resume→ready real, exit 43).
+
+Queda: el **drop** explícito (cancelar un future pendiente y liberar frame + drops de locals). Es
+el path de cancelación del F06 — requiere una superficie de cancelación del future (no está en las
+12 decisiones de surface); se cierra con el ABI de cancelación.
+
 ## Prueba puntual
 
 `async int F(){ int v = await PendingOnce(); return v+1; }` + `Main(){ return await F(); }` debe

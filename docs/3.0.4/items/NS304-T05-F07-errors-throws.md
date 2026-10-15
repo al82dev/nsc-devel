@@ -95,5 +95,14 @@ aún unwindea nativo SEH) y `?`/`Result` a través del await. Esos son el runtim
   Read(); } catch (Exception e) { return 7; }` → exit 7; sin catch → `-1` (TL-LANG-376 intacto).
   Registrado `TL-LANG-413` (PASS).
 
-Queda (refinamiento runtime): el camino `ReadyError` en el `AwaitFuture` async (propagar el error del
-hijo al future padre). Acoplado a F09 (suspensión real).
+### Cierre (ReadyError async) — verificado 2026-10-14
+
+- `AwaitFuture` async (poll) ahora distingue `child.state == -2` (ReadyError) y **propaga** el error
+  al future padre (slot de error + `state = -2`) en vez de tratarlo como "no listo" (lo que colgaba
+  el poll en bucle infinito).
+- Verificado: `async Child() throws Exception { throw ... }` + `async Parent() throws Exception
+  { return await Child(); }` + `try { await Parent(); } catch { return 7; }` → exit 7 (sin hang).
+  Registrado `TL-LANG-436` (PASS).
+
+Queda (acoplado a F09): `?`/`Result` a través del await y la integración de `panic`/unwind como
+camino de terminación explícito (no como propagación de `throws E`).

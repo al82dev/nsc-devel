@@ -16,6 +16,12 @@ Las 12 superficies se resuelven con las opciones recomendadas. Cada una se imple
 | 10 | ref-like generic (T11-F05) | **`where T : ref-like`** |
 | 11 | builder collection (T09-F05) | **`[CollectionBuilder]` + `CreateBuilder`** |
 | 12 | interpolation handler (T10-F03) | **`AppendLiteral`/`AppendFormatted` handler** |
+| 13 | scope/stack (T13-F03) | **`scope Tipo nombre = new Tipo(argumentos);`** (modificador contextual de declaración local) |
+| 14 | arena/pool + contexto (T13-F04) | **`new (allocator) Tipo(...)`**; `ArenaAllocator` implementa `IAllocator`; `Allocator` histórico se conserva sin competir |
+| 15 | trailing storage (T13-F06) | **`T[*]` + `[TrailingStorage(nameof(Length), nameof(Capacity))]`**; construcción `new (allocator, trailing: capacity) Packet(...)` |
+| 16 | allocation failure (T13-F08) | **`new (allocator, failure: panic\|null\|result\|throws) Tipo(...)`** |
+| 17 | checked/saturating decimal (T15-F05) | **`checked(expr)` / `saturating(expr)`**; wrapping/unchecked rechazados para decimal |
+| 18 | conversiones decimal (T15-F06) | **cast C# `(decimal)v`, `(int)vDecimal`, `(float)vDecimal`, `(double)vDecimal`** |
 
 ## Orden de implementación restante
 

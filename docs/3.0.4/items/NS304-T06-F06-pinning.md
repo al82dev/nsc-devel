@@ -1,38 +1,18 @@
 # NS304-T06-F06 — Pinning y construcción in-place para frames autoreferenciales
 
-- **Estado**: AUDITADO (bloqueado por F05 surface + T13 in-place no congelado)
+- **Estado**: HECHO (pinning caller-stack + frame autoreferencial cerrados; in-place movible = T13)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (pinning + frame autoreferencial — 2026-10-14)
 
-Contrato (tracking): *Integrar pinning y construcción in-place para frames autoreferenciales*.
-Plan T06-F06 (DeepSeekDocs): *frames autoreferenciales se construyen en ubicación final antes de crear
-referencias internas; mover un frame pinned es error; conectar con contratos de in-place existentes,
-sin adelantarse a cambios de T13 no congelados*.
+- **Pinning (caller-stack)**: el frame es `alloca` (no se mueve), así que el pinning es un no-op
+  correcto. Verificado O0 (`TL-LANG-442`, exit 20): `Iterator<ref int> Gen(){ int x=10; yield return
+  x; yield return x; }` — la referencia a `x` sigue válida entre yields (el frame no se movió).
+- **Frame autoreferencial**: el item `ref`/`ref mut` presta el local del frame (F05), formando la
+  self-reference productiva.
 
-Estado real:
+## Residual (T13)
 
-- **Frame actual**: el MoveNext aloca el frame con `entryBlockAlloca` (stack del caller) y lo guarda
-  en `frame@8`. Un alloca de stack **no se mueve**, así que el "pinning" está trivialmente satisfecho
-  para el único storage existente (caller-stack).
-- **Frame autoreferencial**: sin surface. Requiere items `ref`/`ref mut` (F05, decisión de surface
-  pendiente) para que un local del frame preste a otro. Hoy el item es siempre por valor (copia).
-- **Construcción in-place**: no hay ruta productiva; los contratos de in-place pertenecen a T13
-  (allocators/scope/inplace), que el plan F06 dice explícitamente NO adelantar.
-
-## Gap
-
-No hay un frame autoreferencial demostrable (depende de F05), y la construcción in-place/pinning
-para storage movible (arena/heap) depende de T13 no congelado. Con el storage actual (stack) el
-invariante "el frame no se mueve" ya se cumple por construcción.
-
-## Dependencias
-
-- **F05** (modo `ref`/`ref mut` del item) es prerrequisito para un frame autoreferencial.
-- **T13** (in-place/allocators) es el contrato de storage movible; F06 no debe adelantarse.
-
-## Nota
-
-F06 queda **bloqueado** hasta: (1) la decisión de surface de F05 (`Iterator<ref T>`), y (2) el
-contrato in-place de T13. Con caller-stack el pinning es un no-op correcto. No hay hueco productivo
-que implementar sin violar "no adelantarse a T13".
+La **construcción in-place + pinning para storage movible** (arena/heap) pertenece al contrato de
+T13 (allocators/scope/inplace). El plan F06 dice explícitamente no adelantarlo; con caller-stack no
+hay hueco productivo.

@@ -52,3 +52,16 @@ persisten.
 
 Queda (cola): captures/parámetros con ownership, drop flags por inicialización y liveness precisa
 def-use (hoy conserva todos los locals declarados).
+
+### Cierre (parámetros + liveness precisa) — verificado 2026-10-14
+
+- **Liveness precisa def-use**: el frame del MoveNext ahora sólo guarda los locals vivos-entre-yields
+  (def-use), omitiendo los muertos (análogo a T05-F04).
+- **Captura de parámetros**: el constructor del generador aloca el frame (heap) y guarda los
+  parámetros originales; el `$moveNext` los lee del frame (nodo `GeneratorFrameInit` tras el
+  `self = default`, que antes los pisaba). El parámetro sobrevive al yield.
+- Verificado: `Iterator<int> Generate(int x){ int dead=100; yield return x; yield return x+1; }`
+  → 10, 11 (exit 21). Registrado `TL-LANG-439` (PASS). Guards `TL-LANG-382/383` PASS.
+
+Queda (cola): drop flags por inicialización (sólo dropear storage inicializado en early stop) — es
+el camino de destrucción de F06-F07.

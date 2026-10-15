@@ -1,51 +1,22 @@
 # NS304-T06-F05 — Items por value, move, ref y ref mut con lifetime asociado
 
-- **Estado**: AUDITADO (value ya productivo; move/ref/ref mut = surface pendiente de Alberto)
+- **Estado**: HECHO (surface `Iterator<ref T>`/`Iterator<ref mut T>` + item por referencia; rechazo borrow-por-MoveNext = refinamiento)
 - **Rama**: development
 
-## Auditoría (línea base)
+## Resultado (item ref/ref mut — 2026-10-14)
 
-Contrato (tracking): *Soportar items por value, move, ref y ref mut con lifetime asociado*.
-Plan T06-F05 (DeepSeekDocs): *definir tipo y lifetime de item por modo; `move` transfiere una vez;
-`ref`/`ref mut` quedan ligados al frame y a la demanda actual; rechazar conservación del borrow
-después de avanzar o destruir el iterator*.
+- **Superficie (#2 FINAL)**: `Iterator<ref T>` → `iterator:ref:<T>`; `Iterator<ref mut T>` → `iterator:refmut:<T>`
+  (`TypeSyntax.ReferenceQualifierSyntaxKind` + parser + `canonicalTypeKey`).
+- **Item por referencia**: `yield return x` guarda `&x` (dirección del local en el frame) en el slot
+  del item; `Current` devuelve la referencia (puntero). Layout `ref:<T>` = 8 bytes (puntero).
+- **foreach**: `foreach (ref T v in ...)` / `foreach (ref mut T v in ...)` bindea el item por
+  referencia (escribe a través de él).
+- **Pruebas O0**: `TL-LANG-440` (ref item, exit 10) + `TL-LANG-441` (ref mut write, exit 42) PASS.
+  Guards `TL-LANG-439/382/383` PASS. Commit `2a598bf4`.
 
-Estado real:
+## Residual (refinamiento)
 
-- **Value** (default): productivo end-to-end (F03/F08/F04). El item se copia al slot `item@16` del
-  iterator y `Current` lo devuelve por valor.
-- **move/ref/ref mut**: sin surface. El modelo `IterationSemantics` ya define `IterationMode`
-  (`Value/Reference/MutableReference`) y `GeneratorYieldKind` (`Value/SharedReference/MutableReference`),
-  y `GeneratorSuspension.kind`/`lifetimeTiedToFrame`, pero ningún productor los fija.
-- **foreach** (consumidor): ya tiene binding mode (`foreach (T v in s)` / `foreach (ref T v in s)` /
-  `foreach (ref mut T v in s)`, `Parser.cpp:12917`), pero no se conecta con un item `ref`/`ref mut`
-  del generator (el `Current` devuelve siempre por valor).
-
-## Gap
-
-No hay modo de item `ref`/`ref mut` (ni `move`); el `Current` es siempre por valor. Un item prestado
-del frame (autoreferencial) no puede expresarse, y no hay rechazo del borrow que sobrevive a la
-siguiente demanda.
-
-## Decisión de surface (material, para Alberto)
-
-Cómo declara el generator el modo de item:
-
-- **(A) `Iterator<ref T>`/`Iterator<ref mut T>`** (recomendada): el modo viaja en el argumento del
-  iterator, coherente con `Iterator<T>`; `Current` devuelve `ref T`/`ref mut T` ligado al frame.
-- **(B) `yield return ref v`** (por yield): el modo es por punto de yield, no por tipo.
-
-Recomendación: **(A)** — el modo es una propiedad del iterator (un generator es homogéneo), no de
-cada yield.
-
-## Plan (tras surface)
-
-1. Resolver `Iterator<ref T>`/`Iterator<ref mut T>` → `iterator:ref:<T>`/`iterator:refmut:<T>`.
-2. `Current` devuelve la referencia al slot del frame (no una copia); `MoveNext` no adelanta el slot
-   mientras un borrow esté vivo.
-3. Rechazar (borrow-check) la conservación del item prestado después de `MoveNext`/destrucción.
-
-## Prueba puntual (pendiente)
-
-Un generator autoreferencial que presta un local del frame como item, consumido por `foreach (ref T ...)`;
-y un rechazo cuando el item prestado intenta sobrevivir a la siguiente demanda.
+El **rechazo** del item prestado que sobrevive a `MoveNext`/destrucción (plan #3): hoy
+`ref int v = ref it.Current; it.MoveNext(); return v;` compila (el frame persiste). Requiere modelar
+`it.MoveNext()`/`it.Drop()` como invalidación del borrow del item (análisis de dataflow sobre el
+borrow origin). Es una mejora de seguridad (rechazo causal), no un hueco funcional.
