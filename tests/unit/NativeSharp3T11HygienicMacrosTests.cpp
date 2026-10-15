@@ -81,6 +81,19 @@ public class Calculator
             std::string::npos,
         "an unknown macro context is rejected before the AST is published");
 
+    const auto mapped = MacroExpansionEngine().expand(
+        "#macro inc(v) expression { $v + 1 } int a = #expand inc(1);");
+    tests.expect(mapped.success && mapped.expansions.size() == 1 &&
+            mapped.expansions[0].definitionOffset == 0 &&
+            mapped.expansions[0].definitionLength != 0 &&
+            mapped.expansions[0].invocationOffset > mapped.expansions[0].definitionOffset,
+        "an expansion records both its invocation and its template source mapping");
+    const std::string backtrace = macroExpansionBacktrace(mapped.expansions);
+    tests.expect(backtrace.find("#expand inc") != std::string::npos &&
+            backtrace.find("invocation offset") != std::string::npos &&
+            backtrace.find("template offset") != std::string::npos,
+        "the expansion backtrace navigates to both invocation and template without fictitious spans");
+
     std::filesystem::remove_all(root, ignored);
     return tests.result();
 }

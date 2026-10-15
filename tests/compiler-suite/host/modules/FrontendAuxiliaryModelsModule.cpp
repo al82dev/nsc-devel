@@ -354,6 +354,30 @@ void macroContextOracle(TestContext& context, std::size_t variant)
         "an omitted context defaults to statement");
 }
 
+void macroSourceMappingOracle(TestContext& context, std::size_t variant)
+{
+    const auto mapped = MacroExpansionEngine().expand(
+        "#macro inc(v) expression { $v + 1 } int a = #expand inc(1);");
+    if (variant == 4)
+    {
+        const auto nested = MacroExpansionEngine().expand(
+            "#macro outer() statement { #expand inner() } #macro inner() statement { int x = 1; } void F() { #expand outer() }");
+        context.expect(nested.success && nested.expansions.size() == 2,
+            "a nested expansion records the full chain");
+        return;
+    }
+    context.expect(mapped.success && mapped.expansions.size() == 1 &&
+            mapped.expansions[0].definitionOffset == 0 &&
+            mapped.expansions[0].definitionLength != 0 &&
+            mapped.expansions[0].invocationOffset > mapped.expansions[0].definitionOffset,
+        "an expansion records both its invocation and its template source mapping");
+    const std::string backtrace = macroExpansionBacktrace(mapped.expansions);
+    context.expect(backtrace.find("#expand inc") != std::string::npos &&
+            backtrace.find("invocation offset") != std::string::npos &&
+            backtrace.find("template offset") != std::string::npos,
+        "the expansion backtrace navigates to both invocation and template without fictitious spans");
+}
+
 void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
 {
     addMatrix(registry, 46, "unit", escapeOriginOracle);
@@ -368,5 +392,6 @@ void registerFrontendAuxiliaryModelsModule(TestRegistry& registry)
     addMatrix(registry, 55, "unit", inlinePolicyOracle);
     addMatrix(registry, 64, "component", typedDescriptorsOracle);
     addMatrix(registry, 65, "unit", macroContextOracle);
+    addMatrix(registry, 66, "unit", macroSourceMappingOracle);
 }
 }

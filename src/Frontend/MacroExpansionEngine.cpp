@@ -12,6 +12,8 @@ struct Definition final
     std::vector<std::string> parameters;
     std::string body;
     MacroExpansionContext context = MacroExpansionContext::Statement;
+    std::size_t definitionOffset = 0;
+    std::size_t definitionLength = 0;
 };
 
 bool identifierStart(char value) noexcept
@@ -210,7 +212,8 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
         if (bodyEnd == std::string::npos)
         { result.error = "unterminated macro body"; return result; }
         if (!definitions.emplace(name, Definition{std::move(parameters),
-                result.source.substr(cursor + 1, bodyEnd - cursor - 1), context}).second)
+                result.source.substr(cursor + 1, bodyEnd - cursor - 1), context,
+                search, bodyEnd + 1 - search}).second)
         { result.error = "duplicate macro definition '" + name + "'"; return result; }
         for (std::size_t index = search; index <= bodyEnd; ++index)
             if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
@@ -256,9 +259,24 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
         const std::size_t invocationLength = end + 1 - invocation;
         result.source.replace(invocation, invocationLength, expansion);
         result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
-            scope, definition->second.context});
+            scope, definition->second.context,
+            definition->second.definitionOffset, definition->second.definitionLength});
     }
     result.success = true;
+    return result;
+}
+
+std::string macroExpansionBacktrace(std::span<const MacroExpansionRecord> expansions)
+{
+    std::string result;
+    for (std::size_t index = 0; index < expansions.size(); ++index)
+    {
+        const MacroExpansionRecord& expansion = expansions[index];
+        result += "  #expand " + expansion.macroName;
+        result += " (invocation offset " + std::to_string(expansion.invocationOffset);
+        result += ", template offset " + std::to_string(expansion.definitionOffset) + ")";
+        if (index + 1 != expansions.size()) result += "\n";
+    }
     return result;
 }
 }

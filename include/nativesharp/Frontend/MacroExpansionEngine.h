@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,6 +21,10 @@ struct MacroExpansionRecord final
     std::size_t expansionLength = 0;
     std::size_t hygieneScope = 0;
     MacroExpansionContext context = MacroExpansionContext::Statement;
+    // NS304-T14-F04: source mapping of a generated expansion — the template (definition) location
+    // that produced it, so a diagnostic can navigate to both the invocation and the template.
+    std::size_t definitionOffset = 0;
+    std::size_t definitionLength = 0;
 };
 
 struct MacroExpansionResult final
@@ -41,4 +46,8 @@ public:
 private:
     std::size_t maximumExpansions_ = 64;
 };
+
+// NS304-T14-F04: renders the expansion chain with source mapping (invocation + template offsets)
+// for a diagnostic backtrace without fictitious spans.
+std::string macroExpansionBacktrace(std::span<const MacroExpansionRecord> expansions);
 }
