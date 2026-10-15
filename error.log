@@ -1,0 +1,256 @@
+NativeSharp compilation log v1
+exit_code=1
+arguments= --emit-project-oop-exe _tmp\t13f08ae\p.nsproj -o _tmp\t13f08ae\p.exe --progress
+--- stdout ---
+NativeSharp Compiler 3.0.0 (nsc)
+Copyright (c) 2026 Alberto Huerta Luna. All rights reserved.
+Build hash: 7ce6c5ac1b9ecedf
+
+-- NSC: project _tmp/t13f08ae/p.nsproj
+-- NSC: target --emit-project-oop-exe
+-- NSC: precompiled-metadata
+-- NSC: project-graph
+-- NSC: project-graph finished (36 ms)
+-- NSC: precompiled-metadata finished (36 ms)
+-- NSC: syntax-read
+[2/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Allocator.ns
+[1/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/AllocationFailure.ns
+[8/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/BitOperations.ns
+[16/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Environment.ns
+[5/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/BinaryReader.ns
+[7/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Console.ns
+[20/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x4x4.ns
+[3/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/DateTime.ns
+[9/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/ArenaAllocator.ns
+[11/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/BorrowedReference.ns
+[13/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x2.ns
+[10/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/CString.ns
+[12/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Exception.ns
+[27/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Int32x4.ns
+[14/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Assertions.ns
+[28/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Int32x8.ns
+[17/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x3.ns
+[18/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x3x3.ns
+[19/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x4.ns
+[6/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/DeterministicMath.ns
+[22/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float32x8.ns
+[33/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/MathUtil.ns
+[23/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Half.ns
+[34/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/NativeClock.ns
+[24/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/IAllocator.ns
+[26/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/IExecutor.ns
+[15/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/BinaryWriter.ns
+[4/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/ByteBuffer.ns
+[42/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Rgb10A2Unorm.ns
+[31/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Int64x4.ns
+[30/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/IThreadExecutor.ns
+[32/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Lazy.ns
+[21/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Float64x4.ns
+[25/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/HardwareIntrinsics.ns
+[35/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/NumericParsing.ns
+[46/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/StringBuilder.ns
+[38/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Optional.ns
+[48/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/StringView.ns
+[39/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Object.ns
+[49/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/TaskScope.ns
+[41/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Result.ns
+[29/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Int64x2.ns
+[50/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Sync.ns
+[43/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Send.ns
+[45/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Span.ns
+[37/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Number.ns
+[47/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/String.ns
+[36/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/NumericLimits.ns
+[40/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Random.ns
+[51/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/TimeSpan.ns
+[52/53] NSC syntax-read A:/nsc-devel/_tmp/t13f08ae/p.ns
+[44/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Rgba8Unorm.ns
+[53/53] NSC syntax-read A:/nsc-devel/lib/NativeSharp.Core/Utf8.ns
+-- NSC: syntax-read finished (2 ms)
+-- NSC: syntax-comptime
+[1/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/AllocationFailure.ns
+[2/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/BorrowedReference.ns
+[3/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Assertions.ns
+[4/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Allocator.ns
+[5/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x2.ns
+[6/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/BitOperations.ns
+[7/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x3.ns
+[8/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/CString.ns
+[9/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x3x3.ns
+[10/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x8.ns
+[11/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float64x4.ns
+[12/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Half.ns
+[13/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x4x4.ns
+[15/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/DateTime.ns
+[14/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/HardwareIntrinsics.ns
+[16/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/IAllocator.ns
+[17/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/IExecutor.ns
+[18/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/DeterministicMath.ns
+[19/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/BinaryReader.ns
+[20/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Int32x8.ns
+[21/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Int64x2.ns
+[22/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/IThreadExecutor.ns
+[23/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Int64x4.ns
+[24/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Float32x4.ns
+[26/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Int32x4.ns
+[27/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Environment.ns
+[25/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/BinaryWriter.ns
+[28/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/ByteBuffer.ns
+[29/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Lazy.ns
+[30/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Result.ns
+[31/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/NativeClock.ns
+[32/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Send.ns
+[33/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Rgb10A2Unorm.ns
+[34/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Console.ns
+[35/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Object.ns
+[36/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Rgba8Unorm.ns
+[37/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Sync.ns
+[38/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/NumericLimits.ns
+[39/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Optional.ns
+[40/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/MathUtil.ns
+[41/53] NSC syntax-comptime A:/nsc-devel/_tmp/t13f08ae/p.ns
+[42/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/ArenaAllocator.ns
+[43/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Exception.ns
+[44/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/TaskScope.ns
+[45/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/StringBuilder.ns
+[46/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/NumericParsing.ns
+[47/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/TimeSpan.ns
+[48/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Random.ns
+[49/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Utf8.ns
+[50/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/StringView.ns
+[51/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Span.ns
+[52/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/Number.ns
+[53/53] NSC syntax-comptime A:/nsc-devel/lib/NativeSharp.Core/String.ns
+-- NSC: syntax-comptime finished (26 ms)
+-- NSC: precompiled-syntax
+-- NSC: precompiled-syntax finished (0 ms)
+-- NSC: syntax-lex
+[1/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/AllocationFailure.ns
+[2/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Assertions.ns
+[3/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x2.ns
+[4/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/BorrowedReference.ns
+[5/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Allocator.ns
+[6/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/CString.ns
+[7/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/BitOperations.ns
+[8/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x3.ns
+[9/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Half.ns
+[10/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float64x4.ns
+[11/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x8.ns
+[12/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x3x3.ns
+[13/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/HardwareIntrinsics.ns
+[14/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/IAllocator.ns
+[15/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/DateTime.ns
+[18/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x4x4.ns
+[17/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Environment.ns
+[19/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Int32x8.ns
+[16/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/IExecutor.ns
+[22/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Int32x4.ns
+[21/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Int64x2.ns
+[20/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/IThreadExecutor.ns
+[23/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Int64x4.ns
+[25/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Float32x4.ns
+[24/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/BinaryWriter.ns
+[26/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/DeterministicMath.ns
+[27/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/NativeClock.ns
+[28/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Lazy.ns
+[29/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Result.ns
+[30/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/ByteBuffer.ns
+[32/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Send.ns
+[33/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Object.ns
+[31/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/BinaryReader.ns
+[34/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Rgb10A2Unorm.ns
+[35/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Rgba8Unorm.ns
+[36/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Console.ns
+[38/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/NumericLimits.ns
+[37/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Sync.ns
+[39/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/MathUtil.ns
+[40/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Optional.ns
+[41/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/ArenaAllocator.ns
+[42/53] NSC syntax-lex A:/nsc-devel/_tmp/t13f08ae/p.ns
+[43/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Exception.ns
+[44/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/TimeSpan.ns
+[45/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/TaskScope.ns
+[46/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Random.ns
+[47/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/NumericParsing.ns
+[48/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/StringBuilder.ns
+[49/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/StringView.ns
+[50/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Utf8.ns
+[51/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Span.ns
+[52/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/Number.ns
+[53/53] NSC syntax-lex A:/nsc-devel/lib/NativeSharp.Core/String.ns
+-- NSC: syntax-lex finished (9 ms)
+-- NSC: syntax-parse
+[1/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/AllocationFailure.ns
+[2/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Allocator.ns
+[3/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/BorrowedReference.ns
+[4/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Assertions.ns
+[5/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/BitOperations.ns
+[6/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Environment.ns
+[7/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x3.ns
+[8/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x2.ns
+[9/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/CString.ns
+[10/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/DateTime.ns
+[11/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x3x3.ns
+[12/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x8.ns
+[13/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float64x4.ns
+[14/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Half.ns
+[15/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/HardwareIntrinsics.ns
+[16/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/IAllocator.ns
+[17/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/IExecutor.ns
+[18/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x4x4.ns
+[19/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/DeterministicMath.ns
+[20/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/IThreadExecutor.ns
+[22/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Int64x2.ns
+[23/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Int32x4.ns
+[24/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Int32x8.ns
+[21/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/BinaryWriter.ns
+[27/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Float32x4.ns
+[28/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/ByteBuffer.ns
+[25/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Int64x4.ns
+[26/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/NativeClock.ns
+[29/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Lazy.ns
+[30/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Object.ns
+[31/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Send.ns
+[32/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/ArenaAllocator.ns
+[33/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Result.ns
+[35/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Console.ns
+[34/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/BinaryReader.ns
+[36/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/NumericLimits.ns
+[38/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Optional.ns
+[39/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Sync.ns
+[37/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Exception.ns
+[42/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Rgb10A2Unorm.ns
+[40/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/MathUtil.ns
+[41/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Rgba8Unorm.ns
+[43/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Random.ns
+[44/53] NSC syntax-parse A:/nsc-devel/_tmp/t13f08ae/p.ns
+[45/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/TimeSpan.ns
+[46/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/TaskScope.ns
+[47/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/NumericParsing.ns
+[48/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/StringBuilder.ns
+[49/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Utf8.ns
+[50/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Span.ns
+[51/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/StringView.ns
+[52/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/Number.ns
+[53/53] NSC syntax-parse A:/nsc-devel/lib/NativeSharp.Core/String.ns
+-- NSC: syntax-parse finished (9 ms)
+-- NSC: generics
+-- NSC: generics finished (152 ms)
+-- NSC: names
+-- NSC: names finished (13 ms)
+-- NSC: members
+-- NSC: members finished (34 ms)
+-- NSC: inheritance
+-- NSC: inheritance finished (0 ms)
+-- NSC: interfaces
+-- NSC: interfaces finished (0 ms)
+-- NSC: generic-constraints
+-- NSC: generic-constraints finished (0 ms)
+-- NSC: method-bodies
+-- NSC: method-bodies finished (53 ms)
+-- NSC: failed target --emit-project-oop-exe
+-- NSC: failed project _tmp/t13f08ae/p.nsproj
+--- stderr ---
+A:\nsc-devel\_tmp\t13f08ae\p.ns:7:50: error: no viable overload of 'Of__g1__byte__hc294d17e061db858' accepts the argument types
+        public byte* Allocate(int bytes) { byte* p = Spans.Of<byte>(pool).Data() + cursor; cursor = cursor + bytes; return p; }
+                                                     ^~~~~~~~~~~~~~~~~~~~

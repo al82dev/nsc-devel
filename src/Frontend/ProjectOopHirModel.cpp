@@ -8766,8 +8766,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
                 const std::size_t contextOrdinal = nextSyntheticLocalOrdinal_++;
+                // NS304-T13-F08 `failure: result`: the block yields the closed Result<T,E>, not the
+                // raw target type; the conditional below is the block's last expression.
                 auto block = makeNode(
-                    ProjectOopHirNodeKind::BlockExpression, expression, binding->targetTypeKey);
+                    ProjectOopHirNodeKind::BlockExpression, expression,
+                    binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Result
+                        ? binding->allocatorResultCarrierTypeKey
+                        : binding->targetTypeKey);
 
                 // A struct allocator is stored by value, so `Allocate` needs its address; a class
                 // allocator is a reference and needs the loaded value (the reference pointer).

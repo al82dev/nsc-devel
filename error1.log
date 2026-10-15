@@ -1,0 +1,6 @@
+NativeSharp compilation log v1
+exit_code=1
+arguments= --dump-project-oop-llvm _tmp\t13f08aq\p.nsproj
+--- stdout ---
+--- stderr ---
+nsc: error: NativeSharp 3.0 value drop has no address/member model
