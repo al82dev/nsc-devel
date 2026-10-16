@@ -834,6 +834,10 @@ private:
     // incomplete clone and removes the provisional cache entry.
     std::string packMaterializationError_;
     SourceRange packMaterializationErrorRange_{};
+    // NSC305-G06. Recursion depth of the mutually-recursive cloneType/cloneNode pair, guarded so a
+    // pathologically deep type/expression fails with a clean materialization error instead of
+    // overflowing the process stack.
+    std::size_t cloneDepth_ = 0;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

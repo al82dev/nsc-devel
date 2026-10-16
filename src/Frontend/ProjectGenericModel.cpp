@@ -4819,6 +4819,18 @@ std::vector<ast::TypeSyntax*> ProjectGenericModel::cloneExpandedTypeArgument(
     return result;
 }
 
+namespace
+{
+// NSC305-G06. RAII depth guard for the mutually-recursive cloneType/cloneNode pair.
+constexpr std::size_t kMaximumCloneDepth = 1024;
+struct CloneDepthGuard final
+{
+    std::size_t& depth;
+    explicit CloneDepthGuard(std::size_t& value) : depth(value) { ++depth; }
+    ~CloneDepthGuard() { --depth; }
+};
+}  // namespace
+
 ast::TypeSyntax* ProjectGenericModel::cloneType(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
@@ -4826,6 +4838,18 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     std::size_t modifierLimit)
 {
     if (source == nullptr) return nullptr;
+    CloneDepthGuard depthGuard(cloneDepth_);
+    if (cloneDepth_ > kMaximumCloneDepth)
+    {
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ =
+                "generic materialization exceeds the maximum nesting depth";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return arena.make<ast::TypeSyntax>(
+            source->range(), lexer::TokenKind::KwInt, "int");
+    }
     telemetry_.noteTypesCloned();
 
     // T05-F03. Normalize `T.Item` only when the leftmost component is an active generic
@@ -5181,6 +5205,17 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     std::string_view originalContainingTypeName)
 {
     if (source == nullptr) return nullptr;
+    CloneDepthGuard depthGuard(cloneDepth_);
+    if (cloneDepth_ > kMaximumCloneDepth)
+    {
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ =
+                "generic materialization exceeds the maximum nesting depth";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return nullptr;
+    }
     telemetry_.noteNodesCloned();
     if (source->kind() == ast::AstNodeKind::MemberExpression &&
         source->first() != nullptr &&
