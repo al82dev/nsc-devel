@@ -11838,6 +11838,49 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileExists ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryExists ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreFileDelete ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryCreate)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool exists = current->kind == frontend::ProjectOopMirNodeKind::CoreFileExists;
+                    const bool dirExists = current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryExists;
+                    const bool del = current->kind == frontend::ProjectOopMirNodeKind::CoreFileDelete;
+                    if (current->children.size() != 1 ||
+                        (exists && fileExistsFunction_ == nullptr) ||
+                        (dirExists && directoryExistsFunction_ == nullptr) ||
+                        (del && fileDeleteFunction_ == nullptr) ||
+                        (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryCreate && directoryCreateFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 53.3 filesystem intrinsic requires one string argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef path = values.back();
+                values.pop_back();
+                if (path == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {path};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileExists)
+                    values.push_back(buildNoUnwindCall(fileExistsFunctionType_, fileExistsFunction_, args, 1, "file.exists"));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryExists)
+                    values.push_back(buildNoUnwindCall(directoryExistsFunctionType_, directoryExistsFunction_, args, 1, "directory.exists"));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileDelete)
+                {
+                    buildNoUnwindCall(fileDeleteFunctionType_, fileDeleteFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else
+                {
+                    buildNoUnwindCall(directoryCreateFunctionType_, directoryCreateFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12358,46 +12401,10 @@ private:
             // builtin:bool this HIR node claims as its type (see buildFileExists/
             // buildDirectoryExists in WindowsRuntimeBuilder.cpp).
             case frontend::ProjectOopMirNodeKind::CoreFileExists:
-            {
-                if (node->children.size() != 1 || fileExistsFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3 File.Exists requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(fileExistsFunctionType_, fileExistsFunction_, args, 1, "file.exists");
-            }
             case frontend::ProjectOopMirNodeKind::CoreDirectoryExists:
-            {
-                if (node->children.size() != 1 || directoryExistsFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3 Directory.Exists requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(directoryExistsFunctionType_, directoryExistsFunction_, args, 1, "directory.exists");
-            }
-            // File.Delete/Directory.CreateDirectory: one string argument, void return -- same
-            // "call the hook, discard nothing meaningful to return, hand back a dummy i1" shape
-            // CoreEnvironmentSetVariable above uses, just with one argument instead of two.
             case frontend::ProjectOopMirNodeKind::CoreFileDelete:
-            {
-                if (node->children.size() != 1 || fileDeleteFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3 File.Delete requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                buildNoUnwindCall(fileDeleteFunctionType_, fileDeleteFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreDirectoryCreate:
-            {
-                if (node->children.size() != 1 || directoryCreateFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3 Directory.CreateDirectory requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                buildNoUnwindCall(directoryCreateFunctionType_, directoryCreateFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 53.3b "Filesystem/Paths (contenido de archivo)": ReadAllText takes one
             // string argument (a path) and returns the freshly-allocated string the runtime
