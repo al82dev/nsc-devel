@@ -846,6 +846,13 @@ private:
         const std::string& specializedName,
         std::size_t ordinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Reserves a slot + ordinal for a type specialization (the "reserve" step of the
+    // wave scheduler); the execute/merge steps fill it afterward.
+    std::size_t reserveTypeSpecialization(
+        const TemplateState& state,
+        const std::string& key,
+        const std::string& specializedName,
+        const std::vector<std::string>& identities);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

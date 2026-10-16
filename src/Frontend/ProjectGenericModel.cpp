@@ -4583,6 +4583,32 @@ void ProjectGenericModel::commitTypeSpecialization(
         &diagnostics);
 }
 
+// NSC305-G09. Reserves a slot + ordinal for a type specialization (see the header).
+std::size_t ProjectGenericModel::reserveTypeSpecialization(
+    const TemplateState& state,
+    const std::string& key,
+    const std::string& specializedName,
+    const std::vector<std::string>& identities)
+{
+    const std::size_t ordinal = specializations_.size();
+    specializationPlanner_.commit(key, ordinal);
+    specializations_.push_back(GenericSpecializationRecord{
+        state.record.kind,
+        state.syntax,
+        nullptr,
+        state.record.canonicalKey,
+        key,
+        specializedName,
+        identities,
+        ordinal,
+        state.ordinal,
+        nullptr,
+        currentInstantiationRange_,
+        currentOverloadGroup_});
+    specializations_.back().state = SpecializationState::Building;
+    return ordinal;
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
@@ -4629,22 +4655,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
     specializedName += "__h" + stableHashSuffix(key);
 
-    const std::size_t ordinal = specializations_.size();
-    specializationPlanner_.commit(key, ordinal);
-    specializations_.push_back(GenericSpecializationRecord{
-        state.record.kind,
-        state.syntax,
-        nullptr,
-        state.record.canonicalKey,
-        key,
-        specializedName,
-        identities,
-        ordinal,
-        state.ordinal,
-        nullptr,
-        currentInstantiationRange_,
-        currentOverloadGroup_});
-    specializations_.back().state = SpecializationState::Building;
+    const std::size_t ordinal = reserveTypeSpecialization(state, key, specializedName, identities);
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
