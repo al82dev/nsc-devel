@@ -970,6 +970,35 @@ bool emitInterfaceMapGlobals(
     return true;
 }
 
+// NSC305-L03. Materializes (or returns the cached) type-name constant (moved out of the lowerer's
+// internTypeNameConstant as a pure move).
+LLVMValueRef materializeTypeNameConstant(
+    LLVMModuleRef module,
+    LLVMContextRef context,
+    std::unordered_map<std::string, LLVMValueRef>& typeNameGlobals,
+    const std::string& globalName,
+    const std::string& text)
+{
+    const auto found = typeNameGlobals.find(globalName);
+    if (found != typeNameGlobals.end()) return found->second;
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i8 = LLVMInt8TypeInContext(context);
+    LLVMTypeRef bytesType = LLVMArrayType2(i8, text.size() + 1U);
+    LLVMTypeRef literalType = LLVMStructCreateNamed(context, (globalName + "_type").c_str());
+    LLVMTypeRef fields[] = {i64, bytesType};
+    LLVMStructSetBody(literalType, fields, 2, 0);
+    LLVMValueRef values[] = {
+        LLVMConstInt(i64, static_cast<std::uint64_t>(text.size()), 0),
+        LLVMConstStringInContext2(context, text.data(), text.size(), 0)};
+    LLVMValueRef initializer = LLVMConstNamedStruct(literalType, values, 2);
+    LLVMValueRef global = LLVMAddGlobal(module, literalType, globalName.c_str());
+    if (global == nullptr || initializer == nullptr) return nullptr;
+    LLVMSetInitializer(global, initializer);
+    LLVMSetGlobalConstant(global, 1);
+    typeNameGlobals.emplace(globalName, global);
+    return global;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -14630,25 +14659,7 @@ private:
     // builds, because the value ends up flowing through the language as an ordinary `string`.
     LLVMValueRef internTypeNameConstant(const std::string& globalName, const std::string& text)
     {
-        const auto found = typeNameGlobals_.find(globalName);
-        if (found != typeNameGlobals_.end()) return found->second;
-        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
-        LLVMTypeRef bytesType = LLVMArrayType2(i8, text.size() + 1U);
-        LLVMTypeRef literalType = LLVMStructCreateNamed(
-            context_, (globalName + "_type").c_str());
-        LLVMTypeRef fields[] = {i64, bytesType};
-        LLVMStructSetBody(literalType, fields, 2, 0);
-        LLVMValueRef values[] = {
-            LLVMConstInt(i64, static_cast<std::uint64_t>(text.size()), 0),
-            LLVMConstStringInContext2(context_, text.data(), text.size(), 0)};
-        LLVMValueRef initializer = LLVMConstNamedStruct(literalType, values, 2);
-        LLVMValueRef global = LLVMAddGlobal(module_, literalType, globalName.c_str());
-        if (global == nullptr || initializer == nullptr) return nullptr;
-        LLVMSetInitializer(global, initializer);
-        LLVMSetGlobalConstant(global, 1);
-        typeNameGlobals_.emplace(globalName, global);
-        return global;
+        return materializeTypeNameConstant(module_, context_, typeNameGlobals_, globalName, text);
     }
 
     // C8 "type root": `RuntimeHelpers.TypeName(value)` -- the name stored in the object's class
