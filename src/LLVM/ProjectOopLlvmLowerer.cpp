@@ -409,6 +409,46 @@ unsigned debugCodeViewFileNumberFor(
     return found == debugCodeViewFileNumbers.end() ? 0 : found->second;
 }
 
+// NSC305-L03. Emits the debug metadata for a static field (moved out of the lowerer's
+// emitDebugGlobal as a pure move).
+bool emitGlobalDebugInfo(
+    DebugInformationKind debugInformation,
+    LLVMDIBuilderRef debugBuilder,
+    LLVMMetadataRef debugCompileUnit,
+    LLVMContextRef context,
+    const source::SourceManager* sourceManager,
+    const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
+    const std::function<LLVMMetadataRef(std::string_view, std::string_view)>& debugTypeLookup,
+    const frontend::ProjectOopMirStaticField& field,
+    LLVMValueRef global,
+    std::string& error)
+{
+    if (debugInformation != DebugInformationKind::Full || debugBuilder == nullptr ||
+        debugCompileUnit == nullptr || global == nullptr || field.isImported ||
+        !field.sourceRange.isValid())
+        return true;
+    LLVMMetadataRef file = debugFileLookup(field.sourceRange.begin());
+    const std::string& displayName =
+        field.debugDisplayName.empty() ? field.name : field.debugDisplayName;
+    LLVMMetadataRef type = debugTypeLookup(field.typeKey, displayName);
+    LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
+    if (file == nullptr || type == nullptr || expression == nullptr) return true;
+    const source::SourcePosition position =
+        sourceManager->getPosition(field.sourceRange.begin());
+    LLVMMetadataRef globalExpression = LLVMDIBuilderCreateGlobalVariableExpression(
+        debugBuilder, debugCompileUnit, displayName.data(), displayName.size(),
+        field.storageSymbol.data(), field.storageSymbol.size(),
+        file, position.line, type, 0, expression, nullptr, 0);
+    if (globalExpression == nullptr)
+    {
+        error = "failed to create debug metadata for global '" + displayName + "'";
+        return false;
+    }
+    const unsigned debugKind = LLVMGetMDKindIDInContext(context, "dbg", 3);
+    LLVMGlobalSetMetadata(global, debugKind, globalExpression);
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -2170,31 +2210,13 @@ private:
         LLVMValueRef global,
         std::string& error)
     {
-        if (debugInformation_ != DebugInformationKind::Full || debugBuilder_ == nullptr ||
-            debugCompileUnit_ == nullptr || global == nullptr || field.isImported ||
-            !field.sourceRange.isValid())
-            return true;
-
-        LLVMMetadataRef file = debugFile(field.sourceRange.begin());
-        const std::string& displayName = field.debugDisplayName.empty()
-            ? field.name
-            : field.debugDisplayName;
-        LLVMMetadataRef type = debugNamedValueType(field.typeKey, displayName);
-        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-        if (file == nullptr || type == nullptr || expression == nullptr) return true;
-        const source::SourcePosition position =
-            sourceManager_->getPosition(field.sourceRange.begin());
-        LLVMMetadataRef globalExpression = LLVMDIBuilderCreateGlobalVariableExpression(
-            debugBuilder_, debugCompileUnit_,
-            displayName.data(), displayName.size(),
-            field.storageSymbol.data(), field.storageSymbol.size(),
-            file, position.line, type, 0, expression, nullptr, 0);
-        if (globalExpression == nullptr)
-            return fail(error, "failed to create debug metadata for global '" +
-                displayName + "'");
-        const unsigned debugKind = LLVMGetMDKindIDInContext(context_, "dbg", 3);
-        LLVMGlobalSetMetadata(global, debugKind, globalExpression);
-        return true;
+        return emitGlobalDebugInfo(
+            debugInformation_, debugBuilder_, debugCompileUnit_, context_, sourceManager_,
+            [&](SourceLocation location) { return debugFile(location); },
+            [&](std::string_view typeKey, std::string_view name) {
+                return debugNamedValueType(typeKey, name);
+            },
+            field, global, error);
     }
 
     bool declareRuntime(std::string& error)
