@@ -11334,6 +11334,36 @@ private:
                 values.push_back(value);
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 2 || current->immediate == 0)
+                    {
+                        values.push_back(failValue(error, "C2.1 raw element address requires a base, an index and an element size"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef base = values.back();
+                    values.pop_back();
+                    if (base == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, base, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef index = values.back();
+                values.pop_back();
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                index = normalizeNativeIndexFromValue(current->children[1].get(), index, error);
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(rawElementAddressFromParts(current, frame.lhs, index, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11473,47 +11503,7 @@ private:
             case frontend::ProjectOopMirNodeKind::AddressValue:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RawElementAddress:
-            {
-                // C2.1 "fixed arrays": base + index * elementSize, as a byte-wise GEP. The base is
-                // already an address by the time it gets here -- a fixed array's own storage, or
-                // the value of a raw pointer -- so there is nothing to load and nothing to skip:
-                // unlike a managed array (ArrayElementAddress above) there is NO length header at
-                // the front and therefore no bounds check either. That is the raw tier's whole
-                // contract, and it is what makes `float color[4]` inside a C struct expressible:
-                // the element sits exactly where the C compiler put it.
-                if (node->children.size() != 2 || node->immediate == 0)
-                    return failValue(error, "C2.1 raw element address requires a base, an index and an element size");
-                LLVMValueRef base = lowerExpression(node->children[0].get(), error);
-                if (base == nullptr) return nullptr;
-                LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-                if (index == nullptr) return nullptr;
-                // NS304-T13-F06: a flexible-array index is bounds-checked against its `Length`
-                // member (byte offset in secondaryImmediate) before the raw element address is
-                // formed. The raw tier's no-bounds contract is the default; this is the one
-                // documented exception for trailing storage. `hasTrailingLengthBounds` separates
-                // presence from value so a Length field at offset 0 is still honored.
-                if (node->hasTrailingLengthBounds)
-                {
-                    LLVMValueRef lengthAddress = byteOffset(
-                        base, static_cast<std::uint64_t>(node->trailingLengthRelativeOffset),
-                        "flexible.length.addr");
-                    LLVMValueRef length = LLVMBuildLoad2(
-                        builder_, LLVMInt32TypeInContext(context_), lengthAddress, "flexible.length");
-                    LLVMValueRef lengthWide = LLVMBuildZExt(
-                        builder_, length, LLVMInt64TypeInContext(context_), "flexible.length.i64");
-                    LLVMValueRef inBounds = LLVMBuildICmp(
-                        builder_, LLVMIntULT, index, lengthWide, "flexible.inbounds");
-                    if (!emitGuard(inBounds, LlvmTrapReason::BoundsViolation, "flexible.index", error))
-                        return nullptr;
-                }
-                LLVMValueRef offset = LLVMBuildMul(
-                    builder_, index,
-                    LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
-                    "raw.element.offset");
-                LLVMValueRef indices[] = {offset};
-                return LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "raw.element.addr");
-            }
+                return lowerExpressionIterative(node, error);
             // CC1 fase 4B -- `stackalloc T[n]`.
             //
             // Se reserva en BYTES (`alloca i8, n * elementSize`) y no como `alloca <T>, n`, por la
@@ -16177,6 +16167,17 @@ private:
         return convert(value, node->typeKey, "builtin:nuint", error);
     }
 
+    // NSC305-L04. The conversion half of normalizeNativeIndex, separated so the iterative machine
+    // can evaluate the index operand as a frame and convert the resulting value here.
+    LLVMValueRef normalizeNativeIndexFromValue(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        if (value == nullptr) return nullptr;
+        return convert(value, node->typeKey, "builtin:nuint", error);
+    }
+
     LLVMValueRef lowerNativeLength(
         const frontend::ProjectOopMirNode* node,
         bool stringValue,
@@ -16224,6 +16225,37 @@ private:
             builder_, scaled, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "native.index.offset");
         LLVMValueRef indices[] = {offset};
         return LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "native.element.addr");
+    }
+
+    // NSC305-L04. The C2.1 raw element-address compute (flexible-array bounds + byte-wise GEP),
+    // separated from the base/index evaluation so the iterative machine can push them as frames.
+    LLVMValueRef rawElementAddressFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef base,
+        LLVMValueRef index,
+        std::string& error)
+    {
+        if (node->hasTrailingLengthBounds)
+        {
+            LLVMValueRef lengthAddress = byteOffset(
+                base, static_cast<std::uint64_t>(node->trailingLengthRelativeOffset),
+                "flexible.length.addr");
+            LLVMValueRef length = LLVMBuildLoad2(
+                builder_, LLVMInt32TypeInContext(context_), lengthAddress, "flexible.length");
+            LLVMValueRef lengthWide = LLVMBuildZExt(
+                builder_, length, LLVMInt64TypeInContext(context_), "flexible.length.i64");
+            LLVMValueRef inBounds = LLVMBuildICmp(
+                builder_, LLVMIntULT, index, lengthWide, "flexible.inbounds");
+            if (!emitGuard(inBounds, LlvmTrapReason::BoundsViolation, "flexible.index", error))
+                return nullptr;
+        }
+        LLVMValueRef offset = LLVMBuildMul(
+            builder_, index,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+            "raw.element.offset");
+        LLVMValueRef indices[] = {offset};
+        return LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "raw.element.addr");
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
