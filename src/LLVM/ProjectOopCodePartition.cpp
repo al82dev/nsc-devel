@@ -46,6 +46,16 @@ std::uint64_t stableNameHash(std::string_view name) noexcept
     }
     return hash;
 }
+
+// NSC305-L01. Bounded historical weight: a 1:1 blend of the previous historical cost and the
+// observed cost, saturated at `cap`, so a hot unit's weight cannot grow unbounded across builds.
+std::uint64_t boundedHistoricalWeight(
+    std::uint64_t previous, std::uint64_t observed, std::uint64_t cap) noexcept
+{
+    const std::uint64_t blended =
+        previous / 2U + observed / 2U + ((previous & 1U) + (observed & 1U)) / 2U;
+    return blended > cap ? cap : blended;
+}
 }
 
 bool ProjectOopCodePartition::build(
@@ -97,7 +107,7 @@ bool ProjectOopCodePartition::build(
         std::max<std::size_t>(1, requestedUnitCount), candidates.size());
     units_.reserve(unitCount);
     for (std::size_t ordinal = 0; ordinal < unitCount; ++ordinal)
-        units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, {}, {}});
+        units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, 0, {}, {}});
 
     if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
     {
@@ -139,6 +149,16 @@ bool ProjectOopCodePartition::build(
             selected->estimatedCost = saturatedAdd(selected->estimatedCost, candidate.cost);
             selected->functionOrdinals.push_back(candidate.functionOrdinal);
         }
+    }
+
+    // NSC305-L01. Blend the observed cost into the bounded historical weight (a capped 1:1 moving
+    // average). A first observation seeds it directly.
+    constexpr std::uint64_t kHistoricalCostCap = std::uint64_t{1} << 24U;
+    for (ProjectOopCodeUnit& unit : units_)
+    {
+        unit.historicalCost = unit.historicalCost == 0U
+            ? std::min(unit.estimatedCost, kHistoricalCostCap)
+            : boundedHistoricalWeight(unit.historicalCost, unit.estimatedCost, kHistoricalCostCap);
     }
 
     for (ProjectOopCodeUnit& unit : units_)
