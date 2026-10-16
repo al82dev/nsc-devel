@@ -11916,6 +11916,66 @@ private:
                         fileReadAllBytesFunctionType_, fileReadAllBytesFunction_, args, 1, "file.readallbytes"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileReadBytes)
+            {
+                if (current->children.size() != 2 || fileReadBytesFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Bloque 4 File.ReadBytes requires a path and a byte[] argument and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef path = values.back();
+                    values.pop_back();
+                    if (path == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, path, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef destination = values.back();
+                values.pop_back();
+                if (destination == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, destination};
+                values.push_back(buildNoUnwindCall(
+                    fileReadBytesFunctionType_, fileReadBytesFunction_, args, 2, "file.readbytes"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileWriteAllBytes)
+            {
+                if (current->children.size() != 3 || fileWriteAllBytesFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Bloque 4 File.WriteAllBytes requires a path, a byte[] and a count, plus the runtime hook"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef count = values.back();
+                values.pop_back();
+                LLVMValueRef data = values.back();
+                values.pop_back();
+                LLVMValueRef path = values.back();
+                values.pop_back();
+                if (path == nullptr || data == nullptr || count == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef args[] = {path, data, count};
+                values.push_back(buildNoUnwindCall(
+                    fileWriteAllBytesFunctionType_, fileWriteAllBytesFunction_, args, 3, "file.writeallbytes"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12452,32 +12512,10 @@ private:
                 return lowerExpressionIterative(node, error);
             // ReadBytes: la ruta y el arreglo del llamador; devuelve cuantos bytes se leyeron.
             case frontend::ProjectOopMirNodeKind::CoreFileReadBytes:
-            {
-                if (node->children.size() != 2 || fileReadBytesFunction_ == nullptr)
-                    return failValue(error, "Bloque 4 File.ReadBytes requires a path and a byte[] argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef destination = lowerExpression(node->children[1].get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, destination};
-                return buildNoUnwindCall(
-                    fileReadBytesFunctionType_, fileReadBytesFunction_, args, 2, "file.readbytes");
-            }
+                return lowerExpressionIterative(node, error);
             // WriteAllBytes: ruta, arreglo y cuantos bytes de el escribir. Devuelve i1.
             case frontend::ProjectOopMirNodeKind::CoreFileWriteAllBytes:
-            {
-                if (node->children.size() != 3 || fileWriteAllBytesFunction_ == nullptr)
-                    return failValue(error, "Bloque 4 File.WriteAllBytes requires a path, a byte[] and a count, plus the runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef data = lowerExpression(node->children[1].get(), error);
-                if (data == nullptr) return nullptr;
-                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
-                if (count == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, data, count};
-                return buildNoUnwindCall(
-                    fileWriteAllBytesFunctionType_, fileWriteAllBytesFunction_, args, 3, "file.writeallbytes");
-            }
+                return lowerExpressionIterative(node, error);
             // CurrentDirectory: cero operandos, una cadena recien asignada de vuelta.
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentCurrentDirectory:
             {
