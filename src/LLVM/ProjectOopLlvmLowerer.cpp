@@ -12293,6 +12293,37 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreWait ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventWait)
+            {
+                if (current->children.size() != 2 || waitForHandleTimeoutFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Stage 54.5 Semaphore/Event Wait requires a handle + timeout argument and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef handle = values.back();
+                    values.pop_back();
+                    if (handle == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, handle, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef timeout = values.back();
+                values.pop_back();
+                if (timeout == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, timeout};
+                values.push_back(buildNoUnwindCall(
+                    waitForHandleTimeoutFunctionType_, waitForHandleTimeoutFunction_, args, 2, "wait.timeout"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14001,17 +14032,7 @@ private:
             // byte-for-byte identical: WaitForSingleObject(handle, ms) collapsed to a bool).
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreWait:
             case frontend::ProjectOopMirNodeKind::CoreEventWait:
-            {
-                if (node->children.size() != 2 || waitForHandleTimeoutFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Semaphore/Event Wait requires a handle + timeout argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children[0].get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef timeout = lowerExpression(node->children[1].get(), error);
-                if (timeout == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle, timeout};
-                return buildNoUnwindCall(
-                    waitForHandleTimeoutFunctionType_, waitForHandleTimeoutFunction_, args, 2, "wait.timeout");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreRelease:
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreClose:
             case frontend::ProjectOopMirNodeKind::CoreEventSet:
