@@ -390,6 +390,25 @@ LLVMMetadataRef createDebugFile(
     return file;
 }
 
+// NSC305-L03. Resolves the CodeView file number for a location (moved out of the lowerer).
+unsigned debugCodeViewFileNumberFor(
+    LLVMDIBuilderRef debugBuilder,
+    const source::SourceManager* sourceManager,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
+    std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
+    SourceLocation location)
+{
+    if (debugBuilder == nullptr || !location.isValid()) return 0;
+    const std::uint32_t fileKey = location.fileId().value();
+    if (debugFiles.find(fileKey) == debugFiles.end() &&
+        createDebugFile(debugBuilder, sourceManager, debugPrefixMaps, debugFiles,
+                        debugCodeViewFileNumbers, location) == nullptr)
+        return 0;
+    const auto found = debugCodeViewFileNumbers.find(fileKey);
+    return found == debugCodeViewFileNumbers.end() ? 0 : found->second;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -908,12 +927,9 @@ private:
 
     unsigned debugCodeViewFileNumber(SourceLocation location)
     {
-        if (debugBuilder_ == nullptr || !location.isValid()) return 0;
-        const std::uint32_t fileKey = location.fileId().value();
-        if (debugFiles_.find(fileKey) == debugFiles_.end() && debugFile(location) == nullptr)
-            return 0;
-        const auto found = debugCodeViewFileNumbers_.find(fileKey);
-        return found == debugCodeViewFileNumbers_.end() ? 0 : found->second;
+        return debugCodeViewFileNumberFor(
+            debugBuilder_, sourceManager_, debugPrefixMaps_, debugFiles_,
+            debugCodeViewFileNumbers_, location);
     }
 
     LLVMMetadataRef createDebugSubprogram(const frontend::ProjectOopMirFunction& function)
