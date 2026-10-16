@@ -999,6 +999,91 @@ LLVMValueRef materializeTypeNameConstant(
     return global;
 }
 
+// NSC305-L03. Emits a class descriptor's initializer (moved out of emitDispatchMetadata as a pure
+// move). The destruction/type-name lookups are callbacks so the private maps stay in the lowerer.
+bool emitDescriptorInitializer(
+    LLVMModuleRef module,
+    LLVMTypeRef ptr,
+    LLVMTypeRef i64,
+    LLVMTypeRef descriptorType,
+    const frontend::ProjectOopMirDispatchTable& table,
+    const std::unordered_set<std::size_t>& runtimeDescriptorAccessorTypes,
+    const std::unordered_map<std::size_t, LLVMValueRef>& descriptorGlobals,
+    const std::unordered_map<std::size_t, LLVMValueRef>& vtableGlobals,
+    const std::function<LLVMValueRef(std::size_t)>& destructionFunctionLookup,
+    const std::function<LLVMValueRef(std::size_t)>& objectDestructionFunctionLookup,
+    const std::unordered_map<std::size_t, LLVMValueRef>& interfaceMapGlobals,
+    const std::function<LLVMValueRef(const std::string&, const std::string&)>& typeNameLookup,
+    std::string& error)
+{
+    const auto descriptorFound = descriptorGlobals.find(table.typeOrdinal);
+    if (descriptorFound == descriptorGlobals.end())
+    {
+        error = "Macro A lost a class descriptor during initialization";
+        return false;
+    }
+    LLVMValueRef baseDescriptor = LLVMConstNull(ptr);
+    if (table.baseTypeOrdinal.has_value())
+    {
+        if (!runtimeDescriptorAccessorTypes.contains(table.typeOrdinal))
+        {
+            const auto baseFound = descriptorGlobals.find(*table.baseTypeOrdinal);
+            if (baseFound == descriptorGlobals.end())
+            {
+                error = "Macro A descriptor cannot resolve its local base descriptor";
+                return false;
+            }
+            baseDescriptor = baseFound->second;
+        }
+    }
+    LLVMValueRef vtable = LLVMConstNull(ptr);
+    const auto vtableFound = vtableGlobals.find(table.typeOrdinal);
+    if (vtableFound != vtableGlobals.end()) vtable = vtableFound->second;
+
+    LLVMValueRef destructionFunction = destructionFunctionLookup(table.typeOrdinal);
+    if (destructionFunction == nullptr)
+    {
+        error = "Stage 35 descriptor cannot resolve its destruction entry";
+        return false;
+    }
+    LLVMValueRef objectDestructionFunction = objectDestructionFunctionLookup(table.typeOrdinal);
+    if (objectDestructionFunction == nullptr)
+    {
+        error = "item 319 descriptor cannot resolve its object-only destruction entry";
+        return false;
+    }
+    LLVMValueRef interfaceMap = LLVMConstNull(ptr);
+    const auto interfaceMapFound = interfaceMapGlobals.find(table.typeOrdinal);
+    if (interfaceMapFound != interfaceMapGlobals.end())
+        interfaceMap = interfaceMapFound->second;
+
+    LLVMValueRef typeName = typeNameLookup(table.typeNameGlobalName, table.typeDisplayName);
+    if (typeName == nullptr)
+    {
+        error = "C8 descriptor cannot materialize its type name constant";
+        return false;
+    }
+    if (!table.genericSpecializationKey.empty())
+        applyOdrLinkage(module, typeName);
+
+    LLVMValueRef values[] = {
+        baseDescriptor,
+        vtable,
+        LLVMConstInt(i64, table.slotMemberOrdinals.size(), 0),
+        LLVMConstInt(i64, table.stableTypeId, 0),
+        interfaceMap,
+        destructionFunction,
+        typeName,
+        objectDestructionFunction
+    };
+    LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType, values, 8);
+    LLVMSetInitializer(descriptorFound->second, initializer);
+    LLVMSetGlobalConstant(
+        descriptorFound->second,
+        runtimeDescriptorAccessorTypes.contains(table.typeOrdinal) ? 0 : 1);
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -4133,75 +4218,27 @@ private:
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
             if (table.isImported) continue;
+            if (!emitDescriptorInitializer(
+                    module_, ptr, i64, descriptorType_, table,
+                    runtimeDescriptorAccessorTypes_, descriptorGlobals_, vtableGlobals_,
+                    [&](std::size_t ordinal) {
+                        const auto found = destructionFunctions_.find(ordinal);
+                        return found == destructionFunctions_.end()
+                            ? nullptr : found->second.function;
+                    },
+                    [&](std::size_t ordinal) {
+                        const auto found = objectDestructionFunctions_.find(ordinal);
+                        return found == objectDestructionFunctions_.end()
+                            ? nullptr : found->second.function;
+                    },
+                    interfaceMapGlobals_,
+                    [&](const std::string& name, const std::string& text) {
+                        return internTypeNameConstant(name, text);
+                    },
+                    error))
+                return false;
+
             const auto descriptorFound = descriptorGlobals_.find(table.typeOrdinal);
-            if (descriptorFound == descriptorGlobals_.end())
-            {
-                return fail(error, "Macro A lost a class descriptor during initialization");
-            }
-
-            LLVMValueRef baseDescriptor = LLVMConstNull(ptr);
-            if (table.baseTypeOrdinal.has_value())
-            {
-                if (!runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal))
-                {
-                    const auto baseFound = descriptorGlobals_.find(*table.baseTypeOrdinal);
-                    if (baseFound == descriptorGlobals_.end())
-                    {
-                        return fail(error, "Macro A descriptor cannot resolve its local base descriptor");
-                    }
-                    baseDescriptor = baseFound->second;
-                }
-            }
-
-            LLVMValueRef vtable = LLVMConstNull(ptr);
-            const auto vtableFound = vtableGlobals_.find(table.typeOrdinal);
-            if (vtableFound != vtableGlobals_.end())
-            {
-                vtable = vtableFound->second;
-            }
-
-            const auto destructionFound = destructionFunctions_.find(table.typeOrdinal);
-            if (destructionFound == destructionFunctions_.end())
-            {
-                return fail(error, "Stage 35 descriptor cannot resolve its destruction entry");
-            }
-            const auto objectDestructionFound = objectDestructionFunctions_.find(table.typeOrdinal);
-            if (objectDestructionFound == objectDestructionFunctions_.end())
-            {
-                return fail(error, "item 319 descriptor cannot resolve its object-only destruction entry");
-            }
-
-            LLVMValueRef interfaceMap = LLVMConstNull(ptr);
-            const auto interfaceMapFound = interfaceMapGlobals_.find(table.typeOrdinal);
-            if (interfaceMapFound != interfaceMapGlobals_.end())
-            {
-                interfaceMap = interfaceMapFound->second;
-            }
-
-            LLVMValueRef typeName = internTypeNameConstant(
-                table.typeNameGlobalName, table.typeDisplayName);
-            if (typeName == nullptr)
-            {
-                return fail(error, "C8 descriptor cannot materialize its type name constant");
-            }
-            applyGenericOdrDefinition(typeName, table.genericSpecializationKey);
-
-            LLVMValueRef values[] = {
-                baseDescriptor,
-                vtable,
-                LLVMConstInt(i64, table.slotMemberOrdinals.size(), 0),
-                LLVMConstInt(i64, table.stableTypeId, 0),
-                interfaceMap,
-                destructionFound->second.function,
-                typeName,
-                objectDestructionFound->second.function
-            };
-            LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 8);
-            LLVMSetInitializer(descriptorFound->second, initializer);
-            LLVMSetGlobalConstant(
-                descriptorFound->second,
-                runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal) ? 0 : 1);
-
             const auto accessorFound = descriptorAccessorFunctions_.find(table.typeOrdinal);
             if (accessorFound == descriptorAccessorFunctions_.end())
             {
