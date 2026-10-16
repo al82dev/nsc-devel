@@ -5799,6 +5799,90 @@ std::size_t ProjectGenericModel::reserveTypeDemand(
     return reserveTypeSpecialization(state, key, specializedName, identities);
 }
 
+// NSC305-G09. Executes a pre-reserved type demand (the apply half): C3 restore + execute + merge +
+// rewrite, using the ordinal/key/name computed by reserveTypeDemand.
+std::string ProjectGenericModel::executeTypeDemand(
+    ProjectSyntaxUnit& unit,
+    ast::TypeSyntax* syntax,
+    TemplateState& state,
+    const std::string& namespaceName,
+    std::size_t ordinal,
+    const std::string& key,
+    const std::string& specializedName,
+    std::span<ast::TypeSyntax* const> arguments,
+    const SpecializationContext& callerContext,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
+    currentInstantiationNamespace_ = namespaceName;
+    currentInstantiationRange_ = syntax->range();
+
+    // NSC305-C03. Restore the specialized clone from the cache (skip the materialization + re-link).
+    if (templateCache_.enabled())
+    {
+        std::string payload;
+        bool hit = false;
+        std::string error;
+        if (templateCache_.restore(key, payload, hit, error) && hit)
+        {
+            ByteReader reader(payload);
+            ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
+            if (clone != nullptr)
+            {
+                commitTypeSpecialization(
+                    state, clone, key, specializedName, ordinal, diagnostics);
+                processNode(
+                    *state.unit, clone, state.record.namespaceName, specializedName,
+                    GenericLookupScope{}, false, diagnostics);
+                currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+                currentInstantiationNamespace_ = callerContext.namespaceName;
+                currentInstantiationRange_ = callerContext.range;
+                currentOverloadGroup_ = callerContext.overloadGroup;
+                activePackSubstitutions_ = callerContext.packSubstitutions;
+                telemetry_.noteSpecializationHit();
+                ++instantiationCacheHitCount_;
+                return specializedName;
+            }
+        }
+    }
+
+    if (!executeTypeSpecialization(
+            state, arguments, key, specializedName, ordinal, callerContext, diagnostics))
+    {
+        specializationPlanner_.rollback(key);
+        specializations_.pop_back();
+        currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+        currentInstantiationNamespace_ = callerContext.namespaceName;
+        currentInstantiationRange_ = callerContext.range;
+        currentOverloadGroup_ = callerContext.overloadGroup;
+        instantiationBudget_.leave();
+        return {};
+    }
+    instantiationBudget_.leave();
+
+    {
+        std::string canonical = "generic:" + key;
+        appendTypeModifiers(canonical, syntax);
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
+            state.record.projectOrdinal, state.record.namespaceName};
+        syntax->setOriginProjectOrdinal(state.record.projectOrdinal);
+        syntax->setOriginNamespace(state.record.namespaceName);
+    }
+    const std::string originalBaseName = syntax->baseName();
+    if (const std::size_t separator = originalBaseName.find_last_of('.');
+        separator != std::string::npos)
+    {
+        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specializedName);
+    }
+    else
+    {
+        syntax->setBaseName(specializedName);
+    }
+    syntax->clearTypeArguments();
+    return specializedName;
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,

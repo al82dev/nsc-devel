@@ -967,6 +967,20 @@ private:
         std::string& specializedName,
         std::vector<std::string>& identities,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Executes a pre-reserved type demand (the apply half): C3 restore + execute + merge
+    // + rewrite, using the ordinal/key/name computed by reserveTypeDemand. Returns the specialized
+    // name (empty on failure).
+    std::string executeTypeDemand(
+        ProjectSyntaxUnit& unit,
+        ast::TypeSyntax* syntax,
+        TemplateState& state,
+        const std::string& namespaceName,
+        std::size_t ordinal,
+        const std::string& key,
+        const std::string& specializedName,
+        std::span<ast::TypeSyntax* const> arguments,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,
