@@ -4087,10 +4087,10 @@ bool ProjectGenericModel::processGenericCall(
     QualifiedNameSiteContext siteContext = makeQualifiedNameSite(namespaceName, ownerName, scope);
     const QualifiedNameSite& site = siteContext.site;
 
-    const std::vector<TemplateState*> namedAtWinningRung = templatesNamedBy(
-        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
-        argumentCount);
-    std::vector<TemplateState*> shared = collectMethodTemplatesFromNamed(namedAtWinningRung);
+    const GenericCallResolution resolution = resolveGenericCall(
+        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
+    const std::vector<TemplateState*>& namedAtWinningRung = resolution.named;
+    const std::vector<TemplateState*>& shared = resolution.shared;
     if (shared.size() > 1U)
     {
         std::string sharedName = methodName + "__g" +
@@ -4128,12 +4128,7 @@ bool ProjectGenericModel::processGenericCall(
         return true;
     }
 
-    TemplateState* state = resolveMethodTemplate(
-        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
-    if (state == nullptr)
-        state = resolveMethodTemplate(
-            unit, site, requestedOwner, methodName,
-            std::numeric_limits<std::size_t>::max(), argumentCount);
+    TemplateState* state = resolution.unique;
     if (state == nullptr)
     {
         const bool ambiguous = namedAtWinningRung.size() > 1U;
@@ -4486,6 +4481,32 @@ ProjectGenericModel::QualifiedNameSiteContext ProjectGenericModel::makeQualified
     context.site.aliases = &scope.aliases.read();
     context.site.importedNamespaces = scope.importedNamespaces.read();
     return context;
+}
+
+// NSC305-G08. Resolve a generic call site once: named candidates at the winning rung, the
+// shared-overload set, and the unique fallback (exact arity, then relaxed arity).
+ProjectGenericModel::GenericCallResolution ProjectGenericModel::resolveGenericCall(
+    const ProjectSyntaxUnit& unit,
+    const QualifiedNameSite& site,
+    std::string_view requestedOwner,
+    std::string_view methodName,
+    std::size_t arity,
+    std::size_t argumentCount)
+{
+    GenericCallResolution resolution;
+    resolution.named =
+        templatesNamedBy(unit, site, requestedOwner, methodName, arity, argumentCount);
+    resolution.shared = collectMethodTemplatesFromNamed(resolution.named);
+    if (resolution.shared.size() <= 1U)
+    {
+        resolution.unique =
+            resolveMethodTemplate(unit, site, requestedOwner, methodName, arity, argumentCount);
+        if (resolution.unique == nullptr)
+            resolution.unique = resolveMethodTemplate(
+                unit, site, requestedOwner, methodName,
+                std::numeric_limits<std::size_t>::max(), argumentCount);
+    }
+    return resolution;
 }
 
 std::string ProjectGenericModel::ensureTypeSpecialization(

@@ -801,6 +801,22 @@ private:
         std::string_view ownerName,
         const GenericLookupScope& scope) const;
 
+    // NSC305-G08. Result of resolving a generic call site: the named templates at the winning rung,
+    // the shared-overload set (single owner), and the unique fallback when there is one.
+    struct GenericCallResolution final
+    {
+        std::vector<TemplateState*> named;
+        std::vector<TemplateState*> shared;
+        TemplateState* unique = nullptr;
+    };
+    GenericCallResolution resolveGenericCall(
+        const ProjectSyntaxUnit& unit,
+        const QualifiedNameSite& site,
+        std::string_view requestedOwner,
+        std::string_view methodName,
+        std::size_t arity,
+        std::size_t argumentCount);
+
     ast::TypeSyntax* cloneType(
         ast::AstArena& arena,
         const ast::TypeSyntax* source,
