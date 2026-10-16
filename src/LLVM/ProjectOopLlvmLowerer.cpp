@@ -9771,6 +9771,117 @@ private:
         }
     }
 
+    // NSC305-L04. The exception sub-family of the cleanup/exceptions/async family (family 6/6).
+    LLVMValueRef lowerExceptionExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::Throw:
+            {
+                // NS304-T13-F08: a `Throw` used as an EXPRESSION (a `Conditional` failure branch).
+                // lowerExceptionalTransfer already terminates the block with a trap + unreachable;
+                // the dummy value below is never observed by any phi (the branch never falls
+                // through).
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                    return failValue(error, "Stage 45.10 throw expression MIR requires one exception value");
+                LLVMValueRef exception = lowerExpression(node->children.front().get(), error);
+                if (exception == nullptr) return nullptr;
+                if (terminated()) return nullptr;
+                if (!lowerExceptionalTransfer(exception, node, error)) return nullptr;
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::Unreachable:
+            {
+                if (!node->children.empty() || node->typeKey != "builtin:never" ||
+                    trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                {
+                    return failValue(error, "T07-F06 unreachable MIR lost its no-operand never contract");
+                }
+                LLVMValueRef reason = LLVMConstInt(
+                    LLVMInt32TypeInContext(context_),
+                    static_cast<std::uint64_t>(LlvmTrapReason::Unreachable),
+                    0);
+                LLVMValueRef arguments[] = {reason};
+                buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+                LLVMBuildUnreachable(builder_);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::Panic:
+            {
+                if (node->children.size() > 1U || node->typeKey != "builtin:never")
+                {
+                    return failValue(error, "T07-F06 panic MIR lost its payload/never contract");
+                }
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef message = LLVMConstNull(ptr);
+                if (!node->children.empty())
+                {
+                    message = lowerExpression(node->children.front().get(), error);
+                    if (message == nullptr || !error.empty()) return nullptr;
+                }
+
+                if (!mirModel_.panicHandlerMangledName().empty())
+                {
+                    const auto handler = functions_.find(
+                        std::string(mirModel_.panicHandlerMangledName()));
+                    if (handler == functions_.end() || handler->second.function == nullptr ||
+                        handler->second.functionType == nullptr || sourceManager_ == nullptr ||
+                        node->syntax == nullptr || !node->syntax->range().begin().isValid())
+                    {
+                        return failValue(error,
+                            "T07-F06 panic handler or source location is unavailable");
+                    }
+                    const SourceLocation location = node->syntax->range().begin();
+                    const source::SourcePosition position = sourceManager_->getPosition(location);
+                    LLVMValueRef file = internStringLiteral(
+                        sourceManager_->getPath(location), error);
+                    if (file == nullptr || !error.empty()) return nullptr;
+                    LLVMValueRef handlerArguments[] = {
+                        message,
+                        file,
+                        LLVMConstInt(i32, position.line, 0),
+                        LLVMConstInt(i32, position.column, 0)};
+                    if (buildNoUnwindCall(
+                            handler->second.functionType, handler->second.function,
+                            handlerArguments, 4, "") == nullptr)
+                    {
+                        return failValue(error, "T07-F06 failed to call the configured panic handler");
+                    }
+                }
+                if (mirModel_.panicProfile() == language::PanicProfile::Abort)
+                {
+                    if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                        return failValue(error, "T07-F06 abort panic trap is unavailable");
+                    LLVMValueRef reason = LLVMConstInt(
+                        LLVMInt32TypeInContext(context_),
+                        static_cast<std::uint64_t>(LlvmTrapReason::Panic),
+                        0);
+                    LLVMValueRef arguments[] = {reason};
+                    buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+                }
+                else
+                {
+                    if (raiseExceptionFunction_ == nullptr || raiseExceptionFunctionType_ == nullptr)
+                        return failValue(error, "T07-F06 native panic unwind hook is unavailable");
+                    LLVMValueRef arguments[] = {
+                        LLVMConstInt(i32, kNativeSharpPanicExceptionCode, 0),
+                        LLVMConstInt(i32, 1, 0),
+                        LLVMConstInt(i32, 0, 0),
+                        LLVMConstNull(ptr)};
+                    if (!lowerNativePanicTransfer(node, arguments, error)) return nullptr;
+                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+                }
+                LLVMBuildUnreachable(builder_);
+                // The caller only uses this sentinel to distinguish successful lowering from an
+                // internal error. No instruction may consume it after the terminator.
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            default:
+                return nullptr;
+        }
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -9815,6 +9926,11 @@ private:
             case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
             case frontend::ProjectOopMirNodeKind::StringElementLoad:
                 return lowerLoadExpression(node, error);
+            // NSC305-L04: the exception sub-family (family 6/6) lives in lowerExceptionExpression.
+            case frontend::ProjectOopMirNodeKind::Throw:
+            case frontend::ProjectOopMirNodeKind::Unreachable:
+            case frontend::ProjectOopMirNodeKind::Panic:
+                return lowerExceptionExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -13284,107 +13400,6 @@ private:
                     LLVMValueRef arguments[] = {condition};
                     buildNoUnwindCall(assumeFunctionType_, assumeFunction_, arguments, 1, "");
                 }
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::Throw:
-            {
-                // NS304-T13-F08: a `Throw` used as an EXPRESSION (a `Conditional` failure branch).
-                // lowerExceptionalTransfer already terminates the block with a trap + unreachable;
-                // the dummy value below is never observed by any phi (the branch never falls
-                // through).
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "Stage 45.10 throw expression MIR requires one exception value");
-                LLVMValueRef exception = lowerExpression(node->children.front().get(), error);
-                if (exception == nullptr) return nullptr;
-                if (terminated()) return nullptr;
-                if (!lowerExceptionalTransfer(exception, node, error)) return nullptr;
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::Unreachable:
-            {
-                if (!node->children.empty() || node->typeKey != "builtin:never" ||
-                    trapFunction_ == nullptr || trapFunctionType_ == nullptr)
-                {
-                    return failValue(error, "T07-F06 unreachable MIR lost its no-operand never contract");
-                }
-                LLVMValueRef reason = LLVMConstInt(
-                    LLVMInt32TypeInContext(context_),
-                    static_cast<std::uint64_t>(LlvmTrapReason::Unreachable),
-                    0);
-                LLVMValueRef arguments[] = {reason};
-                buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
-                LLVMBuildUnreachable(builder_);
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::Panic:
-            {
-                if (node->children.size() > 1U || node->typeKey != "builtin:never")
-                {
-                    return failValue(error, "T07-F06 panic MIR lost its payload/never contract");
-                }
-                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
-                LLVMValueRef message = LLVMConstNull(ptr);
-                if (!node->children.empty())
-                {
-                    message = lowerExpression(node->children.front().get(), error);
-                    if (message == nullptr || !error.empty()) return nullptr;
-                }
-
-                if (!mirModel_.panicHandlerMangledName().empty())
-                {
-                    const auto handler = functions_.find(
-                        std::string(mirModel_.panicHandlerMangledName()));
-                    if (handler == functions_.end() || handler->second.function == nullptr ||
-                        handler->second.functionType == nullptr || sourceManager_ == nullptr ||
-                        node->syntax == nullptr || !node->syntax->range().begin().isValid())
-                    {
-                        return failValue(error,
-                            "T07-F06 panic handler or source location is unavailable");
-                    }
-                    const SourceLocation location = node->syntax->range().begin();
-                    const source::SourcePosition position = sourceManager_->getPosition(location);
-                    LLVMValueRef file = internStringLiteral(
-                        sourceManager_->getPath(location), error);
-                    if (file == nullptr || !error.empty()) return nullptr;
-                    LLVMValueRef handlerArguments[] = {
-                        message,
-                        file,
-                        LLVMConstInt(i32, position.line, 0),
-                        LLVMConstInt(i32, position.column, 0)};
-                    if (buildNoUnwindCall(
-                            handler->second.functionType, handler->second.function,
-                            handlerArguments, 4, "") == nullptr)
-                    {
-                        return failValue(error, "T07-F06 failed to call the configured panic handler");
-                    }
-                }
-                if (mirModel_.panicProfile() == language::PanicProfile::Abort)
-                {
-                    if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
-                        return failValue(error, "T07-F06 abort panic trap is unavailable");
-                    LLVMValueRef reason = LLVMConstInt(
-                        LLVMInt32TypeInContext(context_),
-                        static_cast<std::uint64_t>(LlvmTrapReason::Panic),
-                        0);
-                    LLVMValueRef arguments[] = {reason};
-                    buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
-                }
-                else
-                {
-                    if (raiseExceptionFunction_ == nullptr || raiseExceptionFunctionType_ == nullptr)
-                        return failValue(error, "T07-F06 native panic unwind hook is unavailable");
-                    LLVMValueRef arguments[] = {
-                        LLVMConstInt(i32, kNativeSharpPanicExceptionCode, 0),
-                        LLVMConstInt(i32, 1, 0),
-                        LLVMConstInt(i32, 0, 0),
-                        LLVMConstNull(ptr)};
-                    if (!lowerNativePanicTransfer(node, arguments, error)) return nullptr;
-                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-                }
-                LLVMBuildUnreachable(builder_);
-                // The caller only uses this sentinel to distinguish successful lowering from an
-                // internal error. No instruction may consume it after the terminator.
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
             case frontend::ProjectOopMirNodeKind::ResultPropagation:
