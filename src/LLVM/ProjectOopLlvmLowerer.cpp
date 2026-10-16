@@ -810,6 +810,21 @@ void computeRuntimeDescriptorAccessorTypes(
     }
 }
 
+// NSC305-L03. Applies the weak_odr linkage + COMDAT to a public ODR entity (moved out of the
+// lowerer's applyOdrDefinition as a pure move).
+void applyOdrLinkage(LLVMModuleRef module, LLVMValueRef value)
+{
+    if (value == nullptr) return;
+    LLVMSetLinkage(value, LLVMWeakODRLinkage);
+    std::size_t physicalNameLength = 0;
+    const char* physicalNameData = LLVMGetValueName2(value, &physicalNameLength);
+    if (physicalNameData == nullptr || physicalNameLength == 0) return;
+    const std::string physicalName(physicalNameData, physicalNameLength);
+    LLVMComdatRef comdat = LLVMGetOrInsertComdat(module, physicalName.c_str());
+    LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
+    LLVMSetComdat(value, comdat);
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -3053,19 +3068,7 @@ private:
         // in a DLL export table even after all of its local calls were inlined at O2. The optimizer
         // may discard an unreferenced linkonce definition; weak_odr keeps the external definition
         // while its symbol-specific COMDAT selects one copy at final link.
-        LLVMSetLinkage(value, LLVMWeakODRLinkage);
-        std::size_t physicalNameLength = 0;
-        const char* physicalNameData = LLVMGetValueName2(value, &physicalNameLength);
-        if (physicalNameData == nullptr || physicalNameLength == 0) return;
-        const std::string physicalName(physicalNameData, physicalNameLength);
-        // COFF requires the section-selection key to identify a real definition in the selected
-        // section. Using a detached byte global as the key made function unwind sections form a
-        // two-level association (.xdata -> function -> artificial leader); NSLink then rejected
-        // the auxiliary .xdata section because it had no usable section-definition key.
-        // The physical function/global is already unique and is the standard COFF COMDAT leader.
-        LLVMComdatRef comdat = LLVMGetOrInsertComdat(module_, physicalName.c_str());
-        LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
-        LLVMSetComdat(value, comdat);
+        applyOdrLinkage(module_, value);
     }
 
     void applyGenericOdrDefinition(LLVMValueRef value, const std::string& specializationKey)
