@@ -2793,6 +2793,33 @@ struct MirFunctionKey final
 }
 } // namespace
 
+// NSC305-C02. Warm-build restore of one template record: on a cache hit, deserialize the metadata,
+// link the walked syntax node and push the TemplateState (skipping the record construction). The
+// walk still finds the node + parent (the parse already built them); the metadata + dependency
+// scan result are restored.
+bool ProjectGenericModel::tryRestoreTemplateRecord(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    ast::AstNode* parent)
+{
+    if (!templateCache_.enabled()) return false;
+    const std::string fingerprint = computeTemplateSourceFingerprint(unit, node);
+    const std::string key = templateCacheKey(fingerprint);
+    std::string payload;
+    bool hit = false;
+    std::string error;
+    if (!templateCache_.restore(key, payload, hit, error) || !hit) return false;
+    GenericTemplateRecord record;
+    if (!deserializeTemplateRecord(payload, record)) return false;
+    record.syntax = node;
+    record.sourceFingerprint = fingerprint;
+    record.c1CacheKey = key;
+    telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
+    templateStates_.push_back(
+        TemplateState{std::move(record), &unit, node, parent, templateStates_.size()});
+    return true;
+}
+
 // NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
 // payload). The AST subtree restore is a later layer; this stores the record skeleton.
 void ProjectGenericModel::storeTemplateRecords()
@@ -2952,6 +2979,8 @@ void ProjectGenericModel::collectTemplates(
                 node->range(),
                 "partial generic types are deferred beyond Stage 44; a monomorphized template must have one canonical body");
         }
+        if (!tryRestoreTemplateRecord(unit, node, parent))
+        {
         GenericTemplateRecord record;
         record.kind = genericTypeTemplateKind(node);
         record.accessibility = genericTemplateAccessibility(node, false);
@@ -2979,6 +3008,7 @@ void ProjectGenericModel::collectTemplates(
         record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
         telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
+        }
     }
 
     if (isGenericMethodTemplateNode(node))
@@ -2991,6 +3021,8 @@ void ProjectGenericModel::collectTemplates(
                 node->range(),
                 "generic methods declared inside generic types are deliberately deferred beyond Stage 44; specialize one generic dimension at a time");
         }
+        if (!tryRestoreTemplateRecord(unit, node, parent))
+        {
         GenericTemplateRecord record;
         record.kind = GenericTemplateKind::Method;
         record.accessibility = genericTemplateAccessibility(
@@ -3019,6 +3051,7 @@ void ProjectGenericModel::collectTemplates(
             node->auxiliaryText() == "controlled-specialization";
         telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
+        }
     }
 
     // NSC-LIMIT-009: se APILA. La version anterior reemplazaba, de modo que al entrar en

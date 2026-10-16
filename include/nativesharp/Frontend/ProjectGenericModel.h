@@ -383,6 +383,14 @@ public:
     bool isBuilt() const noexcept;
     // NSC305-C01. Sets the C1 template parse cache root (empty = disabled).
     void setTemplateCacheRoot(std::filesystem::path root);
+    // NSC305-C02. Warm-build restore of one template record: on a cache hit, deserializes the
+    // metadata, links the walked syntax node and pushes the TemplateState (skipping the record
+    // construction). Returns false on miss or disabled cache.
+    bool tryRestoreTemplateRecord(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        ast::AstNode* parent);
+
     // NSC305-C01. Persists the collected template records to the C1 cache (no-op when disabled).
     void storeTemplateRecords();
     // NSC305-C01. Restores the collected template records from the C1 cache and counts hits (no-op
