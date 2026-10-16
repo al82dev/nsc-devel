@@ -11553,6 +11553,26 @@ private:
                 values.push_back(lowerNullConditionalArrayStore(current, error, receiver, index, value));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Convert)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "convert MIR requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                if (terminated()) { values.push_back(value); continue; }
+                values.push_back(convert(value, current->children.front()->typeKey, current->typeKey, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14055,13 +14075,7 @@ private:
                 return value;
             }
             case frontend::ProjectOopMirNodeKind::Convert:
-            {
-                if (node->children.size() != 1) return failValue(error, "convert MIR requires one operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                if (terminated()) return value;
-                return convert(value, node->children.front()->typeKey, node->typeKey, error);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RuntimeTypeTest:
                 return lowerRuntimeTypeTest(node, error);
             case frontend::ProjectOopMirNodeKind::SafeReferenceCast:
