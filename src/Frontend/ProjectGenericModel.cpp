@@ -935,6 +935,11 @@ bool ProjectGenericModel::build(
     }
 
     telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
+    // NSC305-G-series. Materialization is complete and every rollback has happened, so the
+    // specializedName -> ordinal index is final. `emplace` keeps the first entry for a shared
+    // overload name, matching `specializationForTypeKey`'s previous forward scan.
+    for (std::size_t ordinal = 0; ordinal < specializations_.size(); ++ordinal)
+        specializationBySpecializedName_.emplace(specializations_[ordinal].specializedName, ordinal);
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -1736,11 +1741,10 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
     const std::size_t separator = typeKey.find_last_of(".+:");
     const std::string_view terminal = separator == std::string_view::npos
         ? typeKey : typeKey.substr(separator + 1U);
-    const auto found = std::ranges::find_if(specializations_, [&](const auto& specialization)
-    {
-        return specialization.specializedName == terminal;
-    });
-    return found == specializations_.end() ? nullptr : &*found;
+    const auto found = specializationBySpecializedName_.find(std::string(terminal));
+    return found != specializationBySpecializedName_.end() &&
+            found->second < specializations_.size()
+        ? &specializations_[found->second] : nullptr;
 }
 
 std::string ProjectGenericModel::closedTypeKeyForTemplate(

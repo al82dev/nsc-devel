@@ -728,6 +728,10 @@ private:
     std::vector<GenericSpecializationRecord> specializations_;
     std::unordered_map<std::string, std::size_t> specializationByKey_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
+    // NSC305-G-series. specializedName -> specialization ordinal, built once at the end of build()
+    // (after every materialization and rollback) so `specializationForTypeKey` is O(1). `emplace`
+    // keeps the first entry for a duplicated name, matching the previous forward scan.
+    std::unordered_map<std::string, std::size_t> specializationBySpecializedName_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
