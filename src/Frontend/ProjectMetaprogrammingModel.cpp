@@ -397,6 +397,25 @@ bool ProjectMetaprogrammingModel::build(
             else if (trait == "Hash") generated = {"GetHashCode"};
             else if (trait == "Print") generated = {"ToString"};
             else if (trait == "Clone") generated = {"Clone"};
+            // NS304-T12-F06: a derive must not generate a member whose spelling collides with an
+            // existing hand-written member of the same type (the same spelling+scope rule the
+            // partial merge uses). Report the collision instead of silently double-declaring.
+            for (const std::string& name : generated)
+            {
+                const bool collides = std::any_of(
+                    type.members.begin(), type.members.end(),
+                    [&](const StaticMemberInfo& member)
+                    {
+                        return !member.isStatic && member.name == name;
+                    });
+                if (collides)
+                {
+                    error_ = "derive '" + trait + "' generates member '" + name +
+                        "' which collides with an existing member in type '" +
+                        type.identity + "'";
+                    return false;
+                }
+            }
             derives_.push_back({type.typeOrdinal, trait,
                 language::deriveDependencyKey(type.identity + "::" + trait, fields),
                 fields, std::move(generated)});
