@@ -793,6 +793,10 @@ bool ProjectGenericModel::build(
                 .push_back(&state);
             typesByVisibleName_[state.record.name].push_back(&state);
         }
+        else
+        {
+            methodsByName_[state.record.name].push_back(&state);
+        }
     }
 
     // Record the declaration-level dependency graph before any template is cloned. A producer
@@ -4198,13 +4202,17 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     std::size_t arity,
     std::size_t argumentCount)
 {
-    telemetry_.noteResolutionQuery(templateStates_.size());
+    const auto bucket = methodsByName_.find(std::string(methodName));
+    if (bucket == methodsByName_.end())
+    {
+        telemetry_.noteResolutionQuery(0);
+        return {};
+    }
+    telemetry_.noteResolutionQuery(bucket->second.size());
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
     const auto aplicable = [&](const TemplateState& state)
     {
-        if (state.record.kind != GenericTemplateKind::Method) return false;
         if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
-        if (state.record.name != methodName) return false;
         if (arity != sinFiltro && !genericArityAccepts(state.record, arity)) return false;
         if (argumentCount != sinFiltro && valueParameterCount(state.syntax) != argumentCount)
             return false;
@@ -4216,16 +4224,16 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     for (const QualifiedNameRung& rung : qualifiedNameLadder(site, writtenOwner))
     {
         std::vector<TemplateState*> found;
-        for (TemplateState& state : templateStates_)
+        for (TemplateState* state : bucket->second)
         {
-            if (!aplicable(state)) continue;
+            if (!aplicable(*state)) continue;
             const std::string owner =
-                templateSourceSpelling(state.record.namespaceName, state.record.ownerName);
+                templateSourceSpelling(state->record.namespaceName, state->record.ownerName);
             for (const std::string& candidate : rung.spellings)
             {
                 if (owner == candidate)
                 {
-                    found.push_back(&state);
+                    found.push_back(state);
                     break;
                 }
             }
@@ -4237,11 +4245,11 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     if (writtenOwner.empty())
     {
         std::vector<TemplateState*> found;
-        for (TemplateState& state : templateStates_)
+        for (TemplateState* state : bucket->second)
         {
-            if (!aplicable(state)) continue;
-            if (templateSourceSpelling(state.record.namespaceName, state.record.ownerName).empty())
-                found.push_back(&state);
+            if (!aplicable(*state)) continue;
+            if (templateSourceSpelling(state->record.namespaceName, state->record.ownerName).empty())
+                found.push_back(state);
         }
         if (!found.empty()) return found;
     }
@@ -4312,10 +4320,8 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     // deshacer el filtro que se acaba de aplicar, y era justamente lo que hacia antes.
     const auto coincideSinDueno = [&](const TemplateState& state, bool exigirArgumentos)
     {
-        if (state.record.kind != GenericTemplateKind::Method) return false;
         if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
         if (arity != sinFiltro && !genericArityAccepts(state.record, arity)) return false;
-        if (state.record.name != methodName) return false;
         if (exigirArgumentos && argumentCount != sinFiltro &&
             valueParameterCount(state.syntax) != argumentCount)
             return false;
@@ -4323,12 +4329,14 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     };
     const auto unico = [&](bool exigirArgumentos) -> TemplateState*
     {
+        const auto bucket = methodsByName_.find(std::string(methodName));
+        if (bucket == methodsByName_.end()) return nullptr;
         TemplateState* result = nullptr;
-        for (TemplateState& state : templateStates_)
+        for (TemplateState* state : bucket->second)
         {
-            if (!coincideSinDueno(state, exigirArgumentos)) continue;
+            if (!coincideSinDueno(*state, exigirArgumentos)) continue;
             if (result != nullptr) return nullptr;
-            result = &state;
+            result = state;
         }
         return result;
     };

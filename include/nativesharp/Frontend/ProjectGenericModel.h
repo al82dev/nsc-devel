@@ -694,6 +694,10 @@ private:
     // type templates (no methods), so a lookup examines homonyms instead of the whole catalog.
     std::unordered_map<std::string, std::vector<TemplateState*>> typesByModuleQualified_;
     std::unordered_map<std::string, std::vector<TemplateState*>> typesByVisibleName_;
+    // NSC305-G03. Method-only candidate bucket keyed by method name, in source order. Used by
+    // `templatesNamedBy` and the owner-less `resolveMethodTemplate` path so a lookup examines
+    // homonymous methods instead of the whole catalog.
+    std::unordered_map<std::string, std::vector<TemplateState*>> methodsByName_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
