@@ -2662,6 +2662,15 @@ private:
     }
     return true;
 }
+
+// NSC305-C02. Full catalog entry: the record metadata followed by the AST subtree (the syntax node).
+// The indexes are rebuilt from the restored records, so only these two are persisted.
+[[maybe_unused]] std::string serializeCatalogEntry(const GenericTemplateRecord& record)
+{
+    std::string out = serializeTemplateRecord(record);
+    out += serializeAstNodeTree(record.syntax);
+    return out;
+}
 } // namespace
 
 // NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
