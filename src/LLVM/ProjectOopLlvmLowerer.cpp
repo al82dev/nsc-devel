@@ -9882,6 +9882,89 @@ private:
         }
     }
 
+    // NSC305-L04. The cleanup sub-family of the cleanup/exceptions/async family (family 6/6).
+    LLVMValueRef lowerCleanupExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
+            {
+                if (node->children.size() != 1 || node->children.front() == nullptr ||
+                    !node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value())
+                {
+                    return failValue(
+                        error, "NSC-LIMIT-021 owned temporary borrow is missing value/storage/cleanup identity");
+                }
+                const auto storage = localStorage_.find(*node->localOrdinal);
+                if (storage == localStorage_.end() || storage->second == nullptr)
+                {
+                    return failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot");
+                }
+                // Evaluate before activating the cleanup: if construction itself throws, no owner
+                // exists. Once stored, later arguments and the call see this region and unwind it.
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMBuildStore(builder_, value, storage->second);
+                activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
+                return value;
+            }
+            case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
+            {
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                {
+                    return failValue(error, "NSC-LIMIT-021 full expression requires exactly one value");
+                }
+                const std::size_t retainedDepth = activeCleanupRegions_.size();
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                std::vector<std::size_t> temporaries(
+                    activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(retainedDepth),
+                    activeCleanupRegions_.end());
+                activeCleanupRegions_.resize(retainedDepth);
+                for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
+                {
+                    if (!emitCleanupAction(*it, error)) return nullptr;
+                }
+                return value;
+            }
+            case frontend::ProjectOopMirNodeKind::Conditional:
+                return lowerConditional(node, error);
+            case frontend::ProjectOopMirNodeKind::LoopExpression:
+                return lowerLoopExpression(node, error);
+            case frontend::ProjectOopMirNodeKind::MatchExpression:
+                return lowerMatchExpression(node, error);
+            case frontend::ProjectOopMirNodeKind::MatchValue:
+                if (matchValueStack_.empty())
+                    return failValue(error, "T03-F03 match value used outside an active match");
+                return node->referenceResult
+                    ? matchValueStack_.back().second
+                    : matchValueStack_.back().first;
+            case frontend::ProjectOopMirNodeKind::OverflowPolicy:
+            {
+                // NS304-T15-F05: the policy scopes the operations inside the wrapped expression.
+                // `saturating`/`checked`/`unchecked`/`wrapping` reach the decimal ops via this
+                // single-threaded flag; wrapping/unchecked for decimal are rejected in Sema.
+                const std::string previous = currentOverflowPolicy_;
+                currentOverflowPolicy_ = node->stringValue;
+                LLVMValueRef result = lowerExpression(node->children.front().get(), error);
+                currentOverflowPolicy_ = previous;
+                return result;
+            }
+            case frontend::ProjectOopMirNodeKind::NullCoalescing:
+                return lowerNullCoalescing(node, error);
+            case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
+                return lowerOptionalCoalescing(node, error);
+            case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
+                return lowerNullCoalescingStore(node, error);
+            case frontend::ProjectOopMirNodeKind::BorrowValue:
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                    return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
+                return lowerExpression(node->children.front().get(), error);
+            default:
+                return nullptr;
+        }
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -9931,6 +10014,19 @@ private:
             case frontend::ProjectOopMirNodeKind::Unreachable:
             case frontend::ProjectOopMirNodeKind::Panic:
                 return lowerExceptionExpression(node, error);
+            // NSC305-L04: the cleanup sub-family (family 6/6) lives in lowerCleanupExpression.
+            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
+            case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
+            case frontend::ProjectOopMirNodeKind::Conditional:
+            case frontend::ProjectOopMirNodeKind::LoopExpression:
+            case frontend::ProjectOopMirNodeKind::MatchExpression:
+            case frontend::ProjectOopMirNodeKind::MatchValue:
+            case frontend::ProjectOopMirNodeKind::OverflowPolicy:
+            case frontend::ProjectOopMirNodeKind::NullCoalescing:
+            case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
+            case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
+            case frontend::ProjectOopMirNodeKind::BorrowValue:
+                return lowerCleanupExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -10380,79 +10476,6 @@ private:
                 }
                 return value;
             }
-            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
-            {
-                if (node->children.size() != 1 || node->children.front() == nullptr ||
-                    !node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value())
-                {
-                    return failValue(
-                        error, "NSC-LIMIT-021 owned temporary borrow is missing value/storage/cleanup identity");
-                }
-                const auto storage = localStorage_.find(*node->localOrdinal);
-                if (storage == localStorage_.end() || storage->second == nullptr)
-                {
-                    return failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot");
-                }
-                // Evaluate before activating the cleanup: if construction itself throws, no owner
-                // exists. Once stored, later arguments and the call see this region and unwind it.
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMBuildStore(builder_, value, storage->second);
-                activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
-                return value;
-            }
-            case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
-            {
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                {
-                    return failValue(error, "NSC-LIMIT-021 full expression requires exactly one value");
-                }
-                const std::size_t retainedDepth = activeCleanupRegions_.size();
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                std::vector<std::size_t> temporaries(
-                    activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(retainedDepth),
-                    activeCleanupRegions_.end());
-                activeCleanupRegions_.resize(retainedDepth);
-                for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
-                {
-                    if (!emitCleanupAction(*it, error)) return nullptr;
-                }
-                return value;
-            }
-            case frontend::ProjectOopMirNodeKind::Conditional:
-                return lowerConditional(node, error);
-            case frontend::ProjectOopMirNodeKind::LoopExpression:
-                return lowerLoopExpression(node, error);
-            case frontend::ProjectOopMirNodeKind::MatchExpression:
-                return lowerMatchExpression(node, error);
-            case frontend::ProjectOopMirNodeKind::MatchValue:
-                if (matchValueStack_.empty())
-                    return failValue(error, "T03-F03 match value used outside an active match");
-                return node->referenceResult
-                    ? matchValueStack_.back().second
-                    : matchValueStack_.back().first;
-            case frontend::ProjectOopMirNodeKind::OverflowPolicy:
-            {
-                // NS304-T15-F05: the policy scopes the operations inside the wrapped expression.
-                // `saturating`/`checked`/`unchecked`/`wrapping` reach the decimal ops via this
-                // single-threaded flag; wrapping/unchecked for decimal are rejected in Sema.
-                const std::string previous = currentOverflowPolicy_;
-                currentOverflowPolicy_ = node->stringValue;
-                LLVMValueRef result = lowerExpression(node->children.front().get(), error);
-                currentOverflowPolicy_ = previous;
-                return result;
-            }
-            case frontend::ProjectOopMirNodeKind::NullCoalescing:
-                return lowerNullCoalescing(node, error);
-            case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
-                return lowerOptionalCoalescing(node, error);
-            case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
-                return lowerNullCoalescingStore(node, error);
-            case frontend::ProjectOopMirNodeKind::BorrowValue:
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
-                return lowerExpression(node->children.front().get(), error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
                 return lowerNullConditionalField(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
