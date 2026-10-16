@@ -2875,7 +2875,8 @@ bool ProjectGenericModel::processTypeSyntax(
     ast::TypeSyntax* syntax,
     const std::string& namespaceName,
     const GenericLookupScope& scope,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string* outSpecializationKey)
 {
     if (syntax == nullptr) return true;
     std::string constType;
@@ -2985,6 +2986,7 @@ bool ProjectGenericModel::processTypeSyntax(
     const std::string specialized = ensureTypeSpecialization(
         *state, syntax->typeArguments(), diagnostics, &specializationKey);
     if (specialized.empty()) return false;
+    if (outSpecializationKey != nullptr) *outSpecializationKey = specializationKey;
 
     // Keep the closed template's canonical key on this exact syntax node before erasing its
     // arguments. An outer specialization can then use that declaration-derived identity instead

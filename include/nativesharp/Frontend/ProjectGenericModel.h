@@ -633,7 +633,10 @@ private:
         ast::TypeSyntax* syntax,
         const std::string& namespaceName,
         const GenericLookupScope& scope,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        // NSC305-G08. When non-null, receives the canonical specialization key of the materialized
+        // type specialization (the SpecializationId that the demand-driven planner will use).
+        std::string* outSpecializationKey = nullptr);
 
     bool processGenericCall(
         ProjectSyntaxUnit& unit,
