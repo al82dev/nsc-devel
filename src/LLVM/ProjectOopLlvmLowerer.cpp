@@ -11072,6 +11072,25 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Deallocate)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "Stage 35 deallocation MIR requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef operand = values.back();
+                values.pop_back();
+                if (operand == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(lowerDeallocation(current, error, operand));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13971,7 +13990,7 @@ private:
             case frontend::ProjectOopMirNodeKind::AllocateAndConstruct:
                 return lowerConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::Deallocate:
-                return lowerDeallocation(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ObjectDestroy:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Assert:
@@ -19335,13 +19354,18 @@ private:
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
-    LLVMValueRef lowerDeallocation(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerDeallocation(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef loweredOperandOverride = nullptr)
     {
         if (node->children.size() != 1)
         {
             return failValue(error, "Stage 35 deallocation MIR requires one operand");
         }
-        LLVMValueRef loweredOperand = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef loweredOperand = loweredOperandOverride != nullptr
+            ? loweredOperandOverride
+            : lowerExpression(node->children.front().get(), error);
         if (loweredOperand == nullptr)
         {
             return nullptr;
