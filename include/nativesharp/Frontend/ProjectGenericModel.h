@@ -380,8 +380,8 @@ private:
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
         ast::AstNode* parent,
-        const std::string& namespaceName,
-        const std::string& ownerName,
+        std::string namespaceName,
+        std::string ownerName,
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
 

@@ -1867,12 +1867,34 @@ void ProjectGenericModel::collectTemplates(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
     ast::AstNode* parent,
-    const std::string& namespaceName,
-    const std::string& ownerName,
+    std::string namespaceName,
+    std::string ownerName,
     bool insideGenericType,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (node == nullptr) return;
+    // NSC305-G05. Iterative pre-order traversal with an explicit stack. The per-node logic is
+    // unchanged; only the recursion is replaced so deep syntax cannot exhaust the process stack.
+    struct CollectFrame
+    {
+        ast::AstNode* node;
+        ast::AstNode* parent;
+        std::string namespaceName;
+        std::string ownerName;
+        bool insideGenericType;
+    };
+    std::vector<CollectFrame> stack;
+    stack.push_back(CollectFrame{node, parent, std::move(namespaceName), std::move(ownerName),
+        insideGenericType});
+    while (!stack.empty())
+    {
+        CollectFrame frame = std::move(stack.back());
+        stack.pop_back();
+        node = frame.node;
+        parent = frame.parent;
+        namespaceName = std::move(frame.namespaceName);
+        ownerName = std::move(frame.ownerName);
+        insideGenericType = frame.insideGenericType;
+        if (node == nullptr) continue;
 
     std::string currentNamespace = namespaceName;
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
@@ -1881,7 +1903,7 @@ void ProjectGenericModel::collectTemplates(
     }
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
         node->auxiliaryText() == "ns3-trait-impl")
-        return;
+        continue;
 
     if (!insideGenericType && node->kind() == ast::AstNodeKind::EnumDeclaration)
     {
@@ -2036,9 +2058,11 @@ void ProjectGenericModel::collectTemplates(
             ? appendOwner(ownerName, node->text()) : ownerName;
     const bool childInsideGeneric = insideGenericType || genericType;
     const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
-    for (ast::AstNode* child : children)
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
     {
-        collectTemplates(unit, child, node, currentNamespace, childOwner, childInsideGeneric, diagnostics);
+        stack.push_back(CollectFrame{*iterator, node, currentNamespace, childOwner,
+            childInsideGeneric});
+    }
     }
 }
 
