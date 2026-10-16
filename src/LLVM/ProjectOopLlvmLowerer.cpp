@@ -11364,6 +11364,39 @@ private:
                 values.push_back(rawElementAddressFromParts(current, frame.lhs, index, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::PointerArithmetic)
+            {
+                if (current->children.size() != 2 || current->immediate == 0)
+                {
+                    values.push_back(failValue(error, "CC1 pointer arithmetic requires two operands and an element size"));
+                    continue;
+                }
+                if (current->children[0] == nullptr || current->children[1] == nullptr)
+                {
+                    values.push_back(failValue(error, "CC1 pointer arithmetic has a null operand"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, left, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (right == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(pointerArithmeticFromParts(current, frame.lhs, right, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11609,60 +11642,7 @@ private:
             // c12 comprueba que dan el mismo valor. Si algun dia dejan de compartir la forma,
             // dejan de ser lo mismo.
             case frontend::ProjectOopMirNodeKind::PointerArithmetic:
-            {
-                if (node->children.size() != 2 || node->immediate == 0)
-                    return failValue(error, "CC1 pointer arithmetic requires two operands and an element size");
-                const frontend::ProjectOopMirNode* leftNode = node->children[0].get();
-                const frontend::ProjectOopMirNode* rightNode = node->children[1].get();
-                if (leftNode == nullptr || rightNode == nullptr)
-                    return failValue(error, "CC1 pointer arithmetic has a null operand");
-
-                LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
-                LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
-
-                // DIFERENCIA. El frontend ya decidio que esto es `p - q` dandole al nodo el tipo
-                // `builtin:nint` en vez de `T*`; aqui no se vuelve a decidir nada.
-                if (!node->typeKey.ends_with("*"))
-                {
-                    LLVMValueRef left = lowerExpression(leftNode, error);
-                    if (left == nullptr) return nullptr;
-                    LLVMValueRef right = lowerExpression(rightNode, error);
-                    if (right == nullptr) return nullptr;
-                    LLVMValueRef leftInt = LLVMBuildPtrToInt(builder_, left, i64Type, "ptrdiff.left");
-                    LLVMValueRef rightInt = LLVMBuildPtrToInt(builder_, right, i64Type, "ptrdiff.right");
-                    LLVMValueRef bytes = LLVMBuildSub(builder_, leftInt, rightInt, "ptrdiff.bytes");
-                    // Con signo: q - p puede ser negativo, y esa es la mitad del valor de la
-                    // operacion. Una division sin signo daria un numero enorme en vez de -1.
-                    return LLVMBuildSDiv(builder_, bytes, stride, "ptrdiff.elements");
-                }
-
-                // DESPLAZAMIENTO. Cual de los dos hijos es el puntero se deduce de su tipo, que ya
-                // lo trae; `i + p` es legal y pone el puntero a la derecha.
-                const bool leftIsPointer = leftNode->typeKey.ends_with("*");
-                const frontend::ProjectOopMirNode* pointerNode = leftIsPointer ? leftNode : rightNode;
-                const frontend::ProjectOopMirNode* offsetNode = leftIsPointer ? rightNode : leftNode;
-
-                LLVMValueRef pointer = lowerExpression(pointerNode, error);
-                if (pointer == nullptr) return nullptr;
-                LLVMValueRef index = normalizeNativeIndex(offsetNode, error);
-                if (index == nullptr) return nullptr;
-
-                LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "pointer.offset");
-                if (node->operation == lexer::TokenKind::Minus)
-                {
-                    // `p - i`. El frontend ya rechazo `i - p`, asi que restar siempre significa
-                    // retroceder desde el puntero.
-                    offset = LLVMBuildNeg(builder_, offset, "pointer.offset.neg");
-                }
-                LLVMValueRef indices[] = {offset};
-                // GEP SIN `inbounds`, a proposito. `inbounds` promete que el resultado se queda
-                // dentro de la misma asignacion, y este nivel del lenguaje no hace esa promesa --
-                // no hay comprobacion de rango, la semantica es la de C, y el propio comentario de
-                // RawElementAddress lo dice. Prometerlo aqui convertiria en comportamiento
-                // indefinido codigo que el lenguaje declara legal.
-                return LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
-            }
+                return lowerExpressionIterative(node, error);
 
             // IDs 79 y 81 -- `x op= e`, `++x`, `x++`. children[0] es la DIRECCION del destino,
             // bajada UNA sola vez; children[1] el operando derecho. Carga, opera, guarda.
@@ -16256,6 +16236,40 @@ private:
         LLVMValueRef indices[] = {offset};
         return LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "raw.element.addr");
+    }
+
+    // NSC305-L04. The CC1 pointer-arithmetic compute (ptrdiff or byte-wise GEP), separated from the
+    // operand evaluation so the iterative machine can push both operands as frames.
+    LLVMValueRef pointerArithmeticFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef left,
+        LLVMValueRef right,
+        std::string& error)
+    {
+        LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
+        LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
+        if (!node->typeKey.ends_with("*"))
+        {
+            LLVMValueRef leftInt = LLVMBuildPtrToInt(builder_, left, i64Type, "ptrdiff.left");
+            LLVMValueRef rightInt = LLVMBuildPtrToInt(builder_, right, i64Type, "ptrdiff.right");
+            LLVMValueRef bytes = LLVMBuildSub(builder_, leftInt, rightInt, "ptrdiff.bytes");
+            return LLVMBuildSDiv(builder_, bytes, stride, "ptrdiff.elements");
+        }
+        const bool leftIsPointer = node->children[0]->typeKey.ends_with("*");
+        LLVMValueRef pointer = leftIsPointer ? left : right;
+        const frontend::ProjectOopMirNode* offsetNode =
+            leftIsPointer ? node->children[1].get() : node->children[0].get();
+        LLVMValueRef index = normalizeNativeIndexFromValue(
+            offsetNode, leftIsPointer ? right : left, error);
+        if (index == nullptr) return nullptr;
+        LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "pointer.offset");
+        if (node->operation == lexer::TokenKind::Minus)
+        {
+            offset = LLVMBuildNeg(builder_, offset, "pointer.offset.neg");
+        }
+        LLVMValueRef indices[] = {offset};
+        return LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
