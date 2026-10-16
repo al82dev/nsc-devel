@@ -695,7 +695,22 @@ private:
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics);
 
-    TemplateState* resolveTypeTemplate(
+    // NSC305-G02. Triestado de resolución de tipo: Missing (sin candidato), Unique (uno) o
+    // Ambiguous (dos o más). Preserva la distinción para diagnóstico, sin cambiar los llamadores
+    // que tratan "no único" uniformemente.
+    enum class TypeResolutionKind : std::uint8_t
+    {
+        Missing = 0,
+        Unique = 1,
+        Ambiguous = 2,
+    };
+    struct TypeResolution final
+    {
+        TypeResolutionKind kind = TypeResolutionKind::Missing;
+        TemplateState* state = nullptr;
+    };
+
+    TypeResolution resolveTypeTemplate(
         const ProjectSyntaxUnit& unit,
         std::string_view namespaceName,
         std::string_view writtenName,

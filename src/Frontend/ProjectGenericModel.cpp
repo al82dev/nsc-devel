@@ -2631,15 +2631,15 @@ void ProjectGenericModel::processNode(
         node->typeSyntax() != nullptr && !node->typeSyntax()->typeArguments().empty())
     {
         ast::TypeSyntax* candidate = node->typeSyntax();
-        TemplateState* typeTemplate = resolveTypeTemplate(
+        TypeResolution typeResolution = resolveTypeTemplate(
             unit, currentNamespace, candidate->baseName(), candidate->typeArguments().size());
-        if (typeTemplate == nullptr)
+        if (typeResolution.kind != TypeResolutionKind::Unique)
         {
-            typeTemplate = resolveTypeTemplate(
+            typeResolution = resolveTypeTemplate(
                 unit, currentNamespace, candidate->baseName(),
                 std::numeric_limits<std::size_t>::max());
         }
-        if (typeTemplate != nullptr)
+        if (typeResolution.kind == TypeResolutionKind::Unique)
         {
             processTypeSyntax(unit, candidate, currentNamespace, currentScope, diagnostics);
         }
@@ -2910,13 +2910,14 @@ bool ProjectGenericModel::processTypeSyntax(
     // nominal template. Keep this classification shared with metadata dependency discovery.
     if (isStructuralGenericSurface(syntax)) return true;
 
-    TemplateState* state = resolveTypeTemplate(
+    TypeResolution resolution = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
-    if (state == nullptr)
+    if (resolution.kind != TypeResolutionKind::Unique)
     {
-        state = resolveTypeTemplate(
+        resolution = resolveTypeTemplate(
             unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max());
     }
+    TemplateState* state = resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
     if (state == nullptr)
     {
         if (!syntax->typeArguments().empty())
@@ -4174,7 +4175,7 @@ bool ProjectGenericModel::processGenericCall(
     return true;
 }
 
-ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
+ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     const ProjectSyntaxUnit& unit,
     std::string_view namespaceName,
     std::string_view writtenName,
@@ -4189,7 +4190,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
         if (requestedModule.empty() || requestedType.empty())
         {
             telemetry_.noteResolutionQuery(0);
-            return nullptr;
+            return TypeResolution{TypeResolutionKind::Missing, nullptr};
         }
 
         const auto bucket = typesByModuleQualified_.find(
@@ -4197,17 +4198,18 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
         if (bucket == typesByModuleQualified_.end())
         {
             telemetry_.noteResolutionQuery(0);
-            return nullptr;
+            return TypeResolution{TypeResolutionKind::Missing, nullptr};
         }
         telemetry_.noteResolutionQuery(bucket->second.size());
         TemplateState* exact = nullptr;
         for (TemplateState* state : bucket->second)
         {
             if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
-            if (exact != nullptr) return nullptr;
+            if (exact != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
             exact = state;
         }
-        return exact;
+        return TypeResolution{
+            exact != nullptr ? TypeResolutionKind::Unique : TypeResolutionKind::Missing, exact};
     }
 
     // NSC305-G02. Bucket by terminal name; the original scan tested every catalog entry for
@@ -4223,7 +4225,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     if (bucket == typesByVisibleName_.end())
     {
         telemetry_.noteResolutionQuery(0);
-        return nullptr;
+        return TypeResolution{TypeResolutionKind::Missing, nullptr};
     }
     telemetry_.noteResolutionQuery(bucket->second.size());
     TemplateState* fallback = nullptr;
@@ -4237,19 +4239,20 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
         {
             if (candidate == writtenName)
             {
-                if (fallback != nullptr) return nullptr;
+                if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
                 fallback = state;
             }
             continue;
         }
-        if (candidate == qualified) return state;
+        if (candidate == qualified) return TypeResolution{TypeResolutionKind::Unique, state};
         if (state->record.name == writtenName)
         {
-            if (fallback != nullptr) return nullptr;
+            if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
             fallback = state;
         }
     }
-    return fallback;
+    return TypeResolution{
+        fallback != nullptr ? TypeResolutionKind::Unique : TypeResolutionKind::Missing, fallback};
 }
 
 // NSC-LIMIT-007. QUE PLANTILLAS NOMBRA UNA LLAMADA -- con la escala del modelo de nombres, no
@@ -6029,12 +6032,14 @@ void ProjectGenericModel::collectTypeDependency(
             continue;
         }
 
-        TemplateState* target = resolveTypeTemplate(
+        TypeResolution resolution = resolveTypeTemplate(
             unit, namespaceName, current->baseName(), current->typeArguments().size());
-        if (target == nullptr)
-            target = resolveTypeTemplate(
+        if (resolution.kind != TypeResolutionKind::Unique)
+            resolution = resolveTypeTemplate(
                 unit, namespaceName, current->baseName(),
                 std::numeric_limits<std::size_t>::max());
+        TemplateState* target =
+            resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
         if (target == nullptr)
         {
             root.record.unresolvedDependencies.push_back(
