@@ -872,6 +872,15 @@ private:
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::string_view rewrittenContainingTypeName,
         std::string_view originalContainingTypeName);
+    // NSC305-G06. Clones the special (non-generic) node cases -- member-expression associated
+    // constant, value-pack fold, and identifier const substitution. Returns nullptr when the node
+    // is not a special case so the caller falls through to the generic path.
+    ast::AstNode* tryCloneSpecialNode(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::string_view rewrittenContainingTypeName,
+        std::string_view originalContainingTypeName);
     // NSC305-G06. Folds a const value-pack operation (packcount/packat/packsum/packproduct/
     // packall/packany). Returns nullptr when the node is not such a fold, so cloneNode falls
     // through to the generic clone path.

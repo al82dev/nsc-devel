@@ -5497,26 +5497,14 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
     return result;
 }
 
-ast::AstNode* ProjectGenericModel::cloneNode(
+// NSC305-G06. Clones the special (non-generic) node cases (see the header).
+ast::AstNode* ProjectGenericModel::tryCloneSpecialNode(
     ast::AstArena& arena,
     const ast::AstNode* source,
     const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
     std::string_view rewrittenContainingTypeName,
     std::string_view originalContainingTypeName)
 {
-    if (source == nullptr) return nullptr;
-    CloneDepthGuard depthGuard(cloneDepth_);
-    if (cloneDepth_ > kMaximumCloneDepth)
-    {
-        if (packMaterializationError_.empty())
-        {
-            packMaterializationError_ =
-                "generic materialization exceeds the maximum nesting depth";
-            packMaterializationErrorRange_ = source->range();
-        }
-        return nullptr;
-    }
-    telemetry_.noteNodesCloned();
     if (source->kind() == ast::AstNodeKind::MemberExpression &&
         source->first() != nullptr &&
         source->first()->kind() == ast::AstNodeKind::IdentifierExpression)
@@ -5587,6 +5575,33 @@ ast::AstNode* ProjectGenericModel::cloneNode(
                 return expression;
         }
     }
+    return nullptr;
+}
+
+ast::AstNode* ProjectGenericModel::cloneNode(
+    ast::AstArena& arena,
+    const ast::AstNode* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::string_view rewrittenContainingTypeName,
+    std::string_view originalContainingTypeName)
+{
+    if (source == nullptr) return nullptr;
+    CloneDepthGuard depthGuard(cloneDepth_);
+    if (cloneDepth_ > kMaximumCloneDepth)
+    {
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ =
+                "generic materialization exceeds the maximum nesting depth";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return nullptr;
+    }
+    telemetry_.noteNodesCloned();
+    if (ast::AstNode* special = tryCloneSpecialNode(
+            arena, source, substitutions,
+            rewrittenContainingTypeName, originalContainingTypeName))
+        return special;
     const bool layoutQueryOfSubstitutedParameter =
         (source->kind() == ast::AstNodeKind::SizeofExpression ||
          source->kind() == ast::AstNodeKind::AlignofExpression) &&
@@ -5595,16 +5610,67 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         substitutions.contains(source->first()->text());
     ast::AstNode* result = cloneNodeGeneric(
         arena, source, substitutions, rewrittenContainingTypeName, originalContainingTypeName);
-    if (!layoutQueryOfSubstitutedParameter)
+    // NSC305-G06. Iteratively clone the child subtree with an explicit stack. Special cases are
+    // handled by tryCloneSpecialNode; generic children are shallow-cloned here and their own
+    // children pushed, so deeply nested generic expressions no longer recurse.
+    const auto isLayoutQuery = [&](const ast::AstNode* node)
     {
-        result->setFirst(cloneNode(
-            arena, source->first(), substitutions,
-            rewrittenContainingTypeName, originalContainingTypeName));
+        return node != nullptr &&
+            (node->kind() == ast::AstNodeKind::SizeofExpression ||
+             node->kind() == ast::AstNodeKind::AlignofExpression) &&
+            node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            substitutions.contains(node->first()->text());
+    };
+    struct ChildWork
+    {
+        const ast::AstNode* source;
+        ast::AstNode* parent;
+        std::uint8_t slot;  // 1=first, 2=second, 3=third, 4=child
+    };
+    std::vector<ChildWork> work;
+    for (auto it = source->children().rbegin(); it != source->children().rend(); ++it)
+        work.push_back(ChildWork{*it, result, 4});
+    if (source->third() != nullptr)
+        work.push_back(ChildWork{source->third(), result, 3});
+    if (source->second() != nullptr)
+        work.push_back(ChildWork{source->second(), result, 2});
+    if (!layoutQueryOfSubstitutedParameter)
+        work.push_back(ChildWork{source->first(), result, 1});
+    while (!work.empty())
+    {
+        ChildWork item = work.back();
+        work.pop_back();
+        ast::AstNode* child = nullptr;
+        if (item.source != nullptr)
+        {
+            child = tryCloneSpecialNode(
+                arena, item.source, substitutions,
+                rewrittenContainingTypeName, originalContainingTypeName);
+            if (child == nullptr)
+            {
+                child = cloneNodeGeneric(
+                    arena, item.source, substitutions,
+                    rewrittenContainingTypeName, originalContainingTypeName);
+                for (auto it = item.source->children().rbegin();
+                     it != item.source->children().rend(); ++it)
+                    work.push_back(ChildWork{*it, child, 4});
+                if (item.source->third() != nullptr)
+                    work.push_back(ChildWork{item.source->third(), child, 3});
+                if (item.source->second() != nullptr)
+                    work.push_back(ChildWork{item.source->second(), child, 2});
+                if (!isLayoutQuery(item.source))
+                    work.push_back(ChildWork{item.source->first(), child, 1});
+            }
+        }
+        switch (item.slot)
+        {
+            case 1: item.parent->setFirst(child); break;
+            case 2: item.parent->setSecond(child); break;
+            case 3: item.parent->setThird(child); break;
+            default: if (child != nullptr) item.parent->addChild(child); break;
+        }
     }
-    result->setSecond(cloneNode(arena, source->second(), substitutions, rewrittenContainingTypeName, originalContainingTypeName));
-    result->setThird(cloneNode(arena, source->third(), substitutions, rewrittenContainingTypeName, originalContainingTypeName));
-    for (const ast::AstNode* child : source->children())
-        result->addChild(cloneNode(arena, child, substitutions, rewrittenContainingTypeName, originalContainingTypeName));
     return result;
 }
 
