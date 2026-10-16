@@ -9904,7 +9904,10 @@ private:
     }
 
     // NSC305-L04. The await sub-family of the cleanup/exceptions/async family (family 6/6).
-    LLVMValueRef lowerAwaitExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerAwaitExpression(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef childOverride = nullptr)
     {
         switch (node->kind)
         {
@@ -9916,7 +9919,9 @@ private:
                 {
                     if (node->children.size() != 1U)
                         return failValue(error, "await future requires one operand");
-                    LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                    LLVMValueRef value = childOverride != nullptr
+                        ? childOverride
+                        : lowerExpression(node->children.front().get(), error);
                     if (value == nullptr) return nullptr;
                     LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
                     if (carrier == nullptr) return nullptr;
@@ -10150,7 +10155,9 @@ private:
 
                 // Entry: lower the child call → store in childSlot.
                 LLVMPositionBuilderAtEnd(builder_, entryBlock);
-                LLVMValueRef fresh = lowerExpression(node->children.front().get(), error);
+                LLVMValueRef fresh = childOverride != nullptr
+                    ? childOverride
+                    : lowerExpression(node->children.front().get(), error);
                 if (fresh == nullptr) return nullptr;
                 LLVMBuildStore(builder_, fresh, childSlot);
                 // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
@@ -11173,6 +11180,25 @@ private:
                 values.push_back(lowerPlacementConstruction(current, error, frame.lhs, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::AwaitFuture)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U)
+                    {
+                        values.push_back(failValue(error, "await future requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef child = values.back();
+                values.pop_back();
+                if (child == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(lowerAwaitExpression(current, error, child));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11707,7 +11733,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
                 return lowerNullConditionalArrayStore(node, error);
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
-                return lowerAwaitExpression(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::PollAddress:
             {
                 // NS304-T05-F09: the poll function's address, stored into the future's pollFn.
