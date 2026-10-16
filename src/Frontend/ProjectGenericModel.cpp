@@ -4086,6 +4086,31 @@ bool ProjectGenericModel::materializeSharedOverloads(
     return true;
 }
 
+// NSC305-G08. Normalizes and materializes the single resolved method (see the header).
+bool ProjectGenericModel::materializeUniqueMethod(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* call,
+    ast::AstNode* callee,
+    TemplateState& state,
+    const std::string& namespaceName,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!normalizeGenericArguments(
+            state.record, call->typeSyntaxes(), call->range(), diagnostics))
+        return false;
+
+    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
+    currentInstantiationNamespace_ = namespaceName;
+    currentInstantiationRange_ = call->range();
+    const std::string specialized = ensureMethodSpecialization(
+        state, call->typeSyntaxes(), diagnostics);
+    if (specialized.empty()) return false;
+    if (callee != nullptr) callee->setText(specialized);
+    call->clearTypeSyntaxes();
+    call->setFlag(false);
+    return true;
+}
+
 bool ProjectGenericModel::processGenericCall(
     ProjectSyntaxUnit& unit,
     ast::AstNode* call,
@@ -4173,20 +4198,7 @@ bool ProjectGenericModel::processGenericCall(
                 std::to_string(call->typeSyntaxes().size()));
         return false;
     }
-    if (!normalizeGenericArguments(
-            state->record, call->typeSyntaxes(), call->range(), diagnostics))
-        return false;
-
-    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
-    currentInstantiationNamespace_ = namespaceName;
-    currentInstantiationRange_ = call->range();
-    const std::string specialized = ensureMethodSpecialization(
-        *state, call->typeSyntaxes(), diagnostics);
-    if (specialized.empty()) return false;
-    if (callee != nullptr) callee->setText(specialized);
-    call->clearTypeSyntaxes();
-    call->setFlag(false);
-    return true;
+    return materializeUniqueMethod(unit, call, callee, *state, namespaceName, diagnostics);
 }
 
 ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(

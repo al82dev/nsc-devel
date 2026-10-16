@@ -656,6 +656,15 @@ private:
         const std::string& namespaceName,
         const std::vector<TemplateState*>& shared,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G08. Normalizes and materializes the single resolved method of a generic call, then
+    // rewrites the call site. Returns false on error.
+    bool materializeUniqueMethod(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        ast::AstNode* callee,
+        TemplateState& state,
+        const std::string& namespaceName,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool inferGenericCall(
         ProjectSyntaxUnit& unit,
