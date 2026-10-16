@@ -1527,11 +1527,11 @@ bool ProjectGenericModel::expandTypeAliases(
         ok = expandTypeAliases(unit, argument, scope, diagnostics, expansionStack) && ok;
 
     if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
-        scope.typeParameters.contains(syntax->baseName()))
+        scope.typeParameters.read().contains(syntax->baseName()))
         return ok;
 
-    const auto found = scope.typeAliases.find(syntax->baseName());
-    if (found == scope.typeAliases.end() || found->second == nullptr) return ok;
+    const auto found = scope.typeAliases.read().find(syntax->baseName());
+    if (found == scope.typeAliases.read().end() || found->second == nullptr) return ok;
     const ast::AstNode* declaration = found->second;
 
     if (std::find(expansionStack.begin(), expansionStack.end(), syntax->baseName()) !=
@@ -1656,12 +1656,12 @@ bool ProjectGenericModel::expandAliasesInNode(
     for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
         if (parameter.kind == ast::GenericParameterSyntaxKind::Type ||
             parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
-            currentScope.typeParameters.insert(parameter.name);
+            currentScope.typeParameters.write().insert(parameter.name);
     for (const ast::AstNode* child : node->children())
     {
         if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective) continue;
         if (!child->genericParameters().empty() || child->auxiliaryText().empty())
-            currentScope.typeAliases[child->text()] = child;
+            currentScope.typeAliases.write()[child->text()] = child;
     }
 
     bool nodeOk = true;
@@ -1677,7 +1677,7 @@ bool ProjectGenericModel::expandAliasesInNode(
         for (const ast::GenericParameterSyntax& parameter : child->genericParameterSyntaxes())
             if (parameter.kind == ast::GenericParameterSyntaxKind::Type ||
                 parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
-                aliasScope.typeParameters.insert(parameter.name);
+                aliasScope.typeParameters.write().insert(parameter.name);
         std::vector<std::string> stack{child->text()};
         nodeOk = expandTypeAliases(
                  unit, child->typeSyntax(), aliasScope, diagnostics, stack) && nodeOk;
@@ -2424,14 +2424,14 @@ void ProjectGenericModel::processNode(
     // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
     // mismo AST, en el mismo sitio, y heredando los de fuera.
     telemetry_.noteScopeCopy(
-        scope.importedNamespaces.size() + scope.aliases.size() + scope.typeAliases.size() +
-        scope.typeParameters.size() + scope.valuePassKinds.size() +
-        scope.genericLambdas.size());
+        scope.importedNamespaces.read().size() + scope.aliases.read().size() +
+        scope.typeAliases.read().size() + scope.typeParameters.read().size() +
+        scope.valuePassKinds.read().size() + scope.genericLambdas.read().size());
     GenericLookupScope currentScope = scope;
     if (node->kind() == ast::AstNodeKind::LambdaExpression &&
         node->text().starts_with("generic-lambda-instance:"))
     {
-        currentScope.genericLambdas.erase(
+        currentScope.genericLambdas.write().erase(
             node->text().substr(std::string_view("generic-lambda-instance:").size()));
     }
     for (const ast::AstNode* child : node->children())
@@ -2447,13 +2447,9 @@ void ProjectGenericModel::processNode(
             if (written.empty()) continue;
             const auto add = [&](std::string candidate)
             {
-                if (std::find(
-                        currentScope.importedNamespaces.begin(),
-                        currentScope.importedNamespaces.end(),
-                        candidate) == currentScope.importedNamespaces.end())
-                {
-                    currentScope.importedNamespaces.push_back(std::move(candidate));
-                }
+                auto& imported = currentScope.importedNamespaces.write();
+                if (std::find(imported.begin(), imported.end(), candidate) == imported.end())
+                    imported.push_back(std::move(candidate));
             };
             const std::vector<std::string> segments = splitDotted(currentNamespace);
             for (std::size_t depth = segments.size(); depth > 0; --depth)
@@ -2474,7 +2470,7 @@ void ProjectGenericModel::processNode(
         {
             if (!child->auxiliaryText().empty())
             {
-                currentScope.aliases[child->text()] = child->auxiliaryText();
+                currentScope.aliases.write()[child->text()] = child->auxiliaryText();
             }
         }
     }
@@ -2507,11 +2503,11 @@ void ProjectGenericModel::processNode(
         {
             // A nested callable may shadow a by-reference name with an ordinary value parameter.
             // Clear the inherited marker before recording the current declaration's pass kind.
-            currentScope.valuePassKinds.erase(child->text());
+            currentScope.valuePassKinds.write().erase(child->text());
             if (child->auxiliaryText().starts_with("pass:"))
             {
                 const std::size_t end = child->auxiliaryText().find('|');
-                currentScope.valuePassKinds[child->text()] =
+                currentScope.valuePassKinds.write()[child->text()] =
                     child->auxiliaryText().substr(5U, end == std::string::npos ? end : end - 5U);
             }
         }
@@ -2530,8 +2526,8 @@ void ProjectGenericModel::processNode(
             currentScope.matchValueType = governingType;
         if (node->first()->kind() == ast::AstNodeKind::IdentifierExpression)
         {
-            const auto pass = currentScope.valuePassKinds.find(node->first()->text());
-            if (pass != currentScope.valuePassKinds.end())
+            const auto pass = currentScope.valuePassKinds.read().find(node->first()->text());
+            if (pass != currentScope.valuePassKinds.read().end())
                 currentScope.matchValuePassKind = pass->second;
         }
     }
@@ -2576,7 +2572,7 @@ void ProjectGenericModel::processNode(
         {
             GenericLookupScope receiverScope = currentScope;
             for (const std::string& parameter : node->genericParameters())
-                receiverScope.typeParameters.insert(parameter);
+                receiverScope.typeParameters.write().insert(parameter);
             for (const ast::AstNode* child : node->children())
             {
                 if (child == nullptr ||
@@ -2637,7 +2633,7 @@ void ProjectGenericModel::processNode(
         // parameters are in scope so it does not materialize a closed clone.
         GenericLookupScope extensionScope = currentScope;
         for (const std::string& parameter : node->genericParameters())
-            extensionScope.typeParameters.insert(parameter);
+            extensionScope.typeParameters.write().insert(parameter);
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, extensionScope, diagnostics);
     }
     else if (node->typeSyntax() != nullptr)
@@ -2651,8 +2647,8 @@ void ProjectGenericModel::processNode(
     if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
         node->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        const auto local = currentScope.genericLambdas.find(node->first()->text());
-        if (local != currentScope.genericLambdas.end())
+        const auto local = currentScope.genericLambdas.read().find(node->first()->text());
+        if (local != currentScope.genericLambdas.read().end())
             specializedGenericLambda = specializeGenericLambdaCall(
                 unit, node, local->second, currentScope, diagnostics);
     }
@@ -2741,7 +2737,7 @@ void ProjectGenericModel::processNode(
         if (initializer != nullptr && initializer->kind() == ast::AstNodeKind::LambdaExpression &&
             !initializer->genericParameters().empty())
         {
-            sequentialScope.genericLambdas[child->text()] =
+            sequentialScope.genericLambdas.write()[child->text()] =
                 GenericLookupScope::GenericLambda{
                     initializer, child, sequentialScope.declarationContainer};
             continue;
@@ -2939,7 +2935,7 @@ bool ProjectGenericModel::processTypeSyntax(
         syntax->typeArguments(), [&](const ast::TypeSyntax* argument)
         {
             return argument != nullptr && argument->typeArguments().empty() &&
-                scope.typeParameters.contains(argument->baseName());
+                scope.typeParameters.read().contains(argument->baseName());
         });
     if (anyOpenParameter)
     {
@@ -3735,8 +3731,8 @@ bool ProjectGenericModel::inferGenericCall(
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
     site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases;
-    site.importedNamespaces = scope.importedNamespaces;
+    site.aliases = &scope.aliases.read();
+    site.importedNamespaces = scope.importedNamespaces.read();
     constexpr std::size_t kAny = std::numeric_limits<std::size_t>::max();
     const std::vector<TemplateState*> named = templatesNamedBy(
         unit, site, requestedOwner, methodName, kAny, kAny);
@@ -4067,8 +4063,8 @@ bool ProjectGenericModel::processGenericCall(
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
     site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases;
-    site.importedNamespaces = scope.importedNamespaces;
+    site.aliases = &scope.aliases.read();
+    site.importedNamespaces = scope.importedNamespaces.read();
 
     const std::vector<TemplateState*> namedAtWinningRung = templatesNamedBy(
         unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
@@ -5667,10 +5663,10 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
     site.enclosingTypeNames = noContainingTypes;
-    site.aliases = syntax->originProjectOrdinal().has_value() ? &noAliases : &scope.aliases;
+    site.aliases = syntax->originProjectOrdinal().has_value() ? &noAliases : &scope.aliases.read();
     site.importedNamespaces = syntax->originProjectOrdinal().has_value()
         ? std::span<const std::string>(noImports)
-        : std::span<const std::string>(scope.importedNamespaces);
+        : std::span<const std::string>(scope.importedNamespaces.read());
 
     for (const QualifiedNameRung& rung : qualifiedNameLadder(site, syntax->baseName()))
     {
@@ -5871,11 +5867,9 @@ void ProjectGenericModel::discoverTemplateDependencies(
             if (written.empty()) continue;
             const auto add = [&](std::string candidate)
             {
-                if (std::find(
-                        currentScope.importedNamespaces.begin(),
-                        currentScope.importedNamespaces.end(),
-                        candidate) == currentScope.importedNamespaces.end())
-                    currentScope.importedNamespaces.push_back(std::move(candidate));
+                auto& imported = currentScope.importedNamespaces.write();
+                if (std::find(imported.begin(), imported.end(), candidate) == imported.end())
+                    imported.push_back(std::move(candidate));
             };
             const std::vector<std::string> segments = splitDotted(currentNamespace);
             for (std::size_t depth = segments.size(); depth > 0; --depth)
@@ -5895,7 +5889,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
         else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
                  !child->auxiliaryText().empty())
         {
-            currentScope.aliases[child->text()] = child->auxiliaryText();
+            currentScope.aliases.write()[child->text()] = child->auxiliaryText();
         }
     }
 
@@ -6005,8 +5999,8 @@ void ProjectGenericModel::collectCallDependency(
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
     site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases;
-    site.importedNamespaces = scope.importedNamespaces;
+    site.aliases = &scope.aliases.read();
+    site.importedNamespaces = scope.importedNamespaces.read();
 
     const std::size_t arity = call->typeSyntaxes().size();
     const std::size_t argumentCount = call->children().size();
@@ -6078,10 +6072,10 @@ void ProjectGenericModel::collectTemplateDependencies(
     {
         if (child == nullptr) continue;
         if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
-            currentScope.importedNamespaces.push_back(child->text());
+            currentScope.importedNamespaces.write().push_back(child->text());
         else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
                  !child->auxiliaryText().empty())
-            currentScope.aliases[child->text()] = child->auxiliaryText();
+            currentScope.aliases.write()[child->text()] = child->auxiliaryText();
     }
 
     collectTypeDependency(root, unit, node->typeSyntax(), currentNamespace, currentScope);

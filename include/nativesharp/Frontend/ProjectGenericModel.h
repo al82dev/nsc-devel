@@ -446,13 +446,30 @@ private:
             ast::AstNode* declaration = nullptr;
             ast::AstNode* declarationContainer = nullptr;
         };
-        std::vector<std::string> importedNamespaces;
-        std::unordered_map<std::string, std::string> aliases;
+        // NSC305-G04. Copy-on-write wrapper so every scope container copies in O(1) (a shared_ptr
+        // refcount) instead of deep-copying a map/vector on each traversal descent. `read()` is the
+        // const view; `write()` clones the container only when it is shared, then returns a mutable
+        // reference. Small lexical containers get cloned rarely, so the clone cost is negligible.
+        template <typename T>
+        struct Cow final
+        {
+            Cow() : value_(std::make_shared<T>()) {}
+            const T& read() const { return *value_; }
+            T& write()
+            {
+                if (value_.use_count() > 1)
+                    value_ = std::make_shared<T>(*value_);
+                return *value_;
+            }
+            std::shared_ptr<T> value_;
+        };
+        Cow<std::vector<std::string>> importedNamespaces;
+        Cow<std::unordered_map<std::string, std::string>> aliases;
         // Item 276. Type aliases have to disappear before generic templates are registered:
         // otherwise `Alias<int>` is mistaken for a template identity of its own.  The declaration
         // carries both the target syntax and its optional type-parameter list.
-        std::unordered_map<std::string, const ast::AstNode*> typeAliases;
-        std::unordered_set<std::string> typeParameters;
+        Cow<std::unordered_map<std::string, const ast::AstNode*>> typeAliases;
+        Cow<std::unordered_set<std::string>> typeParameters;
         // NSC305-G04. Item 277. Types written on parameters, fields, and preceding locals are
         // sufficient for local generic inference. This container is the one that grows with the
         // number of locals, so it is a persistent parent-linked chain: copying a scope is O(1) and
@@ -481,7 +498,7 @@ private:
         // By-reference parameter types carry a trailing Pointer modifier for ABI representation.
         // Preserve the source pass kind separately so structural pre-Sema type discovery can look
         // through that wrapper without losing the readonly meaning of `in`.
-        std::unordered_map<std::string, std::string> valuePassKinds;
+        Cow<std::unordered_map<std::string, std::string>> valuePassKinds;
         // MatchExpression lowers every arm receiver to MatchValueExpression. The generic prepass
         // carries the governing source type lexically so those synthetic receivers remain typed
         // before the definitive body model creates its single-evaluation storage.
@@ -490,7 +507,7 @@ private:
         // T08-F04. Generic lambdas are lexical templates, not members and therefore not entries
         // in the project-wide template catalogue. The generic pass closes each invocation in
         // the lexical scope where the `var` binding was introduced.
-        std::unordered_map<std::string, GenericLambda> genericLambdas;
+        Cow<std::unordered_map<std::string, GenericLambda>> genericLambdas;
         ast::AstNode* declarationContainer = nullptr;
         // Return type before closed generic spellings are rewritten. It provides expected-type
         // evidence to a direct generic call in a return statement.
