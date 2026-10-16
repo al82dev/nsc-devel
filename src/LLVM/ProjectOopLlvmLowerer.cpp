@@ -11260,6 +11260,80 @@ private:
                 values.push_back(value);
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::PointerLoad)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "pointer load requires exactly one pointer operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef pointer = values.back();
+                values.pop_back();
+                if (pointer == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef pointee = llvmType(current->typeKey, error);
+                if (pointee == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::MoveOwnedField)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "Bloque 1 move owned field requires exactly one address operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef address = values.back();
+                values.pop_back();
+                if (address == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef fieldType = llvmType(current->typeKey, error);
+                if (fieldType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef value = LLVMBuildLoad2(builder_, fieldType, address, "move.owned.field.load");
+                if (current->booleanValue)
+                {
+                    LLVMBuildStore(builder_, LLVMConstNull(fieldType), address);
+                }
+                values.push_back(value);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::MoveIteratorCurrent)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "move iterator Current requires exactly one iterator operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef iterator = values.back();
+                values.pop_back();
+                if (iterator == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef itemType = llvmType(current->typeKey, error);
+                if (itemType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef slot = byteOffset(iterator, 16, "move.iterator.item.addr");
+                LLVMValueRef value = LLVMBuildLoad2(builder_, itemType, slot, "move.iterator.item.load");
+                if (current->booleanValue)
+                {
+                    LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
+                }
+                values.push_back(value);
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11702,62 +11776,11 @@ private:
             }
 
             case frontend::ProjectOopMirNodeKind::PointerLoad:
-            {
-                // Interop Foundation: `*pointer` as a value -- a plain typed load through a raw
-                // pointer. Struct pointees load their [N x i8] carrier (value copy semantics),
-                // primitives load directly. Null/validity is deliberately unchecked: this is
-                // the raw tier, matching C semantics for FFI shapes like `GetMessage(&msg)`.
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "pointer load requires exactly one pointer operand");
-                LLVMValueRef pointer = lowerExpression(node->children.front().get(), error);
-                if (pointer == nullptr) return nullptr;
-                LLVMTypeRef pointee = llvmType(node->typeKey, error);
-                if (pointee == nullptr) return nullptr;
-                return LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::MoveOwnedField:
-            {
-                // Bloque 1: move(holder.slot) / move(slot) -- extract the owner out of an `owned`
-                // field. The single child is the field's already-lowered ADDRESS. Load the value,
-                // then null the vacated slot for reference-like types so the container's own
-                // discharge -- its destruction entry, or a later overwrite's release, both of
-                // which are guarded by the slot's null state -- skips it instead of double-freeing
-                // the value that just changed owners. Value-typed fields (a generic `owned T`
-                // closed over int, a struct, ...) have no ownership to hand over, so the move
-                // degrades to a plain read and the slot is left untouched, exactly like the
-                // array-element and named-owner cases.
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "Bloque 1 move owned field requires exactly one address operand");
-                LLVMValueRef address = lowerExpression(node->children.front().get(), error);
-                if (address == nullptr) return nullptr;
-                LLVMTypeRef fieldType = llvmType(node->typeKey, error);
-                if (fieldType == nullptr) return nullptr;
-                LLVMValueRef value = LLVMBuildLoad2(builder_, fieldType, address, "move.owned.field.load");
-                if (node->booleanValue)
-                {
-                    LLVMBuildStore(builder_, LLVMConstNull(fieldType), address);
-                }
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::MoveIteratorCurrent:
-            {
-                // NS304-T07-F04: move(it.Current) — the child is the iterator's ADDRESS; the item
-                // slot is field 2 (offset 16). Load it, then zero the vacated slot so the Drop
-                // never double-frees the value that just changed owners.
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "move iterator Current requires exactly one iterator operand");
-                LLVMValueRef iterator = lowerExpression(node->children.front().get(), error);
-                if (iterator == nullptr) return nullptr;
-                LLVMTypeRef itemType = llvmType(node->typeKey, error);
-                if (itemType == nullptr) return nullptr;
-                LLVMValueRef slot = byteOffset(iterator, 16, "move.iterator.item.addr");
-                LLVMValueRef value = LLVMBuildLoad2(builder_, itemType, slot, "move.iterator.item.load");
-                if (node->booleanValue)
-                {
-                    LLVMBuildStore(builder_, LLVMConstNull(itemType), slot);
-                }
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
                 return lowerNullConditionalField(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
