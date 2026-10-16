@@ -29,7 +29,7 @@
 | Lexer | `TokenKind`, catálogo host y contratos documentales directos | fallos `TL-LEX-001`, `002`; vecindad `001..008` |
 | Parser foundation | seed esperado del host y contratos documentales directos; constructor de producto protegido | `TP-PAR-007` |
 | Parser nested declarations | reconocimiento de `partial` antes de un tipo anidado y expediente directo | fallo `TP-PAR-199`; vecindad `197..201` |
-| Parser properties | oráculo host y contratos documentales directos; implementación `ref` protegida | `TP-PAR-239` |
+| Parser properties | oráculo host y contratos documentales directos; implementación `ref` protegida | fallo `TP-PAR-239`; paridad `TP-PAR-241` |
 | Parser unary robustness | prefijos unarios de `Parser::parseUnaryExpression`; oráculo sin cambios | `TP-PAR-532` |
 | Builder timeout | `timeout_limit_for_average`, pruebas unitarias y documentación directa | `T12B-00012`, `00025`, `01069`, `01073` |
 
@@ -45,7 +45,7 @@ participa en la ruta causal y se registre aquí antes de modificarlo.
 | Lexer | 2 | regresión ordinal al insertar `Utf8StringLiteral` en posición 7 | `TokenKind` | corregida; `8/8 PASS` con vecindad |
 | Parser seed | 1 | oráculo anterior a `Future`, `Iterator` y `AsyncIterator` | CP-PAR-001 | corregida; `1/1 PASS` |
 | Parser partial | 1 | `partial struct` cae en la ruta de miembro parcial | `parseClassMember` | corregida; `5/5 PASS` con vecindad |
-| Parser ref property | 1 | oráculo anterior a la feature `e1629a749` | CP-PAR-023 | causa demostrada |
+| Parser ref property | 1 | oráculo anterior a la feature `e1629a749` | CP-PAR-023 | corregida; `2/2 PASS` con paridad |
 | Parser nesting | 1 | recursión por cada prefijo unario; stack overflow `0xC00000FD` | `parseUnaryExpression` | reproducido |
 | Builder timeout | 4 | margen histórico insuficiente para variación de I/O corta | `timeout_limit_for_average` | causa demostrada |
 
@@ -83,6 +83,7 @@ se validan juntos para cubrir tanto la identidad como los clasificadores que dep
   miembro además consulta el token actual `partial` con `at(Identifier)` en vez del token posterior. Se corrige el
   lookahead para los inicios de tipo anidado ya soportados y se valida la vecindad completa `TP-PAR-197..201`.
 - `e1629a749` hizo legal la propiedad `ref` y conserva el flag en el getter; TP-PAR-239 todavía exige rechazo.
+  El oráculo se sincroniza con esa feature y se contrasta con el indexer `ref` ya cubierto por `TP-PAR-241`.
 - TP-PAR-532 reproduce salida `-1073741571` (`0xC00000FD`) con el host Debug de la revisión fallida. El helper
   `flatten` ya es iterativo; la recursión demostrada está en la cadena de 256 llamadas de prefijos unarios.
 
@@ -114,8 +115,8 @@ siguiente batería desde la GUI.
 
 - Inventario original: congelado.
 - Causas raíz conocidas: `8`.
-- Causas corregidas: `5`.
-- Pruebas focales aprobadas: `29`.
+- Causas corregidas: `6`.
+- Pruebas focales aprobadas: `31`.
 - Target: `nsc_component_tests` Debug compiló; `TF-TGT-002`, `005`, `006`, `008`, `036`, `038` y `040`
   pasaron individualmente. Se restauraron `Enum=16` y `Pointer=17`; `Decimal=18` quedó añadido al final.
 - AST: `nsc_component_tests` Debug compiló; `TA-AST-019..026` pasaron individualmente. El catálogo host ahora
@@ -127,4 +128,6 @@ siguiente batería desde la GUI.
   predeterminados vigentes y la seed externa; el constructor de producto no se modificó.
 - Parser partial: `nsc_component_tests` Debug compiló; `TP-PAR-197..201` pasaron individualmente. El lookahead
   distingue tipos anidados de miembros parciales y deja que la regla existente diagnostique `partial struct`.
-- Siguiente acción causal: actualizar TP-PAR-239 al contrato vigente de getter `ref`.
+- Parser ref property: `nsc_component_tests` Debug compiló; `TP-PAR-239` y la paridad `TP-PAR-241` pasaron. El
+  oráculo ahora exige tipo `int`, getter marcado `ref` y ausencia de diagnósticos; el producto no se modificó.
+- Siguiente acción causal: eliminar la recursión lineal demostrada en cadenas de prefijos unarios.

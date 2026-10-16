@@ -159,14 +159,16 @@ void testPropertyModifiers(TestContext& context)
         "TP-PAR-238 property modifiers must propagate without collapsing independent flags");
 }
 
-// Verifies ref-return properties are rejected rather than silently losing the marker. Complexity is O(n).
-void testReferencePropertyRejected(TestContext& context)
+// Verifies a ref-return property retains its exact type and marks the getter. Complexity is O(n).
+void testReferencePropertyAccepted(TestContext& context)
 {
     ParserFixture fixture("class C { ref int Value { get { return 1; } } }");
     AstNode* property = member(fixture);
-    context.expect(property != nullptr && !property->isReference() &&
-            diagnosticCount(fixture.diagnostics(), DiagnosticId::ExpectedDeclaration) >= 1,
-        "TP-PAR-239 ref-return property must remain an explicit current-grammar rejection");
+    AstNode* getter = child(property, AstNodeKind::MethodDeclaration, "property:get:");
+    context.expect(property != nullptr && property->kind() == AstNodeKind::PropertyDeclaration &&
+            property->typeSyntax() != nullptr && property->typeSyntax()->baseName() == "int" &&
+            getter != nullptr && getter->isReference() && fixture.diagnostics().diagnostics().empty(),
+        "TP-PAR-239 ref-return property must preserve its type and mark the getter without diagnostics");
 }
 
 // Verifies one- and multi-parameter indexers retain exact accessor parameter order. Complexity is O(n).
@@ -258,7 +260,7 @@ void registerParserPropertyIndexerModule(TestRegistry& registry)
     addCase(registry, "TP-PAR-236", testAbstractProperty);
     addCase(registry, "TP-PAR-237", testMissingAccessorBody);
     addCase(registry, "TP-PAR-238", testPropertyModifiers);
-    addCase(registry, "TP-PAR-239", testReferencePropertyRejected);
+    addCase(registry, "TP-PAR-239", testReferencePropertyAccepted);
     addCase(registry, "TP-PAR-240", testIndexerParameters);
     addCase(registry, "TP-PAR-241", testReferenceIndexer);
     addCase(registry, "TP-PAR-242", testMalformedIndexer);
