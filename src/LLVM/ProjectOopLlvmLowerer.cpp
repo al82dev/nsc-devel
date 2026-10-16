@@ -12640,6 +12640,71 @@ private:
                 }
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt32 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedExchangeInt32)
+            {
+                const bool add = current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt32;
+                if (frame.phase == 0)
+                {
+                    if (current->integerValue != 0U)
+                    {
+                        if (current->children.size() != 2)
+                        {
+                            values.push_back(failValue(error, add ? "ordered atomic Add requires pointer and value arguments" : "ordered atomic Exchange requires pointer and value arguments"));
+                            continue;
+                        }
+                        const std::optional<LLVMAtomicOrdering> ordering =
+                            orderedAtomicRmwOrdering(current->integerValue);
+                        if (!ordering.has_value())
+                        {
+                            values.push_back(failValue(error, "ordered atomic RMW carries an invalid MemoryOrder"));
+                            continue;
+                        }
+                    }
+                    else if (current->children.size() != 2 ||
+                             (add && interlockedAddInt32Function_ == nullptr) ||
+                             (!add && interlockedExchangeInt32Function_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.2 Interlocked int32 RMW requires two arguments and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef location = values.back();
+                    values.pop_back();
+                    if (location == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, location, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicRmwOrdering(current->integerValue);
+                    values.push_back(buildOrderedAtomicRmw(
+                        builder_, add ? LLVMAtomicRMWBinOpAdd : LLVMAtomicRMWBinOpXchg,
+                        frame.lhs, value, *ordering, 4U, add,
+                        add ? "atomic.add.ordered.i32" : "atomic.exchange.ordered.i32"));
+                }
+                else
+                {
+                    LLVMValueRef args[] = {frame.lhs, value};
+                    if (add)
+                        values.push_back(buildNoUnwindCall(
+                            interlockedAddInt32FunctionType_, interlockedAddInt32Function_, args, 2, "interlocked.add.i32"));
+                    else
+                        values.push_back(buildNoUnwindCall(
+                            interlockedExchangeInt32FunctionType_, interlockedExchangeInt32Function_, args, 2, "interlocked.exchange.i32"));
+                }
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13879,61 +13944,8 @@ private:
             // is handled entirely on the runtime side, see WindowsRuntimeBuilder.cpp; this lowerer
             // only forwards arguments and returns whatever the runtime function computed).
             case frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt32:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Add requires pointer and value arguments");
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicRmwOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic RMW carries an invalid MemoryOrder");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    return buildOrderedAtomicRmw(
-                        builder_, LLVMAtomicRMWBinOpAdd, location, value, *ordering, 4U,
-                        true, "atomic.add.ordered.i32");
-                }
-                if (node->children.size() != 2 || interlockedAddInt32Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.Add(int*, int) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                return buildNoUnwindCall(
-                    interlockedAddInt32FunctionType_, interlockedAddInt32Function_, args, 2, "interlocked.add.i32");
-            }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedExchangeInt32:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Exchange requires pointer and value arguments");
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicRmwOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic RMW carries an invalid MemoryOrder");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    return buildOrderedAtomicRmw(
-                        builder_, LLVMAtomicRMWBinOpXchg, location, value, *ordering, 4U,
-                        false, "atomic.exchange.ordered.i32");
-                }
-                if (node->children.size() != 2 || interlockedExchangeInt32Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.Exchange(int*, int) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                return buildNoUnwindCall(
-                    interlockedExchangeInt32FunctionType_, interlockedExchangeInt32Function_, args, 2, "interlocked.exchange.i32");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt64:
             {
                 if (node->integerValue != 0U)
