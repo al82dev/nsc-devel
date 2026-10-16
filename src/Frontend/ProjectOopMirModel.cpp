@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 
@@ -26,6 +27,40 @@ ProjectOopMirAbiPassing abiPassingForSize(std::uint64_t size) noexcept
         case 1: case 2: case 4: case 8: return ProjectOopMirAbiPassing::Direct;
         default: return ProjectOopMirAbiPassing::Indirect;
     }
+}
+
+// NSC305-C04. Normalized stream of a MIR node tree (the implementation fingerprint input): the
+// observable identity (kind + key strings + topology), not the full layout. Iterative (no hot
+// recursion); a private body change moves the hash.
+std::string normalizeMirNodeStream(const ProjectOopMirNode* node)
+{
+    std::string out;
+    std::vector<const ProjectOopMirNode*> work;
+    if (node != nullptr) work.push_back(node);
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* current = work.back();
+        work.pop_back();
+        out += std::to_string(static_cast<std::uint32_t>(current->kind));
+        out.push_back('|');
+        out += current->typeKey;
+        out.push_back('|');
+        out += current->stringValue;
+        out.push_back('|');
+        out += current->calleeName;
+        out.push_back(';');
+        for (const std::unique_ptr<ProjectOopMirNode>& child : current->children)
+            work.push_back(child.get());
+    }
+    return out;
+}
+
+[[maybe_unused]] std::string mirImplementationFingerprint(const ProjectOopMirNode* body)
+{
+    const std::string material = "mir\n" + normalizeMirNodeStream(body);
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
 }
 
 bool finalizeCleanupContract(
