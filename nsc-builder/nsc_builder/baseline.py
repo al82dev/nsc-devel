@@ -20,6 +20,8 @@ BASELINE_PREFIX = Path("A:/native-sharp-3.0-baseline")
 BASELINE_PROMOTION_PREFIX = Path("C:/native-sharp")
 BASELINE_NSLINK_SOURCE = Path("A:/nslink-devel/bin/release/nslink.exe")
 BASELINE_OPTIMIZATIONS = ("O0", "O1", "O2", "O3")
+BASELINE_UNIT_CATEGORY = "Prueba unitaria"
+BASELINE_EXTERNAL_CATEGORY = "Prueba externa"
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,11 @@ def snapshot_baseline_comparison(source: Path, destination: Path) -> Path:
     return target
 
 
+def baseline_test_category(layer: str) -> str:
+    """Project the canonical allocation layer onto the two GUI test surfaces."""
+    return BASELINE_UNIT_CATEGORY if layer == "unit" else BASELINE_EXTERNAL_CATEGORY
+
+
 def promote_certified_baseline(
     source: Path = BASELINE_PREFIX,
     destination: Path = BASELINE_PROMOTION_PREFIX,
@@ -227,11 +234,14 @@ def _remove_tree_iteratively(root: Path) -> None:
 
 
 __all__ = (
+    "BASELINE_EXTERNAL_CATEGORY",
     "BASELINE_OPTIMIZATIONS",
     "BASELINE_NSLINK_SOURCE",
     "BASELINE_PREFIX",
     "BASELINE_PROMOTION_PREFIX",
+    "BASELINE_UNIT_CATEGORY",
     "BaselinePlan",
+    "baseline_test_category",
     "create_baseline_plan",
     "promote_certified_baseline",
     "reset_baseline_staging",

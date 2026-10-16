@@ -14,6 +14,7 @@ sys.path.insert(0, str(MODULAR_ROOT))
 
 from nsc_builder import baseline, deploy
 from nsc_builder.configuration import BuilderConfig
+from nsc_builder.constants import ALLOCATION_LAYERS
 from nsc_builder.gui import _smoke_catalog
 from nsc_builder.models import CaseRecord
 from nsc_builder.process_control import ProcessController
@@ -160,6 +161,17 @@ class ReleaseOperationPlanTests(unittest.TestCase):
             config = self.config(Path(temporary))
             with self.assertRaisesRegex(ValueError, "O0..O3"):
                 baseline.create_baseline_plan(config, ("O4",))
+
+    def test_baseline_category_uses_the_canonical_allocation_layer(self) -> None:
+        self.assertEqual(
+            baseline.baseline_test_category("unit"),
+            baseline.BASELINE_UNIT_CATEGORY,
+        )
+        for layer in sorted(ALLOCATION_LAYERS - {"unit"}):
+            self.assertEqual(
+                baseline.baseline_test_category(layer),
+                baseline.BASELINE_EXTERNAL_CATEGORY,
+            )
 
     def test_unit_filter_uses_only_unique_canonical_unit_rows(self) -> None:
         def case(case_id: str, layer: str, profile: str) -> CaseRecord:

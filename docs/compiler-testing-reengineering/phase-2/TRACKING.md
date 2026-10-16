@@ -1878,3 +1878,19 @@ configuro, compilo ni ejecuto. Evidencia:
   `TB-BAS-022` pasa `1/1` en Debug y `1/1` en Release.
 - No se ejecutó la matriz completa ni se escribió en `C:`. Evidencia:
   `TANDA-VALIDACION-259-TB-BAS-022-IDENTIDAD-BASELINE.md`.
+
+## Validación 260 — categorías visibles en la GUI del baseline
+
+`MEJORA DE PRESENTACIÓN IMPLEMENTADA; SMOKE GUI Y SUITE MODULAR COMPLETOS; MATRIZ NO EJECUTADA`.
+
+- La pestaña Baseline ya no limita la ejecución a una barra y un log: presenta cada variante en una tabla con
+  categoría, caso, componente, build, optimización, estado, duración y evidencia.
+- La categoría procede exclusivamente de `CaseRecord.layer`: `unit` se muestra como `Prueba unitaria`; las otras
+  capas canónicas se muestran como `Prueba externa`.
+- Los conteos cierran el inventario completo: `3,149` casos unitarios / `7,246` variantes y `2,842` casos externos
+  / `5,888` variantes, para `5,991` casos y `13,134` variantes totales.
+- `case_ready` actualiza en vivo la fila exacta y el cierre vuelve a proyectar los resultados finales sin crear un
+  runner alternativo ni cambiar el catálogo.
+- Pasan las pruebas focales `10/10`, la suite modular `73/73`, el smoke de GUI y la auditoría de catálogo.
+- No se ejecutó la matriz, no se compiló NSC y no se promovieron artefactos. Evidencia:
+  `TANDA-VALIDACION-260-CATEGORIAS-GUI-BASELINE.md`.

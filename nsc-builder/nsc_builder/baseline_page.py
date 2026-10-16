@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import subprocess
+from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFormLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,6 +21,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,7 +31,10 @@ from .baseline import (
     BASELINE_OPTIMIZATIONS,
     BASELINE_PREFIX,
     BASELINE_PROMOTION_PREFIX,
+    BASELINE_EXTERNAL_CATEGORY,
+    BASELINE_UNIT_CATEGORY,
     BaselinePlan,
+    baseline_test_category,
     create_baseline_plan,
     promote_certified_baseline,
     reset_baseline_staging,
@@ -274,6 +282,40 @@ class BaselinePageMixin:
         self.baseline_progress.setRange(0, 1)
         self.baseline_progress.setValue(0)
         layout.addWidget(self.baseline_progress)
+        self.baseline_category_summary = QLabel(
+            "Sin matriz previsualizada: categorías unitaria y externa pendientes"
+        )
+        self.baseline_category_summary.setWordWrap(True)
+        layout.addWidget(self.baseline_category_summary)
+        self.baseline_table = QTableWidget(0, 8)
+        self.baseline_table.setObjectName("baseline_test_table")
+        self.baseline_table.setHorizontalHeaderLabels(
+            (
+                "Categoría",
+                "Caso",
+                "Componente",
+                "Build",
+                "Opt",
+                "Estado",
+                "Duración",
+                "Detalle / evidencia",
+            )
+        )
+        self.baseline_table.setAlternatingRowColors(True)
+        self.baseline_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.baseline_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.baseline_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.baseline_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.baseline_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.baseline_table, 2)
         self.baseline_log = QPlainTextEdit()
         self.baseline_log.setReadOnly(True)
         layout.addWidget(self.baseline_log, 1)
@@ -282,12 +324,17 @@ class BaselinePageMixin:
         self.baseline_cancel_button.clicked.connect(self._cancel_active)
         return page
 
-    def _preview_baseline(self, _checked: bool = False, *, show_errors: bool = True) -> None:
+    def _preview_baseline(
+        self, _checked: bool = False, *, show_errors: bool = True
+    ) -> None:
         try:
+            self.catalog = CanonicalCatalog.load()
             config = self._config_from_ui().with_discovery().validated(
                 require_tools=False
             )
             plan = create_baseline_plan(config)
+            variants = expand_variants(self.catalog.cases, "Todos", "Todas")
+            self._populate_baseline_plan(variants)
             self.baseline_stage.setText(
                 f"Plan listo: {len(plan.preparation_commands) + 5} etapas previas/de cierre · "
                 f"staging {plan.staging_prefix} · promoción {plan.promotion_prefix}"
@@ -309,6 +356,7 @@ class BaselinePageMixin:
             variants = expand_variants(self.catalog.cases, "Todos", "Todas")
             if not variants:
                 raise ValueError("el catálogo no contiene variantes para certificar")
+            self._populate_baseline_plan(variants)
             answer = QMessageBox.question(
                 self,
                 "Certificar baseline",
@@ -342,6 +390,7 @@ class BaselinePageMixin:
             worker.output_ready.connect(self._append_baseline_output)
             worker.stage_ready.connect(self.baseline_stage.setText)
             worker.progress_ready.connect(self._update_baseline_progress)
+            worker.case_ready.connect(self._update_baseline_case)
             worker.suite_progress_ready.connect(self._update_baseline_suite_progress)
             worker.completed.connect(self._baseline_finished)
             worker.start()
@@ -352,6 +401,93 @@ class BaselinePageMixin:
         self.baseline_log.moveCursor(self.baseline_log.textCursor().MoveOperation.End)
         self.baseline_log.insertPlainText(text)
         self.baseline_log.ensureCursorVisible()
+
+    def _populate_baseline_plan(
+        self,
+        variants: Sequence[RunVariant],
+        outcomes: Sequence[CaseOutcome] = (),
+    ) -> None:
+        outcome_by_key = {item.key: item for item in outcomes}
+        self.baseline_variants_by_key = {
+            variant.key: variant for variant in variants
+        }
+        self.baseline_status_items: dict[str, QTableWidgetItem] = {}
+        case_ids: dict[str, set[str]] = defaultdict(set)
+        variant_counts: dict[str, int] = defaultdict(int)
+        self.baseline_table.setSortingEnabled(False)
+        self.baseline_table.clearContents()
+        self.baseline_table.setRowCount(len(variants))
+        for row, variant in enumerate(variants):
+            category = baseline_test_category(variant.case.layer)
+            case_ids[category].add(variant.case.case_id)
+            variant_counts[category] += 1
+            outcome = outcome_by_key.get(variant.key)
+            status = outcome.status if outcome is not None else "LISTO"
+            duration = outcome.duration_seconds if outcome is not None else 0.0
+            detail = outcome.detail if outcome is not None else ""
+            evidence = outcome.evidence if outcome is not None else ""
+            merged = (
+                f"{detail} | {evidence}"
+                if detail and evidence
+                else detail or evidence
+            )
+            values = (
+                category,
+                variant.case.case_id,
+                variant.case.component,
+                variant.build_mode,
+                variant.optimization,
+                status,
+                f"{duration:.1f} s" if duration else "",
+                merged,
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 1:
+                    item.setData(Qt.ItemDataRole.UserRole, variant.key)
+                if column == 5:
+                    self._color_status(item, status)
+                    self.baseline_status_items[variant.key] = item
+                self.baseline_table.setItem(row, column, item)
+        self.baseline_table.setSortingEnabled(True)
+        self.baseline_category_summary.setText(
+            f"{BASELINE_UNIT_CATEGORY}: "
+            f"{len(case_ids[BASELINE_UNIT_CATEGORY]):,} casos / "
+            f"{variant_counts[BASELINE_UNIT_CATEGORY]:,} variantes · "
+            f"{BASELINE_EXTERNAL_CATEGORY}: "
+            f"{len(case_ids[BASELINE_EXTERNAL_CATEGORY]):,} casos / "
+            f"{variant_counts[BASELINE_EXTERNAL_CATEGORY]:,} variantes"
+        )
+
+    def _update_baseline_case(
+        self,
+        key: str,
+        status: str,
+        detail: str,
+        duration: float,
+        evidence: str,
+    ) -> None:
+        item = self.baseline_status_items.get(key)
+        if item is None:
+            return
+        sorting_enabled = self.baseline_table.isSortingEnabled()
+        self.baseline_table.setSortingEnabled(False)
+        row = item.row()
+        status_item = QTableWidgetItem(status)
+        self._color_status(status_item, status)
+        self.baseline_table.setItem(row, 5, status_item)
+        self.baseline_status_items[key] = status_item
+        self.baseline_table.setItem(
+            row, 6, QTableWidgetItem(f"{duration:.1f} s" if duration else "")
+        )
+        merged = (
+            f"{detail} | {evidence}"
+            if detail and evidence
+            else detail or evidence
+        )
+        self.baseline_table.setItem(row, 7, QTableWidgetItem(merged))
+        self.baseline_table.setSortingEnabled(sorting_enabled)
+        self.baseline_stage.setText(f"{status}: {key} — {merged or 'sin detalle'}")
 
     def _update_baseline_progress(
         self, current: int, total: int, detail: str
@@ -381,6 +517,10 @@ class BaselinePageMixin:
         self.baseline_progress.setValue(
             0 if failed or cancelled else self.baseline_progress.maximum()
         )
+        if typed:
+            self._populate_baseline_plan(
+                tuple(self.baseline_variants_by_key.values()), typed
+            )
         self.worker = None
         self.active_release_operation = ""
         self._set_busy(False)

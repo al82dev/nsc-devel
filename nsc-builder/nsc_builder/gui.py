@@ -3266,6 +3266,47 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing the TIMEOUT status filter")
         if window.status_filter_combo.findData("NOT_RUN") < 0:
             raise RuntimeError("GUI smoke missing the producer-blocked status filter")
+        smoke_baseline_variants = expand_variants(
+            window.catalog.cases, "Todos", "Todas"
+        )
+        window._populate_baseline_plan(smoke_baseline_variants)
+        baseline_headers = [
+            window.baseline_table.horizontalHeaderItem(index).text()
+            for index in range(window.baseline_table.columnCount())
+        ]
+        if baseline_headers != [
+            "Categoría",
+            "Caso",
+            "Componente",
+            "Build",
+            "Opt",
+            "Estado",
+            "Duración",
+            "Detalle / evidencia",
+        ]:
+            raise RuntimeError("GUI smoke missing the categorized baseline table")
+        if (
+            window.baseline_table.rowCount() != 1
+            or window.baseline_table.item(0, 0).text() != "Prueba unitaria"
+            or "Prueba externa" not in window.baseline_category_summary.text()
+        ):
+            raise RuntimeError("GUI smoke missing canonical baseline categories")
+        smoke_baseline_key = smoke_baseline_variants[0].key
+        window._update_baseline_case(
+            smoke_baseline_key,
+            "PASS",
+            "smoke baseline",
+            0.25,
+            "A:/nsc-devel/_nscbuilder3/smoke",
+        )
+        smoke_status = window.baseline_status_items[smoke_baseline_key]
+        if (
+            smoke_status.text() != "PASS"
+            or window.baseline_table.item(smoke_status.row(), 6).text() != "0.2 s"
+            or "smoke baseline"
+            not in window.baseline_table.item(smoke_status.row(), 7).text()
+        ):
+            raise RuntimeError("GUI smoke cannot update a live baseline row")
         if not hasattr(SuiteWorker, "preparation_ready"):
             raise RuntimeError("GUI smoke missing producer preparation progress")
         window.close()
