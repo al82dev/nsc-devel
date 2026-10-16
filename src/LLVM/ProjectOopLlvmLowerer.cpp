@@ -10946,6 +10946,57 @@ private:
                     values.push_back(lowerInterfaceCall(current, error, frame.lhs, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke ||
+                current->kind == frontend::ProjectOopMirNodeKind::EventInvoke)
+            {
+                if (current->children.empty())
+                {
+                    values.push_back(failValue(error, "Stage 42 delegate/event invocation has invalid MIR children"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef receiver = values.back();
+                    values.pop_back();
+                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    const std::size_t argumentCount = current->children.size() - 1;
+                    if (argumentCount == 0)
+                    {
+                        std::vector<LLVMValueRef> noArgs;
+                        values.push_back(current->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke
+                            ? lowerDelegateInvoke(current, error, receiver, &noArgs)
+                            : lowerEventInvoke(current, error, receiver, &noArgs));
+                        continue;
+                    }
+                    frames.push_back({current, 2, receiver, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                const std::size_t argumentCount = current->children.size() - 1;
+                if (frame.retainedDepth + 1 < argumentCount)
+                {
+                    const std::size_t nextIndex = frame.retainedDepth + 1;
+                    frames.push_back({current, 2, frame.lhs, nextIndex});
+                    frames.push_back({current->children[nextIndex + 1].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(argumentCount);
+                for (std::size_t i = argumentCount; i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(current->kind == frontend::ProjectOopMirNodeKind::DelegateInvoke
+                    ? lowerDelegateInvoke(current, error, frame.lhs, &argumentOverrides)
+                    : lowerEventInvoke(current, error, frame.lhs, &argumentOverrides));
+                continue;
+            }
             if (current->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
             {
                 if (current->booleanValue)
@@ -13600,13 +13651,13 @@ private:
             case frontend::ProjectOopMirNodeKind::DelegateCreate:
                 return lowerDelegateCreate(node, error);
             case frontend::ProjectOopMirNodeKind::DelegateInvoke:
-                return lowerDelegateInvoke(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::EventAdd:
                 return lowerEventAdd(node, error);
             case frontend::ProjectOopMirNodeKind::EventRemove:
                 return lowerEventRemove(node, error);
             case frontend::ProjectOopMirNodeKind::EventInvoke:
-                return lowerEventInvoke(node, error);
+                return lowerExpressionIterative(node, error);
 
             case frontend::ProjectOopMirNodeKind::Unary:
             case frontend::ProjectOopMirNodeKind::Binary:
@@ -14899,11 +14950,17 @@ private:
         return call;
     }
 
-    LLVMValueRef lowerDelegateInvoke(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerDelegateInvoke(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef delegateOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (node->children.empty() || node->children.size() != node->argumentCount + 1)
             return failValue(error, "Stage 42 delegate invocation has invalid MIR children");
-        LLVMValueRef delegateValue = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef delegateValue = delegateOverride != nullptr
+            ? delegateOverride
+            : lowerExpression(node->children.front().get(), error);
         if (delegateValue == nullptr) return nullptr;
         const bool externC = isExternCDelegateType(node->elementTypeKey);
         const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
@@ -14911,7 +14968,9 @@ private:
         arguments.reserve(node->argumentCount);
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index - 1]
+                : lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
             // Win64 aggregate ABI: indirect struct arguments cross ANY call boundary --
             // delegate targets included -- as pointers to per-call copies. Wrapped once here
@@ -15077,18 +15136,26 @@ private:
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
-    LLVMValueRef lowerEventInvoke(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerEventInvoke(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef headOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (node->children.empty() || node->children.size() != node->argumentCount + 1 ||
             node->typeKey != "builtin:void")
             return failValue(error, "Stage 42 event invocation requires void delegate semantics");
-        LLVMValueRef head = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef head = headOverride != nullptr
+            ? headOverride
+            : lowerExpression(node->children.front().get(), error);
         if (head == nullptr) return nullptr;
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->argumentCount);
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index - 1]
+                : lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
             arguments.push_back(value);
         }
