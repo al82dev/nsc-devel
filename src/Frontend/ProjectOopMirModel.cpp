@@ -166,6 +166,7 @@ public:
         out = static_cast<std::uint8_t>(bytes_[position_++]);
         return true;
     }
+    std::string_view remaining() const noexcept { return bytes_.substr(position_); }
 
 private:
     std::string_view bytes_;
@@ -526,6 +527,32 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
 {
     MirByteReader reader(bytes);
     return readMirNode(reader, body);
+}
+
+// NSC305-C04. The MIR function's cache payload: the observable identity + the body node tree. The
+// remaining function fields (ABI/effects/closure/exception flow) are the next serialization layer.
+[[maybe_unused]] std::string serializeMirFunctionCore(const ProjectOopMirFunction& function)
+{
+    std::string out;
+    appendMirString(out, function.mangledName);
+    appendMirString(out, function.genericSpecializationKey);
+    appendMirString(out, function.returnTypeKey);
+    appendMirString(out, function.errorTypeKey);
+    appendMirStringVector(out, function.parameterTypeKeys);
+    out += serializeMirNodeTree(function.body.get());
+    return out;
+}
+
+[[maybe_unused]] bool restoreMirFunctionCore(
+    std::string_view bytes, ProjectOopMirFunction& function)
+{
+    MirByteReader reader(bytes);
+    if (!reader.string(function.mangledName) ||
+        !reader.string(function.genericSpecializationKey) ||
+        !reader.string(function.returnTypeKey) || !reader.string(function.errorTypeKey) ||
+        !reader.stringVector(function.parameterTypeKeys))
+        return false;
+    return restoreMirNodeTree(reader.remaining(), function.body);
 }
 
 bool finalizeCleanupContract(
