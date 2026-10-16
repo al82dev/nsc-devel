@@ -4609,6 +4609,67 @@ std::size_t ProjectGenericModel::reserveTypeSpecialization(
     return ordinal;
 }
 
+// NSC305-G09. Executes a reserved type specialization (see the header).
+bool ProjectGenericModel::executeTypeSpecialization(
+    TemplateState& state,
+    std::span<ast::TypeSyntax* const> arguments,
+    const std::string& key,
+    const std::string& specializedName,
+    std::size_t ordinal,
+    const SpecializationContext& callerContext,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+    prepareSpecializationSubstitutions(state, arguments, substitutions);
+    packMaterializationError_.clear();
+    packMaterializationErrorRange_ = {};
+    activeAssociatedProjections_.clear();
+    associatedProjectionError_.clear();
+    associatedProjectionErrorRange_ = {};
+
+    ast::AstNode* clone = cloneNode(
+        state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
+    const std::string packError = packMaterializationError_;
+    const SourceRange packErrorRange = packMaterializationErrorRange_;
+    const std::string associatedError = associatedProjectionError_;
+    const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
+    packMaterializationError_ = callerContext.packError;
+    packMaterializationErrorRange_ = callerContext.packErrorRange;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
+    activeAssociatedProjections_ = callerContext.associatedProjections;
+    associatedProjectionError_ = callerContext.associatedError;
+    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
+    if (!packError.empty() || !associatedError.empty())
+    {
+        diagnostics.report(
+            associatedError.empty()
+                ? diagnostics::DiagnosticId::InvalidArgumentCount
+                : diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            associatedError.empty() ? packErrorRange : associatedErrorRange,
+            associatedError.empty() ? packError : associatedError);
+        return false;
+    }
+    {
+        const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
+        commitTypeSpecialization(state, clone, key, specializedName, ordinal, diagnostics);
+    }
+
+    processNode(
+        *state.unit, clone, state.record.namespaceName, specializedName,
+        GenericLookupScope{}, false, diagnostics);
+    // processNode may recursively materialize another generic and therefore replace all four
+    // current-instantiation fields. They describe a call stack, not global "last call" state:
+    // restore the caller before returning so a sibling specialization (notably the next overload
+    // candidate) cannot inherit the nested library context.
+    currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+    currentInstantiationNamespace_ = callerContext.namespaceName;
+    currentInstantiationRange_ = callerContext.range;
+    currentOverloadGroup_ = callerContext.overloadGroup;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
+    return true;
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
@@ -4657,37 +4718,11 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
 
     const std::size_t ordinal = reserveTypeSpecialization(state, key, specializedName, identities);
 
-    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    prepareSpecializationSubstitutions(state, arguments, substitutions);
-    packMaterializationError_.clear();
-    packMaterializationErrorRange_ = {};
-    activeAssociatedProjections_.clear();
-    associatedProjectionError_.clear();
-    associatedProjectionErrorRange_ = {};
-
-    ast::AstNode* clone = cloneNode(
-        state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
-    const std::string packError = packMaterializationError_;
-    const SourceRange packErrorRange = packMaterializationErrorRange_;
-    const std::string associatedError = associatedProjectionError_;
-    const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
-    packMaterializationError_ = callerContext.packError;
-    packMaterializationErrorRange_ = callerContext.packErrorRange;
-    activePackSubstitutions_ = callerContext.packSubstitutions;
-    activeAssociatedProjections_ = callerContext.associatedProjections;
-    associatedProjectionError_ = callerContext.associatedError;
-    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
-    if (!packError.empty() || !associatedError.empty())
+    if (!executeTypeSpecialization(
+            state, arguments, key, specializedName, ordinal, callerContext, diagnostics))
     {
         specializationPlanner_.rollback(key);
         specializations_.pop_back();
-        diagnostics.report(
-            associatedError.empty()
-                ? diagnostics::DiagnosticId::InvalidArgumentCount
-                : diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            associatedError.empty() ? packErrorRange : associatedErrorRange,
-            associatedError.empty() ? packError : associatedError);
         currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
         currentInstantiationNamespace_ = callerContext.namespaceName;
         currentInstantiationRange_ = callerContext.range;
@@ -4695,23 +4730,6 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         instantiationBudget_.leave();
         return {};
     }
-    {
-        const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
-        commitTypeSpecialization(state, clone, key, specializedName, ordinal, diagnostics);
-    }
-
-    processNode(
-        *state.unit, clone, state.record.namespaceName, specializedName,
-        GenericLookupScope{}, false, diagnostics);
-    // processNode may recursively materialize another generic and therefore replace all four
-    // current-instantiation fields. They describe a call stack, not global "last call" state:
-    // restore the caller before returning so a sibling specialization (notably the next overload
-    // candidate) cannot inherit the nested library context.
-    currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
-    currentInstantiationNamespace_ = callerContext.namespaceName;
-    currentInstantiationRange_ = callerContext.range;
-    currentOverloadGroup_ = callerContext.overloadGroup;
-    activePackSubstitutions_ = callerContext.packSubstitutions;
     instantiationBudget_.leave();
     if (outSpecializationKey != nullptr) *outSpecializationKey = key;
     return specializedName;

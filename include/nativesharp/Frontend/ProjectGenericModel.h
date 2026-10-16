@@ -853,6 +853,16 @@ private:
         const std::string& key,
         const std::string& specializedName,
         const std::vector<std::string>& identities);
+    // NSC305-G09. Executes a reserved type specialization: clones, commits the syntax, and
+    // processes the clone. Returns false on error (the caller rolls back the reserved slot).
+    bool executeTypeSpecialization(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        const std::string& key,
+        const std::string& specializedName,
+        std::size_t ordinal,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,
