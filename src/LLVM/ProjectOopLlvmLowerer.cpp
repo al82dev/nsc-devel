@@ -12324,6 +12324,44 @@ private:
                     waitForHandleTimeoutFunctionType_, waitForHandleTimeoutFunction_, args, 2, "wait.timeout"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreCreate ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventCreate)
+            {
+                const bool sem = current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreCreate;
+                if (current->children.size() != 2 ||
+                    (sem && semaphoreCreateFunction_ == nullptr) ||
+                    (!sem && eventCreateFunction_ == nullptr))
+                {
+                    values.push_back(failValue(error, "Stage 54.5 sync create requires two arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef first = values.back();
+                    values.pop_back();
+                    if (first == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, first, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef second = values.back();
+                values.pop_back();
+                if (second == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, second};
+                if (sem)
+                    values.push_back(buildNoUnwindCall(
+                        semaphoreCreateFunctionType_, semaphoreCreateFunction_, args, 2, "semaphore.create"));
+                else
+                    values.push_back(buildNoUnwindCall(
+                        eventCreateFunctionType_, eventCreateFunction_, args, 2, "event.create"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13999,17 +14037,7 @@ private:
             // operands (initialCount, maximumCount), a REAL i64 HANDLE result -- no dummy-i1
             // wrapping, same discipline as CoreMutexCreate/CoreThreadCreate.
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreCreate:
-            {
-                if (node->children.size() != 2 || semaphoreCreateFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Semaphore.SemaphoreCreate requires two int arguments and runtime hook");
-                LLVMValueRef initialCount = lowerExpression(node->children[0].get(), error);
-                if (initialCount == nullptr) return nullptr;
-                LLVMValueRef maximumCount = lowerExpression(node->children[1].get(), error);
-                if (maximumCount == nullptr) return nullptr;
-                LLVMValueRef args[] = {initialCount, maximumCount};
-                return buildNoUnwindCall(
-                    semaphoreCreateFunctionType_, semaphoreCreateFunction_, args, 2, "semaphore.create");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreCreateNamed:
             {
                 if (node->children.size() != 3 || semaphoreCreateNamedFunction_ == nullptr)
@@ -14042,16 +14070,7 @@ private:
             // EventCreate: two explicit i1 operands (manualReset, initialState), a REAL i64
             // HANDLE result.
             case frontend::ProjectOopMirNodeKind::CoreEventCreate:
-            {
-                if (node->children.size() != 2 || eventCreateFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Event.EventCreate requires two bool arguments and runtime hook");
-                LLVMValueRef manualReset = lowerExpression(node->children[0].get(), error);
-                if (manualReset == nullptr) return nullptr;
-                LLVMValueRef initialState = lowerExpression(node->children[1].get(), error);
-                if (initialState == nullptr) return nullptr;
-                LLVMValueRef args[] = {manualReset, initialState};
-                return buildNoUnwindCall(eventCreateFunctionType_, eventCreateFunction_, args, 2, "event.create");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreEventCreateNamed:
             {
                 if (node->children.size() != 3 || eventCreateNamedFunction_ == nullptr)
