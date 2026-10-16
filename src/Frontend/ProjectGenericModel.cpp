@@ -2564,6 +2564,96 @@ private:
         out += serializeTypeSyntaxTree(clause.substitutedArgument);
     return out;
 }
+
+// NSC305-C01. Inverse of serializeGenericParameter (allocates the constantType into `arena`).
+[[maybe_unused]] bool deserializeGenericParameter(
+    ast::AstArena& arena, ByteReader& reader, ast::GenericParameterSyntax& parameter)
+{
+    std::uint8_t kind = 0;
+    std::uint8_t hasConstantType = 0;
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+    if (!reader.string(parameter.name) || !reader.byte(kind) || !reader.byte(hasConstantType))
+        return false;
+    parameter.kind = static_cast<ast::GenericParameterSyntaxKind>(kind);
+    if (hasConstantType != 0U)
+    {
+        parameter.constantType = deserializeTypeSyntaxTree(arena, reader);
+        if (parameter.constantType == nullptr) return false;
+    }
+    if (!reader.u32(begin) || !reader.u32(end)) return false;
+    parameter.range =
+        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}};
+    return true;
+}
+
+// NSC305-C01. Inverse of serializeGenericConstraint (allocates TypeSyntax references into `arena`).
+[[maybe_unused]] bool deserializeGenericConstraint(
+    ast::AstArena& arena, ByteReader& reader, ast::GenericConstraintClause& clause)
+{
+    std::uint8_t requiresClass = 0;
+    std::uint8_t requiresValueType = 0;
+    std::uint8_t requiresDefaultConstructor = 0;
+    std::uint8_t requiresCopy = 0;
+    std::uint8_t requiresMove = 0;
+    std::uint8_t requiresTrackedLifetime = 0;
+    std::uint8_t requiresUnmanaged = 0;
+    std::uint8_t requiresNotNull = 0;
+    std::uint8_t requiresRefLike = 0;
+    std::uint8_t hasEquality = 0;
+    std::uint8_t hasProjection = 0;
+    std::uint8_t hasSubstituted = 0;
+    std::uint32_t parameterBegin = 0;
+    std::uint32_t parameterEnd = 0;
+    std::uint32_t clauseBegin = 0;
+    std::uint32_t clauseEnd = 0;
+    std::uint32_t constraintCount = 0;
+    if (!reader.string(clause.parameterName) || !reader.u32(parameterBegin) ||
+        !reader.u32(parameterEnd) || !reader.byte(requiresClass) ||
+        !reader.byte(requiresValueType) || !reader.byte(requiresDefaultConstructor) ||
+        !reader.byte(requiresCopy) || !reader.byte(requiresMove) ||
+        !reader.byte(requiresTrackedLifetime) || !reader.byte(requiresUnmanaged) ||
+        !reader.byte(requiresNotNull) || !reader.byte(requiresRefLike) ||
+        !reader.byte(hasEquality) || !reader.byte(hasProjection) || !reader.u32(constraintCount))
+        return false;
+    clause.parameterRange =
+        SourceRange{SourceLocation{FileId{}, parameterBegin}, SourceLocation{FileId{}, parameterEnd}};
+    clause.requiresClass = requiresClass != 0U;
+    clause.requiresValueType = requiresValueType != 0U;
+    clause.requiresDefaultConstructor = requiresDefaultConstructor != 0U;
+    clause.requiresCopy = requiresCopy != 0U;
+    clause.requiresMove = requiresMove != 0U;
+    clause.requiresTrackedLifetime = requiresTrackedLifetime != 0U;
+    clause.requiresUnmanaged = requiresUnmanaged != 0U;
+    clause.requiresNotNull = requiresNotNull != 0U;
+    clause.requiresRefLike = requiresRefLike != 0U;
+    if (hasEquality != 0U)
+    {
+        clause.equalityConstraint = deserializeTypeSyntaxTree(arena, reader);
+        if (clause.equalityConstraint == nullptr) return false;
+    }
+    if (hasProjection != 0U)
+    {
+        clause.associatedProjection = deserializeTypeSyntaxTree(arena, reader);
+        if (clause.associatedProjection == nullptr) return false;
+    }
+    clause.typeConstraints.clear();
+    for (std::uint32_t index = 0; index < constraintCount; ++index)
+    {
+        ast::TypeSyntax* constraint = deserializeTypeSyntaxTree(arena, reader);
+        if (constraint == nullptr) return false;
+        clause.typeConstraints.push_back(constraint);
+    }
+    if (!reader.u32(clauseBegin) || !reader.u32(clauseEnd) || !reader.byte(hasSubstituted))
+        return false;
+    clause.range = SourceRange{SourceLocation{FileId{}, clauseBegin}, SourceLocation{FileId{}, clauseEnd}};
+    if (hasSubstituted != 0U)
+    {
+        clause.substitutedArgument = deserializeTypeSyntaxTree(arena, reader);
+        if (clause.substitutedArgument == nullptr) return false;
+    }
+    return true;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
