@@ -4757,18 +4757,21 @@ std::vector<ast::TypeSyntax*> ProjectGenericModel::cloneExpandedTypeArgument(
     if (!source->isPackExpansion()) return {cloneType(arena, source, substitutions)};
 
     std::vector<std::string> packNames;
-    const std::function<void(const ast::TypeSyntax*)> collect =
-        [&](const ast::TypeSyntax* syntax)
-        {
-            if (syntax == nullptr) return;
-            if (syntax->typeArguments().empty() &&
-                activePackSubstitutions_.contains(syntax->baseName()) &&
-                std::find(packNames.begin(), packNames.end(), syntax->baseName()) ==
-                    packNames.end())
-                packNames.push_back(syntax->baseName());
-            for (const ast::TypeSyntax* argument : syntax->typeArguments()) collect(argument);
-        };
-    collect(source);
+    // NSC305-G06. Iterative walk of the type-argument tree (was a std::function lambda recursion).
+    std::vector<const ast::TypeSyntax*> collectStack;
+    collectStack.push_back(source);
+    while (!collectStack.empty())
+    {
+        const ast::TypeSyntax* syntax = collectStack.back();
+        collectStack.pop_back();
+        if (syntax == nullptr) continue;
+        if (syntax->typeArguments().empty() &&
+            activePackSubstitutions_.contains(syntax->baseName()) &&
+            std::find(packNames.begin(), packNames.end(), syntax->baseName()) == packNames.end())
+            packNames.push_back(syntax->baseName());
+        for (const ast::TypeSyntax* argument : syntax->typeArguments())
+            collectStack.push_back(argument);
+    }
     if (packNames.empty())
     {
         if (packMaterializationError_.empty())
