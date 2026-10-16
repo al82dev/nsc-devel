@@ -5,6 +5,7 @@
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/TemplateParseCache.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Language/GenericSemantics.h"
 
@@ -380,6 +381,10 @@ public:
     GenericTelemetry& telemetry() noexcept;
     const GenericTelemetry& telemetry() const noexcept;
     bool isBuilt() const noexcept;
+    // NSC305-C01. Sets the C1 template parse cache root (empty = disabled).
+    void setTemplateCacheRoot(std::filesystem::path root);
+    // NSC305-C01. Persists the collected template records to the C1 cache (no-op when disabled).
+    void storeTemplateRecords();
 
 private:
     struct TemplateState final
@@ -1126,6 +1131,8 @@ private:
     std::unordered_map<std::string, std::string> constEnumTypeBySpelling_;
     std::unordered_map<std::string, std::pair<std::string, std::string>> constEnumValueBySpelling_;
     bool built_ = false;
+    // NSC305-C01. The C1 template parse cache (disk I/O). Root empty = disabled.
+    TemplateParseCache templateCache_;
 
     // Stage 52 fix: the project ordinal and lexical namespace of whichever call site is
     // CURRENTLY requesting a specialization (set immediately before each

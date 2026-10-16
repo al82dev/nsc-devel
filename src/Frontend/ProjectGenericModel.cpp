@@ -951,6 +951,8 @@ bool ProjectGenericModel::build(
     // overload name, matching `specializationForTypeKey`'s previous forward scan.
     for (std::size_t ordinal = 0; ordinal < specializations_.size(); ++ordinal)
         specializationBySpecializedName_.emplace(specializations_[ordinal].specializedName, ordinal);
+    // NSC305-C01. Persist the collected template records (the C1 metadata) when the cache is enabled.
+    storeTemplateRecords();
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -1903,6 +1905,11 @@ bool ProjectGenericModel::isBuilt() const noexcept
     return built_;
 }
 
+void ProjectGenericModel::setTemplateCacheRoot(std::filesystem::path root)
+{
+    templateCache_.setRoot(std::move(root));
+}
+
 // NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
 // cache key input that invalidates on any source change (including the body).
 static std::string computeTemplateSourceFingerprint(
@@ -2655,6 +2662,19 @@ private:
     return true;
 }
 } // namespace
+
+// NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
+// payload). The AST subtree restore is a later layer; this stores the record skeleton.
+void ProjectGenericModel::storeTemplateRecords()
+{
+    if (!templateCache_.enabled()) return;
+    for (const TemplateState& state : templateStates_)
+    {
+        const std::string payload = serializeTemplateRecord(state.record);
+        std::string error;
+        (void)templateCache_.store(state.record.c1CacheKey, payload, error);
+    }
+}
 
 void ProjectGenericModel::collectTemplates(
     ProjectSyntaxUnit& unit,

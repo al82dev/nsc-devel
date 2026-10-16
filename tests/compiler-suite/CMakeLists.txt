@@ -455,6 +455,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericConstraintModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/TemplateParseCache.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOpaqueResultModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectNameLookup.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectNameLookupDumper.cpp"
