@@ -10883,6 +10883,57 @@ private:
                 frames.push_back({current->children.front().get(), 0, nullptr});
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
+            {
+                if (current->nullConditionalCall)
+                {
+                    values.push_back(lowerNullConditionalCall(current, error));
+                    continue;
+                }
+                if (current->children.empty())
+                {
+                    values.push_back(failValue(error, "Macro A instance call is missing its explicit receiver operand"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef receiver = values.back();
+                    values.pop_back();
+                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    const std::size_t argumentCount = current->children.size() - 1;
+                    if (argumentCount == 0)
+                    {
+                        std::vector<LLVMValueRef> noArgs;
+                        values.push_back(lowerCall(current, error, receiver, &noArgs));
+                        continue;
+                    }
+                    frames.push_back({current, 2, receiver, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                const std::size_t argumentCount = current->children.size() - 1;
+                if (frame.retainedDepth + 1 < argumentCount)
+                {
+                    const std::size_t nextIndex = frame.retainedDepth + 1;
+                    frames.push_back({current, 2, frame.lhs, nextIndex});
+                    frames.push_back({current->children[nextIndex + 1].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(argumentCount);
+                for (std::size_t i = argumentCount; i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerCall(current, error, frame.lhs, &argumentOverrides));
+                continue;
+            }
             if (current->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
             {
                 if (current->booleanValue)
@@ -13753,9 +13804,7 @@ private:
             case frontend::ProjectOopMirNodeKind::RangeSlice:
                 return lowerRangeSlice(node, error);
             case frontend::ProjectOopMirNodeKind::DirectInstanceCall:
-                return node->nullConditionalCall
-                    ? lowerNullConditionalCall(node, error)
-                    : lowerCall(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::DirectStaticCall:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
