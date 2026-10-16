@@ -4353,22 +4353,26 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     std::string_view writtenOwner,
     std::string_view methodName,
     std::size_t arity,
-    std::size_t argumentCount)
+    std::size_t argumentCount,
+    const std::vector<TemplateState*>* named)
 {
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
 
     // CON DUENO: la misma funcion que usa `collectMethodTemplates`, no una copia de sus reglas.
     // Primero exigiendo la cuenta de argumentos y despues sin ella, que es el aflojamiento que
-    // este metodo ya tenia.
+    // este metodo ya tenia. NSC305-G03: el primer escalon puede venir ya calculado (`named`) para
+    // no reconstruir la ladder exacta que el llamador acaba de obtener.
     for (const std::size_t cuenta : {argumentCount, sinFiltro})
     {
-        const std::vector<TemplateState*> named =
-            templatesNamedBy(unit, site, writtenOwner, methodName, arity, cuenta);
-        if (named.size() == 1) return named.front();
+        const std::vector<TemplateState*> result =
+            (cuenta == argumentCount && named != nullptr)
+            ? *named
+            : templatesNamedBy(unit, site, writtenOwner, methodName, arity, cuenta);
+        if (result.size() == 1) return result.front();
         // Mas de una en el escalon ganador y del mismo nombre: ambigua de verdad. Aflojar la
         // cuenta de argumentos no la desambigua, asi que se sigue al siguiente intento solo
         // cuando no hubo NINGUNA.
-        if (!named.empty()) break;
+        if (!result.empty()) break;
         if (cuenta == sinFiltro) break;
     }
 
@@ -6015,7 +6019,7 @@ void ProjectGenericModel::collectCallDependency(
     }
 
     TemplateState* fallback = resolveMethodTemplate(
-        unit, site, requestedOwner, methodName, arity, argumentCount);
+        unit, site, requestedOwner, methodName, arity, argumentCount, &named);
     if (fallback == nullptr)
         fallback = resolveMethodTemplate(
             unit, site, requestedOwner, methodName,

@@ -691,7 +691,8 @@ private:
         std::string_view writtenOwner,
         std::string_view methodName,
         std::size_t arity,
-        std::size_t argumentCount);
+        std::size_t argumentCount,
+        const std::vector<TemplateState*>* named = nullptr);
 
     std::string ensureTypeSpecialization(
         TemplateState& state,
