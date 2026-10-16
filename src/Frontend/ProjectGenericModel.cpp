@@ -2870,6 +2870,53 @@ bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     return !diagnostics.hasErrors();
 }
 
+// NSC305-G08. Materializes a resolved closed type and rewrites the spelling (see the header).
+bool ProjectGenericModel::materializeTypeSyntax(
+    ProjectSyntaxUnit& unit,
+    ast::TypeSyntax* syntax,
+    TemplateState& state,
+    const std::string& namespaceName,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string* outSpecializationKey)
+{
+    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
+    currentInstantiationNamespace_ = namespaceName;
+    // NSC-LIMIT-007: el SITIO. Un `Caja<int>` invalido tiene que sonar donde alguien lo escribio,
+    // no sobre la declaracion de `Caja<T>`, que es correcta.
+    currentInstantiationRange_ = syntax->range();
+    std::string specializationKey;
+    const std::string specialized = ensureTypeSpecialization(
+        state, syntax->typeArguments(), diagnostics, &specializationKey);
+    if (specialized.empty()) return false;
+    if (outSpecializationKey != nullptr) *outSpecializationKey = specializationKey;
+
+    // Keep the closed template's canonical key on this exact syntax node before erasing its
+    // arguments. An outer specialization can then use that declaration-derived identity instead
+    // of reinterpreting the generated name under a caller project.
+    {
+        std::string canonical = "generic:" + specializationKey;
+        appendTypeModifiers(canonical, syntax);
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
+            state.record.projectOrdinal, state.record.namespaceName};
+        syntax->setOriginProjectOrdinal(state.record.projectOrdinal);
+        syntax->setOriginNamespace(state.record.namespaceName);
+    }
+    // Preserve an explicitly written qualifier.
+    const std::string originalBaseName = syntax->baseName();
+    if (const std::size_t separator = originalBaseName.find_last_of('.');
+        separator != std::string::npos)
+    {
+        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specialized);
+    }
+    else
+    {
+        syntax->setBaseName(specialized);
+    }
+    syntax->clearTypeArguments();
+    return true;
+}
+
 bool ProjectGenericModel::processTypeSyntax(
     ProjectSyntaxUnit& unit,
     ast::TypeSyntax* syntax,
@@ -2978,49 +3025,8 @@ bool ProjectGenericModel::processTypeSyntax(
         return true;
     }
 
-    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
-    currentInstantiationNamespace_ = namespaceName;
-    // NSC-LIMIT-007: el SITIO. Un `Caja<int>` invalido tiene que sonar donde alguien lo escribio,
-    // no sobre la declaracion de `Caja<T>`, que es correcta.
-    currentInstantiationRange_ = syntax->range();
-    std::string specializationKey;
-    const std::string specialized = ensureTypeSpecialization(
-        *state, syntax->typeArguments(), diagnostics, &specializationKey);
-    if (specialized.empty()) return false;
-    if (outSpecializationKey != nullptr) *outSpecializationKey = specializationKey;
-
-    // Keep the closed template's canonical key on this exact syntax node before erasing its
-    // arguments. An outer specialization can then use that declaration-derived identity instead
-    // of reinterpreting the generated name under a caller project.
-    {
-        std::string canonical = "generic:" + specializationKey;
-        appendTypeModifiers(canonical, syntax);
-        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
-        // The generated declaration belongs beside its template, not beside the source site that
-        // requested the closed type. Preserve that declaration origin before the readable
-        // `Box<int>` spelling is replaced with `Box__g1__...`. A later substitution (for example
-        // `Reader<T> where T : IValue<int>` instantiated as `Reader<Box<int>>`) can then clone the
-        // already-closed argument without retrying its physical name in the consumer module.
-        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
-            state->record.projectOrdinal, state->record.namespaceName};
-        syntax->setOriginProjectOrdinal(state->record.projectOrdinal);
-        syntax->setOriginNamespace(state->record.namespaceName);
-    }
-    // Preserve an explicitly written qualifier. Replacing `Lib.Box<int>` with only the generated
-    // terminal name made name lookup retry it in the caller module, even though the specialization
-    // itself was correctly materialized in Lib. The monomorphized name replaces `Box`, not `Lib`.
-    const std::string originalBaseName = syntax->baseName();
-    if (const std::size_t separator = originalBaseName.find_last_of('.');
-        separator != std::string::npos)
-    {
-        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specialized);
-    }
-    else
-    {
-        syntax->setBaseName(specialized);
-    }
-    syntax->clearTypeArguments();
-    return true;
+    return materializeTypeSyntax(
+        unit, syntax, *state, namespaceName, diagnostics, outSpecializationKey);
 }
 
 ast::TypeSyntax* ProjectGenericModel::inferExpressionType(

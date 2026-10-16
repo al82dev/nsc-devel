@@ -637,6 +637,15 @@ private:
         // NSC305-G08. When non-null, receives the canonical specialization key of the materialized
         // type specialization (the SpecializationId that the demand-driven planner will use).
         std::string* outSpecializationKey = nullptr);
+    // NSC305-G08. Materializes a resolved closed type and rewrites the source spelling (the
+    // "rewrite" half of the demand/rewrite split). Returns false on error.
+    bool materializeTypeSyntax(
+        ProjectSyntaxUnit& unit,
+        ast::TypeSyntax* syntax,
+        TemplateState& state,
+        const std::string& namespaceName,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::string* outSpecializationKey = nullptr);
 
     bool processGenericCall(
         ProjectSyntaxUnit& unit,
