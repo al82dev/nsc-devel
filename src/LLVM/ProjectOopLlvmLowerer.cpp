@@ -11611,6 +11611,25 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::ResultPropagation)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "T07-F01 Result propagation MIR is incomplete"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef carrier = values.back();
+                values.pop_back();
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(lowerResultPropagation(current, error, carrier));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14182,7 +14201,7 @@ private:
             case frontend::ProjectOopMirNodeKind::Assume:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ResultPropagation:
-                return lowerResultPropagation(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::BlockExpression:
                 return lowerBlockExpression(node, error);
 
@@ -17780,7 +17799,9 @@ private:
     // private variant storage. The Error edge builds the callable's return carrier and then uses
     // the ordinary structured-return helper, including lexical cleanup and catch-state handling.
     LLVMValueRef lowerResultPropagation(
-        const frontend::ProjectOopMirNode* node, std::string& error)
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef carrierOverride = nullptr)
     {
         if (node->children.size() != 1U || node->children.front() == nullptr ||
             node->resultSourceCarrierTypeKey.empty() ||
@@ -17795,7 +17816,9 @@ private:
             return failValue(error, "T07-F01 Result propagation MIR is incomplete");
         }
 
-        LLVMValueRef carrier = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef carrier = carrierOverride != nullptr
+            ? carrierOverride
+            : lowerExpression(node->children.front().get(), error);
         if (carrier == nullptr) return nullptr;
         LLVMTypeRef carrierType = llvmType(node->resultSourceCarrierTypeKey, error);
         if (carrierType == nullptr) return nullptr;
