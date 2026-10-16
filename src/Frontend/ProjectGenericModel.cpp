@@ -2737,6 +2737,28 @@ struct ImplementationFingerprint final
     }
     return fingerprintKey(material);
 }
+
+// NSC305-C04. Interface fingerprint of a MIR function from its observable key fields (the mangled
+// name, return/error type keys and parameter type keys). The implementation fingerprint (body) is
+// derived from the normalized MIR node stream by the MIR cache consumer.
+[[maybe_unused]] std::string mirInterfaceFingerprintKey(
+    std::string_view mangledName,
+    std::string_view returnTypeKey,
+    std::string_view errorTypeKey,
+    const std::vector<std::string>& parameterTypeKeys)
+{
+    InterfaceFingerprint fingerprint;
+    fingerprint.signature = std::string(mangledName) + "(";
+    for (std::size_t index = 0; index < parameterTypeKeys.size(); ++index)
+    {
+        if (index != 0U) fingerprint.signature += ",";
+        fingerprint.signature += parameterTypeKeys[index];
+    }
+    fingerprint.signature += ")->" + std::string(returnTypeKey);
+    if (!errorTypeKey.empty()) fingerprint.signature += " throws " + std::string(errorTypeKey);
+    fingerprint.publicDependencies = parameterTypeKeys;
+    return interfaceFingerprintKey(fingerprint);
+}
 } // namespace
 
 // NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
