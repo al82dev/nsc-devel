@@ -2516,6 +2516,54 @@ private:
     }
     return node;
 }
+
+// NSC305-C01. GenericParameterSyntax + LifetimeParameterSyntax + LifetimeOutlivesConstraint (no
+// TypeSyntax recursion in the parameter; constantType is serialized as a full tree).
+[[maybe_unused]] std::string serializeGenericParameter(const ast::GenericParameterSyntax& parameter)
+{
+    std::string out;
+    appendString(out, parameter.name);
+    appendByte(out, static_cast<std::uint8_t>(parameter.kind));
+    appendByte(out, parameter.constantType != nullptr ? 1U : 0U);
+    if (parameter.constantType != nullptr)
+        out += serializeTypeSyntaxTree(parameter.constantType);
+    appendU32(out, parameter.range.begin().offset());
+    appendU32(out, parameter.range.end().offset());
+    return out;
+}
+
+// NSC305-C01. GenericConstraintClause (the source `where` clause; TypeSyntax references as trees).
+[[maybe_unused]] std::string serializeGenericConstraint(const ast::GenericConstraintClause& clause)
+{
+    std::string out;
+    appendString(out, clause.parameterName);
+    appendU32(out, clause.parameterRange.begin().offset());
+    appendU32(out, clause.parameterRange.end().offset());
+    appendByte(out, clause.requiresClass ? 1U : 0U);
+    appendByte(out, clause.requiresValueType ? 1U : 0U);
+    appendByte(out, clause.requiresDefaultConstructor ? 1U : 0U);
+    appendByte(out, clause.requiresCopy ? 1U : 0U);
+    appendByte(out, clause.requiresMove ? 1U : 0U);
+    appendByte(out, clause.requiresTrackedLifetime ? 1U : 0U);
+    appendByte(out, clause.requiresUnmanaged ? 1U : 0U);
+    appendByte(out, clause.requiresNotNull ? 1U : 0U);
+    appendByte(out, clause.requiresRefLike ? 1U : 0U);
+    appendByte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
+    if (clause.equalityConstraint != nullptr)
+        out += serializeTypeSyntaxTree(clause.equalityConstraint);
+    appendByte(out, clause.associatedProjection != nullptr ? 1U : 0U);
+    if (clause.associatedProjection != nullptr)
+        out += serializeTypeSyntaxTree(clause.associatedProjection);
+    appendU32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
+    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+        out += serializeTypeSyntaxTree(constraint);
+    appendU32(out, clause.range.begin().offset());
+    appendU32(out, clause.range.end().offset());
+    appendByte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
+    if (clause.substitutedArgument != nullptr)
+        out += serializeTypeSyntaxTree(clause.substitutedArgument);
+    return out;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
