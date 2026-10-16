@@ -659,6 +659,85 @@ bool emitParameterDebugInfo(
     return true;
 }
 
+// NSC305-L03. Emits the debug metadata for a local (moved out of the lowerer's emitDebugLocal as a
+// pure move).
+bool emitLocalDebugInfo(
+    DebugInformationKind debugInformation,
+    LLVMDIBuilderRef debugBuilder,
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    LLVMMetadataRef currentDebugSubprogram,
+    LLVMMetadataRef currentDebugScope,
+    const source::SourceManager* sourceManager,
+    std::unordered_set<std::size_t>& debugDeclaredLocals,
+    const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
+    const std::function<LLVMMetadataRef(std::string_view, std::size_t)>&
+        debugVariableLengthArrayTypeLookup,
+    const std::function<LLVMMetadataRef(std::string_view)>& debugPlacementTypeLookup,
+    const std::function<LLVMMetadataRef(std::string_view, std::string_view)>&
+        debugNamedValueTypeLookup,
+    const std::function<LLVMMetadataRef(std::string_view, sema::OwnershipKind, bool,
+                                        SourceRange)>& debugOwnershipTypeLookup,
+    const frontend::ProjectOopMirNode* node,
+    LLVMValueRef storage,
+    std::string& error)
+{
+    if (debugInformation != DebugInformationKind::Full || currentDebugSubprogram == nullptr ||
+        node == nullptr || storage == nullptr || node->stringValue.empty() ||
+        !node->localOrdinal.has_value())
+        return true;
+    if (!debugDeclaredLocals.insert(*node->localOrdinal).second) return true;
+    if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
+    const SourceRange range = node->syntax->range();
+    LLVMMetadataRef file = debugFileLookup(range.begin());
+    const std::string referenceTypeKey =
+        node->referenceLocal ? node->typeKey + "*" : std::string{};
+    const std::string_view typeKey = node->referenceLocal
+        ? std::string_view(referenceTypeKey)
+        : (node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
+           node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
+            ? std::string_view(node->elementTypeKey)
+            : std::string_view(node->typeKey));
+    const sema::OwnershipKind debugOwnership = node->ownership != sema::OwnershipKind::None
+        ? node->ownership
+        : node->objectLifetimeOwnership;
+    LLVMMetadataRef type = node->variableLengthArray
+        ? debugVariableLengthArrayTypeLookup(
+            node->elementTypeKey, node->variableLengthArrayRank)
+        : node->placementConstructed
+            ? debugPlacementTypeLookup(typeKey)
+            : debugOwnership == sema::OwnershipKind::None && !node->automaticDestruction
+                ? debugNamedValueTypeLookup(typeKey, node->stringValue)
+                : debugOwnershipTypeLookup(
+                    typeKey, debugOwnership, node->automaticDestruction, range);
+    if (file == nullptr || type == nullptr) return true;
+    const source::SourcePosition position = sourceManager->getPosition(range.begin());
+    LLVMMetadataRef scope =
+        currentDebugScope != nullptr ? currentDebugScope : currentDebugSubprogram;
+    const std::string_view debugName = node->debugDisplayName.empty()
+        ? std::string_view(node->stringValue)
+        : std::string_view(node->debugDisplayName);
+    LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+        debugBuilder, scope, debugName.data(), debugName.size(), file, position.line, type, 1,
+        LLVMDIFlagZero, 0);
+    LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
+    LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+        context, position.line, position.column, scope, nullptr);
+    if (variable == nullptr || expression == nullptr || location == nullptr)
+    {
+        error = "failed to create debug metadata for local '" + std::string(debugName) + "'";
+        return false;
+    }
+    if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+            debugBuilder, storage, variable, expression, location,
+            LLVMGetInsertBlock(builder)) == nullptr)
+    {
+        error = "failed to emit debug storage for local '" + std::string(debugName) + "'";
+        return false;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -2269,60 +2348,22 @@ private:
         LLVMValueRef storage,
         std::string& error)
     {
-        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr ||
-            node == nullptr || storage == nullptr || node->stringValue.empty() ||
-            !node->localOrdinal.has_value())
-            return true;
-        if (!debugDeclaredLocals_.insert(*node->localOrdinal).second) return true;
-        if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
-        const SourceRange range = node->syntax->range();
-        LLVMMetadataRef file = debugFile(range.begin());
-        const std::string referenceTypeKey =
-            node->referenceLocal ? node->typeKey + "*" : std::string{};
-        const std::string_view typeKey = node->referenceLocal
-            ? std::string_view(referenceTypeKey)
-            : (node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
-               node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
-                ? std::string_view(node->elementTypeKey)
-                : std::string_view(node->typeKey));
-        const sema::OwnershipKind debugOwnership =
-            node->ownership != sema::OwnershipKind::None
-            ? node->ownership
-            : node->objectLifetimeOwnership;
-        LLVMMetadataRef type = node->variableLengthArray
-            ? debugVariableLengthArrayType(
-                node->elementTypeKey, node->variableLengthArrayRank)
-            : node->placementConstructed
-                ? debugPlacementType(typeKey)
-                : debugOwnership == sema::OwnershipKind::None &&
-                        !node->automaticDestruction
-                    ? debugNamedValueType(typeKey, node->stringValue)
-                    : debugOwnershipType(
-                        typeKey, debugOwnership, node->automaticDestruction, range);
-        if (file == nullptr || type == nullptr) return true;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-        LLVMMetadataRef scope = currentDebugScope_ != nullptr
-            ? currentDebugScope_
-            : currentDebugSubprogram_;
-        const std::string_view debugName = node->debugDisplayName.empty()
-            ? std::string_view(node->stringValue)
-            : std::string_view(node->debugDisplayName);
-        LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
-            debugBuilder_, scope, debugName.data(),
-            debugName.size(), file, position.line, type, 1, LLVMDIFlagZero,
-            0);
-        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, scope, nullptr);
-        if (variable == nullptr || expression == nullptr || location == nullptr)
-            return fail(error, "failed to create debug metadata for local '" +
-                std::string(debugName) + "'");
-        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
-                debugBuilder_, storage, variable, expression, location,
-                LLVMGetInsertBlock(builder_)) == nullptr)
-            return fail(error, "failed to emit debug storage for local '" +
-                std::string(debugName) + "'");
-        return true;
+        return emitLocalDebugInfo(
+            debugInformation_, debugBuilder_, context_, builder_, currentDebugSubprogram_,
+            currentDebugScope_, sourceManager_, debugDeclaredLocals_,
+            [&](SourceLocation location) { return debugFile(location); },
+            [&](std::string_view elementTypeKey, std::size_t rank) {
+                return debugVariableLengthArrayType(elementTypeKey, rank);
+            },
+            [&](std::string_view typeKey) { return debugPlacementType(typeKey); },
+            [&](std::string_view typeKey, std::string_view name) {
+                return debugNamedValueType(typeKey, name);
+            },
+            [&](std::string_view typeKey, sema::OwnershipKind ownership,
+                bool automaticDestruction, SourceRange range) {
+                return debugOwnershipType(typeKey, ownership, automaticDestruction, range);
+            },
+            node, storage, error);
     }
 
     bool emitDebugGlobal(
