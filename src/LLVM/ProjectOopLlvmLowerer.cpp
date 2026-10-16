@@ -1605,7 +1605,7 @@ private:
                  named != nullptr)
         {
             const std::string name = debugNamedDisplayName(*named);
-            if (const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(typeKey);
+            if (const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, typeKey);
                 enumInfo != nullptr)
             {
                 std::vector<LLVMMetadataRef> enumerators;
@@ -2759,7 +2759,7 @@ private:
             }
             if (field.hasConstantInitializer)
             {
-                const frontend::builtins::IntegerTypeInfo* fieldEnum = enumUnderlyingInfo(field.typeKey);
+                const frontend::builtins::IntegerTypeInfo* fieldEnum = findEnumUnderlyingInfo(nameLookup_, field.typeKey);
                 if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant)
                 {
                     initializer = LLVMConstInt(
@@ -8897,7 +8897,7 @@ private:
         // exactly those two to an integer carrier. Restating the rule here -- in type-key terms
         // rather than by probing the LLVM type -- keeps the backend honest if that ever changes,
         // and needs no new entry in LlvmCApi.h.
-        if (!isEnumTypeKey(governingTypeKey) &&
+        if (!isEnumTypeKey(nameLookup_, governingTypeKey) &&
             !frontend::ProjectTypeConversion::isIntegral(governingTypeKey))
         {
             return fail(error, "switch governing value is not integral or an enum: " + governingTypeKey);
@@ -8907,7 +8907,7 @@ private:
         // campos `const`, asi que una constante de `case` y el valor con el que se compara no
         // pueden discrepar de signo. Un `switch` sobre un `enum : byte` con un miembro en 200
         // dependia de esto: con signo, la constante se emitia como -56.
-        const frontend::builtins::IntegerTypeInfo* governingEnum = enumUnderlyingInfo(governingTypeKey);
+        const frontend::builtins::IntegerTypeInfo* governingEnum = findEnumUnderlyingInfo(nameLookup_, governingTypeKey);
         const LLVMBool signExtend =
             (governingEnum != nullptr ? governingEnum->isSigned : isSignedInteger(governingTypeKey))
                 ? 1
@@ -12968,7 +12968,7 @@ private:
             const std::uint64_t bytes = std::max<std::uint64_t>(1, info->width / 8U);
             return {bytes, bytes};
         }
-        if (const frontend::builtins::IntegerTypeInfo* info = enumUnderlyingInfo(typeKey); info != nullptr)
+        if (const frontend::builtins::IntegerTypeInfo* info = findEnumUnderlyingInfo(nameLookup_, typeKey); info != nullptr)
         {
             const std::uint64_t bytes = std::max<std::uint64_t>(1, info->width / 8U);
             return {bytes, bytes};
@@ -14415,7 +14415,7 @@ private:
         const std::string& receiverTypeKey = node->children[0]->typeKey;
         if (llvmType(receiverTypeKey, error) == nullptr) return nullptr;
         const frontend::builtins::IntegerTypeInfo* receiverEnum =
-            enumUnderlyingInfo(receiverTypeKey);
+            findEnumUnderlyingInfo(nameLookup_, receiverTypeKey);
         const unsigned governingWidth =
             receiverEnum != nullptr ? receiverEnum->width : integerWidth(receiverTypeKey);
         if (governingWidth == 0 || governingWidth > 64)
@@ -15444,7 +15444,7 @@ private:
         // que habla de vectores y no menciona structs por ningun lado. La correccion esta en el
         // frontend --`==` sobre structs baja a AggregateEquals-- y esto es la red por si alguna
         // vez vuelve a colarse: dice el nombre del tipo y de donde viene el problema.
-        if (isEnumTypeKey(operandType) == false && operandType.starts_with("type:") &&
+        if (isEnumTypeKey(nameLookup_, operandType) == false && operandType.starts_with("type:") &&
             findStructLayout(mirModel_, operandType) != nullptr)
         {
             return failValue(
@@ -18423,7 +18423,7 @@ private:
                 builder_, LLVMIntNE, extracted, LLVMConstNull(storageType), "bitfield.bool");
         }
 
-        const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(node->typeKey);
+        const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
         const unsigned logicalWidth = enumInfo != nullptr
             ? enumInfo->width : integerWidth(node->typeKey);
         if (logicalWidth != storageBits)
@@ -18465,7 +18465,7 @@ private:
         }
         else
         {
-            const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(node->typeKey);
+            const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
             const unsigned logicalWidth = enumInfo != nullptr
                 ? enumInfo->width : integerWidth(node->typeKey);
             if (logicalWidth != storageBits)
@@ -18679,8 +18679,8 @@ private:
         // `enum : byte` emitia `icmp ne i8 %v, i32 200` -- el verificador de LLVM lo rechazaba,
         // que es la forma AFORTUNADA del defecto; en `enum : sbyte` habria sido peor, porque
         // extender sin signo un -1 da 255 y eso compila y responde mal.
-        const frontend::builtins::IntegerTypeInfo* sourceEnum = enumUnderlyingInfo(source);
-        const frontend::builtins::IntegerTypeInfo* targetEnum = enumUnderlyingInfo(target);
+        const frontend::builtins::IntegerTypeInfo* sourceEnum = findEnumUnderlyingInfo(nameLookup_, source);
+        const frontend::builtins::IntegerTypeInfo* targetEnum = findEnumUnderlyingInfo(nameLookup_, target);
         const unsigned sourceWidth = sourceEnum != nullptr ? sourceEnum->width : integerWidth(source);
         const unsigned targetWidth = targetEnum != nullptr ? targetEnum->width : integerWidth(target);
         const bool sourceSigned =
@@ -18885,27 +18885,7 @@ private:
     // cuatro de aqui, y por eso no pueden discrepar: hasta el 2026-09-03 eran cuatro copias de
     // "un enum mide 32 bits y tiene signo" escritas por separado, y un `enum : byte` las
     // contradecia a las cuatro a la vez.
-    const frontend::builtins::IntegerTypeInfo* enumUnderlyingInfo(std::string_view typeKey) const
-    {
-        if (!typeKey.starts_with("type:")) return nullptr;
-        const std::string_view key = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != key ||
-                type.kind != frontend::NamedTypeDeclarationKind::Enum)
-                continue;
-            return frontend::builtins::findIntegerType(frontend::enumUnderlyingTypeKey(type.syntax));
-        }
-        return nullptr;
-    }
-
-    // Un enum SIEMPRE tiene tipo subyacente --lo escrito, o `int` por omision, y las dos formas
-    // salen de la tabla unica de enteros-- asi que "hay tipo subyacente" y "es un enum" son la
-    // misma pregunta.
-    bool isEnumTypeKey(std::string_view typeKey) const
-    {
-        return enumUnderlyingInfo(typeKey) != nullptr;
-    }
+    // (NSC305-L03: los lookups viven en LlvmTypeLayout.h; `findEnumUnderlyingInfo`/`isEnumTypeKey`.)
 
     LLVMTypeRef llvmType(std::string_view typeKey, std::string& error) const
     {
@@ -18975,7 +18955,7 @@ private:
             // LLVMIntTypeInContext porque la API C que este proyecto declara a mano
             // (src/LLVM/LlvmCApi.h) no incluye esa funcion, y anadir un simbolo a esa frontera es
             // una decision aparte -- la lista de 146 esta congelada a proposito (SHR-090).
-            if (const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(typeKey);
+            if (const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, typeKey);
                 enumInfo != nullptr)
             {
                 switch (enumInfo->width)
@@ -19351,7 +19331,7 @@ private:
     // through a leading sret pointer.
     bool isIndirectStructTypeKey(std::string_view typeKey) const noexcept
     {
-        if (isEnumTypeKey(typeKey)) return false;
+        if (isEnumTypeKey(nameLookup_, typeKey)) return false;
         const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return false;
         return layout->abiPassing == frontend::ProjectOopMirAbiPassing::Indirect;
