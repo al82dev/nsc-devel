@@ -933,6 +933,8 @@ bool ProjectGenericModel::build(
         }
     }
 
+    // NSC305-G08. Apply the body-type demands first (they materialize directly and may collect
+    // further type demands), then drain the type-demand waves (the two-pass).
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.body-type-demands");
         if (!materializeBodyTypeSpecializationDemands(diagnostics))
@@ -1854,6 +1856,7 @@ std::string GenericTelemetry::renderSummary() const
         "generics.imported-specialization-seed",
         "generics.root-demand-discovery",
         "generics.specialization-waves",
+        "generics.type-demand-waves",
         "generics.rewrite-commit",
         "generics.body-type-demands",
     };
@@ -2918,6 +2921,59 @@ bool ProjectGenericModel::materializeTypeSyntax(
     }
     syntax->clearTypeArguments();
     return true;
+}
+
+// NSC305-G08. Records a type specialization demand (the discovery half of the two-pass).
+void ProjectGenericModel::collectTypeSpecializationDemand(
+    ProjectSyntaxUnit& unit,
+    ast::TypeSyntax* target,
+    TemplateState& state,
+    const std::string& namespaceName)
+{
+    typeSpecializationDemands_.push_back(GenericTypeDemand{
+        &unit,
+        &state,
+        {},
+        target,
+        {},
+        {},
+        {},
+        InstantiationContext{
+            unit.projectOrdinal(),
+            namespaceName,
+            target->range(),
+            currentOverloadGroup_,
+            activePackSubstitutions_,
+            activeAssociatedProjections_}});
+}
+
+// NSC305-G08. Executes the collected type demands in waves (the apply half of the two-pass).
+bool ProjectGenericModel::executeTypeDemandWaves(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    while (!typeSpecializationDemands_.empty())
+    {
+        std::vector<GenericTypeDemand> wave;
+        wave.swap(typeSpecializationDemands_);
+        for (GenericTypeDemand& demand : wave)
+        {
+            if (demand.unit == nullptr || demand.state == nullptr || demand.target == nullptr)
+                continue;
+            currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
+            currentInstantiationNamespace_ = demand.context.namespaceName;
+            currentInstantiationRange_ = demand.context.range;
+            currentOverloadGroup_ = demand.context.overloadGroup;
+            activePackSubstitutions_ = demand.context.packSubstitutions;
+            activeAssociatedProjections_ = demand.context.associatedProjections;
+            if (!materializeTypeSyntax(
+                    *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
+                    diagnostics))
+            {
+                return false;
+            }
+        }
+    }
+    return !diagnostics.hasErrors();
 }
 
 bool ProjectGenericModel::processTypeSyntax(

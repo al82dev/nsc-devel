@@ -558,6 +558,7 @@ private:
     // the target syntax is rewritten only in the apply phase. Executed later by the wave scheduler.
     struct GenericTypeDemand final
     {
+        ProjectSyntaxUnit* unit = nullptr;
         TemplateState* state = nullptr;
         std::vector<ast::TypeSyntax*> arguments;
         ast::TypeSyntax* target = nullptr;
@@ -699,6 +700,15 @@ private:
         const std::string& namespaceName,
         diagnostics::DiagnosticEngine& diagnostics,
         std::string* outSpecializationKey = nullptr);
+    // NSC305-G08. Records a type specialization demand (the discovery half of the two-pass); the
+    // apply half (executeTypeDemandWaves) materializes and rewrites it later.
+    void collectTypeSpecializationDemand(
+        ProjectSyntaxUnit& unit,
+        ast::TypeSyntax* target,
+        TemplateState& state,
+        const std::string& namespaceName);
+    // NSC305-G08. Executes the collected type demands in waves (the apply half of the two-pass).
+    bool executeTypeDemandWaves(diagnostics::DiagnosticEngine& diagnostics);
 
     bool processGenericCall(
         ProjectSyntaxUnit& unit,
