@@ -19,6 +19,15 @@
 - Verificado: `TL-LANG-481` (saturating ±, exit 0), `TL-LANG-482` (checked, exit 145), `TL-LANG-483`
   (unchecked rechazado). Guards 429/423/424 PASS.
 
+## Defecto corregido (2026-10-15)
+
+- La extracción de la escala decimal en `ProjectOopLlvmLowerer.cpp` (`value >> 96`) no enmascaraba los
+  bits 96..101: el bit de signo (127) y el padding (102..126) se filtraban en la escala. Un operando
+  negativo leía `2^31 + escala` y disparaba el trap de `decimal.mul.scale` incluso bajo `saturating`
+  (`TL-LANG-481` caía a exit 145 en el caso `neg`).
+- **Corrección**: `(value >> 96) & 0x3F` en las tres extracciones de escala (mul + add/sub).
+- Verificado: `TL-LANG-481/482/483` + barrido completo de `nsc_component_tests` (5748 casos) en verde.
+
 ## Residual
 
 - Aplicar la política a add/sub/div (hoy el overflow del coeficiente sólo trapea/satura en el producto);
