@@ -385,6 +385,9 @@ public:
     void setTemplateCacheRoot(std::filesystem::path root);
     // NSC305-C01. Persists the collected template records to the C1 cache (no-op when disabled).
     void storeTemplateRecords();
+    // NSC305-C01. Restores the collected template records from the C1 cache and counts hits (no-op
+    // when disabled). The AST subtree is still walked; this validates + reports the metadata hit.
+    void restoreTemplateRecords();
 
 private:
     struct TemplateState final

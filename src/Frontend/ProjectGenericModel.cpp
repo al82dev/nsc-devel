@@ -952,6 +952,7 @@ bool ProjectGenericModel::build(
     for (std::size_t ordinal = 0; ordinal < specializations_.size(); ++ordinal)
         specializationBySpecializedName_.emplace(specializations_[ordinal].specializedName, ordinal);
     // NSC305-C01. Persist the collected template records (the C1 metadata) when the cache is enabled.
+    restoreTemplateRecords();
     storeTemplateRecords();
     built_ = true;
     return !diagnostics.hasErrors();
@@ -2673,6 +2674,28 @@ void ProjectGenericModel::storeTemplateRecords()
         const std::string payload = serializeTemplateRecord(state.record);
         std::string error;
         (void)templateCache_.store(state.record.c1CacheKey, payload, error);
+    }
+}
+
+// NSC305-C01. Warm-build restore: for each collected record, look up the C1 cache and count a hit
+// when the metadata round-trips. The AST subtree is still walked (the record syntax is not cached).
+void ProjectGenericModel::restoreTemplateRecords()
+{
+    if (!templateCache_.enabled()) return;
+    for (const TemplateState& state : templateStates_)
+    {
+        std::string payload;
+        bool hit = false;
+        std::string error;
+        if (templateCache_.restore(state.record.c1CacheKey, payload, hit, error) && hit)
+        {
+            GenericTemplateRecord restored;
+            if (deserializeTemplateRecord(payload, restored))
+            {
+                telemetry_.noteSpecializationHit();
+                ++instantiationCacheHitCount_;
+            }
+        }
     }
 }
 
