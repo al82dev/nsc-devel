@@ -12250,6 +12250,49 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreRelease ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreClose ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventSet ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventReset ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventClose)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool semRelease = current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreRelease;
+                    const bool semClose = current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreClose;
+                    const bool evSet = current->kind == frontend::ProjectOopMirNodeKind::CoreEventSet;
+                    const bool evReset = current->kind == frontend::ProjectOopMirNodeKind::CoreEventReset;
+                    if (current->children.size() != 1 ||
+                        (semRelease && semaphoreReleaseFunction_ == nullptr) ||
+                        (semClose && semaphoreCloseFunction_ == nullptr) ||
+                        (evSet && eventSetFunction_ == nullptr) ||
+                        (evReset && eventResetFunction_ == nullptr) ||
+                        (!semRelease && !semClose && !evSet && !evReset && eventCloseFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.5 sync primitive requires one nint argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef handle = values.back();
+                values.pop_back();
+                if (handle == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {handle};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreRelease)
+                    buildNoUnwindCall(semaphoreReleaseFunctionType_, semaphoreReleaseFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreClose)
+                    buildNoUnwindCall(semaphoreCloseFunctionType_, semaphoreCloseFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreEventSet)
+                    buildNoUnwindCall(eventSetFunctionType_, eventSetFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreEventReset)
+                    buildNoUnwindCall(eventResetFunctionType_, eventResetFunction_, args, 1, "");
+                else
+                    buildNoUnwindCall(eventCloseFunctionType_, eventCloseFunction_, args, 1, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13970,25 +14013,11 @@ private:
                     waitForHandleTimeoutFunctionType_, waitForHandleTimeoutFunction_, args, 2, "wait.timeout");
             }
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreRelease:
-            {
-                if (node->children.size() != 1 || semaphoreReleaseFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Semaphore.SemaphoreRelease requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(semaphoreReleaseFunctionType_, semaphoreReleaseFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreClose:
-            {
-                if (node->children.size() != 1 || semaphoreCloseFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Semaphore.SemaphoreClose requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(semaphoreCloseFunctionType_, semaphoreCloseFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+            case frontend::ProjectOopMirNodeKind::CoreEventSet:
+            case frontend::ProjectOopMirNodeKind::CoreEventReset:
+            case frontend::ProjectOopMirNodeKind::CoreEventClose:
+                return lowerExpressionIterative(node, error);
             // EventCreate: two explicit i1 operands (manualReset, initialState), a REAL i64
             // HANDLE result.
             case frontend::ProjectOopMirNodeKind::CoreEventCreate:
@@ -14016,36 +14045,6 @@ private:
                 return buildNoUnwindCall(
                     eventCreateNamedFunctionType_, eventCreateNamedFunction_, args, 3,
                     "event.create.named");
-            }
-            case frontend::ProjectOopMirNodeKind::CoreEventSet:
-            {
-                if (node->children.size() != 1 || eventSetFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Event.EventSet requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(eventSetFunctionType_, eventSetFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::CoreEventReset:
-            {
-                if (node->children.size() != 1 || eventResetFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Event.EventReset requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(eventResetFunctionType_, eventResetFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::CoreEventClose:
-            {
-                if (node->children.size() != 1 || eventCloseFunction_ == nullptr)
-                    return failValue(error, "Stage 54.5 Event.EventClose requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(eventCloseFunctionType_, eventCloseFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
 
             // Stage 55.1 "Process". Every getter is the simplest possible core-operation shape
