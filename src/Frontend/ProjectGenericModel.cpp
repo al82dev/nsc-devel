@@ -5370,6 +5370,31 @@ ast::AstNode* ProjectGenericModel::foldValuePack(
     return nullptr;
 }
 
+// NSC305-G06. Copies a node's direct scalar fields and modifiers (non-recursive).
+ast::AstNode* ProjectGenericModel::cloneNodeCopyFields(
+    ast::AstArena& arena,
+    const ast::AstNode* source,
+    ast::AstNodeKind clonedKind)
+{
+    ast::AstNode* result = arena.make<ast::AstNode>(clonedKind, source->range());
+    result->setText(source->text());
+    result->setAuxiliaryText(source->auxiliaryText());
+    result->setArgumentName(source->argumentName());
+    result->setTokenKind(source->tokenKind());
+    result->setFlag(source->flag());
+    result->setReference(source->isReference());
+    result->setLifetimeName(source->lifetimeName());
+    result->setVariadic(source->isVariadic());
+    result->setUnsafe(source->isUnsafe());
+    result->setFloatingPointMode(source->floatingPointMode());
+    result->setFfiUnwindPolicy(source->ffiUnwindPolicy());
+    result->setIntegerValue(source->integerValue());
+    result->setFloatingValue(source->floatingValue());
+    // Modifiers are semantic template state, not decoration.
+    for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
+    return result;
+}
+
 ast::AstNode* ProjectGenericModel::cloneNode(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -5473,20 +5498,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
             ? ast::AstNodeKind::SizeofTypeExpression
             : ast::AstNodeKind::AlignofTypeExpression;
     }
-    ast::AstNode* result = arena.make<ast::AstNode>(clonedKind, source->range());
-    result->setText(source->text());
-    result->setAuxiliaryText(source->auxiliaryText());
-    result->setArgumentName(source->argumentName());
-    result->setTokenKind(source->tokenKind());
-    result->setFlag(source->flag());
-    result->setReference(source->isReference());
-    result->setLifetimeName(source->lifetimeName());
-    result->setVariadic(source->isVariadic());
-    result->setUnsafe(source->isUnsafe());
-    result->setFloatingPointMode(source->floatingPointMode());
-    result->setFfiUnwindPolicy(source->ffiUnwindPolicy());
-    result->setIntegerValue(source->integerValue());
-    result->setFloatingValue(source->floatingValue());
+    ast::AstNode* result = cloneNodeCopyFields(arena, source, clonedKind);
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element
     // type is T.  After monomorphization the cloned TypeSyntax names the concrete argument; for a
     // class argument that made method-body analysis mistake the original raw allocation for the
@@ -5498,10 +5510,6 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     {
         result->setAuxiliaryText(std::string(kGenericRawNewAuxiliary));
     }
-    // Modifiers are semantic template state, not decoration. In particular, the mutually
-    // exclusive inline/forceinline/noinline policy must reach every explicit or inferred clone;
-    // ProjectMemberModel will consume the copied token into the single InliningPolicy field.
-    for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     for (const ast::GenericParameterSyntax& parameter : source->genericParameterSyntaxes())
     {
         ast::GenericParameterSyntax copy = parameter;
