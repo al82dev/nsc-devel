@@ -189,6 +189,31 @@ bool isFloating(std::string_view type) noexcept
     return type == "builtin:float" || type == "builtin:double";
 }
 
+// NSC305-L03. Maps the builtin type keys to their LLVM carriers (moved out of the lowerer's llvmType
+// as a pure move). Returns nullptr for a non-builtin key.
+LLVMTypeRef mapBuiltinLlvmType(LLVMContextRef context, std::string_view typeKey) noexcept
+{
+    if (typeKey == "builtin:void") return LLVMVoidTypeInContext(context);
+    if (typeKey == "builtin:bool") return LLVMInt1TypeInContext(context);
+    if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+        typeKey == "builtin:char") return LLVMInt8TypeInContext(context);
+    if (typeKey == "builtin:short" || typeKey == "builtin:ushort")
+        return LLVMInt16TypeInContext(context);
+    if (typeKey == "builtin:int" || typeKey == "builtin:uint")
+        return LLVMInt32TypeInContext(context);
+    if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
+        typeKey == "builtin:nint" || typeKey == "builtin:nuint")
+        return LLVMInt64TypeInContext(context);
+    if (typeKey == "builtin:i128" || typeKey == "builtin:u128")
+        return LLVMIntTypeInContext(context, 128);
+    // NS304-T15-F01: decimal is a 128-bit value (96-bit coefficient + scale + sign).
+    if (typeKey == "builtin:decimal")
+        return LLVMIntTypeInContext(context, 128);
+    if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context);
+    if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context);
+    return nullptr;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -18889,20 +18914,9 @@ private:
 
     LLVMTypeRef llvmType(std::string_view typeKey, std::string& error) const
     {
-        if (typeKey == "builtin:void") return LLVMVoidTypeInContext(context_);
-        if (typeKey == "builtin:bool") return LLVMInt1TypeInContext(context_);
-        if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
-            typeKey == "builtin:char") return LLVMInt8TypeInContext(context_);
-        if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return LLVMInt16TypeInContext(context_);
-        if (typeKey == "builtin:int" || typeKey == "builtin:uint") return LLVMInt32TypeInContext(context_);
-        if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" || typeKey == "builtin:nuint") return LLVMInt64TypeInContext(context_);
-        if (typeKey == "builtin:i128" || typeKey == "builtin:u128")
-            return LLVMIntTypeInContext(context_, 128);
-        // NS304-T15-F01: decimal is a 128-bit value (96-bit coefficient + scale + sign).
-        if (typeKey == "builtin:decimal")
-            return LLVMIntTypeInContext(context_, 128);
-        if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
-        if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
+        // NSC305-L03. The builtin carriers live in mapBuiltinLlvmType (moved out as a pure move).
+        if (LLVMTypeRef builtin = mapBuiltinLlvmType(context_, typeKey))
+            return builtin;
         // NS304-T06-F05: `ref:<T>` / `refmut:<T>` is a reference (a pointer into the frame).
         if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
             return LLVMPointerTypeInContext(context_, 0);
