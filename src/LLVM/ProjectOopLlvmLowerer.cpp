@@ -12212,6 +12212,44 @@ private:
                 }
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorEnter ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorExit ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorPulse ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorPulseAll)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool enter = current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorEnter;
+                    const bool exit = current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorExit;
+                    const bool pulse = current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorPulse;
+                    if (current->children.size() != 1 ||
+                        (enter && monitorEnterFunction_ == nullptr) ||
+                        (exit && monitorExitFunction_ == nullptr) ||
+                        (pulse && monitorPulseFunction_ == nullptr) ||
+                        (!enter && !exit && !pulse && monitorPulseAllFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.4 Monitor intrinsic requires one pointer argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef pointer = values.back();
+                values.pop_back();
+                if (pointer == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {pointer};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorEnter)
+                    buildNoUnwindCall(monitorEnterFunctionType_, monitorEnterFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorExit)
+                    buildNoUnwindCall(monitorExitFunctionType_, monitorExitFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorPulse)
+                    buildNoUnwindCall(monitorPulseFunctionType_, monitorPulseFunction_, args, 1, "");
+                else
+                    buildNoUnwindCall(monitorPulseAllFunctionType_, monitorPulseAllFunction_, args, 1, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13849,45 +13887,10 @@ private:
             // already, INCLUDING its own null-receiver trap) -- exact same "lower the one child,
             // forward the pointer, dummy-i1 return" shape as CoreMutexLock/Unlock/Close above.
             case frontend::ProjectOopMirNodeKind::CoreMonitorEnter:
-            {
-                if (node->children.size() != 1 || monitorEnterFunction_ == nullptr)
-                    return failValue(error, "Stage 54.4 Monitor.Enter requires one pointer argument and runtime hook");
-                LLVMValueRef lockPointer = lowerExpression(node->children.front().get(), error);
-                if (lockPointer == nullptr) return nullptr;
-                LLVMValueRef args[] = {lockPointer};
-                buildNoUnwindCall(monitorEnterFunctionType_, monitorEnterFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreMonitorExit:
-            {
-                if (node->children.size() != 1 || monitorExitFunction_ == nullptr)
-                    return failValue(error, "Stage 54.4 Monitor.Exit requires one pointer argument and runtime hook");
-                LLVMValueRef lockPointer = lowerExpression(node->children.front().get(), error);
-                if (lockPointer == nullptr) return nullptr;
-                LLVMValueRef args[] = {lockPointer};
-                buildNoUnwindCall(monitorExitFunctionType_, monitorExitFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreMonitorPulse:
-            {
-                if (node->children.size() != 1 || monitorPulseFunction_ == nullptr)
-                    return failValue(error, "Stage 54.4 Monitor.Pulse requires one pointer argument and runtime hook");
-                LLVMValueRef cvPointer = lowerExpression(node->children.front().get(), error);
-                if (cvPointer == nullptr) return nullptr;
-                LLVMValueRef args[] = {cvPointer};
-                buildNoUnwindCall(monitorPulseFunctionType_, monitorPulseFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreMonitorPulseAll:
-            {
-                if (node->children.size() != 1 || monitorPulseAllFunction_ == nullptr)
-                    return failValue(error, "Stage 54.4 Monitor.PulseAll requires one pointer argument and runtime hook");
-                LLVMValueRef cvPointer = lowerExpression(node->children.front().get(), error);
-                if (cvPointer == nullptr) return nullptr;
-                LLVMValueRef args[] = {cvPointer};
-                buildNoUnwindCall(monitorPulseAllFunctionType_, monitorPulseAllFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             // CoreMonitorWait: the ONE case in this round that lowers its receiver child exactly
             // ONCE and then GEPs it TWICE (using `immediate`/`secondaryImmediate`, the cv_/lock_
             // byte offsets ProjectOopMirModel.cpp already resolved) -- see this node kind's own
