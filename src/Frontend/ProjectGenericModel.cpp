@@ -2498,52 +2498,22 @@ void ProjectGenericModel::prepareNodeScope(
     }
 }
 
-void ProjectGenericModel::processNode(
+// NSC305-G08. The per-node body of processNode (see the header). Returns false when the node's
+// children must be skipped (alias directive or open template).
+bool ProjectGenericModel::processNodeOnce(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    std::string namespaceName,
-    std::string ownerName,
-    GenericLookupScope scope,
+    const std::string& currentNamespace,
+    const std::string& ownerName,
+    GenericLookupScope& currentScope,
     bool insideTemplate,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    // NSC305-G08. Iterative pre-order traversal with an explicit stack; the per-node logic is
-    // unchanged, only the recursion into first/second/third/children is removed. The sequential
-    // local accumulation is preserved by computing each child's scope snapshot before the walk.
-    struct Frame
-    {
-        ast::AstNode* node;
-        std::string namespaceName;
-        std::string ownerName;
-        GenericLookupScope scope;
-        bool insideTemplate;
-    };
-    std::vector<Frame> frames;
-    frames.push_back(
-        Frame{node, std::move(namespaceName), std::move(ownerName), std::move(scope), insideTemplate});
-    while (!frames.empty())
-    {
-        Frame frame = std::move(frames.back());
-        frames.pop_back();
-        node = frame.node;
-        namespaceName = std::move(frame.namespaceName);
-        ownerName = std::move(frame.ownerName);
-        scope = std::move(frame.scope);
-        insideTemplate = frame.insideTemplate;
-        if (node == nullptr) continue;
-
-    std::string currentNamespace;
-    GenericLookupScope currentScope;
-    prepareNodeScope(unit, node, namespaceName, scope, currentNamespace, currentScope);
-
     // MatchExpression arm conditions and bindings use MatchValueExpression to read the one-time
     // governing value. Preserve its structural source type lexically so body-only demands can
     // materialize closed view types before Sema. Match statements expose an ordinary hidden local.
     if (node->kind() == ast::AstNodeKind::MatchExpression && node->first() != nullptr)
     {
-        // currentScope is the lexical copy passed only to this node's descendants. Resetting the
-        // marker here scopes nested matches correctly; the caller's enclosing match is restored
-        // automatically when this processNode invocation returns.
         currentScope.matchValuePassKind.clear();
         if (ast::TypeSyntax* governingType = inferExpressionType(unit, node->first(), currentScope))
             currentScope.matchValueType = governingType;
@@ -2555,19 +2525,14 @@ void ProjectGenericModel::processNode(
         }
     }
 
-    // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
-    // normalized target was handled by expandAliasesInNode; materializing it here would create
-    // e.g. Box<T> and leak the alias parameter T into the concrete program.
-    if (node->kind() == ast::AstNodeKind::UsingAliasDirective) continue;
+    // The declaration is a compile-time rewrite rule, not a use of its still-open target.
+    if (node->kind() == ast::AstNodeKind::UsingAliasDirective) return false;
 
     const bool genericLambdaTemplate =
         node->kind() == ast::AstNodeKind::LambdaExpression &&
         !node->genericParameters().empty();
     const bool templateNode = isGenericTypeTemplateNode(node) ||
         isGenericMethodTemplateNode(node) || genericLambdaTemplate;
-    // Constraint types are declaration dependencies, not executable template-body syntax. Closed
-    // constraints such as `where T : IValue<int>` must be materialized even while the remaining
-    // body is deferred until a concrete specialization exists.
     for (const ast::GenericConstraintClause& clause : node->genericConstraints())
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
@@ -2589,8 +2554,6 @@ void ProjectGenericModel::processNode(
     }
     if (templateNode || insideTemplate)
     {
-        // NS304-T08-F06: a generic function's receiver still resolves its generic type reference
-        // (`Box<T>`) so the extension dispatch can unify it with the closed receiver `Box<I>`.
         if (isGenericMethodTemplateNode(node))
         {
             GenericLookupScope receiverScope = currentScope;
@@ -2610,11 +2573,9 @@ void ProjectGenericModel::processNode(
                 break;
             }
         }
-        continue;
+        return false;
     }
 
-    // The declaration type is contextual evidence for its initializer. Keep the readable,
-    // structural spelling before materialization rewrites this node in place.
     ast::TypeSyntax* declarationExpectedType = nullptr;
     if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
         node->typeSyntax() != nullptr &&
@@ -2643,17 +2604,12 @@ void ProjectGenericModel::processNode(
         }
         else
         {
-            // A generic method name has the same token shape as a closed generic type. Its
-            // argument types still participate in generic materialization, but the enclosing
-            // spelling is resolved later as a method group by the body model.
             for (ast::TypeSyntax* argument : candidate->typeArguments())
                 processTypeSyntax(unit, argument, currentNamespace, currentScope, diagnostics);
         }
     }
     else if (node->kind() == ast::AstNodeKind::ExtensionDeclaration && node->typeSyntax() != nullptr)
     {
-        // NS304-T08-F06: the extension's receiver `Box<T>` is an OPEN reference; the block's type
-        // parameters are in scope so it does not materialize a closed clone.
         GenericLookupScope extensionScope = currentScope;
         for (const std::string& parameter : node->genericParameters())
             extensionScope.typeParameters.write().insert(parameter);
@@ -2695,8 +2651,6 @@ void ProjectGenericModel::processNode(
     }
 
     // Bidirectional inference is deliberately bounded to contexts with one exact expected type.
-    // It does not search arbitrary conversions and therefore cannot turn overload resolution into
-    // an exponential solver. The ordinary semantic model still validates the final conversion.
     ast::AstNode* contextualCall = nullptr;
     const ast::TypeSyntax* contextualType = nullptr;
     if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement)
@@ -2718,6 +2672,51 @@ void ProjectGenericModel::processNode(
         applyExpectedTypeToExpression(
             unit, contextualCall, contextualType, currentNamespace, ownerName, currentScope,
             diagnostics);
+    return true;
+}
+
+void ProjectGenericModel::processNode(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    std::string namespaceName,
+    std::string ownerName,
+    GenericLookupScope scope,
+    bool insideTemplate,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // NSC305-G08. Iterative pre-order traversal with an explicit stack; the per-node logic is
+    // unchanged, only the recursion into first/second/third/children is removed. The sequential
+    // local accumulation is preserved by computing each child's scope snapshot before the walk.
+    struct Frame
+    {
+        ast::AstNode* node;
+        std::string namespaceName;
+        std::string ownerName;
+        GenericLookupScope scope;
+        bool insideTemplate;
+    };
+    std::vector<Frame> frames;
+    frames.push_back(
+        Frame{node, std::move(namespaceName), std::move(ownerName), std::move(scope), insideTemplate});
+    while (!frames.empty())
+    {
+        Frame frame = std::move(frames.back());
+        frames.pop_back();
+        node = frame.node;
+        namespaceName = std::move(frame.namespaceName);
+        ownerName = std::move(frame.ownerName);
+        scope = std::move(frame.scope);
+        insideTemplate = frame.insideTemplate;
+        if (node == nullptr) continue;
+
+    std::string currentNamespace;
+    GenericLookupScope currentScope;
+    prepareNodeScope(unit, node, namespaceName, scope, currentNamespace, currentScope);
+
+    if (!processNodeOnce(
+            unit, node, currentNamespace, ownerName, currentScope, insideTemplate, diagnostics))
+        continue;
+
     // NSC-LIMIT-009: se APILA. La version anterior reemplazaba, de modo que al entrar en
     // `A { Inner { ... } }` el dueno pasaba a ser «Inner» y `A` desaparecia.
     const std::string childOwner =

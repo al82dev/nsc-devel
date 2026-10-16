@@ -629,6 +629,17 @@ private:
         const GenericLookupScope& scope,
         std::string& outNamespace,
         GenericLookupScope& outScope);
+    // NSC305-G08. The per-node body of processNode (match/template/constraint/type/call/
+    // inference); returns false when the node's children must be skipped (alias directive or
+    // open template). Separating it leaves processNode as the iterative collector.
+    bool processNodeOnce(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        GenericLookupScope& currentScope,
+        bool insideTemplate,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     void collectBodyTypeSpecializationDemand(
         ProjectSyntaxUnit& unit,
