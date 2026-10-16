@@ -9502,6 +9502,148 @@ private:
         return true;
     }
 
+    // NSC305-L04. The leaf expression family (literals/names) — the expression machine's first
+    // family. These cases have no sub-expression recursion; the machine dispatches them directly.
+    LLVMValueRef lowerLeafExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::ThisValue:
+                return constructionThisOverride_ != nullptr ? constructionThisOverride_ : thisValue_;
+            case frontend::ProjectOopMirNodeKind::ParameterValue:
+            {
+                if (!node->parameterOrdinal.has_value()) return failValue(error, "parameter value missing ordinal");
+                // NS304-T06-F04: a $moveNext/$poll captures the original callable's parameters into
+                // the frame (stored by the constructor). Read the captured parameter from the frame
+                // slot instead of the (now-shifted) parameter storage.
+                if (currentMirFunction_ != nullptr &&
+                    !currentMirFunction_->asyncFrameParameters.empty())
+                {
+                    for (const auto& [paramOrdinal, offset, typeKey] :
+                         currentMirFunction_->asyncFrameParameters)
+                    {
+                        // NS304-T07-F06: match both the ordinal AND the physical type so the poll's
+                        // own `self` (ordinal 0, future:<T>*) never aliases a captured ref parameter
+                        // (ordinal 0, T*).
+                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
+                        {
+                            LLVMValueRef self = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                                "param.self");
+                            // NS304-T17-F09: the async-generator poll's `self` is the demand future.
+                            // Its frame (offset 8) is the ITERATOR, and the iterator's frame (offset 8)
+                            // is the generator frame that holds the captured parameters — one extra
+                            // dereference relative to $moveNext/$drop, whose `self` IS the iterator.
+                            LLVMValueRef frame = nullptr;
+                            if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+                            {
+                                LLVMValueRef iterator = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(self, 8, "param.iter.addr"), "param.iter");
+                                frame = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(iterator, 8, "param.frame.addr"), "param.frame");
+                            }
+                            else
+                            {
+                                frame = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(self, 8, "param.frame.addr"), "param.frame");
+                            }
+                            LLVMTypeRef capturedType = llvmType(typeKey, error);
+                            if (capturedType == nullptr) return nullptr;
+                            LLVMValueRef frameValue = LLVMBuildLoad2(
+                                builder_, capturedType,
+                                byteOffset(frame, offset, "param.frame.slot"), "param.frame.load");
+                            // NS304-T07-F06: a captured `ref` parameter stores the ADDRESS in the
+                            // frame slot (typeKey is the pointer), but the USE evaluates to the
+                            // pointee. Dereference once so the read is the pointed-to value.
+                            if (typeKey.ends_with("*") && !node->typeKey.ends_with("*"))
+                            {
+                                LLVMTypeRef pointeeType = llvmType(node->typeKey, error);
+                                if (pointeeType == nullptr) return nullptr;
+                                return LLVMBuildLoad2(
+                                    builder_, pointeeType, frameValue, "param.frame.deref");
+                            }
+                            return frameValue;
+                        }
+                    }
+                }
+                LLVMValueRef address = parameterStorage_[*node->parameterOrdinal];
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                return type != nullptr && address != nullptr ? LLVMBuildLoad2(builder_, type, address, "param.load") : nullptr;
+            }
+            case frontend::ProjectOopMirNodeKind::LocalValue:
+            {
+                if (!node->localOrdinal.has_value()) return failValue(error, "local value missing ordinal");
+                LLVMValueRef address = localStorage_[*node->localOrdinal];
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                if (type == nullptr || address == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "local.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
+            }
+            case frontend::ProjectOopMirNodeKind::IntegerConstant:
+            {
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                return type != nullptr ? LLVMConstInt(type, node->integerValue, isSignedInteger(node->typeKey) ? 1 : 0) : nullptr;
+            }
+            case frontend::ProjectOopMirNodeKind::FloatingConstant:
+            {
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                if (type == nullptr) return nullptr;
+                if (node->typeKey == "builtin:decimal")
+                {
+                    // 128-bit decimal: low 96 bits = coefficient, bits 96..101 = scale,
+                    // bit 127 = sign. The C API wrapper exposes no constant shift/or, so the
+                    // value is assembled with builder instructions.
+                    std::uint64_t coefficient = 0;
+                    int scale = 0;
+                    if (!decimalCoefficientAndScale(node->floatingValue, coefficient, scale))
+                        return failValue(error, "decimal literal coefficient exceeds 64 bits in Stage 34");
+                    LLVMValueRef lo = LLVMConstInt(type, coefficient, 0);
+                    LLVMValueRef scaleValue = LLVMConstInt(
+                        type, static_cast<std::uint64_t>(scale), 0);
+                    LLVMValueRef scaleShifted = LLVMBuildShl(
+                        builder_, scaleValue,
+                        LLVMConstInt(LLVMInt32TypeInContext(context_), 96, 0), "decimal.scale");
+                    LLVMValueRef combined = LLVMBuildOr(builder_, lo, scaleShifted, "decimal.value");
+                    if (node->floatingValue < 0.0)
+                    {
+                        LLVMValueRef sign = LLVMBuildShl(
+                            builder_, LLVMConstInt(type, 1, 0),
+                            LLVMConstInt(LLVMInt32TypeInContext(context_), 127, 0), "decimal.sign");
+                        combined = LLVMBuildOr(builder_, combined, sign, "decimal.signed");
+                    }
+                    return combined;
+                }
+                return LLVMConstReal(type, node->floatingValue);
+            }
+            case frontend::ProjectOopMirNodeKind::BooleanConstant:
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), node->booleanValue ? 1U : 0U, 0);
+            case frontend::ProjectOopMirNodeKind::NullConstant:
+                return LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+            case frontend::ProjectOopMirNodeKind::DefaultValue:
+            {
+                // Stage 52: default(T) -- LLVMConstNull is uniformly correct for every closed T
+                // here: an integer/float/bool/char primitive type gives numeric zero, a pointer
+                // type (class, string, delegate) gives a null pointer, and a struct (value) type
+                // gives an all-zero-fields aggregate -- exactly "the value every field of T would
+                // have if never assigned", with no per-primitive special-casing needed.
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                return type != nullptr ? LLVMConstNull(type) : nullptr;
+            }
+            case frontend::ProjectOopMirNodeKind::StringLiteral:
+                return lowerStringLiteral(node, error);
+            case frontend::ProjectOopMirNodeKind::Utf8StringLiteral:
+                return lowerUtf8StringLiteral(node, error);
+            case frontend::ProjectOopMirNodeKind::EnumName:
+                return lowerEnumName(node, error);
+            default:
+                return nullptr;
+        }
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -9515,6 +9657,19 @@ private:
         ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
         switch (node->kind)
         {
+            // NSC305-L04: the leaf family (literals/names) lives in lowerLeafExpression.
+            case frontend::ProjectOopMirNodeKind::ThisValue:
+            case frontend::ProjectOopMirNodeKind::ParameterValue:
+            case frontend::ProjectOopMirNodeKind::LocalValue:
+            case frontend::ProjectOopMirNodeKind::IntegerConstant:
+            case frontend::ProjectOopMirNodeKind::FloatingConstant:
+            case frontend::ProjectOopMirNodeKind::BooleanConstant:
+            case frontend::ProjectOopMirNodeKind::NullConstant:
+            case frontend::ProjectOopMirNodeKind::DefaultValue:
+            case frontend::ProjectOopMirNodeKind::StringLiteral:
+            case frontend::ProjectOopMirNodeKind::Utf8StringLiteral:
+            case frontend::ProjectOopMirNodeKind::EnumName:
+                return lowerLeafExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -10037,81 +10192,6 @@ private:
                 if (node->children.size() != 1 || node->children.front() == nullptr)
                     return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
                 return lowerExpression(node->children.front().get(), error);
-            case frontend::ProjectOopMirNodeKind::ThisValue:
-                return constructionThisOverride_ != nullptr ? constructionThisOverride_ : thisValue_;
-            case frontend::ProjectOopMirNodeKind::ParameterValue:
-            {
-                if (!node->parameterOrdinal.has_value()) return failValue(error, "parameter value missing ordinal");
-                // NS304-T06-F04: a $moveNext/$poll captures the original callable's parameters into
-                // the frame (stored by the constructor). Read the captured parameter from the frame
-                // slot instead of the (now-shifted) parameter storage.
-                if (currentMirFunction_ != nullptr &&
-                    !currentMirFunction_->asyncFrameParameters.empty())
-                {
-                    for (const auto& [paramOrdinal, offset, typeKey] :
-                         currentMirFunction_->asyncFrameParameters)
-                    {
-                        // NS304-T07-F06: match both the ordinal AND the physical type so the poll's
-                        // own `self` (ordinal 0, future:<T>*) never aliases a captured ref parameter
-                        // (ordinal 0, T*).
-                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
-                        {
-                            LLVMValueRef self = LLVMBuildLoad2(
-                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
-                                "param.self");
-                            // NS304-T17-F09: the async-generator poll's `self` is the demand future.
-                            // Its frame (offset 8) is the ITERATOR, and the iterator's frame (offset 8)
-                            // is the generator frame that holds the captured parameters — one extra
-                            // dereference relative to $moveNext/$drop, whose `self` IS the iterator.
-                            LLVMValueRef frame = nullptr;
-                            if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
-                            {
-                                LLVMValueRef iterator = LLVMBuildLoad2(
-                                    builder_, LLVMPointerTypeInContext(context_, 0),
-                                    byteOffset(self, 8, "param.iter.addr"), "param.iter");
-                                frame = LLVMBuildLoad2(
-                                    builder_, LLVMPointerTypeInContext(context_, 0),
-                                    byteOffset(iterator, 8, "param.frame.addr"), "param.frame");
-                            }
-                            else
-                            {
-                                frame = LLVMBuildLoad2(
-                                    builder_, LLVMPointerTypeInContext(context_, 0),
-                                    byteOffset(self, 8, "param.frame.addr"), "param.frame");
-                            }
-                            LLVMTypeRef capturedType = llvmType(typeKey, error);
-                            if (capturedType == nullptr) return nullptr;
-                            LLVMValueRef frameValue = LLVMBuildLoad2(
-                                builder_, capturedType,
-                                byteOffset(frame, offset, "param.frame.slot"), "param.frame.load");
-                            // NS304-T07-F06: a captured `ref` parameter stores the ADDRESS in the
-                            // frame slot (typeKey is the pointer), but the USE evaluates to the
-                            // pointee. Dereference once so the read is the pointed-to value.
-                            if (typeKey.ends_with("*") && !node->typeKey.ends_with("*"))
-                            {
-                                LLVMTypeRef pointeeType = llvmType(node->typeKey, error);
-                                if (pointeeType == nullptr) return nullptr;
-                                return LLVMBuildLoad2(
-                                    builder_, pointeeType, frameValue, "param.frame.deref");
-                            }
-                            return frameValue;
-                        }
-                    }
-                }
-                LLVMValueRef address = parameterStorage_[*node->parameterOrdinal];
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                return type != nullptr && address != nullptr ? LLVMBuildLoad2(builder_, type, address, "param.load") : nullptr;
-            }
-            case frontend::ProjectOopMirNodeKind::LocalValue:
-            {
-                if (!node->localOrdinal.has_value()) return failValue(error, "local value missing ordinal");
-                LLVMValueRef address = localStorage_[*node->localOrdinal];
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                if (type == nullptr || address == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "local.load");
-                if (node->volatileAccess) LLVMSetVolatile(load, 1);
-                return load;
-            }
             case frontend::ProjectOopMirNodeKind::FieldLoad:
             {
                 LLVMValueRef address = fieldAddress(node, error);
@@ -10611,11 +10691,6 @@ private:
                     "await.result");
             }
 
-            case frontend::ProjectOopMirNodeKind::IntegerConstant:
-            {
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                return type != nullptr ? LLVMConstInt(type, node->integerValue, isSignedInteger(node->typeKey) ? 1 : 0) : nullptr;
-            }
             case frontend::ProjectOopMirNodeKind::PollAddress:
             {
                 // NS304-T05-F09: the poll function's address, stored into the future's pollFn.
@@ -10759,55 +10834,6 @@ private:
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
 
-            case frontend::ProjectOopMirNodeKind::FloatingConstant:
-            {
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                if (type == nullptr) return nullptr;
-                if (node->typeKey == "builtin:decimal")
-                {
-                    // 128-bit decimal: low 96 bits = coefficient, bits 96..101 = scale,
-                    // bit 127 = sign. The C API wrapper exposes no constant shift/or, so the
-                    // value is assembled with builder instructions.
-                    std::uint64_t coefficient = 0;
-                    int scale = 0;
-                    if (!decimalCoefficientAndScale(node->floatingValue, coefficient, scale))
-                        return failValue(error, "decimal literal coefficient exceeds 64 bits in Stage 34");
-                    LLVMValueRef lo = LLVMConstInt(type, coefficient, 0);
-                    LLVMValueRef scaleValue = LLVMConstInt(
-                        type, static_cast<std::uint64_t>(scale), 0);
-                    LLVMValueRef scaleShifted = LLVMBuildShl(
-                        builder_, scaleValue,
-                        LLVMConstInt(LLVMInt32TypeInContext(context_), 96, 0), "decimal.scale");
-                    LLVMValueRef combined = LLVMBuildOr(builder_, lo, scaleShifted, "decimal.value");
-                    if (node->floatingValue < 0.0)
-                    {
-                        LLVMValueRef sign = LLVMBuildShl(
-                            builder_, LLVMConstInt(type, 1, 0),
-                            LLVMConstInt(LLVMInt32TypeInContext(context_), 127, 0), "decimal.sign");
-                        combined = LLVMBuildOr(builder_, combined, sign, "decimal.signed");
-                    }
-                    return combined;
-                }
-                return LLVMConstReal(type, node->floatingValue);
-            }
-            case frontend::ProjectOopMirNodeKind::BooleanConstant:
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), node->booleanValue ? 1U : 0U, 0);
-            case frontend::ProjectOopMirNodeKind::NullConstant:
-                return LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
-            case frontend::ProjectOopMirNodeKind::DefaultValue:
-            {
-                // Stage 52: default(T) -- LLVMConstNull is uniformly correct for every closed T
-                // here: an integer/float/bool/char primitive type gives numeric zero, a pointer
-                // type (class, string, delegate) gives a null pointer, and a struct (value) type
-                // gives an all-zero-fields aggregate -- exactly "the value every field of T would
-                // have if never assigned", with no per-primitive special-casing needed.
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                return type != nullptr ? LLVMConstNull(type) : nullptr;
-            }
-            case frontend::ProjectOopMirNodeKind::StringLiteral:
-                return lowerStringLiteral(node, error);
-            case frontend::ProjectOopMirNodeKind::Utf8StringLiteral:
-                return lowerUtf8StringLiteral(node, error);
             case frontend::ProjectOopMirNodeKind::ArrayAllocate:
                 return lowerArrayAllocate(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayAllocate:
@@ -10843,8 +10869,6 @@ private:
                     ? LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(context_), address, "string.element.load")
                     : nullptr;
             }
-            case frontend::ProjectOopMirNodeKind::EnumName:
-                return lowerEnumName(node, error);
             case frontend::ProjectOopMirNodeKind::StringConcat:
                 return lowerStringConcat(node, error);
             case frontend::ProjectOopMirNodeKind::StringEquals:
