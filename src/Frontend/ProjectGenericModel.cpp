@@ -2225,6 +2225,109 @@ private:
     if (hasError) out += serializeTypeSyntaxTree(type->functionErrorType());
     return out;
 }
+
+// NSC305-C01. Recursive deserialization of a TypeSyntax tree into `arena` (inverse of
+// serializeTypeSyntaxTree). The SourceRange's FileId is left default (invalid); the caller restores
+// it from the owning unit.
+[[maybe_unused]] ast::TypeSyntax* deserializeTypeSyntaxTree(
+    ast::AstArena& arena, ByteReader& reader)
+{
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+    std::uint32_t tokenKind = 0;
+    std::string baseName;
+    if (!reader.u32(begin) || !reader.u32(end) || !reader.u32(tokenKind) ||
+        !reader.string(baseName))
+        return nullptr;
+    ast::TypeSyntax* type = arena.make<ast::TypeSyntax>(
+        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}},
+        static_cast<lexer::TokenKind>(tokenKind), std::move(baseName));
+    std::uint8_t ownership = 0;
+    std::uint8_t reference = 0;
+    std::string lifetimeName;
+    std::uint8_t dynamicTrait = 0;
+    std::uint8_t opaqueResult = 0;
+    std::string opaqueResultTraitName;
+    std::uint8_t explicitTrait = 0;
+    std::uint8_t pointeeConst = 0;
+    std::uint8_t tuple = 0;
+    std::uint8_t function = 0;
+    std::uint8_t pack = 0;
+    std::uint8_t carrier = 0;
+    std::uint8_t convention = 0;
+    std::uint8_t variadic = 0;
+    std::uint8_t unsafe = 0;
+    std::uint8_t noHeap = 0;
+    std::uint8_t async = 0;
+    std::uint8_t nullable = 0;
+    std::string functionLifetimeName;
+    std::vector<std::string> tupleNames;
+    std::uint8_t hasProject = 0;
+    std::uint64_t project = 0;
+    std::uint8_t hasNamespace = 0;
+    std::string originNamespace;
+    if (!reader.byte(ownership) || !reader.byte(reference) || !reader.string(lifetimeName) ||
+        !reader.byte(dynamicTrait) || !reader.byte(opaqueResult) ||
+        !reader.string(opaqueResultTraitName) || !reader.byte(explicitTrait) ||
+        !reader.byte(pointeeConst) || !reader.byte(tuple) || !reader.byte(function) ||
+        !reader.byte(pack) || !reader.byte(carrier) || !reader.byte(convention) ||
+        !reader.byte(variadic) || !reader.byte(unsafe) || !reader.byte(noHeap) ||
+        !reader.byte(async) || !reader.byte(nullable) || !reader.string(functionLifetimeName) ||
+        !reader.stringVector(tupleNames) || !reader.byte(hasProject) ||
+        (hasProject != 0U && !reader.u64(project)) || !reader.byte(hasNamespace) ||
+        (hasNamespace != 0U && !reader.string(originNamespace)))
+        return nullptr;
+    type->setOwnershipQualifier(static_cast<ast::OwnershipQualifierSyntaxKind>(ownership));
+    type->setReferenceQualifier(static_cast<ast::ReferenceQualifierSyntaxKind>(reference));
+    type->setLifetimeName(std::move(lifetimeName));
+    type->setDynamicTrait(dynamicTrait != 0U);
+    type->setOpaqueResult(opaqueResult != 0U);
+    type->setOpaqueResultTraitName(std::move(opaqueResultTraitName));
+    type->setExplicitTraitImplementation(explicitTrait != 0U);
+    type->setPointeeConst(pointeeConst != 0U);
+    type->setTuple(tuple != 0U);
+    type->setFunction(function != 0U);
+    type->setPackExpansion(pack != 0U);
+    type->setFunctionCarrier(static_cast<ast::FunctionTypeCarrierSyntaxKind>(carrier));
+    type->setFunctionCallingConvention(
+        static_cast<ast::FunctionCallingConventionSyntaxKind>(convention));
+    type->setFunctionVariadic(variadic != 0U);
+    type->setFunctionUnsafe(unsafe != 0U);
+    type->setFunctionNoHeap(noHeap != 0U);
+    type->setFunctionAsync(async != 0U);
+    type->setFunctionNullable(nullable != 0U);
+    type->setFunctionLifetimeName(std::move(functionLifetimeName));
+    if (hasProject != 0U) type->setOriginProjectOrdinal(static_cast<std::size_t>(project));
+    if (hasNamespace != 0U) type->setOriginNamespace(std::move(originNamespace));
+
+    std::uint32_t argumentCount = 0;
+    if (!reader.u32(argumentCount)) return nullptr;
+    for (std::uint32_t index = 0; index < argumentCount; ++index)
+    {
+        ast::TypeSyntax* argument = deserializeTypeSyntaxTree(arena, reader);
+        if (argument == nullptr) return nullptr;
+        if (tuple != 0U && index < tupleNames.size())
+            type->addTupleElement(argument, tupleNames[index]);
+        else
+            type->addTypeArgument(argument);
+    }
+    std::uint8_t hasReturn = 0;
+    std::uint8_t hasError = 0;
+    if (!reader.byte(hasReturn) || !reader.byte(hasError)) return nullptr;
+    if (hasReturn != 0U)
+    {
+        ast::TypeSyntax* returnType = deserializeTypeSyntaxTree(arena, reader);
+        if (returnType == nullptr) return nullptr;
+        type->setFunctionReturnType(returnType);
+    }
+    if (hasError != 0U)
+    {
+        ast::TypeSyntax* errorType = deserializeTypeSyntaxTree(arena, reader);
+        if (errorType == nullptr) return nullptr;
+        type->setFunctionErrorType(errorType);
+    }
+    return type;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
