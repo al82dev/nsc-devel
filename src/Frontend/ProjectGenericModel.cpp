@@ -4918,34 +4918,117 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGenericShallow(
 ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
-    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::size_t modifierLimit)
 {
     ast::TypeSyntax* result = cloneTypeGenericShallow(arena, source);
-    result->setFunctionReturnType(cloneType(
-        arena, source->functionReturnType(), substitutions));
-    result->setFunctionErrorType(cloneType(
-        arena, source->functionErrorType(), substitutions));
     if (source->constExpression() != nullptr)
     {
         result->setConstExpression(cloneNode(
             arena, source->constExpression(), substitutions, "", ""));
     }
+    // NSC305-G06. Iteratively clone the return/error/argument types with an explicit stack.
+    // Simple generic types are shallow-cloned here and their sub-types pushed; projection, pack,
+    // substitution, tuple and pack-expansion types delegate back to cloneType (bounded/rare).
+    const auto isSpecialType = [&](const ast::TypeSyntax* syntax)
+    {
+        if (syntax == nullptr) return false;
+        const std::size_t dot = syntax->baseName().find('.');
+        if (dot != std::string::npos &&
+            substitutions.contains(syntax->baseName().substr(0, dot)))
+            return true;
+        if (syntax->baseName() == "packtype" && syntax->typeArguments().size() == 2U)
+            return true;
+        if (syntax->typeArguments().empty() && substitutions.contains(syntax->baseName()))
+            return true;
+        return syntax->isTuple();
+    };
+    struct TypeWork
+    {
+        const ast::TypeSyntax* source;
+        ast::TypeSyntax* parent;
+        std::uint8_t slot;  // 0=return, 1=error, 2=argument
+        std::string tupleName;
+    };
+    std::vector<TypeWork> work;
     if (source->isTuple())
     {
-        for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
+        for (std::size_t index = source->typeArguments().size(); index > 0; --index)
         {
-            const std::string name = index < source->tupleElementNames().size()
-                ? source->tupleElementNames()[index] : std::string{};
-            result->addTupleElement(
-                cloneType(arena, source->typeArguments()[index], substitutions), name);
+            const std::size_t i = index - 1U;
+            const std::string name = i < source->tupleElementNames().size()
+                ? source->tupleElementNames()[i] : std::string{};
+            work.push_back(TypeWork{source->typeArguments()[i], result, 2, name});
         }
     }
     else
     {
-        for (const ast::TypeSyntax* argument : source->typeArguments())
-            for (ast::TypeSyntax* expanded :
-                 cloneExpandedTypeArgument(arena, argument, substitutions))
-                result->addTypeArgument(expanded);
+        for (auto it = source->typeArguments().rbegin(); it != source->typeArguments().rend(); ++it)
+            work.push_back(TypeWork{*it, result, 2, {}});
+    }
+    if (source->functionErrorType() != nullptr)
+        work.push_back(TypeWork{source->functionErrorType(), result, 1, {}});
+    if (source->functionReturnType() != nullptr)
+        work.push_back(TypeWork{source->functionReturnType(), result, 0, {}});
+    while (!work.empty())
+    {
+        TypeWork item = work.back();
+        work.pop_back();
+        ast::TypeSyntax* child = nullptr;
+        if (item.source != nullptr)
+        {
+            if (item.slot == 2 && !item.parent->isTuple() && item.source->isPackExpansion())
+            {
+                for (ast::TypeSyntax* expanded :
+                     cloneExpandedTypeArgument(arena, item.source, substitutions))
+                    item.parent->addTypeArgument(expanded);
+                continue;
+            }
+            if (isSpecialType(item.source))
+            {
+                child = cloneType(arena, item.source, substitutions);
+            }
+            else
+            {
+                child = cloneTypeGenericShallow(arena, item.source);
+                if (item.source->constExpression() != nullptr)
+                {
+                    child->setConstExpression(cloneNode(
+                        arena, item.source->constExpression(), substitutions, "", ""));
+                }
+                // simple modifiers (no substitution identity handling)
+                const std::size_t count =
+                    std::min(item.source->modifiers().size(), modifierLimit);
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    const ast::TypeModifierSyntax& modifier = item.source->modifiers()[i];
+                    child->addModifier(ast::TypeModifierSyntax{
+                        modifier.kind,
+                        cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
+                        modifier.range,
+                        modifier.arrayRank});
+                }
+                for (auto it = item.source->typeArguments().rbegin();
+                     it != item.source->typeArguments().rend(); ++it)
+                    work.push_back(TypeWork{*it, child, 2, {}});
+                if (item.source->functionErrorType() != nullptr)
+                    work.push_back(TypeWork{item.source->functionErrorType(), child, 1, {}});
+                if (item.source->functionReturnType() != nullptr)
+                    work.push_back(TypeWork{item.source->functionReturnType(), child, 0, {}});
+            }
+        }
+        if (child == nullptr) continue;
+        switch (item.slot)
+        {
+            case 0: item.parent->setFunctionReturnType(child); break;
+            case 1: item.parent->setFunctionErrorType(child); break;
+            case 2:
+                if (item.parent->isTuple())
+                    item.parent->addTupleElement(child, item.tupleName);
+                else
+                    item.parent->addTypeArgument(child);
+                break;
+        }
     }
     return result;
 }
@@ -5160,7 +5243,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     }
     else
     {
-        result = cloneTypeGeneric(arena, source, substitutions);
+        result = cloneTypeGeneric(arena, source, substitutions, modifierLimit);
     }
 
     const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);

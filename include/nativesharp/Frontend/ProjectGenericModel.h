@@ -844,7 +844,8 @@ private:
     ast::TypeSyntax* cloneTypeGeneric(
         ast::AstArena& arena,
         const ast::TypeSyntax* source,
-        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit);
     // NSC305-G06. The shallow (non-recursive) part of the generic type clone: creates the result,
     // copies the function flags and carries forward origin tags. Return/error/argument cloning is
     // left to the caller.
