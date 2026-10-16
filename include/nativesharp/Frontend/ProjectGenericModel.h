@@ -383,6 +383,8 @@ public:
     bool isBuilt() const noexcept;
     // NSC305-C01. Sets the C1 template parse cache root (empty = disabled).
     void setTemplateCacheRoot(std::filesystem::path root);
+    // NSC305-G09. Sets the requested worker count for the parallel specialization wave (1 = serial).
+    void setParallelismWorkers(std::size_t workers) noexcept;
     // NSC305-C02. Warm-build restore of one template record: on a cache hit, deserializes the
     // metadata, links the walked syntax node and pushes the TemplateState (skipping the record
     // construction). Returns false on miss or disabled cache.
@@ -1188,6 +1190,8 @@ private:
     // NSC305-G08. Logical instantiation depth of the wave currently being executed; the collector
     // records parent depth + 1 and the scheduler restores it per demand.
     std::size_t currentLogicalDepth_ = 0;
+    // NSC305-G09. Requested worker count for the parallel wave (1 = serial); 0 is normalized to 1.
+    std::size_t parallelismWorkers_ = 1;
     // NSC305-G09. O(1) dedup of body-type demands by stableKey (the "deduplicate demands by
     // SpecializationKey" wave step); cleared after each wave is processed.
     std::unordered_set<std::string> bodyTypeDemandKeys_;

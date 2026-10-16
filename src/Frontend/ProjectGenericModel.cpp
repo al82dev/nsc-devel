@@ -19,8 +19,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <iomanip>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -1919,6 +1921,11 @@ bool ProjectGenericModel::isBuilt() const noexcept
 void ProjectGenericModel::setTemplateCacheRoot(std::filesystem::path root)
 {
     templateCache_.setRoot(std::move(root));
+}
+
+void ProjectGenericModel::setParallelismWorkers(std::size_t workers) noexcept
+{
+    parallelismWorkers_ = workers == 0U ? 1U : workers;
 }
 
 // NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
@@ -3959,7 +3966,7 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             reserved.push_back(std::move(entry));
         }
 
-        for (ReservedDemand& reservedDemand : reserved)
+        auto applyDemand = [&](ReservedDemand& reservedDemand) -> std::string
         {
             GenericTypeDemand& demand = *reservedDemand.demand;
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
@@ -3976,19 +3983,50 @@ bool ProjectGenericModel::executeTypeDemandWaves(
                     rewriteSpecializedSyntax(
                         demand.target, demand.state->record, reservedDemand.key,
                         specializations_[*existing].specializedName);
-                    continue;
+                    return specializations_[*existing].specializedName;
                 }
-                currentLogicalDepth_ = 0;
-                return false;
+                return {};
             }
-            const std::string specialized = executeTypeDemand(
+            return executeTypeDemand(
                 *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
                 reservedDemand.ordinal, reservedDemand.key, reservedDemand.specializedName,
                 demand.target->typeArguments(), reservedDemand.callerContext, diagnostics);
-            if (specialized.empty())
+        };
+
+        if (parallelismWorkers_ > 1U && reserved.size() > 1U)
+        {
+            // NSC305-G09. Parallel wave: the ordinals were pre-reserved in the sorted order, so the
+            // workers serialize only on the shared model (deterministic products by ordinal).
+            std::mutex executeMutex;
+            std::vector<std::future<std::string>> futures;
+            futures.reserve(reserved.size());
+            for (ReservedDemand& reservedDemand : reserved)
             {
-                currentLogicalDepth_ = 0;
-                return false;
+                futures.push_back(std::async(std::launch::async,
+                    [&]()
+                    {
+                        std::lock_guard<std::mutex> lock(executeMutex);
+                        return applyDemand(reservedDemand);
+                    }));
+            }
+            for (std::future<std::string>& future : futures)
+            {
+                if (future.get().empty())
+                {
+                    currentLogicalDepth_ = 0;
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            for (ReservedDemand& reservedDemand : reserved)
+            {
+                if (applyDemand(reservedDemand).empty())
+                {
+                    currentLogicalDepth_ = 0;
+                    return false;
+                }
             }
         }
         currentLogicalDepth_ = 0;
