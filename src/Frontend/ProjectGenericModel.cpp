@@ -4041,6 +4041,51 @@ bool ProjectGenericModel::inferGenericCall(
     return true;
 }
 
+// NSC305-G08. Materializes every shared-overload candidate of a generic call (see the header).
+bool ProjectGenericModel::materializeSharedOverloads(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* call,
+    ast::AstNode* callee,
+    const std::string& methodName,
+    const std::string& namespaceName,
+    const std::vector<TemplateState*>& shared,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::string sharedName = methodName + "__g" +
+        std::to_string(call->typeSyntaxes().size());
+    for (const ast::TypeSyntax* argument : call->typeSyntaxes())
+        sharedName += "__" + sanitize(typeSpelling(argument));
+
+    currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
+    currentInstantiationNamespace_ = namespaceName;
+    currentInstantiationRange_ = call->range();
+    // NSC-LIMIT-007: las que salen de aqui son ALTERNATIVAS entre si, no obligaciones
+    // simultaneas. Se marcan con un grupo comun para que la validacion de constraints exija
+    // que fallen todas antes de decir nada.
+    currentOverloadGroup_ = ++nextOverloadGroup_;
+    for (TemplateState* candidate : shared)
+    {
+        if (!genericArityAccepts(candidate->record, call->typeSyntaxes().size())) continue;
+        if (!normalizeGenericArguments(
+                candidate->record, call->typeSyntaxes(), call->range(), diagnostics))
+        {
+            currentOverloadGroup_ = 0;
+            return false;
+        }
+        if (ensureMethodSpecialization(
+                *candidate, call->typeSyntaxes(), diagnostics, sharedName).empty())
+        {
+            currentOverloadGroup_ = 0;
+            return false;
+        }
+    }
+    currentOverloadGroup_ = 0;
+    if (callee != nullptr) callee->setText(sharedName);
+    call->clearTypeSyntaxes();
+    call->setFlag(false);
+    return true;
+}
+
 bool ProjectGenericModel::processGenericCall(
     ProjectSyntaxUnit& unit,
     ast::AstNode* call,
@@ -4094,39 +4139,8 @@ bool ProjectGenericModel::processGenericCall(
     const std::vector<TemplateState*>& shared = resolution.shared;
     if (shared.size() > 1U)
     {
-        std::string sharedName = methodName + "__g" +
-            std::to_string(call->typeSyntaxes().size());
-        for (const ast::TypeSyntax* argument : call->typeSyntaxes())
-            sharedName += "__" + sanitize(typeSpelling(argument));
-
-        currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
-        currentInstantiationNamespace_ = namespaceName;
-        currentInstantiationRange_ = call->range();
-        // NSC-LIMIT-007: las que salen de aqui son ALTERNATIVAS entre si, no obligaciones
-        // simultaneas. Se marcan con un grupo comun para que la validacion de constraints exija
-        // que fallen todas antes de decir nada.
-        currentOverloadGroup_ = ++nextOverloadGroup_;
-        for (TemplateState* candidate : shared)
-        {
-            if (!genericArityAccepts(candidate->record, call->typeSyntaxes().size())) continue;
-            if (!normalizeGenericArguments(
-                    candidate->record, call->typeSyntaxes(), call->range(), diagnostics))
-            {
-                currentOverloadGroup_ = 0;
-                return false;
-            }
-            if (ensureMethodSpecialization(
-                    *candidate, call->typeSyntaxes(), diagnostics, sharedName).empty())
-            {
-                currentOverloadGroup_ = 0;
-                return false;
-            }
-        }
-        currentOverloadGroup_ = 0;
-        if (callee != nullptr) callee->setText(sharedName);
-        call->clearTypeSyntaxes();
-        call->setFlag(false);
-        return true;
+        return materializeSharedOverloads(
+            unit, call, callee, methodName, namespaceName, shared, diagnostics);
     }
 
     TemplateState* state = resolution.unique;

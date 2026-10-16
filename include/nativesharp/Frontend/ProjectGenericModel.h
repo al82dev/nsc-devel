@@ -646,6 +646,17 @@ private:
         const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics);
 
+    // NSC305-G08. Materializes every shared-overload candidate of a generic call with one common
+    // specialized name (the "ID 132" path), then rewrites the call site. Returns false on error.
+    bool materializeSharedOverloads(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        ast::AstNode* callee,
+        const std::string& methodName,
+        const std::string& namespaceName,
+        const std::vector<TemplateState*>& shared,
+        diagnostics::DiagnosticEngine& diagnostics);
+
     bool inferGenericCall(
         ProjectSyntaxUnit& unit,
         ast::AstNode* call,
