@@ -1835,7 +1835,9 @@ std::string GenericTelemetry::renderSummary() const
            << " specialization-hits=" << specializationHits
            << " nodes-cloned=" << nodesCloned
            << " types-cloned=" << typesCloned
-           << " maximum-logical-depth=" << maximumLogicalDepth << '\n';
+           << " maximum-logical-depth=" << maximumLogicalDepth
+           << " scope-copies=" << scopeCopies
+           << " scope-copied-entries=" << scopeCopiedEntries << '\n';
     for (const std::string_view name : subPhaseNames)
     {
         const auto found = subPhaseMicros.find(std::string(name));
@@ -2363,6 +2365,10 @@ void ProjectGenericModel::processNode(
     }
     // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
     // mismo AST, en el mismo sitio, y heredando los de fuera.
+    telemetry_.noteScopeCopy(
+        scope.importedNamespaces.size() + scope.aliases.size() + scope.typeAliases.size() +
+        scope.typeParameters.size() + scope.valueTypes.size() + scope.valuePassKinds.size() +
+        scope.genericLambdas.size());
     GenericLookupScope currentScope = scope;
     if (node->kind() == ast::AstNodeKind::LambdaExpression &&
         node->text().starts_with("generic-lambda-instance:"))

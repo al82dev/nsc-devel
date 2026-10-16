@@ -192,6 +192,11 @@ struct GenericTelemetry final
     std::uint64_t nodesCloned = 0;
     std::uint64_t typesCloned = 0;
     std::uint64_t maximumLogicalDepth = 0;
+    // NSC305-G04. Scope-copy cardinality: how many `GenericLookupScope` deep copies were made and
+    // the total container entries those copies moved. A large `scopeCopiedEntries` per copy is the
+    // O(N^2) signal that motivates persistent scopes.
+    std::uint64_t scopeCopies = 0;
+    std::uint64_t scopeCopiedEntries = 0;
 
     struct TemplateDetail final
     {
@@ -220,6 +225,13 @@ struct GenericTelemetry final
         if (!enabled) return;
         ++templatesCollected;
         if (kindIndex < 5U) ++templatesByKind[kindIndex];
+    }
+
+    void noteScopeCopy(std::size_t entries)
+    {
+        if (!enabled) return;
+        ++scopeCopies;
+        scopeCopiedEntries += entries;
     }
 
     void noteSpecializationHit()
