@@ -1348,14 +1348,13 @@ class Program
             const std::filesystem::path orphanProject = products.writeProject(
                 "T02OrphanImpl", "Exe", R"ns(
 using CoherenceApi;
-trait ILocal { int Score(); }
-impl ILocal for Foreign { int Score() { return 42; } }
+impl IScore for Foreign { int Score() { return 42; } }
 class Program { public static int Main() { return 0; } }
 )ns", libraryReference);
             const external_program_support::Result orphan = runT01Compiler(
                 {L"--dump-project-interfaces", orphanProject.wstring()}, products.directory());
             context.expect(orphan.started && orphan.exitCode != 0 &&
-                    orphan.output.find("sealed trait coherence rejects this impl") !=
+                    orphan.output.find("orphan impl: the module owns neither") !=
                         std::string::npos,
                 "TL-LANG-304 a consumer must not implement a trait for a foreign class: " +
                     orphan.error + orphan.output);
