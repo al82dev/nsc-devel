@@ -682,6 +682,12 @@ private:
     bool templateVisible(std::size_t from, const GenericTemplateRecord& target) const noexcept;
 
     std::vector<TemplateState> templateStates_;
+    // NSC305-G01. O(1) lookups that replace the linear `stateForSyntax` scan and the
+    // imported-specialization seed `find_if`. Populated after template collection (and, for
+    // `stateByCanonicalKey_`, after canonical-key disambiguation). `templateStates_` is stable from
+    // that point on, so the stored element pointers remain valid for the rest of build().
+    std::unordered_map<const ast::AstNode*, TemplateState*> stateBySyntax_;
+    std::unordered_map<std::string, TemplateState*> stateByCanonicalKey_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;

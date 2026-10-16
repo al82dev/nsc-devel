@@ -776,6 +776,17 @@ bool ProjectGenericModel::build(
                 controlledFamilies.contains(state.record.specializationFamilyKey);
     }
 
+    // NSC305-G01. Build the O(1) syntax and canonical-key indexes now that template collection and
+    // canonical-key disambiguation are final. `templateStates_` is stable from here on, so the
+    // stored element pointers remain valid. `emplace` keeps the first state for a duplicated key,
+    // matching the previous linear scan's "first match" semantics (duplicate type keys are
+    // diagnosed just below, so their winner is irrelevant to a successful build).
+    for (TemplateState& state : templateStates_)
+    {
+        stateBySyntax_.emplace(state.syntax, &state);
+        stateByCanonicalKey_.emplace(state.record.canonicalKey, &state);
+    }
+
     // Record the declaration-level dependency graph before any template is cloned. A producer
     // can then publish exactly the fixed-point closure of its public roots, and the NSMETA
     // verifier can prove that a same-module edge was not silently dropped.
@@ -867,14 +878,13 @@ bool ProjectGenericModel::build(
         for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
         {
             if (!imported.hasConcreteDeclaration) continue;
-            const auto templateState = std::ranges::find_if(templateStates_, [&](const auto& state) {
-                return state.record.canonicalKey == imported.templateKey;
-            });
-            if (templateState == templateStates_.end() ||
+            const auto templateStateIt = stateByCanonicalKey_.find(imported.templateKey);
+            if (templateStateIt == stateByCanonicalKey_.end() ||
                 specializationByKey_.contains(imported.specializationKey))
             {
                 continue;
             }
+            const TemplateState* templateState = templateStateIt->second;
             const std::size_t ordinal = specializations_.size();
             specializationByKey_.emplace(imported.specializationKey, ordinal);
             specializations_.push_back(GenericSpecializationRecord{
@@ -5710,10 +5720,8 @@ bool ProjectGenericModel::projectVisible(std::size_t from, std::size_t target) c
 ProjectGenericModel::TemplateState* ProjectGenericModel::stateForSyntax(
     const ast::AstNode* syntax) noexcept
 {
-    const auto found = std::ranges::find_if(templateStates_, [&](const TemplateState& state) {
-        return state.syntax == syntax;
-    });
-    return found == templateStates_.end() ? nullptr : &*found;
+    const auto found = stateBySyntax_.find(syntax);
+    return found == stateBySyntax_.end() ? nullptr : found->second;
 }
 
 void ProjectGenericModel::discoverTemplateDependencies(
