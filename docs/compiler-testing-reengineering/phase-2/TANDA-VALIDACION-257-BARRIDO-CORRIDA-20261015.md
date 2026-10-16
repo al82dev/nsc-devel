@@ -43,7 +43,7 @@ participa en la ruta causal y se registre aquí antes de modificarlo.
 | Target | 5 | regresión de identidad ordinal al insertar `Decimal` | `BuiltinLayoutKind` | corregida; `7/7 PASS` con vecindad |
 | AST | 3 | oráculo anterior a tres nodos append-only | catálogo CA-AST-003 | corregida; `8/8 PASS` con vecindad |
 | Lexer | 2 | regresión ordinal al insertar `Utf8StringLiteral` en posición 7 | `TokenKind` | corregida; `8/8 PASS` con vecindad |
-| Parser seed | 1 | oráculo anterior a `Future`, `Iterator` y `AsyncIterator` | CP-PAR-001 | causa demostrada |
+| Parser seed | 1 | oráculo anterior a `Future`, `Iterator` y `AsyncIterator` | CP-PAR-001 | corregida; `1/1 PASS` |
 | Parser partial | 1 | `partial struct` cae en la ruta de miembro parcial | `parseClassMember` | causa demostrada |
 | Parser ref property | 1 | oráculo anterior a la feature `e1629a749` | CP-PAR-023 | causa demostrada |
 | Parser nesting | 1 | recursión por cada prefijo unario; stack overflow `0xC00000FD` | `parseUnaryExpression` | reproducido |
@@ -112,8 +112,8 @@ siguiente batería desde la GUI.
 
 - Inventario original: congelado.
 - Causas raíz conocidas: `8`.
-- Causas corregidas: `3`.
-- Pruebas focales aprobadas: `23`.
+- Causas corregidas: `4`.
+- Pruebas focales aprobadas: `24`.
 - Target: `nsc_component_tests` Debug compiló; `TF-TGT-002`, `005`, `006`, `008`, `036`, `038` y `040`
   pasaron individualmente. Se restauraron `Enum=16` y `Pointer=17`; `Decimal=18` quedó añadido al final.
 - AST: `nsc_component_tests` Debug compiló; `TA-AST-019..026` pasaron individualmente. El catálogo host ahora
@@ -121,4 +121,6 @@ siguiente batería desde la GUI.
   se modificó.
 - Lexer: `nsc_component_tests` Debug compiló; `TL-LEX-001..008` pasaron individualmente. Se restauraron los
   ordinales previos y `Utf8StringLiteral` quedó añadido al final como ordinal `151` de `152` entradas.
-- Siguiente acción causal: actualizar el seed esperado de Parser a sus `19` nombres vigentes.
+- Parser seed: `nsc_component_tests` Debug compiló y `TP-PAR-007` pasó. El oráculo cubre los `19` nombres
+  predeterminados vigentes y la seed externa; el constructor de producto no se modificó.
+- Siguiente acción causal: corregir el despacho de `partial` delante de tipos anidados no admitidos.

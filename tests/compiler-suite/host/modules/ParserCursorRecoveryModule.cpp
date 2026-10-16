@@ -82,19 +82,20 @@ void testCompilationUnitProgressGuard(TestContext& context)
 void testKnownTypeSeedAndBuiltins(TestContext& context)
 {
     ParserFixture fixture("", {"External", "External", ""});
-    constexpr std::array<std::string_view, 16> builtins = {
+    constexpr std::array<std::string_view, 19> seededTypeNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint",
         "long", "ulong", "nint", "nuint", "float", "double", "string", "object",
+        "Future", "Iterator", "AsyncIterator",
     };
     bool containsAll = true;
-    for (const std::string_view builtin : builtins)
+    for (const std::string_view typeName : seededTypeNames)
     {
-        containsAll = containsAll && fixture.parser().knownTypeNames_.contains(std::string(builtin));
+        containsAll = containsAll && fixture.parser().knownTypeNames_.contains(std::string(typeName));
     }
     context.expect(containsAll && fixture.parser().knownTypeNames_.contains("External") &&
             !fixture.parser().knownTypeNames_.contains("") &&
-            fixture.parser().knownTypeNames_.size() == builtins.size() + 1,
-        "TP-PAR-007 seed must add one unique nonempty name beside all sixteen builtins");
+            fixture.parser().knownTypeNames_.size() == seededTypeNames.size() + 1,
+        "TP-PAR-007 seed must add one unique nonempty name beside all nineteen default type names");
 }
 
 void testSuccessfulExpectConsumes(TestContext& context)

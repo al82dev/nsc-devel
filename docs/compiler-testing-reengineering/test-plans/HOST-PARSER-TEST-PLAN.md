@@ -22,7 +22,7 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-004 | CP-PAR-001 | `peek` más allá de EOF | referencia al último token, sin avance | PR |
 | TP-PAR-005 | CP-PAR-001 | `consume` repetido en EOF | cursor no rebasa último token | PR |
 | TP-PAR-006 | CP-PAR-001 | parser de declaración sin progreso | unidad descarta exactamente un token y termina | PR |
-| TP-PAR-007 | CP-PAR-001 | seed externa y 16 builtins | nombres presentes; vacío ignorado; sin duplicación observable | PR |
+| TP-PAR-007 | CP-PAR-001 | seed externa y 19 nombres de tipo predeterminados | nombres presentes; vacío ignorado; sin duplicación observable | PR |
 | TP-PAR-008 | CP-PAR-002 | `expect` acertado | consume uno; no diagnóstico | PR |
 | TP-PAR-009 | CP-PAR-002 | `expect` fallido | ExpectedToken; cursor intacto; rango actual | PR |
 | TP-PAR-010 | CP-PAR-002 | contextual keyword acertada/fallida | comparación exacta de Identifier lexeme | PR |
