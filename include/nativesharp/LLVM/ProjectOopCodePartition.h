@@ -43,6 +43,9 @@ public:
 
     std::span<const ProjectOopCodeUnit> units() const noexcept;
     std::optional<std::size_t> unitForFunction(std::size_t functionOrdinal) const noexcept;
+    // NSC305-L01. Records the observed (real, measured) cost of a code unit into its bounded
+    // historical weight, saturating at the cap.
+    void recordCodeUnitCost(std::size_t ordinal, std::uint64_t observedCost) noexcept;
     std::string dump() const;
     bool isBuilt() const noexcept;
 

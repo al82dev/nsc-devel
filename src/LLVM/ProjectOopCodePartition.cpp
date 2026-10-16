@@ -294,6 +294,17 @@ std::optional<std::size_t> ProjectOopCodePartition::unitForFunction(
                                                      : std::nullopt;
 }
 
+void ProjectOopCodePartition::recordCodeUnitCost(
+    std::size_t ordinal, std::uint64_t observedCost) noexcept
+{
+    if (ordinal >= units_.size()) return;
+    constexpr std::uint64_t kHistoricalCostCap = std::uint64_t{1} << 24U;
+    ProjectOopCodeUnit& unit = units_[ordinal];
+    unit.historicalCost = unit.historicalCost == 0U
+        ? std::min(observedCost, kHistoricalCostCap)
+        : boundedHistoricalWeight(unit.historicalCost, observedCost, kHistoricalCostCap);
+}
+
 std::string ProjectOopCodePartition::dump() const
 {
     std::ostringstream stream;

@@ -514,6 +514,19 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         result->cacheHitCount_ += cacheHits[ordinal];
         result->cacheMissCount_ += cacheMisses[ordinal];
     }
+    // NSC305-L01. Record the observed per-unit cost into the partition's bounded historical weight.
+    if (usePartitions)
+    {
+        for (std::size_t ordinal = 0; ordinal < partition.units().size(); ++ordinal)
+        {
+            const CodeUnitTelemetry& unitTelemetry = codeUnitTelemetry[ordinal + 1];
+            const std::uint64_t observed = unitTelemetry.fingerprintMicros +
+                unitTelemetry.lookupMicros + unitTelemetry.loweringMicros +
+                unitTelemetry.optimizationMicros + unitTelemetry.emissionMicros +
+                unitTelemetry.verificationMicros + unitTelemetry.storeMicros;
+            partition.recordCodeUnitCost(ordinal, observed);
+        }
+    }
     result->codeUnitTelemetry_ = std::move(codeUnitTelemetry);
 
     if (preserveModuleText)
