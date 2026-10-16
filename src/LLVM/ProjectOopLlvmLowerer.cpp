@@ -825,6 +825,54 @@ void applyOdrLinkage(LLVMModuleRef module, LLVMValueRef value)
     LLVMSetComdat(value, comdat);
 }
 
+// NSC305-L03. Emits a dispatch table's vtable global (moved out of emitDispatchMetadata as a pure
+// move). The function lookup is a callback so the private FunctionInfo map stays in the lowerer.
+bool emitVtableGlobal(
+    LLVMModuleRef module,
+    LLVMTypeRef ptr,
+    const frontend::ProjectOopMirDispatchTable& table,
+    const std::function<LLVMValueRef(std::string_view)>& functionLookup,
+    std::unordered_map<std::size_t, LLVMValueRef>& vtableGlobals,
+    std::string& error)
+{
+    LLVMValueRef vtableGlobal = nullptr;
+    if (!table.slotCalleeNames.empty())
+    {
+        LLVMTypeRef arrayType = LLVMArrayType2(ptr, table.slotCalleeNames.size());
+        vtableGlobal = LLVMAddGlobal(module, arrayType, table.vtableName.c_str());
+        if (vtableGlobal == nullptr)
+        {
+            error = "Macro A failed to declare vtable global " + table.vtableName;
+            return false;
+        }
+        std::vector<LLVMValueRef> entries;
+        entries.reserve(table.slotCalleeNames.size());
+        for (const std::string& callee : table.slotCalleeNames)
+        {
+            if (callee.empty())
+            {
+                entries.push_back(LLVMConstNull(ptr));
+                continue;
+            }
+            LLVMValueRef target = functionLookup(callee);
+            if (target == nullptr)
+            {
+                error = "Stage 35 vtable target was not declared: " + callee;
+                return false;
+            }
+            entries.push_back(target);
+        }
+        LLVMValueRef initializer = LLVMConstArray2(
+            ptr, entries.data(), static_cast<std::uint64_t>(entries.size()));
+        LLVMSetInitializer(vtableGlobal, initializer);
+        LLVMSetGlobalConstant(vtableGlobal, 1);
+        if (!table.genericSpecializationKey.empty())
+            applyOdrLinkage(module, vtableGlobal);
+        vtableGlobals[table.typeOrdinal] = vtableGlobal;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -3913,38 +3961,14 @@ private:
                     FunctionInfo{accessor, descriptorAccessorFunctionType_};
                 continue;
             }
-            LLVMValueRef vtableGlobal = nullptr;
-            if (!table.slotCalleeNames.empty())
-            {
-                LLVMTypeRef arrayType = LLVMArrayType2(ptr, table.slotCalleeNames.size());
-                vtableGlobal = LLVMAddGlobal(module_, arrayType, table.vtableName.c_str());
-                if (vtableGlobal == nullptr)
-                {
-                    return fail(error, "Macro A failed to declare vtable global " + table.vtableName);
-                }
-                std::vector<LLVMValueRef> entries;
-                entries.reserve(table.slotCalleeNames.size());
-                for (const std::string& callee : table.slotCalleeNames)
-                {
-                    if (callee.empty())
-                    {
-                        entries.push_back(LLVMConstNull(ptr));
-                        continue;
-                    }
-                    const auto found = functions_.find(callee);
-                    if (found == functions_.end())
-                    {
-                        return fail(error, "Stage 35 vtable target was not declared: " + callee);
-                    }
-                    entries.push_back(found->second.function);
-                }
-                LLVMValueRef initializer = LLVMConstArray2(
-                    ptr, entries.data(), static_cast<std::uint64_t>(entries.size()));
-                LLVMSetInitializer(vtableGlobal, initializer);
-                LLVMSetGlobalConstant(vtableGlobal, 1);
-                applyGenericOdrDefinition(vtableGlobal, table.genericSpecializationKey);
-                vtableGlobals_[table.typeOrdinal] = vtableGlobal;
-            }
+            if (!emitVtableGlobal(
+                    module_, ptr, table,
+                    [&](std::string_view callee) {
+                        const auto found = functions_.find(std::string(callee));
+                        return found == functions_.end() ? nullptr : found->second.function;
+                    },
+                    vtableGlobals_, error))
+                return false;
 
             std::vector<LLVMValueRef> interfaceMapEntries;
             for (const frontend::ProjectOopMirDispatchTable::InterfaceTable& interfaceTable :
