@@ -16,6 +16,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmRuntimeNames.h"
+#include "nativesharp/LLVM/LlvmTypeClassification.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
@@ -2356,7 +2357,7 @@ private:
         // Stage 54.2 "Atomics". The location parameter is always `ptr` at this LLVM level --
         // NativeSharp's raw-pointer machinery (see ProjectMethodBodyModel.cpp's Interlocked
         // recognition block: the first parameter's typeKey is builtin:int*/builtin:long*) already
-        // lowers ANY `*`-suffixed typeKey to plain LLVM `ptr` via isPointerLike(), so there is
+        // lowers ANY `*`-suffixed typeKey to plain LLVM `ptr` via isPointerLikeType(), so there is
         // nothing special to do here beyond picking i32 vs i64 for the value/result type.
         // Increment/Decrement: one ptr in, i32/i64 out (the NEW value -- Win32's
         // InterlockedIncrement/Decrement already return the new value directly, no adjustment
@@ -6120,7 +6121,7 @@ private:
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
         LLVMPositionBuilderAtEnd(builder_, destroyBlock);
 
-        if (isDelegateReference(typeKey))
+        if (isDelegateReferenceType(nameLookup_, typeKey))
         {
             if (!emitDelegateDestroy(value, prefix + ".delegate", error)) return false;
         }
@@ -6129,7 +6130,7 @@ private:
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
         }
-        else if (isClassReference(typeKey))
+        else if (isClassReferenceType(nameLookup_, typeKey))
         {
             if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
                 return fail(error, "NativeSharp 3.0 array element cleanup has no class destruction ABI");
@@ -6462,7 +6463,7 @@ private:
         // scope exit. The volatile flag below is what turns "the cleanup may be entered twice" into
         // "the destructor runs exactly once".
         emitCleanupGuardBranch(found->second, value, destroyBlock, doneBlock, "raii.owner");
-        if (isDelegateReference(node->typeKey))
+        if (isDelegateReferenceType(nameLookup_, node->typeKey))
         {
             if (!emitDelegateDestroy(value, "raii.delegate", error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
@@ -6595,7 +6596,7 @@ private:
         // `raii` local's is). Fixing only the `raii` side would leave `owned` parameters silently
         // double-destroyed in exactly the same shape.
         emitCleanupGuardBranch(found->second, value, destroyBlock, doneBlock, "owned.param");
-        if (isDelegateReference(node->typeKey))
+        if (isDelegateReferenceType(nameLookup_, node->typeKey))
         {
             if (!emitDelegateDestroy(value, "owned.param.delegate", error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
@@ -12975,7 +12976,7 @@ private:
         if (typeKey == "builtin:float") return {4, 4};
         if (typeKey == "builtin:double") return {8, 8};
         if (typeKey == "builtin:string" || frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
-            isPointerLike(typeKey) || isClassReference(typeKey) || isDelegateReference(typeKey))
+            isPointerLikeType(typeKey) || isClassReferenceType(nameLookup_, typeKey) || isDelegateReferenceType(nameLookup_, typeKey))
             return {8, 8};
         if (const std::optional<std::string> element =
                 frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
@@ -18300,7 +18301,7 @@ private:
             LLVMBuildStore(builder_, LLVMConstNull(storedType), loweredOperand);
         }
 
-        if (node->children.front() != nullptr && isDelegateReference(node->children.front()->typeKey))
+        if (node->children.front() != nullptr && isDelegateReferenceType(nameLookup_, node->children.front()->typeKey))
         {
             if (!emitDelegateDestroy(pointer, "delete.delegate", error)) return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
@@ -18703,7 +18704,7 @@ private:
                 : LLVMBuildFPToUI(builder_, value, destination, "fptoui");
         if (source == "builtin:float" && target == "builtin:double") return LLVMBuildFPExt(builder_, value, destination, "fpext");
         if (source == "builtin:double" && target == "builtin:float") return LLVMBuildFPTrunc(builder_, value, destination, "fptrunc");
-        if ((isPointerLike(source) || isClassReference(source)) && (isPointerLike(target) || isClassReference(target))) return value;
+        if ((isPointerLikeType(source) || isClassReferenceType(nameLookup_, source)) && (isPointerLikeType(target) || isClassReferenceType(nameLookup_, target))) return value;
 
         // C1.1 "function-pointer round trip". Everything above is the numeric/reference world;
         // these three lines are the address world. An extern C delegate, a raw `T*`/`void*` and a
@@ -18713,9 +18714,9 @@ private:
         // combination that is not part of the trip (see ProjectMethodBodyModel's CastExpression
         // case), so reaching here means the conversion is one of the sanctioned three.
         const bool sourceIsAddress =
-            isPointerLike(source) || isClassReference(source) || isExternCDelegateType(source);
+            isPointerLikeType(source) || isClassReferenceType(nameLookup_, source) || isExternCDelegateType(source);
         const bool targetIsAddress =
-            isPointerLike(target) || isClassReference(target) || isExternCDelegateType(target);
+            isPointerLikeType(target) || isClassReferenceType(nameLookup_, target) || isExternCDelegateType(target);
         if (sourceIsAddress && targetIsAddress) return value;
         if (sourceIsAddress && targetWidth != 0)
             return LLVMBuildPtrToInt(builder_, value, destination, "ptrtoint");
@@ -18934,8 +18935,8 @@ private:
         if (language::isAnonymousLambdaTypeIdentity(typeKey))
             return LLVMStructTypeInContext(context_, nullptr, 0, 0);
         if (typeKey == "builtin:null" || typeKey == "string-literal" || typeKey == "builtin:string" ||
-            frontend::ProjectTypeConversion::isNativeArray(typeKey) || isPointerLike(typeKey) ||
-            isClassReference(typeKey) || isDelegateReference(typeKey))
+            frontend::ProjectTypeConversion::isNativeArray(typeKey) || isPointerLikeType(typeKey) ||
+            isClassReferenceType(nameLookup_, typeKey) || isDelegateReferenceType(nameLookup_, typeKey))
             return LLVMPointerTypeInContext(context_, 0);
         // C2.1 "fixed arrays": `T[N]` is INLINE storage -- N elements laid out end to end, with no
         // length header and no indirection -- so its LLVM carrier is exactly `[N x T]`. That is
@@ -19168,32 +19169,6 @@ private:
         return structLayout(typeKey) != nullptr;
     }
 
-    bool isDelegateReference(std::string_view typeKey) const noexcept
-    {
-        if (const std::optional<language::FunctionType> functionType =
-                language::parseFunctionTypeIdentity(typeKey))
-            return functionType->carrier == language::FunctionCarrier::Reference;
-        if (!typeKey.starts_with("type:")) return false;
-        const std::string_view key = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() == key) return type.kind == frontend::NamedTypeDeclarationKind::Delegate;
-        }
-        return false;
-    }
-
-    bool isClassReference(std::string_view typeKey) const noexcept
-    {
-        if (!typeKey.starts_with("type:")) return false;
-        const std::string_view key = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() == key) return type.kind == frontend::NamedTypeDeclarationKind::Class ||
-                type.kind == frontend::NamedTypeDeclarationKind::Interface;
-        }
-        return false;
-    }
-
     // Stage 52 closure hardening (closure checklist P1 item 6: "requiresOwnedDestruction(typeKey)
     // ... reduce la posibilidad de que futuros stages repitan decisiones divergentes"). This is
     // the single, centralized answer to "does a closed NativeSharp type actually own separate
@@ -19228,7 +19203,7 @@ private:
     {
         return typeKey == "builtin:string" ||
             frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
-            isClassReference(typeKey) || isDelegateReference(typeKey);
+            isClassReferenceType(nameLookup_, typeKey) || isDelegateReferenceType(nameLookup_, typeKey);
     }
 
     bool isFloat32x4TypeKey(std::string_view typeKey) const noexcept
@@ -19481,14 +19456,6 @@ private:
             return;
         }
         LLVMBuildRet(builder_, value);
-    }
-
-    static bool isPointerLike(std::string_view typeKey) noexcept
-    {
-        return (!typeKey.empty() && typeKey.back() == '*') ||
-            frontend::ProjectTypeConversion::isFunctionPointer(typeKey) ||
-            typeKey == "string-literal" ||
-            frontend::ProjectTypeConversion::isNativeCoreReference(typeKey);
     }
 
     LLVMBasicBlockRef appendBlock(const std::string& stem)
