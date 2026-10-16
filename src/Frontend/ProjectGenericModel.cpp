@@ -1926,6 +1926,20 @@ static std::string computeTemplateSourceFingerprint(
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+// NSC305-C01. The C1 cache schema version (bump on any format change).
+static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v1";
+
+// NSC305-C01. The full C1 cache key: SHA-256 of (source fingerprint + schema version).
+static std::string templateCacheKey(std::string_view sourceFingerprint)
+{
+    std::string material{sourceFingerprint};
+    material.push_back('|');
+    material += templateCacheSchema;
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 void ProjectGenericModel::collectTemplates(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -2073,6 +2087,7 @@ void ProjectGenericModel::collectTemplates(
             qualifiedName(currentNamespace, record.qualifiedTypeName) +
             "`" + genericAritySpelling(record);
         record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
+        record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
         telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
@@ -2109,6 +2124,7 @@ void ProjectGenericModel::collectTemplates(
             (callableScope.empty() ? std::string{} : callableScope + ".") +
             record.name + "``" + genericAritySpelling(record);
         record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
+        record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
         record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
         record.isControlledSpecialization =
             node->auxiliaryText() == "controlled-specialization";

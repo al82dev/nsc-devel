@@ -105,6 +105,8 @@ struct GenericTemplateRecord final
     // NSC305-C01. SHA-256 of the template's source text (reconstructed from the lexer tokens), the
     // C1 cache key input that invalidates on any source change (including the body).
     std::string sourceFingerprint;
+    // NSC305-C01. Full C1 cache key: SHA-256 of (source fingerprint + cache schema version).
+    std::string c1CacheKey;
 };
 
 // NSC305-G07. Lifecycle of a specialization slot. The sequential pass only uses Unseen (no slot),
