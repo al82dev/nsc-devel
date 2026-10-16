@@ -5247,6 +5247,126 @@ void ProjectGenericModel::preserveOrAttachInstantiationOrigin(ast::TypeSyntax* s
     }
 }
 
+// NSC305-G06. Folds a const value-pack operation. Returns nullptr when the node is not a pack
+// fold, so cloneNode falls through to the generic clone path. (Extracted from cloneNode.)
+ast::AstNode* ProjectGenericModel::foldValuePack(
+    ast::AstArena& arena,
+    const ast::AstNode* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::string_view rewrittenContainingTypeName,
+    std::string_view originalContainingTypeName)
+{
+    if (source->kind() != ast::AstNodeKind::CallExpression ||
+        source->first() == nullptr ||
+        source->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+        source->children().empty() || source->children().front() == nullptr ||
+        source->children().front()->kind() != ast::AstNodeKind::IdentifierExpression)
+    {
+        return nullptr;
+    }
+    const std::string& operation = source->first()->text();
+    const auto pack = activePackSubstitutions_.find(source->children().front()->text());
+    if (pack == activePackSubstitutions_.end()) return nullptr;
+    if (operation == "packcount" && source->children().size() == 1U)
+    {
+        ast::AstNode* literal = arena.make<ast::AstNode>(
+            ast::AstNodeKind::IntegerLiteralExpression, source->range());
+        literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
+        literal->setIntegerValue(pack->second.size());
+        literal->setText(std::to_string(pack->second.size()));
+        return literal;
+    }
+
+    if (operation == "packat" && source->children().size() == 2U)
+    {
+        ast::AstNode* clonedIndex = cloneNode(
+            arena, source->children()[1], substitutions,
+            rewrittenContainingTypeName, originalContainingTypeName);
+        const ProjectIntegerEvaluator evaluator(nullptr);
+        const std::optional<ProjectIntegerValue> evaluated = evaluator.evaluate(clonedIndex);
+        const bool validIndex = evaluated.has_value() && evaluated->asSigned() >= 0;
+        const std::size_t index = validIndex
+            ? static_cast<std::size_t>(evaluated->bits) : 0U;
+        if (validIndex && index < pack->second.size())
+        {
+            std::string typeKey;
+            std::string value;
+            if (decodeConstGenericArgument(pack->second[index], typeKey, value))
+                if (ast::AstNode* selected = constArgumentExpression(
+                        arena, typeKey, value, source->range()))
+                    return selected;
+        }
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ = !validIndex
+                ? "generic value-pack index must be a non-negative compile-time integer"
+                : index >= pack->second.size()
+                    ? "generic value-pack index " + std::to_string(index) +
+                        " is outside a pack of length " +
+                        std::to_string(pack->second.size())
+                    : "packat requires a const value pack";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return constArgumentExpression(
+            arena, "builtin:int", "0", source->range());
+    }
+
+    const bool arithmeticFold = operation == "packsum" || operation == "packproduct";
+    const bool booleanFold = operation == "packall" || operation == "packany";
+    if ((arithmeticFold || booleanFold) && source->children().size() == 1U)
+    {
+        const lexer::TokenKind foldOperator = operation == "packsum"
+            ? lexer::TokenKind::Plus
+            : operation == "packproduct"
+                ? lexer::TokenKind::Star
+                : operation == "packall"
+                    ? lexer::TokenKind::AmpAmp : lexer::TokenKind::PipePipe;
+        const std::string identity = operation == "packproduct" || operation == "packall"
+            ? "1" : "0";
+        ast::AstNode* folded = constArgumentExpression(
+            arena,
+            booleanFold ? "builtin:bool" : "builtin:int",
+            booleanFold ? (operation == "packall" ? "true" : "false") : identity,
+            source->range());
+        bool valid = true;
+        for (const ast::TypeSyntax* item : pack->second)
+        {
+            std::string typeKey;
+            std::string value;
+            if (!decodeConstGenericArgument(item, typeKey, value) ||
+                (booleanFold && typeKey != "builtin:bool") ||
+                (arithmeticFold && !ProjectIntegerEvaluator::isIntegerType(typeKey)))
+            {
+                valid = false;
+                break;
+            }
+            ast::AstNode* element = constArgumentExpression(
+                arena, typeKey, value, source->range());
+            if (element == nullptr)
+            {
+                valid = false;
+                break;
+            }
+            ast::AstNode* combined = arena.make<ast::AstNode>(
+                ast::AstNodeKind::BinaryExpression, source->range());
+            combined->setTokenKind(foldOperator);
+            combined->setFirst(folded);
+            combined->setSecond(element);
+            folded = combined;
+        }
+        if (valid) return folded;
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ = booleanFold
+                ? operation + " requires a bool const value pack"
+                : operation + " requires an integral const value pack";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return folded;
+    }
+    return nullptr;
+}
+
 ast::AstNode* ProjectGenericModel::cloneNode(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -5320,115 +5440,10 @@ ast::AstNode* ProjectGenericModel::cloneNode(
             }
         }
     }
-    if (source->kind() == ast::AstNodeKind::CallExpression &&
-        source->first() != nullptr &&
-        source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
-        !source->children().empty() && source->children().front() != nullptr &&
-        source->children().front()->kind() == ast::AstNodeKind::IdentifierExpression)
-    {
-        const std::string& operation = source->first()->text();
-        const auto pack = activePackSubstitutions_.find(source->children().front()->text());
-        if (pack != activePackSubstitutions_.end())
-        {
-            if (operation == "packcount" && source->children().size() == 1U)
-            {
-                ast::AstNode* literal = arena.make<ast::AstNode>(
-                    ast::AstNodeKind::IntegerLiteralExpression, source->range());
-                literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
-                literal->setIntegerValue(pack->second.size());
-                literal->setText(std::to_string(pack->second.size()));
-                return literal;
-            }
-
-            if (operation == "packat" && source->children().size() == 2U)
-            {
-                ast::AstNode* clonedIndex = cloneNode(
-                    arena, source->children()[1], substitutions,
-                    rewrittenContainingTypeName, originalContainingTypeName);
-                const ProjectIntegerEvaluator evaluator(nullptr);
-                const std::optional<ProjectIntegerValue> evaluated = evaluator.evaluate(clonedIndex);
-                const bool validIndex = evaluated.has_value() && evaluated->asSigned() >= 0;
-                const std::size_t index = validIndex
-                    ? static_cast<std::size_t>(evaluated->bits) : 0U;
-                if (validIndex && index < pack->second.size())
-                {
-                    std::string typeKey;
-                    std::string value;
-                    if (decodeConstGenericArgument(pack->second[index], typeKey, value))
-                        if (ast::AstNode* selected = constArgumentExpression(
-                                arena, typeKey, value, source->range()))
-                            return selected;
-                }
-                if (packMaterializationError_.empty())
-                {
-                    packMaterializationError_ = !validIndex
-                        ? "generic value-pack index must be a non-negative compile-time integer"
-                        : index >= pack->second.size()
-                            ? "generic value-pack index " + std::to_string(index) +
-                                " is outside a pack of length " +
-                                std::to_string(pack->second.size())
-                            : "packat requires a const value pack";
-                    packMaterializationErrorRange_ = source->range();
-                }
-                return constArgumentExpression(
-                    arena, "builtin:int", "0", source->range());
-            }
-
-            const bool arithmeticFold = operation == "packsum" || operation == "packproduct";
-            const bool booleanFold = operation == "packall" || operation == "packany";
-            if ((arithmeticFold || booleanFold) && source->children().size() == 1U)
-            {
-                const lexer::TokenKind foldOperator = operation == "packsum"
-                    ? lexer::TokenKind::Plus
-                    : operation == "packproduct"
-                        ? lexer::TokenKind::Star
-                        : operation == "packall"
-                            ? lexer::TokenKind::AmpAmp : lexer::TokenKind::PipePipe;
-                const std::string identity = operation == "packproduct" || operation == "packall"
-                    ? "1" : "0";
-                ast::AstNode* folded = constArgumentExpression(
-                    arena,
-                    booleanFold ? "builtin:bool" : "builtin:int",
-                    booleanFold ? (operation == "packall" ? "true" : "false") : identity,
-                    source->range());
-                bool valid = true;
-                for (const ast::TypeSyntax* item : pack->second)
-                {
-                    std::string typeKey;
-                    std::string value;
-                    if (!decodeConstGenericArgument(item, typeKey, value) ||
-                        (booleanFold && typeKey != "builtin:bool") ||
-                        (arithmeticFold && !ProjectIntegerEvaluator::isIntegerType(typeKey)))
-                    {
-                        valid = false;
-                        break;
-                    }
-                    ast::AstNode* element = constArgumentExpression(
-                        arena, typeKey, value, source->range());
-                    if (element == nullptr)
-                    {
-                        valid = false;
-                        break;
-                    }
-                    ast::AstNode* combined = arena.make<ast::AstNode>(
-                        ast::AstNodeKind::BinaryExpression, source->range());
-                    combined->setTokenKind(foldOperator);
-                    combined->setFirst(folded);
-                    combined->setSecond(element);
-                    folded = combined;
-                }
-                if (valid) return folded;
-                if (packMaterializationError_.empty())
-                {
-                    packMaterializationError_ = booleanFold
-                        ? operation + " requires a bool const value pack"
-                        : operation + " requires an integral const value pack";
-                    packMaterializationErrorRange_ = source->range();
-                }
-                return folded;
-            }
-        }
-    }
+    if (ast::AstNode* folded = foldValuePack(
+            arena, source, substitutions,
+            rewrittenContainingTypeName, originalContainingTypeName))
+        return folded;
     if (source->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const auto substitution = substitutions.find(source->text());

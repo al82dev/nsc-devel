@@ -851,6 +851,15 @@ private:
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::string_view rewrittenContainingTypeName,
         std::string_view originalContainingTypeName);
+    // NSC305-G06. Folds a const value-pack operation (packcount/packat/packsum/packproduct/
+    // packall/packany). Returns nullptr when the node is not such a fold, so cloneNode falls
+    // through to the generic clone path.
+    ast::AstNode* foldValuePack(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::string_view rewrittenContainingTypeName,
+        std::string_view originalContainingTypeName);
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
     std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
