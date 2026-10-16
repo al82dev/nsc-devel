@@ -12013,6 +12013,71 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryDelete ||
+                current->kind == frontend::ProjectOopMirNodeKind::CorePathGetFullPath ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetFileCount ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetDirectoryCount)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool del = current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryDelete;
+                    const bool fullPath = current->kind == frontend::ProjectOopMirNodeKind::CorePathGetFullPath;
+                    const bool fileCount = current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetFileCount;
+                    if (current->children.size() != 1 ||
+                        (del && directoryDeleteFunction_ == nullptr) ||
+                        (fullPath && pathGetFullPathFunction_ == nullptr) ||
+                        (fileCount && directoryGetFileCountFunction_ == nullptr) ||
+                        (!del && !fullPath && !fileCount && directoryGetDirectoryCountFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 53 directory/path intrinsic requires one string argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef path = values.back();
+                values.pop_back();
+                if (path == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {path};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryDelete)
+                {
+                    buildNoUnwindCall(directoryDeleteFunctionType_, directoryDeleteFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CorePathGetFullPath)
+                    values.push_back(buildNoUnwindCall(
+                        pathGetFullPathFunctionType_, pathGetFullPathFunction_, args, 1, "path.getfullpath"));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetFileCount)
+                    values.push_back(buildNoUnwindCall(
+                        directoryGetFileCountFunctionType_, directoryGetFileCountFunction_, args, 1, "directory.getfilecount"));
+                else
+                    values.push_back(buildNoUnwindCall(
+                        directoryGetDirectoryCountFunctionType_, directoryGetDirectoryCountFunction_, args, 1, "directory.getdirectorycount"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreEnvironmentGetCommandLineArgs)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || environmentGetCommandLineArgsFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Stage 53.5 Environment.GetCommandLineArgs requires one string[] argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef destination = values.back();
+                values.pop_back();
+                if (destination == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {destination};
+                values.push_back(buildNoUnwindCall(
+                    environmentGetCommandLineArgsFunctionType_, environmentGetCommandLineArgsFunction_,
+                    args, 1, "environment.getcommandlineargs"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12587,35 +12652,10 @@ private:
             // (a path), void return -- same "call the hook, dummy i1 result" shape CoreFileDelete/
             // CoreDirectoryCreate above use.
             case frontend::ProjectOopMirNodeKind::CoreDirectoryDelete:
-            {
-                if (node->children.size() != 1 || directoryDeleteFunction_ == nullptr)
-                    return failValue(error, "Stage 53.4 Directory.Delete requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                buildNoUnwindCall(directoryDeleteFunctionType_, directoryDeleteFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            // Path.GetFullPath takes one string argument (a path) and returns the freshly-
-            // allocated string the runtime hook builds -- same shape as CoreFileReadAllText/
-            // CoreEnvironmentGetVariable above (all the size/allocation work happens on the
-            // runtime side, in WindowsRuntimeBuilder.cpp's buildPathGetFullPath).
             case frontend::ProjectOopMirNodeKind::CorePathGetFullPath:
-            {
-                if (node->children.size() != 1 || pathGetFullPathFunction_ == nullptr)
-                    return failValue(error, "Stage 53.4 Path.GetFullPath requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    pathGetFullPathFunctionType_, pathGetFullPathFunction_, args, 1, "path.getfullpath");
-            }
-
-            // Stage 53.5 "Command-line arguments": GetCommandLineArgCount takes zero arguments
-            // and returns the i32 the runtime hook computes directly -- unlike every void-
-            // returning core operation above, there is no "dummy i1" here because the real
-            // return type (builtin:int) already carries meaningful information the caller needs
-            // (how many elements to allocate before calling GetCommandLineArgs).
+            case frontend::ProjectOopMirNodeKind::CoreDirectoryGetFileCount:
+            case frontend::ProjectOopMirNodeKind::CoreDirectoryGetDirectoryCount:
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentGetCommandLineArgCount:
             {
                 if (node->children.size() != 0 || environmentGetCommandLineArgCountFunction_ == nullptr)
@@ -12624,51 +12664,8 @@ private:
                     environmentGetCommandLineArgCountFunctionType_, environmentGetCommandLineArgCountFunction_,
                     nullptr, 0, "environment.getcommandlineargcount");
             }
-            // GetCommandLineArgs takes one operand -- a builtin:string[] expression, the
-            // caller-provided buffer (see Environment.ns's "hueco de owned string[]" note) --
-            // and returns the i32 the runtime hook computes (how many elements were actually
-            // written). lowerExpression on an array-typed child already yields the array's
-            // pointer, exactly as every other array-consuming MIR node in this lowerer expects,
-            // so this is a direct pass-through, no special handling needed for the operand
-            // itself being an array rather than a string.
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentGetCommandLineArgs:
-            {
-                if (node->children.size() != 1 || environmentGetCommandLineArgsFunction_ == nullptr)
-                    return failValue(error, "Stage 53.5 Environment.GetCommandLineArgs requires one string[] argument and runtime hook");
-                LLVMValueRef destination = lowerExpression(node->children.front().get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef args[] = {destination};
-                return buildNoUnwindCall(
-                    environmentGetCommandLineArgsFunctionType_, environmentGetCommandLineArgsFunction_,
-                    args, 1, "environment.getcommandlineargs");
-            }
-
-            // Stage 53.6 "Enumeracion de directorios": GetFileCount/GetDirectoryCount take one
-            // string argument (the path) and return the i32 the runtime hook computes directly --
-            // same "real int result, no dummy i1" shape as CoreEnvironmentGetCommandLineArgCount
-            // above, just with a real argument this time.
-            case frontend::ProjectOopMirNodeKind::CoreDirectoryGetFileCount:
-            {
-                if (node->children.size() != 1 || directoryGetFileCountFunction_ == nullptr)
-                    return failValue(error, "Stage 53.6 Directory.GetFileCount requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    directoryGetFileCountFunctionType_, directoryGetFileCountFunction_,
-                    args, 1, "directory.getfilecount");
-            }
-            case frontend::ProjectOopMirNodeKind::CoreDirectoryGetDirectoryCount:
-            {
-                if (node->children.size() != 1 || directoryGetDirectoryCountFunction_ == nullptr)
-                    return failValue(error, "Stage 53.6 Directory.GetDirectoryCount requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    directoryGetDirectoryCountFunctionType_, directoryGetDirectoryCountFunction_,
-                    args, 1, "directory.getdirectorycount");
-            }
+                return lowerExpressionIterative(node, error);
             // GetFiles/GetDirectories take two operands -- the path, then the caller-provided
             // builtin:string[] buffer (same "buffer provided by caller" pattern
             // CoreEnvironmentGetCommandLineArgs established) -- and return the i32 the runtime
