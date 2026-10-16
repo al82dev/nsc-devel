@@ -12078,6 +12078,65 @@ private:
                     args, 1, "environment.getcommandlineargs"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetFiles ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetDirectories)
+            {
+                const bool files = current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryGetFiles;
+                if (current->children.size() != 2 ||
+                    (files && directoryGetFilesFunction_ == nullptr) ||
+                    (!files && directoryGetDirectoriesFunction_ == nullptr))
+                {
+                    values.push_back(failValue(error, "Stage 53.6 Directory enumeration requires a path and a string[] argument and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef path = values.back();
+                    values.pop_back();
+                    if (path == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, path, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef destination = values.back();
+                values.pop_back();
+                if (destination == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, destination};
+                if (files)
+                    values.push_back(buildNoUnwindCall(
+                        directoryGetFilesFunctionType_, directoryGetFilesFunction_, args, 2, "directory.getfiles"));
+                else
+                    values.push_back(buildNoUnwindCall(
+                        directoryGetDirectoriesFunctionType_, directoryGetDirectoriesFunction_, args, 2, "directory.getdirectories"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreThreadCreate)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || threadCreateFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Stage 54.1 Thread.ThreadCreate requires one delegate argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef delegateCell = values.back();
+                values.pop_back();
+                if (delegateCell == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {delegateCell};
+                values.push_back(buildNoUnwindCall(
+                    threadCreateFunctionType_, threadCreateFunction_, args, 1, "thread.create"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12671,31 +12730,8 @@ private:
             // CoreEnvironmentGetCommandLineArgs established) -- and return the i32 the runtime
             // hook computes (how many elements were actually written).
             case frontend::ProjectOopMirNodeKind::CoreDirectoryGetFiles:
-            {
-                if (node->children.size() != 2 || directoryGetFilesFunction_ == nullptr)
-                    return failValue(error, "Stage 53.6 Directory.GetFiles requires a path and a string[] argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef destination = lowerExpression(node->children[1].get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, destination};
-                return buildNoUnwindCall(
-                    directoryGetFilesFunctionType_, directoryGetFilesFunction_,
-                    args, 2, "directory.getfiles");
-            }
             case frontend::ProjectOopMirNodeKind::CoreDirectoryGetDirectories:
-            {
-                if (node->children.size() != 2 || directoryGetDirectoriesFunction_ == nullptr)
-                    return failValue(error, "Stage 53.6 Directory.GetDirectories requires a path and a string[] argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef destination = lowerExpression(node->children[1].get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, destination};
-                return buildNoUnwindCall(
-                    directoryGetDirectoriesFunctionType_, directoryGetDirectoriesFunction_,
-                    args, 2, "directory.getdirectories");
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 54.1 "Threads". ThreadCreate takes one operand -- a ThreadStart delegate
             // value (already fully constructed by the time it reaches this static call: whoever
@@ -12713,15 +12749,7 @@ private:
             // the real, meaningful i64 HANDLE (as nint) -- no dummy-i1 wrapping, same as
             // CoreDirectoryGetFileCount/CoreEnvironmentGetCommandLineArgCount above.
             case frontend::ProjectOopMirNodeKind::CoreThreadCreate:
-            {
-                if (node->children.size() != 1 || threadCreateFunction_ == nullptr)
-                    return failValue(error, "Stage 54.1 Thread.ThreadCreate requires one delegate argument and runtime hook");
-                LLVMValueRef delegateCell = lowerExpression(node->children.front().get(), error);
-                if (delegateCell == nullptr) return nullptr;
-                LLVMValueRef args[] = {delegateCell};
-                return buildNoUnwindCall(
-                    threadCreateFunctionType_, threadCreateFunction_, args, 1, "thread.create");
-            }
+                return lowerExpressionIterative(node, error);
             // ThreadJoin/ThreadDetach take one operand -- a builtin:nint (the HANDLE the caller
             // already holds, saved by Thread's constructor from ThreadCreate's result) -- and
             // return void at the NativeSharp level. Same "runtime function genuinely returns
