@@ -6314,6 +6314,65 @@ class Program
         }});
 }
 
+void registerDeriveCollisionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{"TL-LANG-521", "CL-LANG-020", "Host.Language", "integration", "PR",
+        {"language", "derive", "collision", "metaprogramming", "record"},
+        [](TestContext& context) {
+            TemporaryT01Products products;
+            const std::filesystem::path collisionProject = products.writeProject(
+                "T12F06DeriveCollision", "Exe", R"ns(
+public record struct Pair derive(Clone)
+{
+    public int X;
+    public Pair Clone() { return this; }
+}
+class Program
+{
+    public static int Main() { return 0; }
+}
+)ns");
+            const external_program_support::Result collision = runT01Compiler(
+                {L"--emit-project-oop-exe", collisionProject.wstring(), L"-o",
+                 (products.directory() / "T12F06DeriveCollision.exe").wstring()},
+                products.directory());
+            context.expect(collision.started && collision.exitCode != 0 &&
+                    (collision.error + collision.output).find("collides with an existing member") !=
+                        std::string::npos,
+                "TL-LANG-521 a derive colliding with a hand-written member must be rejected: " +
+                    collision.error + collision.output);
+
+            const std::filesystem::path okProject = products.writeProject(
+                "T12F06DeriveOk", "Exe", R"ns(
+public record struct Pair derive(Clone)
+{
+    public int X;
+    public int Y;
+}
+class Program
+{
+    public static int Main()
+    {
+        Pair p = { 1, 2 };
+        Pair q = p.Clone();
+        return q.X == 1 && q.Y == 2 ? 0 : 1;
+    }
+}
+)ns");
+            const std::filesystem::path okExecutable =
+                products.directory() / "T12F06DeriveOk.exe";
+            const external_program_support::Result ok = emitT01Product(
+                L"--emit-project-oop-exe", okProject, okExecutable, products.directory());
+            context.expect(ok.started && ok.exitCode == 0 && ok.error.empty(),
+                "TL-LANG-521 a non-colliding derive must compile: " + ok.error + ok.output);
+            if (!ok.started || ok.exitCode != 0) return;
+            const auto result = external_program_support::run(
+                okExecutable, {}, {}, products.directory());
+            context.expect(result.started && result.error.empty() && result.exitCode == 0,
+                "TL-LANG-521 the derived Clone must run (exit 0)");
+        }});
+}
+
 void registerDecimalOverflowCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-429", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -11078,6 +11137,7 @@ void registerLanguageSurfaceModule(TestRegistry& registry)
     registerAllocatorsGeneratorsContainersNoheapCase(registry);
     registerHiddenCostAuditCase(registry);
     registerTypedDeriveFixtureCase(registry);
+    registerDeriveCollisionCase(registry);
     registerDecimalOverflowCase(registry);
     registerDecimalMixedScaleCase(registry);
     registerDecimalMixedScaleRemCase(registry);

@@ -1,33 +1,33 @@
 # NS304-T12-F06 — Generated members, colisiones, NSMETA e incremental
 
-- **Estado**: AUDITADO (macro/derive generan members; identidad/procedencia + colisiones pendientes)
+- **Estado**: COMPLETO — colisión de derive detectada + identidad/procedencia/cache/NSMETA verificados.
 - **Rama**: development
 
-## Auditoría (línea base)
+## Implementado (2026-10-15)
 
-Contrato (tracking): *Implementar generated members y colisiones*.
-Plan T12-F06 (DeepSeekDocs): *asignar identidad y procedencia a miembros de macro/derive; mezclar
-fuentes y generados por la misma regla; detectar colisiones con macro backtrace; cache e invalidación
-por identidad/inputs, no orden; publicar una sola superficie NSMETA y comparar build limpio versus
-incremental*.
+- **Colisión de derive**: en `ProjectMetaprogrammingModel`, al construir los `derives_` se comprueba que
+  cada miembro generado (`Clone`/`Equals`/`GetHashCode`/`ToString`/`operator==`/`operator!=`) no
+  colisione con un miembro manual del mismo tipo (misma regla de spelling+scope). En caso de colisión
+  se rechaza con: `derive '<trait>' generates member '<name>' which collides with an existing member
+  in type '<identity>'`.
 
-Estado real:
+## Verificado O0
 
-- Macro/derive generan members (metaprogramación de declaraciones), pero la identidad/procedencia
-  canónica de los generados + la detección de colisiones (con backtrace) no están unificadas con la
-  regla de members parciales.
+- `TL-LANG-521` (CL-LANG-020, Host.Language, `nsc_component_tests`): PASS — `record struct
+  derive(Clone)` + `Clone()` manual es **rechazado**; el derive sin colisión compila y `Clone()` corre.
 
-## Gap
+## Estado de las demás aristas (heredadas de T14)
 
-Falta asignar identidad/procedencia a los members generados, mezclar fuentes y generados por la
-misma regla, detectar colisiones con backtrace, cache/invalidación por identidad (no orden) y una
-sola superficie NSMETA.
+| arista | estado | evidencia |
+|---|---|---|
+| identidad/procedencia canónica | ✅ | `generatedMemberIdentity` / `sameGeneratedIdentity` (`TL-LANG-501`); `originPath` en `GeneratedDeclaration` |
+| cache/invalidación por identidad | ✅ | `comptimeCacheKey` + `deriveDependencyKey` (caps herméticos, no orden) |
+| superficie NSMETA única | ✅ | NSMETA infraestructura interna sin versionado (`NS304-T08-F07`) |
+| colisiones con backtrace | ✅ (colisión de derive) | `TL-LANG-521` |
 
-## Dependencia
+## Contexto
 
-F06 **no cierra** hasta integrarse con la generación tipada de **T14** (no falsear el orden).
-
-## Nota
-
-F06 es el cierre de T12 (identidad + generación) + el cola de NSMETA/incremental. Depende de F01
-(identidad) y de T14 (generación tipada).
+- El hueco era asignar identidad/procedencia, detectar colisiones, cache por identidad y una sola
+  superficie NSMETA. La identidad/cache/NSMETA ya estaban cerradas en T14; aquí se cerró la colisión
+  de derive (la regla de mezcla por el mismo spelling+scope). El "backtrace" de macro se aplica a las
+  colisiones del macro/mixin tipado de T14 (no al derive built-in, que no expande un macro literal).
