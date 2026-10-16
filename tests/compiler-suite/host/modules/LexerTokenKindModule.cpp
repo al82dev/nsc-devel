@@ -17,7 +17,7 @@ using nativesharp::lexer::TokenKind;
 
 // Independent catalog oracle frozen by CL-LEX-001. Its positional order validates both the
 // public spelling and the serialized ordinal identity of every token kind.
-constexpr std::array<std::string_view, 151> ExpectedTokenKindNames = {
+constexpr std::array<std::string_view, 152> ExpectedTokenKindNames = {
     "EndOfFile",
     "Invalid",
     "Identifier",
@@ -169,6 +169,7 @@ constexpr std::array<std::string_view, 151> ExpectedTokenKindNames = {
     "QuestionBracket",
     "DotDot",
     "DotDotEqual",
+    "Utf8StringLiteral",
 };
 
 // Registers one CL-LEX-001 case without duplicating common registry metadata.

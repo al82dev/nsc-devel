@@ -26,7 +26,7 @@
 |---|---|---|
 | Target | `BuiltinLayoutKind`, catálogo host, manifiesto y contratos documentales directos | `TF-TGT-002`, `005`, `006`, `008`, `036`, `038`, `040` |
 | AST | catálogo host y contratos documentales directos; el enum de producto queda protegido | fallos `TA-AST-021`, `023`, `025`; vecindad `019..026` |
-| Lexer | `TokenKind`, catálogo host y contratos documentales directos | `TL-LEX-001`, `002` |
+| Lexer | `TokenKind`, catálogo host y contratos documentales directos | fallos `TL-LEX-001`, `002`; vecindad `001..008` |
 | Parser foundation | seed esperado del host y contratos documentales directos; constructor de producto protegido | `TP-PAR-007` |
 | Parser nested declarations | reconocimiento de `partial` antes de un tipo anidado y expediente directo | `TP-PAR-199` |
 | Parser properties | oráculo host y contratos documentales directos; implementación `ref` protegida | `TP-PAR-239` |
@@ -42,7 +42,7 @@ participa en la ruta causal y se registre aquí antes de modificarlo.
 |---|---:|---|---|---|
 | Target | 5 | regresión de identidad ordinal al insertar `Decimal` | `BuiltinLayoutKind` | corregida; `7/7 PASS` con vecindad |
 | AST | 3 | oráculo anterior a tres nodos append-only | catálogo CA-AST-003 | corregida; `8/8 PASS` con vecindad |
-| Lexer | 2 | regresión ordinal al insertar `Utf8StringLiteral` en posición 7 | `TokenKind` | causa demostrada |
+| Lexer | 2 | regresión ordinal al insertar `Utf8StringLiteral` en posición 7 | `TokenKind` | corregida; `8/8 PASS` con vecindad |
 | Parser seed | 1 | oráculo anterior a `Future`, `Iterator` y `AsyncIterator` | CP-PAR-001 | causa demostrada |
 | Parser partial | 1 | `partial struct` cae en la ruta de miembro parcial | `parseClassMember` | causa demostrada |
 | Parser ref property | 1 | oráculo anterior a la feature `e1629a749` | CP-PAR-023 | causa demostrada |
@@ -72,7 +72,8 @@ desde la posición `105`. No se modifica el producto. Como el catálogo es compa
 
 El commit `82d85d29` insertó `Utf8StringLiteral` después de `StringLiteral`, pese al contrato documentado que exige
 append-only para identidades serializadas. El enum previo terminaba en `DotDotEqual`; el token UTF-8 puede añadirse
-después sin cambiar el lexer que usa el nombre simbólico.
+después sin cambiar el lexer que usa el nombre simbólico. Los ocho casos `CL-LEX-001` recorren el mismo catálogo y
+se validan juntos para cubrir tanto la identidad como los clasificadores que dependen de rangos y operadores.
 
 ### Parser
 
@@ -111,11 +112,13 @@ siguiente batería desde la GUI.
 
 - Inventario original: congelado.
 - Causas raíz conocidas: `8`.
-- Causas corregidas: `2`.
-- Pruebas focales aprobadas: `15`.
+- Causas corregidas: `3`.
+- Pruebas focales aprobadas: `23`.
 - Target: `nsc_component_tests` Debug compiló; `TF-TGT-002`, `005`, `006`, `008`, `036`, `038` y `040`
   pasaron individualmente. Se restauraron `Enum=16` y `Pointer=17`; `Decimal=18` quedó añadido al final.
 - AST: `nsc_component_tests` Debug compiló; `TA-AST-019..026` pasaron individualmente. El catálogo host ahora
   reproduce las `108` entradas reales, incluyendo `SuspendStatement` y `OverflowPolicyExpression`; el producto no
   se modificó.
-- Siguiente acción causal: restaurar las identidades históricas de `TokenKind` y añadir `Utf8StringLiteral` al final.
+- Lexer: `nsc_component_tests` Debug compiló; `TL-LEX-001..008` pasaron individualmente. Se restauraron los
+  ordinales previos y `Utf8StringLiteral` quedó añadido al final como ordinal `151` de `152` entradas.
+- Siguiente acción causal: actualizar el seed esperado de Parser a sus `19` nombres vigentes.

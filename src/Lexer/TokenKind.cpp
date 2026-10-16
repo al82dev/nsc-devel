@@ -14,7 +14,6 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(FloatingLiteral);
         NS_TOKEN_CASE(CharacterLiteral);
         NS_TOKEN_CASE(StringLiteral);
-        NS_TOKEN_CASE(Utf8StringLiteral);
         NS_TOKEN_CASE(AssemblyText);
         NS_TOKEN_CASE(AssemblyNewLine);
         NS_TOKEN_CASE(KwVoid);
@@ -159,6 +158,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(QuestionBracket);
         NS_TOKEN_CASE(DotDot);
         NS_TOKEN_CASE(DotDotEqual);
+        NS_TOKEN_CASE(Utf8StringLiteral);
 #undef NS_TOKEN_CASE
     }
 

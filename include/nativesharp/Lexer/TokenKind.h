@@ -13,8 +13,6 @@ enum class TokenKind
     FloatingLiteral,
     CharacterLiteral,
     StringLiteral,
-    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>), not the `byte` keyword.
-    Utf8StringLiteral,
     // Raw physical-line records emitted only between the outer braces of contextual `asm {}`.
     // Their lexemes retain source bytes exactly; parsing and validation happen in later layers.
     AssemblyText,
@@ -182,7 +180,10 @@ enum class TokenKind
     DotDot,
     // NativeSharp 3.0 T09-F02. Inclusive lazy-range delimiter. Appended to
     // preserve every serialized token identity from earlier compiler lines.
-    DotDotEqual
+    DotDotEqual,
+    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>), not the `byte` keyword.
+    // Appended to preserve every previously serialized token identity.
+    Utf8StringLiteral
 };
 
 std::string_view tokenKindName(TokenKind kind) noexcept;

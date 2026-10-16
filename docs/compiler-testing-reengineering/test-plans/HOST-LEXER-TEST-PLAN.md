@@ -30,7 +30,7 @@
 
 | ID | Contrato | Entrada/preparación | Oráculo | Frecuencia |
 |---|---|---|---|---|
-| TL-LEX-001 | CL-LEX-001 | los 150 valores | `tokenKindName` exacto y único | PR |
+| TL-LEX-001 | CL-LEX-001 | los 152 valores | `tokenKindName` exacto y único | PR |
 | TL-LEX-002 | CL-LEX-001 | valor desconocido | nombre `Invalid` | PR |
 | TL-LEX-003 | CL-LEX-001 | rango KwVoid..KwString | todos y sólo ellos son builtin | PR |
 | TL-LEX-004 | CL-LEX-001 | Owned Borrowed y vecinos | sólo dos qualifiers true | PR |

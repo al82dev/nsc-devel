@@ -33,7 +33,7 @@ Los 150 valores abarcan EOF/Invalid, identificadores, seis literales, dos record
 delimitadores y operadores. Los tokens añadidos al final (`InterpolatedStringLiteral`, `??`, `??=`, `?.`,
 `..`, `..=`) preservan identidades numéricas anteriores.
 
-`tokenKindName` devuelve el nombre del enumerador para los 150 valores y `Invalid` para uno desconocido.
+`tokenKindName` devuelve el nombre del enumerador para los 152 valores y `Invalid` para uno desconocido.
 
 Clasificadores:
 
