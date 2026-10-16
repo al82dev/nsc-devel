@@ -529,6 +529,44 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     return readMirNode(reader, body);
 }
 
+// NSC305-C04. Pre-order index of a node inside a MIR body (SIZE_MAX when absent); the C4 payload
+// stores node pointers as these indices so they can be re-linked after the restore.
+std::size_t nodePreorderIndex(const ProjectOopMirNode* body, const ProjectOopMirNode* target)
+{
+    if (body == nullptr || target == nullptr) return std::numeric_limits<std::size_t>::max();
+    std::size_t index = 0;
+    std::vector<const ProjectOopMirNode*> work;
+    work.push_back(body);
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == target) return index;
+        ++index;
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            work.push_back(it->get());
+    }
+    return std::numeric_limits<std::size_t>::max();
+}
+
+ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targetIndex)
+{
+    if (body == nullptr) return nullptr;
+    std::size_t index = 0;
+    std::vector<ProjectOopMirNode*> work;
+    work.push_back(body);
+    while (!work.empty())
+    {
+        ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (index == targetIndex) return node;
+        ++index;
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            work.push_back(it->get());
+    }
+    return nullptr;
+}
+
 // NSC305-C04. The MIR function's cache payload: the observable identity + the body node tree. The
 // remaining function fields (ABI/effects/closure/exception flow) are the next serialization layer.
 [[maybe_unused]] std::string serializeMirFunctionCore(const ProjectOopMirFunction& function)
@@ -626,6 +664,42 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     appendMirSizeVector(out, function.capturedLocalOrdinals);
     appendMirSizeVector(out, function.capturedParameterOrdinals);
     appendMirSizeVector(out, function.localOrdinals);
+    // Cleanup regions + exception flow (node pointers stored as pre-order indices).
+    appendMirU32(out, static_cast<std::uint32_t>(function.cleanupRegions.size()));
+    for (const ProjectOopMirCleanupRegion& region : function.cleanupRegions)
+    {
+        appendMirU64(out, static_cast<std::uint64_t>(region.ordinal));
+        appendMirU32(out, static_cast<std::uint32_t>(region.kind));
+        appendMirU64(out, static_cast<std::uint64_t>(
+            nodePreorderIndex(function.body.get(), region.action)));
+        out.push_back(region.localOrdinal.has_value() ? '\x01' : '\x00');
+        if (region.localOrdinal.has_value()) appendMirU64(out, *region.localOrdinal);
+        out.push_back(region.parameterOrdinal.has_value() ? '\x01' : '\x00');
+        if (region.parameterOrdinal.has_value()) appendMirU64(out, *region.parameterOrdinal);
+        appendMirString(out, region.typeKey);
+        appendMirU32(out, static_cast<std::uint32_t>(region.ownership));
+        out.push_back(region.automaticDestruction ? '\x01' : '\x00');
+    }
+    out.push_back(function.exceptionFlow.requiresPersonality ? '\x01' : '\x00');
+    appendMirSizeVector(out, function.exceptionFlow.protectedRegionOrdinals);
+    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.catchRegionCount));
+    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.finallyRegionCount));
+    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.nonlocalExits.size()));
+    for (const ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
+    {
+        appendMirU32(out, static_cast<std::uint32_t>(exit.kind));
+        appendMirU64(out, static_cast<std::uint64_t>(
+            nodePreorderIndex(function.body.get(), exit.node)));
+        appendMirSizeVector(out, exit.cleanupRegionOrdinals);
+        out.push_back(exit.targetScopeOrdinal.has_value() ? '\x01' : '\x00');
+        if (exit.targetScopeOrdinal.has_value()) appendMirU64(out, *exit.targetScopeOrdinal);
+        out.push_back(exit.exceptionTargetRegionOrdinal.has_value() ? '\x01' : '\x00');
+        if (exit.exceptionTargetRegionOrdinal.has_value())
+            appendMirU64(out, *exit.exceptionTargetRegionOrdinal);
+        out.push_back(exit.cleanupContinuationKind.has_value() ? '\x01' : '\x00');
+        if (exit.cleanupContinuationKind.has_value())
+            appendMirU32(out, static_cast<std::uint32_t>(*exit.cleanupContinuationKind));
+    }
     out += serializeMirNodeTree(function.body.get());
     return out;
 }
@@ -797,7 +871,91 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
         !readSizeVector(function.capturedParameterOrdinals) ||
         !readSizeVector(function.localOrdinals))
         return false;
-    return restoreMirNodeTree(reader.remaining(), function.body);
+    // Cleanup regions + exception flow (node pointers as pre-order indices, re-linked after body).
+    std::vector<std::size_t> regionActionIndices;
+    std::vector<std::size_t> exitNodeIndices;
+    if (!reader.u32(u32)) return false;
+    function.cleanupRegions.clear();
+    function.cleanupRegions.reserve(u32);
+    regionActionIndices.reserve(u32);
+    for (std::uint32_t index = 0; index < u32; ++index)
+    {
+        ProjectOopMirCleanupRegion region;
+        if (!reader.u64(u64)) return false;
+        region.ordinal = static_cast<std::size_t>(u64);
+        if (!reader.u32(u32)) return false;
+        region.kind = static_cast<ProjectOopMirCleanupKind>(u32);
+        if (!reader.u64(u64)) return false;
+        regionActionIndices.push_back(static_cast<std::size_t>(u64));
+        std::uint8_t present = 0;
+        if (!reader.byte(present)) return false;
+        if (present != 0U)
+        {
+            if (!reader.u64(u64)) return false;
+            region.localOrdinal = static_cast<std::size_t>(u64);
+        }
+        if (!reader.byte(present)) return false;
+        if (present != 0U)
+        {
+            if (!reader.u64(u64)) return false;
+            region.parameterOrdinal = static_cast<std::size_t>(u64);
+        }
+        if (!reader.string(region.typeKey)) return false;
+        if (!reader.u32(u32)) return false;
+        region.ownership = static_cast<sema::OwnershipKind>(u32);
+        if (!reader.byte(present)) return false;
+        region.automaticDestruction = present != 0U;
+        function.cleanupRegions.push_back(std::move(region));
+    }
+    std::uint8_t requiresPersonality = 0;
+    if (!reader.byte(requiresPersonality)) return false;
+    function.exceptionFlow.requiresPersonality = requiresPersonality != 0U;
+    if (!readSizeVector(function.exceptionFlow.protectedRegionOrdinals)) return false;
+    if (!reader.u32(u32)) return false;
+    function.exceptionFlow.catchRegionCount = u32;
+    if (!reader.u32(u32)) return false;
+    function.exceptionFlow.finallyRegionCount = u32;
+    if (!reader.u32(u32)) return false;
+    function.exceptionFlow.nonlocalExits.clear();
+    function.exceptionFlow.nonlocalExits.reserve(u32);
+    exitNodeIndices.reserve(u32);
+    for (std::uint32_t index = 0; index < u32; ++index)
+    {
+        ProjectOopMirNonlocalExit exit;
+        if (!reader.u32(u32)) return false;
+        exit.kind = static_cast<ProjectOopMirNonlocalExitKind>(u32);
+        if (!reader.u64(u64)) return false;
+        exitNodeIndices.push_back(static_cast<std::size_t>(u64));
+        if (!readSizeVector(exit.cleanupRegionOrdinals)) return false;
+        std::uint8_t present = 0;
+        if (!reader.byte(present)) return false;
+        if (present != 0U)
+        {
+            if (!reader.u64(u64)) return false;
+            exit.targetScopeOrdinal = static_cast<std::size_t>(u64);
+        }
+        if (!reader.byte(present)) return false;
+        if (present != 0U)
+        {
+            if (!reader.u64(u64)) return false;
+            exit.exceptionTargetRegionOrdinal = static_cast<std::size_t>(u64);
+        }
+        if (!reader.byte(present)) return false;
+        if (present != 0U)
+        {
+            if (!reader.u32(u32)) return false;
+            exit.cleanupContinuationKind = static_cast<MethodCleanupContinuationKind>(u32);
+        }
+        function.exceptionFlow.nonlocalExits.push_back(std::move(exit));
+    }
+    if (!restoreMirNodeTree(reader.remaining(), function.body)) return false;
+    for (std::size_t i = 0; i < function.cleanupRegions.size(); ++i)
+        function.cleanupRegions[i].action =
+            nodeByPreorderIndex(function.body.get(), regionActionIndices[i]);
+    for (std::size_t i = 0; i < function.exceptionFlow.nonlocalExits.size(); ++i)
+        function.exceptionFlow.nonlocalExits[i].node =
+            nodeByPreorderIndex(function.body.get(), exitNodeIndices[i]);
+    return true;
 }
 
 bool finalizeCleanupContract(
