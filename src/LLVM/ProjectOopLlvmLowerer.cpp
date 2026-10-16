@@ -11976,6 +11976,43 @@ private:
                     fileWriteAllBytesFunctionType_, fileWriteAllBytesFunction_, args, 3, "file.writeallbytes"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileWriteAllText ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreFileAppendAllText)
+            {
+                const bool append = current->kind == frontend::ProjectOopMirNodeKind::CoreFileAppendAllText;
+                if (current->children.size() != 2 ||
+                    (!append && fileWriteAllTextFunction_ == nullptr) ||
+                    (append && fileAppendAllTextFunction_ == nullptr))
+                {
+                    values.push_back(failValue(error, "Stage 53.3b File text write intrinsic requires two string arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef path = values.back();
+                    values.pop_back();
+                    if (path == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, path, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef content = values.back();
+                values.pop_back();
+                if (content == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, content};
+                if (append)
+                    buildNoUnwindCall(fileAppendAllTextFunctionType_, fileAppendAllTextFunction_, args, 2, "");
+                else
+                    buildNoUnwindCall(fileWriteAllTextFunctionType_, fileWriteAllTextFunction_, args, 2, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12543,29 +12580,8 @@ private:
             // WriteAllText/AppendAllText: two string arguments (path, content), void return --
             // same "call the hook, dummy i1 result" shape CoreEnvironmentSetVariable uses.
             case frontend::ProjectOopMirNodeKind::CoreFileWriteAllText:
-            {
-                if (node->children.size() != 2 || fileWriteAllTextFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3b File.WriteAllText requires two string arguments and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef content = lowerExpression(node->children[1].get(), error);
-                if (content == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, content};
-                buildNoUnwindCall(fileWriteAllTextFunctionType_, fileWriteAllTextFunction_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreFileAppendAllText:
-            {
-                if (node->children.size() != 2 || fileAppendAllTextFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3b File.AppendAllText requires two string arguments and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef content = lowerExpression(node->children[1].get(), error);
-                if (content == nullptr) return nullptr;
-                LLVMValueRef args[] = {path, content};
-                buildNoUnwindCall(fileAppendAllTextFunctionType_, fileAppendAllTextFunction_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 53.4 "Filesystem/Paths (cierre)": Directory.Delete takes one string argument
             // (a path), void return -- same "call the hook, dummy i1 result" shape CoreFileDelete/
