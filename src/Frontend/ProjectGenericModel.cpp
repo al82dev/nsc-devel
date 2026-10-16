@@ -785,6 +785,14 @@ bool ProjectGenericModel::build(
     {
         stateBySyntax_.emplace(state.syntax, &state);
         stateByCanonicalKey_.emplace(state.record.canonicalKey, &state);
+        if (state.record.kind != GenericTemplateKind::Method)
+        {
+            typesByModuleQualified_[
+                state.record.moduleName + "::" +
+                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName)]
+                .push_back(&state);
+            typesByVisibleName_[state.record.name].push_back(&state);
+        }
     }
 
     // Record the declaration-level dependency graph before any template is cloned. A producer
@@ -4096,55 +4104,73 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     std::string_view writtenName,
     std::size_t arity)
 {
-    telemetry_.noteResolutionQuery(templateStates_.size());
+    const auto sinFiltro = std::numeric_limits<std::size_t>::max();
     const std::size_t moduleSeparator = writtenName.find("::");
     if (moduleSeparator != std::string_view::npos)
     {
         const std::string_view requestedModule = writtenName.substr(0, moduleSeparator);
         const std::string_view requestedType = writtenName.substr(moduleSeparator + 2U);
-        if (requestedModule.empty() || requestedType.empty()) return nullptr;
-
-        TemplateState* exact = nullptr;
-        for (TemplateState& state : templateStates_)
+        if (requestedModule.empty() || requestedType.empty())
         {
-            if (state.record.kind == GenericTemplateKind::Method ||
-                state.record.moduleName != requestedModule ||
-                (arity != std::numeric_limits<std::size_t>::max() &&
-                 !genericArityAccepts(state.record, arity)))
-                continue;
-            const std::string candidate =
-                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
-            if (candidate != requestedType) continue;
+            telemetry_.noteResolutionQuery(0);
+            return nullptr;
+        }
+
+        const auto bucket = typesByModuleQualified_.find(
+            std::string(requestedModule) + "::" + std::string(requestedType));
+        if (bucket == typesByModuleQualified_.end())
+        {
+            telemetry_.noteResolutionQuery(0);
+            return nullptr;
+        }
+        telemetry_.noteResolutionQuery(bucket->second.size());
+        TemplateState* exact = nullptr;
+        for (TemplateState* state : bucket->second)
+        {
+            if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
             if (exact != nullptr) return nullptr;
-            exact = &state;
+            exact = state;
         }
         return exact;
     }
 
-    TemplateState* fallback = nullptr;
+    // NSC305-G02. Bucket by terminal name; the original scan tested every catalog entry for
+    // visibility, arity and candidate spelling. The bucket keeps source order, so the first-match
+    // and ambiguity semantics are unchanged.
     const std::string qualified = qualifiedName(namespaceName, writtenName);
-    for (TemplateState& state : templateStates_)
+    const std::string_view terminalName = [&]() -> std::string_view
     {
-        if (state.record.kind == GenericTemplateKind::Method ||
-            !templateVisible(unit.projectOrdinal(), state.record)) continue;
-        if (arity != std::numeric_limits<std::size_t>::max() &&
-            !genericArityAccepts(state.record, arity)) continue;
+        const std::size_t dot = writtenName.rfind('.');
+        return dot == std::string_view::npos ? writtenName : writtenName.substr(dot + 1U);
+    }();
+    const auto bucket = typesByVisibleName_.find(std::string(terminalName));
+    if (bucket == typesByVisibleName_.end())
+    {
+        telemetry_.noteResolutionQuery(0);
+        return nullptr;
+    }
+    telemetry_.noteResolutionQuery(bucket->second.size());
+    TemplateState* fallback = nullptr;
+    for (TemplateState* state : bucket->second)
+    {
+        if (!templateVisible(unit.projectOrdinal(), state->record)) continue;
+        if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
         const std::string candidate =
-            qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
+            qualifiedName(state->record.namespaceName, state->record.qualifiedTypeName);
         if (writtenName.find('.') != std::string_view::npos)
         {
             if (candidate == writtenName)
             {
                 if (fallback != nullptr) return nullptr;
-                fallback = &state;
+                fallback = state;
             }
             continue;
         }
-        if (candidate == qualified) return &state;
-        if (state.record.name == writtenName)
+        if (candidate == qualified) return state;
+        if (state->record.name == writtenName)
         {
             if (fallback != nullptr) return nullptr;
-            fallback = &state;
+            fallback = state;
         }
     }
     return fallback;

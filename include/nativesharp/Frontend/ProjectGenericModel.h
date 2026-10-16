@@ -688,6 +688,12 @@ private:
     // that point on, so the stored element pointers remain valid for the rest of build().
     std::unordered_map<const ast::AstNode*, TemplateState*> stateBySyntax_;
     std::unordered_map<std::string, TemplateState*> stateByCanonicalKey_;
+    // NSC305-G02. Type-only candidate buckets for `resolveTypeTemplate`. The first maps the full
+    // module-qualified spelling (`module::namespace.Outer.Inner`) to its type templates; the second
+    // maps a terminal type name to its type templates. Both preserve source order and contain only
+    // type templates (no methods), so a lookup examines homonyms instead of the whole catalog.
+    std::unordered_map<std::string, std::vector<TemplateState*>> typesByModuleQualified_;
+    std::unordered_map<std::string, std::vector<TemplateState*>> typesByVisibleName_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
