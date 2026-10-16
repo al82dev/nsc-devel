@@ -103,6 +103,18 @@ struct GenericTemplateRecord final
     std::vector<std::string> unresolvedDependencies;
 };
 
+// NSC305-G07. Lifecycle of a specialization slot. The sequential pass only uses Unseen (no slot),
+// Building (record pushed, materializing) and Ready (product committed). Queued and Failed are the
+// states the deterministic parallel planner (G09) will add.
+enum class SpecializationState : std::uint8_t
+{
+    Unseen = 0,
+    Queued = 1,
+    Building = 2,
+    Ready = 3,
+    Failed = 4,
+};
+
 struct GenericSpecializationRecord final
 {
     GenericTemplateKind kind = GenericTemplateKind::Class;
@@ -132,6 +144,10 @@ struct GenericSpecializationRecord final
     // fallan TODAS. Sin este campo, `F<Valor>(...)` con dos `F<T>` declaradas se rechazaba por la
     // candidata equivocada.
     std::size_t overloadGroup = 0;
+    // NSC305-G07. Explicit lifecycle state (see SpecializationState). A record is pushed as
+    // Building and flips to Ready when the committed clone is attached; precompiled seed and lambda
+    // instances are born Ready.
+    SpecializationState state = SpecializationState::Unseen;
 };
 
 // Closed code that is already present in a referenced binary. Seeding the generic cache with

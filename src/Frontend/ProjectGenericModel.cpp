@@ -918,6 +918,7 @@ bool ProjectGenericModel::build(
                 nullptr,
                 SourceRange{},
                 0});
+            specializations_.back().state = SpecializationState::Ready;
         }
     }
 
@@ -2332,6 +2333,7 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     const std::string instanceKey = specialization.specializationKey;
     const std::size_t instanceOrdinal = specialization.cacheOrdinal;
     specializations_.push_back(std::move(specialization));
+    specializations_.back().state = SpecializationState::Ready;
     const bool captures = source->auxiliaryText().starts_with("captures:") &&
         source->auxiliaryText().size() > std::string_view("captures:").size();
     const auto synthesizeDelegate = [&](ast::AstNode* lambda, std::string_view suffix)
@@ -4512,6 +4514,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         nullptr,
         currentInstantiationRange_,
         currentOverloadGroup_});
+    specializations_.back().state = SpecializationState::Building;
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
@@ -4567,6 +4570,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         state.parent->addChild(clone);
         specializations_[ordinal].specializedSyntax = clone;
         specializationBySyntax_[clone] = ordinal;
+        specializations_[ordinal].state = SpecializationState::Ready;
         registerAssociatedItems(
             clone,
             namespaceAppend(state.record.namespaceName, specializedName),
@@ -4669,6 +4673,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         nullptr,
         currentInstantiationRange_,
         currentOverloadGroup_});
+    specializations_.back().state = SpecializationState::Building;
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
@@ -4718,6 +4723,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         state.parent->addChild(clone);
         specializations_[ordinal].specializedSyntax = clone;
         specializationBySyntax_[clone] = ordinal;
+        specializations_[ordinal].state = SpecializationState::Ready;
     }
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
