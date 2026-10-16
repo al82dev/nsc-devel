@@ -11199,6 +11199,30 @@ private:
                 values.push_back(lowerAwaitExpression(current, error, child));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::AggregateInitialize)
+            {
+                if (frame.phase < current->children.size())
+                {
+                    const std::size_t index = frame.phase;
+                    const auto& child = current->children[index];
+                    if (child == nullptr || child->children.empty())
+                    {
+                        values.push_back(failValue(error, "C7 aggregate initializer has a malformed element"));
+                        continue;
+                    }
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({child->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> fieldValues(current->children.size());
+                for (std::size_t i = current->children.size(); i > 0; --i)
+                {
+                    fieldValues[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerAggregateInitializer(current, error, &fieldValues));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14088,7 +14112,7 @@ private:
             case frontend::ProjectOopMirNodeKind::ParameterPack:
                 return lowerParameterPack(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateInitialize:
-                return lowerAggregateInitializer(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateSpreadStore:
                 return failValue(
                     error, "T01-F05 aggregate spread must be lowered by its owning initializer");
@@ -18944,7 +18968,8 @@ private:
     bool initializeAggregateIntoSlot(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef slot,
-        std::string& error)
+        std::string& error,
+        const std::vector<LLVMValueRef>* fieldValues = nullptr)
     {
         if (node == nullptr ||
             node->kind != frontend::ProjectOopMirNodeKind::AggregateInitialize ||
@@ -18952,6 +18977,14 @@ private:
         {
             return fail(error, "C7 aggregate initializer has no destination or value layout");
         }
+
+        std::size_t fieldIndex = 0;
+        const auto nextField = [&]() -> LLVMValueRef
+        {
+            if (fieldValues == nullptr) return nullptr;
+            if (fieldIndex >= fieldValues->size()) return nullptr;
+            return (*fieldValues)[fieldIndex++];
+        };
 
         LLVMValueRef memsetArgs[] = {
             slot,
@@ -18970,12 +19003,16 @@ private:
                 LLVMValueRef sourceSlot = nullptr;
                 if (child->booleanValue)
                 {
-                    sourceSlot = lowerExpression(child->children.front().get(), error);
+                    sourceSlot = fieldValues != nullptr
+                        ? nextField()
+                        : lowerExpression(child->children.front().get(), error);
                     if (sourceSlot == nullptr) return false;
                 }
                 else
                 {
-                    LLVMValueRef sourceValue = lowerExpression(child->children.front().get(), error);
+                    LLVMValueRef sourceValue = fieldValues != nullptr
+                        ? nextField()
+                        : lowerExpression(child->children.front().get(), error);
                     if (sourceValue == nullptr) return false;
                     LLVMTypeRef sourceType = llvmType(child->typeKey, error);
                     if (sourceType == nullptr) return false;
@@ -19027,7 +19064,9 @@ private:
             {
                 return fail(error, "C7 aggregate initializer has a malformed element");
             }
-            LLVMValueRef value = lowerExpression(child->children.front().get(), error);
+            LLVMValueRef value = fieldValues != nullptr
+                ? nextField()
+                : lowerExpression(child->children.front().get(), error);
             if (value == nullptr) return false;
             LLVMValueRef address = byteOffset(slot, child->immediate, "aggregate.element.addr");
             if (child->bitWidth.has_value())
@@ -19058,7 +19097,10 @@ private:
     // C7/T01-F05 aggregate expression. Locals bypass this temporary and call
     // initializeAggregateIntoSlot with their final storage from lowerStatement. A temporary is
     // still required when the aggregate is itself an argument, return value, or subexpression.
-    LLVMValueRef lowerAggregateInitializer(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerAggregateInitializer(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        const std::vector<LLVMValueRef>* fieldValues = nullptr)
     {
         if (node->immediate == 0 || node->alignment == 0)
         {
@@ -19070,7 +19112,7 @@ private:
             carrier, static_cast<unsigned>(node->alignment), "aggregate.init");
         if (slot == nullptr)
             return failValue(error, "C7 aggregate initializer could not reserve storage");
-        if (!initializeAggregateIntoSlot(node, slot, error)) return nullptr;
+        if (!initializeAggregateIntoSlot(node, slot, error, fieldValues)) return nullptr;
 
         // Always the loaded carrier, never the slot pointer -- see the note in
         // lowerValueConstruction for the bug that short-circuit causes.
