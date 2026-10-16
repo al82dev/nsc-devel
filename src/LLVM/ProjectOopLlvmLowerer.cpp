@@ -518,6 +518,66 @@ bool emitThisDebugInfo(
     return true;
 }
 
+// NSC305-L03. Emits the debug metadata for a catch parameter (moved out of the lowerer's
+// emitDebugCatchParameter as a pure move).
+bool emitCatchParameterDebugInfo(
+    DebugInformationKind debugInformation,
+    LLVMDIBuilderRef debugBuilder,
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    LLVMMetadataRef currentDebugSubprogram,
+    LLVMMetadataRef currentDebugScope,
+    const frontend::ProjectOopMirFunction* currentMirFunction,
+    const source::SourceManager* sourceManager,
+    std::unordered_set<std::size_t>& debugDeclaredLocals,
+    const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
+    const std::function<LLVMMetadataRef(std::string_view, std::string_view)>& debugTypeLookup,
+    const frontend::ProjectOopMirNode* node,
+    LLVMValueRef storage,
+    std::size_t handlerIndex,
+    std::string& error)
+{
+    if (debugInformation != DebugInformationKind::Full || currentDebugSubprogram == nullptr ||
+        node == nullptr || storage == nullptr || node->stringValue.empty() ||
+        !node->localOrdinal.has_value())
+        return true;
+    if (!debugDeclaredLocals.insert(*node->localOrdinal).second) return true;
+    if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
+
+    const SourceRange range = node->syntax->range();
+    LLVMMetadataRef file = debugFileLookup(range.begin());
+    LLVMMetadataRef type = debugTypeLookup(node->elementTypeKey, node->stringValue);
+    LLVMMetadataRef scope =
+        currentDebugScope != nullptr ? currentDebugScope : currentDebugSubprogram;
+    if (file == nullptr || type == nullptr || scope == nullptr) return true;
+    const source::SourcePosition position = sourceManager->getPosition(range.begin());
+    const unsigned ordinaryParameters = currentMirFunction != nullptr
+        ? static_cast<unsigned>(currentMirFunction->parameterTypeKeys.size())
+        : 0U;
+    LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+        debugBuilder, scope, node->stringValue.data(), node->stringValue.size(),
+        ordinaryParameters + static_cast<unsigned>(handlerIndex) + 1U,
+        file, position.line, type, 1, LLVMDIFlagZero);
+    LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
+    LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+        context, position.line, position.column, scope, nullptr);
+    if (variable == nullptr || expression == nullptr || location == nullptr)
+    {
+        error = "failed to create debug metadata for catch parameter '" +
+            node->stringValue + "'";
+        return false;
+    }
+    if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+            debugBuilder, storage, variable, expression, location,
+            LLVMGetInsertBlock(builder)) == nullptr)
+    {
+        error = "failed to emit debug storage for catch parameter '" +
+            node->stringValue + "'";
+        return false;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -2130,40 +2190,14 @@ private:
         std::size_t handlerIndex,
         std::string& error)
     {
-        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr ||
-            node == nullptr || storage == nullptr || node->stringValue.empty() ||
-            !node->localOrdinal.has_value())
-            return true;
-        if (!debugDeclaredLocals_.insert(*node->localOrdinal).second) return true;
-        if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
-
-        const SourceRange range = node->syntax->range();
-        LLVMMetadataRef file = debugFile(range.begin());
-        LLVMMetadataRef type = debugNamedValueType(node->elementTypeKey, node->stringValue);
-        LLVMMetadataRef scope = currentDebugScope_ != nullptr
-            ? currentDebugScope_
-            : currentDebugSubprogram_;
-        if (file == nullptr || type == nullptr || scope == nullptr) return true;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-        const unsigned ordinaryParameters = currentMirFunction_ != nullptr
-            ? static_cast<unsigned>(currentMirFunction_->parameterTypeKeys.size())
-            : 0U;
-        LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
-            debugBuilder_, scope, node->stringValue.data(), node->stringValue.size(),
-            ordinaryParameters + static_cast<unsigned>(handlerIndex) + 1U,
-            file, position.line, type, 1, LLVMDIFlagZero);
-        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, scope, nullptr);
-        if (variable == nullptr || expression == nullptr || location == nullptr)
-            return fail(error, "failed to create debug metadata for catch parameter '" +
-                node->stringValue + "'");
-        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
-                debugBuilder_, storage, variable, expression, location,
-                LLVMGetInsertBlock(builder_)) == nullptr)
-            return fail(error, "failed to emit debug storage for catch parameter '" +
-                node->stringValue + "'");
-        return true;
+        return emitCatchParameterDebugInfo(
+            debugInformation_, debugBuilder_, context_, builder_, currentDebugSubprogram_,
+            currentDebugScope_, currentMirFunction_, sourceManager_, debugDeclaredLocals_,
+            [&](SourceLocation location) { return debugFile(location); },
+            [&](std::string_view typeKey, std::string_view name) {
+                return debugNamedValueType(typeKey, name);
+            },
+            node, storage, handlerIndex, error);
     }
 
     bool emitDebugThis(
