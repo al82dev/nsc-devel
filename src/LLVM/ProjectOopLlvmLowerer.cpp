@@ -1084,6 +1084,52 @@ bool emitDescriptorInitializer(
     return true;
 }
 
+// NSC305-L03. Emits a descriptor accessor's body (moved out of emitDispatchMetadata as a pure
+// move). The base accessor lookup is a callback so the private FunctionInfo map stays in the lowerer.
+bool emitDescriptorAccessorBody(
+    LLVMContextRef context,
+    LLVMTypeRef descriptorType,
+    LLVMTypeRef ptr,
+    LLVMValueRef accessor,
+    LLVMValueRef descriptor,
+    const frontend::ProjectOopMirDispatchTable& table,
+    bool runtimeDescriptor,
+    const std::function<bool(std::size_t, LLVMTypeRef&, LLVMValueRef&)>& baseAccessorLookup,
+    std::string& error)
+{
+    LLVMBasicBlockRef accessorEntry = LLVMAppendBasicBlockInContext(context, accessor, "entry");
+    LLVMBuilderRef accessorBuilder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(accessorBuilder, accessorEntry);
+    if (runtimeDescriptor)
+    {
+        if (!table.baseTypeOrdinal.has_value())
+        {
+            LLVMDisposeBuilder(accessorBuilder);
+            error = "1.0-E1 runtime descriptor has no base type";
+            return false;
+        }
+        LLVMTypeRef baseFunctionType = nullptr;
+        LLVMValueRef baseFunction = nullptr;
+        if (!baseAccessorLookup(*table.baseTypeOrdinal, baseFunctionType, baseFunction))
+        {
+            LLVMDisposeBuilder(accessorBuilder);
+            error = "1.0-E1 runtime descriptor cannot resolve its base accessor";
+            return false;
+        }
+        LLVMValueRef resolvedBase = LLVMBuildCall2(
+            accessorBuilder, baseFunctionType, baseFunction, nullptr, 0, "base.classdesc");
+        LLVMValueRef baseField = LLVMBuildStructGEP2(
+            accessorBuilder, descriptorType, descriptor, 0, "base.classdesc.addr");
+        LLVMBuildAtomicCmpXchg(
+            accessorBuilder, baseField, LLVMConstNull(ptr), resolvedBase,
+            LLVMAtomicOrderingSequentiallyConsistent,
+            LLVMAtomicOrderingSequentiallyConsistent, 0);
+    }
+    LLVMBuildRet(accessorBuilder, descriptor);
+    LLVMDisposeBuilder(accessorBuilder);
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -4245,49 +4291,18 @@ private:
                 return fail(error, "1.0-E1 lost a declared class-descriptor accessor");
             }
             LLVMValueRef accessor = accessorFound->second.function;
-            LLVMBasicBlockRef accessorEntry = LLVMAppendBasicBlockInContext(context_, accessor, "entry");
-            LLVMBuilderRef accessorBuilder = LLVMCreateBuilderInContext(context_);
-            LLVMPositionBuilderAtEnd(accessorBuilder, accessorEntry);
-            if (runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal))
-            {
-                if (!table.baseTypeOrdinal.has_value())
-                {
-                    LLVMDisposeBuilder(accessorBuilder);
-                    return fail(error, "1.0-E1 runtime descriptor has no base type");
-                }
-                const auto baseAccessor = descriptorAccessorFunctions_.find(*table.baseTypeOrdinal);
-                if (baseAccessor == descriptorAccessorFunctions_.end())
-                {
-                    LLVMDisposeBuilder(accessorBuilder);
-                    return fail(error, "1.0-E1 runtime descriptor cannot resolve its base accessor");
-                }
-                LLVMValueRef resolvedBase = LLVMBuildCall2(
-                    accessorBuilder,
-                    baseAccessor->second.functionType,
-                    baseAccessor->second.function,
-                    nullptr,
-                    0,
-                    "base.classdesc");
-                LLVMValueRef baseField = LLVMBuildStructGEP2(
-                    accessorBuilder,
-                    descriptorType_,
-                    descriptorFound->second,
-                    0,
-                    "base.classdesc.addr");
-                // More than one thread may construct the first object of this type. Publish the
-                // identical base pointer exactly once; a plain repeated store would race with
-                // another accessor or with RTTI reading the completed descriptor chain.
-                LLVMBuildAtomicCmpXchg(
-                    accessorBuilder,
-                    baseField,
-                    LLVMConstNull(ptr),
-                    resolvedBase,
-                    LLVMAtomicOrderingSequentiallyConsistent,
-                    LLVMAtomicOrderingSequentiallyConsistent,
-                    0);
-            }
-            LLVMBuildRet(accessorBuilder, descriptorFound->second);
-            LLVMDisposeBuilder(accessorBuilder);
+            if (!emitDescriptorAccessorBody(
+                    context_, descriptorType_, ptr, accessor, descriptorFound->second, table,
+                    runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal),
+                    [&](std::size_t ordinal, LLVMTypeRef& functionType, LLVMValueRef& function) {
+                        const auto found = descriptorAccessorFunctions_.find(ordinal);
+                        if (found == descriptorAccessorFunctions_.end()) return false;
+                        functionType = found->second.functionType;
+                        function = found->second.function;
+                        return true;
+                    },
+                    error))
+                return false;
         }
         return true;
     }
