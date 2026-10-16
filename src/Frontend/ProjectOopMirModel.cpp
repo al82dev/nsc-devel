@@ -90,6 +90,25 @@ void appendMirStringVector(std::string& out, const std::vector<std::string>& val
     for (const std::string& value : values) appendMirString(out, value);
 }
 
+void appendMirSizeVector(std::string& out, const std::vector<std::size_t>& values)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
+    for (const std::size_t value : values) appendMirU64(out, static_cast<std::uint64_t>(value));
+}
+
+void appendMirInt64Vector(std::string& out, const std::vector<std::int64_t>& values)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
+    for (const std::int64_t value : values)
+        appendMirU64(out, static_cast<std::uint64_t>(value));
+}
+
+void appendMirU32Vector(std::string& out, const std::vector<std::uint32_t>& values)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
+    for (const std::uint32_t value : values) appendMirU32(out, value);
+}
+
 class MirByteReader final
 {
 public:
@@ -236,6 +255,62 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
     setFlag(28, node.inlineAssemblyClobbersMemory);
     setFlag(29, node.inlineAssemblyClobbersFlags);
     appendMirU32(out, flags);
+
+    // Optional ordinals / enum optionals (present byte + value).
+    const auto appendOptU64 = [&](const std::optional<std::size_t>& value)
+    {
+        out.push_back(value.has_value() ? '\x01' : '\x00');
+        if (value.has_value()) appendMirU64(out, static_cast<std::uint64_t>(*value));
+    };
+    const auto appendOptEnum = [&](const auto& value)
+    {
+        out.push_back(value.has_value() ? '\x01' : '\x00');
+        if (value.has_value())
+            appendMirU32(out, static_cast<std::uint32_t>(*value));
+    };
+    appendOptU64(node.memberOrdinal);
+    appendOptU64(node.namespaceFunctionOrdinal);
+    appendOptU64(node.namespaceStateOrdinal);
+    appendOptU64(node.secondaryMemberOrdinal);
+    appendOptU64(node.resultSuccessTestMemberOrdinal);
+    appendOptU64(node.resultSuccessExtractorMemberOrdinal);
+    appendOptU64(node.resultErrorExtractorMemberOrdinal);
+    appendOptU64(node.resultErrorFactoryMemberOrdinal);
+    appendOptU64(node.resultErrorConversionMemberOrdinal);
+    appendOptU64(node.localOrdinal);
+    appendOptU64(node.parameterOrdinal);
+    appendOptU64(node.constructionOrdinal);
+    appendOptU64(node.targetTypeOrdinal);
+    appendOptU64(node.exceptionTypeOrdinal);
+    appendOptU64(node.cleanupRegionOrdinal);
+    appendOptU64(node.mirRegionOrdinal);
+    appendOptU64(node.exceptionTargetRegionOrdinal);
+    appendOptU64(node.targetScopeOrdinal);
+    appendOptU64(node.disposeContractMemberOrdinal);
+    appendOptU64(node.disposeImplementationMemberOrdinal);
+    appendOptU64(node.virtualSlot);
+    appendOptU64(node.interfaceSlot);
+    appendOptU64(node.allocatorContextLocalOrdinal);
+    appendOptU64(node.allocatorDeallocateMemberOrdinal);
+    appendOptU64(node.allocatorTypeOrdinal);
+    appendOptEnum(node.cleanupContinuationKind);
+    appendOptEnum(node.borrowKind);
+    appendOptEnum(node.localBorrowSourceKind);
+    appendOptEnum(node.conversionKind);
+    appendOptU64(node.bitOffset);
+    appendOptU64(node.bitWidth);
+
+    // Vectors.
+    appendMirSizeVector(out, node.cleanupRegionOrdinals);
+    appendMirInt64Vector(out, node.switchLabels);
+    {
+        std::vector<std::uint32_t> segments;
+        segments.reserve(node.collectionSegments.size());
+        for (const ProjectCollectionSegmentKind segment : node.collectionSegments)
+            segments.push_back(static_cast<std::uint32_t>(segment));
+        appendMirU32Vector(out, segments);
+    }
+    appendMirSizeVector(out, node.argumentParameterOrdinals);
 }
 
 [[maybe_unused]] std::string serializeMirNodeTree(const ProjectOopMirNode* body)
