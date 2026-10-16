@@ -1862,3 +1862,19 @@ configuro, compilo ni ejecuto. Evidencia:
 - No se ejecutó la matriz completa, no se promovió a `C:\native-sharp` y no se reintrodujo el
   versionamiento NSMETA como feature independiente.
 - Evidencia: `TANDA-VALIDACION-258-PREFLIGHT-BASELINE-METADATA.md`.
+
+## Validación 259 — identidad independiente del baseline
+
+`CORRECCIÓN IMPLEMENTADA; VALIDACIÓN FOCAL DEBUG/RELEASE COMPLETA; MATRIZ COMPLETA PENDIENTE DEL USUARIO EN GUI`.
+
+- La corrida `20261016-002156-4e066a71` terminó con `13,132/13,134` variantes en `PASS`; las únicas fallas fueron
+  `TB-BAS-022|Debug|NA` y `TB-BAS-022|Release|NA`.
+- El baseline reconstruía e instalaba sobre el mismo `nsc.exe` usado como comparador y además fijaba un build ID
+  derivado del árbol fuente, por lo que ambos lados presentaban el mismo hash, versión e identidad.
+- El worker preserva ahora el comparador antes del rebuild dentro de la evidencia en `A:` y deja vacío
+  `NSC_BUILD_ID_OVERRIDE` para recuperar la identidad única por construcción.
+- Las pruebas focales del Builder pasan `9/9` y su suite modular pasa `72/72`.
+- Una reconstrucción real del target `nsc`, sin instalación ni promoción, produjo hashes e identidades distintos;
+  `TB-BAS-022` pasa `1/1` en Debug y `1/1` en Release.
+- No se ejecutó la matriz completa ni se escribió en `C:`. Evidencia:
+  `TANDA-VALIDACION-259-TB-BAS-022-IDENTIDAD-BASELINE.md`.

@@ -29,6 +29,7 @@ class BaselinePlan:
     staging_prefix: Path
     promotion_prefix: Path
     nslink_source: Path
+    comparison_source: Path
     compiler_config: BuilderConfig
     optimizations: tuple[str, ...]
     preparation_commands: tuple[tuple[str, list[str], Path], ...]
@@ -46,6 +47,9 @@ def create_baseline_plan(
     staging = BASELINE_PREFIX.resolve()
     destination = BASELINE_PROMOTION_PREFIX.resolve()
     nslink = _select_baseline_nslink_source(Path(config.nslink_executable), staging)
+    comparison = _validated_comparison_source(
+        Path(config.comparison_nsc or config.nsc_executable)
+    )
     tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     baseline_config = replace(
         config,
@@ -89,6 +93,7 @@ def create_baseline_plan(
         staging,
         destination,
         nslink,
+        comparison,
         baseline_config,
         selected,
         tuple([*configure, *build, install]),
@@ -119,6 +124,21 @@ def stage_baseline_nslink(source: Path, prefix: Path = BASELINE_PREFIX) -> Path:
     if sha256_file(verified) != sha256_file(destination):
         raise OSError(f"staged NSLink hash mismatch: {destination}")
     return destination
+
+
+def snapshot_baseline_comparison(source: Path, destination: Path) -> Path:
+    """Preserve the pre-build compiler before Gate 0 mutates build and staging trees."""
+    verified = _validated_comparison_source(source)
+    target = destination.resolve()
+    if target.drive.casefold() != "a:":
+        raise ValueError(f"baseline comparison snapshot must stay on A:; got {target}")
+    if target == verified:
+        raise ValueError("baseline comparison snapshot must differ from its source")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(verified, target)
+    if sha256_file(verified) != sha256_file(target):
+        raise OSError(f"baseline comparison snapshot hash mismatch: {target}")
+    return target
 
 
 def promote_certified_baseline(
@@ -174,6 +194,15 @@ def _validated_nslink_source(source: Path, staging: Path) -> Path:
     return resolved
 
 
+def _validated_comparison_source(source: Path) -> Path:
+    resolved = source.resolve()
+    if resolved.drive.casefold() != "a:":
+        raise ValueError(f"baseline comparison NSC must come from A:; got {resolved}")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"baseline comparison NSC does not exist: {resolved}")
+    return resolved
+
+
 def _select_baseline_nslink_source(configured: Path, staging: Path) -> Path:
     """Prefer a valid override, repairing the legacy reset-staging default."""
     resolved = configured.resolve()
@@ -206,6 +235,7 @@ __all__ = (
     "create_baseline_plan",
     "promote_certified_baseline",
     "reset_baseline_staging",
+    "snapshot_baseline_comparison",
     "stage_baseline_nslink",
     "tree_fingerprint",
 )

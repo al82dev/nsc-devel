@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -29,6 +30,7 @@ from .baseline import (
     create_baseline_plan,
     promote_certified_baseline,
     reset_baseline_staging,
+    snapshot_baseline_comparison,
     stage_baseline_nslink,
     tree_fingerprint,
 )
@@ -81,19 +83,32 @@ class BaselineWorker(QThread):
         try:
             self.store = EvidenceStore(self.run_id, self.metadata)
             before = tree_fingerprint(source_roots)
-            build_id = before[:16]
-            self.store.event("BASELINE_BUILD_ID", {"build_id": build_id})
+            self.store.event("BASELINE_SOURCE_FINGERPRINT", {"sha256": before})
+            self.stage_ready.emit("Preservar NSC de comparación")
+            comparison = snapshot_baseline_comparison(
+                self.plan.comparison_source,
+                self.store.root / "preparation" / "comparison-nsc.exe",
+            )
+            self.store.event(
+                "BASELINE_COMPARISON_SNAPSHOT",
+                {
+                    "source": str(self.plan.comparison_source),
+                    "snapshot": str(comparison),
+                },
+            )
+            execution_config = replace(
+                self.plan.compiler_config,
+                comparison_nsc=str(comparison),
+            )
             commands = tuple(self.plan.preparation_commands)
-            total = len(commands) + 4
-            completed = 0
+            total = len(commands) + 5
+            completed = 1
+            self.progress_ready.emit(
+                completed,
+                total,
+                "NSC de comparación preservado antes del rebuild",
+            )
             for label, command, cwd in commands:
-                if label.startswith("Configurar NSC"):
-                    command = [
-                        f"-DNSC_BUILD_ID_OVERRIDE={build_id}"
-                        if item.startswith("-DNSC_BUILD_ID_OVERRIDE=")
-                        else item
-                        for item in command
-                    ]
                 if label == "Instalar compilador en staging":
                     self.stage_ready.emit("Preparar staging del baseline")
                     reset_baseline_staging(self.plan.staging_prefix)
@@ -131,7 +146,7 @@ class BaselineWorker(QThread):
                 timeout_budgets = load_variant_timeout_budgets(self.variants)
                 self.stage_ready.emit("Certificar matriz completa O0–O3")
                 self.engine = ExecutionEngine(
-                    self.plan.compiler_config,
+                    execution_config,
                     self.store,
                     self.output_ready.emit,
                     self.case_ready.emit,
@@ -274,7 +289,7 @@ class BaselinePageMixin:
             )
             plan = create_baseline_plan(config)
             self.baseline_stage.setText(
-                f"Plan listo: {len(plan.preparation_commands) + 4} etapas previas/de cierre · "
+                f"Plan listo: {len(plan.preparation_commands) + 5} etapas previas/de cierre · "
                 f"staging {plan.staging_prefix} · promoción {plan.promotion_prefix}"
             )
         except Exception as error:
@@ -319,7 +334,7 @@ class BaselinePageMixin:
             }
             self.baseline_log.clear()
             self.active_release_operation = "baseline"
-            self.baseline_progress.setRange(0, len(plan.preparation_commands) + 4)
+            self.baseline_progress.setRange(0, len(plan.preparation_commands) + 5)
             self.baseline_progress.setValue(0)
             self._set_busy(True)
             worker = BaselineWorker(run_id, plan, variants, metadata)

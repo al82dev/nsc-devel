@@ -27,6 +27,9 @@ class ReleaseOperationPlanTests(unittest.TestCase):
         nslink.write_bytes(b"nslink")
         build = root / "build-clang"
         build.mkdir()
+        compiler = build / "bin" / "nsc.exe"
+        compiler.parent.mkdir()
+        compiler.write_bytes(b"pre-build-nsc")
         (build / "cmake_install.cmake").write_text("# fixture\n", encoding="utf-8")
         return BuilderConfig(
             nsc_executable=str(build / "bin" / "nsc.exe"),
@@ -81,13 +84,69 @@ class ReleaseOperationPlanTests(unittest.TestCase):
                 repaired = baseline.create_baseline_plan(
                     replace(config, nslink_executable=str(inside))
                 )
+                comparison_snapshot = root / "evidence" / "comparison-nsc.exe"
+                preserved = baseline.snapshot_baseline_comparison(
+                    plan.comparison_source,
+                    comparison_snapshot,
+                )
+                plan.comparison_source.write_bytes(b"rebuilt-nsc")
                 with self.assertRaisesRegex(ValueError, "reset staging"):
                     baseline.stage_baseline_nslink(inside, staging)
+                preserved_bytes = preserved.read_bytes()
 
         self.assertEqual(plan.optimizations, ("O0", "O1", "O2", "O3"))
         self.assertEqual(plan.compiler_config.install_prefix, str(staging.resolve()))
         self.assertEqual(plan.promotion_prefix, Path("C:/native-sharp").resolve())
         self.assertEqual(repaired.nslink_source, independent.resolve())
+        self.assertEqual(preserved_bytes, b"pre-build-nsc")
+
+    def test_baseline_comparison_snapshot_requires_a_drive_source_and_destination(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must come from A"):
+            baseline.snapshot_baseline_comparison(
+                Path("C:/native-sharp/bin/nsc.exe"),
+                Path("A:/nsc-devel/_nscbuilder3/comparison-nsc.exe"),
+            )
+        with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT) as temporary:
+            source = Path(temporary) / "nsc.exe"
+            source.write_bytes(b"comparison")
+            with self.assertRaisesRegex(ValueError, "must stay on A"):
+                baseline.snapshot_baseline_comparison(
+                    source,
+                    Path("C:/native-sharp/comparison-nsc.exe"),
+                )
+
+    def test_baseline_preserves_comparison_inside_reset_staging(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT) as temporary:
+            root = Path(temporary)
+            config = self.config(root)
+            staging = root / "baseline"
+            comparison = staging / "bin" / "nsc.exe"
+            comparison.parent.mkdir(parents=True)
+            comparison.write_bytes(b"previous-baseline")
+            independent = root / "nslink-devel" / "bin" / "release" / "nslink.exe"
+            independent.parent.mkdir(parents=True)
+            independent.write_bytes(b"independent-nslink")
+            with (
+                patch.object(baseline, "BASELINE_PREFIX", staging),
+                patch.object(baseline, "BASELINE_PROMOTION_PREFIX", Path("C:/native-sharp")),
+                patch.object(baseline, "BASELINE_NSLINK_SOURCE", independent),
+                patch.object(
+                    baseline,
+                    "discover_compiler_build_tools",
+                    return_value={"cmake": "A:/apps/cmake/bin/cmake.exe"},
+                ),
+                patch.object(baseline, "compiler_configure_commands", return_value=[]),
+                patch.object(baseline, "compiler_build_commands", return_value=[]),
+            ):
+                plan = baseline.create_baseline_plan(
+                    replace(config, comparison_nsc=str(comparison))
+                )
+                snapshot = baseline.snapshot_baseline_comparison(
+                    plan.comparison_source,
+                    root / "history" / "preparation" / "comparison-nsc.exe",
+                )
+                baseline.reset_baseline_staging(staging)
+                self.assertEqual(snapshot.read_bytes(), b"previous-baseline")
 
     def test_baseline_does_not_repair_an_unauthorized_nslink_source(self) -> None:
         with self.assertRaisesRegex(ValueError, "must come from A:"):
