@@ -10347,7 +10347,7 @@ void registerNullConditionalIndexDiagnosticCase(TestRegistry& registry)
                 "T10NullCondIndex", "Exe", R"ns(
 class Box
 {
-    public int this[int i] { get { return i; } set { } }
+    public int Value;
 }
 class Program
 {
