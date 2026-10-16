@@ -596,6 +596,16 @@ private:
         std::string stableKey;
     };
 
+    // NSC305-G09. The private output of a specialization worker (the committer merges it by the
+    // reserved ordinal). The clone lives in the worker's arena and is linked on merge.
+    struct SpecializationProduct final
+    {
+        std::size_t ordinal = 0;
+        ast::AstNode* clone = nullptr;
+        std::vector<GenericTypeDemand> childDemands;
+        bool success = false;
+    };
+
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
     // ensureTypeSpecialization/ensureMethodSpecialization save before materializing and restore
     // afterwards (they form a call stack, not global state). A nested struct can read the enclosing
