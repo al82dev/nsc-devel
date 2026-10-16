@@ -10883,7 +10883,9 @@ private:
                 frames.push_back({current->children.front().get(), 0, nullptr});
                 continue;
             }
-            if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
+            if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall ||
+                current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall ||
+                current->kind == frontend::ProjectOopMirNodeKind::InterfaceInstanceCall)
             {
                 if (current->nullConditionalCall)
                 {
@@ -10910,7 +10912,12 @@ private:
                     if (argumentCount == 0)
                     {
                         std::vector<LLVMValueRef> noArgs;
-                        values.push_back(lowerCall(current, error, receiver, &noArgs));
+                        if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
+                            values.push_back(lowerCall(current, error, receiver, &noArgs));
+                        else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
+                            values.push_back(lowerVirtualCall(current, error, receiver, &noArgs));
+                        else
+                            values.push_back(lowerInterfaceCall(current, error, receiver, &noArgs));
                         continue;
                     }
                     frames.push_back({current, 2, receiver, 0});
@@ -10931,7 +10938,12 @@ private:
                     argumentOverrides[i - 1] = values.back();
                     values.pop_back();
                 }
-                values.push_back(lowerCall(current, error, frame.lhs, &argumentOverrides));
+                if (current->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall)
+                    values.push_back(lowerCall(current, error, frame.lhs, &argumentOverrides));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::VirtualInstanceCall)
+                    values.push_back(lowerVirtualCall(current, error, frame.lhs, &argumentOverrides));
+                else
+                    values.push_back(lowerInterfaceCall(current, error, frame.lhs, &argumentOverrides));
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
@@ -13808,13 +13820,8 @@ private:
             case frontend::ProjectOopMirNodeKind::DirectStaticCall:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
-                return node->nullConditionalCall
-                    ? lowerNullConditionalCall(node, error)
-                    : lowerVirtualCall(node, error);
             case frontend::ProjectOopMirNodeKind::InterfaceInstanceCall:
-                return node->nullConditionalCall
-                    ? lowerNullConditionalCall(node, error)
-                    : lowerInterfaceCall(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::TemporaryAddress:
             {
                 // C6 "struct members": give a struct temporary a home, and hand back its address.
@@ -18176,7 +18183,8 @@ private:
     LLVMValueRef lowerVirtualCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
-        LLVMValueRef receiverOverride = nullptr)
+        LLVMValueRef receiverOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (!node->virtualSlot.has_value())
         {
@@ -18233,7 +18241,9 @@ private:
         LLVMValueRef assignedValue = nullptr;
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index - 1]
+                : lowerExpression(node->children[index].get(), error);
             LLVMTypeRef parameterType = abiParameterType(node->children[index]->typeKey, error);
             if (value == nullptr || parameterType == nullptr)
             {
@@ -18377,7 +18387,8 @@ private:
     LLVMValueRef lowerInterfaceCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
-        LLVMValueRef receiverOverride = nullptr)
+        LLVMValueRef receiverOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (!node->interfaceSlot.has_value() || !node->targetTypeOrdinal.has_value())
         {
@@ -18433,7 +18444,9 @@ private:
         LLVMValueRef assignedValue = nullptr;
         for (std::size_t childIndex = 1; childIndex < node->children.size(); ++childIndex)
         {
-            LLVMValueRef value = lowerExpression(node->children[childIndex].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[childIndex - 1]
+                : lowerExpression(node->children[childIndex].get(), error);
             LLVMTypeRef parameterType = abiParameterType(node->children[childIndex]->typeKey, error);
             if (value == nullptr || parameterType == nullptr)
             {
