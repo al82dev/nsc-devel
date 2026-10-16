@@ -17,6 +17,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmRuntimeNames.h"
 #include "nativesharp/LLVM/LlvmTypeClassification.h"
+#include "nativesharp/LLVM/LlvmTypeLayout.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
@@ -1387,14 +1388,14 @@ private:
             if (const auto found = debugPointeeTypes_.find(baseKey);
                 found != debugPointeeTypes_.end())
                 base = found->second;
-            if (const frontend::ProjectOopMirClassLayout* layout = classLayout(baseKey);
+            if (const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, baseKey);
                 layout != nullptr)
             {
                 size = layout->size * 8;
                 alignment = static_cast<std::uint32_t>(layout->alignment * 8);
             }
         }
-        else if (const frontend::ProjectOopMirStructLayout* layout = structLayout(baseKey);
+        else if (const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, baseKey);
                  layout != nullptr)
         {
             size = layout->size * 8;
@@ -1634,7 +1635,7 @@ private:
                     enumInfo->width, enumInfo->width, enumerators.data(),
                     static_cast<unsigned>(enumerators.size()), underlying);
             }
-            else if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+            else if (const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
                      layout != nullptr)
             {
                 LLVMMetadataRef file = debugFile(named->range.begin());
@@ -1727,7 +1728,7 @@ private:
             }
             else if (named->kind == frontend::NamedTypeDeclarationKind::Class)
             {
-                if (const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+                if (const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
                     layout != nullptr)
                 {
                     LLVMMetadataRef pointee = debugClassPointee(typeKey, *named, *layout);
@@ -1812,7 +1813,7 @@ private:
         LLVMMetadataRef qualifiedPointee = nullptr;
         if (named != nullptr && named->kind == frontend::NamedTypeDeclarationKind::Class)
         {
-            const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+            const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
             const auto base = debugPointeeTypes_.find(std::string(typeKey));
             if (layout != nullptr && base != debugPointeeTypes_.end())
             {
@@ -5102,7 +5103,7 @@ private:
             // release path. The previous unconditional GC free corrupted pooled objects.
             const std::string releasingTypeKey =
                 "type:" + nameLookup_.namedTypes()[table.typeOrdinal].identity.key();
-            const frontend::ProjectOopMirClassLayout* releasingLayout = classLayout(releasingTypeKey);
+            const frontend::ProjectOopMirClassLayout* releasingLayout = findClassLayout(mirModel_, releasingTypeKey);
             if (releasingLayout == nullptr)
             {
                 return fail(error, "NS304-T13-F08 delete entry has no class layout for " + releasingTypeKey);
@@ -6173,7 +6174,7 @@ private:
         if (payloadField == nullptr) return true;
 
         const frontend::ProjectOopMirStructLayout* payloadLayout =
-            structLayout(payloadField->typeKey);
+            findStructLayout(mirModel_, payloadField->typeKey);
         if (payloadLayout == nullptr || !payloadLayout->isUnion)
             return fail(error, "NativeSharp 3.0 variant drop lost its payload union layout");
 
@@ -6308,7 +6309,7 @@ private:
             return true;
         }
 
-        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return true;
         if (allowNamedThunk && !layout->dropGlueEntryName.empty())
         {
@@ -6514,7 +6515,7 @@ private:
             return true;
         }
         // Read the provenance thunk; a null thunk means borrowed/stack storage with no release.
-        const frontend::ProjectOopMirClassLayout* layout = classLayout(node->typeKey);
+        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, node->typeKey);
         if (layout == nullptr)
         {
             return fail(error,
@@ -9779,7 +9780,7 @@ private:
                         // future's pollFn field instead of a direct function reference.
                         std::uint64_t pollFnOffset = 0;
                         if (const frontend::ProjectOopMirStructLayout* layout =
-                                structLayout(node->elementTypeKey))
+                                findStructLayout(mirModel_, node->elementTypeKey))
                         {
                             for (const frontend::ObjectFieldLayout& field : layout->fields)
                                 if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
@@ -9911,7 +9912,7 @@ private:
                         blockingErrorKey.empty() ? nullptr : llvmType(blockingErrorKey, error);
                     std::uint64_t errorOffset = 0;
                     if (const frontend::ProjectOopMirStructLayout* blockingLayout =
-                            structLayout(node->elementTypeKey))
+                            findStructLayout(mirModel_, node->elementTypeKey))
                     {
                         for (const frontend::ObjectFieldLayout& field : blockingLayout->fields)
                             if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
@@ -10042,7 +10043,7 @@ private:
                     // NS304-T05-F09: variable await — resolve the poll from the future's pollFn.
                     std::uint64_t pollFnOffset = 0;
                     if (const frontend::ProjectOopMirStructLayout* layout =
-                            structLayout(node->elementTypeKey))
+                            findStructLayout(mirModel_, node->elementTypeKey))
                     {
                         for (const frontend::ObjectFieldLayout& field : layout->fields)
                             if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
@@ -10080,7 +10081,7 @@ private:
                 LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
                 std::uint64_t errorOffset = 0;
                 if (const frontend::ProjectOopMirStructLayout* errorLayout =
-                        structLayout(node->elementTypeKey))
+                        findStructLayout(mirModel_, node->elementTypeKey))
                 {
                     for (const frontend::ObjectFieldLayout& field : errorLayout->fields)
                         if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
@@ -10228,7 +10229,7 @@ private:
                     LLVMPositionBuilderAtEnd(builder_, errorBlock);
                     std::uint64_t errorOffset = 0;
                     if (const frontend::ProjectOopMirStructLayout* layout =
-                            structLayout(node->elementTypeKey))
+                            findStructLayout(mirModel_, node->elementTypeKey))
                     {
                         for (const frontend::ObjectFieldLayout& field : layout->fields)
                             if (field.memberOrdinal == 5) { errorOffset = field.offset; break; }
@@ -12486,7 +12487,7 @@ private:
             {
                 if (node->children.empty())
                     return failValue(error, "tuple deconstruction has no source value");
-                const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(node->typeKey);
+                const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, node->typeKey);
                 LLVMTypeRef sourceCarrier = llvmType(node->typeKey, error);
                 if (sourceLayout == nullptr || sourceCarrier == nullptr)
                     return failValue(error, "tuple deconstruction source has no physical carrier");
@@ -12528,7 +12529,7 @@ private:
                     if (targetAddress == nullptr) return nullptr;
                     LLVMValueRef store = LLVMBuildStore(builder_, value, targetAddress);
                     const frontend::ProjectOopMirStructLayout* targetStruct =
-                        structLayout(element->typeKey);
+                        findStructLayout(mirModel_, element->typeKey);
                     if (targetStruct != nullptr && targetStruct->alignment > 1U)
                         LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
                 }
@@ -12959,7 +12960,7 @@ private:
     std::pair<std::uint64_t, std::uint64_t> captureValueLayout(
         std::string_view typeKey, std::string& error) const
     {
-        if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey); layout != nullptr)
+        if (const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey); layout != nullptr)
             return {layout->size, layout->alignment};
         if (const frontend::builtins::IntegerTypeInfo* info =
                 frontend::builtins::findIntegerType(typeKey); info != nullptr)
@@ -15444,7 +15445,7 @@ private:
         // frontend --`==` sobre structs baja a AggregateEquals-- y esto es la red por si alguna
         // vez vuelve a colarse: dice el nombre del tipo y de donde viene el problema.
         if (isEnumTypeKey(operandType) == false && operandType.starts_with("type:") &&
-            structLayout(operandType) != nullptr)
+            findStructLayout(mirModel_, operandType) != nullptr)
         {
             return failValue(
                 error,
@@ -18567,8 +18568,8 @@ private:
             frontend::ProjectTypeConversion::tupleElementTypeKeys(target);
         if (sourceTuple.has_value() || targetTuple.has_value())
         {
-            const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(source);
-            const frontend::ProjectOopMirStructLayout* targetLayout = structLayout(target);
+            const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, source);
+            const frontend::ProjectOopMirStructLayout* targetLayout = findStructLayout(mirModel_, target);
             if (!sourceTuple.has_value() || !targetTuple.has_value() ||
                 sourceTuple->size() != targetTuple->size() || sourceLayout == nullptr ||
                 targetLayout == nullptr || sourceLayout->fields.size() != sourceTuple->size() ||
@@ -18626,8 +18627,8 @@ private:
             if (terminal(source).starts_with(spanPrefix) &&
                 terminal(target).starts_with(readOnlySpanPrefix))
             {
-                const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(source);
-                const frontend::ProjectOopMirStructLayout* targetLayout = structLayout(target);
+                const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, source);
+                const frontend::ProjectOopMirStructLayout* targetLayout = findStructLayout(mirModel_, target);
                 if (sourceLayout != nullptr && targetLayout != nullptr &&
                     sourceLayout->fields.size() == 2U && targetLayout->fields.size() == 2U)
                 {
@@ -18985,7 +18986,7 @@ private:
                     default: return LLVMInt32TypeInContext(context_);
                 }
             }
-            if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey); layout != nullptr)
+            if (const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey); layout != nullptr)
             {
                 switch (layout->size)
                 {
@@ -19022,24 +19023,6 @@ private:
         return nullptr;
     }
 
-    const frontend::ProjectOopMirStructLayout* structLayout(std::string_view typeKey) const noexcept
-    {
-        for (const frontend::ProjectOopMirStructLayout& layout : mirModel_.structLayouts())
-        {
-            if (layout.typeKey == typeKey) return &layout;
-        }
-        return nullptr;
-    }
-
-    const frontend::ProjectOopMirClassLayout* classLayout(std::string_view typeKey) const noexcept
-    {
-        for (const frontend::ProjectOopMirClassLayout& layout : mirModel_.classLayouts())
-        {
-            if (layout.typeKey == typeKey) return &layout;
-        }
-        return nullptr;
-    }
-
     // NS304-T13-F07: initialize the object header's provenance slots (allocator context + deallocate
     // thunk) before the constructor so every throwing path already observes a valid provenance.
     // A null thunk means "no deallocation" (raw placement / stack-promoted storage).
@@ -19050,7 +19033,7 @@ private:
         LLVMValueRef thunk,
         std::string& error)
     {
-        const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
         if (layout == nullptr)
             return fail(error,
                 "NS304-T13-F07 provenance has no class layout for " + std::string(typeKey));
@@ -19073,7 +19056,7 @@ private:
         LLVMBasicBlockRef outerUnwind,
         std::string& error)
     {
-        const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
         if (layout == nullptr)
         {
             error = "NS304-T13-F07 constructor failure has no class layout for " +
@@ -19166,7 +19149,7 @@ private:
 
     bool isStructValue(std::string_view typeKey) const noexcept
     {
-        return structLayout(typeKey) != nullptr;
+        return findStructLayout(mirModel_, typeKey) != nullptr;
     }
 
     // Stage 52 closure hardening (closure checklist P1 item 6: "requiresOwnedDestruction(typeKey)
@@ -19296,7 +19279,7 @@ private:
     unsigned vectorCallHvaArity(std::string_view typeKey) const noexcept
     {
         if (isFloat32x4TypeKey(typeKey)) return 0U;
-        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr || layout->isUnion || layout->hasExplicitFieldOffsets ||
             layout->pack != 0U || layout->fields.empty() || layout->fields.size() > 4U ||
             layout->size != layout->fields.size() * 16U)
@@ -19369,14 +19352,14 @@ private:
     bool isIndirectStructTypeKey(std::string_view typeKey) const noexcept
     {
         if (isEnumTypeKey(typeKey)) return false;
-        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return false;
         return layout->abiPassing == frontend::ProjectOopMirAbiPassing::Indirect;
     }
 
     unsigned structAlignmentFor(std::string_view typeKey) const noexcept
     {
-        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         return layout != nullptr ? static_cast<unsigned>(layout->alignment) : 1U;
     }
 
