@@ -578,6 +578,87 @@ bool emitCatchParameterDebugInfo(
     return true;
 }
 
+// NSC305-L03. Emits the debug metadata for an ordinary parameter (moved out of the lowerer's
+// emitDebugParameter as a pure move).
+bool emitParameterDebugInfo(
+    DebugInformationKind debugInformation,
+    LLVMDIBuilderRef debugBuilder,
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    LLVMMetadataRef currentDebugSubprogram,
+    const frontend::ProjectMemberModel* memberModel,
+    const source::SourceManager* sourceManager,
+    const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
+    const std::function<LLVMMetadataRef(std::string_view, frontend::ParameterPassKind,
+                                        std::string_view)>& debugParameterTypeLookup,
+    const std::function<LLVMMetadataRef(std::string_view, std::string_view)>&
+        debugNamedValueTypeLookup,
+    const std::function<LLVMMetadataRef(std::string_view, sema::OwnershipKind, bool,
+                                        SourceRange)>& debugOwnershipTypeLookup,
+    const frontend::ProjectOopMirFunction& function,
+    std::size_t index,
+    LLVMValueRef storage,
+    std::string& error)
+{
+    if (debugInformation != DebugInformationKind::Full || currentDebugSubprogram == nullptr)
+        return true;
+    if (storage == nullptr || index >= function.parameterTypeKeys.size())
+    {
+        error = "debug parameter is missing its LLVM storage or type";
+        return false;
+    }
+    SourceRange range;
+    std::string name = index < function.parameterNames.size()
+        ? function.parameterNames[index]
+        : "p" + std::to_string(index);
+    if (!function.isLambda && memberModel != nullptr &&
+        function.memberOrdinal < memberModel->members().size())
+    {
+        const frontend::ClassMemberSymbol& member =
+            memberModel->members()[function.memberOrdinal];
+        range = index < member.parameters.size() ? member.parameters[index].range : member.range;
+    }
+    else if (function.body != nullptr && function.body->syntax != nullptr)
+    {
+        range = function.body->syntax->range();
+    }
+    if (!range.isValid()) return true;
+    LLVMMetadataRef file = debugFileLookup(range.begin());
+    const frontend::ParameterPassKind passKind = index < function.parameterPassKinds.size()
+        ? function.parameterPassKinds[index]
+        : frontend::ParameterPassKind::Value;
+    const sema::OwnershipKind ownership = index < function.parameterOwnerships.size()
+        ? function.parameterOwnerships[index]
+        : sema::OwnershipKind::None;
+    LLVMMetadataRef type = passKind != frontend::ParameterPassKind::Value
+        ? debugParameterTypeLookup(function.parameterTypeKeys[index], passKind, name)
+        : ownership == sema::OwnershipKind::None
+            ? debugNamedValueTypeLookup(function.parameterTypeKeys[index], name)
+            : debugOwnershipTypeLookup(
+                function.parameterTypeKeys[index], ownership, false, range);
+    if (file == nullptr || type == nullptr) return true;
+    const source::SourcePosition position = sourceManager->getPosition(range.begin());
+    LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+        debugBuilder, currentDebugSubprogram, name.data(), name.size(),
+        static_cast<unsigned>(index + 1), file, position.line, type, 1, LLVMDIFlagZero);
+    LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
+    LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+        context, position.line, position.column, currentDebugSubprogram, nullptr);
+    if (variable == nullptr || expression == nullptr || location == nullptr)
+    {
+        error = "failed to create debug metadata for parameter '" + name + "'";
+        return false;
+    }
+    if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+            debugBuilder, storage, variable, expression, location,
+            LLVMGetInsertBlock(builder)) == nullptr)
+    {
+        error = "failed to emit debug storage for parameter '" + name + "'";
+        return false;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -2135,53 +2216,22 @@ private:
         LLVMValueRef storage,
         std::string& error)
     {
-        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr)
-            return true;
-        if (storage == nullptr || index >= function.parameterTypeKeys.size())
-            return fail(error, "debug parameter is missing its LLVM storage or type");
-
-        SourceRange range;
-        std::string name = index < function.parameterNames.size()
-            ? function.parameterNames[index]
-            : "p" + std::to_string(index);
-        if (!function.isLambda && memberModel_ != nullptr &&
-            function.memberOrdinal < memberModel_->members().size())
-        {
-            const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
-            range = index < member.parameters.size() ? member.parameters[index].range : member.range;
-        }
-        else if (function.body != nullptr && function.body->syntax != nullptr)
-        {
-            range = function.body->syntax->range();
-        }
-        if (!range.isValid()) return true;
-        LLVMMetadataRef file = debugFile(range.begin());
-        const frontend::ParameterPassKind passKind = index < function.parameterPassKinds.size()
-            ? function.parameterPassKinds[index]
-            : frontend::ParameterPassKind::Value;
-        const sema::OwnershipKind ownership = index < function.parameterOwnerships.size()
-            ? function.parameterOwnerships[index]
-            : sema::OwnershipKind::None;
-        LLVMMetadataRef type = passKind != frontend::ParameterPassKind::Value
-            ? debugParameterType(function.parameterTypeKeys[index], passKind, name)
-            : ownership == sema::OwnershipKind::None
-            ? debugNamedValueType(function.parameterTypeKeys[index], name)
-            : debugOwnershipType(function.parameterTypeKeys[index], ownership, false, range);
-        if (file == nullptr || type == nullptr) return true;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-        LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
-            debugBuilder_, currentDebugSubprogram_, name.data(), name.size(),
-            static_cast<unsigned>(index + 1), file, position.line, type, 1, LLVMDIFlagZero);
-        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
-        if (variable == nullptr || expression == nullptr || location == nullptr)
-            return fail(error, "failed to create debug metadata for parameter '" + name + "'");
-        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
-                debugBuilder_, storage, variable, expression, location,
-                LLVMGetInsertBlock(builder_)) == nullptr)
-            return fail(error, "failed to emit debug storage for parameter '" + name + "'");
-        return true;
+        return emitParameterDebugInfo(
+            debugInformation_, debugBuilder_, context_, builder_, currentDebugSubprogram_,
+            memberModel_, sourceManager_,
+            [&](SourceLocation location) { return debugFile(location); },
+            [&](std::string_view typeKey, frontend::ParameterPassKind passKind,
+                std::string_view name) {
+                return debugParameterType(typeKey, passKind, name);
+            },
+            [&](std::string_view typeKey, std::string_view name) {
+                return debugNamedValueType(typeKey, name);
+            },
+            [&](std::string_view typeKey, sema::OwnershipKind ownership,
+                bool automaticDestruction, SourceRange range) {
+                return debugOwnershipType(typeKey, ownership, automaticDestruction, range);
+            },
+            function, index, storage, error);
     }
 
     bool emitDebugCatchParameter(
