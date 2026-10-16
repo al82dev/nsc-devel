@@ -1940,6 +1940,160 @@ static std::string templateCacheKey(std::string_view sourceFingerprint)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+// NSC305-C01. Compact, relocatable (no raw pointers) serialization of the scalar/string metadata of
+// a GenericTemplateRecord -- the C1 cache payload skeleton. The AST subtree (syntax/extensionSyntaxes,
+// parameterSyntaxes, constraints, externalTypeReferences) is intentionally not covered here; it is
+// the next layer of the codec.
+namespace
+{
+void appendByte(std::string& out, std::uint8_t value)
+{
+    out.push_back(static_cast<char>(value));
+}
+
+void appendU32(std::string& out, std::uint32_t value)
+{
+    out.push_back(static_cast<char>(value & 0xFFu));
+    out.push_back(static_cast<char>((value >> 8U) & 0xFFu));
+    out.push_back(static_cast<char>((value >> 16U) & 0xFFu));
+    out.push_back(static_cast<char>((value >> 24U) & 0xFFu));
+}
+
+void appendU64(std::string& out, std::uint64_t value)
+{
+    for (unsigned shift = 0; shift < 64U; shift += 8U)
+        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
+}
+
+void appendString(std::string& out, std::string_view value)
+{
+    appendU32(out, static_cast<std::uint32_t>(value.size()));
+    out.append(value);
+}
+
+void appendStringVector(std::string& out, const std::vector<std::string>& values)
+{
+    appendU32(out, static_cast<std::uint32_t>(values.size()));
+    for (const std::string& value : values) appendString(out, value);
+}
+
+class ByteReader final
+{
+public:
+    explicit ByteReader(std::string_view bytes) : bytes_(bytes) {}
+
+    bool byte(std::uint8_t& out)
+    {
+        if (position_ >= bytes_.size()) return false;
+        out = static_cast<std::uint8_t>(bytes_[position_++]);
+        return true;
+    }
+    bool u32(std::uint32_t& out)
+    {
+        out = 0;
+        for (unsigned shift = 0; shift < 32U; shift += 8U)
+        {
+            std::uint8_t value = 0;
+            if (!byte(value)) return false;
+            out |= static_cast<std::uint32_t>(value) << shift;
+        }
+        return true;
+    }
+    bool u64(std::uint64_t& out)
+    {
+        out = 0;
+        for (unsigned shift = 0; shift < 64U; shift += 8U)
+        {
+            std::uint8_t value = 0;
+            if (!byte(value)) return false;
+            out |= static_cast<std::uint64_t>(value) << shift;
+        }
+        return true;
+    }
+    bool string(std::string& out)
+    {
+        std::uint32_t size = 0;
+        if (!u32(size)) return false;
+        if (position_ + size > bytes_.size()) return false;
+        out.assign(bytes_.data() + position_, size);
+        position_ += size;
+        return true;
+    }
+    bool stringVector(std::vector<std::string>& out)
+    {
+        std::uint32_t count = 0;
+        if (!u32(count)) return false;
+        out.clear();
+        out.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            std::string value;
+            if (!string(value)) return false;
+            out.push_back(std::move(value));
+        }
+        return true;
+    }
+
+private:
+    std::string_view bytes_;
+    std::size_t position_ = 0;
+};
+
+[[maybe_unused]] std::string serializeTemplateRecord(const GenericTemplateRecord& record)
+{
+    std::string out;
+    appendByte(out, static_cast<std::uint8_t>(record.kind));
+    appendByte(out, static_cast<std::uint8_t>(record.accessibility));
+    appendU64(out, record.projectOrdinal);
+    appendU64(out, record.sourceOrdinal);
+    appendString(out, record.moduleName);
+    appendString(out, record.namespaceName);
+    appendString(out, record.ownerName);
+    appendString(out, record.name);
+    appendString(out, record.qualifiedTypeName);
+    appendStringVector(out, record.parameters);
+    appendString(out, record.canonicalKey);
+    appendString(out, record.specializationFamilyKey);
+    appendByte(out, record.isControlledSpecialization ? 1U : 0U);
+    appendByte(out, record.isControlledSpecializationFamily ? 1U : 0U);
+    appendStringVector(out, record.dependencies);
+    appendStringVector(out, record.unresolvedDependencies);
+    appendString(out, record.sourceFingerprint);
+    appendString(out, record.c1CacheKey);
+    return out;
+}
+
+[[maybe_unused]] bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record)
+{
+    ByteReader reader(bytes);
+    std::uint8_t kind = 0;
+    std::uint8_t accessibility = 0;
+    std::uint64_t projectOrdinal = 0;
+    std::uint64_t sourceOrdinal = 0;
+    std::uint8_t controlled = 0;
+    std::uint8_t controlledFamily = 0;
+    if (!reader.byte(kind) || !reader.byte(accessibility) ||
+        !reader.u64(projectOrdinal) || !reader.u64(sourceOrdinal) ||
+        !reader.string(record.moduleName) || !reader.string(record.namespaceName) ||
+        !reader.string(record.ownerName) || !reader.string(record.name) ||
+        !reader.string(record.qualifiedTypeName) ||
+        !reader.stringVector(record.parameters) || !reader.string(record.canonicalKey) ||
+        !reader.string(record.specializationFamilyKey) ||
+        !reader.byte(controlled) || !reader.byte(controlledFamily) ||
+        !reader.stringVector(record.dependencies) ||
+        !reader.stringVector(record.unresolvedDependencies) ||
+        !reader.string(record.sourceFingerprint) || !reader.string(record.c1CacheKey))
+        return false;
+    record.kind = static_cast<GenericTemplateKind>(kind);
+    record.accessibility = static_cast<GenericTemplateAccessibility>(accessibility);
+    record.projectOrdinal = static_cast<std::size_t>(projectOrdinal);
+    record.sourceOrdinal = static_cast<std::size_t>(sourceOrdinal);
+    record.isControlledSpecialization = controlled != 0U;
+    record.isControlledSpecializationFamily = controlledFamily != 0U;
+    return true;
+}
+} // namespace
+
 void ProjectGenericModel::collectTemplates(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
