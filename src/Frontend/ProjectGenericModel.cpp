@@ -2759,6 +2759,38 @@ struct ImplementationFingerprint final
     fingerprint.publicDependencies = parameterTypeKeys;
     return interfaceFingerprintKey(fingerprint);
 }
+
+// NSC305-C04. Key fields of a MIR function (the observable identity that feeds the interface
+// fingerprint); the full MIR node stream is the implementation-fingerprint layer.
+struct MirFunctionKey final
+{
+    std::string mangledName;
+    std::string genericSpecializationKey;
+    std::string returnTypeKey;
+    std::string errorTypeKey;
+    std::vector<std::string> parameterTypeKeys;
+};
+
+[[maybe_unused]] std::string serializeMirFunctionKey(const MirFunctionKey& key)
+{
+    std::string out;
+    appendString(out, key.mangledName);
+    appendString(out, key.genericSpecializationKey);
+    appendString(out, key.returnTypeKey);
+    appendString(out, key.errorTypeKey);
+    appendStringVector(out, key.parameterTypeKeys);
+    return out;
+}
+
+[[maybe_unused]] bool restoreMirFunctionKey(std::string_view bytes, MirFunctionKey& key)
+{
+    ByteReader reader(bytes);
+    return reader.string(key.mangledName) &&
+        reader.string(key.genericSpecializationKey) &&
+        reader.string(key.returnTypeKey) &&
+        reader.string(key.errorTypeKey) &&
+        reader.stringVector(key.parameterTypeKeys);
+}
 } // namespace
 
 // NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
