@@ -3966,7 +3966,9 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             reserved.push_back(std::move(entry));
         }
 
-        auto applyDemand = [&](ReservedDemand& reservedDemand) -> std::string
+        auto applyDemand = [&](
+            ReservedDemand& reservedDemand,
+            SpecializationProduct* preClonedProduct) -> std::string
         {
             GenericTypeDemand& demand = *reservedDemand.demand;
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
@@ -3990,23 +3992,36 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             return executeTypeDemand(
                 *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
                 reservedDemand.ordinal, reservedDemand.key, reservedDemand.specializedName,
-                demand.target->typeArguments(), reservedDemand.callerContext, diagnostics);
+                demand.target->typeArguments(), reservedDemand.callerContext, diagnostics,
+                preClonedProduct);
         };
 
         if (parallelismWorkers_ > 1U && reserved.size() > 1U)
         {
-            // NSC305-G09. Parallel wave: the ordinals were pre-reserved in the sorted order, so the
-            // workers serialize only on the shared model (deterministic products by ordinal).
+            // NSC305-G09. Parallel wave: the ordinals were pre-reserved in the sorted order. Each
+            // worker clones on its own thread (outside the mutex); the committer serializes only
+            // the shared writes, so the products still merge deterministically by ordinal.
             std::mutex executeMutex;
             std::vector<std::future<std::string>> futures;
             futures.reserve(reserved.size());
             for (ReservedDemand& reservedDemand : reserved)
             {
                 futures.push_back(std::async(std::launch::async,
-                    [&]()
+                    [&]() -> std::string
                     {
+                        GenericTypeDemand& demand = *reservedDemand.demand;
+                        SpecializationProduct product;
+                        const bool needsClone =
+                            reservedDemand.ordinal != std::numeric_limits<std::size_t>::max();
+                        if (needsClone)
+                        {
+                            product = cloneTypeSpecializationProduct(
+                                *demand.state, demand.target->typeArguments(),
+                                reservedDemand.specializedName, reservedDemand.callerContext);
+                            product.ordinal = reservedDemand.ordinal;
+                        }
                         std::lock_guard<std::mutex> lock(executeMutex);
-                        return applyDemand(reservedDemand);
+                        return applyDemand(reservedDemand, needsClone ? &product : nullptr);
                     }));
             }
             for (std::future<std::string>& future : futures)
@@ -4022,7 +4037,7 @@ bool ProjectGenericModel::executeTypeDemandWaves(
         {
             for (ReservedDemand& reservedDemand : reserved)
             {
-                if (applyDemand(reservedDemand).empty())
+                if (applyDemand(reservedDemand, nullptr).empty())
                 {
                     currentLogicalDepth_ = 0;
                     return false;
@@ -5732,6 +5747,38 @@ std::size_t ProjectGenericModel::reserveTypeSpecialization(
     return ordinal;
 }
 
+// NSC305-G09. Clones a type specialization on the worker thread (the parallel half) and captures the
+// causal errors in the product; the committer later reports + links + processes them.
+ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecializationProduct(
+    TemplateState& state,
+    std::span<ast::TypeSyntax* const> arguments,
+    const std::string& specializedName,
+    const SpecializationContext& callerContext)
+{
+    SpecializationProduct product;
+    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+    prepareSpecializationSubstitutions(state, arguments, substitutions);
+    packMaterializationError_.clear();
+    packMaterializationErrorRange_ = {};
+    activeAssociatedProjections_.clear();
+    associatedProjectionError_.clear();
+    associatedProjectionErrorRange_ = {};
+
+    product.clone = cloneNode(
+        state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
+    product.packError = packMaterializationError_;
+    product.packErrorRange = packMaterializationErrorRange_;
+    product.associatedError = associatedProjectionError_;
+    product.associatedErrorRange = associatedProjectionErrorRange_;
+    packMaterializationError_ = callerContext.packError;
+    packMaterializationErrorRange_ = callerContext.packErrorRange;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
+    activeAssociatedProjections_ = callerContext.associatedProjections;
+    associatedProjectionError_ = callerContext.associatedError;
+    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
+    return product;
+}
+
 // NSC305-G09. Executes a reserved type specialization (see the header).
 ProjectGenericModel::SpecializationProduct ProjectGenericModel::executeTypeSpecializationProduct(
     TemplateState& state,
@@ -5742,51 +5789,47 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::executeTypeSpeci
     const SpecializationContext& callerContext,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    ProjectGenericModel::SpecializationProduct product;
+    SpecializationProduct product =
+        cloneTypeSpecializationProduct(state, arguments, specializedName, callerContext);
     product.ordinal = ordinal;
-    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    prepareSpecializationSubstitutions(state, arguments, substitutions);
-    packMaterializationError_.clear();
-    packMaterializationErrorRange_ = {};
-    activeAssociatedProjections_.clear();
-    associatedProjectionError_.clear();
-    associatedProjectionErrorRange_ = {};
+    commitTypeSpecializationProduct(
+        state, product, key, specializedName, callerContext, diagnostics);
+    return product;
+}
 
-    ast::AstNode* clone = cloneNode(
-        state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
-    const std::string packError = packMaterializationError_;
-    const SourceRange packErrorRange = packMaterializationErrorRange_;
-    const std::string associatedError = associatedProjectionError_;
-    const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
-    packMaterializationError_ = callerContext.packError;
-    packMaterializationErrorRange_ = callerContext.packErrorRange;
-    activePackSubstitutions_ = callerContext.packSubstitutions;
-    activeAssociatedProjections_ = callerContext.associatedProjections;
-    associatedProjectionError_ = callerContext.associatedError;
-    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
-    if (!packError.empty() || !associatedError.empty())
+// NSC305-G09. The serial commit half of a specialization (see the header).
+bool ProjectGenericModel::commitTypeSpecializationProduct(
+    TemplateState& state,
+    SpecializationProduct& product,
+    const std::string& key,
+    const std::string& specializedName,
+    const SpecializationContext& callerContext,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!product.packError.empty() || !product.associatedError.empty())
     {
         diagnostics.report(
-            associatedError.empty()
+            product.associatedError.empty()
                 ? diagnostics::DiagnosticId::InvalidArgumentCount
                 : diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
-            associatedError.empty() ? packErrorRange : associatedErrorRange,
-            associatedError.empty() ? packError : associatedError);
-        return product;
+            product.associatedError.empty() ? product.packErrorRange : product.associatedErrorRange,
+            product.associatedError.empty() ? product.packError : product.associatedError);
+        return false;
     }
     {
         const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
-        commitTypeSpecialization(state, clone, key, specializedName, ordinal, diagnostics);
+        commitTypeSpecialization(
+            state, product.clone, key, specializedName, product.ordinal, diagnostics);
     }
 
     processNode(
-        *state.unit, clone, state.record.namespaceName, specializedName,
+        *state.unit, product.clone, state.record.namespaceName, specializedName,
         GenericLookupScope{}, false, diagnostics);
     // NSC305-C03. Persist the specialized clone (the C3 cache payload) under the specialization key.
     if (templateCache_.enabled())
     {
-        const std::string payload = serializeAstNodeTree(clone);
+        const std::string payload = serializeAstNodeTree(product.clone);
         std::string error;
         (void)templateCache_.store(key, payload, error);
     }
@@ -5799,9 +5842,8 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::executeTypeSpeci
     currentInstantiationRange_ = callerContext.range;
     currentOverloadGroup_ = callerContext.overloadGroup;
     activePackSubstitutions_ = callerContext.packSubstitutions;
-    product.clone = clone;
     product.success = true;
-    return product;
+    return true;
 }
 
 bool ProjectGenericModel::executeTypeSpecialization(
@@ -5903,7 +5945,8 @@ std::string ProjectGenericModel::executeTypeDemand(
     const std::string& specializedName,
     std::span<ast::TypeSyntax* const> arguments,
     const SpecializationContext& callerContext,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    SpecializationProduct* preClonedProduct)
 {
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
@@ -5939,8 +5982,23 @@ std::string ProjectGenericModel::executeTypeDemand(
     }
 
     SpecializationWaveTimer wave(telemetry_, state.record.canonicalKey);
-    if (!executeTypeSpecialization(
-            state, arguments, key, specializedName, ordinal, callerContext, diagnostics))
+    if (preClonedProduct != nullptr)
+    {
+        if (!commitTypeSpecializationProduct(
+                state, *preClonedProduct, key, specializedName, callerContext, diagnostics))
+        {
+            specializationPlanner_.rollback(key);
+            specializations_.pop_back();
+            currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+            currentInstantiationNamespace_ = callerContext.namespaceName;
+            currentInstantiationRange_ = callerContext.range;
+            currentOverloadGroup_ = callerContext.overloadGroup;
+            instantiationBudget_.leave();
+            return {};
+        }
+    }
+    else if (!executeTypeSpecialization(
+                 state, arguments, key, specializedName, ordinal, callerContext, diagnostics))
     {
         specializationPlanner_.rollback(key);
         specializations_.pop_back();

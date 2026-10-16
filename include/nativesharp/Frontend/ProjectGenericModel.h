@@ -229,8 +229,10 @@ struct GenericTelemetry final
     std::uint64_t demandsDuplicated = 0;
     std::uint64_t demandsMaterialized = 0;
     std::uint64_t specializationHits = 0;
-    std::uint64_t nodesCloned = 0;
-    std::uint64_t typesCloned = 0;
+    // NSC305-G09. Cloned on the worker thread (outside the wave mutex), so these two counters are
+    // atomic; the remaining counters are written only on the serial coordinator.
+    std::atomic<std::uint64_t> nodesCloned{0};
+    std::atomic<std::uint64_t> typesCloned{0};
     std::uint64_t maximumLogicalDepth = 0;
     // NSC305-G04. Scope-copy cardinality: how many `GenericLookupScope` deep copies were made and
     // the total container entries those copies moved. A large `scopeCopiedEntries` per copy is the
@@ -606,6 +608,12 @@ private:
         ast::AstNode* clone = nullptr;
         std::vector<GenericTypeDemand> childDemands;
         bool success = false;
+        // NSC305-G09. Causal clone errors captured on the worker thread, so the serial committer can
+        // report them without reading the worker's thread-local state.
+        std::string packError;
+        SourceRange packErrorRange{};
+        std::string associatedError;
+        SourceRange associatedErrorRange{};
     };
 
     // NSC305-G09. The private state of a specialization worker: its own arena (the clone lives here,
@@ -959,6 +967,22 @@ private:
         std::size_t ordinal,
         const SpecializationContext& callerContext,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Clones a type specialization on the worker thread (the parallel half) and captures
+    // the causal errors in the product; the committer later reports + links + processes them.
+    SpecializationProduct cloneTypeSpecializationProduct(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        const std::string& specializedName,
+        const SpecializationContext& callerContext);
+    // NSC305-G09. The serial commit half of a specialization: reports clone errors, links + processes
+    // the clone and stores it. Runs on the coordinator thread after the parallel clone.
+    bool commitTypeSpecializationProduct(
+        TemplateState& state,
+        SpecializationProduct& product,
+        const std::string& key,
+        const std::string& specializedName,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
     // NSC305-G09. Deterministic pre-reserve for the parallel wave: computes key/name, dedups,
     // restores from cache, enters the budget and reserves the ordinal. Returns SIZE_MAX on a hit or
     // error (the caller handles it); otherwise returns the reserved ordinal.
@@ -982,7 +1006,8 @@ private:
         const std::string& specializedName,
         std::span<ast::TypeSyntax* const> arguments,
         const SpecializationContext& callerContext,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        SpecializationProduct* preClonedProduct = nullptr);
     // NSC305-G09. Rewrites the target syntax after a specialization resolves (shared by the hit and
     // the execute paths): canonical identity + specialized base name + clear arguments.
     void rewriteSpecializedSyntax(
