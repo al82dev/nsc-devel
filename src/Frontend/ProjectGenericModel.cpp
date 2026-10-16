@@ -2423,6 +2423,99 @@ private:
     node->setFloatingValue(floatingValue);
     return node;
 }
+
+// NSC305-C01. Recursive (tree) serialization of an AstNode: scalars + the typeSyntax/throwsType/
+// typeSyntaxes graph + first/second/third + children. Nested generic parameter/constraint/lifetime
+// structs are the next layer.
+[[maybe_unused]] std::string serializeAstNodeTree(const ast::AstNode* node)
+{
+    if (node == nullptr) return {};
+    std::string out = serializeAstNodeScalars(*node);
+    const ast::TypeSyntax* typeSyntax = node->typeSyntax();
+    const ast::TypeSyntax* throwsType = node->throwsTypeSyntax();
+    appendByte(out, typeSyntax != nullptr ? 1U : 0U);
+    appendByte(out, throwsType != nullptr ? 1U : 0U);
+    if (typeSyntax != nullptr) out += serializeTypeSyntaxTree(typeSyntax);
+    if (throwsType != nullptr) out += serializeTypeSyntaxTree(throwsType);
+    appendU32(out, static_cast<std::uint32_t>(node->typeSyntaxes().size()));
+    for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
+        out += serializeTypeSyntaxTree(syntax);
+    const ast::AstNode* first = node->first();
+    const ast::AstNode* second = node->second();
+    const ast::AstNode* third = node->third();
+    appendByte(out, first != nullptr ? 1U : 0U);
+    appendByte(out, second != nullptr ? 1U : 0U);
+    appendByte(out, third != nullptr ? 1U : 0U);
+    if (first != nullptr) out += serializeAstNodeTree(first);
+    if (second != nullptr) out += serializeAstNodeTree(second);
+    if (third != nullptr) out += serializeAstNodeTree(third);
+    appendU32(out, static_cast<std::uint32_t>(node->children().size()));
+    for (const ast::AstNode* child : node->children())
+        out += serializeAstNodeTree(child);
+    return out;
+}
+
+// NSC305-C01. Inverse of serializeAstNodeTree (allocates the tree into `arena`).
+[[maybe_unused]] ast::AstNode* deserializeAstNodeTree(
+    ast::AstArena& arena, ByteReader& reader)
+{
+    ast::AstNode* node = deserializeAstNodeScalars(arena, reader);
+    if (node == nullptr) return nullptr;
+    std::uint8_t hasTypeSyntax = 0;
+    std::uint8_t hasThrows = 0;
+    if (!reader.byte(hasTypeSyntax) || !reader.byte(hasThrows)) return nullptr;
+    if (hasTypeSyntax != 0U)
+    {
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        if (type == nullptr) return nullptr;
+        node->setTypeSyntax(type);
+    }
+    if (hasThrows != 0U)
+    {
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        if (type == nullptr) return nullptr;
+        node->setThrowsTypeSyntax(type);
+    }
+    std::uint32_t typeSyntaxCount = 0;
+    if (!reader.u32(typeSyntaxCount)) return nullptr;
+    for (std::uint32_t index = 0; index < typeSyntaxCount; ++index)
+    {
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        if (type == nullptr) return nullptr;
+        node->addTypeSyntax(type);
+    }
+    std::uint8_t hasFirst = 0;
+    std::uint8_t hasSecond = 0;
+    std::uint8_t hasThird = 0;
+    if (!reader.byte(hasFirst) || !reader.byte(hasSecond) || !reader.byte(hasThird)) return nullptr;
+    if (hasFirst != 0U)
+    {
+        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        if (child == nullptr) return nullptr;
+        node->setFirst(child);
+    }
+    if (hasSecond != 0U)
+    {
+        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        if (child == nullptr) return nullptr;
+        node->setSecond(child);
+    }
+    if (hasThird != 0U)
+    {
+        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        if (child == nullptr) return nullptr;
+        node->setThird(child);
+    }
+    std::uint32_t childCount = 0;
+    if (!reader.u32(childCount)) return nullptr;
+    for (std::uint32_t index = 0; index < childCount; ++index)
+    {
+        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        if (child == nullptr) return nullptr;
+        node->addChild(child);
+    }
+    return node;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
