@@ -349,6 +349,47 @@ void configureDebugModuleFlags(LLVMModuleRef module, LLVMContextRef context)
         "NativeSharp Debug Metadata Minor", 32, nativeSharpDebugMinor);
 }
 
+// NSC305-L03. Creates (or returns a cached) DIFile for a source location (moved out of the lowerer's
+// debugFile as a pure move).
+LLVMMetadataRef createDebugFile(
+    LLVMDIBuilderRef debugBuilder,
+    const source::SourceManager* sourceManager,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
+    std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
+    SourceLocation location)
+{
+    if (debugBuilder == nullptr || sourceManager == nullptr || !location.isValid())
+        return nullptr;
+    const std::uint32_t fileKey = location.fileId().value();
+    const auto existing = debugFiles.find(fileKey);
+    if (existing != debugFiles.end()) return existing->second;
+    const source::SourceFile* sourceFile = sourceManager->getFile(location.fileId());
+    if (sourceFile == nullptr) return nullptr;
+    const std::string normalized = remapDebugSourcePath(sourceFile->path(), debugPrefixMaps);
+    const std::size_t separator = normalized.find_last_of('/');
+    const std::string filename = separator == std::string::npos
+        ? normalized
+        : normalized.substr(separator + 1);
+    const std::string directory = separator == std::string::npos
+        ? std::string()
+        : normalized.substr(0, separator == 0 ? 1 : separator);
+    const std::string_view sourceBytes = sourceFile->buffer();
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
+    const std::string checksum = basic::sha256Hex(basic::sha256(bytes));
+    LLVMMetadataRef file = LLVMDIBuilderCreateFileWithChecksum(
+        debugBuilder, filename.data(), filename.size(), directory.data(), directory.size(),
+        CSK_SHA256, checksum.data(), checksum.size(), nullptr, 0);
+    if (file != nullptr)
+    {
+        debugFiles.emplace(fileKey, file);
+        debugCodeViewFileNumbers.emplace(
+            fileKey, static_cast<unsigned>(debugCodeViewFileNumbers.size() + 1));
+    }
+    return file;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -860,39 +901,9 @@ private:
 
     LLVMMetadataRef debugFile(SourceLocation location)
     {
-        if (debugBuilder_ == nullptr || sourceManager_ == nullptr || !location.isValid())
-            return nullptr;
-        const std::uint32_t fileKey = location.fileId().value();
-        const auto existing = debugFiles_.find(fileKey);
-        if (existing != debugFiles_.end()) return existing->second;
-        const source::SourceFile* sourceFile = sourceManager_->getFile(location.fileId());
-        if (sourceFile == nullptr) return nullptr;
-        const std::string normalized = remapDebugSourcePath(sourceFile->path(), debugPrefixMaps_);
-        const std::size_t separator = normalized.find_last_of('/');
-        const std::string filename = separator == std::string::npos
-            ? normalized
-            : normalized.substr(separator + 1);
-        const std::string directory = separator == std::string::npos
-            ? std::string()
-            : normalized.substr(0, separator == 0 ? 1 : separator);
-        const std::string_view sourceBytes = sourceFile->buffer();
-        const auto bytes = std::span(
-            reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
-        const std::string checksum = basic::sha256Hex(basic::sha256(bytes));
-        LLVMMetadataRef file = LLVMDIBuilderCreateFileWithChecksum(
-            debugBuilder_, filename.data(), filename.size(), directory.data(), directory.size(),
-            CSK_SHA256, checksum.data(), checksum.size(), nullptr, 0);
-        if (file != nullptr)
-        {
-            debugFiles_.emplace(fileKey, file);
-            // LLVM's CodeView streamer numbers files in the same first-use order in which the
-            // lowering creates their DIFile records. Integrated assembly uses that stable number
-            // in generated .cv_loc directives so every physical instruction line remains
-            // step-able without splitting one asm contract into semantically different calls.
-            debugCodeViewFileNumbers_.emplace(
-                fileKey, static_cast<unsigned>(debugCodeViewFileNumbers_.size() + 1));
-        }
-        return file;
+        return createDebugFile(
+            debugBuilder_, sourceManager_, debugPrefixMaps_, debugFiles_,
+            debugCodeViewFileNumbers_, location);
     }
 
     unsigned debugCodeViewFileNumber(SourceLocation location)
