@@ -620,6 +620,12 @@ private:
         std::size_t arity,
         std::size_t argumentCount);
 
+    // NSC305-G03b. The single-owner filter of `collectMethodTemplates`, separated so a call site
+    // that already computed the winning-rung candidates can reuse them instead of rebuilding the
+    // name ladder.
+    std::vector<TemplateState*> collectMethodTemplatesFromNamed(
+        const std::vector<TemplateState*>& named) const;
+
     // La misma busqueda cuando se espera UNA sola plantilla. Usa `templatesNamedBy` --la misma
     // funcion, no una copia de sus reglas-- de modo que las dos no pueden divergir.
     //

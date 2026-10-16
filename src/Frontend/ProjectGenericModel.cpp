@@ -4011,9 +4011,7 @@ bool ProjectGenericModel::processGenericCall(
     const std::vector<TemplateState*> namedAtWinningRung = templatesNamedBy(
         unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
         argumentCount);
-    std::vector<TemplateState*> shared = collectMethodTemplates(
-        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
-        argumentCount);
+    std::vector<TemplateState*> shared = collectMethodTemplatesFromNamed(namedAtWinningRung);
     if (shared.size() > 1U)
     {
         std::string sharedName = methodName + "__g" +
@@ -4256,24 +4254,16 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     return {};
 }
 
-std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMethodTemplates(
-    const ProjectSyntaxUnit& unit,
-    const QualifiedNameSite& site,
-    std::string_view writtenOwner,
-    std::string_view methodName,
-    std::size_t arity,
-    std::size_t argumentCount)
+std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMethodTemplatesFromNamed(
+    const std::vector<TemplateState*>& named) const
 {
-    std::vector<TemplateState*> result =
-        templatesNamedBy(unit, site, writtenOwner, methodName, arity, argumentCount);
-
     // UN SOLO DUENO. Un escalon puede empatar --dos `using` que traen dos `Caja`, por ejemplo--.
     // Materializar las dos significa clonar y analizar un cuerpo que este codigo no nombra, y ese
     // cuerpo habla de SU `T`. Si el empate cruza duenos la llamada es realmente ambigua y no se
     // materializa nada: `resolveMethodTemplate` da entonces su diagnostico, que es su sitio.
     std::string owner;
     std::string ownerModule;
-    for (const TemplateState* state : result)
+    for (const TemplateState* state : named)
     {
         const std::string candidate =
             templateSourceSpelling(state->record.namespaceName, state->record.ownerName);
@@ -4284,7 +4274,19 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMet
         }
         else if (owner != candidate || ownerModule != state->record.moduleName) return {};
     }
-    return result;
+    return named;
+}
+
+std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMethodTemplates(
+    const ProjectSyntaxUnit& unit,
+    const QualifiedNameSite& site,
+    std::string_view writtenOwner,
+    std::string_view methodName,
+    std::size_t arity,
+    std::size_t argumentCount)
+{
+    return collectMethodTemplatesFromNamed(
+        templatesNamedBy(unit, site, writtenOwner, methodName, arity, argumentCount));
 }
 
 ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
@@ -5910,8 +5912,7 @@ void ProjectGenericModel::collectCallDependency(
     const std::size_t argumentCount = call->children().size();
     const std::vector<TemplateState*> named = templatesNamedBy(
         unit, site, requestedOwner, methodName, arity, argumentCount);
-    const std::vector<TemplateState*> targets = collectMethodTemplates(
-        unit, site, requestedOwner, methodName, arity, argumentCount);
+    const std::vector<TemplateState*> targets = collectMethodTemplatesFromNamed(named);
     if (!targets.empty())
     {
         for (const TemplateState* target : targets)
