@@ -14615,19 +14615,36 @@ ast::AstNode* Parser::parseUnaryExpression()
         return node;
     }
 
-    const TokenKind kind = current().kind();
-    if (kind == TokenKind::Plus || kind == TokenKind::Minus || kind == TokenKind::Bang ||
-        kind == TokenKind::Tilde || kind == TokenKind::Amp || kind == TokenKind::Star ||
-        kind == TokenKind::PlusPlus || kind == TokenKind::MinusMinus)
+    struct UnaryPrefix
     {
-        const SourceRange start = consume().range();
+        TokenKind kind;
+        SourceRange range;
+    };
+    const auto isOrdinaryUnaryPrefix = [](TokenKind kind) noexcept
+    {
+        return kind == TokenKind::Plus || kind == TokenKind::Minus || kind == TokenKind::Bang ||
+            kind == TokenKind::Tilde || kind == TokenKind::Amp || kind == TokenKind::Star ||
+            kind == TokenKind::PlusPlus || kind == TokenKind::MinusMinus;
+    };
+    std::vector<UnaryPrefix> prefixes;
+    while (isOrdinaryUnaryPrefix(current().kind()))
+    {
+        const TokenKind kind = current().kind();
+        prefixes.push_back(UnaryPrefix{kind, consume().range()});
+    }
+    if (!prefixes.empty())
+    {
         ast::AstNode* operand = parseUnaryExpression();
-        ast::AstNode* node = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::UnaryExpression,
-            join(start, operand->range()));
-        node->setTokenKind(kind);
-        node->setFirst(operand);
-        return node;
+        for (auto prefix = prefixes.rbegin(); prefix != prefixes.rend(); ++prefix)
+        {
+            ast::AstNode* node = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::UnaryExpression,
+                join(prefix->range, operand->range()));
+            node->setTokenKind(prefix->kind);
+            node->setFirst(operand);
+            operand = node;
+        }
+        return operand;
     }
 
     // T42 named casts are contextual spellings, not globally reserved words. This keeps existing
