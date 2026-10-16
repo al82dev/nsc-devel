@@ -354,6 +354,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectGenericConstraintModel.cpp
     src/Frontend/ProjectGenericModel.cpp
     src/Frontend/ProjectGenericModelDumper.cpp
+    src/Frontend/TemplateParseCache.cpp
     src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/ProjectNameLookupDumper.cpp
