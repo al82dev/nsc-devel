@@ -2092,6 +2092,120 @@ private:
     record.isControlledSpecializationFamily = controlledFamily != 0U;
     return true;
 }
+
+// NSC305-C01. Scalar/string fields of a TypeSyntax (no pointers, no recursion): the base identity
+// plus the source flags/origin tags. The type-argument/return/error/modifier graph is the next layer.
+[[maybe_unused]] std::string serializeTypeSyntaxScalars(const ast::TypeSyntax& type)
+{
+    std::string out;
+    appendU32(out, type.range().begin().offset());
+    appendU32(out, type.range().end().offset());
+    appendU32(out, static_cast<std::uint32_t>(type.baseTokenKind()));
+    appendString(out, type.baseName());
+    appendByte(out, static_cast<std::uint8_t>(type.ownershipQualifier()));
+    appendByte(out, static_cast<std::uint8_t>(type.referenceQualifier()));
+    appendString(out, type.lifetimeName());
+    appendByte(out, type.isDynamicTrait() ? 1U : 0U);
+    appendByte(out, type.isOpaqueResult() ? 1U : 0U);
+    appendString(out, type.opaqueResultTraitName());
+    appendByte(out, type.isExplicitTraitImplementation() ? 1U : 0U);
+    appendByte(out, type.isPointeeConst() ? 1U : 0U);
+    appendByte(out, type.isTuple() ? 1U : 0U);
+    appendByte(out, type.isFunction() ? 1U : 0U);
+    appendByte(out, type.isPackExpansion() ? 1U : 0U);
+    appendByte(out, static_cast<std::uint8_t>(type.functionCarrier()));
+    appendByte(out, static_cast<std::uint8_t>(type.functionCallingConvention()));
+    appendByte(out, type.functionIsVariadic() ? 1U : 0U);
+    appendByte(out, type.functionIsUnsafe() ? 1U : 0U);
+    appendByte(out, type.functionIsNoHeap() ? 1U : 0U);
+    appendByte(out, type.functionIsAsync() ? 1U : 0U);
+    appendByte(out, type.functionIsNullable() ? 1U : 0U);
+    appendString(out, type.functionLifetimeName());
+    appendStringVector(out, type.tupleElementNames());
+    appendByte(out, type.originProjectOrdinal().has_value() ? 1U : 0U);
+    if (type.originProjectOrdinal().has_value())
+        appendU64(out, type.originProjectOrdinal().value());
+    appendByte(out, type.originNamespace().has_value() ? 1U : 0U);
+    if (type.originNamespace().has_value())
+        appendString(out, type.originNamespace().value());
+    return out;
+}
+
+// NSC305-C01. Deserializes the scalar/string fields written by serializeTypeSyntaxScalars. The
+// SourceRange's FileId is left default (invalid); the caller restores it from the owning unit.
+[[maybe_unused]] bool deserializeTypeSyntaxScalars(
+    std::string_view bytes, ast::TypeSyntax& type)
+{
+    ByteReader reader(bytes);
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+    std::uint32_t tokenKind = 0;
+    std::string baseName;
+    std::uint8_t ownership = 0;
+    std::uint8_t reference = 0;
+    std::string lifetimeName;
+    std::uint8_t dynamicTrait = 0;
+    std::uint8_t opaqueResult = 0;
+    std::string opaqueResultTraitName;
+    std::uint8_t explicitTrait = 0;
+    std::uint8_t pointeeConst = 0;
+    std::uint8_t tuple = 0;
+    std::uint8_t function = 0;
+    std::uint8_t pack = 0;
+    std::uint8_t carrier = 0;
+    std::uint8_t convention = 0;
+    std::uint8_t variadic = 0;
+    std::uint8_t unsafe = 0;
+    std::uint8_t noHeap = 0;
+    std::uint8_t async = 0;
+    std::uint8_t nullable = 0;
+    std::string functionLifetimeName;
+    std::vector<std::string> tupleNames;
+    std::uint8_t hasProject = 0;
+    std::uint64_t project = 0;
+    std::uint8_t hasNamespace = 0;
+    std::string originNamespace;
+    if (!reader.u32(begin) || !reader.u32(end) || !reader.u32(tokenKind) ||
+        !reader.string(baseName) || !reader.byte(ownership) || !reader.byte(reference) ||
+        !reader.string(lifetimeName) || !reader.byte(dynamicTrait) || !reader.byte(opaqueResult) ||
+        !reader.string(opaqueResultTraitName) || !reader.byte(explicitTrait) ||
+        !reader.byte(pointeeConst) || !reader.byte(tuple) || !reader.byte(function) ||
+        !reader.byte(pack) || !reader.byte(carrier) || !reader.byte(convention) ||
+        !reader.byte(variadic) || !reader.byte(unsafe) || !reader.byte(noHeap) ||
+        !reader.byte(async) || !reader.byte(nullable) || !reader.string(functionLifetimeName) ||
+        !reader.stringVector(tupleNames) || !reader.byte(hasProject) ||
+        (hasProject != 0U && !reader.u64(project)) || !reader.byte(hasNamespace) ||
+        (hasNamespace != 0U && !reader.string(originNamespace)))
+        return false;
+    type.setRange(SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}});
+    type.setBaseTokenKind(static_cast<lexer::TokenKind>(tokenKind));
+    type.setBaseName(std::move(baseName));
+    type.setOwnershipQualifier(static_cast<ast::OwnershipQualifierSyntaxKind>(ownership));
+    type.setReferenceQualifier(static_cast<ast::ReferenceQualifierSyntaxKind>(reference));
+    type.setLifetimeName(std::move(lifetimeName));
+    type.setDynamicTrait(dynamicTrait != 0U);
+    type.setOpaqueResult(opaqueResult != 0U);
+    type.setOpaqueResultTraitName(std::move(opaqueResultTraitName));
+    type.setExplicitTraitImplementation(explicitTrait != 0U);
+    type.setPointeeConst(pointeeConst != 0U);
+    type.setTuple(tuple != 0U);
+    type.setFunction(function != 0U);
+    type.setPackExpansion(pack != 0U);
+    type.setFunctionCarrier(static_cast<ast::FunctionTypeCarrierSyntaxKind>(carrier));
+    type.setFunctionCallingConvention(
+        static_cast<ast::FunctionCallingConventionSyntaxKind>(convention));
+    type.setFunctionVariadic(variadic != 0U);
+    type.setFunctionUnsafe(unsafe != 0U);
+    type.setFunctionNoHeap(noHeap != 0U);
+    type.setFunctionAsync(async != 0U);
+    type.setFunctionNullable(nullable != 0U);
+    type.setFunctionLifetimeName(std::move(functionLifetimeName));
+    // Tuple element names are restored by the recursive layer alongside the elements.
+    (void)tupleNames;
+    if (hasProject != 0U) type.setOriginProjectOrdinal(static_cast<std::size_t>(project));
+    if (hasNamespace != 0U) type.setOriginNamespace(std::move(originNamespace));
+    return true;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
