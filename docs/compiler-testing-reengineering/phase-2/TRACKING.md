@@ -1844,3 +1844,21 @@ configuro, compilo ni ejecuto. Evidencia:
 - `T12B-00457..T12B-00462` conservan bloqueo explícito: su contrato literal
   `deploy.bat` requiere un shell fuera de A y no fue reinterpretado.
 - Evidencia: `TANDA-VALIDACION-256-AISLAMIENTO-A-ONLY-INFRAESTRUCTURA.md`.
+
+## Validación 258 — preflight de baseline y cierre de metadata
+
+`PREFLIGHT APROBADO; MATRIZ COMPLETA PENDIENTE DEL USUARIO EN GUI`.
+
+- El bootstrap O0 de las 52 fuentes de `NativeSharp.Core` ya completa el ciclo productor y
+  read-back: las superficies `Future`/`Iterator` estructurales no contaminan el cierre nominal y
+  el indexador de `Span<T>` conserva `readonly get` con setter mutable.
+- `nsc` Release compila, el bootstrap produce `.lib`, `.h` y `.nsmeta`. Una primera auditoría
+  modular pasó `67/70`, expuso tres desfases de la referencia monolítica y, después de
+  sincronizarlos, la corrida final pasó `70/70`. También pasan 10 validaciones de
+  catálogo/manifiesto y el smoke de GUI.
+- El catálogo vivo contiene `5,991` casos ejecutables, `682` contratos y `30` componentes. El
+  plan de Gate 0 usa staging y binarios de matriz en A, NSLink independiente desde
+  `A:\nslink-devel` y la matriz completa `O0..O3`.
+- No se ejecutó la matriz completa, no se promovió a `C:\native-sharp` y no se reintrodujo el
+  versionamiento NSMETA como feature independiente.
+- Evidencia: `TANDA-VALIDACION-258-PREFLIGHT-BASELINE-METADATA.md`.

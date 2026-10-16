@@ -118,7 +118,7 @@ ALLOCATION_ISOLATIONS = frozenset(
 )
 ALLOCATION_BUILD_MODES = frozenset({"Debug", "Release", "FROZEN_CONTRACT"})
 ALLOCATION_OPTIMIZATIONS = frozenset(
-    {"N/A", "O0", "O1", "O2", "O3", "FROZEN_CONTRACT"}
+    {"NA", "N/A", "O0", "O1", "O2", "O3", "FROZEN_CONTRACT"}
 )
 
 
@@ -187,7 +187,7 @@ def validate_allocation_domains(rows: Sequence[dict[str, str]]) -> None:
         "supported_build_modes": (ALLOCATION_BUILD_MODES, {"FROZEN_CONTRACT"}),
         "supported_optimizations": (
             ALLOCATION_OPTIMIZATIONS,
-            {"N/A", "FROZEN_CONTRACT"},
+            {"NA", "N/A", "FROZEN_CONTRACT"},
         ),
     }
     for row_number, row in enumerate(rows, start=2):
@@ -576,17 +576,22 @@ def discover_compiler_build_tools(llvm_root: str) -> dict[str, str]:
 
 
 def discover_archive_executable(configured: str) -> str:
-    """Find 7-Zip from an override, PATH, or Windows installation roots."""
-    candidates: list[str | Path] = [
+    """Find 7-Zip only from an explicit A-drive path or canonical A roots."""
+    candidates: tuple[str | Path, ...] = (
         configured,
-        shutil.which("7z") or "",
-        shutil.which("7zz") or "",
-    ]
-    for variable in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
-        root = os.environ.get(variable, "")
-        if root:
-            candidates.append(Path(root) / "7-Zip" / "7z.exe")
-    return first_existing_file(candidates)
+        Path("A:/apps/7zip/7z.exe"),
+        Path("A:/7z/7z.exe"),
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        raw_path = Path(candidate)
+        if not is_a_drive(raw_path):
+            continue
+        path = raw_path.resolve()
+        if path.is_file():
+            return str(path)
+    return ""
 
 
 def first_distinct_existing_file(
@@ -823,10 +828,10 @@ def variant_history_key(variant: RunVariant) -> tuple[str, str, str, str]:
 def timeout_limit_for_average(average_seconds: float | None) -> int:
     """Return the PASS-average deadline, always rounded upward to whole seconds.
 
-    No history gets 45 minutes. Averages below one second get five seconds;
-    averages through 30 seconds add five, through 120 add fifteen, through ten
-    minutes add three minutes, and longer averages add the greater of five
-    minutes or twenty percent. Upward rounding never reduces those margins.
+    No history gets 45 minutes. Averages through 30 seconds add five seconds
+    with a 15-second floor, through 120 add fifteen, through ten minutes add
+    three minutes, and longer averages add the greater of five minutes or
+    twenty percent. Upward rounding never reduces those margins.
     """
     if average_seconds is None:
         return 45 * 60
@@ -838,10 +843,8 @@ def timeout_limit_for_average(average_seconds: float | None) -> int:
     ):
         raise ValueError("historical PASS average must be a finite nonnegative number")
     average = float(average_seconds)
-    if average < 1.0:
-        return 5
     if average <= 30.0:
-        return math.ceil(average + 5.0)
+        return max(15, math.ceil(average + 5.0))
     if average <= 120.0:
         return math.ceil(average + 15.0)
     if average <= 600.0:

@@ -55,6 +55,17 @@ bool isNamedTypeDeclaration(ast::AstNodeKind kind) noexcept
         kind == ast::AstNodeKind::DelegateDeclaration;
 }
 
+bool isStructuralGenericSurface(const ast::TypeSyntax* syntax) noexcept
+{
+    if (syntax == nullptr) return false;
+    const std::size_t arity = syntax->typeArguments().size();
+    if (syntax->isTuple()) return true;
+    if (syntax->baseName() == "simd" || syntax->baseName() == "mask") return true;
+    if (syntax->baseName() == "Future") return arity == 1U;
+    if (syntax->baseName() == "Iterator") return arity == 1U || arity == 2U;
+    return syntax->baseName() == "AsyncIterator" && arity == 2U;
+}
+
 GenericTemplateKind genericTypeTemplateKind(const ast::AstNode* node) noexcept
 {
     if (node->kind() == ast::AstNodeKind::ClassDeclaration) return GenericTemplateKind::Class;
@@ -2638,21 +2649,9 @@ bool ProjectGenericModel::processTypeSyntax(
             return false;
         return true;
     }
-    // A tuple is structural, not an invocation of a generic type named "$tuple". Its element
-    // types were still processed above so closed generic elements are materialized normally.
-    if (syntax->isTuple()) return true;
-    // NativeSharp 3 portable vectors are structural too. Their lane/count arguments have already
-    // been processed, but there is deliberately no nominal template to specialize.
-    if (syntax->baseName() == "simd" || syntax->baseName() == "mask") return true;
-    // NS304-T05-F09: `Future<T>` is a structural opaque surface (future:<T>), not a nominal
-    // generic template. Its argument was already processed above.
-    if (syntax->baseName() == "Future" && syntax->typeArguments().size() == 1) return true;
-    // NS304-T06-F02: `Iterator<T>` is a structural opaque surface (iterator:<T>).
-    if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 1) return true;
-    // NS304-T06-F07: `Iterator<T,E>` is also a structural opaque surface (iterator:<T>|<E>).
-    if (syntax->baseName() == "Iterator" && syntax->typeArguments().size() == 2) return true;
-    // NS304-T07-F01: `AsyncIterator<T,E>` is a structural opaque surface (async-iterator:<T>|<E>).
-    if (syntax->baseName() == "AsyncIterator" && syntax->typeArguments().size() == 2) return true;
+    // Structural surfaces still recurse into their arguments above, but never name a reusable
+    // nominal template. Keep this classification shared with metadata dependency discovery.
+    if (isStructuralGenericSurface(syntax)) return true;
 
     TemplateState* state = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
@@ -5641,6 +5640,10 @@ void ProjectGenericModel::collectTypeDependency(
     if (syntax == nullptr) return;
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
         collectTypeDependency(root, unit, argument, namespaceName, scope);
+    // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
+    // arguments may depend on nominal templates, but the surface itself has no template record
+    // that a reusable NSMETA closure could or should include.
+    if (isStructuralGenericSurface(syntax)) return;
     if (syntax->typeArguments().empty())
     {
         if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(

@@ -1835,7 +1835,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         constexpr std::uint32_t kSetter = 1U << 15U;
         constexpr std::uint32_t kNewSlot = 1U << 19U;
         constexpr std::uint32_t kDeclarationFlags =
-            kStatic | kReadonly | kVirtual | kOverride | kAbstract | kSealed | kNewSlot;
+            kStatic | kVirtual | kOverride | kAbstract | kSealed | kNewSlot;
         std::vector<AccessorContract> contracts;
         std::unordered_map<std::string, std::size_t> contractByKey;
         for (const interop::LibraryMetadataMember *member : members)
@@ -1920,7 +1920,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     error = "metadata accessor pair for '" + contract.name + "' has inconsistent type or modifiers";
                     return false;
                 }
+                if ((contract.setter->flags & kReadonly) != 0U)
+                {
+                    error = "metadata setter for '" + contract.name + "' cannot be readonly";
+                    return false;
+                }
             }
+            const bool declarationReadonly =
+                contract.setter == nullptr && (shape.flags & kReadonly) != 0U;
             std::uint8_t accessibility = shape.accessibility;
             if (contract.setter != nullptr)
             {
@@ -1945,7 +1952,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!interfaceContext)
             {
                 if (!preserveStatic && (shape.flags & kStatic) != 0U) generated << "static ";
-                if ((shape.flags & kReadonly) != 0U) generated << "readonly ";
+                if (declarationReadonly) generated << "readonly ";
                 if ((shape.flags & kSealed) != 0U) generated << "sealed ";
                 if ((shape.flags & kNewSlot) != 0U) generated << "new ";
                 if ((shape.flags & kOverride) != 0U) generated << "override ";
@@ -1973,6 +1980,11 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << "        ";
                 if (!interfaceContext && accessor.accessibility != accessibility)
                     generated << sourceAccessibility(accessor.accessibility) << ' ';
+                if (!interfaceContext && !declarationReadonly &&
+                    (&accessor == contract.getter) && (accessor.flags & kReadonly) != 0U)
+                {
+                    generated << "readonly ";
+                }
                 generated << keyword;
                 if (!emitThrowsContract(accessor.declaredErrorTypeKey)) return false;
                 // Metadata-backed interface accessors follow the same physical contract as

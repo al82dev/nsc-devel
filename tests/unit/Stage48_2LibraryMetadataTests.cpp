@@ -765,6 +765,54 @@ namespace GenericMeta
     }), "generic method specialization key survives metadata");
 }
 
+void testStructuralFutureDoesNotBecomeReusableTemplateDependency(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto directory = root / "StructuralFutureClosure";
+    writeProject(directory, "StructuralFutureClosure", "StaticLibrary", R"NS(
+namespace StructuralFutureClosure
+{
+    public struct Scope<T>
+    {
+        private T value;
+        public T this[int index]
+        {
+            readonly get { return value; }
+            set { value = value; }
+        }
+        public void Spawn(Future<void> task) { }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const std::string project =
+        (directory / "StructuralFutureClosure.nsproj").string();
+    const std::string library =
+        (directory / "StructuralFutureClosure.lib").string();
+    const std::array<std::string_view, 5> args = {
+        "-O0", "--emit-project-oop-lib", project, "-o", library};
+    tests.expect(
+        runDriver(args, output, error) == ExitCode::Success,
+        "public reusable templates preserve structural Future<T> surfaces and mixed-readonly "
+        "indexers (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(
+        directory / "StructuralFutureClosure.nsmeta", metadata, error);
+    const auto scope = std::ranges::find_if(
+        metadata.genericTemplates,
+        [](const auto& candidate) { return candidate.name == "Scope"; });
+    tests.expect(
+        read && scope != metadata.genericTemplates.end() && scope->dependencies.empty(),
+        "structural Future<T> does not publish a nominal reusable-template dependency (" +
+            error + ")");
+}
+
 void testPrecompiledClosedGenericSurface(TestContext& tests, const std::filesystem::path& root)
 {
     const auto genericOwner = root / "ClosedGenericOwner";
@@ -2312,6 +2360,7 @@ int main()
     testDefaultValueContractSensitivity(tests, root);
     testAutomaticProducts(tests, root);
     testGenericCompilerMetadata(tests, root);
+    testStructuralFutureDoesNotBecomeReusableTemplateDependency(tests, root);
     testPrecompiledClosedGenericSurface(tests, root);
     testPrecompiledCallableKeepsNominalParameterIdentity(tests, root);
     testPrecompiledExternalTypeClosure(tests, root);
