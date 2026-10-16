@@ -523,6 +523,51 @@ private:
         std::string stableKey;
     };
 
+    // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
+    // ensureTypeSpecialization/ensureMethodSpecialization save before materializing and restore
+    // afterwards (they form a call stack, not global state). A nested struct can read the enclosing
+    // class's private members, so the save/restore is a single two-line pair.
+    struct SpecializationContext final
+    {
+        std::size_t projectOrdinal = 0;
+        std::string namespaceName;
+        SourceRange range{};
+        std::size_t overloadGroup = 0;
+        std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> packSubstitutions;
+        std::string packError;
+        SourceRange packErrorRange{};
+        std::unordered_set<std::string> associatedProjections;
+        std::string associatedError;
+        SourceRange associatedErrorRange{};
+
+        void save(const ProjectGenericModel& model)
+        {
+            projectOrdinal = model.currentInstantiationProjectOrdinal_;
+            namespaceName = model.currentInstantiationNamespace_;
+            range = model.currentInstantiationRange_;
+            overloadGroup = model.currentOverloadGroup_;
+            packSubstitutions = model.activePackSubstitutions_;
+            packError = model.packMaterializationError_;
+            packErrorRange = model.packMaterializationErrorRange_;
+            associatedProjections = model.activeAssociatedProjections_;
+            associatedError = model.associatedProjectionError_;
+            associatedErrorRange = model.associatedProjectionErrorRange_;
+        }
+        void restore(ProjectGenericModel& model) const
+        {
+            model.currentInstantiationProjectOrdinal_ = projectOrdinal;
+            model.currentInstantiationNamespace_ = namespaceName;
+            model.currentInstantiationRange_ = range;
+            model.currentOverloadGroup_ = overloadGroup;
+            model.activePackSubstitutions_ = packSubstitutions;
+            model.packMaterializationError_ = packError;
+            model.packMaterializationErrorRange_ = packErrorRange;
+            model.activeAssociatedProjections_ = associatedProjections;
+            model.associatedProjectionError_ = associatedError;
+            model.associatedProjectionErrorRange_ = associatedErrorRange;
+        }
+    };
+
     bool specializeGenericLambdaCall(
         ProjectSyntaxUnit& unit,
         ast::AstNode* call,

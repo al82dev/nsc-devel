@@ -4457,16 +4457,8 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     diagnostics::DiagnosticEngine& diagnostics,
     std::string* outSpecializationKey)
 {
-    const std::size_t callerProjectOrdinal = currentInstantiationProjectOrdinal_;
-    const std::string callerNamespace = currentInstantiationNamespace_;
-    const SourceRange callerRange = currentInstantiationRange_;
-    const std::size_t callerOverloadGroup = currentOverloadGroup_;
-    const auto callerPackSubstitutions = activePackSubstitutions_;
-    const std::string callerPackError = packMaterializationError_;
-    const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
-    const auto callerAssociatedProjections = activeAssociatedProjections_;
-    const std::string callerAssociatedError = associatedProjectionError_;
-    const SourceRange callerAssociatedErrorRange = associatedProjectionErrorRange_;
+    SpecializationContext callerContext;
+    callerContext.save(*this);
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -4535,12 +4527,12 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const SourceRange packErrorRange = packMaterializationErrorRange_;
     const std::string associatedError = associatedProjectionError_;
     const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
-    packMaterializationError_ = callerPackError;
-    packMaterializationErrorRange_ = callerPackErrorRange;
-    activePackSubstitutions_ = callerPackSubstitutions;
-    activeAssociatedProjections_ = callerAssociatedProjections;
-    associatedProjectionError_ = callerAssociatedError;
-    associatedProjectionErrorRange_ = callerAssociatedErrorRange;
+    packMaterializationError_ = callerContext.packError;
+    packMaterializationErrorRange_ = callerContext.packErrorRange;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
+    activeAssociatedProjections_ = callerContext.associatedProjections;
+    associatedProjectionError_ = callerContext.associatedError;
+    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
     if (!packError.empty() || !associatedError.empty())
     {
         specializationByKey_.erase(key);
@@ -4552,10 +4544,10 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
             diagnostics::DiagnosticSeverity::Error,
             associatedError.empty() ? packErrorRange : associatedErrorRange,
             associatedError.empty() ? packError : associatedError);
-        currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
-        currentInstantiationNamespace_ = callerNamespace;
-        currentInstantiationRange_ = callerRange;
-        currentOverloadGroup_ = callerOverloadGroup;
+        currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+        currentInstantiationNamespace_ = callerContext.namespaceName;
+        currentInstantiationRange_ = callerContext.range;
+        currentOverloadGroup_ = callerContext.overloadGroup;
         instantiationBudget_.leave();
         return {};
     }
@@ -4588,11 +4580,11 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     // current-instantiation fields. They describe a call stack, not global "last call" state:
     // restore the caller before returning so a sibling specialization (notably the next overload
     // candidate) cannot inherit the nested library context.
-    currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
-    currentInstantiationNamespace_ = callerNamespace;
-    currentInstantiationRange_ = callerRange;
-    currentOverloadGroup_ = callerOverloadGroup;
-    activePackSubstitutions_ = callerPackSubstitutions;
+    currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+    currentInstantiationNamespace_ = callerContext.namespaceName;
+    currentInstantiationRange_ = callerContext.range;
+    currentOverloadGroup_ = callerContext.overloadGroup;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
     instantiationBudget_.leave();
     if (outSpecializationKey != nullptr) *outSpecializationKey = key;
     return specializedName;
@@ -4604,16 +4596,8 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     diagnostics::DiagnosticEngine& diagnostics,
     std::string_view sharedName)
 {
-    const std::size_t callerProjectOrdinal = currentInstantiationProjectOrdinal_;
-    const std::string callerNamespace = currentInstantiationNamespace_;
-    const SourceRange callerRange = currentInstantiationRange_;
-    const std::size_t callerOverloadGroup = currentOverloadGroup_;
-    const auto callerPackSubstitutions = activePackSubstitutions_;
-    const std::string callerPackError = packMaterializationError_;
-    const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
-    const auto callerAssociatedProjections = activeAssociatedProjections_;
-    const std::string callerAssociatedError = associatedProjectionError_;
-    const SourceRange callerAssociatedErrorRange = associatedProjectionErrorRange_;
+    SpecializationContext callerContext;
+    callerContext.save(*this);
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -4699,12 +4683,12 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     const SourceRange packErrorRange = packMaterializationErrorRange_;
     const std::string associatedError = associatedProjectionError_;
     const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
-    packMaterializationError_ = callerPackError;
-    packMaterializationErrorRange_ = callerPackErrorRange;
-    activePackSubstitutions_ = callerPackSubstitutions;
-    activeAssociatedProjections_ = callerAssociatedProjections;
-    associatedProjectionError_ = callerAssociatedError;
-    associatedProjectionErrorRange_ = callerAssociatedErrorRange;
+    packMaterializationError_ = callerContext.packError;
+    packMaterializationErrorRange_ = callerContext.packErrorRange;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
+    activeAssociatedProjections_ = callerContext.associatedProjections;
+    associatedProjectionError_ = callerContext.associatedError;
+    associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
     if (!packError.empty() || !associatedError.empty())
     {
         specializationByKey_.erase(key);
@@ -4716,10 +4700,10 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
             diagnostics::DiagnosticSeverity::Error,
             associatedError.empty() ? packErrorRange : associatedErrorRange,
             associatedError.empty() ? packError : associatedError);
-        currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
-        currentInstantiationNamespace_ = callerNamespace;
-        currentInstantiationRange_ = callerRange;
-        currentOverloadGroup_ = callerOverloadGroup;
+        currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+        currentInstantiationNamespace_ = callerContext.namespaceName;
+        currentInstantiationRange_ = callerContext.range;
+        currentOverloadGroup_ = callerContext.overloadGroup;
         instantiationBudget_.leave();
         return {};
     }
@@ -4738,11 +4722,11 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
         GenericLookupScope{}, false, diagnostics);
-    currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
-    currentInstantiationNamespace_ = callerNamespace;
-    currentInstantiationRange_ = callerRange;
-    currentOverloadGroup_ = callerOverloadGroup;
-    activePackSubstitutions_ = callerPackSubstitutions;
+    currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+    currentInstantiationNamespace_ = callerContext.namespaceName;
+    currentInstantiationRange_ = callerContext.range;
+    currentOverloadGroup_ = callerContext.overloadGroup;
+    activePackSubstitutions_ = callerContext.packSubstitutions;
     instantiationBudget_.leave();
     return specializedName;
 }
