@@ -5610,6 +5610,16 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
                     reserveTypeSpecialization(state, key, specializedName, identities);
                 commitTypeSpecialization(
                     state, clone, key, specializedName, ordinal, diagnostics);
+                // The clone body still needs its child demands (types/calls) resolved; those recurse
+                // through the same C3 restore, so this is a walk + cache hits, not a re-clone.
+                processNode(
+                    *state.unit, clone, state.record.namespaceName, specializedName,
+                    GenericLookupScope{}, false, diagnostics);
+                currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
+                currentInstantiationNamespace_ = callerContext.namespaceName;
+                currentInstantiationRange_ = callerContext.range;
+                currentOverloadGroup_ = callerContext.overloadGroup;
+                activePackSubstitutions_ = callerContext.packSubstitutions;
                 telemetry_.noteSpecializationHit();
                 ++instantiationCacheHitCount_;
                 if (outSpecializationKey != nullptr) *outSpecializationKey = key;
