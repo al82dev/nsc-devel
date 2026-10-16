@@ -783,6 +783,33 @@ bool createDispatchTypes(
     return true;
 }
 
+// NSC305-L03. Computes the transitive set of types whose descriptors are completed through runtime
+// accessors (moved out of emitDispatchMetadata as a pure move).
+void computeRuntimeDescriptorAccessorTypes(
+    const frontend::ProjectOopMirModel& mirModel,
+    std::unordered_set<std::size_t>& runtimeDescriptorAccessorTypes)
+{
+    for (const frontend::ProjectOopMirDispatchTable& table : mirModel.dispatchTables())
+    {
+        if (table.isImported) runtimeDescriptorAccessorTypes.insert(table.typeOrdinal);
+    }
+    bool addedRuntimeDescriptor = true;
+    while (addedRuntimeDescriptor)
+    {
+        addedRuntimeDescriptor = false;
+        for (const frontend::ProjectOopMirDispatchTable& table : mirModel.dispatchTables())
+        {
+            if (table.isImported || !table.baseTypeOrdinal.has_value() ||
+                !runtimeDescriptorAccessorTypes.contains(*table.baseTypeOrdinal))
+            {
+                continue;
+            }
+            addedRuntimeDescriptor = runtimeDescriptorAccessorTypes.insert(table.typeOrdinal).second ||
+                addedRuntimeDescriptor;
+        }
+    }
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -3826,30 +3853,8 @@ private:
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
 
-        // A local class can inherit (directly or through another local class) from a class whose
-        // descriptor lives in a precompiled static library or DLL. NSMETA deliberately publishes
-        // an accessor for that descriptor rather than promising that the descriptor DATA symbol
-        // is linkable -- the latter is not true for the DLL product. Mark the complete local
-        // descendant chain now so its descriptor can be completed at runtime through accessors.
-        for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
-        {
-            if (table.isImported) runtimeDescriptorAccessorTypes_.insert(table.typeOrdinal);
-        }
-        bool addedRuntimeDescriptor = true;
-        while (addedRuntimeDescriptor)
-        {
-            addedRuntimeDescriptor = false;
-            for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
-            {
-                if (table.isImported || !table.baseTypeOrdinal.has_value() ||
-                    !runtimeDescriptorAccessorTypes_.contains(*table.baseTypeOrdinal))
-                {
-                    continue;
-                }
-                addedRuntimeDescriptor =
-                    runtimeDescriptorAccessorTypes_.insert(table.typeOrdinal).second || addedRuntimeDescriptor;
-            }
-        }
+        // NSC305-L03. The runtime-descriptor closure lives in computeRuntimeDescriptorAccessorTypes.
+        computeRuntimeDescriptorAccessorTypes(mirModel_, runtimeDescriptorAccessorTypes_);
 
         if (!defineStorage)
         {
