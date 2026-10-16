@@ -788,6 +788,19 @@ private:
         std::span<ast::TypeSyntax* const> arguments,
         std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
 
+    // NSC305-G08. Owns the vectors a QualifiedNameSite's spans point into, so the site can be built
+    // once and returned by value (C++17 guaranteed elision keeps the spans valid).
+    struct QualifiedNameSiteContext final
+    {
+        std::vector<std::string> namespaceSegments;
+        std::vector<std::string> enclosingTypeNames;
+        QualifiedNameSite site;
+    };
+    QualifiedNameSiteContext makeQualifiedNameSite(
+        std::string_view namespaceName,
+        std::string_view ownerName,
+        const GenericLookupScope& scope) const;
+
     ast::TypeSyntax* cloneType(
         ast::AstArena& arena,
         const ast::TypeSyntax* source,

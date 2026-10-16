@@ -3758,14 +3758,8 @@ bool ProjectGenericModel::inferGenericCall(
         const std::string written = receiverSourceSpelling(callee->first());
         if (!written.empty()) requestedOwner = written;
     }
-    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
-    const std::vector<std::string> enclosingTypes =
-        enclosingTypeSpellings(namespaceName, ownerName);
-    QualifiedNameSite site;
-    site.namespaceSegments = namespaceSegments;
-    site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases.read();
-    site.importedNamespaces = scope.importedNamespaces.read();
+    QualifiedNameSiteContext siteContext = makeQualifiedNameSite(namespaceName, ownerName, scope);
+    const QualifiedNameSite& site = siteContext.site;
     constexpr std::size_t kAny = std::numeric_limits<std::size_t>::max();
     const std::vector<TemplateState*> named = templatesNamedBy(
         unit, site, requestedOwner, methodName, kAny, kAny);
@@ -4090,14 +4084,8 @@ bool ProjectGenericModel::processGenericCall(
     // especializaciones acaban con la MISMA lista de parametros --`F<int>(int)` y `F<T>(int)`--
     // el choque lo detecta la deteccion de metodos duplicados de siempre, que es su sitio.
     // EL SITIO DE LA LLAMADA, en la forma que entiende la escala compartida.
-    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
-    const std::vector<std::string> enclosingTypes =
-        enclosingTypeSpellings(namespaceName, ownerName);
-    QualifiedNameSite site;
-    site.namespaceSegments = namespaceSegments;
-    site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases.read();
-    site.importedNamespaces = scope.importedNamespaces.read();
+    QualifiedNameSiteContext siteContext = makeQualifiedNameSite(namespaceName, ownerName, scope);
+    const QualifiedNameSite& site = siteContext.site;
 
     const std::vector<TemplateState*> namedAtWinningRung = templatesNamedBy(
         unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
@@ -4482,6 +4470,22 @@ void ProjectGenericModel::prepareSpecializationSubstitutions(
         for (std::size_t index = *pack; index < arguments.size(); ++index)
             values.push_back(arguments[index]);
     }
+}
+
+// NSC305-G08. Build a QualifiedNameSite once, owning the vectors its spans point into.
+ProjectGenericModel::QualifiedNameSiteContext ProjectGenericModel::makeQualifiedNameSite(
+    std::string_view namespaceName,
+    std::string_view ownerName,
+    const GenericLookupScope& scope) const
+{
+    QualifiedNameSiteContext context;
+    context.namespaceSegments = splitDotted(namespaceName);
+    context.enclosingTypeNames = enclosingTypeSpellings(namespaceName, ownerName);
+    context.site.namespaceSegments = context.namespaceSegments;
+    context.site.enclosingTypeNames = context.enclosingTypeNames;
+    context.site.aliases = &scope.aliases.read();
+    context.site.importedNamespaces = scope.importedNamespaces.read();
+    return context;
 }
 
 std::string ProjectGenericModel::ensureTypeSpecialization(
@@ -6046,14 +6050,8 @@ void ProjectGenericModel::collectCallDependency(
         if (!written.empty()) requestedOwner = written;
     }
 
-    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
-    const std::vector<std::string> enclosingTypes =
-        enclosingTypeSpellings(namespaceName, ownerName);
-    QualifiedNameSite site;
-    site.namespaceSegments = namespaceSegments;
-    site.enclosingTypeNames = enclosingTypes;
-    site.aliases = &scope.aliases.read();
-    site.importedNamespaces = scope.importedNamespaces.read();
+    QualifiedNameSiteContext siteContext = makeQualifiedNameSite(namespaceName, ownerName, scope);
+    const QualifiedNameSite& site = siteContext.site;
 
     const std::size_t arity = call->typeSyntaxes().size();
     const std::size_t argumentCount = call->children().size();
