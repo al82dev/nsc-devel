@@ -4882,10 +4882,10 @@ struct CloneDepthGuard final
 }  // namespace
 
 // NSC305-G06. The non-substitution branch of cloneType (see the header).
-ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
+// NSC305-G06. The shallow (non-recursive) part of the generic type clone (see the header).
+ast::TypeSyntax* ProjectGenericModel::cloneTypeGenericShallow(
     ast::AstArena& arena,
-    const ast::TypeSyntax* source,
-    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+    const ast::TypeSyntax* source)
 {
     ast::TypeSyntax* result =
         arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
@@ -4898,6 +4898,29 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
     result->setFunctionAsync(source->functionIsAsync());
     result->setFunctionNullable(source->functionIsNullable());
     result->setFunctionLifetimeName(source->functionLifetimeName());
+    // Stage 52 fix: carry forward the origin tags the SOURCE node already carries.
+    if (source->originProjectOrdinal().has_value())
+    {
+        result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
+    }
+    if (source->originNamespace().has_value())
+    {
+        result->setOriginNamespace(source->originNamespace().value());
+    }
+    if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
+        origin != resolvedTypeOriginBySyntax_.end())
+    {
+        resolvedTypeOriginBySyntax_[result] = origin->second;
+    }
+    return result;
+}
+
+ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
+    ast::AstArena& arena,
+    const ast::TypeSyntax* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+{
+    ast::TypeSyntax* result = cloneTypeGenericShallow(arena, source);
     result->setFunctionReturnType(cloneType(
         arena, source->functionReturnType(), substitutions));
     result->setFunctionErrorType(cloneType(
@@ -4923,20 +4946,6 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
             for (ast::TypeSyntax* expanded :
                  cloneExpandedTypeArgument(arena, argument, substitutions))
                 result->addTypeArgument(expanded);
-    }
-    // Stage 52 fix: carry forward the origin tags the SOURCE node already carries.
-    if (source->originProjectOrdinal().has_value())
-    {
-        result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
-    }
-    if (source->originNamespace().has_value())
-    {
-        result->setOriginNamespace(source->originNamespace().value());
-    }
-    if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
-        origin != resolvedTypeOriginBySyntax_.end())
-    {
-        resolvedTypeOriginBySyntax_[result] = origin->second;
     }
     return result;
 }
