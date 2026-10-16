@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <initializer_list>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nsc::suite
@@ -39,6 +41,31 @@ namespace Suite
             Box<int> box;
             box.Value = 5;
             return Identity<int>(box.Get());
+        }
+    }
+}
+)ns";
+}
+
+std::string genericTelemetrySource()
+{
+    return R"ns(
+namespace Suite
+{
+    public struct Box<T> { public T Value; }
+    public class Algorithms
+    {
+        public static T Identity<T>(T value) { return value; }
+    }
+    public class Program
+    {
+        public static int Run()
+        {
+            Box<int> first;
+            first.Value = 1;
+            Box<int> second;
+            second.Value = 2;
+            return Algorithms.Identity<int>(first.Value) + Algorithms.Identity<int>(second.Value);
         }
     }
 }
@@ -848,6 +875,102 @@ void compilationDumpOracle(TestContext& context, std::size_t variant)
             test.expect(!first.str().empty(), "project compilation dump must expose the available stage state");
         });
 }
+
+void genericTelemetryOracle(TestContext& context, std::size_t variant)
+{
+    TemporaryProject fixture("front-68", scaledSource(genericTelemetrySource(), variant));
+    ProjectCompilation compilation;
+    std::vector<std::pair<std::string, std::chrono::nanoseconds>> timings;
+    compilation.setPhaseTimingSink(
+        [&timings](std::string_view name, std::chrono::nanoseconds elapsed)
+        {
+            timings.emplace_back(std::string(name), elapsed);
+        });
+    std::string error;
+    const bool completed =
+        compileTo(compilation, ProjectStage::Generics, fixture.projectFile(), error);
+    context.expect(completed,
+        "generic telemetry fixture must reach the generics stage; " +
+            projectFailureEvidence(compilation, error));
+    if (!completed || compilation.genericModel() == nullptr) return;
+
+    const ProjectGenericModel* model = compilation.genericModel();
+    const GenericTelemetry& telemetry = model->telemetry();
+    const GenericInstantiationReport report = model->instantiationReport();
+
+    context.expect(telemetry.enabled,
+        "wiring a timing sink must enable the generic telemetry accumulator");
+    context.expect(telemetry.templatesCollected == model->templates().size(),
+        "generic telemetry must count every collected template");
+    context.expect(telemetry.specializationHits == report.cacheHitCount,
+        "generic telemetry specialization hits must match the published cache-hit count");
+    context.expect(telemetry.demandsMaterialized == report.materializedCount,
+        "generic telemetry materializations must match the published materialized count");
+    context.expect(telemetry.maximumLogicalDepth == report.maximumObservedDepth,
+        "generic telemetry maximum depth must match the published instantiation depth");
+    context.expect(telemetry.nodesCloned > 0 && telemetry.typesCloned > 0,
+        "generic materialization must record cloned nodes and types");
+    context.expect(telemetry.specializationHits > 0,
+        "repeated closed uses must be observable as specialization cache hits");
+
+    constexpr std::array<std::string_view, 14> requiredSubPhases = {
+        "generics.visibility", "generics.alias-expansion", "generics.trait-merge",
+        "generics.opaque-results", "generics.ordinary-return-index",
+        "generics.associated-items", "generics.template-collection",
+        "generics.template-index", "generics.dependency-discovery",
+        "generics.imported-specialization-seed", "generics.root-demand-discovery",
+        "generics.specialization-waves", "generics.rewrite-commit",
+        "generics.body-type-demands",
+    };
+    for (const std::string_view name : requiredSubPhases)
+    {
+        context.expect(telemetry.subPhaseMicros.contains(std::string(name)),
+            "generic telemetry must record sub-phase " + std::string(name));
+    }
+
+    constexpr std::array<std::string_view, 12> topLevelSubPhases = {
+        "generics.visibility", "generics.alias-expansion", "generics.trait-merge",
+        "generics.opaque-results", "generics.ordinary-return-index",
+        "generics.associated-items", "generics.template-collection",
+        "generics.template-index", "generics.dependency-discovery",
+        "generics.imported-specialization-seed", "generics.root-demand-discovery",
+        "generics.body-type-demands",
+    };
+    std::uint64_t parentMicros = 0;
+    for (const auto& [name, elapsed] : timings)
+    {
+        if (name == "generics")
+            parentMicros = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+    }
+    std::uint64_t topLevelSumMicros = 0;
+    for (const std::string_view name : topLevelSubPhases)
+    {
+        const auto found = telemetry.subPhaseMicros.find(std::string(name));
+        if (found != telemetry.subPhaseMicros.end()) topLevelSumMicros += found->second;
+    }
+    context.expect(parentMicros > 0 && topLevelSumMicros <= parentMicros + 1000U,
+        "top-level generic sub-phases must sum within the parent generics timer");
+
+    ProjectCompilation disabled;
+    std::string disabledError;
+    const bool disabledCompleted =
+        compileTo(disabled, ProjectStage::Generics, fixture.projectFile(), disabledError);
+    context.expect(disabledCompleted,
+        "generic telemetry fixture must also build without a timing sink");
+    if (disabledCompleted && disabled.genericModel() != nullptr)
+    {
+        const GenericTelemetry& off = disabled.genericModel()->telemetry();
+        context.expect(!off.enabled && off.subPhaseMicros.empty() &&
+                off.templatesCollected == 0 && off.resolutionQueries == 0 &&
+                off.demandsMaterialized == 0 && off.specializationHits == 0 &&
+                off.nodesCloned == 0 && off.typesCloned == 0 && off.templates.empty(),
+            "disabled generic telemetry must record nothing");
+        context.expect(disabled.genericModel()->specializations().size() ==
+                model->specializations().size(),
+            "disabling generic telemetry must not change specialization cardinality");
+    }
+}
 }
 
 void registerFrontendGenericsFlowModule(TestRegistry& registry)
@@ -863,5 +986,6 @@ void registerFrontendGenericsFlowModule(TestRegistry& registry)
     addMatrix(registry, 28, "component", callableWaveOracle);
     addMatrix(registry, 29, "integration", projectCompilationOracle);
     addMatrix(registry, 30, "unit", compilationDumpOracle);
+    addMatrix(registry, 68, "component", genericTelemetryOracle);
 }
 }

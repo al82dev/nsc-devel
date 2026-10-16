@@ -8,7 +8,10 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Language/GenericSemantics.h"
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <span>
@@ -155,6 +158,136 @@ struct GenericInstantiationReport final
     std::size_t maximumCount = 0;
 };
 
+// NSC305-P01. Observability-only accumulator for the generic monomorphization phase.
+//
+// It records hierarchical sub-phase timings and aggregate counters so a `--time` /
+// `--time-trace` run can attribute the `generics` phase to its internal steps and, with
+// detail enabled, to individual templates. Recording is a no-op unless `enabled` is true;
+// the per-template breakdown is recorded only when `detailed` is also true. This struct must
+// never influence diagnostics, artifacts, control flow, ordering or scheduling: every
+// instrumented site only appends to these fields or forwards a timing to `timingSink`.
+struct GenericTelemetry final
+{
+    using TimingSink = std::function<void(std::string_view, std::chrono::nanoseconds)>;
+
+    bool enabled = false;
+    bool detailed = false;
+    TimingSink timingSink;
+
+    // Sub-phase wall times accumulated by name. A sub-phase may span more than one lexical
+    // scope (for example `generics.template-index`); times for the same name are summed.
+    std::unordered_map<std::string, std::uint64_t> subPhaseMicros;
+
+    std::uint64_t ownUnits = 0;
+    std::uint64_t templateSourceBytes = 0;
+    std::uint64_t templatesCollected = 0;
+    // Indexed by GenericTemplateKind (Class, Struct, Delegate, Method, Interface).
+    std::uint64_t templatesByKind[5] = {};
+    std::uint64_t resolutionQueries = 0;
+    std::uint64_t candidatesExamined = 0;
+    std::uint64_t demandsDiscovered = 0;
+    std::uint64_t demandsDuplicated = 0;
+    std::uint64_t demandsMaterialized = 0;
+    std::uint64_t specializationHits = 0;
+    std::uint64_t nodesCloned = 0;
+    std::uint64_t typesCloned = 0;
+    std::uint64_t maximumLogicalDepth = 0;
+
+    struct TemplateDetail final
+    {
+        std::uint64_t materializations = 0;
+        std::uint64_t exclusiveMicros = 0;
+    };
+    // Keyed by the template canonical key; populated only while `detailed` is enabled.
+    std::unordered_map<std::string, TemplateDetail> templates;
+
+    void recordSubPhase(std::string_view name, std::chrono::nanoseconds elapsed)
+    {
+        subPhaseMicros[std::string(name)] += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+        if (timingSink) timingSink(name, elapsed);
+    }
+
+    void noteResolutionQuery(std::size_t candidates)
+    {
+        if (!enabled) return;
+        ++resolutionQueries;
+        candidatesExamined += candidates;
+    }
+
+    void noteTemplate(std::size_t kindIndex)
+    {
+        if (!enabled) return;
+        ++templatesCollected;
+        if (kindIndex < 5U) ++templatesByKind[kindIndex];
+    }
+
+    void noteSpecializationHit()
+    {
+        if (enabled) ++specializationHits;
+    }
+
+    void noteMaterialization(
+        std::string_view canonicalKey, std::chrono::nanoseconds elapsed)
+    {
+        if (!enabled) return;
+        ++demandsMaterialized;
+        if (detailed)
+        {
+            TemplateDetail& detail = templates[std::string(canonicalKey)];
+            ++detail.materializations;
+            detail.exclusiveMicros += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
+        }
+    }
+
+    void noteDemand(bool duplicated)
+    {
+        if (!enabled) return;
+        ++demandsDiscovered;
+        if (duplicated) ++demandsDuplicated;
+    }
+
+    void noteNodesCloned()
+    {
+        if (enabled) ++nodesCloned;
+    }
+
+    void noteTypesCloned()
+    {
+        if (enabled) ++typesCloned;
+    }
+
+    class Scope final
+    {
+    public:
+        Scope(GenericTelemetry& telemetry, std::string_view name)
+            : telemetry_(&telemetry), name_(name),
+              started_(telemetry.enabled ? std::chrono::steady_clock::now()
+                                         : std::chrono::steady_clock::time_point{})
+        {
+        }
+        ~Scope()
+        {
+            if (!telemetry_->enabled) return;
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started_);
+            telemetry_->recordSubPhase(name_, elapsed);
+        }
+        Scope(const Scope&) = delete;
+        Scope& operator=(const Scope&) = delete;
+
+    private:
+        GenericTelemetry* telemetry_;
+        std::string_view name_;
+        std::chrono::steady_clock::time_point started_;
+    };
+
+    // Deterministic, human-readable summary of counters and per-template detail. Implemented
+    // in ProjectGenericModel.cpp to keep this header free of <sstream>.
+    std::string renderSummary() const;
+};
+
 class ProjectGenericModel final
 {
 public:
@@ -191,6 +324,10 @@ public:
     // The recorded resolved identity for an open generic reference (`Box<T>`), or null when absent.
     const std::string* resolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
     GenericInstantiationReport instantiationReport() const noexcept;
+    // NSC305-P01. Sub-phase and counter telemetry for the generic pass. Always available; the
+    // data is populated only when the compilation wired a timing sink (see compileProjectGenerics).
+    GenericTelemetry& telemetry() noexcept;
+    const GenericTelemetry& telemetry() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -603,6 +740,8 @@ private:
     std::size_t nextOverloadGroup_ = 0;
     language::InstantiationBudget instantiationBudget_;
     std::size_t instantiationCacheHitCount_ = 0;
+    // NSC305-P01. Causal instrumentation for the generic pass; see GenericTelemetry.
+    GenericTelemetry telemetry_;
     // Active only while cloneNode/cloneType expands one specialization. A trailing type pack maps
     // to zero or more arguments; the map is saved/restored around recursive materialization.
     std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> activePackSubstitutions_;

@@ -574,9 +574,19 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
+    // NSC305-P01. The generic telemetry is a no-op unless a phase timing sink is wired (which the
+    // driver only does for `--time` / `--time-trace`). It forwards sub-phase and per-template
+    // timings through the same channel as the parent `generics` timer and never touches
+    // diagnostics, dumps or emitted artifacts.
+    GenericTelemetry& telemetry = genericModel_->telemetry();
+    telemetry.timingSink = phaseTimingSink_;
+    telemetry.enabled = static_cast<bool>(phaseTimingSink_);
+    telemetry.detailed = telemetry.enabled;
+    telemetry.ownUnits = units_.size();
     std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
+        telemetry.templateSourceBytes += module.templateSourceText.size();
         precompiledSpecializations.insert(
             precompiledSpecializations.end(),
             module.genericSpecializations.begin(),

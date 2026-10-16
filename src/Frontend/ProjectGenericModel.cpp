@@ -14,6 +14,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -36,6 +37,36 @@ ProjectGenericModel::ProjectGenericModel(
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+// NSC305-P01. Times one specialization materialization and, on completion, records the
+// `generics.specialization-waves` sub-phase and attributes its exclusive wall time to the
+// template that produced it. RAII keeps every early-return path (budget, pack and associated
+// rollback) accounted for without changing control flow.
+class SpecializationWaveTimer final
+{
+public:
+    SpecializationWaveTimer(GenericTelemetry& telemetry, std::string_view canonicalKey)
+        : telemetry_(&telemetry), canonicalKey_(canonicalKey),
+          started_(telemetry.enabled ? std::chrono::steady_clock::now()
+                                     : std::chrono::steady_clock::time_point{})
+    {
+    }
+    ~SpecializationWaveTimer()
+    {
+        if (!telemetry_->enabled) return;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - started_);
+        telemetry_->recordSubPhase("generics.specialization-waves", elapsed);
+        telemetry_->noteMaterialization(canonicalKey_, elapsed);
+    }
+    SpecializationWaveTimer(const SpecializationWaveTimer&) = delete;
+    SpecializationWaveTimer& operator=(const SpecializationWaveTimer&) = delete;
+
+private:
+    GenericTelemetry* telemetry_;
+    std::string_view canonicalKey_;
+    std::chrono::steady_clock::time_point started_;
+};
 
 bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
 {
@@ -608,16 +639,22 @@ bool ProjectGenericModel::build(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (built_) return !diagnostics.hasErrors();
-    buildVisibility(graph);
+    {
+        const GenericTelemetry::Scope phase(telemetry_, "generics.visibility");
+        buildVisibility(graph);
+    }
 
     // Item 276. Generic aliases are transparent source spellings, so erase them before collecting
     // templates or dependency edges.  Doing it later would let `Alias<int>` acquire a bogus
     // specialization identity and would leave aliases inside template bodies until after cloning.
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
-        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
-        expandAliasesInNode(
-            *unitPtr, unitPtr->syntaxTree(), "", GenericLookupScope{}, diagnostics);
+        const GenericTelemetry::Scope phase(telemetry_, "generics.alias-expansion");
+        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        {
+            if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            expandAliasesInNode(
+                *unitPtr, unitPtr->syntaxTree(), "", GenericLookupScope{}, diagnostics);
+        }
     }
     if (diagnostics.hasErrors())
     {
@@ -625,17 +662,25 @@ bool ProjectGenericModel::build(
         return false;
     }
 
-    if (!mergeTraitImplementations(units, diagnostics))
     {
-        built_ = true;
-        return false;
+        const GenericTelemetry::Scope phase(telemetry_, "generics.trait-merge");
+        if (!mergeTraitImplementations(units, diagnostics))
+        {
+            built_ = true;
+            return false;
+        }
     }
-    if (!ProjectOpaqueResultModel{}.build(units, diagnostics))
     {
-        built_ = true;
-        return false;
+        const GenericTelemetry::Scope phase(telemetry_, "generics.opaque-results");
+        if (!ProjectOpaqueResultModel{}.build(units, diagnostics))
+        {
+            built_ = true;
+            return false;
+        }
     }
     ordinaryCallableReturnTypes_.clear();
+    {
+        const GenericTelemetry::Scope phase(telemetry_, "generics.ordinary-return-index");
     const auto collectOrdinaryReturns = [&](auto&& self, ast::AstNode* node) -> void
     {
         if (node == nullptr) return;
@@ -657,17 +702,24 @@ bool ProjectGenericModel::build(
     for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
         if (unit != nullptr && unit->syntaxTree() != nullptr)
             collectOrdinaryReturns(collectOrdinaryReturns, unit->syntaxTree());
-    if (!collectAssociatedItems(units, diagnostics))
+    }
     {
-        built_ = true;
-        return false;
+        const GenericTelemetry::Scope phase(telemetry_, "generics.associated-items");
+        if (!collectAssociatedItems(units, diagnostics))
+        {
+            built_ = true;
+            return false;
+        }
     }
 
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
-        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
-        ProjectSyntaxUnit& unit = *unitPtr;
-        collectTemplates(unit, unit.syntaxTree(), nullptr, "", "", false, diagnostics);
+        const GenericTelemetry::Scope phase(telemetry_, "generics.template-collection");
+        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        {
+            if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            ProjectSyntaxUnit& unit = *unitPtr;
+            collectTemplates(unit, unit.syntaxTree(), nullptr, "", "", false, diagnostics);
+        }
     }
 
     // ID 132. LA DESAMBIGUACION SE APLICA SOLO DONDE HAY COLISION, y esto no es una optimizacion:
@@ -683,6 +735,7 @@ bool ProjectGenericModel::build(
     // a las dos, que es el unico caso donde antes habia un error y por tanto el unico donde no
     // puede haber nada escrito que dependa del formato anterior.
     {
+        const GenericTelemetry::Scope phase(telemetry_, "generics.template-index");
         std::unordered_map<std::string, std::size_t> baseCounts;
         for (const TemplateState& state : templateStates_)
         {
@@ -707,12 +760,11 @@ bool ProjectGenericModel::build(
             if (found == baseCounts.end() || found->second < 2) continue;
             state.record.canonicalKey += "#" + std::to_string(position);
         }
-    }
 
-    // A closed member from a controlled family is an implementation artifact, not an additional
-    // public overload. Mark every participant (including the unmodified fallback) so NSMETA can
-    // publish the open templates without trying to merge equal closed language signatures.
-    {
+        // A closed member from a controlled family is an implementation artifact, not an
+        // additional public overload. Mark every participant (including the unmodified fallback)
+        // so NSMETA can publish the open templates without trying to merge equal closed language
+        // signatures.
         std::unordered_set<std::string> controlledFamilies;
         for (const TemplateState& state : templateStates_)
             if (state.record.kind == GenericTemplateKind::Method &&
@@ -727,44 +779,47 @@ bool ProjectGenericModel::build(
     // Record the declaration-level dependency graph before any template is cloned. A producer
     // can then publish exactly the fixed-point closure of its public roots, and the NSMETA
     // verifier can prove that a same-module edge was not silently dropped.
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
-        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
-        discoverTemplateDependencies(
-            *unitPtr, unitPtr->syntaxTree(), "", "", GenericLookupScope{});
-    }
-    for (TemplateState& state : templateStates_)
-    {
-        std::sort(state.record.dependencies.begin(), state.record.dependencies.end());
-        state.record.dependencies.erase(
-            std::unique(state.record.dependencies.begin(), state.record.dependencies.end()),
-            state.record.dependencies.end());
-        std::sort(
-            state.record.unresolvedDependencies.begin(),
-            state.record.unresolvedDependencies.end());
-        state.record.unresolvedDependencies.erase(
-            std::unique(
+        const GenericTelemetry::Scope phase(telemetry_, "generics.dependency-discovery");
+        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        {
+            if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            discoverTemplateDependencies(
+                *unitPtr, unitPtr->syntaxTree(), "", "", GenericLookupScope{});
+        }
+        for (TemplateState& state : templateStates_)
+        {
+            std::sort(state.record.dependencies.begin(), state.record.dependencies.end());
+            state.record.dependencies.erase(
+                std::unique(state.record.dependencies.begin(), state.record.dependencies.end()),
+                state.record.dependencies.end());
+            std::sort(
                 state.record.unresolvedDependencies.begin(),
-                state.record.unresolvedDependencies.end()),
-            state.record.unresolvedDependencies.end());
-        std::sort(
-            state.record.externalTypeReferences.begin(),
-            state.record.externalTypeReferences.end(),
-            [](const auto& left, const auto& right) {
-                if (left.range.begin().offset() != right.range.begin().offset())
-                    return left.range.begin().offset() < right.range.begin().offset();
-                return left.typeKey < right.typeKey;
-            });
-        state.record.externalTypeReferences.erase(
-            std::unique(
+                state.record.unresolvedDependencies.end());
+            state.record.unresolvedDependencies.erase(
+                std::unique(
+                    state.record.unresolvedDependencies.begin(),
+                    state.record.unresolvedDependencies.end()),
+                state.record.unresolvedDependencies.end());
+            std::sort(
                 state.record.externalTypeReferences.begin(),
                 state.record.externalTypeReferences.end(),
                 [](const auto& left, const auto& right) {
-                    return left.range.begin() == right.range.begin() &&
-                        left.range.end() == right.range.end() &&
-                        left.typeKey == right.typeKey;
-                }),
-            state.record.externalTypeReferences.end());
+                    if (left.range.begin().offset() != right.range.begin().offset())
+                        return left.range.begin().offset() < right.range.begin().offset();
+                    return left.typeKey < right.typeKey;
+                });
+            state.record.externalTypeReferences.erase(
+                std::unique(
+                    state.record.externalTypeReferences.begin(),
+                    state.record.externalTypeReferences.end(),
+                    [](const auto& left, const auto& right) {
+                        return left.range.begin() == right.range.begin() &&
+                            left.range.end() == right.range.end() &&
+                            left.typeKey == right.typeKey;
+                    }),
+                state.record.externalTypeReferences.end());
+        }
     }
 
     // LA DETECCION DE DUPLICADOS ES SOLO PARA TIPOS, desde el 2026-09-03.
@@ -777,74 +832,87 @@ bool ProjectGenericModel::build(
     //
     // Para clases, structs y delegados no cambia nada: dos con el mismo nombre y aridad siguen
     // siendo un choque, porque ahi no hay lista de parametros que los distinga.
-    std::unordered_set<std::string> templateKeys;
-    for (const TemplateState& state : templateStates_)
     {
-        if (state.record.kind == GenericTemplateKind::Method) continue;
-        if (!templateKeys.insert(state.record.canonicalKey).second)
+        const GenericTelemetry::Scope phase(telemetry_, "generics.template-index");
+        std::unordered_set<std::string> templateKeys;
+        for (const TemplateState& state : templateStates_)
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::DuplicateSymbol,
-                diagnostics::DiagnosticSeverity::Error,
-                state.syntax != nullptr ? state.syntax->range() : SourceRange{},
-                // Este bucle salta los METODOS --la linea de arriba-- asi que aqui solo llegan
-                // TIPOS genericos, y el mensaje tiene que hablar de tipos. Decia «dos metodos
-                // genericos», que era el texto del caso vecino: un tipo generico no tiene
-                // parametros por los que desambiguar, de modo que dos con el mismo nombre, el
-                // mismo namespace y la misma aridad son sencillamente el mismo tipo dos veces.
-                "duplicate generic type identity '" + state.record.canonicalKey +
-                    "'; two generic types in the same namespace cannot share a name and an "
-                    "arity -- rename one, or declare it 'partial' at namespace scope");
+            if (state.record.kind == GenericTemplateKind::Method) continue;
+            if (!templateKeys.insert(state.record.canonicalKey).second)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    state.syntax != nullptr ? state.syntax->range() : SourceRange{},
+                    // Este bucle salta los METODOS --la linea de arriba-- asi que aqui solo llegan
+                    // TIPOS genericos, y el mensaje tiene que hablar de tipos. Decia «dos metodos
+                    // genericos», que era el texto del caso vecino: un tipo generico no tiene
+                    // parametros por los que desambiguar, de modo que dos con el mismo nombre, el
+                    // mismo namespace y la misma aridad son sencillamente el mismo tipo dos veces.
+                    "duplicate generic type identity '" + state.record.canonicalKey +
+                        "'; two generic types in the same namespace cannot share a name and an "
+                        "arity -- rename one, or declare it 'partial' at namespace scope");
+            }
         }
-    }
 
-    templateRecords_.reserve(templateStates_.size());
-    for (const TemplateState& state : templateStates_) templateRecords_.push_back(state.record);
+        templateRecords_.reserve(templateStates_.size());
+        for (const TemplateState& state : templateStates_) templateRecords_.push_back(state.record);
+    }
 
     // Seed only identities whose public template was actually hydrated. An old metadata file may
     // list historical specializations without carrying a reusable template body; such a record
     // must never make an unavailable generic appear usable.
-    for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
     {
-        if (!imported.hasConcreteDeclaration) continue;
-        const auto templateState = std::ranges::find_if(templateStates_, [&](const auto& state) {
-            return state.record.canonicalKey == imported.templateKey;
-        });
-        if (templateState == templateStates_.end() ||
-            specializationByKey_.contains(imported.specializationKey))
+        const GenericTelemetry::Scope phase(telemetry_, "generics.imported-specialization-seed");
+        for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
         {
-            continue;
+            if (!imported.hasConcreteDeclaration) continue;
+            const auto templateState = std::ranges::find_if(templateStates_, [&](const auto& state) {
+                return state.record.canonicalKey == imported.templateKey;
+            });
+            if (templateState == templateStates_.end() ||
+                specializationByKey_.contains(imported.specializationKey))
+            {
+                continue;
+            }
+            const std::size_t ordinal = specializations_.size();
+            specializationByKey_.emplace(imported.specializationKey, ordinal);
+            specializations_.push_back(GenericSpecializationRecord{
+                imported.kind,
+                templateState->syntax,
+                nullptr,
+                imported.templateKey,
+                imported.specializationKey,
+                imported.specializedName,
+                imported.typeArguments,
+                ordinal,
+                templateState->ordinal,
+                nullptr,
+                SourceRange{},
+                0});
         }
-        const std::size_t ordinal = specializations_.size();
-        specializationByKey_.emplace(imported.specializationKey, ordinal);
-        specializations_.push_back(GenericSpecializationRecord{
-            imported.kind,
-            templateState->syntax,
-            nullptr,
-            imported.templateKey,
-            imported.specializationKey,
-            imported.specializedName,
-            imported.typeArguments,
-            ordinal,
-            templateState->ordinal,
-            nullptr,
-            SourceRange{},
-            0});
     }
 
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
-        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
-        ProjectSyntaxUnit& unit = *unitPtr;
-        processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
+        const GenericTelemetry::Scope phase(telemetry_, "generics.root-demand-discovery");
+        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        {
+            if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            ProjectSyntaxUnit& unit = *unitPtr;
+            processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
+        }
     }
 
-    if (!materializeBodyTypeSpecializationDemands(diagnostics))
     {
-        built_ = true;
-        return false;
+        const GenericTelemetry::Scope phase(telemetry_, "generics.body-type-demands");
+        if (!materializeBodyTypeSpecializationDemands(diagnostics))
+        {
+            built_ = true;
+            return false;
+        }
     }
 
+    telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -1702,6 +1770,70 @@ GenericInstantiationReport ProjectGenericModel::instantiationReport() const noex
         instantiationBudget_.maximumCount()};
 }
 
+GenericTelemetry& ProjectGenericModel::telemetry() noexcept
+{
+    return telemetry_;
+}
+
+const GenericTelemetry& ProjectGenericModel::telemetry() const noexcept
+{
+    return telemetry_;
+}
+
+std::string GenericTelemetry::renderSummary() const
+{
+    // Fixed order keeps the summary deterministic regardless of unordered_map iteration.
+    static constexpr std::string_view subPhaseNames[] = {
+        "generics.visibility",
+        "generics.alias-expansion",
+        "generics.trait-merge",
+        "generics.opaque-results",
+        "generics.ordinary-return-index",
+        "generics.associated-items",
+        "generics.template-collection",
+        "generics.template-index",
+        "generics.dependency-discovery",
+        "generics.imported-specialization-seed",
+        "generics.root-demand-discovery",
+        "generics.specialization-waves",
+        "generics.rewrite-commit",
+        "generics.body-type-demands",
+    };
+    std::ostringstream output;
+    output << "generics.telemetry enabled=" << (enabled ? 1 : 0)
+           << " detailed=" << (detailed ? 1 : 0)
+           << " own-units=" << ownUnits
+           << " template-source-bytes=" << templateSourceBytes
+           << " templates=" << templatesCollected
+           << " resolution-queries=" << resolutionQueries
+           << " candidates-examined=" << candidatesExamined
+           << " demands-discovered=" << demandsDiscovered
+           << " demands-duplicated=" << demandsDuplicated
+           << " demands-materialized=" << demandsMaterialized
+           << " specialization-hits=" << specializationHits
+           << " nodes-cloned=" << nodesCloned
+           << " types-cloned=" << typesCloned
+           << " maximum-logical-depth=" << maximumLogicalDepth << '\n';
+    for (const std::string_view name : subPhaseNames)
+    {
+        const auto found = subPhaseMicros.find(std::string(name));
+        output << "subphase " << name << " us="
+               << (found == subPhaseMicros.end() ? 0U : found->second) << '\n';
+    }
+    // Per-template detail uses canonical-key order so the report is reproducible.
+    std::vector<std::pair<std::string, TemplateDetail>> sortedTemplates(
+        templates.begin(), templates.end());
+    std::sort(sortedTemplates.begin(), sortedTemplates.end(),
+        [](const auto& left, const auto& right) { return left.first < right.first; });
+    for (const auto& [key, detail] : sortedTemplates)
+    {
+        output << "template-detail key=" << key
+               << " materializations=" << detail.materializations
+               << " exclusive_us=" << detail.exclusiveMicros << '\n';
+    }
+    return output.str();
+}
+
 bool ProjectGenericModel::isBuilt() const noexcept
 {
     return built_;
@@ -1831,6 +1963,7 @@ void ProjectGenericModel::collectTemplates(
         record.canonicalKey = record.moduleName + "::" +
             qualifiedName(currentNamespace, record.qualifiedTypeName) +
             "`" + genericAritySpelling(record);
+        telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
@@ -1868,6 +2001,7 @@ void ProjectGenericModel::collectTemplates(
         record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
         record.isControlledSpecialization =
             node->auxiliaryText() == "controlled-specialization";
+        telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
@@ -2588,6 +2722,15 @@ void ProjectGenericModel::collectBodyTypeSpecializationDemand(
         std::string stableKey = std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
             std::string(templateName) + "|" + typeSpelling(elementType) + "|" +
             std::to_string(node->range().begin().offset());
+        if (telemetry_.enabled)
+        {
+            const bool duplicated = std::ranges::any_of(
+                bodyTypeSpecializationDemands_, [&](const BodyTypeSpecializationDemand& existing)
+                {
+                    return existing.stableKey == stableKey;
+                });
+            telemetry_.noteDemand(duplicated);
+        }
         bodyTypeSpecializationDemands_.push_back(BodyTypeSpecializationDemand{
             &unit, demand, scope, namespaceName, std::move(stableKey)});
     }
@@ -3943,6 +4086,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     std::string_view writtenName,
     std::size_t arity)
 {
+    telemetry_.noteResolutionQuery(templateStates_.size());
     const std::size_t moduleSeparator = writtenName.find("::");
     if (moduleSeparator != std::string_view::npos)
     {
@@ -4018,6 +4162,7 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     std::size_t arity,
     std::size_t argumentCount)
 {
+    telemetry_.noteResolutionQuery(templateStates_.size());
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
     const auto aplicable = [&](const TemplateState& state)
     {
@@ -4192,6 +4337,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const std::string key = keyBuilder.str();
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
     {
+        telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
         return specializations_[found->second].specializedName;
     }
@@ -4215,6 +4361,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
             budgetError);
         return {};
     }
+    SpecializationWaveTimer wave(telemetry_, state.record.canonicalKey);
 
     std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
     for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
@@ -4284,24 +4431,27 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         instantiationBudget_.leave();
         return {};
     }
-    clone->setText(specializedName);
-    clone->clearGenericParameters();
-    // Keep the specialization prefix first because downstream demand/debug readers use it as the
-    // discriminator. Source aggregate metadata follows a reserved delimiter: a comma cannot be
-    // used because it is valid inside a multi-argument specialization key. Record derives,
-    // layout, union and borrowed-view policy belong to the template and must survive
-    // monomorphization.
-    std::string specializationMetadata = "stage44-specialization:" + key;
-    if (!state.syntax->auxiliaryText().empty())
-        specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
-    clone->setAuxiliaryText(std::move(specializationMetadata));
-    state.parent->addChild(clone);
-    specializations_[ordinal].specializedSyntax = clone;
-    specializationBySyntax_[clone] = ordinal;
-    registerAssociatedItems(
-        clone,
-        namespaceAppend(state.record.namespaceName, specializedName),
-        &diagnostics);
+    {
+        const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
+        clone->setText(specializedName);
+        clone->clearGenericParameters();
+        // Keep the specialization prefix first because downstream demand/debug readers use it as
+        // the discriminator. Source aggregate metadata follows a reserved delimiter: a comma
+        // cannot be used because it is valid inside a multi-argument specialization key. Record
+        // derives, layout, union and borrowed-view policy belong to the template and must survive
+        // monomorphization.
+        std::string specializationMetadata = "stage44-specialization:" + key;
+        if (!state.syntax->auxiliaryText().empty())
+            specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
+        clone->setAuxiliaryText(std::move(specializationMetadata));
+        state.parent->addChild(clone);
+        specializations_[ordinal].specializedSyntax = clone;
+        specializationBySyntax_[clone] = ordinal;
+        registerAssociatedItems(
+            clone,
+            namespaceAppend(state.record.namespaceName, specializedName),
+            &diagnostics);
+    }
 
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
@@ -4357,6 +4507,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     const std::string key = keyBuilder.str();
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
     {
+        telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
         return specializations_[found->second].specializedName;
     }
@@ -4380,6 +4531,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
             budgetError);
         return {};
     }
+    SpecializationWaveTimer wave(telemetry_, state.record.canonicalKey);
 
     // ID 132, segunda mitad. `sharedName` no esta vacio cuando VARIAS plantillas comparten nombre
     // y aridad generica: todas se especializan con EL MISMO nombre, y a partir de ahi dejan de ser
@@ -4467,15 +4619,18 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         instantiationBudget_.leave();
         return {};
     }
-    clone->setText(specializedName);
-    clone->clearGenericParameters();
-    std::string specializationMetadata = "stage44-specialization:" + key;
-    if (!state.syntax->auxiliaryText().empty())
-        specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
-    clone->setAuxiliaryText(std::move(specializationMetadata));
-    state.parent->addChild(clone);
-    specializations_[ordinal].specializedSyntax = clone;
-    specializationBySyntax_[clone] = ordinal;
+    {
+        const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
+        clone->setText(specializedName);
+        clone->clearGenericParameters();
+        std::string specializationMetadata = "stage44-specialization:" + key;
+        if (!state.syntax->auxiliaryText().empty())
+            specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
+        clone->setAuxiliaryText(std::move(specializationMetadata));
+        state.parent->addChild(clone);
+        specializations_[ordinal].specializedSyntax = clone;
+        specializationBySyntax_[clone] = ordinal;
+    }
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
         GenericLookupScope{}, false, diagnostics);
@@ -4557,6 +4712,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     std::size_t modifierLimit)
 {
     if (source == nullptr) return nullptr;
+    telemetry_.noteTypesCloned();
 
     // T05-F03. Normalize `T.Item` only when the leftmost component is an active generic
     // substitution. Ordinary dotted namespace/type names remain untouched. Chained projections
@@ -4911,6 +5067,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     std::string_view originalContainingTypeName)
 {
     if (source == nullptr) return nullptr;
+    telemetry_.noteNodesCloned();
     if (source->kind() == ast::AstNodeKind::MemberExpression &&
         source->first() != nullptr &&
         source->first()->kind() == ast::AstNodeKind::IdentifierExpression)
