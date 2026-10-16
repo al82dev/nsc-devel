@@ -5794,11 +5794,31 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::stateForSyntax(
 void ProjectGenericModel::discoverTemplateDependencies(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    const std::string& namespaceName,
-    const std::string& ownerName,
-    const GenericLookupScope& scope)
+    std::string namespaceName,
+    std::string ownerName,
+    GenericLookupScope scope)
 {
-    if (node == nullptr) return;
+    // NSC305-G05. Iterative pre-order traversal with an explicit stack; the per-node logic is
+    // unchanged, only the recursion is removed.
+    struct DependencyFrame
+    {
+        ast::AstNode* node;
+        std::string namespaceName;
+        std::string ownerName;
+        GenericLookupScope scope;
+    };
+    std::vector<DependencyFrame> stack;
+    stack.push_back(DependencyFrame{node, std::move(namespaceName), std::move(ownerName),
+        std::move(scope)});
+    while (!stack.empty())
+    {
+        DependencyFrame frame = std::move(stack.back());
+        stack.pop_back();
+        node = frame.node;
+        namespaceName = std::move(frame.namespaceName);
+        ownerName = std::move(frame.ownerName);
+        scope = std::move(frame.scope);
+        if (node == nullptr) continue;
 
     std::string currentNamespace = namespaceName;
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
@@ -5849,7 +5869,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
             : appendOwner(ownerName, node->text());
         collectTemplateDependencies(
             *root, unit, node, currentNamespace, templateOwner, currentScope, node);
-        return;
+        continue;
     }
 
     const std::string childOwner =
@@ -5857,9 +5877,10 @@ void ProjectGenericModel::discoverTemplateDependencies(
          node->kind() == ast::AstNodeKind::StructDeclaration)
             ? appendOwner(ownerName, node->text())
             : ownerName;
-    for (ast::AstNode* child : node->children())
-        discoverTemplateDependencies(
-            unit, child, currentNamespace, childOwner, currentScope);
+    const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+        stack.push_back(DependencyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    }
 }
 
 void ProjectGenericModel::collectTypeDependency(
@@ -5869,45 +5890,56 @@ void ProjectGenericModel::collectTypeDependency(
     const std::string& namespaceName,
     const GenericLookupScope& scope)
 {
-    if (syntax == nullptr) return;
-    for (const ast::TypeSyntax* argument : syntax->typeArguments())
-        collectTypeDependency(root, unit, argument, namespaceName, scope);
-    // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
-    // arguments may depend on nominal templates, but the surface itself has no template record
-    // that a reusable NSMETA closure could or should include.
-    if (isStructuralGenericSurface(syntax)) return;
-    if (syntax->typeArguments().empty())
+    // NSC305-G05. Iterative traversal of the type-argument tree. The original recursed into
+    // arguments first; because dependencies, unresolved dependencies and external references are
+    // sorted and deduped later in build(), the visit order does not affect the final result, so a
+    // plain stack suffices.
+    std::vector<const ast::TypeSyntax*> stack;
+    stack.push_back(syntax);
+    while (!stack.empty())
     {
-        if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
-                syntax, unit.projectOrdinal(), namespaceName, scope);
-            declaration != nullptr &&
-            !declaration->identityKey.starts_with(root.record.moduleName + "::"))
+        const ast::TypeSyntax* current = stack.back();
+        stack.pop_back();
+        if (current == nullptr) continue;
+        for (const ast::TypeSyntax* argument : current->typeArguments())
+            stack.push_back(argument);
+        // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
+        // arguments may depend on nominal templates, but the surface itself has no template record
+        // that a reusable NSMETA closure could or should include.
+        if (isStructuralGenericSurface(current)) continue;
+        if (current->typeArguments().empty())
         {
-            root.record.externalTypeReferences.push_back(
-                {syntax->range(), "type:" + declaration->identityKey});
+            if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
+                    current, unit.projectOrdinal(), namespaceName, scope);
+                declaration != nullptr &&
+                !declaration->identityKey.starts_with(root.record.moduleName + "::"))
+            {
+                root.record.externalTypeReferences.push_back(
+                    {current->range(), "type:" + declaration->identityKey});
+            }
+            continue;
         }
-        return;
-    }
 
-    TemplateState* target = resolveTypeTemplate(
-        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
-    if (target == nullptr)
-        target = resolveTypeTemplate(
-            unit, namespaceName, syntax->baseName(),
-            std::numeric_limits<std::size_t>::max());
-    if (target == nullptr)
-    {
-        root.record.unresolvedDependencies.push_back(
-            "generic type '" + syntax->baseName() + "<...>'");
-        return;
+        TemplateState* target = resolveTypeTemplate(
+            unit, namespaceName, current->baseName(), current->typeArguments().size());
+        if (target == nullptr)
+            target = resolveTypeTemplate(
+                unit, namespaceName, current->baseName(),
+                std::numeric_limits<std::size_t>::max());
+        if (target == nullptr)
+        {
+            root.record.unresolvedDependencies.push_back(
+                "generic type '" + current->baseName() + "<...>'");
+            continue;
+        }
+        if (target->record.moduleName != root.record.moduleName)
+        {
+            root.record.externalTypeReferences.push_back({
+                current->range(),
+                "type:" + target->record.canonicalKey});
+        }
+        root.record.dependencies.push_back(target->record.canonicalKey);
     }
-    if (target->record.moduleName != root.record.moduleName)
-    {
-        root.record.externalTypeReferences.push_back({
-            syntax->range(),
-            "type:" + target->record.canonicalKey});
-    }
-    root.record.dependencies.push_back(target->record.canonicalKey);
 }
 
 void ProjectGenericModel::collectCallDependency(
