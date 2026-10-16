@@ -681,9 +681,16 @@ bool ProjectGenericModel::build(
     ordinaryCallableReturnTypes_.clear();
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.ordinary-return-index");
-    const auto collectOrdinaryReturns = [&](auto&& self, ast::AstNode* node) -> void
+    // NSC305-G06. Iterative walk (was a self-recursive lambda over the AST).
+    std::vector<ast::AstNode*> ordinaryReturnStack;
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+        if (unit != nullptr && unit->syntaxTree() != nullptr)
+            ordinaryReturnStack.push_back(unit->syntaxTree());
+    while (!ordinaryReturnStack.empty())
     {
-        if (node == nullptr) return;
+        ast::AstNode* node = ordinaryReturnStack.back();
+        ordinaryReturnStack.pop_back();
+        if (node == nullptr) continue;
         if ((node->kind() == ast::AstNodeKind::MethodDeclaration ||
              node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
             node->genericParameters().empty() && node->typeSyntax() != nullptr)
@@ -694,14 +701,13 @@ bool ProjectGenericModel::build(
                 typeSpelling(entry->second) != typeSpelling(node->typeSyntax()))
                 entry->second = nullptr;
         }
-        self(self, node->first());
-        self(self, node->second());
-        self(self, node->third());
-        for (ast::AstNode* child : node->children()) self(self, child);
-    };
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
-        if (unit != nullptr && unit->syntaxTree() != nullptr)
-            collectOrdinaryReturns(collectOrdinaryReturns, unit->syntaxTree());
+        const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            ordinaryReturnStack.push_back(*iterator);
+        if (node->third() != nullptr) ordinaryReturnStack.push_back(node->third());
+        if (node->second() != nullptr) ordinaryReturnStack.push_back(node->second());
+        if (node->first() != nullptr) ordinaryReturnStack.push_back(node->first());
+    }
     }
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.associated-items");
