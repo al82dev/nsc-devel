@@ -11525,6 +11525,34 @@ private:
                 values.push_back(lowerNullConditionalFieldStore(current, error, frame.lhs, value));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::NullConditionalArrayStore)
+            {
+                if (current->children.size() != 3)
+                {
+                    values.push_back(failValue(error, "null-conditional array store MIR requires receiver, index, value"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                LLVMValueRef index = values.back();
+                values.pop_back();
+                LLVMValueRef receiver = values.back();
+                values.pop_back();
+                if (receiver == nullptr || index == nullptr || value == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                values.push_back(lowerNullConditionalArrayStore(current, error, receiver, index, value));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11728,7 +11756,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayLoad:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
-                return lowerNullConditionalArrayStore(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::PollAddress:
@@ -18084,11 +18112,17 @@ private:
     }
 
     LLVMValueRef lowerNullConditionalArrayStore(
-        const frontend::ProjectOopMirNode* node, std::string& error)
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr,
+        LLVMValueRef indexOverride = nullptr,
+        LLVMValueRef valueOverride = nullptr)
     {
         if (node->children.size() != 3)
             return failValue(error, "null-conditional array store MIR requires receiver, index, value");
-        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
@@ -18101,9 +18135,13 @@ private:
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, valueBlock);
-        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+        LLVMValueRef index = indexOverride != nullptr
+            ? normalizeNativeIndexFromValue(node->children[1].get(), indexOverride, error)
+            : normalizeNativeIndex(node->children[1].get(), error);
         if (index == nullptr) return nullptr;
-        LLVMValueRef value = lowerExpression(node->children[2].get(), error);
+        LLVMValueRef value = valueOverride != nullptr
+            ? valueOverride
+            : lowerExpression(node->children[2].get(), error);
         if (value == nullptr) return nullptr;
         if (terminated())
         {
