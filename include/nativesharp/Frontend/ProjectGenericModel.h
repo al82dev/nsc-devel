@@ -1027,6 +1027,9 @@ private:
     // Demands are collected during the serial AST walk and materialized in deterministic waves,
     // before name/member binding and before parallel method-body analysis.
     std::vector<BodyTypeSpecializationDemand> bodyTypeSpecializationDemands_;
+    // NSC305-G09. O(1) dedup of body-type demands by stableKey (the "deduplicate demands by
+    // SpecializationKey" wave step); cleared after each wave is processed.
+    std::unordered_set<std::string> bodyTypeDemandKeys_;
     // Available before the ordinary member/body model. Only an unambiguous common return for a
     // non-generic callable name is retained; this lets an unnamed `some Trait` identity provide
     // evidence to generic inference without writing semantic state onto CallExpression AST nodes.

@@ -2832,15 +2832,10 @@ void ProjectGenericModel::collectBodyTypeSpecializationDemand(
         std::string stableKey = std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
             std::string(templateName) + "|" + typeSpelling(elementType) + "|" +
             std::to_string(node->range().begin().offset());
-        if (telemetry_.enabled)
-        {
-            const bool duplicated = std::ranges::any_of(
-                bodyTypeSpecializationDemands_, [&](const BodyTypeSpecializationDemand& existing)
-                {
-                    return existing.stableKey == stableKey;
-                });
-            telemetry_.noteDemand(duplicated);
-        }
+        const bool duplicated = !bodyTypeDemandKeys_.insert(stableKey).second;
+        if (telemetry_.enabled) telemetry_.noteDemand(duplicated);
+        // NSC305-G09: deduplicate demands by stableKey (skip the duplicate).
+        if (duplicated) continue;
         bodyTypeSpecializationDemands_.push_back(BodyTypeSpecializationDemand{
             &unit, demand, scope, namespaceName, std::move(stableKey)});
     }
@@ -2853,6 +2848,7 @@ bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     {
         std::vector<BodyTypeSpecializationDemand> wave;
         wave.swap(bodyTypeSpecializationDemands_);
+        bodyTypeDemandKeys_.clear();
         std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
         for (BodyTypeSpecializationDemand& demand : wave)
         {
