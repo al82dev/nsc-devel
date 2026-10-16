@@ -2808,6 +2808,36 @@ struct MirFunctionKey final
         reader.string(key.errorTypeKey) &&
         reader.stringVector(key.parameterTypeKeys);
 }
+
+// NSC305-C04. The MIR cache record: the observable key + the interface fingerprint + the
+// implementation fingerprint. A private body change updates only `implementationFingerprint`, so a
+// dependent that consumed only the interface stays valid. The full MIR node stream is the next layer.
+struct MirCacheRecord final
+{
+    MirFunctionKey key;
+    std::string interfaceFingerprint;
+    std::string implementationFingerprint;
+};
+
+[[maybe_unused]] std::string serializeMirCacheRecord(const MirCacheRecord& record)
+{
+    std::string out = serializeMirFunctionKey(record.key);
+    appendString(out, record.interfaceFingerprint);
+    appendString(out, record.implementationFingerprint);
+    return out;
+}
+
+[[maybe_unused]] bool restoreMirCacheRecord(std::string_view bytes, MirCacheRecord& record)
+{
+    ByteReader reader(bytes);
+    return reader.string(record.key.mangledName) &&
+        reader.string(record.key.genericSpecializationKey) &&
+        reader.string(record.key.returnTypeKey) &&
+        reader.string(record.key.errorTypeKey) &&
+        reader.stringVector(record.key.parameterTypeKeys) &&
+        reader.string(record.interfaceFingerprint) &&
+        reader.string(record.implementationFingerprint);
+}
 } // namespace
 
 // NSC305-C02. Warm-build restore of one template record: on a cache hit, deserialize the metadata,
