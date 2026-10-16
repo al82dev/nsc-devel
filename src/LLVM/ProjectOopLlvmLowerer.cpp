@@ -11630,6 +11630,34 @@ private:
                 values.push_back(lowerResultPropagation(current, error, carrier));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Store)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "store MIR requires target and value"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef address = values.back();
+                    values.pop_back();
+                    if (address == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, address, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(storeFromParts(current, frame.lhs, value, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13998,139 +14026,7 @@ private:
             case frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore:
                 return failValue(error, "tuple deconstruction element descriptor escaped its parent");
             case frontend::ProjectOopMirNodeKind::Store:
-            {
-                if (node->children.size() != 2) return failValue(error, "store MIR requires target and value");
-                LLVMValueRef address = lowerExpression(node->children[0].get(), error);
-                if (address == nullptr) return nullptr;
-                // NSC-LIMIT-015: evaluate the target address and the complete RHS before releasing
-                // the owner displaced by the store. The old order made `text = Concat(text, value)`
-                // pass freed memory to Concat. The materialized SSA value dominates the release and
-                // ready blocks and is transferred by the final store.
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                if (terminated()) return value;
-                if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
-                {
-                    const frontend::ProjectOopMirNode* field = node->children[0].get();
-                    LLVMTypeRef storageType = bitFieldStorageType(field, error);
-                    if (storageType == nullptr) return nullptr;
-                    LLVMValueRef previous = LLVMBuildLoad2(
-                        builder_, storageType, address, "bitfield.store.storage.load");
-                    LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
-                    if (field->volatileAccess) LLVMSetVolatile(previous, 1);
-                    LLVMValueRef merged = insertBitField(field, previous, value, error);
-                    if (merged == nullptr) return nullptr;
-                    LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
-                    LLVMSetAlignment(store, static_cast<unsigned>(field->alignment));
-                    if (field->volatileAccess) LLVMSetVolatile(store, 1);
-                    return extractBitField(field, merged, error);
-                }
-                if (node->booleanValue && node->localOrdinal.has_value())
-                {
-                    const auto cleanup = std::find_if(
-                        cleanupRegions_.begin(), cleanupRegions_.end(),
-                        [&](const auto& entry)
-                        {
-                            return entry.second != nullptr &&
-                                entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
-                                entry.second->localOrdinal == node->localOrdinal;
-                        });
-                    if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
-                }
-                else if (node->booleanValue && memberModel_ != nullptr &&
-                         memberModel_->typeRequiresValueDrop(node->typeKey))
-                {
-                    // T03-F01: replacement of a move-only value is a two-phase operation. The
-                    // complete RHS is already materialized above, so it is now safe to destroy
-                    // the currently active payload in the destination before storing the new
-                    // carrier. This path covers parameters, fields and elements; locals use their
-                    // cleanup region above so their initialized flag is updated consistently.
-                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
-                        return nullptr;
-                }
-                else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
-                {
-                    // Bloque 1 item 1 (owning field storage) -- a write into a field that ALREADY
-                    // owns something releases the displaced value first, or the overwrite leaks it.
-                    // Flagged without a localOrdinal by the HIR (see the Assignment case there),
-                    // because a field has no cleanup region to resolve through: the destroy works
-                    // straight off the store address, guarded by its null state exactly like every
-                    // other cleanup in this compiler.
-                    //
-                    // The requiresOwnedDestruction gate above is what keeps a generic `owned T`
-                    // field closed over a value type a no-op here -- the HIR flags every owned
-                    // field store type-agnostically and this is the single point that decides, the
-                    // same way the owned-parameter and raii-local cleanups already decide.
-                    //
-                    // Native array fields deliberately stay out of this path. Core containers use
-                    // the explicit low-level contract `delete[] field; field = replacement;`.
-                    // Dispatching the dangling old array as though its length header were a class
-                    // descriptor double-frees on the first capacity growth. `raii T[]` locals are
-                    // handled by emitRaiiDestroy and do not need field replacement semantics here.
-                    LLVMTypeRef ptrType = LLVMPointerTypeInContext(context_, 0);
-                    LLVMValueRef previous = LLVMBuildLoad2(
-                        builder_, ptrType, address, "owned.field.previous");
-                    LLVMValueRef previousIsNull = LLVMBuildICmp(
-                        builder_, LLVMIntEQ, previous, LLVMConstNull(ptrType),
-                        "owned.field.previous.isnull");
-                    LLVMBasicBlockRef releaseBlock = appendBlock("owned.field.replace");
-                    LLVMBasicBlockRef readyBlock = appendBlock("owned.field.ready");
-                    LLVMBuildCondBr(builder_, previousIsNull, readyBlock, releaseBlock);
-
-                    LLVMPositionBuilderAtEnd(builder_, releaseBlock);
-                    LLVMBuildStore(builder_, LLVMConstNull(ptrType), address);
-                    if (node->typeKey == "builtin:string")
-                    {
-                        // Audit finding (Bloque 1, P0/P1 "owned string overwrite", MEASURED as a
-                        // crash: exit 5 under Wine at -O0 and -O2): this branch used to dispatch
-                        // the displaced value through its class descriptor unconditionally, but a
-                        // native string is a bare heap allocation with no descriptor to read --
-                        // interpreting its first eight bytes as a descriptor pointer walked into
-                        // character data. The final-destruction traversal already made exactly
-                        // this distinction (OwnedField::isNativeString); the overwrite path is the
-                        // same obligation at a different time and must use the same fork. One slot
-                        // type, one destruction semantics -- never one rule at container exit and
-                        // another at replacement.
-                        if (deallocationFunction_ == nullptr)
-                        {
-                            return failValue(error, "Bloque 1 owned string overwrite has no deallocation ABI");
-                        }
-                        LLVMValueRef stringArguments[] = {previous};
-                        buildNoUnwindCall(
-                            deallocationFunctionType_, deallocationFunction_, stringArguments, 1, "");
-                    }
-                    else
-                    {
-                        if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
-                        {
-                            return failValue(error, "Bloque 1 owned field overwrite has no destruction ABI");
-                        }
-                        LLVMValueRef previousDescriptor = LLVMBuildLoad2(
-                            builder_, ptrType, previous, "owned.field.previous.descriptor");
-                        LLVMValueRef previousEntryAddress = LLVMBuildStructGEP2(
-                            builder_, descriptorType_, previousDescriptor, 5,
-                            "owned.field.previous.entry.addr");
-                        LLVMValueRef previousEntry = LLVMBuildLoad2(
-                            builder_, ptrType, previousEntryAddress, "owned.field.previous.entry");
-                        LLVMValueRef releaseArguments[] = {previous};
-                        buildNoUnwindCall(
-                            destructionEntryFunctionType_, previousEntry, releaseArguments, 1, "");
-                    }
-                    LLVMBuildBr(builder_, readyBlock);
-                    LLVMPositionBuilderAtEnd(builder_, readyBlock);
-                }
-                LLVMValueRef store = LLVMBuildStore(builder_, value, address);
-                if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-                if (node->localOrdinal.has_value())
-                {
-                    const auto flag = localValueDropFlags_.find(*node->localOrdinal);
-                    if (flag != localValueDropFlags_.end())
-                        LLVMBuildStore(
-                            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
-                            flag->second);
-                }
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Convert:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RuntimeTypeTest:
@@ -16470,6 +16366,106 @@ private:
             return failValue(error, "CC1 stackalloc failed to emit its array alloca");
         LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
         return storage;
+    }
+
+    // NSC305-L04. The store compute (bitfield/RAII/owned release + final store), separated from the
+    // address/value evaluation so the iterative machine can push both as frames.
+    LLVMValueRef storeFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef address,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        if (terminated()) return value;
+        if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
+        {
+            const frontend::ProjectOopMirNode* field = node->children[0].get();
+            LLVMTypeRef storageType = bitFieldStorageType(field, error);
+            if (storageType == nullptr) return nullptr;
+            LLVMValueRef previous = LLVMBuildLoad2(
+                builder_, storageType, address, "bitfield.store.storage.load");
+            LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
+            if (field->volatileAccess) LLVMSetVolatile(previous, 1);
+            LLVMValueRef merged = insertBitField(field, previous, value, error);
+            if (merged == nullptr) return nullptr;
+            LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+            LLVMSetAlignment(store, static_cast<unsigned>(field->alignment));
+            if (field->volatileAccess) LLVMSetVolatile(store, 1);
+            return extractBitField(field, merged, error);
+        }
+        if (node->booleanValue && node->localOrdinal.has_value())
+        {
+            const auto cleanup = std::find_if(
+                cleanupRegions_.begin(), cleanupRegions_.end(),
+                [&](const auto& entry)
+                {
+                    return entry.second != nullptr &&
+                        entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                        entry.second->localOrdinal == node->localOrdinal;
+                });
+            if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
+        }
+        else if (node->booleanValue && memberModel_ != nullptr &&
+                 memberModel_->typeRequiresValueDrop(node->typeKey))
+        {
+            if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
+                return nullptr;
+        }
+        else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
+        {
+            LLVMTypeRef ptrType = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef previous = LLVMBuildLoad2(
+                builder_, ptrType, address, "owned.field.previous");
+            LLVMValueRef previousIsNull = LLVMBuildICmp(
+                builder_, LLVMIntEQ, previous, LLVMConstNull(ptrType),
+                "owned.field.previous.isnull");
+            LLVMBasicBlockRef releaseBlock = appendBlock("owned.field.replace");
+            LLVMBasicBlockRef readyBlock = appendBlock("owned.field.ready");
+            LLVMBuildCondBr(builder_, previousIsNull, readyBlock, releaseBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+            LLVMBuildStore(builder_, LLVMConstNull(ptrType), address);
+            if (node->typeKey == "builtin:string")
+            {
+                if (deallocationFunction_ == nullptr)
+                {
+                    return failValue(error, "Bloque 1 owned string overwrite has no deallocation ABI");
+                }
+                LLVMValueRef stringArguments[] = {previous};
+                buildNoUnwindCall(
+                    deallocationFunctionType_, deallocationFunction_, stringArguments, 1, "");
+            }
+            else
+            {
+                if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                {
+                    return failValue(error, "Bloque 1 owned field overwrite has no destruction ABI");
+                }
+                LLVMValueRef previousDescriptor = LLVMBuildLoad2(
+                    builder_, ptrType, previous, "owned.field.previous.descriptor");
+                LLVMValueRef previousEntryAddress = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, previousDescriptor, 5,
+                    "owned.field.previous.entry.addr");
+                LLVMValueRef previousEntry = LLVMBuildLoad2(
+                    builder_, ptrType, previousEntryAddress, "owned.field.previous.entry");
+                LLVMValueRef releaseArguments[] = {previous};
+                buildNoUnwindCall(
+                    destructionEntryFunctionType_, previousEntry, releaseArguments, 1, "");
+            }
+            LLVMBuildBr(builder_, readyBlock);
+            LLVMPositionBuilderAtEnd(builder_, readyBlock);
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (node->localOrdinal.has_value())
+        {
+            const auto flag = localValueDropFlags_.find(*node->localOrdinal);
+            if (flag != localValueDropFlags_.end())
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                    flag->second);
+        }
+        return value;
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
