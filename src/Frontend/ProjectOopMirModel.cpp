@@ -539,6 +539,51 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     appendMirString(out, function.returnTypeKey);
     appendMirString(out, function.errorTypeKey);
     appendMirStringVector(out, function.parameterTypeKeys);
+    appendMirStringVector(out, function.parameterNames);
+    appendMirStringVector(out, function.captureTypeKeys);
+    appendMirStringVector(out, function.captureNames);
+    appendMirStringVector(out, function.generatorParameterTypeKeys);
+    appendMirString(out, function.importDllName);
+    appendMirString(out, function.cAbiName);
+    appendMirString(out, function.debugDisplayName);
+    appendMirU64(out, function.memberOrdinal ? static_cast<std::uint64_t>(function.memberOrdinal) : 0U);
+    appendMirU64(out, function.declaringTypeOrdinal);
+    appendMirU64(out, function.closureLayoutSize);
+    appendMirU64(out, function.closureLayoutAlignment);
+    appendMirU64(out, function.asyncFrameSize);
+    appendMirU32(out, static_cast<std::uint32_t>(function.inliningPolicy));
+    appendMirU32(out, static_cast<std::uint32_t>(function.callableTrait));
+    appendMirU32(out, static_cast<std::uint32_t>(function.frameStorage));
+    appendMirU32(out, static_cast<std::uint32_t>(function.returnOwnership));
+    out.push_back(function.lambdaOrdinal.has_value() ? '\x01' : '\x00');
+    if (function.lambdaOrdinal.has_value())
+        appendMirU64(out, static_cast<std::uint64_t>(*function.lambdaOrdinal));
+    {
+        std::uint32_t flags = 0U;
+        auto setFlag = [&flags](std::uint32_t bit, bool value)
+        {
+            if (value) flags |= (1U << bit);
+        };
+        setFlag(0, function.constructor);
+        setFlag(1, function.destructor);
+        setFlag(2, function.isStatic);
+        setFlag(3, function.referenceReturn);
+        setFlag(4, function.isNoHeap);
+        setFlag(5, function.isExportedC);
+        setFlag(6, function.isImportedC);
+        setFlag(7, function.isVariadic);
+        setFlag(8, function.isImportedNative);
+        setFlag(9, function.isSyntheticImplicitConstructor);
+        setFlag(10, function.importRequiresRuntimeBinding);
+        setFlag(11, function.isLambda);
+        setFlag(12, function.hasClosureEnvironment);
+        setFlag(13, function.capturesThisCell);
+        setFlag(14, function.isGeneratorConstructor);
+        appendMirU32(out, flags);
+    }
+    appendMirSizeVector(out, function.capturedLocalOrdinals);
+    appendMirSizeVector(out, function.capturedParameterOrdinals);
+    appendMirSizeVector(out, function.localOrdinals);
     out += serializeMirNodeTree(function.body.get());
     return out;
 }
@@ -547,10 +592,74 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     std::string_view bytes, ProjectOopMirFunction& function)
 {
     MirByteReader reader(bytes);
+    std::uint32_t u32 = 0;
+    std::uint64_t u64 = 0;
     if (!reader.string(function.mangledName) ||
         !reader.string(function.genericSpecializationKey) ||
         !reader.string(function.returnTypeKey) || !reader.string(function.errorTypeKey) ||
-        !reader.stringVector(function.parameterTypeKeys))
+        !reader.stringVector(function.parameterTypeKeys) ||
+        !reader.stringVector(function.parameterNames) ||
+        !reader.stringVector(function.captureTypeKeys) ||
+        !reader.stringVector(function.captureNames) ||
+        !reader.stringVector(function.generatorParameterTypeKeys) ||
+        !reader.string(function.importDllName) || !reader.string(function.cAbiName) ||
+        !reader.string(function.debugDisplayName) || !reader.u64(u64))
+        return false;
+    function.memberOrdinal = static_cast<std::size_t>(u64);
+    if (!reader.u64(function.declaringTypeOrdinal) || !reader.u64(function.closureLayoutSize) ||
+        !reader.u64(function.closureLayoutAlignment) || !reader.u64(function.asyncFrameSize) ||
+        !reader.u32(u32))
+        return false;
+    function.inliningPolicy = static_cast<InliningPolicy>(u32);
+    if (!reader.u32(u32)) return false;
+    function.callableTrait = static_cast<language::CallableTrait>(u32);
+    if (!reader.u32(u32)) return false;
+    function.frameStorage = static_cast<language::FrameStorage>(u32);
+    if (!reader.u32(u32)) return false;
+    function.returnOwnership = static_cast<sema::OwnershipKind>(u32);
+    std::uint8_t lambdaPresent = 0;
+    if (!reader.byte(lambdaPresent)) return false;
+    if (lambdaPresent)
+    {
+        if (!reader.u64(u64)) return false;
+        function.lambdaOrdinal = static_cast<std::size_t>(u64);
+    }
+    else
+    {
+        function.lambdaOrdinal.reset();
+    }
+    if (!reader.u32(u32)) return false;
+    const auto flag = [&](std::uint32_t bit) { return (u32 & (1U << bit)) != 0U; };
+    function.constructor = flag(0);
+    function.destructor = flag(1);
+    function.isStatic = flag(2);
+    function.referenceReturn = flag(3);
+    function.isNoHeap = flag(4);
+    function.isExportedC = flag(5);
+    function.isImportedC = flag(6);
+    function.isVariadic = flag(7);
+    function.isImportedNative = flag(8);
+    function.isSyntheticImplicitConstructor = flag(9);
+    function.importRequiresRuntimeBinding = flag(10);
+    function.isLambda = flag(11);
+    function.hasClosureEnvironment = flag(12);
+    function.capturesThisCell = flag(13);
+    function.isGeneratorConstructor = flag(14);
+    const auto readSizeVector = [&](std::vector<std::size_t>& values) -> bool
+    {
+        if (!reader.u32(u32)) return false;
+        values.clear();
+        values.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            if (!reader.u64(u64)) return false;
+            values.push_back(static_cast<std::size_t>(u64));
+        }
+        return true;
+    };
+    if (!readSizeVector(function.capturedLocalOrdinals) ||
+        !readSizeVector(function.capturedParameterOrdinals) ||
+        !readSizeVector(function.localOrdinals))
         return false;
     return restoreMirNodeTree(reader.remaining(), function.body);
 }
