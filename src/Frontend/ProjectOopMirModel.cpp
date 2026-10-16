@@ -581,6 +581,20 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
         setFlag(14, function.isGeneratorConstructor);
         appendMirU32(out, flags);
     }
+    appendMirU32(out, function.effects.bits());
+    appendMirU32(out, static_cast<std::uint32_t>(function.abi.returnPassing));
+    out.push_back(function.abi.hiddenReturnParameterOrdinal.has_value() ? '\x01' : '\x00');
+    if (function.abi.hiddenReturnParameterOrdinal.has_value())
+        appendMirU64(out, static_cast<std::uint64_t>(*function.abi.hiddenReturnParameterOrdinal));
+    {
+        std::vector<std::uint32_t> passing;
+        passing.reserve(function.abi.parameterPassing.size());
+        for (const ProjectOopMirAbiPassing p : function.abi.parameterPassing)
+            passing.push_back(static_cast<std::uint32_t>(p));
+        appendMirU32Vector(out, passing);
+    }
+    appendMirSizeVector(out, function.abi.parameterPhysicalOrdinals);
+    appendMirU32(out, static_cast<std::uint32_t>(function.abi.physicalParameterCount));
     appendMirSizeVector(out, function.capturedLocalOrdinals);
     appendMirSizeVector(out, function.capturedParameterOrdinals);
     appendMirSizeVector(out, function.localOrdinals);
@@ -645,6 +659,44 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     function.hasClosureEnvironment = flag(12);
     function.capturesThisCell = flag(13);
     function.isGeneratorConstructor = flag(14);
+    std::uint32_t effectBits = 0;
+    if (!reader.u32(effectBits)) return false;
+    function.effects = sema::EffectSet{};
+    for (const sema::Effect effect : {sema::Effect::Unsafe, sema::Effect::Throws,
+                                      sema::Effect::Async, sema::Effect::Comptime,
+                                      sema::Effect::NoHeap, sema::Effect::Generator})
+    {
+        if ((effectBits & static_cast<std::uint32_t>(effect)) != 0U)
+            function.effects = function.effects.with(effect);
+    }
+    if (!reader.u32(u32)) return false;
+    function.abi.returnPassing = static_cast<ProjectOopMirAbiPassing>(u32);
+    std::uint8_t hiddenPresent = 0;
+    if (!reader.byte(hiddenPresent)) return false;
+    if (hiddenPresent != 0U)
+    {
+        if (!reader.u64(u64)) return false;
+        function.abi.hiddenReturnParameterOrdinal = static_cast<std::size_t>(u64);
+    }
+    else
+    {
+        function.abi.hiddenReturnParameterOrdinal.reset();
+    }
+    {
+        if (!reader.u32(u32)) return false;
+        std::vector<std::uint32_t> passing;
+        passing.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::uint32_t p = 0;
+            if (!reader.u32(p)) return false;
+            passing.push_back(p);
+        }
+        function.abi.parameterPassing.clear();
+        function.abi.parameterPassing.reserve(passing.size());
+        for (const std::uint32_t p : passing)
+            function.abi.parameterPassing.push_back(static_cast<ProjectOopMirAbiPassing>(p));
+    }
     const auto readSizeVector = [&](std::vector<std::size_t>& values) -> bool
     {
         if (!reader.u32(u32)) return false;
@@ -657,10 +709,13 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
         }
         return true;
     };
-    if (!readSizeVector(function.capturedLocalOrdinals) ||
+    if (!readSizeVector(function.abi.parameterPhysicalOrdinals) ||
+        !readSizeVector(function.capturedLocalOrdinals) ||
         !readSizeVector(function.capturedParameterOrdinals) ||
         !readSizeVector(function.localOrdinals))
         return false;
+    if (!reader.u32(u32)) return false;
+    function.abi.physicalParameterCount = u32;
     return restoreMirNodeTree(reader.remaining(), function.body);
 }
 
