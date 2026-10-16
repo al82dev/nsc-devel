@@ -863,6 +863,15 @@ private:
         ast::AstArena& arena,
         const ast::AstNode* source,
         ast::AstNodeKind clonedKind);
+    // NSC305-G06. The generic (non-special-case) clone of a node: fields, modifiers, generic
+    // parameters, constraints, type syntax and throws -- but NOT the first/second/third/children
+    // recursion, which the caller drives.
+    ast::AstNode* cloneNodeGeneric(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::string_view rewrittenContainingTypeName,
+        std::string_view originalContainingTypeName);
     // NSC305-G06. Folds a const value-pack operation (packcount/packat/packsum/packproduct/
     // packall/packany). Returns nullptr when the node is not such a fold, so cloneNode falls
     // through to the generic clone path.

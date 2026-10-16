@@ -5395,6 +5395,108 @@ ast::AstNode* ProjectGenericModel::cloneNodeCopyFields(
     return result;
 }
 
+// NSC305-G06. The generic (non-special-case) clone of a node (see the header).
+ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
+    ast::AstArena& arena,
+    const ast::AstNode* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::string_view rewrittenContainingTypeName,
+    std::string_view originalContainingTypeName)
+{
+    const bool layoutQueryOfSubstitutedParameter =
+        (source->kind() == ast::AstNodeKind::SizeofExpression ||
+         source->kind() == ast::AstNodeKind::AlignofExpression) &&
+        source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        substitutions.contains(source->first()->text());
+    ast::AstNodeKind clonedKind = source->kind();
+    if (layoutQueryOfSubstitutedParameter)
+    {
+        clonedKind = source->kind() == ast::AstNodeKind::SizeofExpression
+            ? ast::AstNodeKind::SizeofTypeExpression
+            : ast::AstNodeKind::AlignofTypeExpression;
+    }
+    ast::AstNode* result = cloneNodeCopyFields(arena, source, clonedKind);
+    // A scalar `new T` inside a generic template allocates one raw storage slot whose element
+    // type is T. Preserve the source-level intent before substituting its type.
+    if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
+        source->typeSyntax() != nullptr && source->typeSyntax()->typeArguments().empty() &&
+        substitutions.contains(source->typeSyntax()->baseName()))
+    {
+        result->setAuxiliaryText(std::string(kGenericRawNewAuxiliary));
+    }
+    for (const ast::GenericParameterSyntax& parameter : source->genericParameterSyntaxes())
+    {
+        ast::GenericParameterSyntax copy = parameter;
+        copy.constantType = cloneType(arena, parameter.constantType, substitutions);
+        result->addGenericParameter(std::move(copy));
+    }
+    for (const ast::LifetimeParameterSyntax& parameter : source->lifetimeParameters())
+        result->addLifetimeParameter(parameter);
+    for (const ast::LifetimeOutlivesConstraint& constraint : source->lifetimeOutlivesConstraints())
+        result->addLifetimeOutlivesConstraint(constraint);
+    for (const ast::GenericConstraintClause& clause : source->genericConstraints())
+    {
+        ast::GenericConstraintClause copy;
+        copy.parameterName = clause.parameterName;
+        copy.parameterRange = clause.parameterRange;
+        copy.requiresClass = clause.requiresClass;
+        copy.requiresValueType = clause.requiresValueType;
+        copy.requiresDefaultConstructor = clause.requiresDefaultConstructor;
+        copy.requiresCopy = clause.requiresCopy;
+        copy.requiresMove = clause.requiresMove;
+        copy.requiresTrackedLifetime = clause.requiresTrackedLifetime;
+        copy.requiresUnmanaged = clause.requiresUnmanaged;
+        copy.requiresNotNull = clause.requiresNotNull;
+        copy.requiresRefLike = clause.requiresRefLike;
+        copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
+        copy.associatedProjection = cloneType(
+            arena, clause.associatedProjection, substitutions);
+        copy.range = clause.range;
+        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+            copy.typeConstraints.push_back(cloneType(arena, constraint, substitutions));
+        if (copy.associatedProjection != nullptr)
+        {
+            copy.substitutedArgument = copy.associatedProjection;
+            preserveOrAttachInstantiationOrigin(
+                const_cast<ast::TypeSyntax*>(copy.substitutedArgument));
+        }
+        else if (const auto found = substitutions.find(clause.parameterName);
+                 found != substitutions.end())
+        {
+            ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
+            preserveOrAttachInstantiationOrigin(substitutedArgument);
+            copy.substitutedArgument = substitutedArgument;
+        }
+        result->addGenericConstraint(std::move(copy));
+    }
+    if (!rewrittenContainingTypeName.empty() && !originalContainingTypeName.empty() &&
+        (source->kind() == ast::AstNodeKind::ConstructorDeclaration ||
+         source->kind() == ast::AstNodeKind::DestructorDeclaration) &&
+        source->text() == originalContainingTypeName)
+    {
+        result->setText(std::string(rewrittenContainingTypeName));
+    }
+    if (layoutQueryOfSubstitutedParameter)
+    {
+        ast::TypeSyntax* measuredType = cloneType(
+            arena, substitutions.at(source->first()->text()), substitutions);
+        preserveOrAttachInstantiationOrigin(measuredType);
+        result->setTypeSyntax(measuredType);
+    }
+    else
+    {
+        result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
+    }
+    result->setThrowsTypeSyntax(
+        cloneType(arena, source->throwsTypeSyntax(), substitutions));
+    for (const ast::TypeSyntax* syntax : source->typeSyntaxes())
+        for (ast::TypeSyntax* expanded :
+             cloneExpandedTypeArgument(arena, syntax, substitutions))
+            result->addTypeSyntax(expanded);
+    return result;
+}
+
 ast::AstNode* ProjectGenericModel::cloneNode(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -5491,103 +5593,8 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         source->first() != nullptr &&
         source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
         substitutions.contains(source->first()->text());
-    ast::AstNodeKind clonedKind = source->kind();
-    if (layoutQueryOfSubstitutedParameter)
-    {
-        clonedKind = source->kind() == ast::AstNodeKind::SizeofExpression
-            ? ast::AstNodeKind::SizeofTypeExpression
-            : ast::AstNodeKind::AlignofTypeExpression;
-    }
-    ast::AstNode* result = cloneNodeCopyFields(arena, source, clonedKind);
-    // A scalar `new T` inside a generic template allocates one raw storage slot whose element
-    // type is T.  After monomorphization the cloned TypeSyntax names the concrete argument; for a
-    // class argument that made method-body analysis mistake the original raw allocation for the
-    // distinct source form `new ConcreteClass`, which must use constructor syntax.  Preserve the
-    // source-level intent on the expression before substituting its type.
-    if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
-        source->typeSyntax() != nullptr && source->typeSyntax()->typeArguments().empty() &&
-        substitutions.contains(source->typeSyntax()->baseName()))
-    {
-        result->setAuxiliaryText(std::string(kGenericRawNewAuxiliary));
-    }
-    for (const ast::GenericParameterSyntax& parameter : source->genericParameterSyntaxes())
-    {
-        ast::GenericParameterSyntax copy = parameter;
-        copy.constantType = cloneType(arena, parameter.constantType, substitutions);
-        result->addGenericParameter(std::move(copy));
-    }
-    for (const ast::LifetimeParameterSyntax& parameter : source->lifetimeParameters())
-        result->addLifetimeParameter(parameter);
-    for (const ast::LifetimeOutlivesConstraint& constraint : source->lifetimeOutlivesConstraints())
-        result->addLifetimeOutlivesConstraint(constraint);
-    // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que
-    // cualquier otro TypeSyntax del nodo. Copiar los punteros originales dejaria la
-    // especializacion apuntando a sintaxis de la PLANTILLA -- viva, pero de otro arbol, y con `T`
-    // sin sustituir dentro. El nodo especializado ya no es generico, asi que estas clausulas no
-    // se vuelven a validar; viajan para que un volcado del AST especializado diga la verdad.
-    for (const ast::GenericConstraintClause& clause : source->genericConstraints())
-    {
-        ast::GenericConstraintClause copy;
-        copy.parameterName = clause.parameterName;
-        copy.parameterRange = clause.parameterRange;
-        copy.requiresClass = clause.requiresClass;
-        copy.requiresValueType = clause.requiresValueType;
-        copy.requiresDefaultConstructor = clause.requiresDefaultConstructor;
-        copy.requiresCopy = clause.requiresCopy;
-        copy.requiresMove = clause.requiresMove;
-        copy.requiresTrackedLifetime = clause.requiresTrackedLifetime;
-        copy.requiresUnmanaged = clause.requiresUnmanaged;
-        copy.requiresNotNull = clause.requiresNotNull;
-        copy.requiresRefLike = clause.requiresRefLike;
-        copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
-        copy.associatedProjection = cloneType(
-            arena, clause.associatedProjection, substitutions);
-        copy.range = clause.range;
-        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
-            copy.typeConstraints.push_back(cloneType(arena, constraint, substitutions));
-        // El argumento con el que se cerro este parametro, colgado de la clausula para que la
-        // resolucion de nombres lo alcance. Ver GenericConstraintClause::substitutedArgument.
-        if (copy.associatedProjection != nullptr)
-        {
-            copy.substitutedArgument = copy.associatedProjection;
-            preserveOrAttachInstantiationOrigin(
-                const_cast<ast::TypeSyntax*>(copy.substitutedArgument));
-        }
-        else if (const auto found = substitutions.find(clause.parameterName);
-                 found != substitutions.end())
-        {
-            ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
-            preserveOrAttachInstantiationOrigin(substitutedArgument);
-            copy.substitutedArgument = substitutedArgument;
-        }
-        result->addGenericConstraint(std::move(copy));
-    }
-
-    if (!rewrittenContainingTypeName.empty() && !originalContainingTypeName.empty() &&
-        (source->kind() == ast::AstNodeKind::ConstructorDeclaration ||
-         source->kind() == ast::AstNodeKind::DestructorDeclaration) &&
-        source->text() == originalContainingTypeName)
-    {
-        result->setText(std::string(rewrittenContainingTypeName));
-    }
-
-    if (layoutQueryOfSubstitutedParameter)
-    {
-        ast::TypeSyntax* measuredType = cloneType(
-            arena, substitutions.at(source->first()->text()), substitutions);
-        preserveOrAttachInstantiationOrigin(measuredType);
-        result->setTypeSyntax(measuredType);
-    }
-    else
-    {
-        result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
-    }
-    result->setThrowsTypeSyntax(
-        cloneType(arena, source->throwsTypeSyntax(), substitutions));
-    for (const ast::TypeSyntax* syntax : source->typeSyntaxes())
-        for (ast::TypeSyntax* expanded :
-             cloneExpandedTypeArgument(arena, syntax, substitutions))
-            result->addTypeSyntax(expanded);
+    ast::AstNode* result = cloneNodeGeneric(
+        arena, source, substitutions, rewrittenContainingTypeName, originalContainingTypeName);
     if (!layoutQueryOfSubstitutedParameter)
     {
         result->setFirst(cloneNode(
