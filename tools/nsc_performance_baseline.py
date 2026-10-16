@@ -35,8 +35,9 @@ DEFAULT_LLVM = Path(os.environ.get("NSC_LLVM_ROOT", r"C:\clang-llvm"))
 DEFAULT_NSLINK = Path(os.environ.get("NSLINK_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nslink.exe"))
 DEFAULT_CORPUS = ROOT / "tests" / "performance" / "p00" / "corpus.json"
 DEFAULT_OUTPUT = ROOT / "_nscbuilder" / "performance" / "p00"
-TIME_RE = re.compile(r"^timing phase=(\S+) us=(\d+)$", re.MULTILINE)
-TOTAL_RE = re.compile(r"^timing total_ms=(\d+)$", re.MULTILINE)
+TIME_RE = re.compile(r"^timing phase=(\S+) us=(\d+)", re.MULTILINE)
+TOTAL_RE = re.compile(r"^timing total_ms=(\d+)", re.MULTILINE)
+MISS_REASON_RE = re.compile(r"^code-unit \S+ .* miss-reason=(\S+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,8 @@ class Job:
     linker: str
     iteration: int
     warmup: bool
+    jobs: int | None = None
+    artifact_cache: Path | None = None
 
 
 @dataclass
@@ -78,6 +81,7 @@ class Measurement:
     runtime_exit: int | None
     expected_exit: int | None
     phases_us: dict[str, int]
+    miss_reasons: dict[str, int]
     log: str
     status: str
 
@@ -223,11 +227,25 @@ def compile_job(
         "-o",
         str(artifact),
     ]
+    if job.jobs is not None:
+        command.append(f"-j{job.jobs}")
+    if job.artifact_cache is not None:
+        command.append(f"--artifact-cache={job.artifact_cache}")
     linker = job.linker if job.artifact == "exe" else "none"
     env = make_environment(job.linker, compiler, llvm_root, nslink)
+    # The partitioned code generator resolves its scratch directory from TMP/TEMP. Keep every
+    # temporary below the run directory so the measurement stays on the authorized drive and does
+    # not depend on the ambient user temp path.
+    temp_dir = run_dir / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    env["TMP"] = str(temp_dir)
+    env["TEMP"] = str(temp_dir)
     exit_code, output, wall_ms, peak = run_process(command, ROOT, env)
     log.write_text(output, encoding="utf-8")
     phases = {name: int(value) for name, value in TIME_RE.findall(output)}
+    miss_reasons: dict[str, int] = {}
+    for reason in MISS_REASON_RE.findall(output):
+        miss_reasons[reason] = miss_reasons.get(reason, 0) + 1
     total_match = TOTAL_RE.search(output)
     total_ms = int(total_match.group(1)) if total_match else None
     artifact_bytes = artifact.stat().st_size if artifact.is_file() else None
@@ -266,6 +284,7 @@ def compile_job(
         runtime_exit=runtime_exit,
         expected_exit=job.corpus.expected_exit,
         phases_us=phases,
+        miss_reasons=miss_reasons,
         log=str(log.relative_to(run_dir)),
         status=status,
     )
@@ -290,6 +309,10 @@ def summary_rows(measurements: list[Measurement]) -> list[dict[str, object]]:
             name: round(statistics.median([row.phases_us.get(name, 0) for row in rows]))
             for name in phase_names
         }
+        miss_reasons: dict[str, int] = {}
+        for row in rows:
+            for reason, count in row.miss_reasons.items():
+                miss_reasons[reason] = miss_reasons.get(reason, 0) + count
         summaries.append({
             "corpus": key[0],
             "artifact": key[1],
@@ -304,6 +327,7 @@ def summary_rows(measurements: list[Measurement]) -> list[dict[str, object]]:
             "artifact_median_bytes": round(statistics.median(sizes)) if sizes else None,
             "runtime_median_ms": round(statistics.median(runtime), 3) if runtime else None,
             "phases_median_us": phase_medians,
+            "miss_reasons": miss_reasons,
         })
     return summaries
 
@@ -393,6 +417,11 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--seed", type=int, default=200)
+    parser.add_argument("--jobs", type=int, default=None, help="worker budget (-jN); omit for default")
+    parser.add_argument(
+        "--artifact-cache", type=Path, default=None,
+        help="artifact-cache directory (enables WARM hit/miss scenarios)",
+    )
     args = parser.parse_args()
 
     compiler = args.compiler.resolve()
@@ -446,9 +475,15 @@ def main() -> int:
                 for debug in debug_modes:
                     for linker in effective_linkers:
                         for iteration in range(args.warmups):
-                            warmup_jobs.append(Job(corpus, artifact, level, debug, linker, iteration, True))
+                            warmup_jobs.append(Job(
+                                corpus, artifact, level, debug, linker, iteration, True,
+                                args.jobs, args.artifact_cache.resolve() if args.artifact_cache else None,
+                            ))
                         for iteration in range(args.iterations):
-                            measured_jobs.append(Job(corpus, artifact, level, debug, linker, iteration, False))
+                            measured_jobs.append(Job(
+                                corpus, artifact, level, debug, linker, iteration, False,
+                                args.jobs, args.artifact_cache.resolve() if args.artifact_cache else None,
+                            ))
     random.Random(args.seed).shuffle(measured_jobs)
 
     measurements: list[Measurement] = []
