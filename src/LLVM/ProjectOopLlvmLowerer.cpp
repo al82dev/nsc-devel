@@ -10108,6 +10108,422 @@ private:
         }
     }
 
+    // NSC305-L04. The await sub-family of the cleanup/exceptions/async family (family 6/6).
+    LLVMValueRef lowerAwaitExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::AwaitFuture:
+            {
+                // NS304-T05-F03 sync context: blocking await. Poll once and read the result; no
+                // suspension (the producer cannot suspend, enforced by the Stage 34 guard).
+                if (node->integerValue == 0)
+                {
+                    if (node->children.size() != 1U)
+                        return failValue(error, "await future requires one operand");
+                    LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                    if (value == nullptr) return nullptr;
+                    LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                    if (carrier == nullptr) return nullptr;
+                    LLVMValueRef slot = entryBlockAlloca(
+                        carrier, structAlignmentFor(node->elementTypeKey), "await.future");
+                    if (slot == nullptr)
+                        return failValue(error, "await future could not reserve temporary storage");
+                    LLVMBuildStore(builder_, value, slot);
+                    LLVMValueRef blockingFunction = nullptr;
+                    LLVMTypeRef blockingFunctionType = nullptr;
+                    LLVMValueRef heapFrame = nullptr;
+                    if (node->calleeName.empty())
+                    {
+                        // NS304-T05-F09: await over a future VARIABLE — resolve the poll from the
+                        // future's pollFn field instead of a direct function reference.
+                        std::uint64_t pollFnOffset = 0;
+                        if (const frontend::ProjectOopMirStructLayout* layout =
+                                findStructLayout(mirModel_, node->elementTypeKey))
+                        {
+                            for (const frontend::ObjectFieldLayout& field : layout->fields)
+                                if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
+                        }
+                        LLVMValueRef pollFn = LLVMBuildLoad2(
+                            builder_, LLVMPointerTypeInContext(context_, 0),
+                            byteOffset(slot, pollFnOffset, "await.pollfn.addr"), "await.pollfn");
+                        LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
+                        blockingFunctionType = LLVMFunctionType(
+                            LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
+                        blockingFunction = pollFn;
+                    }
+                    else
+                    {
+                        const auto blockingFound = functions_.find(node->calleeName);
+                        if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
+                            return failValue(error, "async poll target was not declared: " + node->calleeName);
+                        // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited
+                        // futures across suspension) so its suspend path has valid storage.
+                        if (blockingFound->second.asyncFrameSize > 0)
+                        {
+                            const bool frameOnHeap =
+                                blockingFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
+                                blockingFound->second.asyncFrameStorage == language::FrameStorage::CallerArena;
+                            LLVMValueRef frameSlot = nullptr;
+                            if (frameOnHeap)
+                            {
+                                LLVMValueRef size = LLVMConstInt(
+                                    LLVMInt64TypeInContext(context_), blockingFound->second.asyncFrameSize, 0);
+                                LLVMValueRef allocArgs[] = {size};
+                                frameSlot = buildNoUnwindCall(
+                                    allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.frame.heap");
+                                if (frameSlot == nullptr)
+                                    return failValue(error, "await future could not reserve heap frame storage");
+                                heapFrame = frameSlot;
+                            }
+                            else
+                            {
+                                LLVMTypeRef frameType = LLVMArrayType2(
+                                    LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
+                                frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
+                            }
+                            if (frameSlot == nullptr)
+                                return failValue(error, "await future could not reserve frame storage");
+                            LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
+                        }
+                        blockingFunctionType = blockingFound->second.functionType;
+                        blockingFunction = blockingFound->second.function;
+                    }
+                    // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
+                    // ready (state == -1). For a synchronously-completing producer this runs once.
+                    LLVMTypeRef blockingIntType = llvmType("builtin:int", error);
+                    if (blockingIntType == nullptr) return nullptr;
+                    LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
+                    LLVMBasicBlockRef notReady = appendBlock("await.poll.notready");
+                    LLVMBasicBlockRef checkError = appendBlock("await.poll.checkerror");
+                    LLVMBasicBlockRef loopDone = appendBlock("await.poll.done");
+                    LLVMBasicBlockRef loopError = appendBlock("await.poll.error");
+                    LLVMBuildBr(builder_, pollLoop);
+                    LLVMPositionBuilderAtEnd(builder_, pollLoop);
+                    // NS304-T07-F02: check the state BEFORE polling so an already-ready future
+                    // (state == -1, e.g. MoveNextAsync's eager demand) skips the poll entirely.
+                    LLVMValueRef blockingReady = LLVMConstInt(
+                        blockingIntType, static_cast<unsigned long long>(-1), 1);
+                    LLVMValueRef preState = LLVMBuildLoad2(
+                        builder_, blockingIntType, slot, "await.pre.state");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, preState, blockingReady, "await.pre.ready"),
+                        loopDone, notReady);
+                    LLVMPositionBuilderAtEnd(builder_, notReady);
+                    LLVMValueRef blockingArgs[] = { slot };
+                    if (LLVMBuildCall2(builder_, blockingFunctionType,
+                                       blockingFunction, blockingArgs, 1U, "") == nullptr)
+                        return failValue(error, "async poll call failed");
+                    LLVMValueRef blockingState = LLVMBuildLoad2(
+                        builder_, blockingIntType, slot, "await.state");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingReady, "await.ready"),
+                        loopDone, checkError);
+                    LLVMPositionBuilderAtEnd(builder_, checkError);
+                    LLVMValueRef blockingError = LLVMConstInt(
+                        blockingIntType, static_cast<unsigned long long>(-2), 1);
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingError, "await.errored"),
+                        loopError, pollLoop);
+
+                    // Ready: load the result and merge with the error path.
+                    LLVMPositionBuilderAtEnd(builder_, loopDone);
+                    // NS304-T07-F06: `await future;` on a Future<void> has no result slot to read —
+                    // the poll runs the future to completion and the statement discards the value.
+                    const bool voidResult = node->typeKey == "builtin:void";
+                    LLVMTypeRef blockingResultType = nullptr;
+                    LLVMValueRef readyValue = nullptr;
+                    if (!voidResult)
+                    {
+                        blockingResultType = llvmType(node->typeKey, error);
+                        if (blockingResultType == nullptr) return nullptr;
+                        readyValue = LLVMBuildLoad2(
+                            builder_, blockingResultType,
+                            byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
+                    }
+                    LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
+                    if (heapFrame != nullptr)
+                    {
+                        LLVMValueRef freeArgs[] = {heapFrame};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
+                    LLVMBuildBr(builder_, loopMerge);
+
+                    // NS304-T05-F07 rethrow: the future errored (state == -2). Load the carried
+                    // error slot and rethrow it into the enclosing catch (native unwind) instead of
+                    // the deterministic -1 signal.
+                    LLVMPositionBuilderAtEnd(builder_, loopError);
+                    if (heapFrame != nullptr)
+                    {
+                        LLVMValueRef freeArgs[] = {heapFrame};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
+                    const std::optional<std::string_view> blockingErrorInner =
+                        language::futureErrorTypeKey(node->elementTypeKey);
+                    const std::string blockingErrorKey = blockingErrorInner.has_value()
+                        ? std::string(*blockingErrorInner) : std::string{};
+                    LLVMTypeRef blockingErrorType =
+                        blockingErrorKey.empty() ? nullptr : llvmType(blockingErrorKey, error);
+                    std::uint64_t errorOffset = 0;
+                    if (const frontend::ProjectOopMirStructLayout* blockingLayout =
+                            findStructLayout(mirModel_, node->elementTypeKey))
+                    {
+                        for (const frontend::ObjectFieldLayout& field : blockingLayout->fields)
+                            if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
+                    }
+                    if (node->exceptionTargetRegionOrdinal.has_value() &&
+                        blockingErrorType != nullptr && errorOffset != 0)
+                    {
+                        LLVMValueRef blockingException = LLVMBuildLoad2(
+                            builder_, blockingErrorType,
+                            byteOffset(slot, errorOffset, "await.error.addr"), "await.error");
+                        if (blockingException == nullptr) return nullptr;
+                        if (!lowerExceptionalTransfer(blockingException, node, error)) return nullptr;
+                    }
+                    else
+                    {
+                        // No enclosing catch (or a non-throwing future): keep the deterministic
+                        // signal, which the caller observes as the defined error exit.
+                        LLVMBuildBr(builder_, loopMerge);
+                    }
+
+                    LLVMPositionBuilderAtEnd(builder_, loopMerge);
+                    if (voidResult)
+                    {
+                        // A blocking await of a Future<void> runs it to completion and yields no
+                        // value; the expression statement discards the placeholder below.
+                        return LLVMConstNull(LLVMInt8TypeInContext(context_));
+                    }
+                    LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, blockingResultType, "await.value");
+                    if (node->exceptionTargetRegionOrdinal.has_value() &&
+                        blockingErrorType != nullptr && errorOffset != 0)
+                    {
+                        LLVMAddIncoming(awaitPhi, &readyValue, &loopDone, 1);
+                    }
+                    else
+                    {
+                        LLVMValueRef incomingValues[] = {
+                            readyValue, LLVMConstInt(blockingResultType, static_cast<unsigned long long>(-1), 1) };
+                        LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
+                        LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
+                    }
+                    return awaitPhi;
+                }
+
+                // NS304-T05-F03 suspend/resume. `self` is the poll's parameter 0 (future:<T>*);
+                // the future layout is { i32 state@0, void* frame@8, T result@16 }.
+                if (node->children.size() != 1U)
+                    return failValue(error, "await future requires one operand");
+                if (parameterStorage_.empty())
+                    return failValue(error, "await future has no poll self parameter");
+                // parameterStorage_[0] is the address of the self parameter slot; load the future
+                // pointer out of it before dereferencing the future's fields.
+                LLVMValueRef self = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                    "await.self");
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+                if (intType == nullptr || carrier == nullptr) return nullptr;
+
+                LLVMValueRef childSlot = entryBlockAlloca(
+                    carrier, structAlignmentFor(node->elementTypeKey), "await.child");
+                if (childSlot == nullptr)
+                    return failValue(error, "await future could not reserve child storage");
+                // NS304-T05-F08: the awaited producer's frame storage (heap vs stack) is a compile-time
+                // property, hoisted so both the entry allocation and the terminal free agree.
+                const auto entryFound = functions_.find(node->calleeName);
+                const bool childFrameOnHeap = entryFound != functions_.end() &&
+                    (entryFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
+                     entryFound->second.asyncFrameStorage == language::FrameStorage::CallerArena);
+                const std::uint64_t childFrameSize =
+                    entryFound != functions_.end() ? entryFound->second.asyncFrameSize : 0;
+
+                // 1. Select: entry (self->state == 0) → fresh child; resume → self->frame (slot 0).
+                LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "await.self.state");
+                LLVMBasicBlockRef entryBlock = appendBlock("await.entry");
+                LLVMBasicBlockRef resumeBlock = appendBlock("await.resume");
+                LLVMBasicBlockRef pollBlock = appendBlock("await.poll");
+                LLVMBuildCondBr(
+                    builder_,
+                    LLVMBuildICmp(builder_, LLVMIntEQ, selfState, LLVMConstInt(intType, 0, 0), "await.is.entry"),
+                    entryBlock, resumeBlock);
+
+                // Entry: lower the child call → store in childSlot.
+                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                LLVMValueRef fresh = lowerExpression(node->children.front().get(), error);
+                if (fresh == nullptr) return nullptr;
+                LLVMBuildStore(builder_, fresh, childSlot);
+                // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
+                if (childFrameSize > 0)
+                {
+                    LLVMValueRef frameSlot = nullptr;
+                    if (childFrameOnHeap)
+                    {
+                        LLVMValueRef size = LLVMConstInt(
+                            LLVMInt64TypeInContext(context_), childFrameSize, 0);
+                        LLVMValueRef allocArgs[] = {size};
+                        frameSlot = buildNoUnwindCall(
+                            allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.child.frame.heap");
+                        if (frameSlot == nullptr)
+                            return failValue(error, "await future could not reserve child heap frame storage");
+                    }
+                    else
+                    {
+                        LLVMTypeRef frameType = LLVMArrayType2(
+                            LLVMInt8TypeInContext(context_), childFrameSize);
+                        frameSlot = entryBlockAlloca(frameType, 8, "await.child.frame");
+                    }
+                    if (frameSlot == nullptr)
+                        return failValue(error, "await future could not reserve child frame storage");
+                    LLVMBuildStore(builder_, frameSlot, byteOffset(childSlot, 8, "await.child.frame.field"));
+                }
+                LLVMBuildBr(builder_, pollBlock);
+
+                // Resume: load self->frame (offset 8) → childSlot.
+                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                LLVMValueRef framePtr = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "await.self.frame.addr"), "await.self.frame");
+                LLVMBuildStore(
+                    builder_, LLVMBuildLoad2(builder_, carrier, framePtr, "await.saved.child"), childSlot);
+                LLVMBuildBr(builder_, pollBlock);
+
+                // Poll: call G$poll(&childSlot) — or the future's pollFn for a variable await.
+                LLVMPositionBuilderAtEnd(builder_, pollBlock);
+                LLVMValueRef pollFunction = nullptr;
+                LLVMTypeRef pollFunctionType = nullptr;
+                if (node->calleeName.empty())
+                {
+                    // NS304-T05-F09: variable await — resolve the poll from the future's pollFn.
+                    std::uint64_t pollFnOffset = 0;
+                    if (const frontend::ProjectOopMirStructLayout* layout =
+                            findStructLayout(mirModel_, node->elementTypeKey))
+                    {
+                        for (const frontend::ObjectFieldLayout& field : layout->fields)
+                            if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
+                    }
+                    pollFunction = LLVMBuildLoad2(
+                        builder_, LLVMPointerTypeInContext(context_, 0),
+                        byteOffset(childSlot, pollFnOffset, "await.child.pollfn"), "await.child.pollfn");
+                    LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
+                    pollFunctionType = LLVMFunctionType(
+                        LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
+                }
+                else
+                {
+                    const auto found = functions_.find(node->calleeName);
+                    if (found == functions_.end() || found->second.function == nullptr)
+                        return failValue(error, "async poll target was not declared: " + node->calleeName);
+                    pollFunction = found->second.function;
+                    pollFunctionType = found->second.functionType;
+                }
+                LLVMValueRef pollArgs[] = { childSlot };
+                if (LLVMBuildCall2(builder_, pollFunctionType, pollFunction,
+                                   pollArgs, 1U, "") == nullptr)
+                    return failValue(error, "async poll call failed");
+
+                // 2. Check pending: child.state == -1 (ready) → extract; child.state == -2
+                // (ReadyError) → propagate the error to the parent; else suspend. The error path
+                // only exists for a throwing future (one with an error slot).
+                LLVMValueRef childState = LLVMBuildLoad2(
+                    builder_, intType, childSlot, "await.child.state");
+                LLVMValueRef readyConst = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
+                const std::optional<std::string_view> errorInner =
+                    language::futureErrorTypeKey(node->elementTypeKey);
+                const std::string errorKey = errorInner.has_value()
+                    ? std::string(*errorInner) : std::string{};
+                LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
+                std::uint64_t errorOffset = 0;
+                if (const frontend::ProjectOopMirStructLayout* errorLayout =
+                        findStructLayout(mirModel_, node->elementTypeKey))
+                {
+                    for (const frontend::ObjectFieldLayout& field : errorLayout->fields)
+                        if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
+                }
+                const bool hasErrorSlot = errorType != nullptr && errorOffset != 0;
+
+                LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
+                LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
+                if (!hasErrorSlot)
+                {
+                    // Non-throwing child: only ready vs suspend.
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
+                        readyBlock, suspendBlock);
+                }
+                else
+                {
+                    // ReadyError: child errored. Propagate the carried error into the parent
+                    // future's error slot and mark the parent errored (state == -2) — no unwind.
+                    LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
+                    LLVMBasicBlockRef errorCheckBlock = appendBlock("await.errorcheck");
+                    LLVMBasicBlockRef errorBlock = appendBlock("await.error");
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
+                        readyBlock, errorCheckBlock);
+                    LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
+                    LLVMBuildCondBr(
+                        builder_,
+                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
+                        errorBlock, suspendBlock);
+                    LLVMPositionBuilderAtEnd(builder_, errorBlock);
+                    LLVMValueRef childError = LLVMBuildLoad2(
+                        builder_, errorType,
+                        byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
+                    LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
+                    LLVMBuildStore(builder_, errorConst, self);
+                    if (childFrameOnHeap)
+                    {
+                        LLVMValueRef childFramePtr = LLVMBuildLoad2(
+                            builder_, LLVMPointerTypeInContext(context_, 0),
+                            byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
+                        LLVMValueRef freeArgs[] = {childFramePtr};
+                        buildNoUnwindCall(
+                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                    }
+                    LLVMBuildRetVoid(builder_);
+                }
+
+                // Suspend: save child in self->frame + state=N + ret void.
+                LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+                LLVMValueRef suspendFrame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "await.self.frame.addr2"), "await.self.frame");
+                LLVMBuildStore(
+                    builder_, LLVMBuildLoad2(builder_, carrier, childSlot, "await.child.to.save"),
+                    suspendFrame);
+                LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
+                LLVMBuildRetVoid(builder_);
+
+                // Ready: load result (immediate = result offset).
+                LLVMPositionBuilderAtEnd(builder_, readyBlock);
+                LLVMTypeRef resultType = llvmType(node->typeKey, error);
+                if (resultType == nullptr) return nullptr;
+                if (childFrameOnHeap)
+                {
+                    LLVMValueRef childFramePtr = LLVMBuildLoad2(
+                        builder_, LLVMPointerTypeInContext(context_, 0),
+                        byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
+                    LLVMValueRef freeArgs[] = {childFramePtr};
+                    buildNoUnwindCall(
+                        deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+                }
+                return LLVMBuildLoad2(
+                    builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
+                    "await.result");
+            }
+
+            default:
+                return nullptr;
+        }
+    }
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -10636,412 +11052,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
                 return lowerNullConditionalArrayStore(node, error);
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
-            {
-                // NS304-T05-F03 sync context: blocking await. Poll once and read the result; no
-                // suspension (the producer cannot suspend, enforced by the Stage 34 guard).
-                if (node->integerValue == 0)
-                {
-                    if (node->children.size() != 1U)
-                        return failValue(error, "await future requires one operand");
-                    LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                    if (value == nullptr) return nullptr;
-                    LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
-                    if (carrier == nullptr) return nullptr;
-                    LLVMValueRef slot = entryBlockAlloca(
-                        carrier, structAlignmentFor(node->elementTypeKey), "await.future");
-                    if (slot == nullptr)
-                        return failValue(error, "await future could not reserve temporary storage");
-                    LLVMBuildStore(builder_, value, slot);
-                    LLVMValueRef blockingFunction = nullptr;
-                    LLVMTypeRef blockingFunctionType = nullptr;
-                    LLVMValueRef heapFrame = nullptr;
-                    if (node->calleeName.empty())
-                    {
-                        // NS304-T05-F09: await over a future VARIABLE — resolve the poll from the
-                        // future's pollFn field instead of a direct function reference.
-                        std::uint64_t pollFnOffset = 0;
-                        if (const frontend::ProjectOopMirStructLayout* layout =
-                                findStructLayout(mirModel_, node->elementTypeKey))
-                        {
-                            for (const frontend::ObjectFieldLayout& field : layout->fields)
-                                if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
-                        }
-                        LLVMValueRef pollFn = LLVMBuildLoad2(
-                            builder_, LLVMPointerTypeInContext(context_, 0),
-                            byteOffset(slot, pollFnOffset, "await.pollfn.addr"), "await.pollfn");
-                        LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
-                        blockingFunctionType = LLVMFunctionType(
-                            LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
-                        blockingFunction = pollFn;
-                    }
-                    else
-                    {
-                        const auto blockingFound = functions_.find(node->calleeName);
-                        if (blockingFound == functions_.end() || blockingFound->second.function == nullptr)
-                            return failValue(error, "async poll target was not declared: " + node->calleeName);
-                        // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited
-                        // futures across suspension) so its suspend path has valid storage.
-                        if (blockingFound->second.asyncFrameSize > 0)
-                        {
-                            const bool frameOnHeap =
-                                blockingFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
-                                blockingFound->second.asyncFrameStorage == language::FrameStorage::CallerArena;
-                            LLVMValueRef frameSlot = nullptr;
-                            if (frameOnHeap)
-                            {
-                                LLVMValueRef size = LLVMConstInt(
-                                    LLVMInt64TypeInContext(context_), blockingFound->second.asyncFrameSize, 0);
-                                LLVMValueRef allocArgs[] = {size};
-                                frameSlot = buildNoUnwindCall(
-                                    allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.frame.heap");
-                                if (frameSlot == nullptr)
-                                    return failValue(error, "await future could not reserve heap frame storage");
-                                heapFrame = frameSlot;
-                            }
-                            else
-                            {
-                                LLVMTypeRef frameType = LLVMArrayType2(
-                                    LLVMInt8TypeInContext(context_), blockingFound->second.asyncFrameSize);
-                                frameSlot = entryBlockAlloca(frameType, 8, "await.frame");
-                            }
-                            if (frameSlot == nullptr)
-                                return failValue(error, "await future could not reserve frame storage");
-                            LLVMBuildStore(builder_, frameSlot, byteOffset(slot, 8, "await.frame.field"));
-                        }
-                        blockingFunctionType = blockingFound->second.functionType;
-                        blockingFunction = blockingFound->second.function;
-                    }
-                    // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
-                    // ready (state == -1). For a synchronously-completing producer this runs once.
-                    LLVMTypeRef blockingIntType = llvmType("builtin:int", error);
-                    if (blockingIntType == nullptr) return nullptr;
-                    LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
-                    LLVMBasicBlockRef notReady = appendBlock("await.poll.notready");
-                    LLVMBasicBlockRef checkError = appendBlock("await.poll.checkerror");
-                    LLVMBasicBlockRef loopDone = appendBlock("await.poll.done");
-                    LLVMBasicBlockRef loopError = appendBlock("await.poll.error");
-                    LLVMBuildBr(builder_, pollLoop);
-                    LLVMPositionBuilderAtEnd(builder_, pollLoop);
-                    // NS304-T07-F02: check the state BEFORE polling so an already-ready future
-                    // (state == -1, e.g. MoveNextAsync's eager demand) skips the poll entirely.
-                    LLVMValueRef blockingReady = LLVMConstInt(
-                        blockingIntType, static_cast<unsigned long long>(-1), 1);
-                    LLVMValueRef preState = LLVMBuildLoad2(
-                        builder_, blockingIntType, slot, "await.pre.state");
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, preState, blockingReady, "await.pre.ready"),
-                        loopDone, notReady);
-                    LLVMPositionBuilderAtEnd(builder_, notReady);
-                    LLVMValueRef blockingArgs[] = { slot };
-                    if (LLVMBuildCall2(builder_, blockingFunctionType,
-                                       blockingFunction, blockingArgs, 1U, "") == nullptr)
-                        return failValue(error, "async poll call failed");
-                    LLVMValueRef blockingState = LLVMBuildLoad2(
-                        builder_, blockingIntType, slot, "await.state");
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingReady, "await.ready"),
-                        loopDone, checkError);
-                    LLVMPositionBuilderAtEnd(builder_, checkError);
-                    LLVMValueRef blockingError = LLVMConstInt(
-                        blockingIntType, static_cast<unsigned long long>(-2), 1);
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, blockingState, blockingError, "await.errored"),
-                        loopError, pollLoop);
-
-                    // Ready: load the result and merge with the error path.
-                    LLVMPositionBuilderAtEnd(builder_, loopDone);
-                    // NS304-T07-F06: `await future;` on a Future<void> has no result slot to read —
-                    // the poll runs the future to completion and the statement discards the value.
-                    const bool voidResult = node->typeKey == "builtin:void";
-                    LLVMTypeRef blockingResultType = nullptr;
-                    LLVMValueRef readyValue = nullptr;
-                    if (!voidResult)
-                    {
-                        blockingResultType = llvmType(node->typeKey, error);
-                        if (blockingResultType == nullptr) return nullptr;
-                        readyValue = LLVMBuildLoad2(
-                            builder_, blockingResultType,
-                            byteOffset(slot, node->immediate, "await.result.addr"), "await.result");
-                    }
-                    LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
-                    if (heapFrame != nullptr)
-                    {
-                        LLVMValueRef freeArgs[] = {heapFrame};
-                        buildNoUnwindCall(
-                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
-                    }
-                    LLVMBuildBr(builder_, loopMerge);
-
-                    // NS304-T05-F07 rethrow: the future errored (state == -2). Load the carried
-                    // error slot and rethrow it into the enclosing catch (native unwind) instead of
-                    // the deterministic -1 signal.
-                    LLVMPositionBuilderAtEnd(builder_, loopError);
-                    if (heapFrame != nullptr)
-                    {
-                        LLVMValueRef freeArgs[] = {heapFrame};
-                        buildNoUnwindCall(
-                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
-                    }
-                    const std::optional<std::string_view> blockingErrorInner =
-                        language::futureErrorTypeKey(node->elementTypeKey);
-                    const std::string blockingErrorKey = blockingErrorInner.has_value()
-                        ? std::string(*blockingErrorInner) : std::string{};
-                    LLVMTypeRef blockingErrorType =
-                        blockingErrorKey.empty() ? nullptr : llvmType(blockingErrorKey, error);
-                    std::uint64_t errorOffset = 0;
-                    if (const frontend::ProjectOopMirStructLayout* blockingLayout =
-                            findStructLayout(mirModel_, node->elementTypeKey))
-                    {
-                        for (const frontend::ObjectFieldLayout& field : blockingLayout->fields)
-                            if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
-                    }
-                    if (node->exceptionTargetRegionOrdinal.has_value() &&
-                        blockingErrorType != nullptr && errorOffset != 0)
-                    {
-                        LLVMValueRef blockingException = LLVMBuildLoad2(
-                            builder_, blockingErrorType,
-                            byteOffset(slot, errorOffset, "await.error.addr"), "await.error");
-                        if (blockingException == nullptr) return nullptr;
-                        if (!lowerExceptionalTransfer(blockingException, node, error)) return nullptr;
-                    }
-                    else
-                    {
-                        // No enclosing catch (or a non-throwing future): keep the deterministic
-                        // signal, which the caller observes as the defined error exit.
-                        LLVMBuildBr(builder_, loopMerge);
-                    }
-
-                    LLVMPositionBuilderAtEnd(builder_, loopMerge);
-                    if (voidResult)
-                    {
-                        // A blocking await of a Future<void> runs it to completion and yields no
-                        // value; the expression statement discards the placeholder below.
-                        return LLVMConstNull(LLVMInt8TypeInContext(context_));
-                    }
-                    LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, blockingResultType, "await.value");
-                    if (node->exceptionTargetRegionOrdinal.has_value() &&
-                        blockingErrorType != nullptr && errorOffset != 0)
-                    {
-                        LLVMAddIncoming(awaitPhi, &readyValue, &loopDone, 1);
-                    }
-                    else
-                    {
-                        LLVMValueRef incomingValues[] = {
-                            readyValue, LLVMConstInt(blockingResultType, static_cast<unsigned long long>(-1), 1) };
-                        LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
-                        LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
-                    }
-                    return awaitPhi;
-                }
-
-                // NS304-T05-F03 suspend/resume. `self` is the poll's parameter 0 (future:<T>*);
-                // the future layout is { i32 state@0, void* frame@8, T result@16 }.
-                if (node->children.size() != 1U)
-                    return failValue(error, "await future requires one operand");
-                if (parameterStorage_.empty())
-                    return failValue(error, "await future has no poll self parameter");
-                // parameterStorage_[0] is the address of the self parameter slot; load the future
-                // pointer out of it before dereferencing the future's fields.
-                LLVMValueRef self = LLVMBuildLoad2(
-                    builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
-                    "await.self");
-                LLVMTypeRef intType = llvmType("builtin:int", error);
-                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
-                if (intType == nullptr || carrier == nullptr) return nullptr;
-
-                LLVMValueRef childSlot = entryBlockAlloca(
-                    carrier, structAlignmentFor(node->elementTypeKey), "await.child");
-                if (childSlot == nullptr)
-                    return failValue(error, "await future could not reserve child storage");
-                // NS304-T05-F08: the awaited producer's frame storage (heap vs stack) is a compile-time
-                // property, hoisted so both the entry allocation and the terminal free agree.
-                const auto entryFound = functions_.find(node->calleeName);
-                const bool childFrameOnHeap = entryFound != functions_.end() &&
-                    (entryFound->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
-                     entryFound->second.asyncFrameStorage == language::FrameStorage::CallerArena);
-                const std::uint64_t childFrameSize =
-                    entryFound != functions_.end() ? entryFound->second.asyncFrameSize : 0;
-
-                // 1. Select: entry (self->state == 0) → fresh child; resume → self->frame (slot 0).
-                LLVMValueRef selfState = LLVMBuildLoad2(builder_, intType, self, "await.self.state");
-                LLVMBasicBlockRef entryBlock = appendBlock("await.entry");
-                LLVMBasicBlockRef resumeBlock = appendBlock("await.resume");
-                LLVMBasicBlockRef pollBlock = appendBlock("await.poll");
-                LLVMBuildCondBr(
-                    builder_,
-                    LLVMBuildICmp(builder_, LLVMIntEQ, selfState, LLVMConstInt(intType, 0, 0), "await.is.entry"),
-                    entryBlock, resumeBlock);
-
-                // Entry: lower the child call → store in childSlot.
-                LLVMPositionBuilderAtEnd(builder_, entryBlock);
-                LLVMValueRef fresh = lowerExpression(node->children.front().get(), error);
-                if (fresh == nullptr) return nullptr;
-                LLVMBuildStore(builder_, fresh, childSlot);
-                // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
-                if (childFrameSize > 0)
-                {
-                    LLVMValueRef frameSlot = nullptr;
-                    if (childFrameOnHeap)
-                    {
-                        LLVMValueRef size = LLVMConstInt(
-                            LLVMInt64TypeInContext(context_), childFrameSize, 0);
-                        LLVMValueRef allocArgs[] = {size};
-                        frameSlot = buildNoUnwindCall(
-                            allocationFunctionType_, allocationFunction_, allocArgs, 1, "await.child.frame.heap");
-                        if (frameSlot == nullptr)
-                            return failValue(error, "await future could not reserve child heap frame storage");
-                    }
-                    else
-                    {
-                        LLVMTypeRef frameType = LLVMArrayType2(
-                            LLVMInt8TypeInContext(context_), childFrameSize);
-                        frameSlot = entryBlockAlloca(frameType, 8, "await.child.frame");
-                    }
-                    if (frameSlot == nullptr)
-                        return failValue(error, "await future could not reserve child frame storage");
-                    LLVMBuildStore(builder_, frameSlot, byteOffset(childSlot, 8, "await.child.frame.field"));
-                }
-                LLVMBuildBr(builder_, pollBlock);
-
-                // Resume: load self->frame (offset 8) → childSlot.
-                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
-                LLVMValueRef framePtr = LLVMBuildLoad2(
-                    builder_, LLVMPointerTypeInContext(context_, 0),
-                    byteOffset(self, 8, "await.self.frame.addr"), "await.self.frame");
-                LLVMBuildStore(
-                    builder_, LLVMBuildLoad2(builder_, carrier, framePtr, "await.saved.child"), childSlot);
-                LLVMBuildBr(builder_, pollBlock);
-
-                // Poll: call G$poll(&childSlot) — or the future's pollFn for a variable await.
-                LLVMPositionBuilderAtEnd(builder_, pollBlock);
-                LLVMValueRef pollFunction = nullptr;
-                LLVMTypeRef pollFunctionType = nullptr;
-                if (node->calleeName.empty())
-                {
-                    // NS304-T05-F09: variable await — resolve the poll from the future's pollFn.
-                    std::uint64_t pollFnOffset = 0;
-                    if (const frontend::ProjectOopMirStructLayout* layout =
-                            findStructLayout(mirModel_, node->elementTypeKey))
-                    {
-                        for (const frontend::ObjectFieldLayout& field : layout->fields)
-                            if (field.memberOrdinal == 3) { pollFnOffset = field.offset; break; }
-                    }
-                    pollFunction = LLVMBuildLoad2(
-                        builder_, LLVMPointerTypeInContext(context_, 0),
-                        byteOffset(childSlot, pollFnOffset, "await.child.pollfn"), "await.child.pollfn");
-                    LLVMTypeRef pollParamTypes[] = { LLVMPointerTypeInContext(context_, 0) };
-                    pollFunctionType = LLVMFunctionType(
-                        LLVMVoidTypeInContext(context_), pollParamTypes, 1, 0);
-                }
-                else
-                {
-                    const auto found = functions_.find(node->calleeName);
-                    if (found == functions_.end() || found->second.function == nullptr)
-                        return failValue(error, "async poll target was not declared: " + node->calleeName);
-                    pollFunction = found->second.function;
-                    pollFunctionType = found->second.functionType;
-                }
-                LLVMValueRef pollArgs[] = { childSlot };
-                if (LLVMBuildCall2(builder_, pollFunctionType, pollFunction,
-                                   pollArgs, 1U, "") == nullptr)
-                    return failValue(error, "async poll call failed");
-
-                // 2. Check pending: child.state == -1 (ready) → extract; child.state == -2
-                // (ReadyError) → propagate the error to the parent; else suspend. The error path
-                // only exists for a throwing future (one with an error slot).
-                LLVMValueRef childState = LLVMBuildLoad2(
-                    builder_, intType, childSlot, "await.child.state");
-                LLVMValueRef readyConst = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
-                const std::optional<std::string_view> errorInner =
-                    language::futureErrorTypeKey(node->elementTypeKey);
-                const std::string errorKey = errorInner.has_value()
-                    ? std::string(*errorInner) : std::string{};
-                LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
-                std::uint64_t errorOffset = 0;
-                if (const frontend::ProjectOopMirStructLayout* errorLayout =
-                        findStructLayout(mirModel_, node->elementTypeKey))
-                {
-                    for (const frontend::ObjectFieldLayout& field : errorLayout->fields)
-                        if (field.memberOrdinal == 4) { errorOffset = field.offset; break; }
-                }
-                const bool hasErrorSlot = errorType != nullptr && errorOffset != 0;
-
-                LLVMBasicBlockRef readyBlock = appendBlock("await.ready");
-                LLVMBasicBlockRef suspendBlock = appendBlock("await.suspend");
-                if (!hasErrorSlot)
-                {
-                    // Non-throwing child: only ready vs suspend.
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
-                        readyBlock, suspendBlock);
-                }
-                else
-                {
-                    // ReadyError: child errored. Propagate the carried error into the parent
-                    // future's error slot and mark the parent errored (state == -2) — no unwind.
-                    LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
-                    LLVMBasicBlockRef errorCheckBlock = appendBlock("await.errorcheck");
-                    LLVMBasicBlockRef errorBlock = appendBlock("await.error");
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
-                        readyBlock, errorCheckBlock);
-                    LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
-                    LLVMBuildCondBr(
-                        builder_,
-                        LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
-                        errorBlock, suspendBlock);
-                    LLVMPositionBuilderAtEnd(builder_, errorBlock);
-                    LLVMValueRef childError = LLVMBuildLoad2(
-                        builder_, errorType,
-                        byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
-                    LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
-                    LLVMBuildStore(builder_, errorConst, self);
-                    if (childFrameOnHeap)
-                    {
-                        LLVMValueRef childFramePtr = LLVMBuildLoad2(
-                            builder_, LLVMPointerTypeInContext(context_, 0),
-                            byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
-                        LLVMValueRef freeArgs[] = {childFramePtr};
-                        buildNoUnwindCall(
-                            deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
-                    }
-                    LLVMBuildRetVoid(builder_);
-                }
-
-                // Suspend: save child in self->frame + state=N + ret void.
-                LLVMPositionBuilderAtEnd(builder_, suspendBlock);
-                LLVMValueRef suspendFrame = LLVMBuildLoad2(
-                    builder_, LLVMPointerTypeInContext(context_, 0),
-                    byteOffset(self, 8, "await.self.frame.addr2"), "await.self.frame");
-                LLVMBuildStore(
-                    builder_, LLVMBuildLoad2(builder_, carrier, childSlot, "await.child.to.save"),
-                    suspendFrame);
-                LLVMBuildStore(builder_, LLVMConstInt(intType, node->integerValue, 0), self);
-                LLVMBuildRetVoid(builder_);
-
-                // Ready: load result (immediate = result offset).
-                LLVMPositionBuilderAtEnd(builder_, readyBlock);
-                LLVMTypeRef resultType = llvmType(node->typeKey, error);
-                if (resultType == nullptr) return nullptr;
-                if (childFrameOnHeap)
-                {
-                    LLVMValueRef childFramePtr = LLVMBuildLoad2(
-                        builder_, LLVMPointerTypeInContext(context_, 0),
-                        byteOffset(childSlot, 8, "await.child.frame.heapfree"), "await.child.frame.heapfree");
-                    LLVMValueRef freeArgs[] = {childFramePtr};
-                    buildNoUnwindCall(
-                        deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
-                }
-                return LLVMBuildLoad2(
-                    builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
-                    "await.result");
-            }
-
+                return lowerAwaitExpression(node, error);
             case frontend::ProjectOopMirNodeKind::PollAddress:
             {
                 // NS304-T05-F09: the poll function's address, stored into the future's pollFn.
