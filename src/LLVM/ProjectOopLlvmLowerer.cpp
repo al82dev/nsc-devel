@@ -9853,26 +9853,7 @@ private:
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
-            {
-                if (node->children.size() != 1 || node->children.front() == nullptr ||
-                    !node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value())
-                {
-                    return failValue(
-                        error, "NSC-LIMIT-021 owned temporary borrow is missing value/storage/cleanup identity");
-                }
-                const auto storage = localStorage_.find(*node->localOrdinal);
-                if (storage == localStorage_.end() || storage->second == nullptr)
-                {
-                    return failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot");
-                }
-                // Evaluate before activating the cleanup: if construction itself throws, no owner
-                // exists. Once stored, later arguments and the call see this region and unwind it.
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMBuildStore(builder_, value, storage->second);
-                activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Conditional:
@@ -9888,16 +9869,7 @@ private:
                     ? matchValueStack_.back().second
                     : matchValueStack_.back().first;
             case frontend::ProjectOopMirNodeKind::OverflowPolicy:
-            {
-                // NS304-T15-F05: the policy scopes the operations inside the wrapped expression.
-                // `saturating`/`checked`/`unchecked`/`wrapping` reach the decimal ops via this
-                // single-threaded flag; wrapping/unchecked for decimal are rejected in Sema.
-                const std::string previous = currentOverflowPolicy_;
-                currentOverflowPolicy_ = node->stringValue;
-                LLVMValueRef result = lowerExpression(node->children.front().get(), error);
-                currentOverflowPolicy_ = previous;
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullCoalescing:
                 return lowerNullCoalescing(node, error);
             case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
@@ -10482,6 +10454,7 @@ private:
             std::uint8_t phase = 0;     // 0 = evaluate the operand, 1 = compute.
             LLVMValueRef lhs = nullptr; // the left operand (binary) / the retained depth (cleanup).
             std::size_t retainedDepth = 0; // the cleanup depth before the wrapped child.
+            std::string overflowPolicy = {}; // the saved overflow policy (OverflowPolicy).
         };
         std::vector<Frame> frames;
         std::vector<LLVMValueRef> values;
@@ -10750,6 +10723,35 @@ private:
                 values.push_back(byteOffset(receiver, current->immediate, "future.field.addr"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr ||
+                        !current->localOrdinal.has_value() || !current->cleanupRegionOrdinal.has_value())
+                    {
+                        values.push_back(failValue(
+                            error, "NSC-LIMIT-021 owned temporary borrow is missing value/storage/cleanup identity"));
+                        continue;
+                    }
+                    const auto storage = localStorage_.find(*current->localOrdinal);
+                    if (storage == localStorage_.end() || storage->second == nullptr)
+                    {
+                        values.push_back(failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, storage->second, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMBuildStore(builder_, value, frame.lhs);
+                activeCleanupRegions_.push_back(*current->cleanupRegionOrdinal);
+                values.push_back(value);
+                continue;
+            }
             if (current->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup)
             {
                 if (frame.phase == 0)
@@ -10775,6 +10777,21 @@ private:
                     if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); continue; }
                 }
                 values.push_back(value);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::OverflowPolicy)
+            {
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0, currentOverflowPolicy_});
+                    currentOverflowPolicy_ = current->stringValue;
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef result = values.back();
+                values.pop_back();
+                currentOverflowPolicy_ = frame.overflowPolicy;
+                values.push_back(result);
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::BorrowValue)
