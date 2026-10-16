@@ -2,11 +2,13 @@
 
 #include "nativesharp/Basic/Sha256.h"
 
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <fstream>
 #include <span>
 #include <system_error>
+#include <vector>
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -279,5 +281,92 @@ bool TemplateParseCache::store(
     }
     if (!replaceFileAtomically(temporary, payloadFile, error)) return false;
     return writeMetadataAtomically(metadataFile, key, digest, payload.size(), error);
+}
+
+// NSC305-C05. Evicts entries (oldest publication first) until the total is under `maximumBytes`.
+bool TemplateParseCache::prune(
+    std::uintmax_t maximumBytes,
+    std::size_t& evictedEntries,
+    std::uintmax_t& evictedBytes,
+    std::string& error) const
+{
+    evictedEntries = 0;
+    evictedBytes = 0;
+    error.clear();
+    if (!enabled()) return true;
+    const std::filesystem::path templates = root_ / "templates";
+    std::error_code filesystemError;
+    const bool templatesExist = std::filesystem::is_directory(templates, filesystemError);
+    if (filesystemError)
+    {
+        if (filesystemError == std::errc::no_such_file_or_directory) return true;
+        error = "cannot inspect template cache for eviction: " + filesystemError.message();
+        return false;
+    }
+    if (!templatesExist) return true;
+
+    struct Entry final
+    {
+        std::string key;
+        std::filesystem::path payload;
+        std::filesystem::path metadata;
+        std::filesystem::file_time_type publication;
+        std::uintmax_t size;
+    };
+    std::vector<Entry> entries;
+    std::uintmax_t totalBytes = 0;
+    std::filesystem::recursive_directory_iterator iterator(
+        templates, std::filesystem::directory_options::skip_permission_denied, filesystemError);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!filesystemError && iterator != end)
+    {
+        const std::filesystem::directory_entry entry = *iterator;
+        iterator.increment(filesystemError);
+        const bool regular = entry.is_regular_file(filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        if (!regular || entry.path().extension() != ".meta") continue;
+        const std::string key = entry.path().stem().string();
+        if (!validKey(key)) continue;
+        const std::filesystem::path payload = payloadPath(root_, key);
+        const std::uintmax_t size = std::filesystem::file_size(payload, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        std::filesystem::file_time_type publication =
+            std::filesystem::last_write_time(entry, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        totalBytes += size;
+        entries.push_back(Entry{key, payload, entry.path(), publication, size});
+    }
+    if (filesystemError)
+    {
+        error = "cannot iterate template cache for eviction: " + filesystemError.message();
+        return false;
+    }
+    if (totalBytes <= maximumBytes) return true;
+
+    std::sort(entries.begin(), entries.end(),
+        [](const Entry& left, const Entry& right) { return left.publication < right.publication; });
+    for (const Entry& entry : entries)
+    {
+        if (totalBytes <= maximumBytes) break;
+        std::error_code ignored;
+        std::filesystem::remove(entry.metadata, ignored);
+        std::filesystem::remove(entry.payload, ignored);
+        ++evictedEntries;
+        evictedBytes += entry.size;
+        totalBytes -= entry.size;
+    }
+    return true;
 }
 } // namespace nativesharp::frontend

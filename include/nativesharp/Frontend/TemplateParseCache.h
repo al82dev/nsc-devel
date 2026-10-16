@@ -32,6 +32,14 @@ public:
         std::string_view payload,
         std::string& error) const;
 
+    // NSC305-C05. Evicts entries (oldest publication first) until the total stays under
+    // `maximumBytes`. Reports the evicted count and bytes.
+    bool prune(
+        std::uintmax_t maximumBytes,
+        std::size_t& evictedEntries,
+        std::uintmax_t& evictedBytes,
+        std::string& error) const;
+
 private:
     std::filesystem::path root_;
 };
