@@ -10883,6 +10883,29 @@ private:
                 frames.push_back({current->children.front().get(), 0, nullptr});
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::DirectStaticCall)
+            {
+                if (current->booleanValue)
+                {
+                    values.push_back(lowerDirectClosureCall(current, error));
+                    continue;
+                }
+                if (frame.phase < current->children.size())
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(current->children.size());
+                for (std::size_t i = current->children.size(); i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerStaticCall(current, error, &argumentOverrides));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13734,8 +13757,7 @@ private:
                     ? lowerNullConditionalCall(node, error)
                     : lowerCall(node, error);
             case frontend::ProjectOopMirNodeKind::DirectStaticCall:
-                return node->booleanValue ? lowerDirectClosureCall(node, error)
-                                          : lowerStaticCall(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
                 return node->nullConditionalCall
                     ? lowerNullConditionalCall(node, error)
