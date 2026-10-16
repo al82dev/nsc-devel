@@ -9644,6 +9644,69 @@ private:
         }
     }
 
+    // NSC305-L04. The address sub-family of the member/index family. These cases compute an address
+    // (not a value); the machine dispatches them directly.
+    LLVMValueRef lowerAddressExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::ParameterAddress:
+            {
+                if (!node->parameterOrdinal.has_value()) return nullptr;
+                // NS304-T07-F06: in $moveNext/$poll a captured parameter lives in the frame. A
+                // captured `ref` parameter stores the ADDRESS in its slot; returning that loaded
+                // pointer lets a store write through to the original. A value parameter returns
+                // the slot address itself.
+                if (currentMirFunction_ != nullptr &&
+                    !currentMirFunction_->asyncFrameParameters.empty())
+                {
+                    for (const auto& [paramOrdinal, offset, typeKey] :
+                         currentMirFunction_->asyncFrameParameters)
+                    {
+                        // NS304-T07-F06: ordinal + physical type must both match (see ParameterValue).
+                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
+                        {
+                            LLVMValueRef self = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
+                                "paramaddr.self");
+                            LLVMValueRef frame = LLVMBuildLoad2(
+                                builder_, LLVMPointerTypeInContext(context_, 0),
+                                byteOffset(self, 8, "paramaddr.frame.addr"), "paramaddr.frame");
+                            LLVMValueRef slot = byteOffset(frame, offset, "paramaddr.frame.slot");
+                            if (typeKey.ends_with("*"))
+                            {
+                                LLVMTypeRef slotType = llvmType(typeKey, error);
+                                if (slotType == nullptr) return nullptr;
+                                return LLVMBuildLoad2(
+                                    builder_, slotType, slot, "paramaddr.frame.ptr");
+                            }
+                            return slot;
+                        }
+                    }
+                }
+                return parameterStorage_[*node->parameterOrdinal];
+            }
+            case frontend::ProjectOopMirNodeKind::LocalAddress:
+                return node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
+            case frontend::ProjectOopMirNodeKind::FieldAddress:
+            case frontend::ProjectOopMirNodeKind::BitFieldAddress:
+                return fieldAddress(node, error);
+            case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
+                return staticFieldAddress(node, error);
+            case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
+            {
+                if (node->children.empty())
+                    return failValue(error, "future field address has no future receiver");
+                LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+                if (receiver == nullptr) return nullptr;
+                return byteOffset(receiver, node->immediate, "future.field.addr");
+            }
+            default:
+                return nullptr;
+        }
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -9670,6 +9733,15 @@ private:
             case frontend::ProjectOopMirNodeKind::Utf8StringLiteral:
             case frontend::ProjectOopMirNodeKind::EnumName:
                 return lowerLeafExpression(node, error);
+            // NSC305-L04: the address sub-family (member/index) lives in lowerAddressExpression.
+            case frontend::ProjectOopMirNodeKind::ParameterAddress:
+            case frontend::ProjectOopMirNodeKind::LocalAddress:
+            case frontend::ProjectOopMirNodeKind::FieldAddress:
+            case frontend::ProjectOopMirNodeKind::BitFieldAddress:
+            case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
+            case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
+                return lowerAddressExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -10230,60 +10302,6 @@ private:
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 return load;
             }
-            case frontend::ProjectOopMirNodeKind::ParameterAddress:
-            {
-                if (!node->parameterOrdinal.has_value()) return nullptr;
-                // NS304-T07-F06: in $moveNext/$poll a captured parameter lives in the frame. A
-                // captured `ref` parameter stores the ADDRESS in its slot; returning that loaded
-                // pointer lets a store write through to the original. A value parameter returns
-                // the slot address itself.
-                if (currentMirFunction_ != nullptr &&
-                    !currentMirFunction_->asyncFrameParameters.empty())
-                {
-                    for (const auto& [paramOrdinal, offset, typeKey] :
-                         currentMirFunction_->asyncFrameParameters)
-                    {
-                        // NS304-T07-F06: ordinal + physical type must both match (see ParameterValue).
-                        if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
-                        {
-                            LLVMValueRef self = LLVMBuildLoad2(
-                                builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
-                                "paramaddr.self");
-                            LLVMValueRef frame = LLVMBuildLoad2(
-                                builder_, LLVMPointerTypeInContext(context_, 0),
-                                byteOffset(self, 8, "paramaddr.frame.addr"), "paramaddr.frame");
-                            LLVMValueRef slot = byteOffset(frame, offset, "paramaddr.frame.slot");
-                            if (typeKey.ends_with("*"))
-                            {
-                                LLVMTypeRef slotType = llvmType(typeKey, error);
-                                if (slotType == nullptr) return nullptr;
-                                return LLVMBuildLoad2(
-                                    builder_, slotType, slot, "paramaddr.frame.ptr");
-                            }
-                            return slot;
-                        }
-                    }
-                }
-                return parameterStorage_[*node->parameterOrdinal];
-            }
-            case frontend::ProjectOopMirNodeKind::LocalAddress:
-                return node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
-            case frontend::ProjectOopMirNodeKind::FieldAddress:
-                return fieldAddress(node, error);
-            case frontend::ProjectOopMirNodeKind::BitFieldAddress:
-                return fieldAddress(node, error);
-            case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
-            case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
-                return staticFieldAddress(node, error);
-            case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
-            {
-                if (node->children.empty())
-                    return failValue(error, "future field address has no future receiver");
-                LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
-                if (receiver == nullptr) return nullptr;
-                return byteOffset(receiver, node->immediate, "future.field.addr");
-            }
-
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
             {
                 // NS304-T05-F03 sync context: blocking await. Poll once and read the result; no
