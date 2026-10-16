@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <string_view>
 #include <span>
@@ -61,6 +62,201 @@ std::string normalizeMirNodeStream(const ProjectOopMirNode* node)
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));
+}
+
+// NSC305-C04. Relocatable codec for a MIR node tree (the C4 cache payload). The syntax pointer is
+// re-linked on restore; all scalars, strings, optionals, vectors and children round-trip.
+void appendMirU32(std::string& out, std::uint32_t value)
+{
+    for (unsigned shift = 0; shift < 32U; shift += 8U)
+        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
+}
+
+void appendMirU64(std::string& out, std::uint64_t value)
+{
+    for (unsigned shift = 0; shift < 64U; shift += 8U)
+        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
+}
+
+void appendMirString(std::string& out, std::string_view value)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(value.size()));
+    out.append(value);
+}
+
+void appendMirStringVector(std::string& out, const std::vector<std::string>& values)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
+    for (const std::string& value : values) appendMirString(out, value);
+}
+
+class MirByteReader final
+{
+public:
+    explicit MirByteReader(std::string_view bytes) : bytes_(bytes) {}
+
+    bool u32(std::uint32_t& out)
+    {
+        out = 0;
+        for (unsigned shift = 0; shift < 32U; shift += 8U)
+        {
+            std::uint8_t value = 0;
+            if (!byte(value)) return false;
+            out |= static_cast<std::uint32_t>(value) << shift;
+        }
+        return true;
+    }
+    bool u64(std::uint64_t& out)
+    {
+        out = 0;
+        for (unsigned shift = 0; shift < 64U; shift += 8U)
+        {
+            std::uint8_t value = 0;
+            if (!byte(value)) return false;
+            out |= static_cast<std::uint64_t>(value) << shift;
+        }
+        return true;
+    }
+    bool string(std::string& out)
+    {
+        std::uint32_t size = 0;
+        if (!u32(size)) return false;
+        if (position_ + size > bytes_.size()) return false;
+        out.assign(bytes_.data() + position_, size);
+        position_ += size;
+        return true;
+    }
+    bool stringVector(std::vector<std::string>& out)
+    {
+        std::uint32_t count = 0;
+        if (!u32(count)) return false;
+        out.clear();
+        out.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            std::string value;
+            if (!string(value)) return false;
+            out.push_back(std::move(value));
+        }
+        return true;
+    }
+
+private:
+    bool byte(std::uint8_t& out)
+    {
+        if (position_ >= bytes_.size()) return false;
+        out = static_cast<std::uint8_t>(bytes_[position_++]);
+        return true;
+    }
+    std::string_view bytes_;
+    std::size_t position_ = 0;
+};
+
+// Serializes one node's scalar/string/flag fields (children recurse iteratively below).
+void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
+{
+    appendMirU32(out, static_cast<std::uint32_t>(node.kind));
+    appendMirString(out, node.typeKey);
+    appendMirString(out, node.elementTypeKey);
+    appendMirString(out, node.stringValue);
+    appendMirString(out, node.debugDisplayName);
+    appendMirU32(out, static_cast<std::uint32_t>(node.operation));
+    appendMirU64(out, node.immediate);
+    appendMirU64(out, node.secondaryImmediate);
+    appendMirU64(out, node.integerValue);
+    appendMirU64(out, node.bitStorageSize);
+    appendMirU64(out, node.alignment);
+    appendMirU64(out, node.resultSuccessTag);
+    appendMirU64(out, node.resultErrorTag);
+    appendMirU64(out, node.resultReturnErrorTag);
+    appendMirString(out, node.resultSourceCarrierTypeKey);
+    appendMirString(out, node.resultSourceErrorTypeKey);
+    appendMirString(out, node.resultReturnCarrierTypeKey);
+    appendMirString(out, node.resultReturnErrorTypeKey);
+    appendMirString(out, node.allocatorDeallocateCalleeName);
+    appendMirString(out, node.calleeName);
+    appendMirString(out, node.secondaryCalleeName);
+    appendMirString(out, node.resultSuccessTestCalleeName);
+    appendMirString(out, node.resultSuccessExtractorCalleeName);
+    appendMirString(out, node.resultErrorExtractorCalleeName);
+    appendMirString(out, node.resultErrorFactoryCalleeName);
+    appendMirString(out, node.resultErrorConversionCalleeName);
+    const std::uint64_t floatingBits = [&]()
+    {
+        std::uint64_t bits = 0;
+        static_assert(sizeof(double) == sizeof(std::uint64_t));
+        std::memcpy(&bits, &node.floatingValue, sizeof(bits));
+        return bits;
+    }();
+    appendMirU64(out, floatingBits);
+    appendMirU64(out, static_cast<std::uint64_t>(node.trailingLengthRelativeOffset));
+    appendMirU32(out, node.variableLengthArrayRank ? static_cast<std::uint32_t>(node.variableLengthArrayRank) : 0U);
+    appendMirU32(out, node.nativeArrayRank ? static_cast<std::uint32_t>(node.nativeArrayRank) : 0U);
+    appendMirU32(out, static_cast<std::uint32_t>(node.argumentCount));
+    appendMirStringVector(out, node.argumentTypeKeys);
+    appendMirStringVector(out, node.catchMatchedErrorTypeKeys);
+    appendMirU32(out, static_cast<std::uint32_t>(node.ownership));
+    appendMirU32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
+    appendMirU32(out, static_cast<std::uint32_t>(node.storageOwnership));
+    appendMirU32(out, static_cast<std::uint32_t>(node.captureMode));
+    // Boolean flags.
+    std::uint32_t flags = 0U;
+    auto setFlag = [&flags](std::uint32_t bit, bool value)
+    {
+        if (value) flags |= (1U << bit);
+    };
+    setFlag(0, node.booleanValue);
+    setFlag(1, node.switchHasDefault);
+    setFlag(2, node.hasTrailingLengthBounds);
+    setFlag(3, node.referenceLocal);
+    setFlag(4, node.referenceMutable);
+    setFlag(5, node.staticLocal);
+    setFlag(6, node.pinnedStorage);
+    setFlag(7, node.referenceResult);
+    setFlag(8, node.governingReference);
+    setFlag(9, node.nullConditionalCall);
+    setFlag(10, node.returnsAssignedValue);
+    setFlag(11, node.mustTailCall);
+    setFlag(12, node.automaticDestruction);
+    setFlag(13, node.variableLengthArray);
+    setFlag(14, node.placementConstructed);
+    setFlag(15, node.stackPromotedObject);
+    setFlag(16, node.volatileAccess);
+    setFlag(17, node.allocationFailureReturnsNull);
+    setFlag(18, node.zeroInitialize);
+    setFlag(19, node.baseReceiver);
+    setFlag(20, node.targetIsInterface);
+    setFlag(21, node.dynamicDestruction);
+    setFlag(22, node.valueTypeNoOpDeletion);
+    setFlag(23, node.catchAll);
+    setFlag(24, node.catchHasFilter);
+    setFlag(25, node.catchExhaustive);
+    setFlag(26, node.interfaceCleanupDispatch);
+    setFlag(27, node.inlineAssemblyHasSideEffects);
+    setFlag(28, node.inlineAssemblyClobbersMemory);
+    setFlag(29, node.inlineAssemblyClobbersFlags);
+    appendMirU32(out, flags);
+}
+
+[[maybe_unused]] std::string serializeMirNodeTree(const ProjectOopMirNode* body)
+{
+    std::string out;
+    // Iterative pre-order: each node writes its fields + a child-count marker; the marker's
+    // sentinel distinguishes a node from a null child.
+    std::vector<const ProjectOopMirNode*> work;
+    if (body != nullptr) work.push_back(body);
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        appendMirU32(out, 0xFFFFFFFFu); // node marker
+        appendMirNodeFields(out, *node);
+        appendMirU32(out, static_cast<std::uint32_t>(node->children.size()));
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            work.push_back(it->get());
+    }
+    appendMirU32(out, 0xFFFFFFFEu); // end marker
+    return out;
 }
 
 bool finalizeCleanupContract(
