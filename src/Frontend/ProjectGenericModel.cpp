@@ -2689,6 +2689,54 @@ private:
     record.syntax = deserializeAstNodeTree(arena, reader);
     return record.syntax != nullptr;
 }
+
+// NSC305-C04. Interface/implementation fingerprints for the MIR cache. A private body change updates
+// only the implementation fingerprint, so dependents that observe the interface stay valid.
+struct InterfaceFingerprint final
+{
+    std::string signature;
+    std::string layoutAbi;
+    std::vector<std::string> publicDependencies;
+};
+
+struct ImplementationFingerprint final
+{
+    std::string normalizedBody;
+    std::vector<std::string> usedInterfaces;
+};
+
+[[maybe_unused]] std::string fingerprintKey(std::string_view material)
+{
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+[[maybe_unused]] std::string interfaceFingerprintKey(const InterfaceFingerprint& fingerprint)
+{
+    std::string material = "iface\n";
+    material += fingerprint.signature;
+    material += "\n";
+    material += fingerprint.layoutAbi;
+    for (const std::string& dependency : fingerprint.publicDependencies)
+    {
+        material += "\n";
+        material += dependency;
+    }
+    return fingerprintKey(material);
+}
+
+[[maybe_unused]] std::string implementationFingerprintKey(const ImplementationFingerprint& fingerprint)
+{
+    std::string material = "impl\n";
+    material += fingerprint.normalizedBody;
+    for (const std::string& interface : fingerprint.usedInterfaces)
+    {
+        material += "\n";
+        material += interface;
+    }
+    return fingerprintKey(material);
+}
 } // namespace
 
 // NSC305-C01. Persists the collected template records to the C1 cache (the relocatable metadata
