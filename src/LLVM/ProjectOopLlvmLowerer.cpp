@@ -11497,6 +11497,34 @@ private:
                 values.push_back(lowerNullConditionalArrayLoad(current, error, frame.lhs, index));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::NullConditionalFieldStore)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "null-conditional field store MIR requires receiver and value"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef receiver = values.back();
+                    values.pop_back();
+                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, receiver, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(lowerNullConditionalFieldStore(current, error, frame.lhs, value));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11696,7 +11724,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
-                return lowerNullConditionalFieldStore(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayLoad:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
@@ -17886,11 +17914,16 @@ private:
     }
 
     LLVMValueRef lowerNullConditionalFieldStore(
-        const frontend::ProjectOopMirNode* node, std::string& error)
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr,
+        LLVMValueRef valueOverride = nullptr)
     {
         if (node->children.size() != 2)
             return failValue(error, "null-conditional field store MIR requires receiver and value");
-        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
@@ -17916,7 +17949,9 @@ private:
                 builder_, resultType, address, "nullcond.compound.load");
             if (node->volatileAccess) LLVMSetVolatile(current, 1);
         }
-        LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+        LLVMValueRef value = valueOverride != nullptr
+            ? valueOverride
+            : lowerExpression(node->children[1].get(), error);
         if (value == nullptr) return nullptr;
         if (terminated())
         {
