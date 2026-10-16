@@ -2328,6 +2328,101 @@ private:
     }
     return type;
 }
+
+// NSC305-C01. AstNode scalar/string fields (no pointers, no children, no type syntaxes): the node
+// identity and flags. The child/typeSyntax graph is the next layer.
+[[maybe_unused]] std::string serializeAstNodeScalars(const ast::AstNode& node)
+{
+    std::string out;
+    appendU32(out, static_cast<std::uint32_t>(node.kind()));
+    appendU32(out, node.range().begin().offset());
+    appendU32(out, node.range().end().offset());
+    appendString(out, node.text());
+    appendString(out, node.auxiliaryText());
+    appendString(out, node.argumentName());
+    appendString(out, node.allocatorFailureProfile());
+    appendU32(out, static_cast<std::uint32_t>(node.tokenKind()));
+    appendU32(out, static_cast<std::uint32_t>(node.modifiers().size()));
+    for (const lexer::TokenKind modifier : node.modifiers())
+        appendU32(out, static_cast<std::uint32_t>(modifier));
+    appendStringVector(out, node.genericParameters());
+    appendString(out, node.lifetimeName());
+    appendByte(out, node.flag() ? 1U : 0U);
+    appendByte(out, node.isReference() ? 1U : 0U);
+    appendByte(out, node.isVariadic() ? 1U : 0U);
+    appendByte(out, node.isUnsafe() ? 1U : 0U);
+    appendByte(out, static_cast<std::uint8_t>(node.floatingPointMode()));
+    appendByte(out, static_cast<std::uint8_t>(node.ffiUnwindPolicy()));
+    appendU64(out, node.integerValue());
+    std::uint64_t floatingBits = 0;
+    const double floatingValue = node.floatingValue();
+    std::memcpy(&floatingBits, &floatingValue, sizeof(floatingBits));
+    appendU64(out, floatingBits);
+    return out;
+}
+
+// NSC305-C01. Inverse of serializeAstNodeScalars (allocates the node into `arena`).
+[[maybe_unused]] ast::AstNode* deserializeAstNodeScalars(
+    ast::AstArena& arena, ByteReader& reader)
+{
+    std::uint32_t kind = 0;
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+    if (!reader.u32(kind) || !reader.u32(begin) || !reader.u32(end)) return nullptr;
+    ast::AstNode* node = arena.make<ast::AstNode>(
+        static_cast<ast::AstNodeKind>(kind),
+        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}});
+    std::string text;
+    std::string auxiliaryText;
+    std::string argumentName;
+    std::string allocatorFailureProfile;
+    std::uint32_t tokenKind = 0;
+    std::uint32_t modifierCount = 0;
+    std::string lifetimeName;
+    std::uint8_t flag = 0;
+    std::uint8_t reference = 0;
+    std::uint8_t variadic = 0;
+    std::uint8_t unsafe = 0;
+    std::uint8_t floatingPointMode = 0;
+    std::uint8_t ffiUnwind = 0;
+    std::uint64_t integerValue = 0;
+    std::uint64_t floatingBits = 0;
+    std::vector<std::string> genericParameters;
+    if (!reader.string(text) || !reader.string(auxiliaryText) ||
+        !reader.string(argumentName) || !reader.string(allocatorFailureProfile) ||
+        !reader.u32(tokenKind) || !reader.u32(modifierCount))
+        return nullptr;
+    node->setText(std::move(text));
+    node->setAuxiliaryText(std::move(auxiliaryText));
+    node->setArgumentName(std::move(argumentName));
+    node->setAllocatorFailureProfile(std::move(allocatorFailureProfile));
+    node->setTokenKind(static_cast<lexer::TokenKind>(tokenKind));
+    for (std::uint32_t index = 0; index < modifierCount; ++index)
+    {
+        std::uint32_t modifier = 0;
+        if (!reader.u32(modifier)) return nullptr;
+        node->addModifier(static_cast<lexer::TokenKind>(modifier));
+    }
+    if (!reader.stringVector(genericParameters) || !reader.string(lifetimeName) ||
+        !reader.byte(flag) || !reader.byte(reference) || !reader.byte(variadic) ||
+        !reader.byte(unsafe) || !reader.byte(floatingPointMode) || !reader.byte(ffiUnwind) ||
+        !reader.u64(integerValue) || !reader.u64(floatingBits))
+        return nullptr;
+    for (const std::string& parameter : genericParameters)
+        node->addGenericParameter(parameter);
+    node->setLifetimeName(std::move(lifetimeName));
+    node->setFlag(flag != 0U);
+    node->setReference(reference != 0U);
+    node->setVariadic(variadic != 0U);
+    node->setUnsafe(unsafe != 0U);
+    node->setFloatingPointMode(static_cast<ast::FloatingPointModeSyntaxKind>(floatingPointMode));
+    node->setFfiUnwindPolicy(static_cast<ast::FfiUnwindSyntaxKind>(ffiUnwind));
+    node->setIntegerValue(integerValue);
+    double floatingValue = 0.0;
+    std::memcpy(&floatingValue, &floatingBits, sizeof(floatingValue));
+    node->setFloatingValue(floatingValue);
+    return node;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
