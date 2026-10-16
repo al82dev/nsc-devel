@@ -711,6 +711,19 @@ private:
         // caso normal, donde el nombre lo deriva la propia clave.
         std::string_view sharedName = {});
 
+    // NSC305-G07. Shared steps of ensureTypeSpecialization/ensureMethodSpecialization so the two
+    // no longer duplicate the key, spelling/identity and substitution/pack setup. Pure helpers;
+    // behavior is unchanged.
+    std::string computeSpecializationKey(
+        const GenericTemplateRecord& record,
+        std::span<ast::TypeSyntax* const> arguments,
+        std::vector<std::string>& spellings,
+        std::vector<std::string>& identities) const;
+    void prepareSpecializationSubstitutions(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+
     ast::TypeSyntax* cloneType(
         ast::AstArena& arena,
         const ast::TypeSyntax* source,

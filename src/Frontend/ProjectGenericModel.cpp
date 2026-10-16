@@ -4408,6 +4408,49 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     return unico(false);
 }
 
+// NSC305-G07. Shared steps of the ensure*Specialization pair; see the header.
+std::string ProjectGenericModel::computeSpecializationKey(
+    const GenericTemplateRecord& record,
+    std::span<ast::TypeSyntax* const> arguments,
+    std::vector<std::string>& spellings,
+    std::vector<std::string>& identities) const
+{
+    spellings.reserve(arguments.size());
+    identities.reserve(arguments.size());
+    for (const ast::TypeSyntax* argument : arguments)
+    {
+        spellings.push_back(typeSpelling(argument));
+        identities.push_back(typeSpecializationIdentity(argument));
+    }
+    std::ostringstream keyBuilder;
+    keyBuilder << record.canonicalKey << '<';
+    for (std::size_t index = 0; index < spellings.size(); ++index)
+    {
+        if (index != 0) keyBuilder << ',';
+        keyBuilder << identities[index];
+    }
+    keyBuilder << '>';
+    return keyBuilder.str();
+}
+
+void ProjectGenericModel::prepareSpecializationSubstitutions(
+    TemplateState& state,
+    std::span<ast::TypeSyntax* const> arguments,
+    std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+{
+    const std::size_t fixedParameterCount = trailingPackIndex(state.record).value_or(
+        state.record.parameters.size());
+    for (std::size_t index = 0; index < fixedParameterCount; ++index)
+        substitutions.emplace(state.record.parameters[index], arguments[index]);
+    activePackSubstitutions_.clear();
+    if (const auto pack = trailingPackIndex(state.record); pack.has_value())
+    {
+        auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
+        for (std::size_t index = *pack; index < arguments.size(); ++index)
+            values.push_back(arguments[index]);
+    }
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
@@ -4427,23 +4470,8 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
-    spellings.reserve(arguments.size());
-    identities.reserve(arguments.size());
-    for (const ast::TypeSyntax* argument : arguments)
-    {
-        spellings.push_back(typeSpelling(argument));
-        identities.push_back(typeSpecializationIdentity(argument));
-    }
-
-    std::ostringstream keyBuilder;
-    keyBuilder << state.record.canonicalKey << '<';
-    for (std::size_t i = 0; i < spellings.size(); ++i)
-    {
-        if (i != 0) keyBuilder << ',';
-        keyBuilder << identities[i];
-    }
-    keyBuilder << '>';
-    const std::string key = keyBuilder.str();
+    const std::string key = computeSpecializationKey(
+        state.record, arguments, spellings, identities);
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
     {
         telemetry_.noteSpecializationHit();
@@ -4494,17 +4522,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    const std::size_t fixedParameterCount = trailingPackIndex(state.record).value_or(
-        state.record.parameters.size());
-    for (std::size_t index = 0; index < fixedParameterCount; ++index)
-        substitutions.emplace(state.record.parameters[index], arguments[index]);
-    activePackSubstitutions_.clear();
-    if (const auto pack = trailingPackIndex(state.record); pack.has_value())
-    {
-        auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
-        for (std::size_t index = *pack; index < arguments.size(); ++index)
-            values.push_back(arguments[index]);
-    }
+    prepareSpecializationSubstitutions(state, arguments, substitutions);
     packMaterializationError_.clear();
     packMaterializationErrorRange_ = {};
     activeAssociatedProjections_.clear();
@@ -4599,23 +4617,8 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
-    spellings.reserve(arguments.size());
-    identities.reserve(arguments.size());
-    for (const ast::TypeSyntax* argument : arguments)
-    {
-        spellings.push_back(typeSpelling(argument));
-        identities.push_back(typeSpecializationIdentity(argument));
-    }
-
-    std::ostringstream keyBuilder;
-    keyBuilder << state.record.canonicalKey << '<';
-    for (std::size_t i = 0; i < spellings.size(); ++i)
-    {
-        if (i != 0) keyBuilder << ',';
-        keyBuilder << identities[i];
-    }
-    keyBuilder << '>';
-    const std::string key = keyBuilder.str();
+    const std::string key = computeSpecializationKey(
+        state.record, arguments, spellings, identities);
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
     {
         telemetry_.noteSpecializationHit();
@@ -4684,17 +4687,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    const std::size_t fixedParameterCount = trailingPackIndex(state.record).value_or(
-        state.record.parameters.size());
-    for (std::size_t index = 0; index < fixedParameterCount; ++index)
-        substitutions.emplace(state.record.parameters[index], arguments[index]);
-    activePackSubstitutions_.clear();
-    if (const auto pack = trailingPackIndex(state.record); pack.has_value())
-    {
-        auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
-        for (std::size_t index = *pack; index < arguments.size(); ++index)
-            values.push_back(arguments[index]);
-    }
+    prepareSpecializationSubstitutions(state, arguments, substitutions);
     packMaterializationError_.clear();
     packMaterializationErrorRange_ = {};
     activeAssociatedProjections_.clear();
