@@ -12137,6 +12137,34 @@ private:
                     threadCreateFunctionType_, threadCreateFunction_, args, 1, "thread.create"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreThreadJoin ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreThreadDetach)
+            {
+                const bool join = current->kind == frontend::ProjectOopMirNodeKind::CoreThreadJoin;
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 ||
+                        (join && threadJoinFunction_ == nullptr) ||
+                        (!join && threadDetachFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.1 Thread join/detach requires one nint argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef handle = values.back();
+                values.pop_back();
+                if (handle == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {handle};
+                if (join)
+                    buildNoUnwindCall(threadJoinFunctionType_, threadJoinFunction_, args, 1, "");
+                else
+                    buildNoUnwindCall(threadDetachFunctionType_, threadDetachFunction_, args, 1, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12756,25 +12784,8 @@ private:
             // void, this case block synthesizes its own harmless i1 dummy value after the call"
             // pattern CoreDirectoryDelete/CoreFileDelete above already use.
             case frontend::ProjectOopMirNodeKind::CoreThreadJoin:
-            {
-                if (node->children.size() != 1 || threadJoinFunction_ == nullptr)
-                    return failValue(error, "Stage 54.1 Thread.ThreadJoin requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(threadJoinFunctionType_, threadJoinFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreThreadDetach:
-            {
-                if (node->children.size() != 1 || threadDetachFunction_ == nullptr)
-                    return failValue(error, "Stage 54.1 Thread.ThreadDetach requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(threadDetachFunctionType_, threadDetachFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 54.2 "Atomics". Increment/Decrement take one operand -- a builtin:int*/
             // builtin:long* location -- and return a real i32/i64 result (the new value). No
