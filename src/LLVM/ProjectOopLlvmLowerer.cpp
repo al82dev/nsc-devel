@@ -11020,6 +11020,58 @@ private:
                 values.push_back(lowerStaticCall(current, error, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::ObjectDestroy)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "item 319 object destruction requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef object = values.back();
+                values.pop_back();
+                if (object == nullptr) { values.push_back(nullptr); continue; }
+                if (!current->dynamicDestruction)
+                {
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                    continue;
+                }
+                if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                {
+                    values.push_back(failValue(error, "item 319 object destruction has no descriptor ABI"));
+                    continue;
+                }
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef isNull = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, object, LLVMConstNull(ptr), "destroy.object.isnull");
+                LLVMBasicBlockRef destroyBlock = appendBlock("destroy.object");
+                LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
+                LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+                LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+                LLVMValueRef descriptor = LLVMBuildLoad2(
+                    builder_, ptr, object, "destroy.object.descriptor");
+                LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, descriptor, 7, "destroy.object.entry.addr");
+                LLVMValueRef destructionEntry = LLVMBuildLoad2(
+                    builder_, ptr, entryAddress, "destroy.object.entry");
+                LLVMValueRef arguments[] = {object};
+                if (buildPotentiallyThrowingCall(
+                        destructionEntryFunctionType_, destructionEntry, arguments, 1, "", error) == nullptr &&
+                    !error.empty())
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+                LLVMPositionBuilderAtEnd(builder_, doneBlock);
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13921,7 +13973,7 @@ private:
             case frontend::ProjectOopMirNodeKind::Deallocate:
                 return lowerDeallocation(node, error);
             case frontend::ProjectOopMirNodeKind::ObjectDestroy:
-                return lowerObjectDestruction(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Assert:
             case frontend::ProjectOopMirNodeKind::Assume:
             {
