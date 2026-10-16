@@ -325,6 +325,30 @@ LLVMTypeRef mapLlvmType(
     return mapNonBuiltinLlvmType(context, nameLookup, mirModel, typeKey, error);
 }
 
+// NSC305-L03. Adds the module-level debug flags (moved out of initializeDebugInformation as a pure
+// move).
+void configureDebugModuleFlags(LLVMModuleRef module, LLVMContextRef context)
+{
+    LLVMSetIsNewDbgInfoFormat(module, 1);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMMetadataRef debugVersion = LLVMValueAsMetadata(
+        LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0));
+    LLVMMetadataRef codeView = LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0));
+    LLVMMetadataRef nativeSharpDebugMajor = LLVMValueAsMetadata(
+        LLVMConstInt(i32, kDebugMetadataMajor, 0));
+    LLVMMetadataRef nativeSharpDebugMinor = LLVMValueAsMetadata(
+        LLVMConstInt(i32, kDebugMetadataMinor, 0));
+    LLVMAddModuleFlag(
+        module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 18, debugVersion);
+    LLVMAddModuleFlag(module, LLVMModuleFlagBehaviorWarning, "CodeView", 8, codeView);
+    LLVMAddModuleFlag(
+        module, LLVMModuleFlagBehaviorError,
+        "NativeSharp Debug Metadata Major", 32, nativeSharpDebugMajor);
+    LLVMAddModuleFlag(
+        module, LLVMModuleFlagBehaviorWarning,
+        "NativeSharp Debug Metadata Minor", 32, nativeSharpDebugMinor);
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -799,26 +823,7 @@ private:
         debugBuilder_ = LLVMCreateDIBuilder(module_);
         if (debugBuilder_ == nullptr)
             return fail(error, "failed to create the LLVM debug information builder");
-        LLVMSetIsNewDbgInfoFormat(module_, 1);
-
-        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        LLVMMetadataRef debugVersion = LLVMValueAsMetadata(
-            LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0));
-        LLVMMetadataRef codeView = LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0));
-        LLVMMetadataRef nativeSharpDebugMajor = LLVMValueAsMetadata(
-            LLVMConstInt(i32, kDebugMetadataMajor, 0));
-        LLVMMetadataRef nativeSharpDebugMinor = LLVMValueAsMetadata(
-            LLVMConstInt(i32, kDebugMetadataMinor, 0));
-        LLVMAddModuleFlag(
-            module_, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 18, debugVersion);
-        LLVMAddModuleFlag(
-            module_, LLVMModuleFlagBehaviorWarning, "CodeView", 8, codeView);
-        LLVMAddModuleFlag(
-            module_, LLVMModuleFlagBehaviorError,
-            "NativeSharp Debug Metadata Major", 32, nativeSharpDebugMajor);
-        LLVMAddModuleFlag(
-            module_, LLVMModuleFlagBehaviorWarning,
-            "NativeSharp Debug Metadata Minor", 32, nativeSharpDebugMinor);
+        configureDebugModuleFlags(module_, context_);
 
         LLVMMetadataRef primaryFile = nullptr;
         for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
