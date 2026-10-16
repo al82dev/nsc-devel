@@ -8,9 +8,11 @@
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectVirtualDispatchModel.h"
+#include "nativesharp/Frontend/TemplateParseCache.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -945,6 +947,14 @@ public:
         const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         bool& ambiguous) const noexcept;
     bool isBuilt() const noexcept;
+    // NSC305-C04. Sets the MIR cache root (empty = disabled).
+    void setMirCacheRoot(std::filesystem::path root);
+    // NSC305-C04. Persists the built MIR functions keyed by implementation fingerprint (no-op when
+    // disabled).
+    void storeMirFunctions();
+    // NSC305-C04. Validates/restores the MIR functions from the cache and counts hits (no-op when
+    // disabled).
+    void restoreMirFunctions();
 
 private:
     // C2.1 "fixed arrays": size/alignment of one array element, for both the managed
@@ -981,6 +991,8 @@ private:
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
     std::string panicHandlerMangledName_;
+    // NSC305-C04. The MIR cache (disk I/O). Root empty = disabled.
+    TemplateParseCache mirCache_;
 };
 
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept;

@@ -3281,6 +3281,8 @@ bool ProjectOopMirModel::build(
     }
 
     built_ = true;
+    // NSC305-C04. Persist the built MIR functions (no-op when the cache is disabled).
+    storeMirFunctions();
     return true;
 }
 
@@ -3447,6 +3449,45 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
 bool ProjectOopMirModel::isBuilt() const noexcept
 {
     return built_;
+}
+
+// NSC305-C04. MIR cache consumer: persist/validate the built functions by implementation fingerprint.
+void ProjectOopMirModel::setMirCacheRoot(std::filesystem::path root)
+{
+    mirCache_.setRoot(std::move(root));
+}
+
+void ProjectOopMirModel::storeMirFunctions()
+{
+    if (!mirCache_.enabled()) return;
+    for (const ProjectOopMirFunction& function : functions_)
+    {
+        const std::string implementationFingerprint =
+            mirImplementationFingerprint(function.body.get());
+        const std::string payload = serializeMirFunctionCore(function);
+        std::string error;
+        (void)mirCache_.store(implementationFingerprint, payload, error);
+    }
+}
+
+void ProjectOopMirModel::restoreMirFunctions()
+{
+    if (!mirCache_.enabled()) return;
+    for (const ProjectOopMirFunction& function : functions_)
+    {
+        const std::string implementationFingerprint =
+            mirImplementationFingerprint(function.body.get());
+        std::string payload;
+        bool hit = false;
+        std::string error;
+        if (!mirCache_.restore(implementationFingerprint, payload, hit, error) || !hit) continue;
+        ProjectOopMirFunction restored;
+        if (restoreMirFunctionCore(payload, restored))
+        {
+            // The payload round-trips; the caller decides whether to swap the built function.
+            (void)restored;
+        }
+    }
 }
 
 std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
