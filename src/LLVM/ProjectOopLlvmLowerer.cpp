@@ -738,6 +738,51 @@ bool emitLocalDebugInfo(
     return true;
 }
 
+// NSC305-L03. Creates the dispatch metadata carrier types (moved out of the lowerer's
+// emitDispatchMetadata as a pure move).
+bool createDispatchTypes(
+    LLVMContextRef context,
+    LLVMTypeRef& interfaceMapEntryType,
+    LLVMTypeRef& interfaceMapType,
+    LLVMTypeRef& descriptorType,
+    LLVMTypeRef& descriptorAccessorFunctionType,
+    std::string& error)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef interfaceEntryFields[] = {i64, ptr};
+    interfaceMapEntryType = LLVMStructCreateNamed(context, "nativesharp.interface_map_entry");
+    if (interfaceMapEntryType == nullptr)
+    {
+        error = "Stage 36 failed to create interface-map entry type";
+        return false;
+    }
+    LLVMStructSetBody(interfaceMapEntryType, interfaceEntryFields, 2, 0);
+    LLVMTypeRef interfaceMapFields[] = {i64, ptr};
+    interfaceMapType = LLVMStructCreateNamed(context, "nativesharp.interface_map");
+    if (interfaceMapType == nullptr)
+    {
+        error = "Stage 36 failed to create interface-map header type";
+        return false;
+    }
+    LLVMStructSetBody(interfaceMapType, interfaceMapFields, 2, 0);
+    LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr, ptr, ptr};
+    descriptorType = LLVMStructCreateNamed(context, "nativesharp.class_descriptor");
+    if (descriptorType == nullptr)
+    {
+        error = "Macro A failed to create NativeSharp class-descriptor type";
+        return false;
+    }
+    LLVMStructSetBody(descriptorType, descriptorFields, 8, 0);
+    descriptorAccessorFunctionType = LLVMFunctionType(ptr, nullptr, 0, 0);
+    if (descriptorAccessorFunctionType == nullptr)
+    {
+        error = "1.0-E1 failed to create class-descriptor accessor type";
+        return false;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -3773,40 +3818,13 @@ private:
 
     bool emitDispatchMetadata(std::string& error, bool defineStorage)
     {
+        // NSC305-L03. The carrier types live in createDispatchTypes (moved out as a pure move).
+        if (!createDispatchTypes(
+                context_, interfaceMapEntryType_, interfaceMapType_, descriptorType_,
+                descriptorAccessorFunctionType_, error))
+            return false;
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-        LLVMTypeRef interfaceEntryFields[] = {i64, ptr};
-        interfaceMapEntryType_ = LLVMStructCreateNamed(context_, "nativesharp.interface_map_entry");
-        if (interfaceMapEntryType_ == nullptr)
-        {
-            return fail(error, "Stage 36 failed to create interface-map entry type");
-        }
-        LLVMStructSetBody(interfaceMapEntryType_, interfaceEntryFields, 2, 0);
-        LLVMTypeRef interfaceMapFields[] = {i64, ptr};
-        interfaceMapType_ = LLVMStructCreateNamed(context_, "nativesharp.interface_map");
-        if (interfaceMapType_ == nullptr)
-        {
-            return fail(error, "Stage 36 failed to create interface-map header type");
-        }
-        LLVMStructSetBody(interfaceMapType_, interfaceMapFields, 2, 0);
-        // C8 "type root" appends field 6: a pointer to this type's NAME, laid out exactly like a
-        // string literal ({i64 length, [N+1 x i8] bytes}) so NativeSharp.Core.Object.ToString()
-        // can hand it back as a `string` with a single load and no allocation. Appended rather
-        // than inserted so every existing field index in this file stays valid.
-        // Item 319 appends field 7. It has the same `void(ptr)` ABI as field 5, but destroys only
-        // the object lifetime and deliberately leaves the backing storage untouched.
-        LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr, ptr, ptr};
-        descriptorType_ = LLVMStructCreateNamed(context_, "nativesharp.class_descriptor");
-        if (descriptorType_ == nullptr)
-        {
-            return fail(error, "Macro A failed to create NativeSharp class-descriptor type");
-        }
-        LLVMStructSetBody(descriptorType_, descriptorFields, 8, 0);
-        descriptorAccessorFunctionType_ = LLVMFunctionType(ptr, nullptr, 0, 0);
-        if (descriptorAccessorFunctionType_ == nullptr)
-        {
-            return fail(error, "1.0-E1 failed to create class-descriptor accessor type");
-        }
 
         // A local class can inherit (directly or through another local class) from a class whose
         // descriptor lives in a precompiled static library or DLL. NSMETA deliberately publishes
