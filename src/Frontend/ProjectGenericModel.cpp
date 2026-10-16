@@ -2698,14 +2698,15 @@ void ProjectGenericModel::storeTemplateRecords()
     if (!templateCache_.enabled()) return;
     for (const TemplateState& state : templateStates_)
     {
-        const std::string payload = serializeTemplateRecord(state.record);
+        const std::string payload = serializeCatalogEntry(state.record);
         std::string error;
         (void)templateCache_.store(state.record.c1CacheKey, payload, error);
     }
 }
 
-// NSC305-C01. Warm-build restore: for each collected record, look up the C1 cache and count a hit
-// when the metadata round-trips. The AST subtree is still walked (the record syntax is not cached).
+// NSC305-C01/C02. Warm-build restore: look up the C1/C2 cache and count a hit when the FULL catalog
+// entry (record + syntax AST) round-trips into the unit arena. The AST splice into the unit tree is
+// a later layer; this validates the persisted snapshot.
 void ProjectGenericModel::restoreTemplateRecords()
 {
     if (!templateCache_.enabled()) return;
@@ -2717,7 +2718,7 @@ void ProjectGenericModel::restoreTemplateRecords()
         if (templateCache_.restore(state.record.c1CacheKey, payload, hit, error) && hit)
         {
             GenericTemplateRecord restored;
-            if (deserializeTemplateRecord(payload, restored))
+            if (restoreCatalogEntry(state.unit->arena(), payload, restored))
             {
                 telemetry_.noteSpecializationHit();
                 ++instantiationCacheHitCount_;
