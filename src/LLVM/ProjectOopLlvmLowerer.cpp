@@ -9707,6 +9707,47 @@ private:
         }
     }
 
+    // NSC305-L04. The load sub-family of the member/index family. These cases load a value through
+    // a member/index address; the machine dispatches them directly.
+    LLVMValueRef lowerLoadExpression(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::FieldLoad:
+            {
+                LLVMValueRef address = fieldAddress(node, error);
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                if (address == nullptr || type == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
+            }
+            case frontend::ProjectOopMirNodeKind::BitFieldLoad:
+            {
+                LLVMValueRef address = fieldAddress(node, error);
+                LLVMTypeRef storageType = bitFieldStorageType(node, error);
+                if (address == nullptr || storageType == nullptr) return nullptr;
+                LLVMValueRef storage = LLVMBuildLoad2(
+                    builder_, storageType, address, "bitfield.storage.load");
+                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment));
+                if (node->volatileAccess) LLVMSetVolatile(storage, 1);
+                return extractBitField(node, storage, error);
+            }
+            case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
+            {
+                LLVMValueRef address = staticFieldAddress(node, error);
+                LLVMTypeRef type = llvmType(node->typeKey, error);
+                if (address == nullptr || type == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "static.field.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
+            }
+            default:
+                return nullptr;
+        }
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -9742,6 +9783,12 @@ private:
             case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
             case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
                 return lowerAddressExpression(node, error);
+            // NSC305-L04: the load sub-family (member/index) lives in lowerLoadExpression.
+            case frontend::ProjectOopMirNodeKind::FieldLoad:
+            case frontend::ProjectOopMirNodeKind::BitFieldLoad:
+            case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
+                return lowerLoadExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -10264,15 +10311,6 @@ private:
                 if (node->children.size() != 1 || node->children.front() == nullptr)
                     return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
                 return lowerExpression(node->children.front().get(), error);
-            case frontend::ProjectOopMirNodeKind::FieldLoad:
-            {
-                LLVMValueRef address = fieldAddress(node, error);
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                if (address == nullptr || type == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
-                if (node->volatileAccess) LLVMSetVolatile(load, 1);
-                return load;
-            }
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
                 return lowerNullConditionalField(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
@@ -10281,27 +10319,6 @@ private:
                 return lowerNullConditionalArrayLoad(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayStore:
                 return lowerNullConditionalArrayStore(node, error);
-            case frontend::ProjectOopMirNodeKind::BitFieldLoad:
-            {
-                LLVMValueRef address = fieldAddress(node, error);
-                LLVMTypeRef storageType = bitFieldStorageType(node, error);
-                if (address == nullptr || storageType == nullptr) return nullptr;
-                LLVMValueRef storage = LLVMBuildLoad2(
-                    builder_, storageType, address, "bitfield.storage.load");
-                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment));
-                if (node->volatileAccess) LLVMSetVolatile(storage, 1);
-                return extractBitField(node, storage, error);
-            }
-            case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
-            case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
-            {
-                LLVMValueRef address = staticFieldAddress(node, error);
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                if (address == nullptr || type == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "static.field.load");
-                if (node->volatileAccess) LLVMSetVolatile(load, 1);
-                return load;
-            }
             case frontend::ProjectOopMirNodeKind::AwaitFuture:
             {
                 // NS304-T05-F03 sync context: blocking await. Poll once and read the result; no
