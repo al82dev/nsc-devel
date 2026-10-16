@@ -11109,6 +11109,24 @@ private:
                 values.push_back(lowerValueConstruction(current, error, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::AllocateAndConstruct)
+            {
+                if (frame.phase < current->argumentCount)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(current->argumentCount);
+                for (std::size_t i = current->argumentCount; i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerConstruction(current, error, &argumentOverrides));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14006,7 +14024,7 @@ private:
                 return failValue(
                     error, "C7 aggregate element store must be lowered by its owning initializer");
             case frontend::ProjectOopMirNodeKind::AllocateAndConstruct:
-                return lowerConstruction(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Deallocate:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ObjectDestroy:
@@ -18989,7 +19007,10 @@ private:
         return loaded;
     }
 
-    LLVMValueRef lowerConstruction(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerConstruction(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (!node->stackPromotedObject && !node->allocationFailureReturnsNull)
         {
@@ -19009,7 +19030,9 @@ private:
         evaluatedArguments.reserve(node->argumentCount);
         for (std::size_t index = 0; index < node->argumentCount; ++index)
         {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index]
+                : lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
             // Win64 aggregate ABI: a struct whose size is not 1/2/4/8 travels as a POINTER to a
             // caller-owned per-call copy, never by value. The constructor's SIGNATURE already
