@@ -2071,9 +2071,10 @@ private:
     return out;
 }
 
-[[maybe_unused]] bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record)
+// NSC305-C01. ByteReader-based record metadata read (shared by deserializeTemplateRecord and the
+// C02 catalog restore).
+[[maybe_unused]] bool readTemplateRecord(ByteReader& reader, GenericTemplateRecord& record)
 {
-    ByteReader reader(bytes);
     std::uint8_t kind = 0;
     std::uint8_t accessibility = 0;
     std::uint64_t projectOrdinal = 0;
@@ -2099,6 +2100,12 @@ private:
     record.isControlledSpecialization = controlled != 0U;
     record.isControlledSpecializationFamily = controlledFamily != 0U;
     return true;
+}
+
+[[maybe_unused]] bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record)
+{
+    ByteReader reader(bytes);
+    return readTemplateRecord(reader, record);
 }
 
 // NSC305-C01. Scalar/string fields of a TypeSyntax (no pointers, no recursion): the base identity
@@ -2670,6 +2677,17 @@ private:
     std::string out = serializeTemplateRecord(record);
     out += serializeAstNodeTree(record.syntax);
     return out;
+}
+
+// NSC305-C02. Inverse of serializeCatalogEntry: reads the record metadata, then the syntax AST tree
+// into `arena`, and links record.syntax to the restored node.
+[[maybe_unused]] bool restoreCatalogEntry(
+    ast::AstArena& arena, std::string_view bytes, GenericTemplateRecord& record)
+{
+    ByteReader reader(bytes);
+    if (!readTemplateRecord(reader, record)) return false;
+    record.syntax = deserializeAstNodeTree(arena, reader);
+    return record.syntax != nullptr;
 }
 } // namespace
 
