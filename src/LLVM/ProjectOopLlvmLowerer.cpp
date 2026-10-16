@@ -11881,6 +11881,41 @@ private:
                 }
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileReadAllText ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreFileGetSize ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreFileReadAllBytes)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool readText = current->kind == frontend::ProjectOopMirNodeKind::CoreFileReadAllText;
+                    const bool getSize = current->kind == frontend::ProjectOopMirNodeKind::CoreFileGetSize;
+                    if (current->children.size() != 1 ||
+                        (readText && fileReadAllTextFunction_ == nullptr) ||
+                        (getSize && fileGetSizeFunction_ == nullptr) ||
+                        (!readText && !getSize && fileReadAllBytesFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Bloque 4 file read intrinsic requires one string argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef path = values.back();
+                values.pop_back();
+                if (path == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {path};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileReadAllText)
+                    values.push_back(buildNoUnwindCall(
+                        fileReadAllTextFunctionType_, fileReadAllTextFunction_, args, 1, "file.readalltext"));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileGetSize)
+                    values.push_back(buildNoUnwindCall(
+                        fileGetSizeFunctionType_, fileGetSizeFunction_, args, 1, "file.getsize"));
+                else
+                    values.push_back(buildNoUnwindCall(
+                        fileReadAllBytesFunctionType_, fileReadAllBytesFunction_, args, 1, "file.readallbytes"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12412,41 +12447,9 @@ private:
             // allocation work happens on the runtime side, in
             // WindowsRuntimeBuilder.cpp's buildFileReadAllText).
             case frontend::ProjectOopMirNodeKind::CoreFileReadAllText:
-            {
-                if (node->children.size() != 1 || fileReadAllTextFunction_ == nullptr)
-                    return failValue(error, "Stage 53.3b File.ReadAllText requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    fileReadAllTextFunctionType_, fileReadAllTextFunction_, args, 1, "file.readalltext");
-            }
-            // Bloque 4, fase A -- File.GetSize. Un operando (la ruta) y un i64 de vuelta. Toda
-            // la logica --abrir, preguntar el tamano, cerrar, devolver -1 si algo falla-- vive en
-            // el hook del runtime, igual que en CoreFileReadAllText.
             case frontend::ProjectOopMirNodeKind::CoreFileGetSize:
-            {
-                if (node->children.size() != 1 || fileGetSizeFunction_ == nullptr)
-                    return failValue(error, "Bloque 4 File.GetSize requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    fileGetSizeFunctionType_, fileGetSizeFunction_, args, 1, "file.getsize");
-            }
-            // Bloque 4, fase A -- ReadAllBytes: un operando, un puntero al arreglo recien
-            // asignado de vuelta. Misma forma que CoreFileReadAllText, y el mismo hook salvo el
-            // nombre: el layout de un byte[] y el de un string son el mismo.
             case frontend::ProjectOopMirNodeKind::CoreFileReadAllBytes:
-            {
-                if (node->children.size() != 1 || fileReadAllBytesFunction_ == nullptr)
-                    return failValue(error, "Bloque 4 File.ReadAllBytes requires one string argument and runtime hook");
-                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
-                if (path == nullptr) return nullptr;
-                LLVMValueRef args[] = {path};
-                return buildNoUnwindCall(
-                    fileReadAllBytesFunctionType_, fileReadAllBytesFunction_, args, 1, "file.readallbytes");
-            }
+                return lowerExpressionIterative(node, error);
             // ReadBytes: la ruta y el arreglo del llamador; devuelve cuantos bytes se leyeron.
             case frontend::ProjectOopMirNodeKind::CoreFileReadBytes:
             {
