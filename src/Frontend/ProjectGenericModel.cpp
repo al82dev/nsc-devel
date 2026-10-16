@@ -5551,6 +5551,13 @@ bool ProjectGenericModel::executeTypeSpecialization(
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
         GenericLookupScope{}, false, diagnostics);
+    // NSC305-C03. Persist the specialized clone (the C3 cache payload) under the specialization key.
+    if (templateCache_.enabled())
+    {
+        const std::string payload = serializeAstNodeTree(clone);
+        std::string error;
+        (void)templateCache_.store(key, payload, error);
+    }
     // processNode may recursively materialize another generic and therefore replace all four
     // current-instantiation fields. They describe a call stack, not global "last call" state:
     // restore the caller before returning so a sibling specialization (notably the next overload
