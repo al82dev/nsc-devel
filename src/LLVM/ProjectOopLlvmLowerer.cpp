@@ -12402,6 +12402,36 @@ private:
                         "event.create.named"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreProcessRun)
+            {
+                if (current->children.size() != 3 || processRunFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Bloque 4 Process.Run requires three string arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef outputPath = values.back();
+                values.pop_back();
+                LLVMValueRef commandLine = values.back();
+                values.pop_back();
+                LLVMValueRef executable = values.back();
+                values.pop_back();
+                if (executable == nullptr || commandLine == nullptr || outputPath == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef args[] = {executable, commandLine, outputPath};
+                values.push_back(buildNoUnwindCall(
+                    processRunFunctionType_, processRunFunction_, args, 3, "process.run"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12953,19 +12983,7 @@ private:
             }
             // Bloque 4, fase C -- Process.Run. Tres operandos, i32 de vuelta.
             case frontend::ProjectOopMirNodeKind::CoreProcessRun:
-            {
-                if (node->children.size() != 3 || processRunFunction_ == nullptr)
-                    return failValue(error, "Bloque 4 Process.Run requires three string arguments and runtime hook");
-                LLVMValueRef executable = lowerExpression(node->children[0].get(), error);
-                if (executable == nullptr) return nullptr;
-                LLVMValueRef commandLine = lowerExpression(node->children[1].get(), error);
-                if (commandLine == nullptr) return nullptr;
-                LLVMValueRef outputPath = lowerExpression(node->children[2].get(), error);
-                if (outputPath == nullptr) return nullptr;
-                LLVMValueRef args[] = {executable, commandLine, outputPath};
-                return buildNoUnwindCall(
-                    processRunFunctionType_, processRunFunction_, args, 3, "process.run");
-            }
+                return lowerExpressionIterative(node, error);
             // WriteAllText/AppendAllText: two string arguments (path, content), void return --
             // same "call the hook, dummy i1 result" shape CoreEnvironmentSetVariable uses.
             case frontend::ProjectOopMirNodeKind::CoreFileWriteAllText:
