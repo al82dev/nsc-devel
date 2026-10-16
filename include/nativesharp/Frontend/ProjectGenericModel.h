@@ -406,9 +406,9 @@ private:
         TemplateState& root,
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
-        const std::string& namespaceName,
-        const std::string& ownerName,
-        const GenericLookupScope& scope,
+        std::string namespaceName,
+        std::string ownerName,
+        GenericLookupScope scope,
         const ast::AstNode* rootSyntax);
     void collectTypeDependency(
         TemplateState& root,
@@ -492,8 +492,8 @@ private:
     bool expandAliasesInNode(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
-        const std::string& namespaceName,
-        const GenericLookupScope& scope,
+        std::string namespaceName,
+        GenericLookupScope scope,
         diagnostics::DiagnosticEngine& diagnostics);
 
     bool expandTypeAliases(

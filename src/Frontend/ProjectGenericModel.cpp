@@ -1611,11 +1611,29 @@ bool ProjectGenericModel::expandTypeAliases(
 bool ProjectGenericModel::expandAliasesInNode(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    const std::string& namespaceName,
-    const GenericLookupScope& scope,
+    std::string namespaceName,
+    GenericLookupScope scope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (node == nullptr) return true;
+    // NSC305-G05. Iterative pre-order traversal with an explicit stack; the per-node logic is
+    // unchanged, only the recursion into first/second/third/children is removed.
+    struct AliasFrame
+    {
+        ast::AstNode* node;
+        std::string namespaceName;
+        GenericLookupScope scope;
+    };
+    std::vector<AliasFrame> frames;
+    frames.push_back(AliasFrame{node, std::move(namespaceName), std::move(scope)});
+    bool ok = true;
+    while (!frames.empty())
+    {
+        AliasFrame frame = std::move(frames.back());
+        frames.pop_back();
+        node = frame.node;
+        namespaceName = std::move(frame.namespaceName);
+        scope = std::move(frame.scope);
+        if (node == nullptr) continue;
     std::string currentNamespace = namespaceName;
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
         currentNamespace = namespaceAppend(namespaceName, node->text());
@@ -1635,7 +1653,7 @@ bool ProjectGenericModel::expandAliasesInNode(
             currentScope.typeAliases[child->text()] = child;
     }
 
-    bool ok = true;
+    bool nodeOk = true;
     // Normalize every alias target in its declaration scope first.  This makes a chained alias
     // immune to a same-named alias that may shadow it only at a later use site.
     for (const ast::AstNode* child : node->children())
@@ -1650,40 +1668,46 @@ bool ProjectGenericModel::expandAliasesInNode(
                 parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
                 aliasScope.typeParameters.insert(parameter.name);
         std::vector<std::string> stack{child->text()};
-        ok = expandTypeAliases(
-                 unit, child->typeSyntax(), aliasScope, diagnostics, stack) && ok;
+        nodeOk = expandTypeAliases(
+                 unit, child->typeSyntax(), aliasScope, diagnostics, stack) && nodeOk;
     }
 
     if (node->kind() != ast::AstNodeKind::UsingAliasDirective)
     {
         std::vector<std::string> stack;
-        ok = expandTypeAliases(unit, node->typeSyntax(), currentScope, diagnostics, stack) && ok;
+        nodeOk = expandTypeAliases(unit, node->typeSyntax(), currentScope, diagnostics, stack) && nodeOk;
         for (ast::TypeSyntax* syntax : node->typeSyntaxes())
         {
             stack.clear();
-            ok = expandTypeAliases(unit, syntax, currentScope, diagnostics, stack) && ok;
+            nodeOk = expandTypeAliases(unit, syntax, currentScope, diagnostics, stack) && nodeOk;
         }
         for (const ast::GenericConstraintClause& clause : node->genericConstraints())
         {
             for (ast::TypeSyntax* constraint : clause.typeConstraints)
             {
                 stack.clear();
-                ok = expandTypeAliases(unit, constraint, currentScope, diagnostics, stack) && ok;
+                nodeOk = expandTypeAliases(unit, constraint, currentScope, diagnostics, stack) && nodeOk;
             }
             if (clause.equalityConstraint != nullptr)
             {
                 stack.clear();
-                ok = expandTypeAliases(
-                    unit, clause.equalityConstraint, currentScope, diagnostics, stack) && ok;
+                nodeOk = expandTypeAliases(
+                    unit, clause.equalityConstraint, currentScope, diagnostics, stack) && nodeOk;
             }
         }
     }
 
-    ok = expandAliasesInNode(unit, node->first(), currentNamespace, currentScope, diagnostics) && ok;
-    ok = expandAliasesInNode(unit, node->second(), currentNamespace, currentScope, diagnostics) && ok;
-    ok = expandAliasesInNode(unit, node->third(), currentNamespace, currentScope, diagnostics) && ok;
-    for (ast::AstNode* child : node->children())
-        ok = expandAliasesInNode(unit, child, currentNamespace, currentScope, diagnostics) && ok;
+    ok = nodeOk && ok;
+    const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+        frames.push_back(AliasFrame{*iterator, currentNamespace, currentScope});
+    if (node->third() != nullptr)
+        frames.push_back(AliasFrame{node->third(), currentNamespace, currentScope});
+    if (node->second() != nullptr)
+        frames.push_back(AliasFrame{node->second(), currentNamespace, currentScope});
+    if (node->first() != nullptr)
+        frames.push_back(AliasFrame{node->first(), currentNamespace, currentScope});
+    }
     return ok;
 }
 
@@ -6004,13 +6028,33 @@ void ProjectGenericModel::collectTemplateDependencies(
     TemplateState& root,
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    const std::string& namespaceName,
-    const std::string& ownerName,
-    const GenericLookupScope& scope,
+    std::string namespaceName,
+    std::string ownerName,
+    GenericLookupScope scope,
     const ast::AstNode* rootSyntax)
 {
-    if (node == nullptr) return;
-    if (node != rootSyntax && stateForSyntax(node) != nullptr) return;
+    // NSC305-G05. Iterative pre-order traversal with an explicit stack; the per-node logic is
+    // unchanged, only the recursion into first/second/third/children is removed.
+    struct BodyFrame
+    {
+        ast::AstNode* node;
+        std::string namespaceName;
+        std::string ownerName;
+        GenericLookupScope scope;
+    };
+    std::vector<BodyFrame> stack;
+    stack.push_back(
+        BodyFrame{node, std::move(namespaceName), std::move(ownerName), std::move(scope)});
+    while (!stack.empty())
+    {
+        BodyFrame frame = std::move(stack.back());
+        stack.pop_back();
+        node = frame.node;
+        namespaceName = std::move(frame.namespaceName);
+        ownerName = std::move(frame.ownerName);
+        scope = std::move(frame.scope);
+        if (node == nullptr) continue;
+        if (node != rootSyntax && stateForSyntax(node) != nullptr) continue;
 
     std::string currentNamespace = namespaceName;
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
@@ -6042,22 +6086,22 @@ void ProjectGenericModel::collectTemplateDependencies(
     collectCallDependency(
         root, unit, node, currentNamespace, ownerName, currentScope);
 
-    collectTemplateDependencies(
-        root, unit, node->first(), currentNamespace, ownerName, currentScope, rootSyntax);
-    collectTemplateDependencies(
-        root, unit, node->second(), currentNamespace, ownerName, currentScope, rootSyntax);
-    collectTemplateDependencies(
-        root, unit, node->third(), currentNamespace, ownerName, currentScope, rootSyntax);
-
     const std::string childOwner = node == rootSyntax
         ? ownerName
         : ((node->kind() == ast::AstNodeKind::ClassDeclaration ||
             node->kind() == ast::AstNodeKind::StructDeclaration)
                ? appendOwner(ownerName, node->text())
                : ownerName);
-    for (ast::AstNode* child : node->children())
-        collectTemplateDependencies(
-            root, unit, child, currentNamespace, childOwner, currentScope, rootSyntax);
+    const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+        stack.push_back(BodyFrame{*iterator, currentNamespace, childOwner, currentScope});
+    if (node->third() != nullptr)
+        stack.push_back(BodyFrame{node->third(), currentNamespace, ownerName, currentScope});
+    if (node->second() != nullptr)
+        stack.push_back(BodyFrame{node->second(), currentNamespace, ownerName, currentScope});
+    if (node->first() != nullptr)
+        stack.push_back(BodyFrame{node->first(), currentNamespace, ownerName, currentScope});
+    }
 }
 
 bool ProjectGenericModel::templateVisible(
