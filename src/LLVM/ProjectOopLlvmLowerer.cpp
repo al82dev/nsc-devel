@@ -11704,6 +11704,24 @@ private:
                 values.push_back(tupleDeconstructFromParts(current, sourceValue, targetAddresses, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::ParameterPack)
+            {
+                if (frame.phase < current->children.size())
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(current->children.size());
+                for (std::size_t i = current->children.size(); i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerParameterPack(current, error, &argumentOverrides));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14074,7 +14092,7 @@ private:
             case frontend::ProjectOopMirNodeKind::PlacementConstruct:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ParameterPack:
-                return lowerParameterPack(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateInitialize:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateSpreadStore:
@@ -19252,7 +19270,8 @@ private:
 
     LLVMValueRef lowerParameterPack(
         const frontend::ProjectOopMirNode* node,
-        std::string& error)
+        std::string& error,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (node == nullptr || node->immediate == 0 || node->alignment == 0 ||
             node->secondaryImmediate == 0)
@@ -19287,7 +19306,9 @@ private:
 
             for (std::size_t index = 0; index < node->children.size(); ++index)
             {
-                LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                LLVMValueRef value = argumentOverrides != nullptr
+                    ? (*argumentOverrides)[index]
+                    : lowerExpression(node->children[index].get(), error);
                 if (value == nullptr) return nullptr;
                 LLVMValueRef indices[] = {
                     LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0),
