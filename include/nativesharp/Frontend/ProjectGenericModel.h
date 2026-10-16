@@ -738,7 +738,8 @@ private:
         std::string_view writtenOwner,
         std::string_view methodName,
         std::size_t arity,
-        std::size_t argumentCount);
+        std::size_t argumentCount,
+        const std::vector<QualifiedNameRung>* ladder = nullptr);
 
     // El conjunto de SOBRECARGAS que la llamada alcanza. Es `templatesNamedBy` mas la regla de
     // DUENO UNICO: si el escalon ganador abarca dos escrituras de dueno distintas la llamada es
@@ -771,7 +772,8 @@ private:
         std::string_view methodName,
         std::size_t arity,
         std::size_t argumentCount,
-        const std::vector<TemplateState*>* named = nullptr);
+        const std::vector<TemplateState*>* named = nullptr,
+        const std::vector<QualifiedNameRung>* ladder = nullptr);
 
     std::string ensureTypeSpecialization(
         TemplateState& state,

@@ -4275,7 +4275,8 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     std::string_view writtenOwner,
     std::string_view methodName,
     std::size_t arity,
-    std::size_t argumentCount)
+    std::size_t argumentCount,
+    const std::vector<QualifiedNameRung>* ladder)
 {
     const auto bucket = methodsByName_.find(std::string(methodName));
     if (bucket == methodsByName_.end())
@@ -4296,7 +4297,11 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
 
     // EL PRIMER ESCALON QUE PRODUCE ALGO DECIDE, y los de abajo ya no se miran. Es la regla de
     // sombreado: que exista un `Z.C` en otro namespace no puede cambiar lo que `C` significa aqui.
-    for (const QualifiedNameRung& rung : qualifiedNameLadder(site, writtenOwner))
+    std::vector<QualifiedNameRung> ownLadder;
+    if (ladder == nullptr)
+        ownLadder = qualifiedNameLadder(site, writtenOwner);
+    const std::vector<QualifiedNameRung>& effectiveLadder = ladder != nullptr ? *ladder : ownLadder;
+    for (const QualifiedNameRung& rung : effectiveLadder)
     {
         std::vector<TemplateState*> found;
         for (TemplateState* state : bucket->second)
@@ -4373,20 +4378,21 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     std::string_view methodName,
     std::size_t arity,
     std::size_t argumentCount,
-    const std::vector<TemplateState*>* named)
+    const std::vector<TemplateState*>* named,
+    const std::vector<QualifiedNameRung>* ladder)
 {
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
 
     // CON DUENO: la misma funcion que usa `collectMethodTemplates`, no una copia de sus reglas.
     // Primero exigiendo la cuenta de argumentos y despues sin ella, que es el aflojamiento que
-    // este metodo ya tenia. NSC305-G03: el primer escalon puede venir ya calculado (`named`) para
-    // no reconstruir la ladder exacta que el llamador acaba de obtener.
+    // este metodo ya tenia. NSC305-G03: el primer escalon puede venir ya calculado (`named`) y la
+    // ladder puede venir compartida (`ladder`) para no reconstruirla en cada intento.
     for (const std::size_t cuenta : {argumentCount, sinFiltro})
     {
         const std::vector<TemplateState*> result =
             (cuenta == argumentCount && named != nullptr)
             ? *named
-            : templatesNamedBy(unit, site, writtenOwner, methodName, arity, cuenta);
+            : templatesNamedBy(unit, site, writtenOwner, methodName, arity, cuenta, ladder);
         if (result.size() == 1) return result.front();
         // Mas de una en el escalon ganador y del mismo nombre: ambigua de verdad. Aflojar la
         // cuenta de argumentos no la desambigua, asi que se sigue al siguiente intento solo
@@ -4496,18 +4502,20 @@ ProjectGenericModel::GenericCallResolution ProjectGenericModel::resolveGenericCa
     std::size_t arity,
     std::size_t argumentCount)
 {
+    // NSC305-G03. Build the name ladder once; every arity/argument-count variation reuses it.
+    const std::vector<QualifiedNameRung> ladder = qualifiedNameLadder(site, requestedOwner);
     GenericCallResolution resolution;
-    resolution.named =
-        templatesNamedBy(unit, site, requestedOwner, methodName, arity, argumentCount);
+    resolution.named = templatesNamedBy(
+        unit, site, requestedOwner, methodName, arity, argumentCount, &ladder);
     resolution.shared = collectMethodTemplatesFromNamed(resolution.named);
     if (resolution.shared.size() <= 1U)
     {
-        resolution.unique =
-            resolveMethodTemplate(unit, site, requestedOwner, methodName, arity, argumentCount);
+        resolution.unique = resolveMethodTemplate(
+            unit, site, requestedOwner, methodName, arity, argumentCount, nullptr, &ladder);
         if (resolution.unique == nullptr)
             resolution.unique = resolveMethodTemplate(
                 unit, site, requestedOwner, methodName,
-                std::numeric_limits<std::size_t>::max(), argumentCount);
+                std::numeric_limits<std::size_t>::max(), argumentCount, nullptr, &ladder);
     }
     return resolution;
 }
@@ -6081,8 +6089,10 @@ void ProjectGenericModel::collectCallDependency(
 
     const std::size_t arity = call->typeSyntaxes().size();
     const std::size_t argumentCount = call->children().size();
+    // NSC305-G03. Build the name ladder once; every arity/argument-count variation reuses it.
+    const std::vector<QualifiedNameRung> ladder = qualifiedNameLadder(site, requestedOwner);
     const std::vector<TemplateState*> named = templatesNamedBy(
-        unit, site, requestedOwner, methodName, arity, argumentCount);
+        unit, site, requestedOwner, methodName, arity, argumentCount, &ladder);
     const std::vector<TemplateState*> targets = collectMethodTemplatesFromNamed(named);
     if (!targets.empty())
     {
@@ -6092,11 +6102,11 @@ void ProjectGenericModel::collectCallDependency(
     }
 
     TemplateState* fallback = resolveMethodTemplate(
-        unit, site, requestedOwner, methodName, arity, argumentCount, &named);
+        unit, site, requestedOwner, methodName, arity, argumentCount, &named, &ladder);
     if (fallback == nullptr)
         fallback = resolveMethodTemplate(
             unit, site, requestedOwner, methodName,
-            std::numeric_limits<std::size_t>::max(), argumentCount);
+            std::numeric_limits<std::size_t>::max(), argumentCount, nullptr, &ladder);
     if (fallback != nullptr)
     {
         root.record.dependencies.push_back(fallback->record.canonicalKey);
