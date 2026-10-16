@@ -12362,6 +12362,46 @@ private:
                         eventCreateFunctionType_, eventCreateFunction_, args, 2, "event.create"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreCreateNamed ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreEventCreateNamed)
+            {
+                const bool sem = current->kind == frontend::ProjectOopMirNodeKind::CoreSemaphoreCreateNamed;
+                if (current->children.size() != 3 ||
+                    (sem && semaphoreCreateNamedFunction_ == nullptr) ||
+                    (!sem && eventCreateNamedFunction_ == nullptr))
+                {
+                    values.push_back(failValue(error, "Item 370 named sync create requires three arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef name = values.back();
+                values.pop_back();
+                LLVMValueRef second = values.back();
+                values.pop_back();
+                LLVMValueRef first = values.back();
+                values.pop_back();
+                if (first == nullptr || second == nullptr || name == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef args[] = {first, second, name};
+                if (sem)
+                    values.push_back(buildNoUnwindCall(
+                        semaphoreCreateNamedFunctionType_, semaphoreCreateNamedFunction_, args, 3,
+                        "semaphore.create.named"));
+                else
+                    values.push_back(buildNoUnwindCall(
+                        eventCreateNamedFunctionType_, eventCreateNamedFunction_, args, 3,
+                        "event.create.named"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14039,20 +14079,7 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreCreate:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSemaphoreCreateNamed:
-            {
-                if (node->children.size() != 3 || semaphoreCreateNamedFunction_ == nullptr)
-                    return failValue(error, "Item 370 Semaphore.SemaphoreCreateNamed requires count, maximum, name, and runtime hook");
-                LLVMValueRef initialCount = lowerExpression(node->children[0].get(), error);
-                if (initialCount == nullptr) return nullptr;
-                LLVMValueRef maximumCount = lowerExpression(node->children[1].get(), error);
-                if (maximumCount == nullptr) return nullptr;
-                LLVMValueRef name = lowerExpression(node->children[2].get(), error);
-                if (name == nullptr) return nullptr;
-                LLVMValueRef args[] = {initialCount, maximumCount, name};
-                return buildNoUnwindCall(
-                    semaphoreCreateNamedFunctionType_, semaphoreCreateNamedFunction_, args, 3,
-                    "semaphore.create.named");
-            }
+                return lowerExpressionIterative(node, error);
             // SemaphoreWait/EventWait BOTH lower to the SAME shared runtime hook
             // (waitForHandleTimeoutFunction_) -- see buildWaitForHandleTimeout's header comment in
             // WindowsRuntimeBuilder.cpp for why sharing one wrapper across two
@@ -14072,20 +14099,7 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreEventCreate:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreEventCreateNamed:
-            {
-                if (node->children.size() != 3 || eventCreateNamedFunction_ == nullptr)
-                    return failValue(error, "Item 370 Event.EventCreateNamed requires reset mode, state, name, and runtime hook");
-                LLVMValueRef manualReset = lowerExpression(node->children[0].get(), error);
-                if (manualReset == nullptr) return nullptr;
-                LLVMValueRef initialState = lowerExpression(node->children[1].get(), error);
-                if (initialState == nullptr) return nullptr;
-                LLVMValueRef name = lowerExpression(node->children[2].get(), error);
-                if (name == nullptr) return nullptr;
-                LLVMValueRef args[] = {manualReset, initialState, name};
-                return buildNoUnwindCall(
-                    eventCreateNamedFunctionType_, eventCreateNamedFunction_, args, 3,
-                    "event.create.named");
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 55.1 "Process". Every getter is the simplest possible core-operation shape
             // (zero arguments, one call, return its result) -- same as CoreClockQueryCounter.
