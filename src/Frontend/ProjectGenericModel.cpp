@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/ProjectOpaqueResultModel.h"
 
 #include "nativesharp/AST/TypeSyntax.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
@@ -1902,6 +1903,29 @@ bool ProjectGenericModel::isBuilt() const noexcept
     return built_;
 }
 
+// NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
+// cache key input that invalidates on any source change (including the body).
+static std::string computeTemplateSourceFingerprint(
+    const ProjectSyntaxUnit& unit, const ast::AstNode* node)
+{
+    std::string canonical;
+    const std::uint32_t begin = node->range().begin().offset();
+    const std::uint32_t end = node->range().end().offset();
+    for (const lexer::Token& token : unit.tokens())
+    {
+        const std::uint32_t tokenBegin = token.range().begin().offset();
+        const std::uint32_t tokenEnd = token.range().end().offset();
+        if (tokenBegin >= begin && tokenEnd <= end)
+        {
+            canonical += token.lexeme();
+            canonical.push_back(' ');
+        }
+    }
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(canonical.data()), canonical.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 void ProjectGenericModel::collectTemplates(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -2048,6 +2072,7 @@ void ProjectGenericModel::collectTemplates(
         record.canonicalKey = record.moduleName + "::" +
             qualifiedName(currentNamespace, record.qualifiedTypeName) +
             "`" + genericAritySpelling(record);
+        record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
         telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
@@ -2083,6 +2108,7 @@ void ProjectGenericModel::collectTemplates(
         record.canonicalKey = record.moduleName + "::" +
             (callableScope.empty() ? std::string{} : callableScope + ".") +
             record.name + "``" + genericAritySpelling(record);
+        record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
         record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
         record.isControlledSpecialization =
             node->auxiliaryText() == "controlled-specialization";

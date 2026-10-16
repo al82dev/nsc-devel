@@ -101,6 +101,10 @@ struct GenericTemplateRecord final
     // Explicit generic uses that could not be resolved while inspecting the template. They are
     // harmless in an unreachable private template, but make a public reusable closure invalid.
     std::vector<std::string> unresolvedDependencies;
+
+    // NSC305-C01. SHA-256 of the template's source text (reconstructed from the lexer tokens), the
+    // C1 cache key input that invalidates on any source change (including the body).
+    std::string sourceFingerprint;
 };
 
 // NSC305-G07. Lifecycle of a specialization slot. The sequential pass only uses Unseen (no slot),
