@@ -9874,24 +9874,7 @@ private:
                 return value;
             }
             case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
-            {
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                {
-                    return failValue(error, "NSC-LIMIT-021 full expression requires exactly one value");
-                }
-                const std::size_t retainedDepth = activeCleanupRegions_.size();
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                std::vector<std::size_t> temporaries(
-                    activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(retainedDepth),
-                    activeCleanupRegions_.end());
-                activeCleanupRegions_.resize(retainedDepth);
-                for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
-                {
-                    if (!emitCleanupAction(*it, error)) return nullptr;
-                }
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Conditional:
                 return lowerConditional(node, error);
             case frontend::ProjectOopMirNodeKind::LoopExpression:
@@ -9922,9 +9905,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
                 return lowerNullCoalescingStore(node, error);
             case frontend::ProjectOopMirNodeKind::BorrowValue:
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
-                return lowerExpression(node->children.front().get(), error);
+                return lowerExpressionIterative(node, error);
             default:
                 return nullptr;
         }
@@ -10499,7 +10480,8 @@ private:
         {
             const frontend::ProjectOopMirNode* node = nullptr;
             std::uint8_t phase = 0;     // 0 = evaluate the operand, 1 = compute.
-            LLVMValueRef lhs = nullptr; // the left operand (binary).
+            LLVMValueRef lhs = nullptr; // the left operand (binary) / the retained depth (cleanup).
+            std::size_t retainedDepth = 0; // the cleanup depth before the wrapped child.
         };
         std::vector<Frame> frames;
         std::vector<LLVMValueRef> values;
@@ -10766,6 +10748,44 @@ private:
                 values.pop_back();
                 if (receiver == nullptr) { values.push_back(nullptr); continue; }
                 values.push_back(byteOffset(receiver, current->immediate, "future.field.addr"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "NSC-LIMIT-021 full expression requires exactly one value"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, activeCleanupRegions_.size()});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                std::vector<std::size_t> temporaries(
+                    activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(frame.retainedDepth),
+                    activeCleanupRegions_.end());
+                activeCleanupRegions_.resize(frame.retainedDepth);
+                for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
+                {
+                    if (!emitCleanupAction(*it, error)) { values.push_back(nullptr); continue; }
+                }
+                values.push_back(value);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::BorrowValue)
+            {
+                if (current->children.size() != 1 || current->children.front() == nullptr)
+                {
+                    values.push_back(failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value"));
+                    continue;
+                }
+                // Transparent wrapper: the child's value IS the borrow value.
+                frames.push_back({current->children.front().get(), 0, nullptr});
                 continue;
             }
             // The remaining families still use the recursive lowerExpression.
