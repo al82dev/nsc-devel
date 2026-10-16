@@ -4915,6 +4915,111 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGenericShallow(
     return result;
 }
 
+// NSC305-G06. Normalizes an associated type projection (`T.Item`); see the header.
+ast::TypeSyntax* ProjectGenericModel::cloneProjectionType(
+    ast::AstArena& arena,
+    const ast::TypeSyntax* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    std::size_t modifierLimit)
+{
+    const std::size_t projectionSeparator = source->baseName().find('.');
+    if (projectionSeparator == std::string::npos) return nullptr;
+    const std::string root = source->baseName().substr(0, projectionSeparator);
+    const auto substitution = substitutions.find(root);
+    if (substitution == substitutions.end()) return nullptr;
+
+    const ast::TypeSyntax* current = substitution->second;
+    std::size_t begin = projectionSeparator + 1U;
+    while (begin < source->baseName().size())
+    {
+        const std::size_t end = source->baseName().find('.', begin);
+        const std::string item = source->baseName().substr(
+            begin, end == std::string::npos ? std::string::npos : end - begin);
+        const std::string owner = typeSpelling(current);
+        std::vector<std::string> candidates{owner + "." + item};
+        if (current != nullptr)
+        {
+            if (const auto identity = resolvedTypeIdentityBySyntax_.find(current);
+                identity != resolvedTypeIdentityBySyntax_.end())
+            {
+                const std::size_t moduleSeparator = identity->second.find("::");
+                if (moduleSeparator != std::string::npos)
+                    candidates.push_back(identity->second.substr(moduleSeparator + 2U) +
+                        "." + item);
+            }
+        }
+        if (current != nullptr && current->originNamespace().has_value() &&
+            !current->originNamespace()->empty())
+            candidates.push_back(namespaceAppend(
+                *current->originNamespace(), owner) + "." + item);
+        if (!currentInstantiationNamespace_.empty())
+            candidates.push_back(namespaceAppend(
+                currentInstantiationNamespace_, owner) + "." + item);
+
+        const ast::TypeSyntax* definition = nullptr;
+        std::string selectedKey;
+        for (const std::string& candidate : candidates)
+        {
+            if (const auto found = associatedTypes_.find(candidate);
+                found != associatedTypes_.end())
+            {
+                definition = found->second;
+                selectedKey = candidate;
+                break;
+            }
+        }
+        if (definition == nullptr)
+        {
+            if (associatedProjectionError_.empty())
+            {
+                associatedProjectionError_ =
+                    "cannot normalize associated type projection '" +
+                    source->baseName() + "' for concrete type '" + owner +
+                    "': no associated type definition is available";
+                associatedProjectionErrorRange_ = source->range();
+            }
+            return arena.make<ast::TypeSyntax>(
+                source->range(), lexer::TokenKind::KwInt, "int");
+        }
+        if (!activeAssociatedProjections_.insert(selectedKey).second)
+        {
+            if (associatedProjectionError_.empty())
+            {
+                associatedProjectionError_ =
+                    "associated type normalization cycle reaches '" + selectedKey + "'";
+                associatedProjectionErrorRange_ = source->range();
+            }
+            return arena.make<ast::TypeSyntax>(
+                source->range(), lexer::TokenKind::KwInt, "int");
+        }
+        current = cloneType(arena, definition, substitutions);
+        activeAssociatedProjections_.erase(selectedKey);
+        if (end == std::string::npos) break;
+        begin = end + 1U;
+    }
+
+    ast::TypeSyntax* result = cloneType(arena, current, {});
+    const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
+    for (std::size_t index = 0; index < modifierCount; ++index)
+    {
+        const ast::TypeModifierSyntax& modifier = source->modifiers()[index];
+        result->addModifier(ast::TypeModifierSyntax{
+            modifier.kind,
+            cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
+            modifier.range,
+            modifier.arrayRank});
+    }
+    result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setDynamicTrait(source->isDynamicTrait());
+    result->setOpaqueResult(source->isOpaqueResult());
+    result->setOpaqueResultTraitName(source->opaqueResultTraitName());
+    result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
+    result->setPointeeConst(source->isPointeeConst());
+    result->setPackExpansion(source->isPackExpansion());
+    result->setRange(source->range());
+    return result;
+}
+
 ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
@@ -5056,106 +5161,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
 
     // T05-F03. Normalize `T.Item` only when the leftmost component is an active generic
     // substitution. Ordinary dotted namespace/type names remain untouched. Chained projections
-    // are consumed one component at a time.
-    const std::size_t projectionSeparator = source->baseName().find('.');
-    if (projectionSeparator != std::string::npos)
-    {
-        const std::string root = source->baseName().substr(0, projectionSeparator);
-        if (const auto substitution = substitutions.find(root);
-            substitution != substitutions.end())
-        {
-            const ast::TypeSyntax* current = substitution->second;
-            std::size_t begin = projectionSeparator + 1U;
-            while (begin < source->baseName().size())
-            {
-                const std::size_t end = source->baseName().find('.', begin);
-                const std::string item = source->baseName().substr(
-                    begin, end == std::string::npos ? std::string::npos : end - begin);
-                const std::string owner = typeSpelling(current);
-                std::vector<std::string> candidates{owner + "." + item};
-                if (current != nullptr)
-                {
-                    if (const auto identity = resolvedTypeIdentityBySyntax_.find(current);
-                        identity != resolvedTypeIdentityBySyntax_.end())
-                    {
-                        const std::size_t moduleSeparator = identity->second.find("::");
-                        if (moduleSeparator != std::string::npos)
-                            candidates.push_back(identity->second.substr(moduleSeparator + 2U) +
-                                "." + item);
-                    }
-                }
-                if (current != nullptr && current->originNamespace().has_value() &&
-                    !current->originNamespace()->empty())
-                    candidates.push_back(namespaceAppend(
-                        *current->originNamespace(), owner) + "." + item);
-                if (!currentInstantiationNamespace_.empty())
-                    candidates.push_back(namespaceAppend(
-                        currentInstantiationNamespace_, owner) + "." + item);
-
-                const ast::TypeSyntax* definition = nullptr;
-                std::string selectedKey;
-                for (const std::string& candidate : candidates)
-                {
-                    if (const auto found = associatedTypes_.find(candidate);
-                        found != associatedTypes_.end())
-                    {
-                        definition = found->second;
-                        selectedKey = candidate;
-                        break;
-                    }
-                }
-                if (definition == nullptr)
-                {
-                    if (associatedProjectionError_.empty())
-                    {
-                        associatedProjectionError_ =
-                            "cannot normalize associated type projection '" +
-                            source->baseName() + "' for concrete type '" + owner +
-                            "': no associated type definition is available";
-                        associatedProjectionErrorRange_ = source->range();
-                    }
-                    return arena.make<ast::TypeSyntax>(
-                        source->range(), lexer::TokenKind::KwInt, "int");
-                }
-                if (!activeAssociatedProjections_.insert(selectedKey).second)
-                {
-                    if (associatedProjectionError_.empty())
-                    {
-                        associatedProjectionError_ =
-                            "associated type normalization cycle reaches '" + selectedKey + "'";
-                        associatedProjectionErrorRange_ = source->range();
-                    }
-                    return arena.make<ast::TypeSyntax>(
-                        source->range(), lexer::TokenKind::KwInt, "int");
-                }
-                current = cloneType(arena, definition, substitutions);
-                activeAssociatedProjections_.erase(selectedKey);
-                if (end == std::string::npos) break;
-                begin = end + 1U;
-            }
-
-            ast::TypeSyntax* result = cloneType(arena, current, {});
-            const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);
-            for (std::size_t index = 0; index < modifierCount; ++index)
-            {
-                const ast::TypeModifierSyntax& modifier = source->modifiers()[index];
-                result->addModifier(ast::TypeModifierSyntax{
-                    modifier.kind,
-                    cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-                    modifier.range,
-                    modifier.arrayRank});
-            }
-            result->setOwnershipQualifier(source->ownershipQualifier());
-            result->setDynamicTrait(source->isDynamicTrait());
-            result->setOpaqueResult(source->isOpaqueResult());
-            result->setOpaqueResultTraitName(source->opaqueResultTraitName());
-            result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
-            result->setPointeeConst(source->isPointeeConst());
-            result->setPackExpansion(source->isPackExpansion());
-            result->setRange(source->range());
-            return result;
-        }
-    }
+    // are consumed one component at a time (NSC305-G06: extracted into cloneProjectionType).
+    if (ast::TypeSyntax* projection = cloneProjectionType(
+            arena, source, substitutions, modifierLimit))
+        return projection;
 
     if (source->baseName() == "packtype" && source->typeArguments().size() == 2U)
     {

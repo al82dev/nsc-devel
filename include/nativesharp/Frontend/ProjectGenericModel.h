@@ -852,6 +852,13 @@ private:
     ast::TypeSyntax* cloneTypeGenericShallow(
         ast::AstArena& arena,
         const ast::TypeSyntax* source);
+    // NSC305-G06. Normalizes an associated type projection (`T.Item`). Returns nullptr when the
+    // source is not a projection, so cloneType falls through to the pack/substitution/generic path.
+    ast::TypeSyntax* cloneProjectionType(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit);
 
     std::vector<ast::TypeSyntax*> cloneExpandedTypeArgument(
         ast::AstArena& arena,
