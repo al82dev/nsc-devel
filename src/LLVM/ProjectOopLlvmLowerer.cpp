@@ -11722,6 +11722,50 @@ private:
                 values.push_back(lowerParameterPack(current, error, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreConsoleWriteLine)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || consoleWriteLineFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Console write requires one string argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef mode = LLVMConstInt(
+                    LLVMInt32TypeInContext(context_), static_cast<unsigned long long>(current->immediate), 0);
+                LLVMValueRef args[] = {value, mode};
+                buildNoUnwindCall(consoleWriteLineFunctionType_, consoleWriteLineFunction_, args, 2, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreConsoleReadLine)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || consoleReadLineFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Console.ReadLine requires one out status and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef status = values.back();
+                values.pop_back();
+                if (status == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {status};
+                values.push_back(buildNoUnwindCall(
+                    consoleReadLineFunctionType_, consoleReadLineFunction_, args, 1, "console.readline"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12180,31 +12224,9 @@ private:
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:
                 return lowerStringFromCharArray(node, error);
             case frontend::ProjectOopMirNodeKind::CoreConsoleWriteLine:
-            {
-                if (node->children.size() != 1 || consoleWriteLineFunction_ == nullptr)
-                    return failValue(error, "Console write requires one string argument and runtime hook");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                // SHR-022: `immediate` trae la mascara de variante desde el MIR. Es una CONSTANTE
-                // de compilacion --el nombre del metodo la fijo-- asi que el descriptor y el salto
-                // de linea se resuelven con dos `and` en el runtime y no hay ninguna rama que el
-                // optimizador no pueda plegar.
-                LLVMValueRef mode = LLVMConstInt(
-                    LLVMInt32TypeInContext(context_), static_cast<unsigned long long>(node->immediate), 0);
-                LLVMValueRef args[] = {value, mode};
-                buildNoUnwindCall(consoleWriteLineFunctionType_, consoleWriteLineFunction_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreConsoleReadLine:
-            {
-                if (node->children.size() != 1 || consoleReadLineFunction_ == nullptr)
-                    return failValue(error, "Console.ReadLine requires one out status and runtime hook");
-                LLVMValueRef status = lowerExpression(node->children.front().get(), error);
-                if (status == nullptr) return nullptr;
-                LLVMValueRef args[] = {status};
-                return buildNoUnwindCall(
-                    consoleReadLineFunctionType_, consoleReadLineFunction_, args, 1, "console.readline");
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 53.1 "Time": three sibling zero-argument, zero-branch calls. No argument
             // lowering (there are no children to lower), no result post-processing -- the raw
