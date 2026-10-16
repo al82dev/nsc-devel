@@ -11766,6 +11766,78 @@ private:
                     consoleReadLineFunctionType_, consoleReadLineFunction_, args, 1, "console.readline"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreEnvironmentExit)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || environmentExitFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Stage 53.2 Environment.Exit requires one int argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {value};
+                buildNoUnwindCall(environmentExitFunctionType_, environmentExitFunction_, args, 1, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreEnvironmentGetVariable)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || environmentGetVariableFunction_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "Stage 53.2b Environment.GetEnvironmentVariable requires one string argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef name = values.back();
+                values.pop_back();
+                if (name == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {name};
+                values.push_back(buildNoUnwindCall(
+                    environmentGetVariableFunctionType_, environmentGetVariableFunction_, args, 1, "environment.getvariable"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreEnvironmentSetVariable)
+            {
+                if (current->children.size() != 2 || environmentSetVariableFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Stage 53.2b Environment.SetEnvironmentVariable requires two string arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef name = values.back();
+                    values.pop_back();
+                    if (name == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, name, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, value};
+                buildNoUnwindCall(environmentSetVariableFunctionType_, environmentSetVariableFunction_, args, 2, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12274,43 +12346,11 @@ private:
             // return afterward since ExitProcess never returns control (see buildEnvironmentExit
             // in WindowsRuntimeBuilder.cpp, which ends in "unreachable" rather than a ret).
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentExit:
-            {
-                if (node->children.size() != 1 || environmentExitFunction_ == nullptr)
-                    return failValue(error, "Stage 53.2 Environment.Exit requires one int argument and runtime hook");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {value};
-                buildNoUnwindCall(environmentExitFunctionType_, environmentExitFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-
-            // Stage 53.2b "Environment (variables)": GetEnvironmentVariable takes one string
-            // argument and returns the freshly-allocated string the runtime hook builds (same
-            // "just get me the pointer values and call the hook" shape lowerStringConcat uses
-            // for its own two operands -- all the length/allocation work happens on the runtime
-            // side, in WindowsRuntimeBuilder.cpp's buildEnvironmentGetVariable, not here).
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentGetVariable:
-            {
-                if (node->children.size() != 1 || environmentGetVariableFunction_ == nullptr)
-                    return failValue(error, "Stage 53.2b Environment.GetEnvironmentVariable requires one string argument and runtime hook");
-                LLVMValueRef name = lowerExpression(node->children.front().get(), error);
-                if (name == nullptr) return nullptr;
-                LLVMValueRef args[] = {name};
-                return buildNoUnwindCall(
-                    environmentGetVariableFunctionType_, environmentGetVariableFunction_, args, 1, "environment.getvariable");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreEnvironmentSetVariable:
-            {
-                if (node->children.size() != 2 || environmentSetVariableFunction_ == nullptr)
-                    return failValue(error, "Stage 53.2b Environment.SetEnvironmentVariable requires two string arguments and runtime hook");
-                LLVMValueRef name = lowerExpression(node->children[0].get(), error);
-                if (name == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {name, value};
-                buildNoUnwindCall(environmentSetVariableFunctionType_, environmentSetVariableFunction_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 53.3 "Filesystem/Paths": File.Exists/Directory.Exists take one string
             // argument (a path) and return the runtime hook's i1 result directly -- no result
