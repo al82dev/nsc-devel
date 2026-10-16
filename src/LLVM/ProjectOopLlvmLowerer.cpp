@@ -10524,6 +10524,147 @@ private:
                 return nullptr;
         }
     }
+    // NSC305-L04. The iterative expression machine's trampoline (first family: unary/binary). The
+    // unary/binary self-calls are replaced by frame pushes; the sub-expressions receive their
+    // values from a ValueStack. The remaining families still use the recursive lowerExpression and
+    // are migrated family by family in later tandas.
+    LLVMValueRef lowerExpressionIterative(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        struct Frame final
+        {
+            const frontend::ProjectOopMirNode* node = nullptr;
+            std::uint8_t phase = 0;     // 0 = evaluate the operand, 1 = compute.
+            LLVMValueRef lhs = nullptr; // the left operand (binary).
+        };
+        std::vector<Frame> frames;
+        std::vector<LLVMValueRef> values;
+        frames.push_back({node, 0, nullptr});
+        while (!frames.empty())
+        {
+            const Frame frame = frames.back();
+            frames.pop_back();
+            const frontend::ProjectOopMirNode* current = frame.node;
+            if (current == nullptr)
+            {
+                values.push_back(nullptr);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Unary)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "unary MIR requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef operand = values.back();
+                values.pop_back();
+                if (operand == nullptr) { values.push_back(nullptr); continue; }
+                if (terminated()) { values.push_back(operand); continue; }
+                if (current->operation == lexer::TokenKind::Plus)
+                {
+                    values.push_back(operand);
+                    continue;
+                }
+                if (current->operation == lexer::TokenKind::Bang)
+                {
+                    values.push_back(LLVMBuildNot(builder_, operand, "not"));
+                    continue;
+                }
+                if (current->operation == lexer::TokenKind::Tilde)
+                {
+                    values.push_back(LLVMBuildNot(builder_, operand, "bitnot"));
+                    continue;
+                }
+                if (current->operation == lexer::TokenKind::Minus)
+                {
+                    if (current->typeKey == "builtin:decimal")
+                    {
+                        std::uint64_t signWords[2] = { 0, 0x8000000000000000ull };
+                        LLVMValueRef signBit = LLVMConstIntOfArbitraryPrecision(
+                            LLVMIntTypeInContext(context_, 128), 2, signWords);
+                        values.push_back(LLVMBuildXor(builder_, operand, signBit, "decimal.neg"));
+                        continue;
+                    }
+                    values.push_back(isFloating(current->typeKey)
+                        ? applyFloatingPointMode(LLVMBuildFNeg(builder_, operand, "fneg"))
+                        : LLVMBuildNeg(builder_, operand, "neg"));
+                    continue;
+                }
+                values.push_back(failValue(error, "unsupported unary operation in Stage 34 LLVM lowering"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Binary)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "binary MIR requires two operands"));
+                    continue;
+                }
+                if (current->operation == lexer::TokenKind::AmpAmp ||
+                    current->operation == lexer::TokenKind::PipePipe)
+                {
+                    values.push_back(lowerShortCircuit(current, error));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr || terminated())
+                    {
+                        values.push_back(left);
+                        continue;
+                    }
+                    frames.push_back({current, 2, left});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (frame.lhs == nullptr || right == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                if (terminated())
+                {
+                    values.push_back(right);
+                    continue;
+                }
+                if (current->operation == lexer::TokenKind::LessLess ||
+                    current->operation == lexer::TokenKind::GreaterGreater)
+                {
+                    right = normalizeShiftCount(
+                        right, current->children[1]->typeKey, current->children[0]->typeKey, error);
+                    if (right == nullptr)
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                }
+                values.push_back(applyBinaryOperation(
+                    current->operation, frame.lhs, right, current->children[0]->typeKey, error,
+                    current->booleanValue));
+                continue;
+            }
+            // The remaining families still use the recursive lowerExpression.
+            values.push_back(lowerExpression(current, error));
+        }
+        return values.back();
+    }
+
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
@@ -13158,9 +13299,8 @@ private:
                 return lowerEventInvoke(node, error);
 
             case frontend::ProjectOopMirNodeKind::Unary:
-                return lowerUnary(node, error);
             case frontend::ProjectOopMirNodeKind::Binary:
-                return lowerBinary(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::TupleDeconstruct:
             {
                 if (node->children.empty())
@@ -15893,58 +16033,6 @@ private:
 
         LLVMPositionBuilderAtEnd(builder_, okBlock);
         return object;
-    }
-
-    LLVMValueRef lowerUnary(const frontend::ProjectOopMirNode* node, std::string& error)
-    {
-        if (node->children.size() != 1) return failValue(error, "unary MIR requires one operand");
-        LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-        if (value == nullptr) return nullptr;
-        if (terminated()) return value;
-        if (node->operation == lexer::TokenKind::Plus) return value;
-        if (node->operation == lexer::TokenKind::Bang) return LLVMBuildNot(builder_, value, "not");
-        if (node->operation == lexer::TokenKind::Tilde) return LLVMBuildNot(builder_, value, "bitnot");
-        if (node->operation == lexer::TokenKind::Minus)
-        {
-            // NS304-T15-F05: decimal negation flips the sign bit (127), not the two's complement.
-            if (node->typeKey == "builtin:decimal")
-            {
-                std::uint64_t signWords[2] = { 0, 0x8000000000000000ull };
-                LLVMValueRef signBit = LLVMConstIntOfArbitraryPrecision(
-                    LLVMIntTypeInContext(context_, 128), 2, signWords);
-                return LLVMBuildXor(builder_, value, signBit, "decimal.neg");
-            }
-            return isFloating(node->typeKey)
-                ? applyFloatingPointMode(LLVMBuildFNeg(builder_, value, "fneg"))
-                : LLVMBuildNeg(builder_, value, "neg");
-        }
-        return failValue(error, "unsupported unary operation in Stage 34 LLVM lowering");
-    }
-
-    LLVMValueRef lowerBinary(const frontend::ProjectOopMirNode* node, std::string& error)
-    {
-        if (node->children.size() != 2) return failValue(error, "binary MIR requires two operands");
-        if (node->operation == lexer::TokenKind::AmpAmp || node->operation == lexer::TokenKind::PipePipe)
-            return lowerShortCircuit(node, error);
-        LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-        if (left == nullptr || terminated()) return left;
-        LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-        if (left == nullptr || right == nullptr) return nullptr;
-        if (terminated()) return right;
-        // NSC-LUNAR-007. LLVM requires both operands of shl/lshr/ashr to have exactly the same
-        // integer type. NativeSharp keeps the counter's semantic type, then validates and converts
-        // it immediately before emission. Thus `ulong << int` is valid without producing
-        // `shl i64 ..., i32 ...` or exposing a promotion in the language.
-        if (node->operation == lexer::TokenKind::LessLess ||
-            node->operation == lexer::TokenKind::GreaterGreater)
-        {
-            right = normalizeShiftCount(
-                right, node->children[1]->typeKey, node->children[0]->typeKey, error);
-            if (right == nullptr) return nullptr;
-        }
-        return applyBinaryOperation(
-            node->operation, left, right, node->children[0]->typeKey, error,
-            node->booleanValue);
     }
 
     LLVMValueRef normalizeShiftCount(
