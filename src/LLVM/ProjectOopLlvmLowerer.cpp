@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmModuleMetadata.h"
 #include "nativesharp/LLVM/LlvmRuntimeNames.h"
 #include "nativesharp/LLVM/LlvmTypeClassification.h"
 #include "nativesharp/LLVM/LlvmTypeLayout.h"
@@ -48,10 +49,6 @@ using namespace llvm_api;
 
 namespace
 {
-constexpr const char* kTargetTriple = "x86_64-pc-windows-msvc";
-constexpr const char* kMemsetIntrinsicName = "llvm.memset.p0.i64";
-constexpr const char* kMemcpyIntrinsicName = "llvm.memcpy.p0.p0.i64";
-constexpr const char* kAssumeIntrinsicName = "llvm.assume";
 // SHR-022. Una sola funcion para las cuatro salidas de consola: el segundo parametro es una
 // mascara de dos bits -- bit 0 anade el salto de linea, bit 1 escribe por error estandar.
 // Stage 53.1 "Time" -- see src/Runtime/WindowsRuntimeBuilder.cpp for what these three wrap.
