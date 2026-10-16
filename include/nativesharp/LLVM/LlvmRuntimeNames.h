@@ -1,0 +1,107 @@
+#pragma once
+
+#include <cstdint>
+
+// NSC305-L03. Runtime hook names (moved out of ProjectOopLlvmLowerer.cpp as a pure move). These
+// are the symbols the Windows runtime library exports and the OOP LLVM lowerer references.
+namespace nativesharp::llvm_backend
+{
+inline constexpr const char* kAllocationFunctionName = "__nativesharp_alloc";
+inline constexpr const char* kDeallocationFunctionName = "__nativesharp_free";
+inline constexpr const char* kTrapFunctionName = "__nativesharp_trap";
+inline constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_write";
+inline constexpr const char* kConsoleReadLineFunctionName = "__nativesharp_console_readline";
+inline constexpr const char* kNativeThrowFunctionName = "__nativesharp_throw";
+inline constexpr const char* kRaiseExceptionFunctionName = "RaiseException";
+inline constexpr std::uint32_t kNativeSharpPanicExceptionCode = 0xE04E5302U;
+inline constexpr const char* kExceptionCurrentFunctionName = "__nativesharp_exception_current";
+inline constexpr const char* kExceptionClearFunctionName = "__nativesharp_exception_clear";
+inline constexpr const char* kEhFilterFunctionName = "__nativesharp_eh_filter";
+inline constexpr const char* kPanicEhFilterFunctionName = "__nativesharp_panic_eh_filter";
+inline constexpr const char* kSehPersonalityFunctionName = "__C_specific_handler";
+inline constexpr const char* kClockQueryCounterFunctionName = "__nativesharp_clock_query_counter";
+inline constexpr const char* kClockQueryFrequencyFunctionName = "__nativesharp_clock_query_frequency";
+inline constexpr const char* kClockQuerySystemFileTimeFunctionName = "__nativesharp_clock_query_system_filetime";
+inline constexpr const char* kEnvironmentTickCount64FunctionName = "__nativesharp_environment_tick_count64";
+inline constexpr const char* kEnvironmentProcessorCountFunctionName = "__nativesharp_environment_processor_count";
+inline constexpr const char* kEnvironmentExitFunctionName = "__nativesharp_environment_exit";
+inline constexpr const char* kEnvironmentGetVariableFunctionName = "__nativesharp_environment_get_variable";
+inline constexpr const char* kEnvironmentSetVariableFunctionName = "__nativesharp_environment_set_variable";
+inline constexpr const char* kFileExistsFunctionName = "__nativesharp_file_exists";
+inline constexpr const char* kFileDeleteFunctionName = "__nativesharp_file_delete";
+inline constexpr const char* kDirectoryExistsFunctionName = "__nativesharp_directory_exists";
+inline constexpr const char* kDirectoryCreateFunctionName = "__nativesharp_directory_create";
+inline constexpr const char* kFileReadAllTextFunctionName = "__nativesharp_file_read_all_text";
+inline constexpr const char* kFileGetSizeFunctionName = "__nativesharp_file_get_size";
+inline constexpr const char* kFileReadAllBytesFunctionName = "__nativesharp_file_read_all_bytes";
+inline constexpr const char* kFileReadBytesFunctionName = "__nativesharp_file_read_bytes";
+inline constexpr const char* kFileWriteAllBytesFunctionName = "__nativesharp_file_write_all_bytes";
+inline constexpr const char* kEnvironmentCurrentDirectoryFunctionName = "__nativesharp_environment_current_directory";
+inline constexpr const char* kProcessRunFunctionName = "__nativesharp_process_run";
+inline constexpr const char* kFileWriteAllTextFunctionName = "__nativesharp_file_write_all_text";
+inline constexpr const char* kFileAppendAllTextFunctionName = "__nativesharp_file_append_all_text";
+inline constexpr const char* kDirectoryDeleteFunctionName = "__nativesharp_directory_delete";
+inline constexpr const char* kPathGetFullPathFunctionName = "__nativesharp_path_get_full_path";
+inline constexpr const char* kEnvironmentGetCommandLineArgCountFunctionName = "__nativesharp_environment_get_command_line_arg_count";
+inline constexpr const char* kEnvironmentGetCommandLineArgsFunctionName = "__nativesharp_environment_get_command_line_args";
+inline constexpr const char* kDirectoryGetFileCountFunctionName = "__nativesharp_directory_get_file_count";
+inline constexpr const char* kDirectoryGetFilesFunctionName = "__nativesharp_directory_get_files";
+inline constexpr const char* kDirectoryGetDirectoryCountFunctionName = "__nativesharp_directory_get_directory_count";
+inline constexpr const char* kDirectoryGetDirectoriesFunctionName = "__nativesharp_directory_get_directories";
+inline constexpr const char* kThreadCreateFunctionName = "__nativesharp_thread_create";
+inline constexpr const char* kThreadJoinFunctionName = "__nativesharp_thread_join";
+inline constexpr const char* kThreadDetachFunctionName = "__nativesharp_thread_detach";
+inline constexpr const char* kAtomicLoadInt32FunctionName = "__nativesharp_atomic_load_int32";
+inline constexpr const char* kAtomicStoreInt32FunctionName = "__nativesharp_atomic_store_int32";
+inline constexpr const char* kAtomicLoadInt64FunctionName = "__nativesharp_atomic_load_int64";
+inline constexpr const char* kAtomicStoreInt64FunctionName = "__nativesharp_atomic_store_int64";
+inline constexpr const char* kInterlockedIncrementInt32FunctionName = "__nativesharp_interlocked_increment_int32";
+inline constexpr const char* kInterlockedDecrementInt32FunctionName = "__nativesharp_interlocked_decrement_int32";
+inline constexpr const char* kInterlockedAddInt32FunctionName = "__nativesharp_interlocked_add_int32";
+inline constexpr const char* kInterlockedExchangeInt32FunctionName = "__nativesharp_interlocked_exchange_int32";
+inline constexpr const char* kInterlockedCompareExchangeInt32FunctionName = "__nativesharp_interlocked_compare_exchange_int32";
+inline constexpr const char* kInterlockedIncrementInt64FunctionName = "__nativesharp_interlocked_increment_int64";
+inline constexpr const char* kInterlockedDecrementInt64FunctionName = "__nativesharp_interlocked_decrement_int64";
+inline constexpr const char* kInterlockedAddInt64FunctionName = "__nativesharp_interlocked_add_int64";
+inline constexpr const char* kInterlockedExchangeInt64FunctionName = "__nativesharp_interlocked_exchange_int64";
+inline constexpr const char* kInterlockedCompareExchangeInt64FunctionName = "__nativesharp_interlocked_compare_exchange_int64";
+inline constexpr const char* kMutexCreateFunctionName = "__nativesharp_mutex_create";
+inline constexpr const char* kMutexCreateNamedFunctionName = "__nativesharp_mutex_create_named";
+inline constexpr const char* kMutexLockFunctionName = "__nativesharp_mutex_lock";
+inline constexpr const char* kMutexUnlockFunctionName = "__nativesharp_mutex_unlock";
+inline constexpr const char* kMutexCloseFunctionName = "__nativesharp_mutex_close";
+inline constexpr const char* kGetCurrentThreadIdFunctionName = "__nativesharp_get_current_thread_id";
+inline constexpr const char* kMonitorEnterFunctionName = "__nativesharp_monitor_enter";
+inline constexpr const char* kMonitorExitFunctionName = "__nativesharp_monitor_exit";
+inline constexpr const char* kMonitorPulseFunctionName = "__nativesharp_monitor_pulse";
+inline constexpr const char* kMonitorPulseAllFunctionName = "__nativesharp_monitor_pulse_all";
+inline constexpr const char* kMonitorWaitFunctionName = "__nativesharp_monitor_wait";
+inline constexpr const char* kSemaphoreCreateFunctionName = "__nativesharp_semaphore_create";
+inline constexpr const char* kSemaphoreCreateNamedFunctionName = "__nativesharp_semaphore_create_named";
+inline constexpr const char* kWaitForHandleTimeoutFunctionName = "__nativesharp_wait_for_handle_timeout";
+inline constexpr const char* kSemaphoreReleaseFunctionName = "__nativesharp_semaphore_release";
+inline constexpr const char* kSemaphoreCloseFunctionName = "__nativesharp_semaphore_close";
+inline constexpr const char* kEventCreateFunctionName = "__nativesharp_event_create";
+inline constexpr const char* kEventCreateNamedFunctionName = "__nativesharp_event_create_named";
+inline constexpr const char* kEventSetFunctionName = "__nativesharp_event_set";
+inline constexpr const char* kEventResetFunctionName = "__nativesharp_event_reset";
+inline constexpr const char* kEventCloseFunctionName = "__nativesharp_event_close";
+inline constexpr const char* kProcessGetCurrentProcessIdFunctionName = "__nativesharp_process_get_current_process_id";
+inline constexpr const char* kProcessGetWorkingSetSizeFunctionName = "__nativesharp_process_get_working_set_size";
+inline constexpr const char* kProcessGetKernelTimeFunctionName = "__nativesharp_process_get_kernel_time";
+inline constexpr const char* kProcessGetUserTimeFunctionName = "__nativesharp_process_get_user_time";
+inline constexpr const char* kProcessGetPriorityClassFunctionName = "__nativesharp_process_get_priority_class";
+inline constexpr const char* kProcessSetPriorityClassFunctionName = "__nativesharp_process_set_priority_class";
+inline constexpr const char* kSystemInfoGetPageSizeFunctionName = "__nativesharp_system_info_get_page_size";
+inline constexpr const char* kSystemInfoGetProcessorArchitectureFunctionName = "__nativesharp_system_info_get_processor_architecture";
+inline constexpr const char* kSystemInfoGetAllocationGranularityFunctionName = "__nativesharp_system_info_get_allocation_granularity";
+inline constexpr const char* kSystemInfoGetTotalPhysicalMemoryBytesFunctionName = "__nativesharp_system_info_get_total_physical_memory_bytes";
+inline constexpr const char* kSystemInfoGetAvailablePhysicalMemoryBytesFunctionName = "__nativesharp_system_info_get_available_physical_memory_bytes";
+inline constexpr const char* kSystemInfoGetMemoryLoadPercentFunctionName = "__nativesharp_system_info_get_memory_load_percent";
+inline constexpr const char* kDebugIsDebuggerPresentFunctionName = "__nativesharp_debug_is_debugger_present";
+inline constexpr const char* kDebugCaptureStackFrameCountFunctionName = "__nativesharp_debug_capture_stack_frame_count";
+inline constexpr const char* kDebugOutputStringFunctionName = "__nativesharp_debug_output_string";
+inline constexpr const char* kThreadSleepFunctionName = "__nativesharp_thread_sleep";
+inline constexpr const char* kFileCopyFunctionName = "__nativesharp_file_copy";
+inline constexpr const char* kMoveFileFunctionName = "__nativesharp_move_file";
+} // namespace nativesharp::llvm_backend

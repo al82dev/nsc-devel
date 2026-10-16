@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmRuntimeNames.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
@@ -46,81 +47,32 @@ using namespace llvm_api;
 namespace
 {
 constexpr const char* kTargetTriple = "x86_64-pc-windows-msvc";
-constexpr const char* kAllocationFunctionName = "__nativesharp_alloc";
-constexpr const char* kDeallocationFunctionName = "__nativesharp_free";
 constexpr const char* kMemsetIntrinsicName = "llvm.memset.p0.i64";
 constexpr const char* kMemcpyIntrinsicName = "llvm.memcpy.p0.p0.i64";
 constexpr const char* kAssumeIntrinsicName = "llvm.assume";
-constexpr const char* kTrapFunctionName = "__nativesharp_trap";
 // SHR-022. Una sola funcion para las cuatro salidas de consola: el segundo parametro es una
 // mascara de dos bits -- bit 0 anade el salto de linea, bit 1 escribe por error estandar.
-constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_write";
-constexpr const char* kConsoleReadLineFunctionName = "__nativesharp_console_readline";
-constexpr const char* kNativeThrowFunctionName = "__nativesharp_throw";
-constexpr const char* kRaiseExceptionFunctionName = "RaiseException";
-constexpr std::uint32_t kNativeSharpPanicExceptionCode = 0xE04E5302U;
-constexpr const char* kExceptionCurrentFunctionName = "__nativesharp_exception_current";
-constexpr const char* kExceptionClearFunctionName = "__nativesharp_exception_clear";
-constexpr const char* kEhFilterFunctionName = "__nativesharp_eh_filter";
-constexpr const char* kPanicEhFilterFunctionName = "__nativesharp_panic_eh_filter";
-constexpr const char* kSehPersonalityFunctionName = "__C_specific_handler";
 // Stage 53.1 "Time" -- see src/Runtime/WindowsRuntimeBuilder.cpp for what these three wrap.
-constexpr const char* kClockQueryCounterFunctionName = "__nativesharp_clock_query_counter";
-constexpr const char* kClockQueryFrequencyFunctionName = "__nativesharp_clock_query_frequency";
-constexpr const char* kClockQuerySystemFileTimeFunctionName = "__nativesharp_clock_query_system_filetime";
 // Stage 53.2 "Environment" -- see src/Runtime/WindowsRuntimeBuilder.cpp for what these three wrap.
-constexpr const char* kEnvironmentTickCount64FunctionName = "__nativesharp_environment_tick_count64";
-constexpr const char* kEnvironmentProcessorCountFunctionName = "__nativesharp_environment_processor_count";
-constexpr const char* kEnvironmentExitFunctionName = "__nativesharp_environment_exit";
 // Stage 53.2b "Environment (variables)" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
-constexpr const char* kEnvironmentGetVariableFunctionName = "__nativesharp_environment_get_variable";
-constexpr const char* kEnvironmentSetVariableFunctionName = "__nativesharp_environment_set_variable";
 // Stage 53.3 "Filesystem/Paths" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
-constexpr const char* kFileExistsFunctionName = "__nativesharp_file_exists";
-constexpr const char* kFileDeleteFunctionName = "__nativesharp_file_delete";
-constexpr const char* kDirectoryExistsFunctionName = "__nativesharp_directory_exists";
-constexpr const char* kDirectoryCreateFunctionName = "__nativesharp_directory_create";
 // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
-constexpr const char* kFileReadAllTextFunctionName = "__nativesharp_file_read_all_text";
-constexpr const char* kFileGetSizeFunctionName = "__nativesharp_file_get_size";
-constexpr const char* kFileReadAllBytesFunctionName = "__nativesharp_file_read_all_bytes";
-constexpr const char* kFileReadBytesFunctionName = "__nativesharp_file_read_bytes";
-constexpr const char* kFileWriteAllBytesFunctionName = "__nativesharp_file_write_all_bytes";
-constexpr const char* kEnvironmentCurrentDirectoryFunctionName = "__nativesharp_environment_current_directory";
-constexpr const char* kProcessRunFunctionName = "__nativesharp_process_run";
-constexpr const char* kFileWriteAllTextFunctionName = "__nativesharp_file_write_all_text";
-constexpr const char* kFileAppendAllTextFunctionName = "__nativesharp_file_append_all_text";
 // Stage 53.4 "Filesystem/Paths (cierre)" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
-constexpr const char* kDirectoryDeleteFunctionName = "__nativesharp_directory_delete";
-constexpr const char* kPathGetFullPathFunctionName = "__nativesharp_path_get_full_path";
 // Stage 53.5 "Command-line arguments" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
-constexpr const char* kEnvironmentGetCommandLineArgCountFunctionName = "__nativesharp_environment_get_command_line_arg_count";
-constexpr const char* kEnvironmentGetCommandLineArgsFunctionName = "__nativesharp_environment_get_command_line_args";
 // Stage 53.6 "Enumeracion de directorios" -- see src/Runtime/WindowsRuntimeBuilder.cpp. Four
 // distinct exported symbols at this LLVM level (one per core operation, same discipline as
 // File/Directory Exists/Delete above), even though the C++ side shares one pair of internal
 // helper functions -- that sharing is a runtime-side implementation detail, invisible here.
-constexpr const char* kDirectoryGetFileCountFunctionName = "__nativesharp_directory_get_file_count";
-constexpr const char* kDirectoryGetFilesFunctionName = "__nativesharp_directory_get_files";
-constexpr const char* kDirectoryGetDirectoryCountFunctionName = "__nativesharp_directory_get_directory_count";
-constexpr const char* kDirectoryGetDirectoriesFunctionName = "__nativesharp_directory_get_directories";
 // Stage 54.1 "Threads" -- see src/Runtime/WindowsRuntimeBuilder.cpp. ThreadCreate returns a real
 // meaningful i64 (the HANDLE, as nint) -- like the four Directory operations above, it does NOT
 // need the "dummy i1 result" pattern void-returning core operations use, because its result is
 // genuinely used by NativeSharp code. ThreadJoin/ThreadDetach DO return void at the NativeSharp
 // level, so they DO need that dummy-i1 pattern (same as FileDelete/DirectoryDelete above).
-constexpr const char* kThreadCreateFunctionName = "__nativesharp_thread_create";
-constexpr const char* kThreadJoinFunctionName = "__nativesharp_thread_join";
-constexpr const char* kThreadDetachFunctionName = "__nativesharp_thread_detach";
 // Stage 54.2 "Atomics" -- see src/Runtime/WindowsRuntimeBuilder.cpp. All ten wrap a real Win32
 // kernel32.dll Interlocked* export and return a real meaningful value (the new value for
 // Increment/Decrement/Add, the old value for Exchange/CompareExchange, matching C#'s documented
 // System.Threading.Interlocked contract) -- none of these need the "dummy i1 result" pattern,
 // same as ThreadCreate above.
-constexpr const char* kAtomicLoadInt32FunctionName = "__nativesharp_atomic_load_int32";
-constexpr const char* kAtomicStoreInt32FunctionName = "__nativesharp_atomic_store_int32";
-constexpr const char* kAtomicLoadInt64FunctionName = "__nativesharp_atomic_load_int64";
-constexpr const char* kAtomicStoreInt64FunctionName = "__nativesharp_atomic_store_int64";
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded)
 {
     if (encoded == 0U) return std::nullopt;
@@ -201,72 +153,26 @@ LLVMValueRef buildOrderedAtomicCompareExchange(
     return LLVMBuildExtractValue(builder, pair, 0U, resultName);
 }
 
-constexpr const char* kInterlockedIncrementInt32FunctionName = "__nativesharp_interlocked_increment_int32";
-constexpr const char* kInterlockedDecrementInt32FunctionName = "__nativesharp_interlocked_decrement_int32";
-constexpr const char* kInterlockedAddInt32FunctionName = "__nativesharp_interlocked_add_int32";
-constexpr const char* kInterlockedExchangeInt32FunctionName = "__nativesharp_interlocked_exchange_int32";
-constexpr const char* kInterlockedCompareExchangeInt32FunctionName = "__nativesharp_interlocked_compare_exchange_int32";
-constexpr const char* kInterlockedIncrementInt64FunctionName = "__nativesharp_interlocked_increment_int64";
-constexpr const char* kInterlockedDecrementInt64FunctionName = "__nativesharp_interlocked_decrement_int64";
-constexpr const char* kInterlockedAddInt64FunctionName = "__nativesharp_interlocked_add_int64";
-constexpr const char* kInterlockedExchangeInt64FunctionName = "__nativesharp_interlocked_exchange_int64";
-constexpr const char* kInterlockedCompareExchangeInt64FunctionName = "__nativesharp_interlocked_compare_exchange_int64";
 // Stage 54.3 "Mutex" -- see src/Runtime/WindowsRuntimeBuilder.cpp. MutexCreate returns a real
 // meaningful i64 (the HANDLE, as nint), same as ThreadCreate above -- no dummy-i1 pattern needed.
 // MutexLock/MutexUnlock/MutexClose return void at the NativeSharp level, so they DO need the
 // dummy-i1 pattern, same as ThreadJoin/ThreadDetach.
-constexpr const char* kMutexCreateFunctionName = "__nativesharp_mutex_create";
-constexpr const char* kMutexCreateNamedFunctionName = "__nativesharp_mutex_create_named";
-constexpr const char* kMutexLockFunctionName = "__nativesharp_mutex_lock";
-constexpr const char* kMutexUnlockFunctionName = "__nativesharp_mutex_unlock";
-constexpr const char* kMutexCloseFunctionName = "__nativesharp_mutex_close";
 // Stage 54.3 "Mutex" (fix). NOT tied to any MethodCoreOperationKind/NativeSharp source syntax --
 // this is an internal implementation-detail hook the COMPILER's own generated code calls (the
 // type-initializer/"cctor" guard's same-thread-recursion check, see defineTypeInitializers).
-constexpr const char* kGetCurrentThreadIdFunctionName = "__nativesharp_get_current_thread_id";
 // Stage 54.4 "Condition Variables". Enter/Exit/Pulse/PulseAll return void at the NativeSharp
 // level (same dummy-i1 pattern as MutexLock/MutexUnlock/MutexClose above); Wait returns a REAL
 // builtin:bool, no dummy wrapping needed.
-constexpr const char* kMonitorEnterFunctionName = "__nativesharp_monitor_enter";
-constexpr const char* kMonitorExitFunctionName = "__nativesharp_monitor_exit";
-constexpr const char* kMonitorPulseFunctionName = "__nativesharp_monitor_pulse";
-constexpr const char* kMonitorPulseAllFunctionName = "__nativesharp_monitor_pulse_all";
-constexpr const char* kMonitorWaitFunctionName = "__nativesharp_monitor_wait";
 // Stage 54.5 "Otras primitivas de sincronizacion". SemaphoreWait/EventWait share the SAME
 // runtime hook (kWaitForHandleTimeoutFunctionName) -- see buildWaitForHandleTimeout's own header
 // comment in WindowsRuntimeBuilder.cpp for why. Release/Close/Set/Reset all return void at the
 // NativeSharp level (dummy-i1 pattern again); Create returns a real builtin:nint HANDLE.
-constexpr const char* kSemaphoreCreateFunctionName = "__nativesharp_semaphore_create";
-constexpr const char* kSemaphoreCreateNamedFunctionName = "__nativesharp_semaphore_create_named";
-constexpr const char* kWaitForHandleTimeoutFunctionName = "__nativesharp_wait_for_handle_timeout";
-constexpr const char* kSemaphoreReleaseFunctionName = "__nativesharp_semaphore_release";
-constexpr const char* kSemaphoreCloseFunctionName = "__nativesharp_semaphore_close";
-constexpr const char* kEventCreateFunctionName = "__nativesharp_event_create";
-constexpr const char* kEventCreateNamedFunctionName = "__nativesharp_event_create_named";
-constexpr const char* kEventSetFunctionName = "__nativesharp_event_set";
-constexpr const char* kEventResetFunctionName = "__nativesharp_event_reset";
-constexpr const char* kEventCloseFunctionName = "__nativesharp_event_close";
 
 // Stage 55.1 "Process". All five return builtin:long; SetPriorityClass returns void (dummy-i1
 // pattern, same as every other void core operation in this file).
-constexpr const char* kProcessGetCurrentProcessIdFunctionName = "__nativesharp_process_get_current_process_id";
-constexpr const char* kProcessGetWorkingSetSizeFunctionName = "__nativesharp_process_get_working_set_size";
-constexpr const char* kProcessGetKernelTimeFunctionName = "__nativesharp_process_get_kernel_time";
-constexpr const char* kProcessGetUserTimeFunctionName = "__nativesharp_process_get_user_time";
-constexpr const char* kProcessGetPriorityClassFunctionName = "__nativesharp_process_get_priority_class";
-constexpr const char* kProcessSetPriorityClassFunctionName = "__nativesharp_process_set_priority_class";
 // Stage 55.2 "Hardware / System Info". All six return builtin:long.
-constexpr const char* kSystemInfoGetPageSizeFunctionName = "__nativesharp_system_info_get_page_size";
-constexpr const char* kSystemInfoGetProcessorArchitectureFunctionName = "__nativesharp_system_info_get_processor_architecture";
-constexpr const char* kSystemInfoGetAllocationGranularityFunctionName = "__nativesharp_system_info_get_allocation_granularity";
-constexpr const char* kSystemInfoGetTotalPhysicalMemoryBytesFunctionName = "__nativesharp_system_info_get_total_physical_memory_bytes";
-constexpr const char* kSystemInfoGetAvailablePhysicalMemoryBytesFunctionName = "__nativesharp_system_info_get_available_physical_memory_bytes";
-constexpr const char* kSystemInfoGetMemoryLoadPercentFunctionName = "__nativesharp_system_info_get_memory_load_percent";
 // Stage 55.3 "Diagnostics". IsDebuggerPresent/CaptureStackFrameCount return builtin:long;
 // OutputString returns void (dummy-i1 pattern).
-constexpr const char* kDebugIsDebuggerPresentFunctionName = "__nativesharp_debug_is_debugger_present";
-constexpr const char* kDebugCaptureStackFrameCountFunctionName = "__nativesharp_debug_capture_stack_frame_count";
-constexpr const char* kDebugOutputStringFunctionName = "__nativesharp_debug_output_string";
 
 // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29). ThreadSleep returns void at the
 // NativeSharp level (dummy-i1 pattern, one builtin:int argument). FileCopy returns a REAL
@@ -275,9 +181,6 @@ constexpr const char* kDebugOutputStringFunctionName = "__nativesharp_debug_outp
 // MoveFileA works identically for files and directories, same "one wrapper, two MIR node kinds"
 // precedent SemaphoreWait/EventWait established in Stage 54.5 (see buildMoveFile's own header
 // comment in WindowsRuntimeBuilder.cpp) -- also a REAL builtin:bool return, two arguments.
-constexpr const char* kThreadSleepFunctionName = "__nativesharp_thread_sleep";
-constexpr const char* kFileCopyFunctionName = "__nativesharp_file_copy";
-constexpr const char* kMoveFileFunctionName = "__nativesharp_move_file";
 
 bool isFloating(std::string_view type) noexcept
 {
