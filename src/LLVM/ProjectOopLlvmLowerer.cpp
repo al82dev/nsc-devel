@@ -12432,6 +12432,39 @@ private:
                     processRunFunctionType_, processRunFunction_, args, 3, "process.run"));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreProcessSetPriorityClass ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDebugOutputString ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreThreadSleep)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool setPri = current->kind == frontend::ProjectOopMirNodeKind::CoreProcessSetPriorityClass;
+                    const bool dbgOut = current->kind == frontend::ProjectOopMirNodeKind::CoreDebugOutputString;
+                    if (current->children.size() != 1 ||
+                        (setPri && processSetPriorityClassFunction_ == nullptr) ||
+                        (dbgOut && debugOutputStringFunction_ == nullptr) ||
+                        (!setPri && !dbgOut && threadSleepFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 55 utility intrinsic requires one argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef operand = values.back();
+                values.pop_back();
+                if (operand == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {operand};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreProcessSetPriorityClass)
+                    buildNoUnwindCall(processSetPriorityClassFunctionType_, processSetPriorityClassFunction_, args, 1, "");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreDebugOutputString)
+                    buildNoUnwindCall(debugOutputStringFunctionType_, debugOutputStringFunction_, args, 1, "");
+                else
+                    buildNoUnwindCall(threadSleepFunctionType_, threadSleepFunction_, args, 1, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14147,15 +14180,7 @@ private:
                 return buildNoUnwindCall(
                     processGetPriorityClassFunctionType_, processGetPriorityClassFunction_, nullptr, 0, "process.priorityclass");
             case frontend::ProjectOopMirNodeKind::CoreProcessSetPriorityClass:
-            {
-                if (node->children.size() != 1 || processSetPriorityClassFunction_ == nullptr)
-                    return failValue(error, "Stage 55.1 Process.SetPriorityClassRaw requires one int argument and runtime hook");
-                LLVMValueRef priorityClass = lowerExpression(node->children.front().get(), error);
-                if (priorityClass == nullptr) return nullptr;
-                LLVMValueRef args[] = {priorityClass};
-                buildNoUnwindCall(processSetPriorityClassFunctionType_, processSetPriorityClassFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 55.2 "Hardware / System Info". Same zero-argument shape as Process above.
             case frontend::ProjectOopMirNodeKind::CoreSystemInfoGetPageSize:
@@ -14201,27 +14226,11 @@ private:
                 return buildNoUnwindCall(
                     debugCaptureStackFrameCountFunctionType_, debugCaptureStackFrameCountFunction_, nullptr, 0, "debug.capturestackframecount");
             case frontend::ProjectOopMirNodeKind::CoreDebugOutputString:
-            {
-                if (node->children.size() != 1 || debugOutputStringFunction_ == nullptr)
-                    return failValue(error, "Stage 55.3 Debug.OutputStringRaw requires one string argument and runtime hook");
-                LLVMValueRef message = lowerExpression(node->children.front().get(), error);
-                if (message == nullptr) return nullptr;
-                LLVMValueRef args[] = {message};
-                buildNoUnwindCall(debugOutputStringFunctionType_, debugOutputStringFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29).
             case frontend::ProjectOopMirNodeKind::CoreThreadSleep:
-            {
-                if (node->children.size() != 1 || threadSleepFunction_ == nullptr)
-                    return failValue(error, "Pre-Stage-56 Thread.SleepRaw requires one int argument and runtime hook");
-                LLVMValueRef milliseconds = lowerExpression(node->children.front().get(), error);
-                if (milliseconds == nullptr) return nullptr;
-                LLVMValueRef args[] = {milliseconds};
-                buildNoUnwindCall(threadSleepFunctionType_, threadSleepFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreFileCopy:
             {
                 if (node->children.size() != 3 || fileCopyFunction_ == nullptr)
