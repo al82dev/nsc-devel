@@ -11223,6 +11223,43 @@ private:
                 values.push_back(lowerAggregateInitializer(current, error, &fieldValues));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::AddressValue)
+            {
+                if (current->children.size() != 1 || current->children.front() == nullptr)
+                {
+                    values.push_back(failValue(error, "address-of requires exactly one addressable operand"));
+                    continue;
+                }
+                // Transparent wrapper: the child's value IS the address.
+                frames.push_back({current->children.front().get(), 0, nullptr});
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::MoveArrayElement)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "Stage 52 move array element requires exactly one address operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef address = values.back();
+                values.pop_back();
+                if (address == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef elementType = llvmType(current->typeKey, error);
+                if (elementType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
+                if (current->booleanValue)
+                {
+                    LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
+                }
+                values.push_back(value);
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11358,36 +11395,9 @@ private:
                 return value;
             }
             case frontend::ProjectOopMirNodeKind::MoveArrayElement:
-            {
-                // Stage 52: move(items[i]) for generic collections (Queue<T>.Dequeue(),
-                // Stack<T>.Pop()). The single child is the already-lowered element address
-                // (ArrayElementAddress), bounds-checked exactly like a normal array read.
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "Stage 52 move array element requires exactly one address operand");
-                LLVMValueRef address = lowerExpression(node->children.front().get(), error);
-                if (address == nullptr) return nullptr;
-                LLVMTypeRef elementType = llvmType(node->typeKey, error);
-                if (elementType == nullptr) return nullptr;
-                LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
-                if (node->booleanValue)
-                {
-                    // Reference-like element (class/interface reference or native string):
-                    // null out the slot so the container's own cleanup/Deallocation code
-                    // never double-frees or double-uses the value that was just moved out.
-                    // Value-typed elements (int, bool, a plain struct, ...) have no ownership
-                    // to give up, so the slot is left untouched -- a harmless plain read.
-                    LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
-                }
-                return value;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::AddressValue:
-            {
-                // `&lvalue`: the wrapped child already computes the address; this node exists
-                // so the EXPRESSION carries the pointer type (T*) for ABI decisions downstream.
-                if (node->children.size() != 1 || node->children.front() == nullptr)
-                    return failValue(error, "address-of requires exactly one addressable operand");
-                return lowerExpression(node->children.front().get(), error);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RawElementAddress:
             {
                 // C2.1 "fixed arrays": base + index * elementSize, as a byte-wise GEP. The base is
