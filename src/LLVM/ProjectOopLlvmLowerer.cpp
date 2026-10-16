@@ -12165,6 +12165,53 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreMutexCreateNamed ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMutexLock ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMutexUnlock ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreMutexClose)
+            {
+                if (frame.phase == 0)
+                {
+                    const bool createNamed = current->kind == frontend::ProjectOopMirNodeKind::CoreMutexCreateNamed;
+                    const bool lock = current->kind == frontend::ProjectOopMirNodeKind::CoreMutexLock;
+                    const bool unlock = current->kind == frontend::ProjectOopMirNodeKind::CoreMutexUnlock;
+                    if (current->children.size() != 1 ||
+                        (createNamed && mutexCreateNamedFunction_ == nullptr) ||
+                        (lock && mutexLockFunction_ == nullptr) ||
+                        (unlock && mutexUnlockFunction_ == nullptr) ||
+                        (!createNamed && !lock && !unlock && mutexCloseFunction_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.3 Mutex intrinsic requires one argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef operand = values.back();
+                values.pop_back();
+                if (operand == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {operand};
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreMutexCreateNamed)
+                    values.push_back(buildNoUnwindCall(
+                        mutexCreateNamedFunctionType_, mutexCreateNamedFunction_, args, 1, "mutex.create.named"));
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreMutexLock)
+                {
+                    buildNoUnwindCall(mutexLockFunctionType_, mutexLockFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreMutexUnlock)
+                {
+                    buildNoUnwindCall(mutexUnlockFunctionType_, mutexUnlockFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else
+                {
+                    buildNoUnwindCall(mutexCloseFunctionType_, mutexCloseFunction_, args, 1, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13792,50 +13839,10 @@ private:
                     mutexCreateFunctionType_, mutexCreateFunction_, nullptr, 0, "mutex.create");
             }
             case frontend::ProjectOopMirNodeKind::CoreMutexCreateNamed:
-            {
-                if (node->children.size() != 1 || mutexCreateNamedFunction_ == nullptr)
-                    return failValue(error, "Item 370 Mutex.MutexCreateNamed requires one string argument and runtime hook");
-                LLVMValueRef name = lowerExpression(node->children.front().get(), error);
-                if (name == nullptr) return nullptr;
-                LLVMValueRef args[] = {name};
-                return buildNoUnwindCall(
-                    mutexCreateNamedFunctionType_, mutexCreateNamedFunction_, args, 1, "mutex.create.named");
-            }
-            // MutexLock/MutexUnlock/MutexClose take one operand -- a builtin:nint (the HANDLE the
-            // caller already holds, saved by Mutex's constructor from MutexCreate's result) --
-            // and return void at the NativeSharp level. Same "runtime function genuinely returns
-            // void, this case block synthesizes its own harmless i1 dummy value after the call"
-            // pattern CoreThreadJoin/CoreThreadDetach above already use.
             case frontend::ProjectOopMirNodeKind::CoreMutexLock:
-            {
-                if (node->children.size() != 1 || mutexLockFunction_ == nullptr)
-                    return failValue(error, "Stage 54.3 Mutex.MutexLock requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(mutexLockFunctionType_, mutexLockFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreMutexUnlock:
-            {
-                if (node->children.size() != 1 || mutexUnlockFunction_ == nullptr)
-                    return failValue(error, "Stage 54.3 Mutex.MutexUnlock requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(mutexUnlockFunctionType_, mutexUnlockFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreMutexClose:
-            {
-                if (node->children.size() != 1 || mutexCloseFunction_ == nullptr)
-                    return failValue(error, "Stage 54.3 Mutex.MutexClose requires one nint argument and runtime hook");
-                LLVMValueRef handle = lowerExpression(node->children.front().get(), error);
-                if (handle == nullptr) return nullptr;
-                LLVMValueRef args[] = {handle};
-                buildNoUnwindCall(mutexCloseFunctionType_, mutexCloseFunction_, args, 1, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 54.4 "Condition Variables". Enter/Exit/Pulse/PulseAll: one FieldAddress child
             // (built in ProjectOopHirModel.cpp, resolved to a real pointer by `fieldAddress()`
