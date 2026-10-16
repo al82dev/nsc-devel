@@ -981,6 +981,13 @@ private:
         std::span<ast::TypeSyntax* const> arguments,
         const SpecializationContext& callerContext,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Rewrites the target syntax after a specialization resolves (shared by the hit and
+    // the execute paths): canonical identity + specialized base name + clear arguments.
+    void rewriteSpecializedSyntax(
+        ast::TypeSyntax* syntax,
+        const GenericTemplateRecord& record,
+        const std::string& key,
+        const std::string& specializedName);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

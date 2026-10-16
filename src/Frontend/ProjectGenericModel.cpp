@@ -3883,30 +3883,7 @@ bool ProjectGenericModel::materializeTypeSyntax(
     if (specialized.empty()) return false;
     if (outSpecializationKey != nullptr) *outSpecializationKey = specializationKey;
 
-    // Keep the closed template's canonical key on this exact syntax node before erasing its
-    // arguments. An outer specialization can then use that declaration-derived identity instead
-    // of reinterpreting the generated name under a caller project.
-    {
-        std::string canonical = "generic:" + specializationKey;
-        appendTypeModifiers(canonical, syntax);
-        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
-        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
-            state.record.projectOrdinal, state.record.namespaceName};
-        syntax->setOriginProjectOrdinal(state.record.projectOrdinal);
-        syntax->setOriginNamespace(state.record.namespaceName);
-    }
-    // Preserve an explicitly written qualifier.
-    const std::string originalBaseName = syntax->baseName();
-    if (const std::size_t separator = originalBaseName.find_last_of('.');
-        separator != std::string::npos)
-    {
-        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specialized);
-    }
-    else
-    {
-        syntax->setBaseName(specialized);
-    }
-    syntax->clearTypeArguments();
+    rewriteSpecializedSyntax(syntax, state.record, specializationKey, specialized);
     return true;
 }
 
@@ -3948,6 +3925,19 @@ bool ProjectGenericModel::executeTypeDemandWaves(
         // NSC305-G09. Deterministic wave: sort by the stable key (project | namespace | offset) so
         // the materialization order does not depend on discovery order.
         std::ranges::sort(wave, {}, &GenericTypeDemand::stableKey);
+
+        // NSC305-G09. Pre-reserve every ordinal in the sorted order BEFORE any execute, so the
+        // ordinals do not depend on worker completion order once the execute becomes parallel.
+        struct ReservedDemand final
+        {
+            GenericTypeDemand* demand = nullptr;
+            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+            std::string key;
+            std::string specializedName;
+            SpecializationContext callerContext;
+        };
+        std::vector<ReservedDemand> reserved;
+        reserved.reserve(wave.size());
         for (GenericTypeDemand& demand : wave)
         {
             if (demand.unit == nullptr || demand.state == nullptr || demand.target == nullptr)
@@ -3959,9 +3949,43 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             activePackSubstitutions_ = demand.context.packSubstitutions;
             activeAssociatedProjections_ = demand.context.associatedProjections;
             currentLogicalDepth_ = demand.logicalDepth;
-            if (!materializeTypeSyntax(
-                    *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
-                    diagnostics))
+            ReservedDemand entry;
+            entry.demand = &demand;
+            entry.callerContext.save(*this);
+            std::vector<std::string> identities;
+            entry.ordinal = reserveTypeDemand(
+                *demand.state, demand.target->typeArguments(), entry.key, entry.specializedName,
+                identities, diagnostics);
+            reserved.push_back(std::move(entry));
+        }
+
+        for (ReservedDemand& reservedDemand : reserved)
+        {
+            GenericTypeDemand& demand = *reservedDemand.demand;
+            currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
+            currentInstantiationNamespace_ = demand.context.namespaceName;
+            currentInstantiationRange_ = demand.context.range;
+            currentOverloadGroup_ = demand.context.overloadGroup;
+            activePackSubstitutions_ = demand.context.packSubstitutions;
+            activeAssociatedProjections_ = demand.context.associatedProjections;
+            currentLogicalDepth_ = demand.logicalDepth;
+            if (reservedDemand.ordinal == std::numeric_limits<std::size_t>::max())
+            {
+                if (const auto existing = specializationPlanner_.request(reservedDemand.key))
+                {
+                    rewriteSpecializedSyntax(
+                        demand.target, demand.state->record, reservedDemand.key,
+                        specializations_[*existing].specializedName);
+                    continue;
+                }
+                currentLogicalDepth_ = 0;
+                return false;
+            }
+            const std::string specialized = executeTypeDemand(
+                *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
+                reservedDemand.ordinal, reservedDemand.key, reservedDemand.specializedName,
+                demand.target->typeArguments(), reservedDemand.callerContext, diagnostics);
+            if (specialized.empty())
             {
                 currentLogicalDepth_ = 0;
                 return false;
@@ -5799,6 +5823,36 @@ std::size_t ProjectGenericModel::reserveTypeDemand(
     return reserveTypeSpecialization(state, key, specializedName, identities);
 }
 
+// NSC305-G09. Rewrites the target syntax after a specialization resolves (shared by the hit and the
+// execute paths).
+void ProjectGenericModel::rewriteSpecializedSyntax(
+    ast::TypeSyntax* syntax,
+    const GenericTemplateRecord& record,
+    const std::string& key,
+    const std::string& specializedName)
+{
+    {
+        std::string canonical = "generic:" + key;
+        appendTypeModifiers(canonical, syntax);
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
+            record.projectOrdinal, record.namespaceName};
+        syntax->setOriginProjectOrdinal(record.projectOrdinal);
+        syntax->setOriginNamespace(record.namespaceName);
+    }
+    const std::string originalBaseName = syntax->baseName();
+    if (const std::size_t separator = originalBaseName.find_last_of('.');
+        separator != std::string::npos)
+    {
+        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specializedName);
+    }
+    else
+    {
+        syntax->setBaseName(specializedName);
+    }
+    syntax->clearTypeArguments();
+}
+
 // NSC305-G09. Executes a pre-reserved type demand (the apply half): C3 restore + execute + merge +
 // rewrite, using the ordinal/key/name computed by reserveTypeDemand.
 std::string ProjectGenericModel::executeTypeDemand(
@@ -5846,6 +5900,7 @@ std::string ProjectGenericModel::executeTypeDemand(
         }
     }
 
+    SpecializationWaveTimer wave(telemetry_, state.record.canonicalKey);
     if (!executeTypeSpecialization(
             state, arguments, key, specializedName, ordinal, callerContext, diagnostics))
     {
@@ -5860,26 +5915,7 @@ std::string ProjectGenericModel::executeTypeDemand(
     }
     instantiationBudget_.leave();
 
-    {
-        std::string canonical = "generic:" + key;
-        appendTypeModifiers(canonical, syntax);
-        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
-        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
-            state.record.projectOrdinal, state.record.namespaceName};
-        syntax->setOriginProjectOrdinal(state.record.projectOrdinal);
-        syntax->setOriginNamespace(state.record.namespaceName);
-    }
-    const std::string originalBaseName = syntax->baseName();
-    if (const std::size_t separator = originalBaseName.find_last_of('.');
-        separator != std::string::npos)
-    {
-        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specializedName);
-    }
-    else
-    {
-        syntax->setBaseName(specializedName);
-    }
-    syntax->clearTypeArguments();
+    rewriteSpecializedSyntax(syntax, state.record, key, specializedName);
     return specializedName;
 }
 
