@@ -11127,6 +11127,52 @@ private:
                 values.push_back(lowerConstruction(current, error, &argumentOverrides));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::PlacementConstruct)
+            {
+                if (current->children.empty() || current->children.front() == nullptr)
+                {
+                    values.push_back(failValue(error, "item 318 placement construction requires destination storage"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef storage = values.back();
+                    values.pop_back();
+                    if (storage == nullptr) { values.push_back(nullptr); continue; }
+                    const std::size_t argumentCount = current->argumentCount;
+                    if (argumentCount == 0)
+                    {
+                        std::vector<LLVMValueRef> noArgs;
+                        values.push_back(lowerPlacementConstruction(current, error, storage, &noArgs));
+                        continue;
+                    }
+                    frames.push_back({current, 2, storage, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                const std::size_t argumentCount = current->argumentCount;
+                if (frame.retainedDepth + 1 < argumentCount)
+                {
+                    const std::size_t nextIndex = frame.retainedDepth + 1;
+                    frames.push_back({current, 2, frame.lhs, nextIndex});
+                    frames.push_back({current->children[nextIndex + 1].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> argumentOverrides(argumentCount);
+                for (std::size_t i = argumentCount; i > 0; --i)
+                {
+                    argumentOverrides[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(lowerPlacementConstruction(current, error, frame.lhs, &argumentOverrides));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14012,7 +14058,7 @@ private:
             case frontend::ProjectOopMirNodeKind::ValueConstruct:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::PlacementConstruct:
-                return lowerPlacementConstruction(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ParameterPack:
                 return lowerParameterPack(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateInitialize:
@@ -19169,7 +19215,9 @@ private:
 
     LLVMValueRef lowerPlacementConstruction(
         const frontend::ProjectOopMirNode* node,
-        std::string& error)
+        std::string& error,
+        LLVMValueRef storageOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         if (node->children.empty() || node->children.front() == nullptr)
             return failValue(error, "item 318 placement construction requires destination storage");
@@ -19181,7 +19229,9 @@ private:
         // The destination is evaluated exactly once and before every constructor argument. Its
         // semantic type is exact T*, so no conversion or hidden temporary can substitute another
         // location after this point.
-        LLVMValueRef storage = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef storage = storageOverride != nullptr
+            ? storageOverride
+            : lowerExpression(node->children.front().get(), error);
         if (storage == nullptr) return nullptr;
 
         std::vector<LLVMValueRef> evaluatedArguments;
@@ -19189,7 +19239,9 @@ private:
         for (std::size_t index = 0; index < node->argumentCount; ++index)
         {
             const auto& child = node->children[index + 1];
-            LLVMValueRef value = lowerExpression(child.get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index]
+                : lowerExpression(child.get(), error);
             if (value == nullptr) return nullptr;
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
