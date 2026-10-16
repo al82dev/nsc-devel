@@ -648,6 +648,10 @@ private:
         const GenericLookupScope& scope);
     bool materializeBodyTypeSpecializationDemands(
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Processes one wave of body-type demands (sorted by stable key, deduplicated).
+    bool processBodyTypeDemandWave(
+        std::vector<BodyTypeSpecializationDemand>& wave,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool processTypeSyntax(
         ProjectSyntaxUnit& unit,

@@ -2841,6 +2841,24 @@ void ProjectGenericModel::collectBodyTypeSpecializationDemand(
     }
 }
 
+// NSC305-G09. Processes one wave of body-type demands (see the header).
+bool ProjectGenericModel::processBodyTypeDemandWave(
+    std::vector<BodyTypeSpecializationDemand>& wave,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
+    for (BodyTypeSpecializationDemand& demand : wave)
+    {
+        if (demand.unit == nullptr || demand.syntax == nullptr) continue;
+        if (!processTypeSyntax(
+                *demand.unit, demand.syntax, demand.namespaceName, demand.scope, diagnostics))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     diagnostics::DiagnosticEngine& diagnostics)
 {
@@ -2849,16 +2867,7 @@ bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
         std::vector<BodyTypeSpecializationDemand> wave;
         wave.swap(bodyTypeSpecializationDemands_);
         bodyTypeDemandKeys_.clear();
-        std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
-        for (BodyTypeSpecializationDemand& demand : wave)
-        {
-            if (demand.unit == nullptr || demand.syntax == nullptr) continue;
-            if (!processTypeSyntax(
-                    *demand.unit, demand.syntax, demand.namespaceName, demand.scope, diagnostics))
-            {
-                return false;
-            }
-        }
+        if (!processBodyTypeDemandWave(wave, diagnostics)) return false;
     }
     return !diagnostics.hasErrors();
 }
