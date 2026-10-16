@@ -837,6 +837,15 @@ private:
         // materialized (or cache-hit) type specialization, so callers avoid a reverse scan of
         // `specializations_` by `specializedName`.
         std::string* outSpecializationKey = nullptr);
+    // NSC305-G09. Merges a produced specialization clone into its reserved slot: sets the terminal
+    // name/metadata, attaches the clone to the template parent, and marks the record Ready.
+    void commitTypeSpecialization(
+        TemplateState& state,
+        ast::AstNode* clone,
+        const std::string& key,
+        const std::string& specializedName,
+        std::size_t ordinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

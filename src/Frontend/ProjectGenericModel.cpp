@@ -4554,6 +4554,35 @@ ProjectGenericModel::GenericCallResolution ProjectGenericModel::resolveGenericCa
     return resolution;
 }
 
+// NSC305-G09. Merges a produced specialization clone into its reserved slot (see the header).
+void ProjectGenericModel::commitTypeSpecialization(
+    TemplateState& state,
+    ast::AstNode* clone,
+    const std::string& key,
+    const std::string& specializedName,
+    std::size_t ordinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    clone->setText(specializedName);
+    clone->clearGenericParameters();
+    // Keep the specialization prefix first because downstream demand/debug readers use it as the
+    // discriminator. Source aggregate metadata follows a reserved delimiter: a comma cannot be used
+    // because it is valid inside a multi-argument specialization key. Record derives, layout, union
+    // and borrowed-view policy belong to the template and must survive monomorphization.
+    std::string specializationMetadata = "stage44-specialization:" + key;
+    if (!state.syntax->auxiliaryText().empty())
+        specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
+    clone->setAuxiliaryText(std::move(specializationMetadata));
+    state.parent->addChild(clone);
+    specializations_[ordinal].specializedSyntax = clone;
+    specializationBySyntax_[clone] = ordinal;
+    specializations_[ordinal].state = SpecializationState::Ready;
+    registerAssociatedItems(
+        clone,
+        namespaceAppend(state.record.namespaceName, specializedName),
+        &diagnostics);
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
@@ -4657,25 +4686,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     }
     {
         const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
-        clone->setText(specializedName);
-        clone->clearGenericParameters();
-        // Keep the specialization prefix first because downstream demand/debug readers use it as
-        // the discriminator. Source aggregate metadata follows a reserved delimiter: a comma
-        // cannot be used because it is valid inside a multi-argument specialization key. Record
-        // derives, layout, union and borrowed-view policy belong to the template and must survive
-        // monomorphization.
-        std::string specializationMetadata = "stage44-specialization:" + key;
-        if (!state.syntax->auxiliaryText().empty())
-            specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
-        clone->setAuxiliaryText(std::move(specializationMetadata));
-        state.parent->addChild(clone);
-        specializations_[ordinal].specializedSyntax = clone;
-        specializationBySyntax_[clone] = ordinal;
-        specializations_[ordinal].state = SpecializationState::Ready;
-        registerAssociatedItems(
-            clone,
-            namespaceAppend(state.record.namespaceName, specializedName),
-            &diagnostics);
+        commitTypeSpecialization(state, clone, key, specializedName, ordinal, diagnostics);
     }
 
     processNode(
