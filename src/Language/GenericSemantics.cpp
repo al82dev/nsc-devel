@@ -155,9 +155,10 @@ InstantiationBudget::InstantiationBudget(
     std::size_t maximumCount) noexcept
     : maximumDepth_(maximumDepth), maximumCount_(maximumCount) {}
 
-bool InstantiationBudget::enter(std::string identity, std::string& error)
+bool InstantiationBudget::enter(std::string identity, std::size_t logicalDepth, std::string& error)
 {
     error.clear();
+    const std::size_t effectiveDepth = logicalDepth == 0U ? stack_.size() + 1U : logicalDepth;
     const auto causalChain = [&]()
     {
         std::ostringstream stream;
@@ -174,7 +175,7 @@ bool InstantiationBudget::enter(std::string identity, std::string& error)
         stream << identity;
         return stream.str();
     };
-    if (stack_.size() >= maximumDepth_)
+    if (effectiveDepth > maximumDepth_)
     {
         error = "generic instantiation depth limit (" + std::to_string(maximumDepth_) +
             ") exceeded; causal chain: " + causalChain();
@@ -193,8 +194,13 @@ bool InstantiationBudget::enter(std::string identity, std::string& error)
     }
     stack_.push_back(std::move(identity));
     ++count_;
-    maximumObservedDepth_ = std::max(maximumObservedDepth_, stack_.size());
+    maximumObservedDepth_ = std::max(maximumObservedDepth_, effectiveDepth);
     return true;
+}
+
+bool InstantiationBudget::enter(std::string identity, std::string& error)
+{
+    return enter(std::move(identity), 0U, error);
 }
 
 void InstantiationBudget::leave() noexcept

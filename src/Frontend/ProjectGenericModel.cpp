@@ -945,6 +945,16 @@ bool ProjectGenericModel::build(
         }
     }
 
+    // NSC305-G08. Drain the collected type specialization demands in waves.
+    {
+        const GenericTelemetry::Scope phase(telemetry_, "generics.type-demand-waves");
+        if (!executeTypeDemandWaves(diagnostics))
+        {
+            built_ = true;
+            return false;
+        }
+    }
+
     telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
     // NSC305-G-series. Materialization is complete and every rollback has happened, so the
     // specializedName -> ordinal index is final. `emplace` keeps the first entry for a shared
@@ -3818,8 +3828,21 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
     for (BodyTypeSpecializationDemand& demand : wave)
     {
         if (demand.unit == nullptr || demand.syntax == nullptr) continue;
-        if (!processTypeSyntax(
-                *demand.unit, demand.syntax, demand.namespaceName, demand.scope, diagnostics))
+        // The body-type demand is already the collected form (ReadOnlySpan<T>/Span<T>); materialize
+        // it directly (do not re-collect) so the rest-capture Sema sees a materialized Span.
+        TypeResolution resolution = resolveTypeTemplate(
+            *demand.unit, demand.namespaceName, demand.syntax->baseName(),
+            demand.syntax->typeArguments().size());
+        if (resolution.kind != TypeResolutionKind::Unique)
+        {
+            resolution = resolveTypeTemplate(
+                *demand.unit, demand.namespaceName, demand.syntax->baseName(),
+                std::numeric_limits<std::size_t>::max());
+        }
+        if (resolution.kind != TypeResolutionKind::Unique || resolution.state == nullptr)
+            continue;
+        if (!materializeTypeSyntax(
+                *demand.unit, demand.syntax, *resolution.state, demand.namespaceName, diagnostics))
         {
             return false;
         }
@@ -3908,7 +3931,8 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
             target->range(),
             currentOverloadGroup_,
             activePackSubstitutions_,
-            activeAssociatedProjections_}});
+            activeAssociatedProjections_},
+        currentLogicalDepth_ + 1U});
 }
 
 // NSC305-G08. Executes the collected type demands in waves (the apply half of the two-pass).
@@ -3929,13 +3953,16 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             currentOverloadGroup_ = demand.context.overloadGroup;
             activePackSubstitutions_ = demand.context.packSubstitutions;
             activeAssociatedProjections_ = demand.context.associatedProjections;
+            currentLogicalDepth_ = demand.logicalDepth;
             if (!materializeTypeSyntax(
                     *demand.unit, demand.target, *demand.state, demand.context.namespaceName,
                     diagnostics))
             {
+                currentLogicalDepth_ = 0;
                 return false;
             }
         }
+        currentLogicalDepth_ = 0;
     }
     return !diagnostics.hasErrors();
 }
@@ -3946,7 +3973,7 @@ bool ProjectGenericModel::processTypeSyntax(
     const std::string& namespaceName,
     const GenericLookupScope& scope,
     diagnostics::DiagnosticEngine& diagnostics,
-    std::string* outSpecializationKey)
+    std::string* /*outSpecializationKey*/)
 {
     if (syntax == nullptr) return true;
     std::string constType;
@@ -4048,8 +4075,9 @@ bool ProjectGenericModel::processTypeSyntax(
         return true;
     }
 
-    return materializeTypeSyntax(
-        unit, syntax, *state, namespaceName, diagnostics, outSpecializationKey);
+    // NSC305-G08. The two-pass: record the demand (the wave scheduler executes + rewrites later).
+    collectTypeSpecializationDemand(unit, syntax, *state, namespaceName);
+    return true;
 }
 
 ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
@@ -5773,7 +5801,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         return {};
     }
     std::string budgetError;
-    if (!instantiationBudget_.enter(key, budgetError))
+    if (!instantiationBudget_.enter(key, currentLogicalDepth_, budgetError))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,

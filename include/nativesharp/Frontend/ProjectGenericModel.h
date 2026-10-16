@@ -588,6 +588,9 @@ private:
         std::string specializedName;
         std::vector<std::string> identities;
         InstantiationContext context;
+        // NSC305-G08. Logical instantiation depth (parent depth + 1), carried by the demand so the
+        // wave scheduler preserves the depth metric without the C++ recursion stack.
+        std::size_t logicalDepth = 1;
     };
 
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
@@ -1120,6 +1123,9 @@ private:
     // NSC305-G08. Type specialization demands collected by the discovery pass and executed by the
     // wave (the two-pass foundation). Filled by the collector, drained by the executor.
     std::vector<GenericTypeDemand> typeSpecializationDemands_;
+    // NSC305-G08. Logical instantiation depth of the wave currently being executed; the collector
+    // records parent depth + 1 and the scheduler restores it per demand.
+    std::size_t currentLogicalDepth_ = 0;
     // NSC305-G09. O(1) dedup of body-type demands by stableKey (the "deduplicate demands by
     // SpecializationKey" wave step); cleared after each wave is processed.
     std::unordered_set<std::string> bodyTypeDemandKeys_;

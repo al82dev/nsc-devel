@@ -67,6 +67,10 @@ class InstantiationBudget final
 {
 public:
     InstantiationBudget(std::size_t maximumDepth, std::size_t maximumCount) noexcept;
+    // NSC305-G08. `logicalDepth` is the caller-supplied instantiation depth (0 = derive from the
+    // internal stack, the recursion-based default). The wave scheduler passes the demand's depth so
+    // the depth limit and maximumObservedDepth survive the two-pass materialization.
+    bool enter(std::string identity, std::size_t logicalDepth, std::string& error);
     bool enter(std::string identity, std::string& error);
     void leave() noexcept;
     std::size_t count() const noexcept { return count_; }
