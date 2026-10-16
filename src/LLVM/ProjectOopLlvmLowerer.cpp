@@ -214,6 +214,24 @@ LLVMTypeRef mapBuiltinLlvmType(LLVMContextRef context, std::string_view typeKey)
     return nullptr;
 }
 
+// NSC305-L03. Maps the pointer-like type keys (ref/refmut/string/native-array/reference) to `ptr`
+// (moved out of the lowerer's llvmType as a pure move). Returns nullptr for other keys.
+LLVMTypeRef mapPointerLikeLlvmType(
+    LLVMContextRef context,
+    const frontend::ProjectNameLookup& nameLookup,
+    std::string_view typeKey) noexcept
+{
+    if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
+        return LLVMPointerTypeInContext(context, 0);
+    if (typeKey == "builtin:null" || typeKey == "string-literal" ||
+        typeKey == "builtin:string" ||
+        frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
+        isPointerLikeType(typeKey) || isClassReferenceType(nameLookup, typeKey) ||
+        isDelegateReferenceType(nameLookup, typeKey))
+        return LLVMPointerTypeInContext(context, 0);
+    return nullptr;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -18917,9 +18935,9 @@ private:
         // NSC305-L03. The builtin carriers live in mapBuiltinLlvmType (moved out as a pure move).
         if (LLVMTypeRef builtin = mapBuiltinLlvmType(context_, typeKey))
             return builtin;
-        // NS304-T06-F05: `ref:<T>` / `refmut:<T>` is a reference (a pointer into the frame).
-        if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
-            return LLVMPointerTypeInContext(context_, 0);
+        // NSC305-L03. Pointer-like keys (ref/refmut/string/native-array/reference) map to `ptr`.
+        if (LLVMTypeRef pointerLike = mapPointerLikeLlvmType(context_, nameLookup_, typeKey))
+            return pointerLike;
         if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
         {
             LLVMTypeRef lane = simd->mask
@@ -18929,10 +18947,6 @@ private:
         }
         if (language::isAnonymousLambdaTypeIdentity(typeKey))
             return LLVMStructTypeInContext(context_, nullptr, 0, 0);
-        if (typeKey == "builtin:null" || typeKey == "string-literal" || typeKey == "builtin:string" ||
-            frontend::ProjectTypeConversion::isNativeArray(typeKey) || isPointerLikeType(typeKey) ||
-            isClassReferenceType(nameLookup_, typeKey) || isDelegateReferenceType(nameLookup_, typeKey))
-            return LLVMPointerTypeInContext(context_, 0);
         // C2.1 "fixed arrays": `T[N]` is INLINE storage -- N elements laid out end to end, with no
         // length header and no indirection -- so its LLVM carrier is exactly `[N x T]`. That is
         // what makes a fixed-array LOCAL work (`float[4] a;` is one alloca of the whole thing) and
