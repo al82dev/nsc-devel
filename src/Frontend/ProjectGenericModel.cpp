@@ -2206,6 +2206,25 @@ private:
     if (hasNamespace != 0U) type.setOriginNamespace(std::move(originNamespace));
     return true;
 }
+
+// NSC305-C01. Recursive (tree) serialization of a TypeSyntax: the scalar fields plus the ordered
+// type arguments and the function return/error types. Modifiers (arrayCount expressions) and
+// constExpression are the AstNode layer.
+[[maybe_unused]] std::string serializeTypeSyntaxTree(const ast::TypeSyntax* type)
+{
+    if (type == nullptr) return {};
+    std::string out = serializeTypeSyntaxScalars(*type);
+    appendU32(out, static_cast<std::uint32_t>(type->typeArguments().size()));
+    for (const ast::TypeSyntax* argument : type->typeArguments())
+        out += serializeTypeSyntaxTree(argument);
+    const bool hasReturn = type->functionReturnType() != nullptr;
+    const bool hasError = type->functionErrorType() != nullptr;
+    appendByte(out, hasReturn ? 1U : 0U);
+    appendByte(out, hasError ? 1U : 0U);
+    if (hasReturn) out += serializeTypeSyntaxTree(type->functionReturnType());
+    if (hasError) out += serializeTypeSyntaxTree(type->functionErrorType());
+    return out;
+}
 } // namespace
 
 void ProjectGenericModel::collectTemplates(
