@@ -12465,6 +12465,67 @@ private:
                 values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileCopy)
+            {
+                if (current->children.size() != 3 || fileCopyFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Pre-Stage-56 File.CopyRaw requires source, dest, overwrite arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef overwrite = values.back();
+                values.pop_back();
+                LLVMValueRef dest = values.back();
+                values.pop_back();
+                LLVMValueRef source = values.back();
+                values.pop_back();
+                if (source == nullptr || dest == nullptr || overwrite == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef args[] = {source, dest, overwrite};
+                values.push_back(buildNoUnwindCall(
+                    fileCopyFunctionType_, fileCopyFunction_, args, 3, "file.copy"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreFileMove ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreDirectoryMove)
+            {
+                if (current->children.size() != 2 || moveFileFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Pre-Stage-56 File/Directory MoveRaw requires source + dest arguments and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef source = values.back();
+                    values.pop_back();
+                    if (source == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, source, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef dest = values.back();
+                values.pop_back();
+                if (dest == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef args[] = {frame.lhs, dest};
+                values.push_back(buildNoUnwindCall(
+                    moveFileFunctionType_, moveFileFunction_, args, 2, "move.file"));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14232,36 +14293,9 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreThreadSleep:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreFileCopy:
-            {
-                if (node->children.size() != 3 || fileCopyFunction_ == nullptr)
-                    return failValue(error, "Pre-Stage-56 File.CopyRaw requires source, dest, overwrite arguments and runtime hook");
-                LLVMValueRef source = lowerExpression(node->children[0].get(), error);
-                if (source == nullptr) return nullptr;
-                LLVMValueRef dest = lowerExpression(node->children[1].get(), error);
-                if (dest == nullptr) return nullptr;
-                LLVMValueRef overwrite = lowerExpression(node->children[2].get(), error);
-                if (overwrite == nullptr) return nullptr;
-                LLVMValueRef args[] = {source, dest, overwrite};
-                return buildNoUnwindCall(fileCopyFunctionType_, fileCopyFunction_, args, 3, "file.copy");
-            }
-            // File.MoveRaw and Directory.MoveRaw BOTH lower to the SAME shared runtime hook
-            // (moveFileFunction_) -- see buildMoveFile's header comment in
-            // WindowsRuntimeBuilder.cpp for why sharing one wrapper across two
-            // MethodCoreOperationKind values is safe here (Win32's MoveFileA is byte-for-byte
-            // identical for files and directories). Same pattern as CoreSemaphoreWait/CoreEventWait
-            // above (Stage 54.5).
             case frontend::ProjectOopMirNodeKind::CoreFileMove:
             case frontend::ProjectOopMirNodeKind::CoreDirectoryMove:
-            {
-                if (node->children.size() != 2 || moveFileFunction_ == nullptr)
-                    return failValue(error, "Pre-Stage-56 File/Directory MoveRaw requires source + dest arguments and runtime hook");
-                LLVMValueRef source = lowerExpression(node->children[0].get(), error);
-                if (source == nullptr) return nullptr;
-                LLVMValueRef dest = lowerExpression(node->children[1].get(), error);
-                if (dest == nullptr) return nullptr;
-                LLVMValueRef args[] = {source, dest};
-                return buildNoUnwindCall(moveFileFunctionType_, moveFileFunction_, args, 2, "move.file");
-            }
+                return lowerExpressionIterative(node, error);
 
             case frontend::ProjectOopMirNodeKind::LambdaCreate:
                 return lowerLambdaCreate(node, error);
