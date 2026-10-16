@@ -554,6 +554,19 @@ private:
         std::string stableKey;
     };
 
+    // NSC305-G08. A type specialization demand recorded by the collector (the two-pass discovery);
+    // the target syntax is rewritten only in the apply phase. Executed later by the wave scheduler.
+    struct GenericTypeDemand final
+    {
+        TemplateState* state = nullptr;
+        std::vector<ast::TypeSyntax*> arguments;
+        ast::TypeSyntax* target = nullptr;
+        std::string key;
+        std::string specializedName;
+        std::vector<std::string> identities;
+        InstantiationContext context;
+    };
+
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
     // ensureTypeSpecialization/ensureMethodSpecialization save before materializing and restore
     // afterwards (they form a call stack, not global state). A nested struct can read the enclosing
@@ -1072,6 +1085,9 @@ private:
     // Demands are collected during the serial AST walk and materialized in deterministic waves,
     // before name/member binding and before parallel method-body analysis.
     std::vector<BodyTypeSpecializationDemand> bodyTypeSpecializationDemands_;
+    // NSC305-G08. Type specialization demands collected by the discovery pass and executed by the
+    // wave (the two-pass foundation). Filled by the collector, drained by the executor.
+    std::vector<GenericTypeDemand> typeSpecializationDemands_;
     // NSC305-G09. O(1) dedup of body-type demands by stableKey (the "deduplicate demands by
     // SpecializationKey" wave step); cleared after each wave is processed.
     std::unordered_set<std::string> bodyTypeDemandKeys_;
