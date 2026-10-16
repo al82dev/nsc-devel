@@ -595,6 +595,34 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     }
     appendMirSizeVector(out, function.abi.parameterPhysicalOrdinals);
     appendMirU32(out, static_cast<std::uint32_t>(function.abi.physicalParameterCount));
+    const auto appendAsyncTuples = [&](const auto& tuples)
+    {
+        appendMirU32(out, static_cast<std::uint32_t>(tuples.size()));
+        for (const auto& [ordinal, offset, typeKey] : tuples)
+        {
+            appendMirU64(out, static_cast<std::uint64_t>(ordinal));
+            appendMirU64(out, offset);
+            appendMirString(out, typeKey);
+        }
+    };
+    appendAsyncTuples(function.asyncFrameLocals);
+    appendAsyncTuples(function.asyncFrameParameters);
+    {
+        std::vector<std::uint32_t> kinds;
+        kinds.reserve(function.captureSourceKinds.size());
+        for (const MethodLambdaCaptureSourceKind kind : function.captureSourceKinds)
+            kinds.push_back(static_cast<std::uint32_t>(kind));
+        appendMirU32Vector(out, kinds);
+    }
+    {
+        std::vector<std::uint32_t> modes;
+        modes.reserve(function.captureModes.size());
+        for (const language::CaptureMode mode : function.captureModes)
+            modes.push_back(static_cast<std::uint32_t>(mode));
+        appendMirU32Vector(out, modes);
+    }
+    appendMirU32(out, static_cast<std::uint32_t>(function.captureOwnsValues.size()));
+    for (const bool owns : function.captureOwnsValues) out.push_back(owns ? '\x01' : '\x00');
     appendMirSizeVector(out, function.capturedLocalOrdinals);
     appendMirSizeVector(out, function.capturedParameterOrdinals);
     appendMirSizeVector(out, function.localOrdinals);
@@ -709,13 +737,66 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
         }
         return true;
     };
-    if (!readSizeVector(function.abi.parameterPhysicalOrdinals) ||
-        !readSizeVector(function.capturedLocalOrdinals) ||
+    if (!readSizeVector(function.abi.parameterPhysicalOrdinals)) return false;
+    if (!reader.u32(u32)) return false;
+    function.abi.physicalParameterCount = u32;
+    const auto readAsyncTuples = [&](auto& tuples) -> bool
+    {
+        if (!reader.u32(u32)) return false;
+        tuples.clear();
+        tuples.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::size_t ordinal = 0;
+            std::uint64_t offset = 0;
+            std::string typeKey;
+            if (!reader.u64(u64)) return false;
+            ordinal = static_cast<std::size_t>(u64);
+            if (!reader.u64(offset) || !reader.string(typeKey)) return false;
+            tuples.emplace_back(ordinal, offset, std::move(typeKey));
+        }
+        return true;
+    };
+    if (!readAsyncTuples(function.asyncFrameLocals) ||
+        !readAsyncTuples(function.asyncFrameParameters))
+        return false;
+    {
+        if (!reader.u32(u32)) return false;
+        function.captureSourceKinds.clear();
+        function.captureSourceKinds.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::uint32_t kind = 0;
+            if (!reader.u32(kind)) return false;
+            function.captureSourceKinds.push_back(static_cast<MethodLambdaCaptureSourceKind>(kind));
+        }
+    }
+    {
+        if (!reader.u32(u32)) return false;
+        function.captureModes.clear();
+        function.captureModes.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::uint32_t mode = 0;
+            if (!reader.u32(mode)) return false;
+            function.captureModes.push_back(static_cast<language::CaptureMode>(mode));
+        }
+    }
+    {
+        if (!reader.u32(u32)) return false;
+        function.captureOwnsValues.clear();
+        function.captureOwnsValues.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::uint8_t owns = 0;
+            if (!reader.byte(owns)) return false;
+            function.captureOwnsValues.push_back(owns != 0U);
+        }
+    }
+    if (!readSizeVector(function.capturedLocalOrdinals) ||
         !readSizeVector(function.capturedParameterOrdinals) ||
         !readSizeVector(function.localOrdinals))
         return false;
-    if (!reader.u32(u32)) return false;
-    function.abi.physicalParameterCount = u32;
     return restoreMirNodeTree(reader.remaining(), function.body);
 }
 
