@@ -111,8 +111,8 @@ al materializar módulos precompilados:
 
 - `module.sourceText` se registra como API pública precompilada;
 - `module.templateSourceText` se registra como una unidad **no precompilada**;
-- el comentario del código confirma que esa unidad alimenta la pasada genérica ordinaria del
-  consumidor;
+- el comentario del código confirma que esa unidad alimenta la pasada genérica ordinaria de la
+  compilación raíz;
 - todas las unidades entran después a lex y parse.
 
 Consecuencia: cada invocación independiente vuelve a tokenizar y parsear texto de plantillas cuyo
@@ -337,7 +337,7 @@ lowering enorme no quede solo en el último worker.
 ### 5.3 `ProjectOopLlvmLowerer::lowerExpression` (3,877 líneas)
 
 Es el mayor hotspot estructural del backend: 946 ramas, 2,712 llamadas detectadas y 190 llamadas
-recursivas directas. `lowerStatement` añade 698 líneas. Aunque LLVM consuma tiempo en librerías,
+recursivas directas. `lowerStatement` añade 698 líneas. Aunque parte del tiempo ocurra dentro de LLVM,
 esta forma concentra dispatch, conversión, ownership, cleanup, agregados, llamadas y debug en una
 sola función difícil de perfilar y paralelizar internamente.
 
@@ -392,8 +392,9 @@ límite razonable de stack del proceso.
 - No se conoce si los 53 s de LLVM se concentran en lowering, optimización, emisión o una sola
   partición.
 - No se conoce la razón exacta de los cero hits del run observado.
-- No se demostró todavía que un cambio sólo en el juego invalide objetos de SaruDX; es una hipótesis
-  que la traza de claves debe confirmar o negar.
+- No se demostró todavía qué trabajo fijo ejecuta `nsc` para un programa mínimo ni qué dependencias
+  sin cambios invalida una modificación exclusiva de la unidad raíz; la traza de claves debe
+  confirmarlo o negarlo con el corpus controlado de NSC.
 - No hay medición actual de contención, RSS pico, bytes leídos o asignaciones de arena.
 
 Estas ausencias no bloquean el diseño; definen obligatoriamente la primera tanda.

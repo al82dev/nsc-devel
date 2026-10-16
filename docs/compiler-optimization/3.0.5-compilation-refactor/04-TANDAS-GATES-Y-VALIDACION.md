@@ -24,13 +24,16 @@ autorización para crearlas durante esta fase documental.
 
 ## 2. Matriz de medición obligatoria
 
-El mismo proyecto real que produjo 122/53/9 se usa con:
+La matriz primaria usa un corpus controlado propio de NSC. Comienza con `Hola mundo` para medir el
+costo fijo y añade fixtures de complejidad creciente —múltiples fuentes, genéricos y dependencias—.
+La medición de fases que produjo 122/53/9 se conserva sólo como antecedente; no define por sí sola
+la causa, el corpus ni el alcance.
 
 | Caso | Estado inicial | Cambio |
 |---|---|---|
 | COLD | cache vacía controlada | ninguno |
 | WARM-0 | segundo build con misma cache | ninguno |
-| WARM-APP | cache caliente | un cuerpo privado del juego |
+| WARM-ROOT | cache caliente | un cuerpo privado de la unidad raíz |
 | WARM-DEP-PRIVATE | cache caliente | un cuerpo privado de dependencia controlada |
 | WARM-DEP-PUBLIC | cache caliente | una firma pública compatible de fixture |
 | ABI | cache caliente | cambio de layout/ABI de fixture |
@@ -175,14 +178,14 @@ sólo snapshots dependientes.
 
 **Cambio:** C3 por template fingerprint, argumentos, ABI y closure de interfaces.
 
-**GATE:** cambio sólo en juego reutiliza especializaciones de SaruDX/bindings; cambio en template
-afectado invalida su cierre; ningún hit cruzado entre argumentos/targets.
+**GATE:** un cambio exclusivo de la unidad raíz reutiliza las especializaciones de dependencias sin
+cambios; un cambio en un template afectado invalida su cierre; ningún hit cruza argumentos o targets.
 
 ### NSC305-C04 — MIR por callable/partición
 
 **Cambio:** C4 con interface/implementation fingerprints.
 
-**GATE:** cambio privado recompila sólo callable/consumidores reales; dumps restaurados idénticos;
+**GATE:** cambio privado recompila sólo el callable y sus dependientes reales; dumps restaurados idénticos;
 el objeto existente recibe claves estables de partición.
 
 ### NSC305-C05 — Política, prune y recuperación
@@ -290,7 +293,7 @@ G09 y L01/L02. Objetivo: escalar con cores manteniendo determinismo y memoria.
 
 ### Checkpoint D — warm incremental
 
-C01–C05. Objetivo: WARM-0 y WARM-APP en segundos, con razones de invalidación.
+C01–C05. Objetivo: WARM-0 y WARM-ROOT en segundos, con razones de invalidación.
 
 ### Checkpoint E — backend y estructura
 
@@ -299,7 +302,7 @@ mantenibles sin reescritura total.
 
 ### Checkpoint F — baseline final
 
-El usuario corre desde GUI pruebas externas O0 y después baseline O0/O1/O2/O3. Los fallos se
+El usuario corre desde la GUI la suite O0 y después el baseline O0/O1/O2/O3. Los fallos se
 atienden en tandas correctivas; no se agregan optimizaciones mientras haya regresiones activas.
 
 ## 11. Definición de terminado para NSC 3.0.5
@@ -308,10 +311,11 @@ atienden en tandas correctivas; no se agregan optimizaciones mientras haya regre
 
 1. el baseline de 3.0.4 fue preservado como salvavidas y no recibió features;
 2. la GUI termina su matriz completa sin fallos atribuibles a NSC 3.0.5;
-3. COLD, WARM-0 y WARM-APP tienen mediciones reproducibles;
+3. COLD, WARM-0 y WARM-ROOT tienen mediciones reproducibles desde `Hola mundo` hasta los fixtures
+   controlados de complejidad creciente;
 4. `generics` informa hotspots, evita barridos globales, no usa recursión y emplea jN de forma
    determinista;
-5. una compilación warm del juego no reparsea/remonomorfiza SaruDX/bindings sin cambios;
+5. una compilación warm de la unidad raíz no reparsea ni remonomorfiza dependencias sin cambios;
 6. LLVM restaura toda partición elegible sin cambios y explica cada miss;
 7. j1/jN producen mismos diagnostics, dumps y artefactos;
 8. la caché sobrevive corrupción, cancelación y concurrencia sin devolver falsos hits;

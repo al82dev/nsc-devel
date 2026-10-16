@@ -7,10 +7,12 @@ incremental, paralelizable, determinista y mantenible, usando 3.0.4 como referen
 congelada. No agrega lenguaje y no cambia contratos. El objetivo es reducir trabajo, no hacer menos
 comprobaciones.
 
-El diseño nace de dos fuentes complementarias:
+El diseño nace de tres fuentes complementarias:
 
-- una medición real aportada durante la compilación de un juego sobre SaruDX: aproximadamente
-  **122 s en `generics`, 53 s en LLVM, 9 s en enlace y 0 hits de caché de artefactos**;
+- una medición real de fases internas de `nsc`: aproximadamente **122 s en `generics`, 53 s en
+  LLVM, 9 s en enlace y 0 hits de caché de artefactos**;
+- el reporte del usuario de que incluso un programa mínimo `Hola mundo` tarda aproximadamente tres
+  minutos, que obliga a medir primero el costo fijo del pipeline general;
 - una auditoría estática del árbol actual de `development`, incluidos los coordinadores, los modelos
   del frontend, el parser, HIR, MIR, el lowerer LLVM, la partición, el generador de objetos, la caché
   y el pool de trabajadores.
@@ -32,7 +34,7 @@ forma serial. El método no recibe `compilationJobs_`.
 
 **HECHO.** `compileSyntaxCore` vuelve a insertar como unidades sintácticas la API pública y el
 texto fuente de plantillas de cada módulo precompilado. Las plantillas se marcan deliberadamente
-como no precompiladas para que el consumidor las monomorfice. Después todas esas unidades pasan por
+como no precompiladas para que la compilación raíz las monomorfice. Después todas esas unidades pasan por
 lexing y parsing. La decisión conserva semántica, pero repite trabajo en cada proceso.
 
 **HECHO.** La caché de especializaciones de `ProjectGenericModel` es sólo una tabla en memoria para
@@ -43,13 +45,15 @@ demandas, especializaciones semánticas, HIR o MIR.
 subárboles y búsquedas lineales sobre `templateStates_`. Varias rutas consultan el catálogo tres o
 más veces para una sola llamada genérica.
 
-**INFERENCIA FUERTE.** En un consumidor pequeño que referencia una superficie grande de SaruDX y
-bindings, el costo proviene de la suma de: rehidratar y parsear plantillas importadas, reconstruir
-el catálogo completo, recorrerlo repetidamente, descubrir dependencias en todo el AST y clonar las
-especializaciones alcanzadas. La evidencia estática explica la forma del costo, pero todavía no
-identifica qué plantilla o método consume cada milisegundo.
+**INFERENCIA FUERTE.** El pipeline paga costos fijos y costos proporcionales aun cuando la unidad raíz
+sea mínima: inicialización del proyecto y referencias, rehidratación y parsing de plantillas
+importadas, reconstrucción del catálogo, recorridos repetidos, descubrimiento de dependencias y
+clonación de especializaciones alcanzadas. La evidencia estática explica rutas capaces de producir
+ese costo, pero todavía no atribuye cada milisegundo ni demuestra cuáles son necesarias en `Hola
+mundo`. P01 debe separar costo fijo, costo por fuente y costo por dependencia.
 
-**ACLARACIÓN.** `artifact-cache-hits: 0` no demuestra por sí solo que “todo SaruDX se recompiló”.
+**ACLARACIÓN.** `artifact-cache-hits: 0` no demuestra por sí solo que todas las dependencias se
+recompilaron.
 Puede significar caché deshabilitada, claves distintas, configuración no elegible, primera ejecución
 o misses reales. La telemetría actual no enumera razón de miss ni módulo. La primera tanda debe
 convertir esa ambigüedad en datos.
@@ -82,8 +86,8 @@ Los números siguientes son **presupuestos de aceptación propuestos**, no resul
 |---|---|---:|
 | Cold build limpio | Todo el pipeline, con mejores algoritmos y paralelismo | No empeorar más de 5 % frente al 3.0.4 equivalente; meta inicial: reducir al menos 30 %. |
 | Warm build sin cambios | Validación de claves, materialización final si aplica | Menor a 10 % del cold build y, como meta de producto, menor a 15 s en el caso real. |
-| Cambio sólo en el juego | Recompilar el juego y el cierre afectado | Ninguna especialización ni objeto de SaruDX/bindings sin cambios debe regenerarse. |
-| Cambio privado en una dependencia | Sólo nodos cuya huella de implementación dependa de él | No invalidar consumidores guiados exclusivamente por la interfaz. |
+| Cambio sólo en la unidad raíz | Recompilar la unidad raíz y el cierre afectado | Ninguna especialización ni objeto de dependencias sin cambios debe regenerarse. |
+| Cambio privado en una dependencia | Sólo nodos cuya huella de implementación dependa de él | No invalidar nodos guiados exclusivamente por la interfaz. |
 | Cambio público/ABI | Cierre transitivo correcto | Invalidación explícita, explicable y sin reutilización insegura. |
 | `-j1` frente a `-jN` | Mismo resultado observable | Mismos diagnósticos ordenados y hashes de artefactos; `-jN` reduce pared sin sobrepasar presupuesto. |
 
@@ -125,4 +129,4 @@ Los números siguientes son **presupuestos de aceptación propuestos**, no resul
 Se realizó análisis estático y se generó el inventario AST contra la base de compilación existente.
 No se modificó código de producción, no se ejecutaron pruebas, no se ejecutó baseline y no se hizo
 ninguna afirmación de mejora medida. La medición causal comienza en la primera tanda de
-implementación, después de que el baseline externo confirme el punto de rescate.
+implementación, después de confirmar el punto de rescate 3.0.4.

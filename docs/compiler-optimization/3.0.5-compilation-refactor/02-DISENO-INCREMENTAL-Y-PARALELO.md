@@ -124,7 +124,7 @@ guardan en orden fuente estable.
 
 ### 4.3 Algoritmo de resolución de método
 
-Entrada: proyecto consumidor, `ScopeId`, owner escrito, nombre, aridad y argc.
+Entrada: proyecto raíz, `ScopeId`, owner escrito, nombre, aridad y argc.
 
 1. Construir una sola vez `qualifiedNameLadder`.
 2. Consultar `methodsByName`; si no existe, `Missing`.
@@ -193,7 +193,7 @@ RootDemandCollector    -> set<GenericDemand>
 SpecializationPlanner  -> deterministic waves
 SpecializationWorker   -> private SpecializationProduct
 SpecializationCommitter-> GenericBuildResult + rewrite map
-RewriteApplier         -> mutated consumer units
+RewriteApplier         -> mutated root units
 ```
 
 ### 6.2 Estados por clave
@@ -356,7 +356,7 @@ Separar huellas:
 - `InterfaceFingerprint`: firma, constraints, layout/ABI observable y dependencias públicas;
 - `ImplementationFingerprint`: cuerpo normalizado + interfaces de lo que usa.
 
-Una modificación privada cambia implementación, no obliga a invalidar consumidores que sólo ven
+Una modificación privada cambia implementación, no obliga a invalidar nodos dependientes que sólo ven
 la interfaz. Un caller se invalida si el contrato o una decisión de inlining/const-eval que consumió
 cambia.
 
