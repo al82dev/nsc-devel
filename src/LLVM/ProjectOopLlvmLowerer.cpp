@@ -9695,13 +9695,7 @@ private:
             case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
                 return staticFieldAddress(node, error);
             case frontend::ProjectOopMirNodeKind::FutureFieldAddress:
-            {
-                if (node->children.empty())
-                    return failValue(error, "future field address has no future receiver");
-                LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
-                if (receiver == nullptr) return nullptr;
-                return byteOffset(receiver, node->immediate, "future.field.addr");
-            }
+                return lowerExpressionIterative(node, error);
             default:
                 return nullptr;
         }
@@ -10657,6 +10651,25 @@ private:
                 values.push_back(applyBinaryOperation(
                     current->operation, frame.lhs, right, current->children[0]->typeKey, error,
                     current->booleanValue));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.empty())
+                    {
+                        values.push_back(failValue(error, "future field address has no future receiver"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef receiver = values.back();
+                values.pop_back();
+                if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(byteOffset(receiver, current->immediate, "future.field.addr"));
                 continue;
             }
             // The remaining families still use the recursive lowerExpression.
