@@ -13,9 +13,11 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -451,9 +453,31 @@ private:
         // carries both the target syntax and its optional type-parameter list.
         std::unordered_map<std::string, const ast::AstNode*> typeAliases;
         std::unordered_set<std::string> typeParameters;
-        // Item 277. Types written on parameters, fields, and preceding locals are sufficient for
-        // local generic inference without running a second semantic pipeline before Stage 44.
-        std::unordered_map<std::string, const ast::TypeSyntax*> valueTypes;
+        // NSC305-G04. Item 277. Types written on parameters, fields, and preceding locals are
+        // sufficient for local generic inference. This container is the one that grows with the
+        // number of locals, so it is a persistent parent-linked chain: copying a scope is O(1) and
+        // adding a binding is O(1). Lookup walks newest-to-oldest, which preserves shadowing.
+        struct ValueBinding final
+        {
+            std::string name;
+            const ast::TypeSyntax* type = nullptr;
+            std::shared_ptr<const ValueBinding> parent;
+        };
+        std::shared_ptr<const ValueBinding> valueTypes;
+        void addValueType(std::string name, const ast::TypeSyntax* type)
+        {
+            valueTypes = std::make_shared<ValueBinding>(
+                ValueBinding{std::move(name), type, std::move(valueTypes)});
+        }
+        const ast::TypeSyntax* findValueType(std::string_view name) const noexcept
+        {
+            for (const ValueBinding* binding = valueTypes.get(); binding != nullptr;
+                 binding = binding->parent.get())
+            {
+                if (binding->name == name) return binding->type;
+            }
+            return nullptr;
+        }
         // By-reference parameter types carry a trailing Pointer modifier for ABI representation.
         // Preserve the source pass kind separately so structural pre-Sema type discovery can look
         // through that wrapper without losing the readonly meaning of `in`.

@@ -2247,7 +2247,7 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
                 parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
                 parameter->typeSyntax() != nullptr)
             {
-                bodyScope.valueTypes[parameter->text()] = parameter->typeSyntax();
+                bodyScope.addValueType(parameter->text(), parameter->typeSyntax());
             }
         }
         if (ast::TypeSyntax* inferredReturn =
@@ -2425,7 +2425,7 @@ void ProjectGenericModel::processNode(
     // mismo AST, en el mismo sitio, y heredando los de fuera.
     telemetry_.noteScopeCopy(
         scope.importedNamespaces.size() + scope.aliases.size() + scope.typeAliases.size() +
-        scope.typeParameters.size() + scope.valueTypes.size() + scope.valuePassKinds.size() +
+        scope.typeParameters.size() + scope.valuePassKinds.size() +
         scope.genericLambdas.size());
     GenericLookupScope currentScope = scope;
     if (node->kind() == ast::AstNodeKind::LambdaExpression &&
@@ -2501,8 +2501,8 @@ void ProjectGenericModel::processNode(
              child->kind() != ast::AstNodeKind::FieldDeclaration))
             continue;
         bool conflict = false;
-        currentScope.valueTypes[child->text()] =
-            cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict);
+        currentScope.addValueType(child->text(),
+            cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict));
         if (child->kind() == ast::AstNodeKind::ParameterDeclaration)
         {
             // A nested callable may shadow a by-reference name with an ordinary value parameter.
@@ -2749,7 +2749,7 @@ void ProjectGenericModel::processNode(
         if (declaredLocalType == nullptr && child->first() != nullptr)
             declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
         if (declaredLocalType != nullptr)
-            sequentialScope.valueTypes[child->text()] = declaredLocalType;
+            sequentialScope.addValueType(child->text(), declaredLocalType);
     }
 }
 
@@ -3013,8 +3013,8 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
     {
         case ast::AstNodeKind::IdentifierExpression:
         {
-            const auto found = scope.valueTypes.find(expression->text());
-            return found == scope.valueTypes.end() ? nullptr : clone(found->second);
+            const ast::TypeSyntax* found = scope.findValueType(expression->text());
+            return found == nullptr ? nullptr : clone(found);
         }
         case ast::AstNodeKind::MatchValueExpression:
             return clone(scope.matchValueType);
@@ -3022,8 +3022,8 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::ThisExpression)
             {
-                const auto found = scope.valueTypes.find(expression->text());
-                return found == scope.valueTypes.end() ? nullptr : clone(found->second);
+                const ast::TypeSyntax* found = scope.findValueType(expression->text());
+                return found == nullptr ? nullptr : clone(found);
             }
             return nullptr;
         case ast::AstNodeKind::IntegerLiteralExpression:
@@ -3671,7 +3671,7 @@ bool ProjectGenericModel::inferLambdaTypeArguments(
                     unit, signaturePattern, lambdaParameter->typeSyntax(), methodRecord,
                     methodParameters, inferred))
                 return false;
-            lambdaScope.valueTypes[lambdaParameter->text()] = lambdaParameter->typeSyntax();
+            lambdaScope.addValueType(lambdaParameter->text(), lambdaParameter->typeSyntax());
         }
     }
 
