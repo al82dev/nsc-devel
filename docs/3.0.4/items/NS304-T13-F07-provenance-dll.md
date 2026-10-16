@@ -79,3 +79,12 @@
   `LibraryReference`.
 - No se ejecutaron baseline, deploy, componente completo ni batería global. Esa validación acumulada queda para
   la GUI del usuario después de terminar las tandas.
+
+## Corrección de catálogo posterior al cierre — 2026-10-15
+
+- La entrada `TL-LANG-493` se registró inicialmente con `class: exceptional`, valor que no pertenece al
+  vocabulario canónico de `CASE_CLASSES` y bloqueaba la carga de NSC Builder 3 antes de mostrar la GUI.
+- Se corrigió exclusivamente a `class: nominal`, coherente con los casos exitosos que ejercitan rutas de
+  excepción (`TL-LANG-407`, `TL-LANG-491` y `TL-LANG-496`). La semántica, el oracle y la prueba no cambiaron.
+- La validación de esta corrección se limita a la carga íntegra del manifiesto y a las pruebas focales de su
+  contrato; no constituye una ejecución de la batería.
