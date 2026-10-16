@@ -957,6 +957,16 @@ private:
         std::size_t ordinal,
         const SpecializationContext& callerContext,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Deterministic pre-reserve for the parallel wave: computes key/name, dedups,
+    // restores from cache, enters the budget and reserves the ordinal. Returns SIZE_MAX on a hit or
+    // error (the caller handles it); otherwise returns the reserved ordinal.
+    std::size_t reserveTypeDemand(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        std::string& key,
+        std::string& specializedName,
+        std::vector<std::string>& identities,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

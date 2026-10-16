@@ -5756,6 +5756,49 @@ bool ProjectGenericModel::executeTypeSpecialization(
     return product.success;
 }
 
+// NSC305-G09. Deterministic pre-reserve for the parallel wave: compute key/name, dedup, enter the
+// budget and reserve the ordinal. Returns SIZE_MAX on a hit or error (the caller handles it).
+std::size_t ProjectGenericModel::reserveTypeDemand(
+    TemplateState& state,
+    std::span<ast::TypeSyntax* const> arguments,
+    std::string& key,
+    std::string& specializedName,
+    std::vector<std::string>& identities,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::vector<std::string> spellings;
+    key = computeSpecializationKey(state.record, arguments, spellings, identities);
+    specializedName = state.record.name + "__g" + std::to_string(arguments.size());
+    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
+    specializedName += "__h" + stableHashSuffix(key);
+    if (specializationPlanner_.request(key))
+    {
+        telemetry_.noteSpecializationHit();
+        ++instantiationCacheHitCount_;
+        return std::numeric_limits<std::size_t>::max();
+    }
+    if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            state.syntax != nullptr ? state.syntax->range() : SourceRange{},
+            "Stage 44 generic type template has no materialization parent");
+        return std::numeric_limits<std::size_t>::max();
+    }
+    std::string budgetError;
+    if (!instantiationBudget_.enter(key, currentLogicalDepth_, budgetError))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            currentInstantiationRange_,
+            budgetError);
+        return std::numeric_limits<std::size_t>::max();
+    }
+    return reserveTypeSpecialization(state, key, specializedName, identities);
+}
+
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
