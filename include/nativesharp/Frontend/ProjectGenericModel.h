@@ -115,6 +115,19 @@ enum class SpecializationState : std::uint8_t
     Failed = 4,
 };
 
+// NSC305-G09 (§6.4). The demand-owned instantiation context: what a specialization needs to know
+// about its request site, carried by the demand itself instead of the shared model state, so a
+// private worker can execute it without the C++ call stack.
+struct InstantiationContext final
+{
+    std::size_t projectOrdinal = 0;
+    std::string namespaceName;
+    SourceRange range{};
+    std::size_t overloadGroup = 0;
+    std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> packSubstitutions;
+    std::unordered_set<std::string> associatedProjections;
+};
+
 struct GenericSpecializationRecord final
 {
     GenericTemplateKind kind = GenericTemplateKind::Class;
@@ -144,6 +157,8 @@ struct GenericSpecializationRecord final
     // fallan TODAS. Sin este campo, `F<Valor>(...)` con dos `F<T>` declaradas se rechazaba por la
     // candidata equivocada.
     std::size_t overloadGroup = 0;
+    // NSC305-G09. The demand-owned instantiation context (request site + packs + projections).
+    InstantiationContext instantiationContext;
     // NSC305-G07. Explicit lifecycle state (see SpecializationState). A record is pushed as
     // Building and flips to Ready when the committed clone is attached; precompiled seed and lambda
     // instances are born Ready.

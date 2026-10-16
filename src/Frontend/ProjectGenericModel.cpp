@@ -917,7 +917,8 @@ bool ProjectGenericModel::build(
                 templateState->ordinal,
                 nullptr,
                 SourceRange{},
-                0});
+                0,
+                InstantiationContext{}});
             specializations_.back().state = SpecializationState::Ready;
         }
     }
@@ -4604,7 +4605,14 @@ std::size_t ProjectGenericModel::reserveTypeSpecialization(
         state.ordinal,
         nullptr,
         currentInstantiationRange_,
-        currentOverloadGroup_});
+        currentOverloadGroup_,
+        InstantiationContext{
+            currentInstantiationProjectOrdinal_,
+            currentInstantiationNamespace_,
+            currentInstantiationRange_,
+            currentOverloadGroup_,
+            activePackSubstitutions_,
+            activeAssociatedProjections_}});
     specializations_.back().state = SpecializationState::Building;
     return ordinal;
 }
@@ -4813,7 +4821,14 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         state.ordinal,
         nullptr,
         currentInstantiationRange_,
-        currentOverloadGroup_});
+        currentOverloadGroup_,
+        InstantiationContext{
+            currentInstantiationProjectOrdinal_,
+            currentInstantiationNamespace_,
+            currentInstantiationRange_,
+            currentOverloadGroup_,
+            activePackSubstitutions_,
+            activeAssociatedProjections_}});
     specializations_.back().state = SpecializationState::Building;
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
