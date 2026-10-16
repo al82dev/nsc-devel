@@ -160,13 +160,14 @@ public:
         return true;
     }
 
-private:
     bool byte(std::uint8_t& out)
     {
         if (position_ >= bytes_.size()) return false;
         out = static_cast<std::uint8_t>(bytes_[position_++]);
         return true;
     }
+
+private:
     std::string_view bytes_;
     std::size_t position_ = 0;
 };
@@ -332,6 +333,199 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
     }
     appendMirU32(out, 0xFFFFFFFEu); // end marker
     return out;
+}
+
+// Reads one node's scalar/string/flag/optional/vector fields (symmetric to appendMirNodeFields).
+bool readMirNodeFields(MirByteReader& reader, ProjectOopMirNode& node)
+{
+    std::uint32_t u32 = 0;
+    std::uint64_t u64 = 0;
+    if (!reader.u32(u32)) return false;
+    node.kind = static_cast<ProjectOopMirNodeKind>(u32);
+    if (!reader.string(node.typeKey) || !reader.string(node.elementTypeKey) ||
+        !reader.string(node.stringValue) || !reader.string(node.debugDisplayName))
+        return false;
+    if (!reader.u32(u32)) return false;
+    node.operation = static_cast<lexer::TokenKind>(u32);
+    if (!reader.u64(node.immediate) || !reader.u64(node.secondaryImmediate) ||
+        !reader.u64(node.integerValue) || !reader.u64(node.bitStorageSize) ||
+        !reader.u64(node.alignment))
+        return false;
+    if (!reader.u64(node.resultSuccessTag) || !reader.u64(node.resultErrorTag) ||
+        !reader.u64(node.resultReturnErrorTag))
+        return false;
+    if (!reader.string(node.resultSourceCarrierTypeKey) ||
+        !reader.string(node.resultSourceErrorTypeKey) ||
+        !reader.string(node.resultReturnCarrierTypeKey) ||
+        !reader.string(node.resultReturnErrorTypeKey))
+        return false;
+    if (!reader.string(node.allocatorDeallocateCalleeName) || !reader.string(node.calleeName) ||
+        !reader.string(node.secondaryCalleeName) || !reader.string(node.resultSuccessTestCalleeName) ||
+        !reader.string(node.resultSuccessExtractorCalleeName) ||
+        !reader.string(node.resultErrorExtractorCalleeName) ||
+        !reader.string(node.resultErrorFactoryCalleeName) ||
+        !reader.string(node.resultErrorConversionCalleeName))
+        return false;
+    if (!reader.u64(u64)) return false;
+    std::memcpy(&node.floatingValue, &u64, sizeof(u64));
+    if (!reader.u64(u64)) return false;
+    node.trailingLengthRelativeOffset = static_cast<std::int64_t>(u64);
+    if (!reader.u32(u32)) return false;
+    node.variableLengthArrayRank = u32;
+    if (!reader.u32(u32)) return false;
+    node.nativeArrayRank = u32;
+    if (!reader.u32(u32)) return false;
+    node.argumentCount = u32;
+    if (!reader.stringVector(node.argumentTypeKeys) ||
+        !reader.stringVector(node.catchMatchedErrorTypeKeys))
+        return false;
+    if (!reader.u32(u32)) return false;
+    node.ownership = static_cast<sema::OwnershipKind>(u32);
+    if (!reader.u32(u32)) return false;
+    node.objectLifetimeOwnership = static_cast<sema::OwnershipKind>(u32);
+    if (!reader.u32(u32)) return false;
+    node.storageOwnership = static_cast<sema::OwnershipKind>(u32);
+    if (!reader.u32(u32)) return false;
+    node.captureMode = static_cast<language::CaptureMode>(u32);
+    if (!reader.u32(u32)) return false;
+    const auto flag = [&](std::uint32_t bit) { return (u32 & (1U << bit)) != 0U; };
+    node.booleanValue = flag(0);
+    node.switchHasDefault = flag(1);
+    node.hasTrailingLengthBounds = flag(2);
+    node.referenceLocal = flag(3);
+    node.referenceMutable = flag(4);
+    node.staticLocal = flag(5);
+    node.pinnedStorage = flag(6);
+    node.referenceResult = flag(7);
+    node.governingReference = flag(8);
+    node.nullConditionalCall = flag(9);
+    node.returnsAssignedValue = flag(10);
+    node.mustTailCall = flag(11);
+    node.automaticDestruction = flag(12);
+    node.variableLengthArray = flag(13);
+    node.placementConstructed = flag(14);
+    node.stackPromotedObject = flag(15);
+    node.volatileAccess = flag(16);
+    node.allocationFailureReturnsNull = flag(17);
+    node.zeroInitialize = flag(18);
+    node.baseReceiver = flag(19);
+    node.targetIsInterface = flag(20);
+    node.dynamicDestruction = flag(21);
+    node.valueTypeNoOpDeletion = flag(22);
+    node.catchAll = flag(23);
+    node.catchHasFilter = flag(24);
+    node.catchExhaustive = flag(25);
+    node.interfaceCleanupDispatch = flag(26);
+    node.inlineAssemblyHasSideEffects = flag(27);
+    node.inlineAssemblyClobbersMemory = flag(28);
+    node.inlineAssemblyClobbersFlags = flag(29);
+
+    const auto readOptU64 = [&](std::optional<std::size_t>& value) -> bool
+    {
+        std::uint8_t present = 0;
+        if (!reader.byte(present)) return false;
+        if (!present) { value.reset(); return true; }
+        if (!reader.u64(u64)) return false;
+        value = static_cast<std::size_t>(u64);
+        return true;
+    };
+    const auto readOptEnum = [&](auto& value) -> bool
+    {
+        std::uint8_t present = 0;
+        if (!reader.byte(present)) return false;
+        if (!present) { value.reset(); return true; }
+        if (!reader.u32(u32)) return false;
+        value = static_cast<std::remove_reference_t<decltype(*value)>>(u32);
+        return true;
+    };
+    if (!readOptU64(node.memberOrdinal) || !readOptU64(node.namespaceFunctionOrdinal) ||
+        !readOptU64(node.namespaceStateOrdinal) || !readOptU64(node.secondaryMemberOrdinal) ||
+        !readOptU64(node.resultSuccessTestMemberOrdinal) ||
+        !readOptU64(node.resultSuccessExtractorMemberOrdinal) ||
+        !readOptU64(node.resultErrorExtractorMemberOrdinal) ||
+        !readOptU64(node.resultErrorFactoryMemberOrdinal) ||
+        !readOptU64(node.resultErrorConversionMemberOrdinal) || !readOptU64(node.localOrdinal) ||
+        !readOptU64(node.parameterOrdinal) || !readOptU64(node.constructionOrdinal) ||
+        !readOptU64(node.targetTypeOrdinal) || !readOptU64(node.exceptionTypeOrdinal) ||
+        !readOptU64(node.cleanupRegionOrdinal) || !readOptU64(node.mirRegionOrdinal) ||
+        !readOptU64(node.exceptionTargetRegionOrdinal) || !readOptU64(node.targetScopeOrdinal) ||
+        !readOptU64(node.disposeContractMemberOrdinal) ||
+        !readOptU64(node.disposeImplementationMemberOrdinal) || !readOptU64(node.virtualSlot) ||
+        !readOptU64(node.interfaceSlot) || !readOptU64(node.allocatorContextLocalOrdinal) ||
+        !readOptU64(node.allocatorDeallocateMemberOrdinal) || !readOptU64(node.allocatorTypeOrdinal) ||
+        !readOptEnum(node.cleanupContinuationKind) || !readOptEnum(node.borrowKind) ||
+        !readOptEnum(node.localBorrowSourceKind) || !readOptEnum(node.conversionKind) ||
+        !readOptU64(node.bitOffset) || !readOptU64(node.bitWidth))
+        return false;
+
+    const auto readSizeVector = [&](std::vector<std::size_t>& values) -> bool
+    {
+        if (!reader.u32(u32)) return false;
+        values.clear();
+        values.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            if (!reader.u64(u64)) return false;
+            values.push_back(static_cast<std::size_t>(u64));
+        }
+        return true;
+    };
+    const auto readInt64Vector = [&](std::vector<std::int64_t>& values) -> bool
+    {
+        if (!reader.u32(u32)) return false;
+        values.clear();
+        values.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            if (!reader.u64(u64)) return false;
+            values.push_back(static_cast<std::int64_t>(u64));
+        }
+        return true;
+    };
+    if (!readSizeVector(node.cleanupRegionOrdinals) || !readInt64Vector(node.switchLabels))
+        return false;
+    {
+        if (!reader.u32(u32)) return false;
+        node.collectionSegments.clear();
+        node.collectionSegments.reserve(u32);
+        for (std::uint32_t index = 0; index < u32; ++index)
+        {
+            std::uint32_t segment = 0;
+            if (!reader.u32(segment)) return false;
+            node.collectionSegments.push_back(static_cast<ProjectCollectionSegmentKind>(segment));
+        }
+    }
+    return readSizeVector(node.argumentParameterOrdinals);
+}
+
+bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
+{
+    std::uint32_t marker = 0;
+    if (!reader.u32(marker)) return false;
+    if (marker == 0xFFFFFFFEu)
+    {
+        out.reset();
+        return true;
+    }
+    if (marker != 0xFFFFFFFFu) return false;
+    auto node = std::make_unique<ProjectOopMirNode>();
+    if (!readMirNodeFields(reader, *node)) return false;
+    std::uint32_t childCount = 0;
+    if (!reader.u32(childCount)) return false;
+    node->children.resize(childCount);
+    for (std::unique_ptr<ProjectOopMirNode>& child : node->children)
+    {
+        if (!readMirNode(reader, child)) return false;
+    }
+    out = std::move(node);
+    return true;
+}
+
+[[maybe_unused]] bool restoreMirNodeTree(
+    std::string_view bytes, std::unique_ptr<ProjectOopMirNode>& body)
+{
+    MirByteReader reader(bytes);
+    return readMirNode(reader, body);
 }
 
 bool finalizeCleanupContract(
