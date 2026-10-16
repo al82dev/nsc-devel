@@ -282,6 +282,28 @@ auto measureDriverPhase(std::string_view phase, Callback callback)
     return callback();
 }
 
+// NSC305-P02. Emits the per-code-unit LLVM/cache attribution. Called only when the caller has
+// already decided timing reporting is active, so the normal build report remains byte-identical.
+void appendCodeUnitTelemetry(
+    std::ostream& output, const llvm_backend::ProjectOopObjectBundle& bundle)
+{
+    const auto telemetry = bundle.codeUnitTelemetry();
+    if (telemetry.empty()) return;
+    for (const llvm_backend::CodeUnitTelemetry& unit : telemetry)
+    {
+        output << "code-unit " << unit.name
+               << " fingerprint-us=" << unit.fingerprintMicros
+               << " lookup-us=" << unit.lookupMicros
+               << " lowering-us=" << unit.loweringMicros
+               << " optimization-us=" << unit.optimizationMicros
+               << " emission-us=" << unit.emissionMicros
+               << " verification-us=" << unit.verificationMicros
+               << " store-us=" << unit.storeMicros
+               << " miss-reason="
+               << llvm_backend::cacheMissReasonName(unit.missReason) << '\n';
+    }
+}
+
 void configureProjectExecution(frontend::ProjectCompilation& compilation)
 {
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
@@ -7109,6 +7131,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
         output << ' ' << library;
     }
     output << '\n';
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+        appendCodeUnitTelemetry(output, *objectBundle);
     return ExitCode::Success;
 }
 
@@ -7284,6 +7308,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "archive-members: " << builder.archiveInfo().memberCount << '\n'
            << "host-header: " << headerDestination.generic_string() << '\n'
            << "library-metadata: " << metadataDestination.generic_string() << '\n';
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+        appendCodeUnitTelemetry(output, *objectBundle);
     return ExitCode::Success;
 }
 
@@ -7659,6 +7685,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     output << "exception-directory-rva: " << builder.dynamicLibraryInfo().exceptionDirectoryRva << '\n'
            << "exception-directory-size: " << builder.dynamicLibraryInfo().exceptionDirectorySize << '\n'
            << "clr-header-rva: " << builder.dynamicLibraryInfo().clrDirectoryRva << '\n';
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+        appendCodeUnitTelemetry(output, *objectBundle);
     return ExitCode::Success;
 }
 

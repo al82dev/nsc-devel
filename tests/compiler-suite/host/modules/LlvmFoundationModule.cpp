@@ -1,8 +1,12 @@
 #include "LlvmTestSupport.h"
 
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
+
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <string_view>
 
 namespace nsc::suite
 {
@@ -64,6 +68,77 @@ void prefixMapContract(TestContext& context, std::size_t variant)
             "prefix-map value model must remain deterministic at scale");
     }
 }
+
+void cacheReasonContract(TestContext& context, std::size_t variant)
+{
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::Hit)) == "hit",
+        "cache miss reason name for Hit must be exact");
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::Disabled)) == "disabled",
+        "cache miss reason name for Disabled must be exact");
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::KeyMismatch)) == "key-mismatch",
+        "cache miss reason name for KeyMismatch must be exact");
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::Cold)) == "cold",
+        "cache miss reason name for Cold must be exact");
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::IncompletePublication)) ==
+            "incomplete-publication",
+        "cache miss reason name for IncompletePublication must be exact");
+    context.expect(std::string(cacheMissReasonName(CacheMissReason::Corruption)) == "corruption",
+        "cache miss reason name for Corruption must be exact");
+
+    const std::filesystem::path root = std::filesystem::current_path() /
+        ("nsc-host-llvm-cache-reason-" + std::to_string(variant));
+    std::error_code filesystemError;
+    std::filesystem::remove_all(root, filesystemError);
+    filesystemError.clear();
+    std::filesystem::create_directories(root, filesystemError);
+    context.expect(!filesystemError && std::filesystem::is_directory(root, filesystemError),
+        "cache reason fixture directory must be creatable");
+    const std::string key(64, 'a');
+    const std::filesystem::path destination = root / "restored.obj";
+    bool hit = false;
+    std::string error;
+    CacheMissReason reason = CacheMissReason::Hit;
+
+    CompilationArtifactCache disabled;
+    context.expect(disabled.restoreObject(key, destination, hit, error, &reason) && !hit &&
+            reason == CacheMissReason::Disabled,
+        "a disabled artifact cache must report a Disabled miss");
+
+    CompilationArtifactCache cache;
+    cache.setRoot(root);
+    reason = CacheMissReason::Hit;
+    context.expect(cache.restoreObject(key, destination, hit, error, &reason) && !hit &&
+            reason == CacheMissReason::Cold,
+        "an empty artifact cache must report a Cold miss");
+
+    reason = CacheMissReason::Hit;
+    context.expect(!cache.restoreObject("not-a-key", destination, hit, error, &reason) && !hit &&
+            reason == CacheMissReason::KeyMismatch,
+        "a non-canonical key must report a KeyMismatch miss");
+
+    const std::filesystem::path source = root / "source.obj";
+    {
+        std::ofstream output(source, std::ios::binary | std::ios::trunc);
+        output << "canonical object bytes";
+    }
+    const bool stored = cache.storeObject(key, source, error);
+    context.expect(stored && error.empty(),
+        "artifact cache must store a canonical object entry; error=" + error);
+
+    const std::filesystem::path cachedObject = root / "objects" / key.substr(0, 2) / (key + ".obj");
+    {
+        std::ofstream output(cachedObject, std::ios::binary | std::ios::trunc);
+        output << "corrupted bytes";
+    }
+    reason = CacheMissReason::Hit;
+    context.expect(cache.restoreObject(key, destination, hit, error, &reason) && !hit &&
+            reason == CacheMissReason::Corruption,
+        "a digest-mismatched entry must be reported as Corruption and rebuilt");
+    context.expect(!std::filesystem::exists(cachedObject, filesystemError) || filesystemError,
+        "a corrupted entry must be quarantined after detection");
+
+    std::filesystem::remove_all(root, filesystemError);
+}
 }
 
 void registerLlvmFoundationModule(TestRegistry& registry)
@@ -71,5 +146,6 @@ void registerLlvmFoundationModule(TestRegistry& registry)
     addLlvmContract(registry, 1, "integration", coffContract);
     addLlvmContract(registry, 7, "unit", debugKindContract);
     addLlvmContract(registry, 8, "unit", prefixMapContract);
+    addLlvmContract(registry, 22, "unit", cacheReasonContract);
 }
 }

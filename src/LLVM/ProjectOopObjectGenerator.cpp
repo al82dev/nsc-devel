@@ -91,6 +91,23 @@ std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error
     return std::nullopt;
 }
 
+// NSC305-P02. Monotonic wall timer for per-code-unit phase attribution. Zero allocation; the
+// elapsed value is read explicitly so each phase can be summed without touching control flow.
+class PhaseClock final
+{
+public:
+    PhaseClock() : started_(std::chrono::steady_clock::now()) {}
+    std::uint64_t elapsedMicros() const
+    {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started_).count());
+    }
+
+private:
+    std::chrono::steady_clock::time_point started_;
+};
+
 }
 
 void ProjectOopObjectGenerator::setProgressSink(
@@ -150,6 +167,11 @@ std::size_t ProjectOopObjectBundle::thinLtoSummaryCount() const noexcept
 const std::string& ProjectOopObjectBundle::thinLtoIndexDigest() const noexcept
 {
     return thinLtoIndexDigest_;
+}
+
+std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() const noexcept
+{
+    return codeUnitTelemetry_;
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
@@ -229,6 +251,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::vector<std::string> moduleErrors(moduleCount);
     std::vector<std::uint8_t> cacheHits(moduleCount, 0);
     std::vector<std::uint8_t> cacheMisses(moduleCount, 0);
+    std::vector<CodeUnitTelemetry> codeUnitTelemetry(moduleCount);
     const FloatingPointState workerFloatingPointState = captureFloatingPointState();
     const std::string codeGenerationPolicy =
         codeGenerationPolicyIdentity(linkTimeOptimization);
@@ -260,10 +283,12 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 definitions = unit.functionOrdinals;
                 declarations = unit.declarationOrdinals;
             }
+            const PhaseClock fingerprint;
             cacheKeys[moduleOrdinal] = cache->inputObjectKey(
                 projectOopMirCacheIdentity(mirModel, definitions, declarations),
                 "windows-x64-msvc", codeGenerationPolicy,
                 optimizationLevel, debugInformation);
+            codeUnitTelemetry[moduleOrdinal].fingerprintMicros += fingerprint.elapsedMicros();
         }
     }
     // Textual IR used to be serialized for every code unit even though the Windows import
@@ -284,26 +309,37 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             moduleName = ordinal == 0
                 ? "NativeSharp.OOP.globals"
                 : "NativeSharp.OOP." + partition.units()[ordinal - 1].stableKey;
+        CodeUnitTelemetry& telemetry = codeUnitTelemetry[ordinal];
+        telemetry.name = moduleName;
+        if (cache == nullptr || !cache->enabled())
+            telemetry.missReason = CacheMissReason::Disabled;
         const CodeUnitProgress progress(
             progressSink_, completedModules, moduleProgressMutex,
             moduleCount, moduleName);
         if (usePreLlvmCache)
         {
             bool hit = false;
+            CacheMissReason reason = CacheMissReason::Cold;
+            const PhaseClock lookup;
             if (!cache->restoreObject(
                     cacheKeys[ordinal], result->objectFiles_[ordinal], hit,
-                    moduleErrors[ordinal])) return;
+                    moduleErrors[ordinal], &reason)) return;
+            telemetry.lookupMicros += lookup.elapsedMicros();
+            telemetry.missReason = reason;
             if (hit)
             {
+                const PhaseClock verification;
                 CoffObjectVerifier verifier;
                 if (verifier.verify(result->objectFiles_[ordinal]))
                 {
+                    telemetry.verificationMicros += verification.elapsedMicros();
                     cacheHits[ordinal] = 1;
                     if (progressSink_)
                         progressSink_({basic::CompilationEventKind::CacheHit,
                             "LLVM", moduleName, 0, 0, {}});
                     return;
                 }
+                telemetry.verificationMicros += verification.elapsedMicros();
             }
             cacheMisses[ordinal] = 1;
             if (progressSink_)
@@ -313,6 +349,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
 
         ProjectOopLlvmLowerer lowerer;
         std::unique_ptr<LlvmModule> module;
+        const PhaseClock lowering;
         if (!usePartitions)
         {
             module = lowerer.lower(ProjectOopLlvmLoweringRequest::withDebug(
@@ -334,6 +371,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps,
                 unit.declarationOrdinals));
         }
+        telemetry.loweringMicros += lowering.elapsedMicros();
         if (module == nullptr || !lowerer.error().empty())
         {
             moduleErrors[ordinal] = "lowering failed";
@@ -354,53 +392,77 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         }
 
         LlvmOptimizer optimizer;
+        const PhaseClock optimization;
         if (!optimizer.optimizePrepared(
                 *module, *targetMachine, optimizationLevel,
                 requiresWholeModuleRequiredInlining, nullptr, moduleErrors[ordinal]))
         {
+            telemetry.optimizationMicros += optimization.elapsedMicros();
             if (moduleErrors[ordinal].empty())
                 moduleErrors[ordinal] = "optimization failed";
             else
                 moduleErrors[ordinal] = "optimization failed: " + moduleErrors[ordinal];
             return;
         }
+        telemetry.optimizationMicros += optimization.elapsedMicros();
 
         if (preserveModuleText) moduleTexts[ordinal] = module->text();
         std::string cacheKey = cacheKeys[ordinal];
         if (cache != nullptr && cache->enabled() && !usePreLlvmCache)
         {
+            const PhaseClock fingerprint;
             cacheKey = cache->objectKey(
                 moduleTexts[ordinal], targetMachine->triple(),
                 targetMachine->dataLayout(), codeGenerationPolicy, optimizationLevel,
                 debugInformation);
+            telemetry.fingerprintMicros += fingerprint.elapsedMicros();
             bool hit = false;
+            CacheMissReason reason = CacheMissReason::Cold;
+            const PhaseClock lookup;
             if (!cache->restoreObject(
                     cacheKey, result->objectFiles_[ordinal], hit,
-                    moduleErrors[ordinal]))
+                    moduleErrors[ordinal], &reason))
                 return;
+            telemetry.lookupMicros += lookup.elapsedMicros();
+            telemetry.missReason = reason;
             if (hit)
             {
+                const PhaseClock verification;
                 CoffObjectVerifier verifier;
                 if (verifier.verify(result->objectFiles_[ordinal]))
                 {
+                    telemetry.verificationMicros += verification.elapsedMicros();
                     cacheHits[ordinal] = 1;
                     return;
                 }
+                telemetry.verificationMicros += verification.elapsedMicros();
             }
             cacheMisses[ordinal] = 1;
         }
+        const PhaseClock emission;
         if (!targetMachine->emitPrepared(
                 *module, result->objectFiles_[ordinal],
                 LlvmCodeGenFileType::Object, moduleErrors[ordinal]))
         {
+            telemetry.emissionMicros += emission.elapsedMicros();
             return;
         }
+        telemetry.emissionMicros += emission.elapsedMicros();
         CoffObjectVerifier verifier;
+        const PhaseClock verification;
         if (!verifier.verify(result->objectFiles_[ordinal]))
             moduleErrors[ordinal] = verifier.error();
-        if (moduleErrors[ordinal].empty() && cache != nullptr && cache->enabled() &&
-            !cache->storeObject(cacheKey, result->objectFiles_[ordinal], moduleErrors[ordinal]))
-            return;
+        telemetry.verificationMicros += verification.elapsedMicros();
+        if (moduleErrors[ordinal].empty() && cache != nullptr && cache->enabled())
+        {
+            const PhaseClock store;
+            if (!cache->storeObject(cacheKey, result->objectFiles_[ordinal], moduleErrors[ordinal]))
+            {
+                telemetry.storeMicros += store.elapsedMicros();
+                return;
+            }
+            telemetry.storeMicros += store.elapsedMicros();
+        }
     };
 
     const auto initializeWorkerFloatingPoint = [workerFloatingPointState](std::size_t) {
@@ -452,6 +514,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         result->cacheHitCount_ += cacheHits[ordinal];
         result->cacheMissCount_ += cacheMisses[ordinal];
     }
+    result->codeUnitTelemetry_ = std::move(codeUnitTelemetry);
 
     if (preserveModuleText)
     {

@@ -249,6 +249,20 @@ std::string codeGenerationPolicyIdentity(LinkTimeOptimizationMode linkTimeOptimi
         ";lto=" + std::string(linkTimeOptimizationModeName(linkTimeOptimization));
 }
 
+const char* cacheMissReasonName(CacheMissReason reason) noexcept
+{
+    switch (reason)
+    {
+        case CacheMissReason::Hit: return "hit";
+        case CacheMissReason::Disabled: return "disabled";
+        case CacheMissReason::KeyMismatch: return "key-mismatch";
+        case CacheMissReason::Cold: return "cold";
+        case CacheMissReason::IncompletePublication: return "incomplete-publication";
+        case CacheMissReason::Corruption: return "corruption";
+    }
+    return "unknown";
+}
+
 void CompilationArtifactCache::setRoot(std::filesystem::path root)
 {
     root_ = std::move(root).lexically_normal();
@@ -325,13 +339,20 @@ bool CompilationArtifactCache::restoreObject(
     std::string_view key,
     const std::filesystem::path& destination,
     bool& hit,
-    std::string& error) const
+    std::string& error,
+    CacheMissReason* reason) const
 {
     hit = false;
     error.clear();
+    if (reason != nullptr) *reason = CacheMissReason::Cold;
     if (!enabled() || !validKey(key))
     {
-        if (!enabled()) return true;
+        if (!enabled())
+        {
+            if (reason != nullptr) *reason = CacheMissReason::Disabled;
+            return true;
+        }
+        if (reason != nullptr) *reason = CacheMissReason::KeyMismatch;
         error = "artifact-cache object key is not canonical SHA-256";
         return false;
     }
@@ -342,7 +363,10 @@ bool CompilationArtifactCache::restoreObject(
         return true;
     filesystemError.clear();
     if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
+    {
+        if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
         return true;
+    }
 
     CacheEntryLock entryLock;
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
@@ -351,11 +375,15 @@ bool CompilationArtifactCache::restoreObject(
         return true;
     filesystemError.clear();
     if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
+    {
+        if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
         return true;
+    }
 
     CacheMetadata metadata;
     if (!readMetadata(cachedMetadata, metadata) || metadata.key != key)
     {
+        if (reason != nullptr) *reason = CacheMissReason::Corruption;
         quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
         return true;
     }
@@ -365,6 +393,7 @@ bool CompilationArtifactCache::restoreObject(
     if (!basic::sha256File(cachedObject, digest, size, hashError)) return true;
     if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest)
     {
+        if (reason != nullptr) *reason = CacheMissReason::Corruption;
         quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
         return true;
     }
@@ -379,6 +408,7 @@ bool CompilationArtifactCache::restoreObject(
         return false;
     }
     hit = true;
+    if (reason != nullptr) *reason = CacheMissReason::Hit;
     return true;
 }
 
