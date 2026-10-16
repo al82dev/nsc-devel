@@ -9889,23 +9889,7 @@ private:
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::IteratorCurrent:
-            {
-                if (node->children.size() != 1U)
-                    return failValue(error, "iterator Current requires one operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMValueRef slot = entryBlockAlloca(
-                    carrier, structAlignmentFor(node->elementTypeKey), "iterator.current");
-                if (slot == nullptr)
-                    return failValue(error, "iterator Current could not reserve storage");
-                LLVMBuildStore(builder_, value, slot);
-                LLVMTypeRef itemType = llvmType(node->typeKey, error);
-                if (itemType == nullptr) return nullptr;
-                return LLVMBuildLoad2(
-                    builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::IteratorMoveNext:
             {
                 if (node->children.size() != 1U)
@@ -9960,28 +9944,9 @@ private:
                 return result;
             }
             case frontend::ProjectOopMirNodeKind::IteratorGetEnumerator:
-            {
-                if (node->children.size() != 1U)
-                    return failValue(error, "iterator GetEnumerator requires one operand");
-                return lowerExpression(node->children.front().get(), error);
-            }
             case frontend::ProjectOopMirNodeKind::IteratorDrop:
-            {
-                if (node->children.size() != 1U)
-                    return failValue(error, "iterator Drop requires one operand");
-                LLVMValueRef self = lowerExpression(node->children.front().get(), error);
-                if (self == nullptr) return nullptr;
-                LLVMValueRef dropFn = LLVMBuildLoad2(
-                    builder_, LLVMPointerTypeInContext(context_, 0),
-                    byteOffset(self, 32, "iterator.dropfn.addr"), "iterator.dropfn");
-                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
-                LLVMTypeRef fnType = LLVMFunctionType(
-                    LLVMVoidTypeInContext(context_), fnParams, 1, 0);
-                LLVMValueRef args[] = { self };
-                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
-                    return failValue(error, "iterator Drop call failed");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+            case frontend::ProjectOopMirNodeKind::IteratorCancel:
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::IteratorMoveNextAsync:
             {
                 // NS304-T07-F02: MoveNextAsync calls the iterator's moveNextFn (field 3), which
@@ -10005,21 +9970,6 @@ private:
                 if (LLVMBuildCall2(builder_, fnType, moveNextFn, args, 2U, "") == nullptr)
                     return failValue(error, "iterator MoveNextAsync call failed");
                 return LLVMBuildLoad2(builder_, futureType, sretSlot, "moveNextAsync.future.load");
-            }
-            case frontend::ProjectOopMirNodeKind::IteratorCancel:
-            {
-                // NS304-T07-F05: `it.Cancel()` marks the async-iterator cancelled (state == -3),
-                // which the poll observes at its next await/yield.
-                if (node->children.size() != 1U)
-                    return failValue(error, "iterator Cancel requires one operand");
-                LLVMValueRef self = lowerExpression(node->children.front().get(), error);
-                if (self == nullptr) return nullptr;
-                LLVMTypeRef intType = llvmType("builtin:int", error);
-                if (intType == nullptr) return nullptr;
-                LLVMBuildStore(
-                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1),
-                    self);
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
             default:
                 return nullptr;
@@ -10792,6 +10742,103 @@ private:
                 values.pop_back();
                 currentOverflowPolicy_ = frame.overflowPolicy;
                 values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::IteratorGetEnumerator)
+            {
+                if (current->children.size() != 1U)
+                {
+                    values.push_back(failValue(error, "iterator GetEnumerator requires one operand"));
+                    continue;
+                }
+                // Transparent wrapper: the child's value IS the enumerator.
+                frames.push_back({current->children.front().get(), 0, nullptr});
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::IteratorCurrent)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U)
+                    {
+                        values.push_back(failValue(error, "iterator Current requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->elementTypeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, structAlignmentFor(current->elementTypeKey), "iterator.current");
+                if (slot == nullptr)
+                {
+                    values.push_back(failValue(error, "iterator Current could not reserve storage"));
+                    continue;
+                }
+                LLVMBuildStore(builder_, value, slot);
+                LLVMTypeRef itemType = llvmType(current->typeKey, error);
+                if (itemType == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(LLVMBuildLoad2(
+                    builder_, itemType, byteOffset(slot, 16, "iterator.item.addr"), "iterator.current.item"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::IteratorDrop)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U)
+                    {
+                        values.push_back(failValue(error, "iterator Drop requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef self = values.back();
+                values.pop_back();
+                if (self == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef dropFn = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 32, "iterator.dropfn.addr"), "iterator.dropfn");
+                LLVMTypeRef fnParams[] = { LLVMPointerTypeInContext(context_, 0) };
+                LLVMTypeRef fnType = LLVMFunctionType(
+                    LLVMVoidTypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { self };
+                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
+                {
+                    values.push_back(failValue(error, "iterator Drop call failed"));
+                    continue;
+                }
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::IteratorCancel)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U)
+                    {
+                        values.push_back(failValue(error, "iterator Cancel requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef self = values.back();
+                values.pop_back();
+                if (self == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef intType = llvmType("builtin:int", error);
+                if (intType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1), self);
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::BorrowValue)
