@@ -9721,26 +9721,14 @@ private:
                 return load;
             }
             case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
-            {
-                LLVMValueRef address = lowerArrayElementAddress(node, false, error);
-                LLVMTypeRef type = llvmType(node->elementTypeKey, error);
-                return address != nullptr && type != nullptr
-                    ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
-                    : nullptr;
-            }
+            case frontend::ProjectOopMirNodeKind::StringElementLoad:
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
             {
                 LLVMValueRef address = lowerRangeArrayElementAddress(node, error);
                 LLVMTypeRef type = llvmType(node->elementTypeKey, error);
                 return address != nullptr && type != nullptr
                     ? LLVMBuildLoad2(builder_, type, address, "range.element.load")
-                    : nullptr;
-            }
-            case frontend::ProjectOopMirNodeKind::StringElementLoad:
-            {
-                LLVMValueRef address = lowerArrayElementAddress(node, true, error);
-                return address != nullptr
-                    ? LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(context_), address, "string.element.load")
                     : nullptr;
             }
             default:
@@ -10706,6 +10694,61 @@ private:
                 values.push_back(extractBitField(current, storage, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
+                current->kind == frontend::ProjectOopMirNodeKind::ArrayElementLoad ||
+                current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad ||
+                current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)
+            {
+                const bool stringValue =
+                    current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad ||
+                    current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer;
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 2)
+                    {
+                        values.push_back(failValue(error, "Stage 41 array/string index requires receiver and index"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef object = values.back();
+                    values.pop_back();
+                    if (object == nullptr) { values.push_back(nullptr); continue; }
+                    object = checkedReceiver(object, error);
+                    if (object == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, object});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef index = values.back();
+                values.pop_back();
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                index = convert(index, current->children[1]->typeKey, "builtin:nuint", error);
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef address = arrayElementAddressFromParts(current, frame.lhs, index, stringValue, error);
+                if (current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
+                    current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)
+                {
+                    values.push_back(address);
+                    continue;
+                }
+                if (address == nullptr) { values.push_back(nullptr); continue; }
+                if (current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad)
+                {
+                    values.push_back(LLVMBuildLoad2(
+                        builder_, LLVMInt8TypeInContext(context_), address, "string.element.load"));
+                    continue;
+                }
+                LLVMTypeRef type = llvmType(current->elementTypeKey, error);
+                values.push_back(type != nullptr
+                    ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
+                    : nullptr);
+                continue;
+            }
             if (current->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress)
             {
                 if (frame.phase == 0)
@@ -11275,7 +11318,7 @@ private:
             case frontend::ProjectOopMirNodeKind::ArrayLength:
                 return lowerNativeLength(node, false, error);
             case frontend::ProjectOopMirNodeKind::ArrayElementAddress:
-                return lowerArrayElementAddress(node, false, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayElementAddress:
                 return lowerRangeArrayElementAddress(node, error);
             case frontend::ProjectOopMirNodeKind::StringLength:
@@ -11294,7 +11337,7 @@ private:
             // caracter fuera de rango, no mejor. Una vista vacia se construye con puntero nulo
             // en la biblioteca, no pidiendo la direccion de un caracter que no existe.
             case frontend::ProjectOopMirNodeKind::StringCharacterPointer:
-                return lowerArrayElementAddress(node, true, error);
+                return lowerExpressionIterative(node, error);
             // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
             // StringView `{ char* start; int count }` (16-byte indirect aggregate carrier)
             // without calling StringView.Of. The data pointer is the same bounds-checked GEP
@@ -15654,25 +15697,18 @@ private:
         return LLVMBuildTrunc(builder_, length64, LLVMInt32TypeInContext(context_), "native.length");
     }
 
-    LLVMValueRef lowerArrayElementAddress(
+    // NSC305-L04. The array/string element-address compute (the bounds check + the GEP), separated
+    // from the receiver/index evaluation so the iterative machine can push them as frames.
+    LLVMValueRef arrayElementAddressFromParts(
         const frontend::ProjectOopMirNode* node,
+        LLVMValueRef object,
+        LLVMValueRef index,
         bool stringValue,
         std::string& error)
     {
-        if (node->children.size() != 2)
-            return failValue(error, "Stage 41 array/string index requires receiver and index");
-        LLVMValueRef object = lowerExpression(node->children[0].get(), error);
-        if (object == nullptr) return nullptr;
-        object = checkedReceiver(object, error);
-        if (object == nullptr) return nullptr;
-        LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-        if (index == nullptr) return nullptr;
         LLVMValueRef length = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), object, "native.index.length");
         if (node->booleanValue)
         {
-            // `^distance`: compute against the already-loaded receiver length. Unsigned
-            // underflow for distance > length deliberately remains out of range below; ^0
-            // becomes exactly length and is likewise invalid for element access.
             index = LLVMBuildSub(builder_, length, index, "native.index.fromend");
         }
         LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "native.index.inrange");
