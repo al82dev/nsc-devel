@@ -9708,25 +9708,8 @@ private:
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::FieldLoad:
-            {
-                LLVMValueRef address = fieldAddress(node, error);
-                LLVMTypeRef type = llvmType(node->typeKey, error);
-                if (address == nullptr || type == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
-                if (node->volatileAccess) LLVMSetVolatile(load, 1);
-                return load;
-            }
             case frontend::ProjectOopMirNodeKind::BitFieldLoad:
-            {
-                LLVMValueRef address = fieldAddress(node, error);
-                LLVMTypeRef storageType = bitFieldStorageType(node, error);
-                if (address == nullptr || storageType == nullptr) return nullptr;
-                LLVMValueRef storage = LLVMBuildLoad2(
-                    builder_, storageType, address, "bitfield.storage.load");
-                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment));
-                if (node->volatileAccess) LLVMSetVolatile(storage, 1);
-                return extractBitField(node, storage, error);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
             case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
             {
@@ -10670,17 +10653,57 @@ private:
                 LLVMValueRef receiver = values.back();
                 values.pop_back();
                 if (receiver == nullptr) { values.push_back(nullptr); continue; }
-                const bool structReceiver = current->children.front() != nullptr &&
-                    isStructValue(current->children.front()->typeKey);
-                if (!structReceiver)
+                values.push_back(fieldAddressFromReceiver(current, receiver, error));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::FieldLoad)
+            {
+                if (frame.phase == 0)
                 {
-                    receiver = checkedReceiver(receiver, error);
-                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "Macro A field access requires exactly one explicit receiver operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
                 }
-                LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), current->immediate, 0);
-                LLVMValueRef indices[] = {offset};
-                values.push_back(LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1, "field.addr"));
+                LLVMValueRef receiver = values.back();
+                values.pop_back();
+                if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef address = fieldAddressFromReceiver(current, receiver, error);
+                LLVMTypeRef type = llvmType(current->typeKey, error);
+                if (address == nullptr || type == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
+                if (current->volatileAccess) LLVMSetVolatile(load, 1);
+                values.push_back(load);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::BitFieldLoad)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1 || current->children.front() == nullptr)
+                    {
+                        values.push_back(failValue(error, "Macro A field access requires exactly one explicit receiver operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef receiver = values.back();
+                values.pop_back();
+                if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef address = fieldAddressFromReceiver(current, receiver, error);
+                LLVMTypeRef storageType = bitFieldStorageType(current, error);
+                if (address == nullptr || storageType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef storage = LLVMBuildLoad2(
+                    builder_, storageType, address, "bitfield.storage.load");
+                LLVMSetAlignment(storage, static_cast<unsigned>(current->alignment));
+                if (current->volatileAccess) LLVMSetVolatile(storage, 1);
+                values.push_back(extractBitField(current, storage, error));
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress)
@@ -19176,26 +19199,17 @@ private:
         return LLVMBuildOr(builder_, preserved, bits, "bitfield.storage.merge");
     }
 
-    LLVMValueRef fieldAddress(const frontend::ProjectOopMirNode* node, std::string& error)
+    // NSC305-L04. The field-address compute (the null check + the GEP), separated from the receiver
+    // evaluation so the iterative machine can push the receiver as a frame.
+    LLVMValueRef fieldAddressFromReceiver(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef receiver, std::string& error)
     {
-        if (node->children.size() != 1 || node->children.front() == nullptr)
-        {
-            return failValue(error, "Macro A field access requires exactly one explicit receiver operand");
-        }
-        LLVMValueRef receiver = lowerExpression(node->children.front().get(), error);
-        if (receiver == nullptr)
-        {
-            return nullptr;
-        }
         const bool structReceiver = node->children.front() != nullptr &&
             isStructValue(node->children.front()->typeKey);
         if (!structReceiver)
         {
             receiver = checkedReceiver(receiver, error);
-            if (receiver == nullptr)
-            {
-                return nullptr;
-            }
+            if (receiver == nullptr) return nullptr;
         }
         LLVMValueRef offset = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
         LLVMValueRef indices[] = {offset};
