@@ -232,6 +232,101 @@ LLVMTypeRef mapPointerLikeLlvmType(
     return nullptr;
 }
 
+// NSC305-L03. The full semantic-type -> LLVM mapping (moved out of the lowerer's llvmType as a pure
+// move). `mapNonBuiltinLlvmType` covers simd/fixed-array/named and recurses through `mapLlvmType`.
+LLVMTypeRef mapLlvmType(
+    LLVMContextRef context,
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectOopMirModel& mirModel,
+    std::string_view typeKey,
+    std::string& error);
+
+LLVMTypeRef mapNonBuiltinLlvmType(
+    LLVMContextRef context,
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectOopMirModel& mirModel,
+    std::string_view typeKey,
+    std::string& error)
+{
+    if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
+    {
+        LLVMTypeRef lane = simd->mask
+            ? LLVMInt1TypeInContext(context)
+            : mapLlvmType(context, nameLookup, mirModel, simd->laneTypeKey, error);
+        return lane == nullptr
+            ? nullptr
+            : LLVMVectorType(lane, static_cast<unsigned>(simd->laneCount));
+    }
+    if (language::isAnonymousLambdaTypeIdentity(typeKey))
+        return LLVMStructTypeInContext(context, nullptr, 0, 0);
+    // C2.1 "fixed arrays": `T[N]` is INLINE storage -- its LLVM carrier is exactly `[N x T]`.
+    if (const std::optional<std::string> element =
+            frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+        element.has_value())
+    {
+        const std::optional<std::uint64_t> count =
+            frontend::ProjectMemberModel::fixedArrayCount(typeKey);
+        LLVMTypeRef elementType = mapLlvmType(context, nameLookup, mirModel, *element, error);
+        if (elementType == nullptr || !count.has_value() || *count == 0)
+        {
+            if (error.empty())
+                error = "C2.1 cannot map fixed-array type key to LLVM type: " +
+                    std::string(typeKey);
+            return nullptr;
+        }
+        return LLVMArrayType2(elementType, static_cast<unsigned>(*count));
+    }
+    if (typeKey.starts_with("type:") || typeKey.starts_with("future:") ||
+        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:") ||
+        frontend::ProjectTypeConversion::isTuple(typeKey))
+    {
+        if (const frontend::builtins::IntegerTypeInfo* enumInfo =
+                findEnumUnderlyingInfo(nameLookup, typeKey);
+            enumInfo != nullptr)
+        {
+            switch (enumInfo->width)
+            {
+                case 8: return LLVMInt8TypeInContext(context);
+                case 16: return LLVMInt16TypeInContext(context);
+                case 64: return LLVMInt64TypeInContext(context);
+                default: return LLVMInt32TypeInContext(context);
+            }
+        }
+        if (const frontend::ProjectOopMirStructLayout* layout =
+                findStructLayout(mirModel, typeKey);
+            layout != nullptr)
+        {
+            switch (layout->size)
+            {
+                case 1: return LLVMInt8TypeInContext(context);
+                case 2: return LLVMInt16TypeInContext(context);
+                case 4: return LLVMInt32TypeInContext(context);
+                case 8: return LLVMInt64TypeInContext(context);
+                default:
+                    return LLVMArrayType2(LLVMInt8TypeInContext(context), layout->size);
+            }
+        }
+        error = "Stage 40 cannot map named value type to LLVM carrier: " + std::string(typeKey);
+        return nullptr;
+    }
+    error = "Stage 34 cannot map type key to LLVM type: " + std::string(typeKey);
+    return nullptr;
+}
+
+LLVMTypeRef mapLlvmType(
+    LLVMContextRef context,
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectOopMirModel& mirModel,
+    std::string_view typeKey,
+    std::string& error)
+{
+    if (LLVMTypeRef builtin = mapBuiltinLlvmType(context, typeKey))
+        return builtin;
+    if (LLVMTypeRef pointerLike = mapPointerLikeLlvmType(context, nameLookup, typeKey))
+        return pointerLike;
+    return mapNonBuiltinLlvmType(context, nameLookup, mirModel, typeKey, error);
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -18938,97 +19033,7 @@ private:
         // NSC305-L03. Pointer-like keys (ref/refmut/string/native-array/reference) map to `ptr`.
         if (LLVMTypeRef pointerLike = mapPointerLikeLlvmType(context_, nameLookup_, typeKey))
             return pointerLike;
-        if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
-        {
-            LLVMTypeRef lane = simd->mask
-                ? LLVMInt1TypeInContext(context_)
-                : llvmType(simd->laneTypeKey, error);
-            return lane == nullptr ? nullptr : LLVMVectorType(lane, static_cast<unsigned>(simd->laneCount));
-        }
-        if (language::isAnonymousLambdaTypeIdentity(typeKey))
-            return LLVMStructTypeInContext(context_, nullptr, 0, 0);
-        // C2.1 "fixed arrays": `T[N]` is INLINE storage -- N elements laid out end to end, with no
-        // length header and no indirection -- so its LLVM carrier is exactly `[N x T]`. That is
-        // what makes a fixed-array LOCAL work (`float[4] a;` is one alloca of the whole thing) and
-        // what makes a fixed-array FIELD occupy its real bytes inside the struct. It is
-        // deliberately NOT the managed native-array shape (`T[]`), which is a pointer to a
-        // length-prefixed heap block.
-        if (const std::optional<std::string> element =
-                frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
-            element.has_value())
-        {
-            const std::optional<std::uint64_t> count =
-                frontend::ProjectMemberModel::fixedArrayCount(typeKey);
-            LLVMTypeRef elementType = llvmType(*element, error);
-            if (elementType == nullptr || !count.has_value() || *count == 0)
-            {
-                if (error.empty())
-                    error = "C2.1 cannot map fixed-array type key to LLVM type: " + std::string(typeKey);
-                return nullptr;
-            }
-            return LLVMArrayType2(elementType, static_cast<unsigned>(*count));
-        }
-        if (typeKey.starts_with("type:") ||
-            typeKey.starts_with("future:") ||
-            typeKey.starts_with("iterator:") ||
-            typeKey.starts_with("async-iterator:") ||
-            frontend::ProjectTypeConversion::isTuple(typeKey))
-        {
-            // El ancho del enum es el de su TIPO SUBYACENTE, no siempre 32. La regla esta en
-            // include/nativesharp/Frontend/EnumUnderlyingType.h y la comparten el modelo de layout
-            // y este backend: si discreparan, una struct con un campo de enum tendria un tamano en
-            // el frontend y otro en el IR.
-            //
-            // Los cuatro anchos que la tabla de enteros admite se escriben uno a uno en vez de con
-            // LLVMIntTypeInContext porque la API C que este proyecto declara a mano
-            // (src/LLVM/LlvmCApi.h) no incluye esa funcion, y anadir un simbolo a esa frontera es
-            // una decision aparte -- la lista de 146 esta congelada a proposito (SHR-090).
-            if (const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, typeKey);
-                enumInfo != nullptr)
-            {
-                switch (enumInfo->width)
-                {
-                    case 8: return LLVMInt8TypeInContext(context_);
-                    case 16: return LLVMInt16TypeInContext(context_);
-                    case 64: return LLVMInt64TypeInContext(context_);
-                    default: return LLVMInt32TypeInContext(context_);
-                }
-            }
-            if (const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey); layout != nullptr)
-            {
-                switch (layout->size)
-                {
-                    // Win64 rule, confirmed against clang for x86_64-pc-windows-msvc: an
-                    // aggregate of size 1, 2, 4 or 8 travels DIRECTLY, as an integer of that
-                    // width -- {float,float} goes in a GPR as i64, never split into XMM.
-                    case 1: return LLVMInt8TypeInContext(context_);
-                    case 2: return LLVMInt16TypeInContext(context_);
-                    case 4: return LLVMInt32TypeInContext(context_);
-                    case 8: return LLVMInt64TypeInContext(context_);
-                    default:
-                        // Every OTHER size -- including 3 bytes, not just "big" -- is an
-                        // INDIRECT aggregate: `[N x i8]` is its in-memory value carrier (local
-                        // slots, whole-value copies), and the CALL BOUNDARY never sees this type
-                        // at all -- parameters travel as a pointer to a caller-owned per-call
-                        // copy and returns travel through a leading sret pointer. That mapping
-                        // is applied where signatures and calls are built, NOT here, so every
-                        // in-memory use (field GEPs, array elements, load/store of the whole
-                        // value) keeps working off the natural byte layout.
-                        //
-                        // HISTORY: this used to be a hard error ("direct struct value ABI
-                        // supports only 1, 2, 4 or 8-byte aggregates"), which made any struct
-                        // over 8 bytes -- Mat4 (64), a MSG-shaped 48-byte record, even a 12-byte
-                        // Vec3 -- unusable as a local, parameter or return anywhere in the
-                        // language. Fields and array elements always worked, because they were
-                        // already address-based; the value paths were the only gap.
-                        return LLVMArrayType2(LLVMInt8TypeInContext(context_), layout->size);
-                }
-            }
-            error = "Stage 40 cannot map named value type to LLVM carrier: " + std::string(typeKey);
-            return nullptr;
-        }
-        error = "Stage 34 cannot map type key to LLVM type: " + std::string(typeKey);
-        return nullptr;
+        return mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
     }
 
     // NS304-T13-F07: initialize the object header's provenance slots (allocator context + deallocate
