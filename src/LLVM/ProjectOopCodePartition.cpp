@@ -23,9 +23,18 @@ std::uint64_t saturatedAdd(std::uint64_t left, std::uint64_t right) noexcept
 std::uint64_t nodeCost(const frontend::ProjectOopMirNode* node) noexcept
 {
     if (node == nullptr) return 0;
-    std::uint64_t cost = 1;
-    for (const auto& child : node->children)
-        cost = saturatedAdd(cost, nodeCost(child.get()));
+    // NSC305-L02. Iterative walk (no recursion in the partition hot path).
+    std::uint64_t cost = 0;
+    std::vector<const frontend::ProjectOopMirNode*> work;
+    work.push_back(node);
+    while (!work.empty())
+    {
+        const frontend::ProjectOopMirNode* current = work.back();
+        work.pop_back();
+        cost = saturatedAdd(cost, 1);
+        for (auto it = current->children.rbegin(); it != current->children.rend(); ++it)
+            work.push_back(it->get());
+    }
     return cost;
 }
 
@@ -193,75 +202,82 @@ bool ProjectOopCodePartition::build(
             if (typeKey[index] < '0' || typeKey[index] > '9') return {};
         return typeKey.substr(0, open);
     };
-    const auto addValueDestructorDependencies = [&](const auto& self,
-                                                     std::string_view typeKey,
-                                                     auto& dependencies,
-                                                     auto& visiting) -> void
-    {
-        if (const std::string_view element = fixedArrayElement(typeKey); !element.empty())
-        {
-            self(self, element, dependencies, visiting);
-            return;
-        }
-        const auto layoutFound = structLayoutByType.find(typeKey);
-        if (layoutFound == structLayoutByType.end()) return;
-        const frontend::ProjectOopMirStructLayout& layout = *layoutFound->second;
-        if (!visiting.insert(layout.typeOrdinal).second) return;
-        if (const auto destructor = destructorFunctionByType.find(layout.typeOrdinal);
-            destructor != destructorFunctionByType.end())
-            dependencies.insert(destructor->second);
-        for (const frontend::ObjectFieldLayout& field : layout.fields)
-            self(self, field.typeKey, dependencies, visiting);
-        visiting.erase(layout.typeOrdinal);
-    };
     const auto addMember = [&](std::optional<std::size_t> member, auto& dependencies)
     {
         if (!member.has_value()) return;
         const auto found = functionByMember.find(*member);
         if (found != functionByMember.end()) dependencies.insert(found->second);
     };
-    const auto collectNode = [&](const auto& self, const frontend::ProjectOopMirNode* node,
+    const auto collectNode = [&](const frontend::ProjectOopMirNode* root,
                                  auto& dependencies) -> void
     {
-        if (node == nullptr) return;
-        const auto addCallee = [&](std::string_view name)
+        // NSC305-L02. Iterative walk (no recursion in the partition hot path).
+        std::vector<const frontend::ProjectOopMirNode*> work;
+        if (root != nullptr) work.push_back(root);
+        while (!work.empty())
         {
-            if (name.empty()) return;
-            const auto found = functionsByName.find(name);
-            if (found != functionsByName.end())
-                dependencies.insert(found->second.begin(), found->second.end());
-        };
-        addCallee(node->calleeName);
-        addCallee(node->secondaryCalleeName);
-        addCallee(node->resultSuccessTestCalleeName);
-        addCallee(node->resultSuccessExtractorCalleeName);
-        addCallee(node->resultErrorExtractorCalleeName);
-        addCallee(node->resultErrorFactoryCalleeName);
-        addCallee(node->resultErrorConversionCalleeName);
-        // NS304-T05-F09: a PollAddress references the async poll function by name (stringValue), so
-        // the unit that lowers it must also declare that poll for the cross-unit pointer store.
-        if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
-            addCallee(node->stringValue);
-        if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
-            addCallee(mirModel.panicHandlerMangledName());
-        addMember(node->memberOrdinal, dependencies);
-        addMember(node->secondaryMemberOrdinal, dependencies);
-        addMember(node->resultSuccessTestMemberOrdinal, dependencies);
-        addMember(node->resultSuccessExtractorMemberOrdinal, dependencies);
-        addMember(node->resultErrorExtractorMemberOrdinal, dependencies);
-        addMember(node->resultErrorFactoryMemberOrdinal, dependencies);
-        addMember(node->resultErrorConversionMemberOrdinal, dependencies);
-        addMember(node->disposeImplementationMemberOrdinal, dependencies);
-        // NS304-T13-F07: the placement construction references the allocator's Deallocate member for
-        // its generated thunk, so that member must be declared in the same code unit.
-        addMember(node->allocatorDeallocateMemberOrdinal, dependencies);
-        if (node->automaticDestruction)
-        {
-            std::unordered_set<std::size_t> visiting;
-            addValueDestructorDependencies(
-                addValueDestructorDependencies, node->typeKey, dependencies, visiting);
+            const frontend::ProjectOopMirNode* node = work.back();
+            work.pop_back();
+            const auto addCallee = [&](std::string_view name)
+            {
+                if (name.empty()) return;
+                const auto found = functionsByName.find(name);
+                if (found != functionsByName.end())
+                    dependencies.insert(found->second.begin(), found->second.end());
+            };
+            addCallee(node->calleeName);
+            addCallee(node->secondaryCalleeName);
+            addCallee(node->resultSuccessTestCalleeName);
+            addCallee(node->resultSuccessExtractorCalleeName);
+            addCallee(node->resultErrorExtractorCalleeName);
+            addCallee(node->resultErrorFactoryCalleeName);
+            addCallee(node->resultErrorConversionCalleeName);
+            // NS304-T05-F09: a PollAddress references the async poll function by name (stringValue),
+            // so the unit that lowers it must also declare that poll for the cross-unit pointer store.
+            if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
+                addCallee(node->stringValue);
+            if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
+                addCallee(mirModel.panicHandlerMangledName());
+            addMember(node->memberOrdinal, dependencies);
+            addMember(node->secondaryMemberOrdinal, dependencies);
+            addMember(node->resultSuccessTestMemberOrdinal, dependencies);
+            addMember(node->resultSuccessExtractorMemberOrdinal, dependencies);
+            addMember(node->resultErrorExtractorMemberOrdinal, dependencies);
+            addMember(node->resultErrorFactoryMemberOrdinal, dependencies);
+            addMember(node->resultErrorConversionMemberOrdinal, dependencies);
+            addMember(node->disposeImplementationMemberOrdinal, dependencies);
+            // NS304-T13-F07: the placement construction references the allocator's Deallocate member
+            // for its generated thunk, so that member must be declared in the same code unit.
+            addMember(node->allocatorDeallocateMemberOrdinal, dependencies);
+            if (node->automaticDestruction)
+            {
+                std::unordered_set<std::size_t> seen;
+                std::vector<std::string_view> typeWork;
+                typeWork.push_back(node->typeKey);
+                while (!typeWork.empty())
+                {
+                    const std::string_view typeKey = typeWork.back();
+                    typeWork.pop_back();
+                    if (const std::string_view element = fixedArrayElement(typeKey);
+                        !element.empty())
+                    {
+                        typeWork.push_back(element);
+                        continue;
+                    }
+                    const auto layoutFound = structLayoutByType.find(typeKey);
+                    if (layoutFound == structLayoutByType.end()) continue;
+                    const frontend::ProjectOopMirStructLayout& layout = *layoutFound->second;
+                    if (!seen.insert(layout.typeOrdinal).second) continue;
+                    if (const auto destructor = destructorFunctionByType.find(layout.typeOrdinal);
+                        destructor != destructorFunctionByType.end())
+                        dependencies.insert(destructor->second);
+                    for (const frontend::ObjectFieldLayout& field : layout.fields)
+                        typeWork.push_back(field.typeKey);
+                }
+            }
+            for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+                work.push_back(it->get());
         }
-        for (const auto& child : node->children) self(self, child.get(), dependencies);
     };
     for (ProjectOopCodeUnit& unit : units_)
     {
@@ -271,9 +287,9 @@ bool ProjectOopCodePartition::build(
         {
             if (functionOrdinal >= functions.size()) continue;
             const frontend::ProjectOopMirFunction& function = functions[functionOrdinal];
-            collectNode(collectNode, function.body.get(), dependencies);
+            collectNode(function.body.get(), dependencies);
             for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
-                collectNode(collectNode, cleanup.action, dependencies);
+                collectNode(cleanup.action, dependencies);
         }
         unit.declarationOrdinals.assign(dependencies.begin(), dependencies.end());
         std::sort(unit.declarationOrdinals.begin(), unit.declarationOrdinals.end());
