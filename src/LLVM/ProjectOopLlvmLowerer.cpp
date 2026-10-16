@@ -9743,6 +9743,29 @@ private:
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 return load;
             }
+            case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
+            {
+                LLVMValueRef address = lowerArrayElementAddress(node, false, error);
+                LLVMTypeRef type = llvmType(node->elementTypeKey, error);
+                return address != nullptr && type != nullptr
+                    ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
+                    : nullptr;
+            }
+            case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
+            {
+                LLVMValueRef address = lowerRangeArrayElementAddress(node, error);
+                LLVMTypeRef type = llvmType(node->elementTypeKey, error);
+                return address != nullptr && type != nullptr
+                    ? LLVMBuildLoad2(builder_, type, address, "range.element.load")
+                    : nullptr;
+            }
+            case frontend::ProjectOopMirNodeKind::StringElementLoad:
+            {
+                LLVMValueRef address = lowerArrayElementAddress(node, true, error);
+                return address != nullptr
+                    ? LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(context_), address, "string.element.load")
+                    : nullptr;
+            }
             default:
                 return nullptr;
         }
@@ -9788,6 +9811,9 @@ private:
             case frontend::ProjectOopMirNodeKind::BitFieldLoad:
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
             case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
+            case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
+            case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
+            case frontend::ProjectOopMirNodeKind::StringElementLoad:
                 return lowerLoadExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
@@ -10877,33 +10903,10 @@ private:
                 return lowerNativeLength(node, false, error);
             case frontend::ProjectOopMirNodeKind::ArrayElementAddress:
                 return lowerArrayElementAddress(node, false, error);
-            case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
-            {
-                LLVMValueRef address = lowerArrayElementAddress(node, false, error);
-                LLVMTypeRef type = llvmType(node->elementTypeKey, error);
-                return address != nullptr && type != nullptr
-                    ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
-                    : nullptr;
-            }
             case frontend::ProjectOopMirNodeKind::RangeArrayElementAddress:
                 return lowerRangeArrayElementAddress(node, error);
-            case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
-            {
-                LLVMValueRef address = lowerRangeArrayElementAddress(node, error);
-                LLVMTypeRef type = llvmType(node->elementTypeKey, error);
-                return address != nullptr && type != nullptr
-                    ? LLVMBuildLoad2(builder_, type, address, "range.element.load")
-                    : nullptr;
-            }
             case frontend::ProjectOopMirNodeKind::StringLength:
                 return lowerNativeLength(node, true, error);
-            case frontend::ProjectOopMirNodeKind::StringElementLoad:
-            {
-                LLVMValueRef address = lowerArrayElementAddress(node, true, error);
-                return address != nullptr
-                    ? LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(context_), address, "string.element.load")
-                    : nullptr;
-            }
             case frontend::ProjectOopMirNodeKind::StringConcat:
                 return lowerStringConcat(node, error);
             case frontend::ProjectOopMirNodeKind::StringEquals:
