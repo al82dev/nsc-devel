@@ -983,7 +983,26 @@ private:
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
-    std::unordered_map<std::string, std::size_t> specializationByKey_;
+    // NSC305-G07. Deduplication and slot lifecycle for specialization demands. ensure*Specialization
+    // delegates its cache hit/miss/commit/rollback here (the foundation for G09 waves).
+    struct SpecializationPlanner final
+    {
+        std::unordered_map<std::string, std::size_t> byKey;
+        std::optional<std::size_t> request(const std::string& key) const
+        {
+            const auto found = byKey.find(key);
+            return found == byKey.end() ? std::optional<std::size_t>{} : found->second;
+        }
+        void commit(const std::string& key, std::size_t ordinal)
+        {
+            byKey.emplace(key, ordinal);
+        }
+        void rollback(const std::string& key)
+        {
+            byKey.erase(key);
+        }
+    };
+    SpecializationPlanner specializationPlanner_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
     // NSC305-G-series. specializedName -> specialization ordinal, built once at the end of build()
     // (after every materialization and rollback) so `specializationForTypeKey` is O(1). `emplace`

@@ -898,13 +898,13 @@ bool ProjectGenericModel::build(
             if (!imported.hasConcreteDeclaration) continue;
             const auto templateStateIt = stateByCanonicalKey_.find(imported.templateKey);
             if (templateStateIt == stateByCanonicalKey_.end() ||
-                specializationByKey_.contains(imported.specializationKey))
+                specializationPlanner_.byKey.contains(imported.specializationKey))
             {
                 continue;
             }
             const TemplateState* templateState = templateStateIt->second;
             const std::size_t ordinal = specializations_.size();
-            specializationByKey_.emplace(imported.specializationKey, ordinal);
+            specializationPlanner_.commit(imported.specializationKey, ordinal);
             specializations_.push_back(GenericSpecializationRecord{
                 imported.kind,
                 templateState->syntax,
@@ -4563,12 +4563,12 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     std::vector<std::string> identities;
     const std::string key = computeSpecializationKey(
         state.record, arguments, spellings, identities);
-    if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
+    if (const auto found = specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
         if (outSpecializationKey != nullptr) *outSpecializationKey = key;
-        return specializations_[found->second].specializedName;
+        return specializations_[*found].specializedName;
     }
 
     if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
@@ -4597,7 +4597,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     specializedName += "__h" + stableHashSuffix(key);
 
     const std::size_t ordinal = specializations_.size();
-    specializationByKey_.emplace(key, ordinal);
+    specializationPlanner_.commit(key, ordinal);
     specializations_.push_back(GenericSpecializationRecord{
         state.record.kind,
         state.syntax,
@@ -4635,7 +4635,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
     if (!packError.empty() || !associatedError.empty())
     {
-        specializationByKey_.erase(key);
+        specializationPlanner_.rollback(key);
         specializations_.pop_back();
         diagnostics.report(
             associatedError.empty()
@@ -4704,11 +4704,11 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     std::vector<std::string> identities;
     const std::string key = computeSpecializationKey(
         state.record, arguments, spellings, identities);
-    if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
+    if (const auto found = specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
-        return specializations_[found->second].specializedName;
+        return specializations_[*found].specializedName;
     }
 
     if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
@@ -4756,7 +4756,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     }
 
     const std::size_t ordinal = specializations_.size();
-    specializationByKey_.emplace(key, ordinal);
+    specializationPlanner_.commit(key, ordinal);
     specializations_.push_back(GenericSpecializationRecord{
         GenericTemplateKind::Method,
         state.syntax,
@@ -4793,7 +4793,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
     if (!packError.empty() || !associatedError.empty())
     {
-        specializationByKey_.erase(key);
+        specializationPlanner_.rollback(key);
         specializations_.pop_back();
         diagnostics.report(
             associatedError.empty()
