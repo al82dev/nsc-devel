@@ -449,6 +449,75 @@ bool emitGlobalDebugInfo(
     return true;
 }
 
+// NSC305-L03. Emits the debug metadata for the `this` receiver (moved out of the lowerer's
+// emitDebugThis as a pure move).
+bool emitThisDebugInfo(
+    DebugInformationKind debugInformation,
+    LLVMDIBuilderRef debugBuilder,
+    LLVMMetadataRef currentDebugSubprogram,
+    LLVMValueRef thisValue,
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel* memberModel,
+    const source::SourceManager* sourceManager,
+    const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
+    const std::function<LLVMMetadataRef(std::string_view)>& debugTypeLookup,
+    const std::function<bool(std::string_view)>& isStructValueLookup,
+    const std::function<LLVMTypeRef(std::string_view, std::string&)>& llvmTypeLookup,
+    const frontend::ProjectOopMirFunction& function,
+    std::string& error)
+{
+    if (debugInformation != DebugInformationKind::Full || function.isStatic ||
+        function.isLambda || currentDebugSubprogram == nullptr)
+        return true;
+    if (thisValue == nullptr || function.declaringTypeOrdinal >= nameLookup.namedTypes().size())
+    {
+        error = "debug receiver is missing its LLVM value or declaring type";
+        return false;
+    }
+    if (memberModel == nullptr || function.memberOrdinal >= memberModel->members().size())
+        return true;
+    const frontend::ClassMemberSymbol& member = memberModel->members()[function.memberOrdinal];
+    if (!member.range.isValid()) return true;
+    const std::string thisTypeKey =
+        "type:" + nameLookup.namedTypes()[function.declaringTypeOrdinal].identity.key();
+    LLVMMetadataRef type = debugTypeLookup(thisTypeKey);
+    LLVMMetadataRef file = debugFileLookup(member.range.begin());
+    if (type == nullptr || file == nullptr) return true;
+    const source::SourcePosition position = sourceManager->getPosition(member.range.begin());
+
+    LLVMValueRef storage = thisValue;
+    if (!isStructValueLookup(thisTypeKey))
+    {
+        LLVMTypeRef llvmThisType = llvmTypeLookup(thisTypeKey, error);
+        if (llvmThisType == nullptr) return false;
+        storage = LLVMBuildAlloca(builder, llvmThisType, "this.addr");
+        LLVMBuildStore(builder, thisValue, storage);
+    }
+    const auto flags = static_cast<LLVMDIFlags>(LLVMDIFlagArtificial | LLVMDIFlagObjectPointer);
+    static constexpr std::string_view thisName = "this";
+    LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+        debugBuilder, currentDebugSubprogram, thisName.data(), thisName.size(), 0,
+        file, position.line, type, 1, flags);
+    LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
+    LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+        context, position.line, position.column, currentDebugSubprogram, nullptr);
+    if (variable == nullptr || expression == nullptr || location == nullptr)
+    {
+        error = "failed to create debug metadata for 'this'";
+        return false;
+    }
+    if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+            debugBuilder, storage, variable, expression, location,
+            LLVMGetInsertBlock(builder)) == nullptr)
+    {
+        error = "failed to emit debug storage for 'this'";
+        return false;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -2101,47 +2170,14 @@ private:
         const frontend::ProjectOopMirFunction& function,
         std::string& error)
     {
-        if (debugInformation_ != DebugInformationKind::Full || function.isStatic ||
-            function.isLambda || currentDebugSubprogram_ == nullptr)
-            return true;
-        if (thisValue_ == nullptr || function.declaringTypeOrdinal >= nameLookup_.namedTypes().size())
-            return fail(error, "debug receiver is missing its LLVM value or declaring type");
-        if (memberModel_ == nullptr || function.memberOrdinal >= memberModel_->members().size())
-            return true;
-
-        const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
-        if (!member.range.isValid()) return true;
-        const std::string thisTypeKey = "type:" +
-            nameLookup_.namedTypes()[function.declaringTypeOrdinal].identity.key();
-        LLVMMetadataRef type = debugType(thisTypeKey);
-        LLVMMetadataRef file = debugFile(member.range.begin());
-        if (type == nullptr || file == nullptr) return true;
-        const source::SourcePosition position = sourceManager_->getPosition(member.range.begin());
-
-        LLVMValueRef storage = thisValue_;
-        if (!isStructValue(thisTypeKey))
-        {
-            LLVMTypeRef llvmThisType = llvmType(thisTypeKey, error);
-            if (llvmThisType == nullptr) return false;
-            storage = LLVMBuildAlloca(builder_, llvmThisType, "this.addr");
-            LLVMBuildStore(builder_, thisValue_, storage);
-        }
-        const auto flags = static_cast<LLVMDIFlags>(
-            LLVMDIFlagArtificial | LLVMDIFlagObjectPointer);
-        static constexpr std::string_view thisName = "this";
-        LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
-            debugBuilder_, currentDebugSubprogram_, thisName.data(), thisName.size(), 0,
-            file, position.line, type, 1, flags);
-        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
-        if (variable == nullptr || expression == nullptr || location == nullptr)
-            return fail(error, "failed to create debug metadata for 'this'");
-        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
-                debugBuilder_, storage, variable, expression, location,
-                LLVMGetInsertBlock(builder_)) == nullptr)
-            return fail(error, "failed to emit debug storage for 'this'");
-        return true;
+        return emitThisDebugInfo(
+            debugInformation_, debugBuilder_, currentDebugSubprogram_, thisValue_, context_,
+            builder_, nameLookup_, memberModel_, sourceManager_,
+            [&](SourceLocation location) { return debugFile(location); },
+            [&](std::string_view typeKey) { return debugType(typeKey); },
+            [&](std::string_view typeKey) { return isStructValue(typeKey); },
+            [&](std::string_view typeKey, std::string& err) { return llvmType(typeKey, err); },
+            function, error);
     }
 
     bool emitDebugLocal(
