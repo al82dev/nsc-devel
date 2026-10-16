@@ -873,6 +873,103 @@ bool emitVtableGlobal(
     return true;
 }
 
+// NSC305-L03. Emits a dispatch table's interface-map globals (moved out of emitDispatchMetadata as a
+// pure move). The function lookup is a callback so the private FunctionInfo map stays in the lowerer.
+bool emitInterfaceMapGlobals(
+    LLVMModuleRef module,
+    LLVMTypeRef ptr,
+    LLVMTypeRef i64,
+    LLVMTypeRef interfaceMapEntryType,
+    LLVMTypeRef interfaceMapType,
+    const frontend::ProjectOopMirDispatchTable& table,
+    const std::function<LLVMValueRef(std::string_view)>& functionLookup,
+    std::unordered_map<std::size_t, LLVMValueRef>& interfaceMapGlobals,
+    std::string& error)
+{
+    std::vector<LLVMValueRef> interfaceMapEntries;
+    for (const frontend::ProjectOopMirDispatchTable::InterfaceTable& interfaceTable :
+         table.interfaceTables)
+    {
+        LLVMTypeRef methodArrayType = LLVMArrayType2(ptr, interfaceTable.calleeNames.size());
+        LLVMValueRef methodTable = LLVMAddGlobal(
+            module, methodArrayType, interfaceTable.methodTableName.c_str());
+        if (methodTable == nullptr)
+        {
+            error = "Stage 36 failed to declare interface method table " +
+                interfaceTable.methodTableName;
+            return false;
+        }
+        std::vector<LLVMValueRef> methods;
+        methods.reserve(interfaceTable.calleeNames.size());
+        for (const std::string& callee : interfaceTable.calleeNames)
+        {
+            if (callee.empty())
+            {
+                methods.push_back(LLVMConstNull(ptr));
+                continue;
+            }
+            LLVMValueRef target = functionLookup(callee);
+            if (target == nullptr)
+            {
+                error = "Stage 36 interface implementation was not declared: " + callee;
+                return false;
+            }
+            methods.push_back(target);
+        }
+        LLVMValueRef methodInitializer = LLVMConstArray2(
+            ptr, methods.data(), static_cast<std::uint64_t>(methods.size()));
+        LLVMSetInitializer(methodTable, methodInitializer);
+        LLVMSetGlobalConstant(methodTable, 1);
+        if (!table.genericSpecializationKey.empty())
+            applyOdrLinkage(module, methodTable);
+
+        LLVMValueRef entryFields[] = {
+            LLVMConstInt(i64, interfaceTable.stableInterfaceTypeId, 0),
+            methodTable
+        };
+        interfaceMapEntries.push_back(
+            LLVMConstNamedStruct(interfaceMapEntryType, entryFields, 2));
+    }
+    if (!interfaceMapEntries.empty())
+    {
+        LLVMTypeRef entriesArrayType = LLVMArrayType2(
+            interfaceMapEntryType, interfaceMapEntries.size());
+        const std::string entriesName = table.interfaceMapName + "__entries";
+        LLVMValueRef entriesGlobal = LLVMAddGlobal(
+            module, entriesArrayType, entriesName.c_str());
+        if (entriesGlobal == nullptr)
+        {
+            error = "Stage 36 failed to declare interface-map entries";
+            return false;
+        }
+        LLVMValueRef entriesInitializer = LLVMConstArray2(
+            interfaceMapEntryType, interfaceMapEntries.data(),
+            static_cast<std::uint64_t>(interfaceMapEntries.size()));
+        LLVMSetInitializer(entriesGlobal, entriesInitializer);
+        LLVMSetGlobalConstant(entriesGlobal, 1);
+        if (!table.genericSpecializationKey.empty())
+            applyOdrLinkage(module, entriesGlobal);
+
+        LLVMValueRef mapGlobal = LLVMAddGlobal(
+            module, interfaceMapType, table.interfaceMapName.c_str());
+        if (mapGlobal == nullptr)
+        {
+            error = "Stage 36 failed to declare interface-map header";
+            return false;
+        }
+        LLVMValueRef mapFields[] = {
+            LLVMConstInt(i64, interfaceMapEntries.size(), 0),
+            entriesGlobal
+        };
+        LLVMSetInitializer(mapGlobal, LLVMConstNamedStruct(interfaceMapType, mapFields, 2));
+        LLVMSetGlobalConstant(mapGlobal, 1);
+        if (!table.genericSpecializationKey.empty())
+            applyOdrLinkage(module, mapGlobal);
+        interfaceMapGlobals[table.typeOrdinal] = mapGlobal;
+    }
+    return true;
+}
+
 // NS304-T15-F02: derive the decimal coefficient and scale from a binary FP literal value. The
 // `%g` round-trip gives the shortest decimal text that round-trips, so common literals such as
 // `1.5` yield coefficient 15 / scale 1 and `0.1` yields coefficient 1 / scale 1. The coefficient is
@@ -3970,80 +4067,14 @@ private:
                     vtableGlobals_, error))
                 return false;
 
-            std::vector<LLVMValueRef> interfaceMapEntries;
-            for (const frontend::ProjectOopMirDispatchTable::InterfaceTable& interfaceTable :
-                 table.interfaceTables)
-            {
-                LLVMTypeRef methodArrayType = LLVMArrayType2(ptr, interfaceTable.calleeNames.size());
-                LLVMValueRef methodTable = LLVMAddGlobal(
-                    module_, methodArrayType, interfaceTable.methodTableName.c_str());
-                if (methodTable == nullptr)
-                {
-                    return fail(error, "Stage 36 failed to declare interface method table " +
-                        interfaceTable.methodTableName);
-                }
-                std::vector<LLVMValueRef> methods;
-                methods.reserve(interfaceTable.calleeNames.size());
-                for (const std::string& callee : interfaceTable.calleeNames)
-                {
-                    if (callee.empty())
-                    {
-                        methods.push_back(LLVMConstNull(ptr));
-                        continue;
-                    }
-                    const auto found = functions_.find(callee);
-                    if (found == functions_.end())
-                    {
-                        return fail(error, "Stage 36 interface implementation was not declared: " + callee);
-                    }
-                    methods.push_back(found->second.function);
-                }
-                LLVMValueRef methodInitializer = LLVMConstArray2(
-                    ptr, methods.data(), static_cast<std::uint64_t>(methods.size()));
-                LLVMSetInitializer(methodTable, methodInitializer);
-                LLVMSetGlobalConstant(methodTable, 1);
-                applyGenericOdrDefinition(methodTable, table.genericSpecializationKey);
-
-                LLVMValueRef entryFields[] = {
-                    LLVMConstInt(i64, interfaceTable.stableInterfaceTypeId, 0),
-                    methodTable
-                };
-                interfaceMapEntries.push_back(
-                    LLVMConstNamedStruct(interfaceMapEntryType_, entryFields, 2));
-            }
-            if (!interfaceMapEntries.empty())
-            {
-                LLVMTypeRef entriesArrayType = LLVMArrayType2(
-                    interfaceMapEntryType_, interfaceMapEntries.size());
-                const std::string entriesName = table.interfaceMapName + "__entries";
-                LLVMValueRef entriesGlobal = LLVMAddGlobal(
-                    module_, entriesArrayType, entriesName.c_str());
-                if (entriesGlobal == nullptr)
-                {
-                    return fail(error, "Stage 36 failed to declare interface-map entries");
-                }
-                LLVMValueRef entriesInitializer = LLVMConstArray2(
-                    interfaceMapEntryType_, interfaceMapEntries.data(),
-                    static_cast<std::uint64_t>(interfaceMapEntries.size()));
-                LLVMSetInitializer(entriesGlobal, entriesInitializer);
-                LLVMSetGlobalConstant(entriesGlobal, 1);
-                applyGenericOdrDefinition(entriesGlobal, table.genericSpecializationKey);
-
-                LLVMValueRef mapGlobal = LLVMAddGlobal(
-                    module_, interfaceMapType_, table.interfaceMapName.c_str());
-                if (mapGlobal == nullptr)
-                {
-                    return fail(error, "Stage 36 failed to declare interface-map header");
-                }
-                LLVMValueRef mapFields[] = {
-                    LLVMConstInt(i64, interfaceMapEntries.size(), 0),
-                    entriesGlobal
-                };
-                LLVMSetInitializer(mapGlobal, LLVMConstNamedStruct(interfaceMapType_, mapFields, 2));
-                LLVMSetGlobalConstant(mapGlobal, 1);
-                applyGenericOdrDefinition(mapGlobal, table.genericSpecializationKey);
-                interfaceMapGlobals_[table.typeOrdinal] = mapGlobal;
-            }
+            if (!emitInterfaceMapGlobals(
+                    module_, ptr, i64, interfaceMapEntryType_, interfaceMapType_, table,
+                    [&](std::string_view callee) {
+                        const auto found = functions_.find(std::string(callee));
+                        return found == functions_.end() ? nullptr : found->second.function;
+                    },
+                    interfaceMapGlobals_, error))
+                return false;
 
             LLVMValueRef descriptor = LLVMAddGlobal(
                 module_, descriptorType_, table.descriptorName.c_str());
