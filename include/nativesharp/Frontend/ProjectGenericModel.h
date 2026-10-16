@@ -939,6 +939,16 @@ private:
         std::size_t ordinal,
         const SpecializationContext& callerContext,
         diagnostics::DiagnosticEngine& diagnostics);
+    // NSC305-G09. Executes a reserved type specialization in a worker and returns the private
+    // product (clone + child demands). The committer merges the product by the reserved ordinal.
+    SpecializationProduct executeTypeSpecializationProduct(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        const std::string& key,
+        const std::string& specializedName,
+        std::size_t ordinal,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

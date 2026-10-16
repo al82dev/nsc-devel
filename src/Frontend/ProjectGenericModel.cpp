@@ -5671,7 +5671,7 @@ std::size_t ProjectGenericModel::reserveTypeSpecialization(
 }
 
 // NSC305-G09. Executes a reserved type specialization (see the header).
-bool ProjectGenericModel::executeTypeSpecialization(
+ProjectGenericModel::SpecializationProduct ProjectGenericModel::executeTypeSpecializationProduct(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
     const std::string& key,
@@ -5680,6 +5680,8 @@ bool ProjectGenericModel::executeTypeSpecialization(
     const SpecializationContext& callerContext,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    ProjectGenericModel::SpecializationProduct product;
+    product.ordinal = ordinal;
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
     packMaterializationError_.clear();
@@ -5709,7 +5711,7 @@ bool ProjectGenericModel::executeTypeSpecialization(
             diagnostics::DiagnosticSeverity::Error,
             associatedError.empty() ? packErrorRange : associatedErrorRange,
             associatedError.empty() ? packError : associatedError);
-        return false;
+        return product;
     }
     {
         const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
@@ -5735,7 +5737,23 @@ bool ProjectGenericModel::executeTypeSpecialization(
     currentInstantiationRange_ = callerContext.range;
     currentOverloadGroup_ = callerContext.overloadGroup;
     activePackSubstitutions_ = callerContext.packSubstitutions;
-    return true;
+    product.clone = clone;
+    product.success = true;
+    return product;
+}
+
+bool ProjectGenericModel::executeTypeSpecialization(
+    TemplateState& state,
+    std::span<ast::TypeSyntax* const> arguments,
+    const std::string& key,
+    const std::string& specializedName,
+    std::size_t ordinal,
+    const SpecializationContext& callerContext,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const ProjectGenericModel::SpecializationProduct product = executeTypeSpecializationProduct(
+        state, arguments, key, specializedName, ordinal, callerContext, diagnostics);
+    return product.success;
 }
 
 std::string ProjectGenericModel::ensureTypeSpecialization(
