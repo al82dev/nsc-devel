@@ -4881,6 +4881,66 @@ struct CloneDepthGuard final
 };
 }  // namespace
 
+// NSC305-G06. The non-substitution branch of cloneType (see the header).
+ast::TypeSyntax* ProjectGenericModel::cloneTypeGeneric(
+    ast::AstArena& arena,
+    const ast::TypeSyntax* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+{
+    ast::TypeSyntax* result =
+        arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
+    result->setFunction(source->isFunction());
+    result->setFunctionCarrier(source->functionCarrier());
+    result->setFunctionCallingConvention(source->functionCallingConvention());
+    result->setFunctionVariadic(source->functionIsVariadic());
+    result->setFunctionUnsafe(source->functionIsUnsafe());
+    result->setFunctionNoHeap(source->functionIsNoHeap());
+    result->setFunctionAsync(source->functionIsAsync());
+    result->setFunctionNullable(source->functionIsNullable());
+    result->setFunctionLifetimeName(source->functionLifetimeName());
+    result->setFunctionReturnType(cloneType(
+        arena, source->functionReturnType(), substitutions));
+    result->setFunctionErrorType(cloneType(
+        arena, source->functionErrorType(), substitutions));
+    if (source->constExpression() != nullptr)
+    {
+        result->setConstExpression(cloneNode(
+            arena, source->constExpression(), substitutions, "", ""));
+    }
+    if (source->isTuple())
+    {
+        for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
+        {
+            const std::string name = index < source->tupleElementNames().size()
+                ? source->tupleElementNames()[index] : std::string{};
+            result->addTupleElement(
+                cloneType(arena, source->typeArguments()[index], substitutions), name);
+        }
+    }
+    else
+    {
+        for (const ast::TypeSyntax* argument : source->typeArguments())
+            for (ast::TypeSyntax* expanded :
+                 cloneExpandedTypeArgument(arena, argument, substitutions))
+                result->addTypeArgument(expanded);
+    }
+    // Stage 52 fix: carry forward the origin tags the SOURCE node already carries.
+    if (source->originProjectOrdinal().has_value())
+    {
+        result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
+    }
+    if (source->originNamespace().has_value())
+    {
+        result->setOriginNamespace(source->originNamespace().value());
+    }
+    if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
+        origin != resolvedTypeOriginBySyntax_.end())
+    {
+        resolvedTypeOriginBySyntax_[result] = origin->second;
+    }
+    return result;
+}
+
 ast::TypeSyntax* ProjectGenericModel::cloneType(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
@@ -5091,64 +5151,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     }
     else
     {
-        result = arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
-        result->setFunction(source->isFunction());
-        result->setFunctionCarrier(source->functionCarrier());
-        result->setFunctionCallingConvention(source->functionCallingConvention());
-        result->setFunctionVariadic(source->functionIsVariadic());
-        result->setFunctionUnsafe(source->functionIsUnsafe());
-        result->setFunctionNoHeap(source->functionIsNoHeap());
-        result->setFunctionAsync(source->functionIsAsync());
-        result->setFunctionNullable(source->functionIsNullable());
-        result->setFunctionLifetimeName(source->functionLifetimeName());
-        result->setFunctionReturnType(cloneType(
-            arena, source->functionReturnType(), substitutions));
-        result->setFunctionErrorType(cloneType(
-            arena, source->functionErrorType(), substitutions));
-        if (source->constExpression() != nullptr)
-        {
-            result->setConstExpression(cloneNode(
-                arena, source->constExpression(), substitutions, "", ""));
-        }
-        if (source->isTuple())
-        {
-            for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
-            {
-                const std::string name = index < source->tupleElementNames().size()
-                    ? source->tupleElementNames()[index] : std::string{};
-                result->addTupleElement(
-                    cloneType(arena, source->typeArguments()[index], substitutions), name);
-            }
-        }
-        else
-        {
-            for (const ast::TypeSyntax* argument : source->typeArguments())
-                for (ast::TypeSyntax* expanded :
-                     cloneExpandedTypeArgument(arena, argument, substitutions))
-                    result->addTypeArgument(expanded);
-        }
-        // Stage 52 fix: this plain (non-substituted) re-clone still needs to carry forward the
-        // origin tags the SOURCE node already carries. This branch is exactly what runs when
-        // cloneType is called recursively on a substitution's own target a second time (see the
-        // `cloneType(arena, substitution->second, {})` call above) -- e.g. re-cloning the already
-        // AppB-tagged "Payload" node while specializing List<Payload>'s internal Predicate<T>
-        // usage. Without this, the re-clone starts untagged, the guard above sees "not yet
-        // tagged" and stamps it with whatever project/namespace happens to be the CURRENT (here,
-        // nested and wrong) ambient instantiation context, right back into the original
-        // cross-project bug these fields exist to fix.
-        if (source->originProjectOrdinal().has_value())
-        {
-            result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
-        }
-        if (source->originNamespace().has_value())
-        {
-            result->setOriginNamespace(source->originNamespace().value());
-        }
-        if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
-            origin != resolvedTypeOriginBySyntax_.end())
-        {
-            resolvedTypeOriginBySyntax_[result] = origin->second;
-        }
+        result = cloneTypeGeneric(arena, source, substitutions);
     }
 
     const std::size_t modifierCount = std::min(source->modifiers().size(), modifierLimit);

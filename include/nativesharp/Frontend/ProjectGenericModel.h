@@ -839,6 +839,12 @@ private:
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::size_t modifierLimit = std::numeric_limits<std::size_t>::max());
+    // NSC305-G06. The non-substitution branch of cloneType: creates the shallow result, clones the
+    // function return/error types and type arguments, and carries forward origin tags.
+    ast::TypeSyntax* cloneTypeGeneric(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
 
     std::vector<ast::TypeSyntax*> cloneExpandedTypeArgument(
         ast::AstArena& arena,
