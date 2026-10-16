@@ -11397,6 +11397,35 @@ private:
                 values.push_back(pointerArithmeticFromParts(current, frame.lhs, right, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CompoundStore)
+            {
+                if (current->children.size() != 2 || current->children[0] == nullptr ||
+                    current->children[1] == nullptr)
+                {
+                    values.push_back(failValue(error, "compound store requires a target address and a value"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef address = values.back();
+                    values.pop_back();
+                    if (address == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, address, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(compoundStoreFromParts(current, frame.lhs, value, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11652,98 +11681,7 @@ private:
             // sin signo y `x >>= n` con `int` desplaza aritmeticamente sin que este caso tenga que
             // saber nada de eso.
             case frontend::ProjectOopMirNodeKind::CompoundStore:
-            {
-                if (node->children.size() != 2 || node->children[0] == nullptr ||
-                    node->children[1] == nullptr)
-                    return failValue(error, "compound store requires a target address and a value");
-
-                LLVMValueRef address = lowerExpression(node->children[0].get(), error);
-                if (address == nullptr) return nullptr;
-                LLVMTypeRef targetType = llvmType(node->typeKey, error);
-                if (targetType == nullptr) return nullptr;
-                const bool bitField =
-                    node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress;
-                LLVMValueRef previousStorage = nullptr;
-                LLVMValueRef previous = nullptr;
-                if (bitField)
-                {
-                    LLVMTypeRef storageType = bitFieldStorageType(node->children[0].get(), error);
-                    if (storageType == nullptr) return nullptr;
-                    previousStorage = LLVMBuildLoad2(
-                        builder_, storageType, address, "bitfield.compound.storage.load");
-                    LLVMSetAlignment(
-                        previousStorage, static_cast<unsigned>(node->children[0]->alignment));
-                    if (node->children[0]->volatileAccess) LLVMSetVolatile(previousStorage, 1);
-                    previous = extractBitField(node->children[0].get(), previousStorage, error);
-                }
-                else
-                {
-                    previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
-                    if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
-                }
-                if (previous == nullptr) return nullptr;
-
-                // El operando derecho se baja UNA SOLA VEZ, en la rama que le toca. Bajarlo antes
-                // del `if` y ademas dentro de normalizeNativeIndex lo evaluaria dos veces, que es
-                // el mismo defecto que este nodo existe para evitar en el destino.
-                LLVMValueRef updated = nullptr;
-                if (node->immediate != 0)
-                {
-                    // DESTINO PUNTERO (`p += n`, `++p`). El paso es el del tipo apuntado, igual
-                    // que en PointerArithmetic, y el GEP va SIN `inbounds` por la misma razon que
-                    // alli: este nivel del lenguaje no promete quedarse dentro de una asignacion.
-                    if (node->operation != lexer::TokenKind::Plus &&
-                        node->operation != lexer::TokenKind::Minus)
-                        return failValue(error, "a pointer target supports only '+' and '-' updates");
-                    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
-                    LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
-                    LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-                    if (index == nullptr) return nullptr;
-                    LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "compound.offset");
-                    if (node->operation == lexer::TokenKind::Minus)
-                    {
-                        offset = LLVMBuildNeg(builder_, offset, "compound.offset.neg");
-                    }
-                    LLVMValueRef indices[] = {offset};
-                    updated = LLVMBuildGEP2(
-                        builder_, LLVMInt8TypeInContext(context_), previous, indices, 1, "compound.arith");
-                }
-                else
-                {
-                    LLVMValueRef operand = lowerExpression(node->children[1].get(), error);
-                    if (operand == nullptr) return nullptr;
-                    if (node->operation == lexer::TokenKind::LessLess ||
-                        node->operation == lexer::TokenKind::GreaterGreater)
-                    {
-                        operand = normalizeShiftCount(
-                            operand, node->children[1]->typeKey, node->typeKey, error);
-                        if (operand == nullptr) return nullptr;
-                    }
-                    updated = applyBinaryOperation(
-                        node->operation, previous, operand, node->typeKey, error, false);
-                }
-                if (updated == nullptr) return nullptr;
-                LLVMValueRef storedValue = updated;
-                if (bitField)
-                {
-                    LLVMValueRef merged = insertBitField(
-                        node->children[0].get(), previousStorage, updated, error);
-                    if (merged == nullptr) return nullptr;
-                    LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
-                    LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
-                    if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-                    storedValue = extractBitField(node->children[0].get(), merged, error);
-                }
-                else
-                {
-                    LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
-                    if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-                }
-                if (storedValue == nullptr) return nullptr;
-                // `x++` VALE EL VALOR ANTIGUO; `++x` y `x += e` valen el nuevo. Un solo bit de
-                // diferencia porque todo lo anterior es identico.
-                return node->booleanValue ? previous : storedValue;
-            }
+                return lowerExpressionIterative(node, error);
 
             case frontend::ProjectOopMirNodeKind::PointerLoad:
                 return lowerExpressionIterative(node, error);
@@ -16270,6 +16208,90 @@ private:
         LLVMValueRef indices[] = {offset};
         return LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
+    }
+
+    // NSC305-L04. The compound-store compute (load, operate, store), separated from the
+    // address/operand evaluation so the iterative machine can push both as frames.
+    LLVMValueRef compoundStoreFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef address,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        LLVMTypeRef targetType = llvmType(node->typeKey, error);
+        if (targetType == nullptr) return nullptr;
+        const bool bitField =
+            node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress;
+        LLVMValueRef previousStorage = nullptr;
+        LLVMValueRef previous = nullptr;
+        if (bitField)
+        {
+            LLVMTypeRef storageType = bitFieldStorageType(node->children[0].get(), error);
+            if (storageType == nullptr) return nullptr;
+            previousStorage = LLVMBuildLoad2(
+                builder_, storageType, address, "bitfield.compound.storage.load");
+            LLVMSetAlignment(
+                previousStorage, static_cast<unsigned>(node->children[0]->alignment));
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(previousStorage, 1);
+            previous = extractBitField(node->children[0].get(), previousStorage, error);
+        }
+        else
+        {
+            previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+        }
+        if (previous == nullptr) return nullptr;
+
+        LLVMValueRef updated = nullptr;
+        if (node->immediate != 0)
+        {
+            if (node->operation != lexer::TokenKind::Plus &&
+                node->operation != lexer::TokenKind::Minus)
+                return failValue(error, "a pointer target supports only '+' and '-' updates");
+            LLVMValueRef index = normalizeNativeIndexFromValue(node->children[1].get(), value, error);
+            if (index == nullptr) return nullptr;
+            LLVMValueRef stride = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
+            LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "compound.offset");
+            if (node->operation == lexer::TokenKind::Minus)
+            {
+                offset = LLVMBuildNeg(builder_, offset, "compound.offset.neg");
+            }
+            LLVMValueRef indices[] = {offset};
+            updated = LLVMBuildGEP2(
+                builder_, LLVMInt8TypeInContext(context_), previous, indices, 1, "compound.arith");
+        }
+        else
+        {
+            LLVMValueRef operand = value;
+            if (node->operation == lexer::TokenKind::LessLess ||
+                node->operation == lexer::TokenKind::GreaterGreater)
+            {
+                operand = normalizeShiftCount(
+                    operand, node->children[1]->typeKey, node->typeKey, error);
+                if (operand == nullptr) return nullptr;
+            }
+            updated = applyBinaryOperation(
+                node->operation, previous, operand, node->typeKey, error, false);
+        }
+        if (updated == nullptr) return nullptr;
+        LLVMValueRef storedValue = updated;
+        if (bitField)
+        {
+            LLVMValueRef merged = insertBitField(
+                node->children[0].get(), previousStorage, updated, error);
+            if (merged == nullptr) return nullptr;
+            LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+            LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            storedValue = extractBitField(node->children[0].get(), merged, error);
+        }
+        else
+        {
+            LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        }
+        if (storedValue == nullptr) return nullptr;
+        return node->booleanValue ? previous : storedValue;
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
