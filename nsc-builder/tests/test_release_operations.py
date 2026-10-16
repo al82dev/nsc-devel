@@ -54,14 +54,18 @@ class ReleaseOperationPlanTests(unittest.TestCase):
         self.assertEqual(plan.commands[0][1][-2:], ["--prefix", plan.prefix.as_posix()])
         self.assertEqual(plan.commands[1][1][0], str(plan.prefix / "bin" / "nsc.exe"))
 
-    def test_baseline_requires_a_drive_nslink_outside_fixed_staging(self) -> None:
+    def test_baseline_repairs_reset_staging_nslink_with_independent_source(self) -> None:
         with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT) as temporary:
             root = Path(temporary)
             config = self.config(root)
             staging = root / "baseline"
+            independent = root / "nslink-devel" / "bin" / "release" / "nslink.exe"
+            independent.parent.mkdir(parents=True)
+            independent.write_bytes(b"independent-nslink")
             with (
                 patch.object(baseline, "BASELINE_PREFIX", staging),
                 patch.object(baseline, "BASELINE_PROMOTION_PREFIX", Path("C:/native-sharp")),
+                patch.object(baseline, "BASELINE_NSLINK_SOURCE", independent),
                 patch.object(
                     baseline,
                     "discover_compiler_build_tools",
@@ -74,14 +78,23 @@ class ReleaseOperationPlanTests(unittest.TestCase):
                 inside = staging / "bin" / "nslink.exe"
                 inside.parent.mkdir(parents=True)
                 inside.write_bytes(b"stale")
+                repaired = baseline.create_baseline_plan(
+                    replace(config, nslink_executable=str(inside))
+                )
                 with self.assertRaisesRegex(ValueError, "reset staging"):
-                    baseline.create_baseline_plan(
-                        replace(config, nslink_executable=str(inside))
-                    )
+                    baseline.stage_baseline_nslink(inside, staging)
 
         self.assertEqual(plan.optimizations, ("O0", "O1", "O2", "O3"))
         self.assertEqual(plan.compiler_config.install_prefix, str(staging.resolve()))
         self.assertEqual(plan.promotion_prefix, Path("C:/native-sharp").resolve())
+        self.assertEqual(repaired.nslink_source, independent.resolve())
+
+    def test_baseline_does_not_repair_an_unauthorized_nslink_source(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must come from A:"):
+            baseline._select_baseline_nslink_source(
+                Path("C:/native-sharp/bin/nslink.exe"),
+                baseline.BASELINE_PREFIX.resolve(),
+            )
 
     def test_baseline_rejects_partial_or_unknown_profile_sets(self) -> None:
         with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT) as temporary:

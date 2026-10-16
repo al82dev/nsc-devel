@@ -18,6 +18,7 @@ from .utils import sha256_file
 
 BASELINE_PREFIX = Path("A:/native-sharp-3.0-baseline")
 BASELINE_PROMOTION_PREFIX = Path("C:/native-sharp")
+BASELINE_NSLINK_SOURCE = Path("A:/nslink-devel/bin/release/nslink.exe")
 BASELINE_OPTIMIZATIONS = ("O0", "O1", "O2", "O3")
 
 
@@ -44,7 +45,7 @@ def create_baseline_plan(
         raise ValueError("baseline optimizations must contain one or more of O0..O3")
     staging = BASELINE_PREFIX.resolve()
     destination = BASELINE_PROMOTION_PREFIX.resolve()
-    nslink = _validated_nslink_source(Path(config.nslink_executable), staging)
+    nslink = _select_baseline_nslink_source(Path(config.nslink_executable), staging)
     tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     baseline_config = replace(
         config,
@@ -173,6 +174,14 @@ def _validated_nslink_source(source: Path, staging: Path) -> Path:
     return resolved
 
 
+def _select_baseline_nslink_source(configured: Path, staging: Path) -> Path:
+    """Prefer a valid override, repairing the legacy reset-staging default."""
+    resolved = configured.resolve()
+    if resolved == staging or resolved.is_relative_to(staging):
+        return _validated_nslink_source(BASELINE_NSLINK_SOURCE, staging)
+    return _validated_nslink_source(configured, staging)
+
+
 def _remove_tree_iteratively(root: Path) -> None:
     """Delete a validated tree bottom-up without recursive deletion helpers."""
     for current, directories, files in os.walk(root, topdown=False, followlinks=False):
@@ -190,6 +199,7 @@ def _remove_tree_iteratively(root: Path) -> None:
 
 __all__ = (
     "BASELINE_OPTIMIZATIONS",
+    "BASELINE_NSLINK_SOURCE",
     "BASELINE_PREFIX",
     "BASELINE_PROMOTION_PREFIX",
     "BaselinePlan",
