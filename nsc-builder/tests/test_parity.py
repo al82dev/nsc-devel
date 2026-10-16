@@ -35,9 +35,12 @@ class ModularParityTests(unittest.TestCase):
     def test_timeout_policy_and_visible_actions_match_current_builder(self) -> None:
         expected_limits = {
             None: 2700,
-            0.0: 5,
-            0.999: 5,
-            1.0: 6,
+            0.0: 15,
+            0.999: 15,
+            1.0: 15,
+            9.999: 15,
+            10.0: 15,
+            10.001: 16,
             30.0: 35,
             120.0: 135,
             600.0: 780,

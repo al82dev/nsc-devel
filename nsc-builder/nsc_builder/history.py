@@ -79,10 +79,10 @@ def variant_history_key(variant: RunVariant) -> tuple[str, str, str, str]:
 def timeout_limit_for_average(average_seconds: float | None) -> int:
     """Return the PASS-average deadline, always rounded upward to whole seconds.
 
-    No history gets 45 minutes. Averages below one second get five seconds;
-    averages through 30 seconds add five, through 120 add fifteen, through ten
-    minutes add three minutes, and longer averages add the greater of five
-    minutes or twenty percent. Upward rounding never reduces those margins.
+    No history gets 45 minutes. Averages through 30 seconds add five seconds
+    with a 15-second floor, through 120 add fifteen, through ten minutes add
+    three minutes, and longer averages add the greater of five minutes or
+    twenty percent. Upward rounding never reduces those margins.
     """
     if average_seconds is None:
         return 45 * 60
@@ -94,10 +94,8 @@ def timeout_limit_for_average(average_seconds: float | None) -> int:
     ):
         raise ValueError("historical PASS average must be a finite nonnegative number")
     average = float(average_seconds)
-    if average < 1.0:
-        return 5
     if average <= 30.0:
-        return math.ceil(average + 5.0)
+        return max(15, math.ceil(average + 5.0))
     if average <= 120.0:
         return math.ceil(average + 15.0)
     if average <= 600.0:

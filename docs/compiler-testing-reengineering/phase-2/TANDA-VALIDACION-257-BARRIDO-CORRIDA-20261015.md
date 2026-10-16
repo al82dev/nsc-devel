@@ -47,7 +47,7 @@ participa en la ruta causal y se registre aquí antes de modificarlo.
 | Parser partial | 1 | `partial struct` cae en la ruta de miembro parcial | `parseClassMember` | corregida; `5/5 PASS` con vecindad |
 | Parser ref property | 1 | oráculo anterior a la feature `e1629a749` | CP-PAR-023 | corregida; `2/2 PASS` con paridad |
 | Parser nesting | 1 | recursión por cada prefijo unario; stack overflow `0xC00000FD` | `parseUnaryExpression` | corregida; `7/7 PASS` con vecindad |
-| Builder timeout | 4 | margen histórico insuficiente para variación de I/O corta | `timeout_limit_for_average` | causa demostrada |
+| Builder timeout | 4 | margen histórico insuficiente para variación de I/O corta | `timeout_limit_for_average` | corregida; prueba unitaria PASS |
 
 Los fallos de cada grupo son consumidores del productor indicado. No se parchean de manera independiente.
 
@@ -117,8 +117,9 @@ siguiente batería desde la GUI.
 
 - Inventario original: congelado.
 - Causas raíz conocidas: `8`.
-- Causas corregidas: `7`.
-- Pruebas focales aprobadas: `38`.
+- Causas corregidas: `8` de `8`.
+- Terminales originales cubiertas causalmente: `18` de `18`.
+- Pruebas focales aprobadas: `39`.
 - Target: `nsc_component_tests` Debug compiló; `TF-TGT-002`, `005`, `006`, `008`, `036`, `038` y `040`
   pasaron individualmente. Se restauraron `Enum=16` y `Pointer=17`; `Decimal=18` quedó añadido al final.
 - AST: `nsc_component_tests` Debug compiló; `TA-AST-019..026` pasaron individualmente. El catálogo host ahora
@@ -134,4 +135,9 @@ siguiente batería desde la GUI.
   oráculo ahora exige tipo `int`, getter marcado `ref` y ausencia de diagnósticos; el producto no se modificó.
 - Parser nesting: `nsc_component_tests` Debug compiló; `TP-PAR-457`, `458`, `473..475`, `532` y `533` pasaron.
   Los prefijos ordinarios se acumulan y reconstruyen iterativamente sin cambiar asociación, token ni rango.
-- Siguiente acción causal: ampliar el piso de timeout corto del Builder y validar sólo su política unitaria.
+- Builder timeout: la prueba unitaria
+  `ModularParityTests.test_timeout_policy_and_visible_actions_match_current_builder` pasó. Los promedios históricos
+  `4.528`, `5.667`, `0.872` y `0.772` reciben ahora un límite de `15` segundos; el valor sin historial y los tramos
+  superiores a `30` segundos permanecen sin cambios.
+- Estado de la tanda: cerrada en validación focal. No se ejecutó batería integral. La siguiente corrida completa
+  queda reservada a Alberto desde la GUI, conforme al alcance congelado.
