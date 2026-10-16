@@ -11426,6 +11426,29 @@ private:
                 values.push_back(compoundStoreFromParts(current, frame.lhs, value, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::StackAllocation)
+            {
+                if (current->children.empty() || current->immediate == 0)
+                {
+                    values.push_back(failValue(error, "stack allocation requires extents and an element size"));
+                    continue;
+                }
+                if (frame.phase < current->children.size())
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> rawExtents(current->children.size());
+                for (std::size_t i = current->children.size(); i > 0; --i)
+                {
+                    rawExtents[i - 1] = values.back();
+                    values.pop_back();
+                }
+                values.push_back(stackAllocationFromParts(current, rawExtents, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11578,74 +11601,7 @@ private:
             // promociona un alloca fuera del bloque de entrada, que es justo el comportamiento
             // correcto aqui y no una limitacion.
             case frontend::ProjectOopMirNodeKind::StackAllocation:
-            {
-                if (node->children.empty() || node->immediate == 0)
-                    return failValue(error, "stack allocation requires extents and an element size");
-                constexpr std::uint64_t kMaximumStackAllocationBytes = std::uint64_t{1} << 20;
-                LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-                LLVMValueRef total = LLVMConstInt(i64, 1, 0);
-                const std::uint64_t maximumElements =
-                    kMaximumStackAllocationBytes / node->immediate;
-                LLVMValueRef maximum = LLVMConstInt(i64, maximumElements, 0);
-                for (const auto& extentChild : node->children)
-                {
-                    const frontend::ProjectOopMirNode* extentNode = extentChild.get();
-                    LLVMValueRef rawExtent = lowerExpression(extentNode, error);
-                    if (rawExtent == nullptr) return nullptr;
-                    if (isSignedInteger(extentNode->typeKey))
-                    {
-                        LLVMTypeRef extentType = llvmType(extentNode->typeKey, error);
-                        if (extentType == nullptr) return nullptr;
-                        LLVMValueRef zero = LLVMConstNull(extentType);
-                        LLVMValueRef nonNegative = LLVMBuildICmp(
-                            builder_, LLVMIntSGE, rawExtent, zero, "stack.extent.nonnegative");
-                        if (!emitGuard(
-                                nonNegative,
-                                LlvmTrapReason::AllocationSizeOverflow,
-                                "stack.extent",
-                                error))
-                            return nullptr;
-                    }
-                    LLVMValueRef extent = convert(
-                        rawExtent, extentNode->typeKey, "builtin:nuint", error);
-                    if (extent == nullptr) return nullptr;
-
-                    // Check before multiplying. `safeDivisor` keeps the guard itself defined for
-                    // an already-zero product; once any extent is zero, the final byte count is
-                    // zero and every remaining factor is harmless regardless of its magnitude.
-                    LLVMValueRef totalIsZero = LLVMBuildICmp(
-                        builder_, LLVMIntEQ, total, LLVMConstInt(i64, 0, 0),
-                        "stack.total.zero");
-                    LLVMValueRef safeDivisor = LLVMBuildSelect(
-                        builder_, totalIsZero, LLVMConstInt(i64, 1, 0), total,
-                        "stack.total.divisor");
-                    LLVMValueRef remaining = LLVMBuildUDiv(
-                        builder_, maximum, safeDivisor, "stack.extent.maximum");
-                    LLVMValueRef extentFits = LLVMBuildICmp(
-                        builder_, LLVMIntULE, extent, remaining, "stack.extent.fits");
-                    LLVMValueRef fits = LLVMBuildOr(
-                        builder_, totalIsZero, extentFits, "stack.extent.safe");
-                    if (!emitGuard(
-                            fits,
-                            LlvmTrapReason::AllocationSizeOverflow,
-                            "stack.size",
-                            error))
-                        return nullptr;
-                    total = LLVMBuildMul(builder_, total, extent, "stack.element.count");
-                }
-                LLVMValueRef bytes = LLVMBuildMul(
-                    builder_, total,
-                    LLVMConstInt(i64, node->immediate, 0),
-                    "stackalloc.bytes");
-                LLVMValueRef storage = LLVMBuildArrayAlloca(
-                    builder_, LLVMInt8TypeInContext(context_), bytes, "stackalloc.storage");
-                if (storage == nullptr)
-                    return failValue(error, "CC1 stackalloc failed to emit its array alloca");
-                // Un alloca de i8 sale con alineacion 1. El elemento puede necesitar mas -- un
-                // `double` la necesita -- y sin esto los accesos quedarian desalineados.
-                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
-                return storage;
-            }
+                return lowerExpressionIterative(node, error);
 
             // CC1 fase 4C -- `new T` escalar. Un bloque del monton del tamano de UN elemento, por
             // el mismo allocador que ya usa todo lo demas, y sin construccion: el nivel crudo no
@@ -16292,6 +16248,73 @@ private:
         }
         if (storedValue == nullptr) return nullptr;
         return node->booleanValue ? previous : storedValue;
+    }
+
+    // NSC305-L04. The CC1 stackalloc compute (extent guards + byte alloca), separated from the
+    // extent evaluation so the iterative machine can push each extent as a frame.
+    LLVMValueRef stackAllocationFromParts(
+        const frontend::ProjectOopMirNode* node,
+        const std::vector<LLVMValueRef>& rawExtents,
+        std::string& error)
+    {
+        constexpr std::uint64_t kMaximumStackAllocationBytes = std::uint64_t{1} << 20;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef total = LLVMConstInt(i64, 1, 0);
+        const std::uint64_t maximumElements =
+            kMaximumStackAllocationBytes / node->immediate;
+        LLVMValueRef maximum = LLVMConstInt(i64, maximumElements, 0);
+        for (std::size_t extentIndex = 0; extentIndex < node->children.size(); ++extentIndex)
+        {
+            const frontend::ProjectOopMirNode* extentNode = node->children[extentIndex].get();
+            LLVMValueRef rawExtent = rawExtents[extentIndex];
+            if (isSignedInteger(extentNode->typeKey))
+            {
+                LLVMTypeRef extentType = llvmType(extentNode->typeKey, error);
+                if (extentType == nullptr) return nullptr;
+                LLVMValueRef zero = LLVMConstNull(extentType);
+                LLVMValueRef nonNegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, rawExtent, zero, "stack.extent.nonnegative");
+                if (!emitGuard(
+                        nonNegative,
+                        LlvmTrapReason::AllocationSizeOverflow,
+                        "stack.extent",
+                        error))
+                    return nullptr;
+            }
+            LLVMValueRef extent = convert(
+                rawExtent, extentNode->typeKey, "builtin:nuint", error);
+            if (extent == nullptr) return nullptr;
+
+            LLVMValueRef totalIsZero = LLVMBuildICmp(
+                builder_, LLVMIntEQ, total, LLVMConstInt(i64, 0, 0),
+                "stack.total.zero");
+            LLVMValueRef safeDivisor = LLVMBuildSelect(
+                builder_, totalIsZero, LLVMConstInt(i64, 1, 0), total,
+                "stack.total.divisor");
+            LLVMValueRef remaining = LLVMBuildUDiv(
+                builder_, maximum, safeDivisor, "stack.extent.maximum");
+            LLVMValueRef extentFits = LLVMBuildICmp(
+                builder_, LLVMIntULE, extent, remaining, "stack.extent.fits");
+            LLVMValueRef fits = LLVMBuildOr(
+                builder_, totalIsZero, extentFits, "stack.extent.safe");
+            if (!emitGuard(
+                    fits,
+                    LlvmTrapReason::AllocationSizeOverflow,
+                    "stack.size",
+                    error))
+                return nullptr;
+            total = LLVMBuildMul(builder_, total, extent, "stack.element.count");
+        }
+        LLVMValueRef bytes = LLVMBuildMul(
+            builder_, total,
+            LLVMConstInt(i64, node->immediate, 0),
+            "stackalloc.bytes");
+        LLVMValueRef storage = LLVMBuildArrayAlloca(
+            builder_, LLVMInt8TypeInContext(context_), bytes, "stackalloc.storage");
+        if (storage == nullptr)
+            return failValue(error, "CC1 stackalloc failed to emit its array alloca");
+        LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+        return storage;
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
