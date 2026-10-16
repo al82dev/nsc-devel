@@ -37,6 +37,7 @@ constexpr std::array kBuiltinKinds{
     BuiltinLayoutKind::Double,
     BuiltinLayoutKind::Enum,
     BuiltinLayoutKind::Pointer,
+    BuiltinLayoutKind::Decimal,
 };
 
 constexpr std::array kExpectedLayouts{
@@ -44,7 +45,7 @@ constexpr std::array kExpectedLayouts{
     TypeLayout{2, 2}, TypeLayout{2, 2}, TypeLayout{4, 4}, TypeLayout{4, 4},
     TypeLayout{8, 8}, TypeLayout{8, 8}, TypeLayout{8, 8}, TypeLayout{8, 8},
     TypeLayout{16, 16}, TypeLayout{16, 16}, TypeLayout{4, 4}, TypeLayout{8, 8},
-    TypeLayout{4, 4}, TypeLayout{8, 8},
+    TypeLayout{4, 4}, TypeLayout{8, 8}, TypeLayout{16, 8},
 };
 
 bool sameLayout(TypeLayout left, TypeLayout right)
@@ -104,7 +105,7 @@ void registerInvalidCase(TestRegistry& registry)
 {
     addBuiltinLayoutCase(registry, "TF-TGT-036", "PR", [](TestContext& context) {
         const TargetDataLayout layout = TargetDataLayout::WindowsX64();
-        for (const int value : std::array{-1, 18, 255})
+        for (const int value : std::array{-1, 19, 255})
         {
             context.expect(sameLayout(layout.layoutOf(unknownKind(value)), {0, 1}), "TF-TGT-036 unknown enum values must use the documented 0/1 fallback");
         }
@@ -167,7 +168,7 @@ void registerScaleCase(TestRegistry& registry)
             const TypeLayout result = layout.layoutOf(kBuiltinKinds[index % kBuiltinKinds.size()]);
             checksum += (result.size * 31U) + result.alignment;
         }
-        context.expect(checksum == 12116864ULL, "TF-TGT-040 scale checksum must remain exact across 65,536 queries");
+        context.expect(checksum == 13216760ULL, "TF-TGT-040 scale checksum must remain exact across 65,536 queries");
     });
 }
 }

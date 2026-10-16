@@ -48,6 +48,7 @@ constexpr std::array kBuiltinLayoutKinds{
     BuiltinLayoutKind::Double,
     BuiltinLayoutKind::Enum,
     BuiltinLayoutKind::Pointer,
+    BuiltinLayoutKind::Decimal,
 };
 
 void addEnumCase(TestRegistry& registry, std::string id, std::string profile, TestFunction function)
@@ -131,7 +132,7 @@ void registerBoundaryCase(TestRegistry& registry)
     addEnumCase(registry, "TF-TGT-005", "PR", [](TestContext& context) {
         context.expect(static_cast<int>(kArchitectures.front()) == 0 && static_cast<int>(kArchitectures.back()) == 1, "TF-TGT-005 architecture boundaries must be 0..1");
         context.expect(static_cast<int>(kCpuFeatureLevels.front()) == 0 && static_cast<int>(kCpuFeatureLevels.back()) == 3, "TF-TGT-005 CPU boundaries must be 0..3");
-        context.expect(static_cast<int>(kBuiltinLayoutKinds.front()) == 0 && static_cast<int>(kBuiltinLayoutKinds.back()) == 17, "TF-TGT-005 builtin boundaries must be 0..17");
+        context.expect(static_cast<int>(kBuiltinLayoutKinds.front()) == 0 && static_cast<int>(kBuiltinLayoutKinds.back()) == 18, "TF-TGT-005 builtin boundaries must be 0..18");
         context.expect(static_cast<int>(kOperatingSystems.front()) == 0 && static_cast<int>(kOperatingSystems.back()) == 0, "TF-TGT-005 OS boundary must be zero");
         context.expect(static_cast<int>(kObjectFormats.front()) == 0 && static_cast<int>(kObjectFormats.back()) == 0, "TF-TGT-005 format boundary must be zero");
     });
@@ -144,7 +145,7 @@ void registerVariantMatrixCase(TestRegistry& registry)
         context.expect(kOperatingSystems.size() == 1 && hasSequentialValues(kOperatingSystems), "TF-TGT-006 OS table must be exact");
         context.expect(kObjectFormats.size() == 1 && hasSequentialValues(kObjectFormats), "TF-TGT-006 format table must be exact");
         context.expect(kCpuFeatureLevels.size() == 4 && hasSequentialValues(kCpuFeatureLevels), "TF-TGT-006 CPU table must be exact");
-        context.expect(kBuiltinLayoutKinds.size() == 18 && hasSequentialValues(kBuiltinLayoutKinds), "TF-TGT-006 builtin table must be exact");
+        context.expect(kBuiltinLayoutKinds.size() == 19 && hasSequentialValues(kBuiltinLayoutKinds), "TF-TGT-006 builtin table must be exact");
     });
 }
 
@@ -177,7 +178,7 @@ void registerScaleCase(TestRegistry& registry)
             for (const CpuFeatureLevel value : kCpuFeatureLevels) checksum += static_cast<std::uint64_t>(value);
             for (const BuiltinLayoutKind value : kBuiltinLayoutKinds) checksum += static_cast<std::uint64_t>(value);
         }
-        context.expect(checksum == 5242880, "TF-TGT-008 exhaustive repeated enum checksum must remain exact");
+        context.expect(checksum == 5832704, "TF-TGT-008 exhaustive repeated enum checksum must remain exact");
     });
 }
 }
