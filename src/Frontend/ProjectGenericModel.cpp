@@ -2880,6 +2880,63 @@ void ProjectGenericModel::storeTemplateRecords()
     }
 }
 
+// NSC305-C04. Stores a MIR cache record under the implementation fingerprint key (the C5 stable
+// partition key). No-op when the cache is disabled.
+void ProjectGenericModel::storeMirCacheRecord(
+    std::string_view mangledName,
+    std::string_view genericSpecializationKey,
+    std::string_view returnTypeKey,
+    std::string_view errorTypeKey,
+    const std::vector<std::string>& parameterTypeKeys,
+    std::string_view interfaceFingerprint,
+    std::string_view implementationFingerprint)
+{
+    if (!templateCache_.enabled()) return;
+    MirCacheRecord record;
+    record.key.mangledName = std::string(mangledName);
+    record.key.genericSpecializationKey = std::string(genericSpecializationKey);
+    record.key.returnTypeKey = std::string(returnTypeKey);
+    record.key.errorTypeKey = std::string(errorTypeKey);
+    record.key.parameterTypeKeys = parameterTypeKeys;
+    record.interfaceFingerprint = std::string(interfaceFingerprint);
+    record.implementationFingerprint = std::string(implementationFingerprint);
+    const std::string payload = serializeMirCacheRecord(record);
+    std::string error;
+    (void)templateCache_.store(record.implementationFingerprint, payload, error);
+}
+
+// NSC305-C04. Restores a MIR cache record by implementation fingerprint. Returns false on miss or
+// disabled cache.
+bool ProjectGenericModel::restoreMirCacheRecord(
+    std::string_view implementationFingerprint,
+    std::string& mangledName,
+    std::string& genericSpecializationKey,
+    std::string& returnTypeKey,
+    std::string& errorTypeKey,
+    std::vector<std::string>& parameterTypeKeys,
+    std::string& interfaceFingerprint)
+{
+    if (!templateCache_.enabled()) return false;
+    std::string payload;
+    bool hit = false;
+    std::string error;
+    if (!templateCache_.restore(
+            std::string(implementationFingerprint), payload, hit, error) ||
+        !hit)
+    {
+        return false;
+    }
+    MirCacheRecord record;
+    if (!nativesharp::frontend::restoreMirCacheRecord(payload, record)) return false;
+    mangledName = std::move(record.key.mangledName);
+    genericSpecializationKey = std::move(record.key.genericSpecializationKey);
+    returnTypeKey = std::move(record.key.returnTypeKey);
+    errorTypeKey = std::move(record.key.errorTypeKey);
+    parameterTypeKeys = std::move(record.key.parameterTypeKeys);
+    interfaceFingerprint = std::move(record.interfaceFingerprint);
+    return true;
+}
+
 // NSC305-C01/C02. Warm-build restore: look up the C1/C2 cache and count a hit when the FULL catalog
 // entry (record + syntax AST) round-trips into the unit arena. The AST splice into the unit tree is
 // a later layer; this validates the persisted snapshot.

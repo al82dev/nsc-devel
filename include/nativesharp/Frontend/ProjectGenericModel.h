@@ -401,6 +401,27 @@ public:
     // when disabled). The AST subtree is still walked; this validates + reports the metadata hit.
     void restoreTemplateRecords();
 
+    // NSC305-C04. Stores a MIR cache record (key + interface/implementation fingerprints) under the
+    // implementation fingerprint key (the C5 stable partition key). No-op when disabled.
+    void storeMirCacheRecord(
+        std::string_view mangledName,
+        std::string_view genericSpecializationKey,
+        std::string_view returnTypeKey,
+        std::string_view errorTypeKey,
+        const std::vector<std::string>& parameterTypeKeys,
+        std::string_view interfaceFingerprint,
+        std::string_view implementationFingerprint);
+    // NSC305-C04. Restores a MIR cache record by implementation fingerprint. Returns false on miss or
+    // disabled cache. Out-params: the interface fingerprint + the observable key fields.
+    bool restoreMirCacheRecord(
+        std::string_view implementationFingerprint,
+        std::string& mangledName,
+        std::string& genericSpecializationKey,
+        std::string& returnTypeKey,
+        std::string& errorTypeKey,
+        std::vector<std::string>& parameterTypeKeys,
+        std::string& interfaceFingerprint);
+
 private:
     struct TemplateState final
     {
