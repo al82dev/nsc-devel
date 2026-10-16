@@ -2407,6 +2407,97 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     return true;
 }
 
+// NSC305-G08. Builds the lexical scope for one node (see the header).
+void ProjectGenericModel::prepareNodeScope(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    const std::string& namespaceName,
+    const GenericLookupScope& scope,
+    std::string& outNamespace,
+    GenericLookupScope& outScope)
+{
+    outNamespace = namespaceName;
+    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+    {
+        outNamespace = namespaceAppend(namespaceName, node->text());
+    }
+    telemetry_.noteScopeCopy(
+        scope.importedNamespaces.read().size() + scope.aliases.read().size() +
+        scope.typeAliases.read().size() + scope.typeParameters.read().size() +
+        scope.valuePassKinds.read().size() + scope.genericLambdas.read().size());
+    outScope = scope;
+    if (node->kind() == ast::AstNodeKind::LambdaExpression &&
+        node->text().starts_with("generic-lambda-instance:"))
+    {
+        outScope.genericLambdas.write().erase(
+            node->text().substr(std::string_view("generic-lambda-instance:").size()));
+    }
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr) continue;
+        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+        {
+            const std::string written = child->text();
+            if (written.empty()) continue;
+            const auto add = [&](std::string candidate)
+            {
+                auto& imported = outScope.importedNamespaces.write();
+                if (std::find(imported.begin(), imported.end(), candidate) == imported.end())
+                    imported.push_back(std::move(candidate));
+            };
+            const std::vector<std::string> segments = splitDotted(outNamespace);
+            for (std::size_t depth = segments.size(); depth > 0; --depth)
+            {
+                std::string prefixed;
+                for (std::size_t index = 0; index < depth; ++index)
+                {
+                    if (!prefixed.empty()) prefixed.push_back('.');
+                    prefixed += segments[index];
+                }
+                prefixed.push_back('.');
+                prefixed += written;
+                add(std::move(prefixed));
+            }
+            add(written);
+        }
+        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective)
+        {
+            if (!child->auxiliaryText().empty())
+            {
+                outScope.aliases.write()[child->text()] = child->auxiliaryText();
+            }
+        }
+    }
+    if ((node->kind() == ast::AstNodeKind::MethodDeclaration ||
+         node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
+        node->typeSyntax() != nullptr)
+    {
+        bool conflict = false;
+        outScope.expectedReturnType =
+            cloneAliasType(unit.arena(), node->typeSyntax(), {}, conflict);
+    }
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr || child->typeSyntax() == nullptr ||
+            (child->kind() != ast::AstNodeKind::ParameterDeclaration &&
+             child->kind() != ast::AstNodeKind::FieldDeclaration))
+            continue;
+        bool conflict = false;
+        outScope.addValueType(child->text(),
+            cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict));
+        if (child->kind() == ast::AstNodeKind::ParameterDeclaration)
+        {
+            outScope.valuePassKinds.write().erase(child->text());
+            if (child->auxiliaryText().starts_with("pass:"))
+            {
+                const std::size_t end = child->auxiliaryText().find('|');
+                outScope.valuePassKinds.write()[child->text()] =
+                    child->auxiliaryText().substr(5U, end == std::string::npos ? end : end - 5U);
+            }
+        }
+    }
+}
+
 void ProjectGenericModel::processNode(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -2441,102 +2532,9 @@ void ProjectGenericModel::processNode(
         insideTemplate = frame.insideTemplate;
         if (node == nullptr) continue;
 
-    std::string currentNamespace = namespaceName;
-    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
-    {
-        currentNamespace = namespaceAppend(namespaceName, node->text());
-    }
-    // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
-    // mismo AST, en el mismo sitio, y heredando los de fuera.
-    telemetry_.noteScopeCopy(
-        scope.importedNamespaces.read().size() + scope.aliases.read().size() +
-        scope.typeAliases.read().size() + scope.typeParameters.read().size() +
-        scope.valuePassKinds.read().size() + scope.genericLambdas.read().size());
-    GenericLookupScope currentScope = scope;
-    if (node->kind() == ast::AstNodeKind::LambdaExpression &&
-        node->text().starts_with("generic-lambda-instance:"))
-    {
-        currentScope.genericLambdas.write().erase(
-            node->text().substr(std::string_view("generic-lambda-instance:").size()));
-    }
-    for (const ast::AstNode* child : node->children())
-    {
-        if (child == nullptr) continue;
-        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
-        {
-            // LAS DOS FORMAS. `using Otro;` dentro de `namespace A` puede significar `Otro` o
-            // `A.Otro`, y aqui no hay tabla de namespaces con la que decidirlo --el modelo de
-            // nombres todavia no existe--. Se guardan las dos: el escalon de imports las prueba
-            // ambas, y la que no exista sencillamente no acierta.
-            const std::string written = child->text();
-            if (written.empty()) continue;
-            const auto add = [&](std::string candidate)
-            {
-                auto& imported = currentScope.importedNamespaces.write();
-                if (std::find(imported.begin(), imported.end(), candidate) == imported.end())
-                    imported.push_back(std::move(candidate));
-            };
-            const std::vector<std::string> segments = splitDotted(currentNamespace);
-            for (std::size_t depth = segments.size(); depth > 0; --depth)
-            {
-                std::string prefixed;
-                for (std::size_t index = 0; index < depth; ++index)
-                {
-                    if (!prefixed.empty()) prefixed.push_back('.');
-                    prefixed += segments[index];
-                }
-                prefixed.push_back('.');
-                prefixed += written;
-                add(std::move(prefixed));
-            }
-            add(written);
-        }
-        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective)
-        {
-            if (!child->auxiliaryText().empty())
-            {
-                currentScope.aliases.write()[child->text()] = child->auxiliaryText();
-            }
-        }
-    }
-
-    // A concrete callable contributes the expected type for direct return expressions. Capture
-    // it before processTypeSyntax replaces closed generic source spellings with physical names.
-    // Open templates are skipped below and their concrete clones establish their own scope.
-    if ((node->kind() == ast::AstNodeKind::MethodDeclaration ||
-         node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
-        node->typeSyntax() != nullptr)
-    {
-        bool conflict = false;
-        currentScope.expectedReturnType =
-            cloneAliasType(unit.arena(), node->typeSyntax(), {}, conflict);
-    }
-
-    // Parameters and fields are visible throughout their containing method/type regardless of
-    // textual order.  Snapshot their source spelling before processTypeSyntax replaces closed
-    // generic uses with generated physical names; inference needs the original structure.
-    for (const ast::AstNode* child : node->children())
-    {
-        if (child == nullptr || child->typeSyntax() == nullptr ||
-            (child->kind() != ast::AstNodeKind::ParameterDeclaration &&
-             child->kind() != ast::AstNodeKind::FieldDeclaration))
-            continue;
-        bool conflict = false;
-        currentScope.addValueType(child->text(),
-            cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict));
-        if (child->kind() == ast::AstNodeKind::ParameterDeclaration)
-        {
-            // A nested callable may shadow a by-reference name with an ordinary value parameter.
-            // Clear the inherited marker before recording the current declaration's pass kind.
-            currentScope.valuePassKinds.write().erase(child->text());
-            if (child->auxiliaryText().starts_with("pass:"))
-            {
-                const std::size_t end = child->auxiliaryText().find('|');
-                currentScope.valuePassKinds.write()[child->text()] =
-                    child->auxiliaryText().substr(5U, end == std::string::npos ? end : end - 5U);
-            }
-        }
-    }
+    std::string currentNamespace;
+    GenericLookupScope currentScope;
+    prepareNodeScope(unit, node, namespaceName, scope, currentNamespace, currentScope);
 
     // MatchExpression arm conditions and bindings use MatchValueExpression to read the one-time
     // governing value. Preserve its structural source type lexically so body-only demands can

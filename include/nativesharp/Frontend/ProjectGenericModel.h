@@ -620,6 +620,16 @@ private:
         bool insideTemplate,
         diagnostics::DiagnosticEngine& diagnostics);
 
+    // NSC305-G08. Builds the lexical scope for one node (namespace, using directives/aliases,
+    // expected return type, parameter/field snapshot) -- the discovery half of processNode.
+    void prepareNodeScope(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope,
+        std::string& outNamespace,
+        GenericLookupScope& outScope);
+
     void collectBodyTypeSpecializationDemand(
         ProjectSyntaxUnit& unit,
         const ast::AstNode* node,
