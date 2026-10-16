@@ -606,6 +606,14 @@ private:
         bool success = false;
     };
 
+    // NSC305-G09. The private state of a specialization worker: its own arena (the clone lives here,
+    // so workers do not race on the shared unit arena) and its collected child demands.
+    struct SpecializationWorker final
+    {
+        std::unique_ptr<ast::AstArena> arena;
+        std::vector<GenericTypeDemand> childDemands;
+    };
+
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
     // ensureTypeSpecialization/ensureMethodSpecialization save before materializing and restore
     // afterwards (they form a call stack, not global state). A nested struct can read the enclosing
