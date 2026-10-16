@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>p305_hello</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="hello.ns" /></ItemGroup>
+</Project>

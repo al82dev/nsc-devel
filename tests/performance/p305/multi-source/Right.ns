@@ -1,0 +1,4 @@
+namespace p305multi
+{
+    class Right { public static int Value() { return 20; } }
+}

@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup><Name>p305_multisource</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.ns" />
+    <Compile Include="Left.ns" />
+    <Compile Include="Right.ns" />
+    <Compile Include="Shared.ns" />
+  </ItemGroup>
+</Project>

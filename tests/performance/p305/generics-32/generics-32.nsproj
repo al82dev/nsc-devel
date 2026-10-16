@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>p305_generics32</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="generics-32.ns" /></ItemGroup>
+</Project>

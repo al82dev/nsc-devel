@@ -1,0 +1,8 @@
+// NSC305-P03 multi-source fixture: three translation units sharing one namespace.
+namespace p305multi
+{
+    class Program
+    {
+        public static int Main() { return Left.Value() + Right.Value() + Shared.Value(); }
+    }
+}

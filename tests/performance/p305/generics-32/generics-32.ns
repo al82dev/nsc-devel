@@ -1,0 +1,77 @@
+// NSC305-P03 controlled-cardinality fixture: 32 distinct generic structs, each instantiated once.
+// Expected exit code when healthy: 42.
+namespace p305generics
+{
+    public struct S0<T> { public T V; }
+    public struct S1<T> { public T V; }
+    public struct S2<T> { public T V; }
+    public struct S3<T> { public T V; }
+    public struct S4<T> { public T V; }
+    public struct S5<T> { public T V; }
+    public struct S6<T> { public T V; }
+    public struct S7<T> { public T V; }
+    public struct S8<T> { public T V; }
+    public struct S9<T> { public T V; }
+    public struct S10<T> { public T V; }
+    public struct S11<T> { public T V; }
+    public struct S12<T> { public T V; }
+    public struct S13<T> { public T V; }
+    public struct S14<T> { public T V; }
+    public struct S15<T> { public T V; }
+    public struct S16<T> { public T V; }
+    public struct S17<T> { public T V; }
+    public struct S18<T> { public T V; }
+    public struct S19<T> { public T V; }
+    public struct S20<T> { public T V; }
+    public struct S21<T> { public T V; }
+    public struct S22<T> { public T V; }
+    public struct S23<T> { public T V; }
+    public struct S24<T> { public T V; }
+    public struct S25<T> { public T V; }
+    public struct S26<T> { public T V; }
+    public struct S27<T> { public T V; }
+    public struct S28<T> { public T V; }
+    public struct S29<T> { public T V; }
+    public struct S30<T> { public T V; }
+    public struct S31<T> { public T V; }
+    class Program
+    {
+        public static int Main()
+        {
+            int sum = 0;
+            S0<int> s0; s0.V = 0; sum = sum + s0.V;
+            S1<int> s1; s1.V = 1; sum = sum + s1.V;
+            S2<int> s2; s2.V = 2; sum = sum + s2.V;
+            S3<int> s3; s3.V = 3; sum = sum + s3.V;
+            S4<int> s4; s4.V = 4; sum = sum + s4.V;
+            S5<int> s5; s5.V = 5; sum = sum + s5.V;
+            S6<int> s6; s6.V = 6; sum = sum + s6.V;
+            S7<int> s7; s7.V = 7; sum = sum + s7.V;
+            S8<int> s8; s8.V = 8; sum = sum + s8.V;
+            S9<int> s9; s9.V = 9; sum = sum + s9.V;
+            S10<int> s10; s10.V = 10; sum = sum + s10.V;
+            S11<int> s11; s11.V = 11; sum = sum + s11.V;
+            S12<int> s12; s12.V = 12; sum = sum + s12.V;
+            S13<int> s13; s13.V = 13; sum = sum + s13.V;
+            S14<int> s14; s14.V = 14; sum = sum + s14.V;
+            S15<int> s15; s15.V = 15; sum = sum + s15.V;
+            S16<int> s16; s16.V = 16; sum = sum + s16.V;
+            S17<int> s17; s17.V = 17; sum = sum + s17.V;
+            S18<int> s18; s18.V = 18; sum = sum + s18.V;
+            S19<int> s19; s19.V = 19; sum = sum + s19.V;
+            S20<int> s20; s20.V = 20; sum = sum + s20.V;
+            S21<int> s21; s21.V = 21; sum = sum + s21.V;
+            S22<int> s22; s22.V = 22; sum = sum + s22.V;
+            S23<int> s23; s23.V = 23; sum = sum + s23.V;
+            S24<int> s24; s24.V = 24; sum = sum + s24.V;
+            S25<int> s25; s25.V = 25; sum = sum + s25.V;
+            S26<int> s26; s26.V = 26; sum = sum + s26.V;
+            S27<int> s27; s27.V = 27; sum = sum + s27.V;
+            S28<int> s28; s28.V = 28; sum = sum + s28.V;
+            S29<int> s29; s29.V = 29; sum = sum + s29.V;
+            S30<int> s30; s30.V = 30; sum = sum + s30.V;
+            S31<int> s31; s31.V = 31; sum = sum + s31.V;
+            return sum == 496 ? 42 : 1;
+        }
+    }
+}

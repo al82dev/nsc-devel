@@ -1,0 +1,4 @@
+namespace p305multi
+{
+    class Shared { public static int Value() { return 12; } }
+}

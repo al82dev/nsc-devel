@@ -1,0 +1,10 @@
+// NSC305-P03 minimal controlled fixture. The smallest program that reaches every frontend and
+// backend phase: one namespace, one callable, one constant return. It exists to measure the fixed
+// pipeline cost, not to exercise a language feature. Expected exit code when healthy: 42.
+namespace p305hello
+{
+    class Program
+    {
+        public static int Main() { return 42; }
+    }
+}

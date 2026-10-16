@@ -1,0 +1,23 @@
+{
+  "schema": "nsc-performance-corpus-1",
+  "corpora": [
+    {
+      "name": "hello",
+      "project": "tests/performance/p305/hello/hello.nsproj",
+      "expected_exit": 42,
+      "tags": ["minimal", "hello", "fixed-cost"]
+    },
+    {
+      "name": "generics-32",
+      "project": "tests/performance/p305/generics-32/generics-32.nsproj",
+      "expected_exit": 42,
+      "tags": ["generics", "controlled-cardinality", "32"]
+    },
+    {
+      "name": "multi-source",
+      "project": "tests/performance/p305/multi-source/multi-source.nsproj",
+      "expected_exit": 42,
+      "tags": ["multi-source", "frontend"]
+    }
+  ]
+}
