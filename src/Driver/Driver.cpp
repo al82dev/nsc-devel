@@ -5896,8 +5896,8 @@ void Driver::printHelp(std::ostream &output)
                   "sin ellos se conservan los mínimos normativos 64 y 16384.\n"
                << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
                << "NSC_LINKER selecciona NSLink y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
-               << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; la documentación "
-                  "de compatibilidad 2.0 está en share/nativesharp/docs/2.0.\n";
+               << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; "
+                  "la documentación se distribuye por separado.\n";
         return;
     }
     output << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
@@ -5985,7 +5985,7 @@ void Driver::printHelp(std::ostream &output)
            << "The 1.0 library gates add component-level ABI diagnostics and "
               "standalone metadata/archive/DLL artifact verification. "
            << "This executable belongs to the NativeSharp 3.0 development line; "
-              "the 2.0 compatibility documentation is under share/nativesharp/docs/2.0.\n";
+              "documentation is distributed separately.\n";
 }
 
 ExitCode Driver::printCodeGeneration(

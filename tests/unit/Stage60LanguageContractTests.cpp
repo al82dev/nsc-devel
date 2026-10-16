@@ -146,9 +146,8 @@ int main()
                  "grammar contains NativeSharp ownership syntax");
 
     const std::string cmake = readFile(sourceRoot / "CMakeLists.txt");
-    tests.expect(cmake.find("install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ "
-                            "DESTINATION share/nativesharp/spec)") != std::string::npos,
-                 "the normative contract is installed with the compiler");
+    tests.expect(cmake.find("DESTINATION share/nativesharp/spec") == std::string::npos,
+                 "the normative source contract remains outside the compiler installation");
 
     return tests.result();
 }

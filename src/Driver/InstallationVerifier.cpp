@@ -30,43 +30,6 @@ constexpr std::array<RequiredFile, 3> kRequiredLibraries = {{
      "NativeSharp.Core.Threading project manifest"},
 }};
 
-constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
-    {"share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md",
-     "language specification"},
-    {"share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf", "language grammar"},
-    {"share/nativesharp/spec/NativeSharp_1_0_conformance.map",
-     "language conformance map"},
-    {"share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md",
-     "compiler contract"},
-    {"share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map",
-     "compiler conformance map"},
-}};
-
-constexpr std::array<RequiredFile, 14> kRequiredCurrentDocumentation = {{
-    {"share/nativesharp/docs/README.md", "documentation version index"},
-    {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
-    {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
-    {"share/nativesharp/docs/1.0.1/language/NativeSharp_Language_Specification_1_0_1.md",
-     "1.0.1 language specification"},
-    {"share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
-     "1.0.1 compiler contract"},
-    {"share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
-     "1.0.1 debug artifact contract"},
-    {"share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
-     "1.0.1 programming reference"},
-    {"share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
-     "1.0.1 to 2.0 migration guide"},
-    {"share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
-     "2.0 release-candidate freeze"},
-    {"share/nativesharp/docs/2.0/COMPATIBILITY.md",
-     "2.0 final compatibility certification"},
-    {"share/nativesharp/docs/2.0/FINAL_BASELINE.md",
-     "2.0 final baseline contract"},
-    {"share/nativesharp/docs/2.0/README.md", "2.0 documentation index"},
-    {"share/nativesharp/docs/2.0/VERSION.md", "2.0 version contract"},
-    {"share/nativesharp/docs/2.0/RELEASE.md", "2.0 promotion act"},
-}};
-
 bool requireRegularFile(const std::filesystem::path &prefix,
                         const RequiredFile &required, std::string &error) {
   const std::filesystem::path path =
@@ -183,16 +146,6 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   for (const RequiredFile &required : kRequiredLibraries) {
-    if (!requireRegularFile(prefix, required, error)) {
-      return false;
-    }
-  }
-  for (const RequiredFile &required : kRequiredSpecifications) {
-    if (!requireRegularFile(prefix, required, error)) {
-      return false;
-    }
-  }
-  for (const RequiredFile &required : kRequiredCurrentDocumentation) {
     if (!requireRegularFile(prefix, required, error)) {
       return false;
     }

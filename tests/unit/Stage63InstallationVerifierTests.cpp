@@ -22,38 +22,19 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 30> kRequiredFiles = {
+constexpr std::array<std::string_view, 11> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
     "NativeSharp.Core.Collections.Generic.nsproj",
     "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
-    "share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md",
-    "share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf",
-    "share/nativesharp/spec/NativeSharp_1_0_conformance.map",
-    "share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md",
-    "share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map",
-    "share/nativesharp/docs/README.md",
-    "share/nativesharp/docs/1.0.1/README.md",
-    "share/nativesharp/docs/1.0.1/VERSION.md",
-    "share/nativesharp/docs/1.0.1/language/NativeSharp_Language_Specification_1_0_1.md",
-    "share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
-    "share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
-    "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
     "share/nativesharp/toolchain/NativeSharp3Migration.baseline",
     "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger",
     "share/nativesharp/toolchain/NativeSharp3Migration.guide",
-    "share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
     "share/nativesharp/toolchain/NativeSharp3RC.freeze",
-    "share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
     "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix",
-    "share/nativesharp/docs/2.0/COMPATIBILITY.md",
     "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract",
-    "share/nativesharp/docs/2.0/FINAL_BASELINE.md",
     "share/nativesharp/toolchain/NativeSharp3Promotion.act",
-    "share/nativesharp/docs/2.0/README.md",
-    "share/nativesharp/docs/2.0/VERSION.md",
-    "share/nativesharp/docs/2.0/RELEASE.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -275,27 +256,14 @@ int main() {
                "missing distributed library names the exact Core component");
   tests.expect(writeFile(collection), "library fixture is restored");
 
-  const std::filesystem::path compilerContract =
-      prefix / "share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md";
-  std::filesystem::remove(compilerContract, filesystemError);
-  tests.expect(
-      !driver::verifyInstallation(prefix, error) &&
-          error.find("missing compiler contract") != std::string::npos,
-      "missing normative document names the exact specification component");
-  tests.expect(writeFile(compilerContract),
-               "specification fixture is restored");
-
-  const std::filesystem::path currentDocumentation =
-      prefix / "share/nativesharp/docs/1.0.1/README.md";
-  std::filesystem::remove(currentDocumentation, filesystemError);
-  tests.expect(
-      !driver::verifyInstallation(prefix, error) &&
-          error.find("missing 1.0.1 documentation index") != std::string::npos,
-      "missing current documentation names the versioned package component");
-  tests.expect(writeFile(currentDocumentation),
-               "current documentation fixture is restored");
+  const std::filesystem::path optionalDocumentation =
+      prefix / "share/nativesharp/docs/index.html";
+  const std::filesystem::path optionalSpecification =
+      prefix / "share/nativesharp/spec/language.html";
+  tests.expect(writeFile(optionalDocumentation) && writeFile(optionalSpecification),
+               "separately published documentation can be placed beside the compiler");
   tests.expect(driver::verifyInstallation(prefix, error),
-               "restored package returns to a valid state");
+               "optional documentation is not part of compiler verification");
 
   driver::Driver compilerDriver;
   const std::string prefixText = prefix.string();
@@ -335,6 +303,11 @@ int main() {
                  "\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/"
                  "VerifyInstalledNativeSharp.cmake\")") != std::string::npos,
       "CMake runs installed-layout verification after copying package files");
+  tests.expect(
+      cmake.find("DESTINATION share/nativesharp/docs") == std::string::npos &&
+          cmake.find("DESTINATION share/nativesharp/spec") == std::string::npos &&
+          cmake.find("PATTERN \"*.nsproj\"") != std::string::npos,
+      "CMake installs compiler inputs without bundling source documentation");
   tests.expect(
       installScript.find("--verify-installation") != std::string::npos &&
           installScript.find("FATAL_ERROR") != std::string::npos,

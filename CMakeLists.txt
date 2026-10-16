@@ -759,7 +759,8 @@ add_custom_command(TARGET nsc POST_BUILD
 # E9 / Stage 64. Esta lista describe el payload esperado por la version que se esta construyendo.
 # No se obtiene enumerando el prefijo despues de instalar: hacerlo asi legitimaria como actuales
 # los residuos de una version anterior. Las rutas se ordenan y normalizan al configurar; CMake
-# vuelve a configurarse si cambia el arbol publico distribuido, spec/ o docs/1.0.1.
+# vuelve a configurarse si cambia el arbol publico distribuido. La documentacion y las
+# especificaciones se publican por separado y no forman parte del paquete ejecutable de NSC.
 #
 # Core.IO y Core.Diagnostics siguen disponibles dentro del arbol del compilador para sus pruebas
 # internas y el self-host historico, pero ya no forman parte de la stdlib modular distribuida de
@@ -776,19 +777,10 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         CONFIGURE_DEPENDS
         LIST_DIRECTORIES false
         RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/lib"
-        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*")
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.ns"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproj")
     list(APPEND NSC_INSTALLATION_LIBRARY_FILES ${_nsc_library_files})
 endforeach()
-file(GLOB_RECURSE NSC_INSTALLATION_SPECIFICATION_FILES
-    CONFIGURE_DEPENDS
-    LIST_DIRECTORIES false
-    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/spec"
-    "${CMAKE_CURRENT_SOURCE_DIR}/spec/*")
-file(GLOB_RECURSE NSC_INSTALLATION_DOCUMENTATION_FILES
-    CONFIGURE_DEPENDS
-    LIST_DIRECTORIES false
-    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/docs"
-    "${CMAKE_CURRENT_SOURCE_DIR}/docs/*")
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
     "sdk/win64/nativesharp-runtime.nsimports"
@@ -811,12 +803,6 @@ if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
 endif()
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
-endforeach()
-foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_SPECIFICATION_FILES)
-    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "share/nativesharp/spec/${_nsc_install_file}")
-endforeach()
-foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_DOCUMENTATION_FILES)
-    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "share/nativesharp/docs/${_nsc_install_file}")
 endforeach()
 list(SORT NSC_INSTALLATION_EXPECTED_PATHS)
 set(NSC_INSTALLATION_FILE_LIST
@@ -867,11 +853,11 @@ endif()
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
     install(DIRECTORY
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}"
-        DESTINATION lib)
+        DESTINATION lib
+        FILES_MATCHING
+        PATTERN "*.ns"
+        PATTERN "*.nsproj")
 endforeach()
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
-    DESTINATION share/nativesharp/docs)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
     DESTINATION sdk/win64)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)

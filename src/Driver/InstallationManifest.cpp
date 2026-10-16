@@ -232,8 +232,7 @@ bool rejectUnexpectedFiles(const std::filesystem::path &prefix,
   // files exactly, but scan for residue only below directory namespaces that
   // this package actually selected. This keeps NSLink/NativeAsm executables and
   // archives from becoming accidental property of the compiler package.
-  std::set<std::string> roots = {"share/nativesharp/spec",
-                                 "share/nativesharp/toolchain", "sdk/win64"};
+  std::set<std::string> roots = {"share/nativesharp/toolchain", "sdk/win64"};
   for (const std::string &relative : expected) {
     if (!relative.starts_with("lib/")) {
       continue;

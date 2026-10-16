@@ -44,7 +44,6 @@ std::string expectedListText() {
          "bin/nsc.exe\n"
          "lib/Core/A.ns\n"
          "sdk/win64/nativesharp-runtime.nsimports\n"
-         "share/nativesharp/spec/spec.md\n"
          "share/nativesharp/toolchain/NativeSharpInstallation.files\n"
          "share/nativesharp/toolchain/NativeSharpToolchain.contract\n";
 }
@@ -54,8 +53,6 @@ bool populatePackage(const std::filesystem::path &prefix) {
          writeFile(prefix / "lib/Core/A.ns", "alpha") &&
          writeFile(prefix / "sdk/win64/nativesharp-runtime.nsimports",
                    "KERNEL32.dll:ExitProcess\n") &&
-         writeFile(prefix / "share/nativesharp/spec/spec.md",
-                   "specification") &&
          writeFile(
              prefix /
                  "share/nativesharp/toolchain/NativeSharpInstallation.files",
@@ -138,6 +135,11 @@ int main() {
                "freshly generated complete package verifies");
   tests.expect(error.empty(),
                "successful manifest verification leaves no error text");
+  tests.expect(
+      writeFile(prefix / "share/nativesharp/docs/index.html", "documentation") &&
+          writeFile(prefix / "share/nativesharp/spec/language.html", "specification") &&
+          driver::verifyInstallationManifest(prefix, manifest, error),
+      "separately distributed documentation is outside the compiler manifest");
   tests.expect(writeFile(prefix / "bin/nslink.exe", "separate-tool"),
                "coexisting tool fixture is written beside nsc");
   tests.expect(driver::verifyInstallationManifest(prefix, manifest, error),
@@ -174,15 +176,16 @@ int main() {
   tests.expect(writeFile(prefix / "lib/Core/A.ns", "alpha"),
                "payload fixture is restored");
 
-  std::filesystem::remove(prefix / "share/nativesharp/spec/spec.md",
+  std::filesystem::remove(prefix / "sdk/win64/nativesharp-runtime.nsimports",
                           filesystemError);
   tests.expect(
       !driver::verifyInstallationManifest(prefix, manifest, error) &&
-          error.find("entry is missing 'share/nativesharp/spec/spec.md'") !=
+          error.find("entry is missing 'sdk/win64/nativesharp-runtime.nsimports'") !=
               std::string::npos,
       "missing inventoried file is rejected with its normalized path");
   tests.expect(
-      writeFile(prefix / "share/nativesharp/spec/spec.md", "specification"),
+      writeFile(prefix / "sdk/win64/nativesharp-runtime.nsimports",
+                "KERNEL32.dll:ExitProcess\n"),
       "missing payload fixture is restored");
   tests.expect(writeFile(prefix / "lib/Core/stale.ns", "stale"),
                "unexpected stale-file fixture is written");
@@ -284,7 +287,6 @@ int main() {
           "NSFILES 1\n"
           "bin/nsc.exe\n"
           "lib/Core/A.ns\n"
-          "share/nativesharp/spec/spec.md\n"
           "share/nativesharp/toolchain/NativeSharpInstallation.files\n"
           "share/nativesharp/toolchain/NativeSharpInstallation.manifest\n"
           "share/nativesharp/toolchain/NativeSharpToolchain.contract\n") &&
