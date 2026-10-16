@@ -15634,15 +15634,22 @@ private:
                 builder_, right, coefficientMask, "decimal.right.coeff");
             LLVMValueRef scaleShift = LLVMConstInt(
                 LLVMIntTypeInContext(context_, 128), 96, 0);
-            LLVMValueRef leftScale = LLVMBuildLShr(builder_, left, scaleShift, "decimal.scale");
+            // NS304-T15-F05: the scale lives in bits 96..101; bits 102..126 are padding and bit 127
+            // is the sign. A plain >>96 leaks the sign bit (and padding) into the scale, so a negative
+            // operand's scale reads as 2^31+scale and trips the scale-overflow trap.
+            LLVMValueRef scaleMask = LLVMConstInt(LLVMIntTypeInContext(context_, 128), 0x3F, 0);
+            LLVMValueRef leftScale = LLVMBuildAnd(
+                builder_, LLVMBuildLShr(builder_, left, scaleShift, "decimal.scale.raw"),
+                scaleMask, "decimal.scale");
             LLVMValueRef combined = nullptr;
             LLVMValueRef effectiveScale = nullptr;
             if (operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus)
             {
                 // NS304-T15-F04 mixed scales: align both coefficients to the max scale by multiplying
                 // each by 10^(max - its scale), then add/sub the aligned coefficients.
-                LLVMValueRef rightScale = LLVMBuildLShr(
-                    builder_, right, scaleShift, "decimal.right.scale");
+                LLVMValueRef rightScale = LLVMBuildAnd(
+                    builder_, LLVMBuildLShr(builder_, right, scaleShift, "decimal.right.scale.raw"),
+                    scaleMask, "decimal.right.scale");
                 LLVMValueRef scaleGe = LLVMBuildICmp(
                     builder_, LLVMIntUGE, leftScale, rightScale, "decimal.scale.ge");
                 LLVMValueRef maxScale = LLVMBuildSelect(
@@ -15674,8 +15681,9 @@ private:
             else if (operation == lexer::TokenKind::Star)
             {
                 combined = LLVMBuildMul(builder_, leftCoefficient, rightCoefficient, "decimal.coeff.mul");
-                LLVMValueRef rightScale = LLVMBuildLShr(
-                    builder_, right, scaleShift, "decimal.right.scale");
+                LLVMValueRef rightScale = LLVMBuildAnd(
+                    builder_, LLVMBuildLShr(builder_, right, scaleShift, "decimal.right.scale.raw"),
+                    scaleMask, "decimal.right.scale");
                 effectiveScale = LLVMBuildAdd(
                     builder_, leftScale, rightScale, "decimal.scale.add");
                 if (!emitDecimalScaleOverflow(effectiveScale, "decimal.mul.scale", error))
