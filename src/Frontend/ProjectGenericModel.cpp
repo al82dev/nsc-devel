@@ -5583,12 +5583,39 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     std::vector<std::string> identities;
     const std::string key = computeSpecializationKey(
         state.record, arguments, spellings, identities);
+    std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
+    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
+    specializedName += "__h" + stableHashSuffix(key);
     if (const auto found = specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
         if (outSpecializationKey != nullptr) *outSpecializationKey = key;
         return specializations_[*found].specializedName;
+    }
+
+    // NSC305-C03. Restore the specialized clone from the cache (skip the materialization + re-link).
+    if (templateCache_.enabled())
+    {
+        std::string payload;
+        bool hit = false;
+        std::string error;
+        if (templateCache_.restore(key, payload, hit, error) && hit)
+        {
+            ByteReader reader(payload);
+            ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
+            if (clone != nullptr)
+            {
+                const std::size_t ordinal =
+                    reserveTypeSpecialization(state, key, specializedName, identities);
+                commitTypeSpecialization(
+                    state, clone, key, specializedName, ordinal, diagnostics);
+                telemetry_.noteSpecializationHit();
+                ++instantiationCacheHitCount_;
+                if (outSpecializationKey != nullptr) *outSpecializationKey = key;
+                return specializedName;
+            }
+        }
     }
 
     if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
@@ -5611,10 +5638,6 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         return {};
     }
     SpecializationWaveTimer wave(telemetry_, state.record.canonicalKey);
-
-    std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
-    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
-    specializedName += "__h" + stableHashSuffix(key);
 
     const std::size_t ordinal = reserveTypeSpecialization(state, key, specializedName, identities);
 
