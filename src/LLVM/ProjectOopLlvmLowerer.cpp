@@ -11573,6 +11573,44 @@ private:
                 values.push_back(convert(value, current->children.front()->typeKey, current->typeKey, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::Assert ||
+                current->kind == frontend::ProjectOopMirNodeKind::Assume)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1U || current->typeKey != "builtin:void")
+                    {
+                        values.push_back(failValue(error, "T07-F06 assertion MIR lost its bool/void contract"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef condition = values.back();
+                values.pop_back();
+                if (condition == nullptr || !error.empty()) { values.push_back(nullptr); continue; }
+                if (current->kind == frontend::ProjectOopMirNodeKind::Assert)
+                {
+                    if (!emitGuard(condition, LlvmTrapReason::AssertionFailed, "assert", error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (assumeFunction_ == nullptr || assumeFunctionType_ == nullptr)
+                    {
+                        values.push_back(failValue(error, "T07-F06 llvm.assume intrinsic is unavailable"));
+                        continue;
+                    }
+                    LLVMValueRef arguments[] = {condition};
+                    buildNoUnwindCall(assumeFunctionType_, assumeFunction_, arguments, 1, "");
+                }
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -14142,27 +14180,7 @@ private:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::Assert:
             case frontend::ProjectOopMirNodeKind::Assume:
-            {
-                if (node->children.size() != 1U || node->typeKey != "builtin:void")
-                {
-                    return failValue(error, "T07-F06 assertion MIR lost its bool/void contract");
-                }
-                LLVMValueRef condition = lowerExpression(node->children.front().get(), error);
-                if (condition == nullptr || !error.empty()) return nullptr;
-                if (node->kind == frontend::ProjectOopMirNodeKind::Assert)
-                {
-                    if (!emitGuard(condition, LlvmTrapReason::AssertionFailed, "assert", error))
-                        return nullptr;
-                }
-                else
-                {
-                    if (assumeFunction_ == nullptr || assumeFunctionType_ == nullptr)
-                        return failValue(error, "T07-F06 llvm.assume intrinsic is unavailable");
-                    LLVMValueRef arguments[] = {condition};
-                    buildNoUnwindCall(assumeFunctionType_, assumeFunction_, arguments, 1, "");
-                }
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ResultPropagation:
                 return lowerResultPropagation(node, error);
             case frontend::ProjectOopMirNodeKind::BlockExpression:
