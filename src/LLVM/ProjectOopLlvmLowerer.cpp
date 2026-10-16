@@ -11658,6 +11658,52 @@ private:
                 values.push_back(storeFromParts(current, frame.lhs, value, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::TupleDeconstruct)
+            {
+                if (current->children.empty())
+                {
+                    values.push_back(failValue(error, "tuple deconstruction has no source value"));
+                    continue;
+                }
+                for (std::size_t index = 1; index < current->children.size(); ++index)
+                {
+                    const frontend::ProjectOopMirNode* element = current->children[index].get();
+                    if (element == nullptr ||
+                        element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
+                        element->children.size() != 1U)
+                    {
+                        values.push_back(failValue(error, "tuple deconstruction has a malformed target descriptor"));
+                        continue;
+                    }
+                }
+                const std::size_t operandCount = current->children.size();
+                if (frame.phase < operandCount)
+                {
+                    const std::size_t index = frame.phase;
+                    const frontend::ProjectOopMirNode* operand = index == 0
+                        ? current->children[0].get()
+                        : current->children[index]->children.front().get();
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({operand, 0, nullptr});
+                    continue;
+                }
+                std::vector<LLVMValueRef> targetAddresses(operandCount - 1);
+                for (std::size_t i = operandCount - 1; i > 0; --i)
+                {
+                    targetAddresses[i - 1] = values.back();
+                    values.pop_back();
+                }
+                LLVMValueRef sourceValue = values.back();
+                values.pop_back();
+                bool allValid = sourceValue != nullptr;
+                for (const LLVMValueRef addr : targetAddresses)
+                {
+                    if (addr == nullptr) allValid = false;
+                }
+                if (!allValid) { values.push_back(nullptr); continue; }
+                values.push_back(tupleDeconstructFromParts(current, sourceValue, targetAddresses, error));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -13972,57 +14018,7 @@ private:
             case frontend::ProjectOopMirNodeKind::Binary:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::TupleDeconstruct:
-            {
-                if (node->children.empty())
-                    return failValue(error, "tuple deconstruction has no source value");
-                const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, node->typeKey);
-                LLVMTypeRef sourceCarrier = llvmType(node->typeKey, error);
-                if (sourceLayout == nullptr || sourceCarrier == nullptr)
-                    return failValue(error, "tuple deconstruction source has no physical carrier");
-                LLVMValueRef sourceValue = lowerExpression(node->children.front().get(), error);
-                if (sourceValue == nullptr) return nullptr;
-                if (terminated()) return sourceValue;
-                LLVMValueRef sourceSlot = entryBlockAlloca(
-                    sourceCarrier,
-                    static_cast<unsigned>(sourceLayout->alignment),
-                    "tuple.deconstruct.source");
-                LLVMValueRef sourceStore = LLVMBuildStore(builder_, sourceValue, sourceSlot);
-                if (sourceLayout->alignment > 1U)
-                    LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
-                for (std::size_t index = 1; index < node->children.size(); ++index)
-                {
-                    const frontend::ProjectOopMirNode* element = node->children[index].get();
-                    if (element == nullptr ||
-                        element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
-                        element->children.size() != 1U)
-                        return failValue(error, "tuple deconstruction has a malformed target descriptor");
-                    LLVMTypeRef sourceType = llvmType(element->elementTypeKey, error);
-                    if (sourceType == nullptr) return nullptr;
-                    LLVMValueRef sourceAddress = byteOffset(
-                        sourceSlot, element->immediate, "tuple.deconstruct.element.source");
-                    LLVMValueRef value = LLVMBuildLoad2(
-                        builder_, sourceType, sourceAddress, "tuple.deconstruct.element.value");
-                    const auto sourceField = std::ranges::find_if(
-                        sourceLayout->fields,
-                        [&](const frontend::ObjectFieldLayout& field)
-                        {
-                            return field.offset == element->immediate &&
-                                field.typeKey == element->elementTypeKey;
-                        });
-                    if (sourceField != sourceLayout->fields.end() && sourceField->alignment > 1U)
-                        LLVMSetAlignment(value, static_cast<unsigned>(sourceField->alignment));
-                    value = convert(value, element->elementTypeKey, element->typeKey, error);
-                    if (value == nullptr) return nullptr;
-                    LLVMValueRef targetAddress = lowerExpression(element->children.front().get(), error);
-                    if (targetAddress == nullptr) return nullptr;
-                    LLVMValueRef store = LLVMBuildStore(builder_, value, targetAddress);
-                    const frontend::ProjectOopMirStructLayout* targetStruct =
-                        findStructLayout(mirModel_, element->typeKey);
-                    if (targetStruct != nullptr && targetStruct->alignment > 1U)
-                        LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
-                }
-                return sourceValue;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore:
                 return failValue(error, "tuple deconstruction element descriptor escaped its parent");
             case frontend::ProjectOopMirNodeKind::Store:
@@ -16466,6 +16462,55 @@ private:
                     flag->second);
         }
         return value;
+    }
+
+    // NSC305-L04. The tuple-deconstruction compute (element loads + stores), separated from the
+    // source/target evaluation so the iterative machine can push them as frames.
+    LLVMValueRef tupleDeconstructFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef sourceValue,
+        const std::vector<LLVMValueRef>& targetAddresses,
+        std::string& error)
+    {
+        const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, node->typeKey);
+        LLVMTypeRef sourceCarrier = llvmType(node->typeKey, error);
+        if (sourceLayout == nullptr || sourceCarrier == nullptr)
+            return failValue(error, "tuple deconstruction source has no physical carrier");
+        if (terminated()) return sourceValue;
+        LLVMValueRef sourceSlot = entryBlockAlloca(
+            sourceCarrier,
+            static_cast<unsigned>(sourceLayout->alignment),
+            "tuple.deconstruct.source");
+        LLVMValueRef sourceStore = LLVMBuildStore(builder_, sourceValue, sourceSlot);
+        if (sourceLayout->alignment > 1U)
+            LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
+        for (std::size_t index = 1; index < node->children.size(); ++index)
+        {
+            const frontend::ProjectOopMirNode* element = node->children[index].get();
+            LLVMTypeRef sourceType = llvmType(element->elementTypeKey, error);
+            if (sourceType == nullptr) return nullptr;
+            LLVMValueRef sourceAddress = byteOffset(
+                sourceSlot, element->immediate, "tuple.deconstruct.element.source");
+            LLVMValueRef value = LLVMBuildLoad2(
+                builder_, sourceType, sourceAddress, "tuple.deconstruct.element.value");
+            const auto sourceField = std::ranges::find_if(
+                sourceLayout->fields,
+                [&](const frontend::ObjectFieldLayout& field)
+                {
+                    return field.offset == element->immediate &&
+                        field.typeKey == element->elementTypeKey;
+                });
+            if (sourceField != sourceLayout->fields.end() && sourceField->alignment > 1U)
+                LLVMSetAlignment(value, static_cast<unsigned>(sourceField->alignment));
+            value = convert(value, element->elementTypeKey, element->typeKey, error);
+            if (value == nullptr) return nullptr;
+            LLVMValueRef store = LLVMBuildStore(builder_, value, targetAddresses[index - 1]);
+            const frontend::ProjectOopMirStructLayout* targetStruct =
+                findStructLayout(mirModel_, element->typeKey);
+            if (targetStruct != nullptr && targetStruct->alignment > 1U)
+                LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
+        }
+        return sourceValue;
     }
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
