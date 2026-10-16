@@ -6212,11 +6212,17 @@ ast::AstNode* Parser::parseClassMember(
             }
             continue;
         }
+        const bool partialBeforeContextualNestedType = peek().kind() == TokenKind::Identifier &&
+            (peek().lexeme() == "union" || peek().lexeme() == "variant" ||
+             (peek().lexeme() == "record" && peek(2).kind() == TokenKind::KwStruct));
         const bool partialNestedModifier = atContextualKeyword("partial") &&
-            (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwPublic ||
-             peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwProtected ||
-             peek().kind() == TokenKind::KwPrivate || peek().kind() == TokenKind::KwStatic ||
-             peek().kind() == TokenKind::KwAbstract || peek().kind() == TokenKind::KwSealed);
+            (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwStruct ||
+             peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
+             peek().kind() == TokenKind::KwDelegate || partialBeforeContextualNestedType ||
+             peek().kind() == TokenKind::KwPublic || peek().kind() == TokenKind::KwInternal ||
+             peek().kind() == TokenKind::KwProtected || peek().kind() == TokenKind::KwPrivate ||
+             peek().kind() == TokenKind::KwStatic || peek().kind() == TokenKind::KwAbstract ||
+             peek().kind() == TokenKind::KwSealed);
         if (partialNestedModifier)
         {
             const lexer::Token& modifier = consume();
@@ -6234,9 +6240,9 @@ ast::AstNode* Parser::parseClassMember(
         // NS304-T12-F02/F05: `partial` before a member return type (or an event) declares a partial
         // member signature or its defining body.
         const bool partialMethodModifier = atContextualKeyword("partial") &&
-            (lexer::isBuiltinTypeKeyword(peek().kind()) || at(TokenKind::KwVoid) ||
-             at(TokenKind::Identifier) || atContextualKeyword("ref") ||
-             atContextualKeyword("out") || at(TokenKind::KwIn) || at(TokenKind::KwEvent) ||
+            (lexer::isBuiltinTypeKeyword(peek().kind()) || peek().kind() == TokenKind::KwVoid ||
+             peek().kind() == TokenKind::Identifier || peek().kind() == TokenKind::KwIn ||
+             peek().kind() == TokenKind::KwEvent ||
              lexer::isOwnershipQualifierKeyword(peek().kind()));
         if (partialMethodModifier)
         {
