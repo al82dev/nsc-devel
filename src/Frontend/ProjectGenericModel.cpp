@@ -2410,13 +2410,36 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
 void ProjectGenericModel::processNode(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    const std::string& namespaceName,
-    const std::string& ownerName,
-    const GenericLookupScope& scope,
+    std::string namespaceName,
+    std::string ownerName,
+    GenericLookupScope scope,
     bool insideTemplate,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (node == nullptr) return;
+    // NSC305-G08. Iterative pre-order traversal with an explicit stack; the per-node logic is
+    // unchanged, only the recursion into first/second/third/children is removed. The sequential
+    // local accumulation is preserved by computing each child's scope snapshot before the walk.
+    struct Frame
+    {
+        ast::AstNode* node;
+        std::string namespaceName;
+        std::string ownerName;
+        GenericLookupScope scope;
+        bool insideTemplate;
+    };
+    std::vector<Frame> frames;
+    frames.push_back(
+        Frame{node, std::move(namespaceName), std::move(ownerName), std::move(scope), insideTemplate});
+    while (!frames.empty())
+    {
+        Frame frame = std::move(frames.back());
+        frames.pop_back();
+        node = frame.node;
+        namespaceName = std::move(frame.namespaceName);
+        ownerName = std::move(frame.ownerName);
+        scope = std::move(frame.scope);
+        insideTemplate = frame.insideTemplate;
+        if (node == nullptr) continue;
 
     std::string currentNamespace = namespaceName;
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
@@ -2537,7 +2560,7 @@ void ProjectGenericModel::processNode(
     // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
     // normalized target was handled by expandAliasesInNode; materializing it here would create
     // e.g. Box<T> and leak the alias parameter T into the concrete program.
-    if (node->kind() == ast::AstNodeKind::UsingAliasDirective) return;
+    if (node->kind() == ast::AstNodeKind::UsingAliasDirective) continue;
 
     const bool genericLambdaTemplate =
         node->kind() == ast::AstNodeKind::LambdaExpression &&
@@ -2589,7 +2612,7 @@ void ProjectGenericModel::processNode(
                 break;
             }
         }
-        return;
+        continue;
     }
 
     // The declaration type is contextual evidence for its initializer. Keep the readable,
@@ -2697,20 +2720,16 @@ void ProjectGenericModel::processNode(
         applyExpectedTypeToExpression(
             unit, contextualCall, contextualType, currentNamespace, ownerName, currentScope,
             diagnostics);
-    const auto processChild = [&](ast::AstNode* child)
-    {
-        processNode(unit, child, currentNamespace, ownerName, currentScope, false, diagnostics);
-    };
-    processChild(node->first());
-    processChild(node->second());
-    processChild(node->third());
-
     // NSC-LIMIT-009: se APILA. La version anterior reemplazaba, de modo que al entrar en
     // `A { Inner { ... } }` el dueno pasaba a ser «Inner» y `A` desaparecia.
     const std::string childOwner =
         (node->kind() == ast::AstNodeKind::ClassDeclaration || node->kind() == ast::AstNodeKind::StructDeclaration)
             ? appendOwner(ownerName, node->text()) : ownerName;
     const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    // NSC305-G08. Pre-compute each child's scope snapshot (the sequential local accumulation),
+    // then push children in reverse so the stack pops them in source order.
+    std::vector<GenericLookupScope> childScopes;
+    childScopes.reserve(children.size());
     GenericLookupScope sequentialScope = currentScope;
     for (ast::AstNode* child : children)
     {
@@ -2732,7 +2751,7 @@ void ProjectGenericModel::processNode(
             // generated Box__g1__... spelling.
             declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
         }
-        processNode(unit, child, currentNamespace, childOwner, sequentialScope, false, diagnostics);
+        childScopes.push_back(sequentialScope);
         if (child == nullptr || child->kind() != ast::AstNodeKind::VariableDeclarationStatement)
             continue;
         const ast::AstNode* initializer = child->first();
@@ -2748,6 +2767,16 @@ void ProjectGenericModel::processNode(
             declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
         if (declaredLocalType != nullptr)
             sequentialScope.addValueType(child->text(), declaredLocalType);
+    }
+    for (std::size_t index = children.size(); index > 0; --index)
+        frames.push_back(Frame{children[index - 1U], currentNamespace, childOwner,
+            childScopes[index - 1U], false});
+    if (node->third() != nullptr)
+        frames.push_back(Frame{node->third(), currentNamespace, ownerName, currentScope, false});
+    if (node->second() != nullptr)
+        frames.push_back(Frame{node->second(), currentNamespace, ownerName, currentScope, false});
+    if (node->first() != nullptr)
+        frames.push_back(Frame{node->first(), currentNamespace, ownerName, currentScope, false});
     }
 }
 

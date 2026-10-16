@@ -614,9 +614,9 @@ private:
     void processNode(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
-        const std::string& namespaceName,
-        const std::string& ownerName,
-        const GenericLookupScope& scope,
+        std::string namespaceName,
+        std::string ownerName,
+        GenericLookupScope scope,
         bool insideTemplate,
         diagnostics::DiagnosticEngine& diagnostics);
 
