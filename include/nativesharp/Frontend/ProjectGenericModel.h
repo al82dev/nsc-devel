@@ -1203,9 +1203,12 @@ private:
         traitImplExtensions_;
     std::unordered_map<std::string, const ast::TypeSyntax*> associatedTypes_;
     std::unordered_map<std::string, const ast::AstNode*> associatedConstants_;
-    std::unordered_set<std::string> activeAssociatedProjections_;
-    std::string associatedProjectionError_;
-    SourceRange associatedProjectionErrorRange_{};
+    // NSC305-G09. Per-worker (thread-local) clone/process state: a worker clones one specialization
+    // on its own thread, so its pack/associated projection context, causal errors and clone depth
+    // must not race with a sibling worker.
+    thread_local static inline std::unordered_set<std::string> activeAssociatedProjections_;
+    thread_local static inline std::string associatedProjectionError_;
+    thread_local static inline SourceRange associatedProjectionErrorRange_{};
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     // Available before name binding because generic materialization itself runs before name
@@ -1241,18 +1244,15 @@ private:
     std::size_t instantiationCacheHitCount_ = 0;
     // NSC305-P01. Causal instrumentation for the generic pass; see GenericTelemetry.
     GenericTelemetry telemetry_;
-    // Active only while cloneNode/cloneType expands one specialization. A trailing type pack maps
-    // to zero or more arguments; the map is saved/restored around recursive materialization.
-    std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> activePackSubstitutions_;
-    // cloneNode/cloneType cannot emit diagnostics directly. Pack indexing/folding records one
-    // causal materialization error here; ensure*Specialization publishes it before attaching the
-    // incomplete clone and removes the provisional cache entry.
-    std::string packMaterializationError_;
-    SourceRange packMaterializationErrorRange_{};
+    // NSC305-G09. Per-worker (thread-local) clone state, see the associated-projection members.
+    thread_local static inline std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>>
+        activePackSubstitutions_;
+    thread_local static inline std::string packMaterializationError_;
+    thread_local static inline SourceRange packMaterializationErrorRange_{};
     // NSC305-G06. Recursion depth of the mutually-recursive cloneType/cloneNode pair, guarded so a
     // pathologically deep type/expression fails with a clean materialization error instead of
     // overflowing the process stack.
-    std::size_t cloneDepth_ = 0;
+    thread_local static inline std::size_t cloneDepth_ = 0;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;
