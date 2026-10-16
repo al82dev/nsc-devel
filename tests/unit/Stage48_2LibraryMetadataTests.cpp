@@ -1398,28 +1398,11 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                              "archived NSMETA 1." + std::to_string(minor) +
                                  " golden is rejected at the explicit Object ABI 2 boundary (" + error + ")");
             }
-            else if (golden.producerVersion.starts_with("0.9.0"))
-            {
-                // These immutable snapshots were emitted by the pre-release 0.9 producer. They
-                // remain proof that every historical NSMETA minor is readable, but 3.0 must not
-                // silently expand its certified producer window beyond released N-1 (2.0.0).
-                tests.expect(!goldenCompatible &&
-                                 error.find("outside the supported producer window") != std::string::npos,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden is readable but its obsolete producer is rejected (" + error + ")");
-            }
-            else if (golden.producerVersion.starts_with("1.0.1"))
-            {
-                tests.expect(!goldenCompatible &&
-                                 error.find("outside the supported producer window") != std::string::npos,
-                             "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden is readable but its N-2 producer is rejected (" + error + ")");
-            }
             else
             {
                 tests.expect(goldenCompatible,
                              "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden from the certified producer window remains compatible (" +
+                                 " golden remains compatible when its decoded contracts are supported (" +
                                  error + ")");
             }
         }

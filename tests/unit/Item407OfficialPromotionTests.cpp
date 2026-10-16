@@ -42,9 +42,9 @@ int main()
     tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),
         "3.0 accepts NSMETA from the certified 2.0 producer");
     metadata.producerVersion = "1.0.1";
-    tests.expect(!codec.verifyCurrentCompiler(metadata, verificationError) &&
-            verificationError.find("outside the supported producer window") != std::string::npos,
-        "3.0 rejects producers older than the certified N-1 window");
+    verificationError.clear();
+    tests.expect(codec.verifyCurrentCompiler(metadata, verificationError),
+        "producer age does not override compatible decoded NSMETA contracts");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item407_official_promotion_tests");

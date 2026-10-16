@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -66,6 +67,44 @@ int main()
         "current metadata fixture writes (" + error + ")");
     expectReadable(tests, codec, currentPath, "current metadata is readable");
 
+    LibraryMetadata withTraitImpl = model;
+    nativesharp::interop::LibraryMetadataTraitImpl traitImpl;
+    traitImpl.targetTypeKey = "type:External::Greeter";
+    traitImpl.traitTypeKey = "type:VersionTolerance::Greeting";
+    nativesharp::interop::LibraryMetadataMember traitMethod;
+    traitMethod.kind = 2U;
+    traitMethod.accessibility = 3U;
+    traitMethod.declaringTypeKey = traitImpl.targetTypeKey;
+    traitMethod.name = "Hello";
+    traitMethod.signatureKey = "method:type:External::Greeter::Hello()";
+    traitMethod.declaredTypeKey = "type:System::Void";
+    traitMethod.mangledName = "VersionTolerance.Greeter.Hello";
+    traitImpl.methods.push_back(std::move(traitMethod));
+    withTraitImpl.traitImpls.push_back(std::move(traitImpl));
+    const std::filesystem::path traitPath = root / "current-trait-impl.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(withTraitImpl, traitPath, error),
+        "current metadata with a 1.40 trait implementation writes (" + error + ")");
+    LibraryMetadata currentDecoded;
+    LibraryMetadata traitDecoded;
+    error.clear();
+    const bool currentRead = codec.read(currentPath, currentDecoded, error);
+    const bool traitRead = codec.read(traitPath, traitDecoded, error);
+    tests.expect(currentRead && traitRead && traitDecoded.traitImpls.size() == 1U &&
+            traitDecoded.traitImpls.front().methods.size() == 1U,
+        "the 1.40 trait-implementation section remains serialized and readable (" + error + ")");
+    tests.expect(currentRead && traitRead &&
+            currentDecoded.abiFingerprint != traitDecoded.abiFingerprint,
+        "the 1.40 trait-implementation contract participates in the ABI fingerprint");
+
+    const std::filesystem::path archivedPath =
+        std::filesystem::path(__FILE__).parent_path().parent_path() / "fixtures" / "nsmeta" /
+        "historical-1.37.nsmeta";
+    tests.expect(std::filesystem::is_regular_file(archivedPath),
+        "the immutable pre-1.40 metadata fixture exists");
+    expectReadable(tests, codec, archivedPath,
+        "metadata emitted before the 1.40 section remains readable");
+
     const std::vector<std::uint8_t> current = readBytes(currentPath);
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");
     if (current.size() >= 12U)
@@ -93,6 +132,14 @@ int main()
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(model, error),
         "producer identity does not override compatible metadata contents (" + error + ")");
+    model.producerVersion = "0.9.0";
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(model, error),
+        "a historical producer label does not override compatible metadata contents (" + error + ")");
+    model.producerVersion = "1.0.1";
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(model, error),
+        "a previous producer label does not override compatible metadata contents (" + error + ")");
 
     std::string explanation;
     tests.expect(nativesharp::driver::checkCompilerCompatibility(

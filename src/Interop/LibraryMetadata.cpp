@@ -59,21 +59,6 @@ constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
 constexpr std::uint8_t kLegacySourceRevisionByte = 3U;
 constexpr std::uint8_t kLegacyAbiProjectionSourceRevisionByte = 0U;
 
-std::string_view compilerReleasePart(std::string_view version) noexcept
-{
-    const std::size_t channelOrBuildMetadata = version.find_first_of("-+");
-    return version.substr(0, channelOrBuildMetadata);
-}
-
-bool hasKnownIncompatibleLegacyProducer(std::string_view version) noexcept
-{
-    const std::string_view release = compilerReleasePart(version);
-    // These released producers predate capabilities required by the current
-    // compiler but cannot express those absences in their old schemas. Unknown
-    // labels are not rejected: their decoded contents remain authoritative.
-    return release == "0.9.0" || release == "1.0.1";
-}
-
 std::string foldedAscii(std::string value)
 {
     std::ranges::transform(value, value.begin(), [](unsigned char character) {
@@ -2095,7 +2080,8 @@ bool readStringVector(ByteReader& reader, std::vector<std::string>& values)
 
 std::vector<std::uint8_t> encodePayload(
     const LibraryMetadata& metadata,
-    std::uint8_t legacySourceRevision = kLegacySourceRevisionByte)
+    std::uint8_t legacySourceRevision,
+    bool includeTraitImpls)
 {
     ByteWriter writer;
     writer.text(metadata.producerVersion);
@@ -2263,16 +2249,21 @@ std::vector<std::uint8_t> encodePayload(
         writeMember(member);
     }
 
-    // NSMETA 1.40 (NS304-T08-F05): external trait conformances.
-    writer.u32(static_cast<std::uint32_t>(metadata.traitImpls.size()));
-    for (const LibraryMetadataTraitImpl& traitImpl : metadata.traitImpls)
+    // NSMETA 1.40 (NS304-T08-F05): external trait conformances. The explicit
+    // switch lets the ABI projection retain this section for 1.40 after its
+    // common payload has been projected through the neutral 1.24 layout.
+    if (includeTraitImpls)
     {
-        writer.text(traitImpl.targetTypeKey);
-        writer.text(traitImpl.traitTypeKey);
-        writer.u32(static_cast<std::uint32_t>(traitImpl.methods.size()));
-        for (const LibraryMetadataMember& member : traitImpl.methods)
+        writer.u32(static_cast<std::uint32_t>(metadata.traitImpls.size()));
+        for (const LibraryMetadataTraitImpl& traitImpl : metadata.traitImpls)
         {
-            writeMember(member);
+            writer.text(traitImpl.targetTypeKey);
+            writer.text(traitImpl.traitTypeKey);
+            writer.u32(static_cast<std::uint32_t>(traitImpl.methods.size()));
+            for (const LibraryMetadataMember& member : traitImpl.methods)
+            {
+                writeMember(member);
+            }
         }
     }
 
@@ -2522,6 +2513,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
+    const bool includeTraitImpls = projected.formatMinor >= 40;
     // Static closure and private imports describe how to link this particular archive; they do
     // not change the public NativeSharp ABI published by the module. Project every current
     // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public
@@ -2532,7 +2524,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     projected.platformImports.clear();
     if (projected.formatMinor >= 25) projected.formatMinor = 24;
     std::vector<std::uint8_t> projection =
-        encodePayload(projected, kLegacyAbiProjectionSourceRevisionByte);
+        encodePayload(projected, kLegacyAbiProjectionSourceRevisionByte, includeTraitImpls);
     // The 1.25 private closure stays outside the public ABI projection, while the 1.27 ordered
     // variant catalogue cannot: changing declaration order changes the observable CaseTag value.
     // Append this section only when a variant exists so fingerprints of pre-1.27 models remain
@@ -4089,7 +4081,8 @@ bool LibraryMetadataCodec::writeModelImpl(
     }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
-    const std::vector<std::uint8_t> payload = encodePayload(metadata);
+    const std::vector<std::uint8_t> payload =
+        encodePayload(metadata, kLegacySourceRevisionByte, metadata.formatMinor >= 40);
     if (payload.size() > kMaximumPayloadSize)
     {
         error = "NativeSharp metadata payload exceeds 128 MiB format limit";
@@ -5115,14 +5108,6 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 return false;
             }
         }
-    }
-    if (hasKnownIncompatibleLegacyProducer(metadata.producerVersion))
-    {
-        error = "metadata producer version '" + metadata.producerVersion +
-            "' is outside the supported producer window ['" +
-            std::string(kPreviousCompilerReleaseVersion) + "', '" +
-            std::string(kCompilerReleaseVersion) + "']";
-        return false;
     }
     if (metadata.formatMinor >= 13)
     {
