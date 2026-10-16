@@ -11449,6 +11449,25 @@ private:
                 values.push_back(stackAllocationFromParts(current, rawExtents, error));
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "null-conditional field MIR requires one receiver"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef receiver = values.back();
+                values.pop_back();
+                if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                values.push_back(lowerNullConditionalField(current, error, receiver));
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -11646,7 +11665,7 @@ private:
             case frontend::ProjectOopMirNodeKind::MoveIteratorCurrent:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
-                return lowerNullConditionalField(node, error);
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalFieldStore:
                 return lowerNullConditionalFieldStore(node, error);
             case frontend::ProjectOopMirNodeKind::NullConditionalArrayLoad:
@@ -17797,11 +17816,15 @@ private:
     }
 
     LLVMValueRef lowerNullConditionalField(
-        const frontend::ProjectOopMirNode* node, std::string& error)
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr)
     {
         if (node->children.size() != 1)
             return failValue(error, "null-conditional field MIR requires one receiver");
-        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children[0].get(), error);
         if (receiver == nullptr) return nullptr;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef hasReceiver = LLVMBuildICmp(
