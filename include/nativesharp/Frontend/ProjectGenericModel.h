@@ -591,6 +591,9 @@ private:
         // NSC305-G08. Logical instantiation depth (parent depth + 1), carried by the demand so the
         // wave scheduler preserves the depth metric without the C++ recursion stack.
         std::size_t logicalDepth = 1;
+        // NSC305-G09. Stable sort key (project | namespace | source offset) so the wave is ordered
+        // deterministically independent of discovery order.
+        std::string stableKey;
     };
 
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that

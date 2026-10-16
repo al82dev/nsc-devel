@@ -3932,7 +3932,9 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
             currentOverloadGroup_,
             activePackSubstitutions_,
             activeAssociatedProjections_},
-        currentLogicalDepth_ + 1U});
+        currentLogicalDepth_ + 1U,
+        std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
+            std::to_string(target->range().begin().offset())});
 }
 
 // NSC305-G08. Executes the collected type demands in waves (the apply half of the two-pass).
@@ -3943,6 +3945,9 @@ bool ProjectGenericModel::executeTypeDemandWaves(
     {
         std::vector<GenericTypeDemand> wave;
         wave.swap(typeSpecializationDemands_);
+        // NSC305-G09. Deterministic wave: sort by the stable key (project | namespace | offset) so
+        // the materialization order does not depend on discovery order.
+        std::ranges::sort(wave, {}, &GenericTypeDemand::stableKey);
         for (GenericTypeDemand& demand : wave)
         {
             if (demand.unit == nullptr || demand.state == nullptr || demand.target == nullptr)
