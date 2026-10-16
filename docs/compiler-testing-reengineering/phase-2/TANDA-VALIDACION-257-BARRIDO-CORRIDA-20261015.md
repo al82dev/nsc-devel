@@ -25,7 +25,7 @@
 | Productor | Archivos y símbolos autorizados | Casos |
 |---|---|---|
 | Target | `BuiltinLayoutKind`, catálogo host, manifiesto y contratos documentales directos | `TF-TGT-002`, `005`, `006`, `008`, `036`, `038`, `040` |
-| AST | catálogo host y contratos documentales directos; el enum de producto queda protegido | `TA-AST-021`, `023`, `025` |
+| AST | catálogo host y contratos documentales directos; el enum de producto queda protegido | fallos `TA-AST-021`, `023`, `025`; vecindad `019..026` |
 | Lexer | `TokenKind`, catálogo host y contratos documentales directos | `TL-LEX-001`, `002` |
 | Parser foundation | seed esperado del host y contratos documentales directos; constructor de producto protegido | `TP-PAR-007` |
 | Parser nested declarations | reconocimiento de `partial` antes de un tipo anidado y expediente directo | `TP-PAR-199` |
@@ -41,7 +41,7 @@ participa en la ruta causal y se registre aquí antes de modificarlo.
 | Grupo | Terminales | Clasificación inicial | Productor | Estado |
 |---|---:|---|---|---|
 | Target | 5 | regresión de identidad ordinal al insertar `Decimal` | `BuiltinLayoutKind` | corregida; `7/7 PASS` con vecindad |
-| AST | 3 | oráculo anterior a tres nodos append-only | catálogo CA-AST-003 | causa demostrada |
+| AST | 3 | oráculo anterior a tres nodos append-only | catálogo CA-AST-003 | corregida; `8/8 PASS` con vecindad |
 | Lexer | 2 | regresión ordinal al insertar `Utf8StringLiteral` en posición 7 | `TokenKind` | causa demostrada |
 | Parser seed | 1 | oráculo anterior a `Future`, `Iterator` y `AsyncIterator` | CP-PAR-001 | causa demostrada |
 | Parser partial | 1 | `partial struct` cae en la ruta de miembro parcial | `parseClassMember` | causa demostrada |
@@ -65,7 +65,8 @@ lo que deben extenderse a `19` para evitar cobertura falsamente verde.
 
 El enum actual conserva el orden append-only y termina en `SuspendStatement`, `NameOfExpression` y
 `OverflowPolicyExpression`. El oráculo sólo contiene `NameOfExpression` y declara `106` valores, por lo que difiere
-desde la posición `105`. No se modifica el producto.
+desde la posición `105`. No se modifica el producto. Como el catálogo es compartido por los ocho casos de
+`CA-AST-003`, la validación focal cubre `TA-AST-019..026`, aunque sólo `021`, `023` y `025` fallaron en la corrida.
 
 ### Lexer
 
@@ -110,8 +111,11 @@ siguiente batería desde la GUI.
 
 - Inventario original: congelado.
 - Causas raíz conocidas: `8`.
-- Causas corregidas: `1`.
-- Pruebas focales aprobadas: `7`.
+- Causas corregidas: `2`.
+- Pruebas focales aprobadas: `15`.
 - Target: `nsc_component_tests` Debug compiló; `TF-TGT-002`, `005`, `006`, `008`, `036`, `038` y `040`
   pasaron individualmente. Se restauraron `Enum=16` y `Pointer=17`; `Decimal=18` quedó añadido al final.
-- Siguiente acción causal: actualizar el catálogo AST append-only sin modificar el enum de producto.
+- AST: `nsc_component_tests` Debug compiló; `TA-AST-019..026` pasaron individualmente. El catálogo host ahora
+  reproduce las `108` entradas reales, incluyendo `SuspendStatement` y `OverflowPolicyExpression`; el producto no
+  se modificó.
+- Siguiente acción causal: restaurar las identidades históricas de `TokenKind` y añadir `Utf8StringLiteral` al final.

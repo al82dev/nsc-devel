@@ -31,13 +31,13 @@ Los IDs `TA-AST-NNN` se asignan por orden canónico de filas.
 | TA-AST-016 | CA-AST-002 | destructor que lanza | caracteriza terminación/entries restantes según C++ | NIGHTLY |
 | TA-AST-017 | CA-AST-002 | llamadas concurrentes sin sincronización | documenta ausencia de garantía; no se usa como caso positivo | NIGHTLY |
 | TA-AST-018 | CA-AST-002 | destroy template por cada tipo | delete invoca destructor dinámico esperado | PR |
-| TA-AST-019 | CA-AST-003 | los 100 valores válidos | nombre exacto igual al enumerador | PR |
+| TA-AST-019 | CA-AST-003 | los 108 valores válidos | nombre exacto igual al enumerador | PR |
 | TA-AST-020 | CA-AST-003 | nombres válidos | todos únicos | PR |
-| TA-AST-021 | CA-AST-003 | ordinales 0..99 | contiguos y en orden declarado | PR |
+| TA-AST-021 | CA-AST-003 | ordinales 0..107 | contiguos y en orden declarado | PR |
 | TA-AST-022 | CA-AST-003 | valor -1 convertido al enum | `UnknownAstNode` | PR |
-| TA-AST-023 | CA-AST-003 | valor 100 y máximo subyacente | `UnknownAstNode` | PR |
+| TA-AST-023 | CA-AST-003 | valor 108 y máximo subyacente | `UnknownAstNode` | PR |
 | TA-AST-024 | CA-AST-003 | primeros valores históricos | ordinales congelados exactos | PR |
-| TA-AST-025 | CA-AST-003 | kinds appended de null-coalescing a loop | orden relativo exacto | PR |
+| TA-AST-025 | CA-AST-003 | kinds appended de `NullCoalescingExpression` a `OverflowPolicyExpression` | orden relativo exacto | PR |
 | TA-AST-026 | CA-AST-003 | llamadas repetidas | string_view estable y sin asignación observable | PR |
 
 ## Records y AstNode

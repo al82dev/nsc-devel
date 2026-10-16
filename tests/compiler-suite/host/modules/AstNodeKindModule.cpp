@@ -25,7 +25,7 @@ struct ExpectedAstKind final
 
 // Independent CA-AST-003 oracle: order and spelling are intentionally explicit so a product-side
 // reorder, insertion, or rename cannot update the expected values implicitly.
-constexpr std::array<ExpectedAstKind, 106> ExpectedAstKinds = {{
+constexpr std::array<ExpectedAstKind, 108> ExpectedAstKinds = {{
     {AstNodeKind::CompilationUnit, "CompilationUnit"},
     {AstNodeKind::NamespaceDeclaration, "NamespaceDeclaration"},
     {AstNodeKind::UsingNamespaceDirective, "UsingNamespaceDirective"},
@@ -131,7 +131,9 @@ constexpr std::array<ExpectedAstKind, 106> ExpectedAstKinds = {{
     {AstNodeKind::AwaitExpression, "AwaitExpression"},
     {AstNodeKind::YieldReturnStatement, "YieldReturnStatement"},
     {AstNodeKind::YieldBreakStatement, "YieldBreakStatement"},
+    {AstNodeKind::SuspendStatement, "SuspendStatement"},
     {AstNodeKind::NameOfExpression, "NameOfExpression"},
+    {AstNodeKind::OverflowPolicyExpression, "OverflowPolicyExpression"},
 }};
 
 constexpr std::size_t HistoricalKindCount = 83;
@@ -143,7 +145,7 @@ void addAstNodeKindCase(TestRegistry& registry, std::string id, TestFunction fun
         {"ast", "node-kind"}, std::move(function)});
 }
 
-// Compares all one hundred valid values against the independently frozen public spelling.
+// Compares all 108 valid values against the independently frozen public spelling.
 void testExactNames(TestContext& context)
 {
     for (std::size_t index = 0; index < ExpectedAstKinds.size(); ++index)
@@ -211,13 +213,13 @@ void testHistoricalOrdinals(TestContext& context)
         "TA-AST-024 historical range must remain CompilationUnit through AggregateInitializerExpression");
 }
 
-// Freezes the exact relative order of every kind appended from null-coalescing through loop.
+// Freezes the exact relative order of every kind appended after the historical catalog.
 void testAppendedKindOrder(TestContext& context)
 {
     using Underlying = std::underlying_type_t<AstNodeKind>;
     context.expect(ExpectedAstKinds[HistoricalKindCount].kind == AstNodeKind::NullCoalescingExpression &&
-            ExpectedAstKinds.back().kind == AstNodeKind::NameOfExpression,
-        "TA-AST-025 appended range must remain NullCoalescingExpression through NameOfExpression");
+            ExpectedAstKinds.back().kind == AstNodeKind::OverflowPolicyExpression,
+        "TA-AST-025 appended range must remain NullCoalescingExpression through OverflowPolicyExpression");
     for (std::size_t index = HistoricalKindCount; index < ExpectedAstKinds.size(); ++index)
     {
         context.expect(static_cast<Underlying>(ExpectedAstKinds[index].kind) ==
