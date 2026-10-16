@@ -643,7 +643,11 @@ private:
     std::string ensureTypeSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        // NSC305 (G-series). When non-null, receives the canonical specialization key of the
+        // materialized (or cache-hit) type specialization, so callers avoid a reverse scan of
+        // `specializations_` by `specializedName`.
+        std::string* outSpecializationKey = nullptr);
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,

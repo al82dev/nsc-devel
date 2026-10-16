@@ -2890,17 +2890,16 @@ bool ProjectGenericModel::processTypeSyntax(
     // NSC-LIMIT-007: el SITIO. Un `Caja<int>` invalido tiene que sonar donde alguien lo escribio,
     // no sobre la declaracion de `Caja<T>`, que es correcta.
     currentInstantiationRange_ = syntax->range();
+    std::string specializationKey;
     const std::string specialized = ensureTypeSpecialization(
-        *state, syntax->typeArguments(), diagnostics);
+        *state, syntax->typeArguments(), diagnostics, &specializationKey);
     if (specialized.empty()) return false;
 
     // Keep the closed template's canonical key on this exact syntax node before erasing its
     // arguments. An outer specialization can then use that declaration-derived identity instead
     // of reinterpreting the generated name under a caller project.
-    for (auto iterator = specializations_.rbegin(); iterator != specializations_.rend(); ++iterator)
     {
-        if (iterator->specializedName != specialized) continue;
-        std::string canonical = "generic:" + iterator->specializationKey;
+        std::string canonical = "generic:" + specializationKey;
         appendTypeModifiers(canonical, syntax);
         resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
         // The generated declaration belongs beside its template, not beside the source site that
@@ -2912,7 +2911,6 @@ bool ProjectGenericModel::processTypeSyntax(
             state->record.projectOrdinal, state->record.namespaceName};
         syntax->setOriginProjectOrdinal(state->record.projectOrdinal);
         syntax->setOriginNamespace(state->record.namespaceName);
-        break;
     }
     // Preserve an explicitly written qualifier. Replacing `Lib.Box<int>` with only the generated
     // terminal name made name lookup retry it in the caller module, even though the specialization
@@ -4349,7 +4347,8 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
 std::string ProjectGenericModel::ensureTypeSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string* outSpecializationKey)
 {
     const std::size_t callerProjectOrdinal = currentInstantiationProjectOrdinal_;
     const std::string callerNamespace = currentInstantiationNamespace_;
@@ -4385,6 +4384,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     {
         telemetry_.noteSpecializationHit();
         ++instantiationCacheHitCount_;
+        if (outSpecializationKey != nullptr) *outSpecializationKey = key;
         return specializations_[found->second].specializedName;
     }
 
@@ -4512,6 +4512,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     currentOverloadGroup_ = callerOverloadGroup;
     activePackSubstitutions_ = callerPackSubstitutions;
     instantiationBudget_.leave();
+    if (outSpecializationKey != nullptr) *outSpecializationKey = key;
     return specializedName;
 }
 
