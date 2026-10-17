@@ -448,7 +448,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/HIR/HirStatementMachine.cpp
     src/Frontend/HIR/HirBindingIndex.cpp
     src/Frontend/ProjectOopHirModelDumper.cpp
-    src/Frontend/ProjectOopMirModel.cpp
+    src/Frontend/MIR/MirBuildCoordinator.cpp
     src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
     src/Frontend/ProjectCompilation.cpp
