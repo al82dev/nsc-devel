@@ -55,6 +55,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         std::unique_ptr<ProjectOopHirNode> first;
         std::unique_ptr<ProjectOopHirNode> second;
         const MethodNameBinding* fieldBinding = nullptr;
+        bool materializeReceiverTemporary = false;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
@@ -125,8 +126,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             if (!activeLambdaValue && binding != nullptr &&
                 binding->kind == MethodNameBindingKind::ExplicitObjectField &&
                 binding->receiverSyntax != nullptr && !binding->receiverTypeKey.empty() &&
-                !binding->candidateMemberOrdinals.empty() &&
-                !isStructValueType(binding->receiverTypeKey))
+                !binding->candidateMemberOrdinals.empty())
             {
                 return IterativeExpressionKind::InstanceField;
             }
@@ -148,17 +148,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             if (currentKind.has_value())
             {
                 IterativeExpressionFrame frame{
-                    *currentKind, current, currentAddressContext, 0U, nullptr, nullptr, nullptr};
+                    *currentKind, current, currentAddressContext, 0U,
+                    nullptr, nullptr, nullptr, false};
                 if (*currentKind == IterativeExpressionKind::InstanceField)
+                {
                     frame.fieldBinding = nameBinding(current);
+                    frame.materializeReceiverTemporary =
+                        isStructValueType(frame.fieldBinding->receiverTypeKey) &&
+                        !isNaturallyAddressable(frame.fieldBinding->receiverSyntax);
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else
                     current = current->first();
-                currentAddressContext = *currentKind == IterativeExpressionKind::OverflowPolicy
-                    ? currentAddressContext
-                    : false;
+                if (*currentKind == IterativeExpressionKind::InstanceField)
+                {
+                    currentAddressContext =
+                        isStructValueType(frames.back().fieldBinding->receiverTypeKey) &&
+                        !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
+                {
+                    currentAddressContext = false;
+                }
                 continue;
             }
 
@@ -242,6 +255,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 if (frame.kind == IterativeExpressionKind::InstanceField)
                 {
                     const MethodNameBinding& binding = *frame.fieldBinding;
+                    if (frame.materializeReceiverTemporary)
+                    {
+                        auto temporary = makeNode(
+                            ProjectOopHirNodeKind::TemporaryAddress,
+                            binding.receiverSyntax,
+                            binding.receiverTypeKey);
+                        temporary->elementTypeKey = binding.receiverTypeKey;
+                        temporary->children.push_back(std::move(lowered));
+                        lowered = std::move(temporary);
+                    }
                     auto field = makeNode(
                         frame.addressContext
                             ? ProjectOopHirNodeKind::FieldAddress
