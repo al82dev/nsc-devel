@@ -46,6 +46,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Conditional,
         CoreMember,
         CoreIndex,
+        RawIndex,
         InstanceField,
         NullConditionalField,
         RangeSlice,
@@ -63,7 +64,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         const MethodNameBinding* fieldBinding = nullptr;
         const MethodRangeSliceBinding* rangeBinding = nullptr;
         const MethodCoreBinding* core = nullptr;
+        const MethodVariableArrayIndexBinding* variableArrayIndex = nullptr;
         bool materializeReceiverTemporary = false;
+        bool baseIsFixedArray = false;
+        bool baseIsFlexibleArray = false;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
@@ -198,6 +202,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return IterativeExpressionKind::CoreIndex;
             }
         }
+        if (syntax->kind() == ast::AstNodeKind::IndexExpression ||
+            syntax->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr && core->kind == MethodCoreOperationKind::RawElement)
+            {
+                const bool hasIndices =
+                    !syntax->children().empty() || syntax->second() != nullptr;
+                const bool validIndices = syntax->children().empty()
+                    ? syntax->second() != nullptr
+                    : std::all_of(
+                        syntax->children().begin(),
+                        syntax->children().end(),
+                        [](const ast::AstNode* index) noexcept { return index != nullptr; });
+                const MethodVariableArrayIndexBinding* variableArrayIndex =
+                    methodBodyModel_ != nullptr
+                        ? methodBodyModel_->variableArrayIndexBinding(syntax)
+                        : nullptr;
+                const std::size_t indexCount = syntax->children().empty()
+                    ? (syntax->second() != nullptr ? 1U : 0U)
+                    : syntax->children().size();
+                const bool validVariableRank = variableArrayIndex == nullptr ||
+                    indexCount == variableArrayIndex->extentLocalOrdinals.size();
+                if (syntax->first() != nullptr && hasIndices && validIndices && validVariableRank)
+                    return IterativeExpressionKind::RawIndex;
+            }
+        }
         if (syntax->kind() == ast::AstNodeKind::MemberExpression &&
             coreBinding(syntax) == nullptr && accessorGetterBinding(syntax) == nullptr &&
             callBinding(syntax) == nullptr &&
@@ -272,12 +303,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     frame.operands.reserve(frame.operandSyntaxes.size());
                 }
+                else if (*currentKind == IterativeExpressionKind::RawIndex)
+                {
+                    frame.core = coreBinding(current);
+                    frame.variableArrayIndex = methodBodyModel_ != nullptr
+                        ? methodBodyModel_->variableArrayIndexBinding(current)
+                        : nullptr;
+                    const MethodExpressionTypeBinding* baseType = expressionType(current->first());
+                    frame.baseIsFixedArray = baseType != nullptr &&
+                        ProjectMemberModel::fixedArrayElementTypeKey(baseType->typeKey).has_value();
+                    frame.baseIsFlexibleArray = baseType != nullptr &&
+                        ProjectMemberModel::flexibleArrayElementTypeKey(baseType->typeKey).has_value();
+                    if (!current->children().empty())
+                    {
+                        frame.operandSyntaxes.assign(
+                            current->children().begin(), current->children().end());
+                    }
+                    else
+                    {
+                        frame.operandSyntaxes.push_back(current->second());
+                    }
+                    frame.operands.reserve(frame.operandSyntaxes.size());
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::RangeSlice)
                     current = frames.back().rangeBinding->receiverSyntax;
-                else if (*currentKind == IterativeExpressionKind::CoreIndex)
+                else if (*currentKind == IterativeExpressionKind::CoreIndex ||
+                    *currentKind == IterativeExpressionKind::RawIndex)
                     current = current->first();
                 else
                     current = current->first();
@@ -292,6 +346,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     currentAddressContext =
                         isStructValueType(frames.back().rangeBinding->receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::RawIndex)
+                {
+                    currentAddressContext = frames.back().baseIsFixedArray ||
+                        frames.back().baseIsFlexibleArray;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -461,6 +520,197 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         element->children.push_back(std::move(frame.operands[dimension]));
                     }
                     lowered = std::move(element);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::RawIndex)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.operandSyntaxes.front();
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    frame.operands.push_back(std::move(lowered));
+                    if (frame.operands.size() < frame.operandSyntaxes.size())
+                    {
+                        current = frame.operandSyntaxes[frame.operands.size()];
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+
+                    const MethodCoreBinding& core = *frame.core;
+                    if (frame.variableArrayIndex != nullptr)
+                    {
+                        std::unique_ptr<ProjectOopHirNode> linearIndex;
+                        for (std::size_t dimension = 0;
+                            dimension < frame.operands.size(); ++dimension)
+                        {
+                            auto index = std::move(frame.operands[dimension]);
+                            if (index->typeKey != "builtin:nuint")
+                            {
+                                auto converted = makeNode(
+                                    ProjectOopHirNodeKind::Conversion,
+                                    frame.operandSyntaxes[dimension],
+                                    "builtin:nuint");
+                                converted->children.push_back(std::move(index));
+                                index = std::move(converted);
+                            }
+                            if (linearIndex == nullptr)
+                            {
+                                linearIndex = std::move(index);
+                                continue;
+                            }
+                            const std::size_t extentOrdinal =
+                                frame.variableArrayIndex->extentLocalOrdinals[dimension];
+                            auto extent = makeNode(
+                                ProjectOopHirNodeKind::LocalValue,
+                                frame.syntax,
+                                methodBodyModel_->locals()[extentOrdinal].typeKey);
+                            extent->localOrdinal = extentOrdinal;
+                            if (extent->typeKey != "builtin:nuint")
+                            {
+                                auto convertedExtent = makeNode(
+                                    ProjectOopHirNodeKind::Conversion,
+                                    frame.syntax,
+                                    "builtin:nuint");
+                                convertedExtent->children.push_back(std::move(extent));
+                                extent = std::move(convertedExtent);
+                            }
+                            auto rowOffset = makeNode(
+                                ProjectOopHirNodeKind::Binary,
+                                frame.syntax,
+                                "builtin:nuint");
+                            rowOffset->operation = lexer::TokenKind::Star;
+                            rowOffset->children.push_back(std::move(linearIndex));
+                            rowOffset->children.push_back(std::move(extent));
+                            auto sum = makeNode(
+                                ProjectOopHirNodeKind::Binary,
+                                frame.syntax,
+                                "builtin:nuint");
+                            sum->operation = lexer::TokenKind::Plus;
+                            sum->children.push_back(std::move(rowOffset));
+                            sum->children.push_back(std::move(index));
+                            linearIndex = std::move(sum);
+                        }
+                        auto address = makeNode(
+                            ProjectOopHirNodeKind::RawElementAddress,
+                            frame.syntax,
+                            core.elementTypeKey);
+                        address->elementTypeKey = core.elementTypeKey;
+                        address->children.push_back(std::move(frame.first));
+                        address->children.push_back(std::move(linearIndex));
+                        if (frame.addressContext)
+                        {
+                            lowered = std::move(address);
+                        }
+                        else
+                        {
+                            auto value = makeNode(
+                                ProjectOopHirNodeKind::PointerLoad,
+                                frame.syntax,
+                                core.resultTypeKey);
+                            value->children.push_back(std::move(address));
+                            lowered = std::move(value);
+                        }
+                        frames.pop_back();
+                        continue;
+                    }
+
+                    const MethodExpressionTypeBinding* baseType =
+                        expressionType(frame.syntax->first());
+                    std::string indexedType = baseType != nullptr
+                        ? baseType->typeKey : std::string();
+                    std::unique_ptr<ProjectOopHirNode> base = std::move(frame.first);
+                    for (std::size_t dimension = 0;
+                        dimension < frame.operands.size(); ++dimension)
+                    {
+                        const std::optional<std::string> fixedElement = frame.baseIsFixedArray
+                            ? ProjectMemberModel::fixedArrayElementTypeKey(indexedType)
+                            : std::optional<std::string>();
+                        const std::optional<std::string> flexibleElement = frame.baseIsFlexibleArray
+                            ? ProjectMemberModel::flexibleArrayElementTypeKey(indexedType)
+                            : std::optional<std::string>();
+                        const std::string elementType = fixedElement.has_value()
+                            ? *fixedElement
+                            : flexibleElement.has_value() ? *flexibleElement : core.elementTypeKey;
+                        auto address = makeNode(
+                            ProjectOopHirNodeKind::RawElementAddress,
+                            frame.syntax,
+                            elementType);
+                        address->elementTypeKey = elementType;
+                        const ast::AstNode* baseSyntax = frame.syntax->first();
+                        if (frame.baseIsFlexibleArray && metaprogrammingModel_ != nullptr &&
+                            baseSyntax != nullptr && baseSyntax->first() != nullptr &&
+                            inheritanceModel_ != nullptr && memberModel_ != nullptr &&
+                            objectLayoutModel_ != nullptr)
+                        {
+                            const MethodExpressionTypeBinding* receiverType =
+                                expressionType(baseSyntax->first());
+                            if (receiverType != nullptr)
+                            {
+                                const std::optional<std::size_t> structOrdinal =
+                                    inheritanceModel_->typeOrdinalForTypeKey(receiverType->typeKey);
+                                if (structOrdinal.has_value())
+                                {
+                                    for (const StaticAttributeInfo& attribute :
+                                         metaprogrammingModel_->attributes())
+                                    {
+                                        if (attribute.identity != "TrailingStorage" ||
+                                            attribute.constantArguments.empty() ||
+                                            !attribute.typeOrdinal.has_value() ||
+                                            attribute.typeOrdinal != structOrdinal)
+                                        {
+                                            continue;
+                                        }
+                                        const std::span<const std::size_t> lengthMembers =
+                                            memberModel_->findMembers(
+                                                *structOrdinal,
+                                                attribute.constantArguments[0]);
+                                        if (!lengthMembers.empty() &&
+                                            attribute.memberOrdinal.has_value())
+                                        {
+                                            const ObjectFieldLayout* lengthLayout =
+                                                objectLayoutModel_->fieldLayoutForMember(
+                                                    lengthMembers.front());
+                                            const ObjectFieldLayout* dataLayout =
+                                                objectLayoutModel_->fieldLayoutForMember(
+                                                    *attribute.memberOrdinal);
+                                            if (lengthLayout != nullptr && dataLayout != nullptr)
+                                            {
+                                                address->hasTrailingLengthBounds = true;
+                                                address->trailingLengthRelativeOffset =
+                                                    static_cast<std::int64_t>(lengthLayout->offset) -
+                                                    static_cast<std::int64_t>(dataLayout->offset);
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        address->children.push_back(std::move(base));
+                        address->children.push_back(std::move(frame.operands[dimension]));
+                        base = std::move(address);
+                        indexedType = elementType;
+                    }
+                    if (frame.addressContext)
+                    {
+                        lowered = std::move(base);
+                    }
+                    else
+                    {
+                        auto value = makeNode(
+                            ProjectOopHirNodeKind::PointerLoad,
+                            frame.syntax,
+                            core.resultTypeKey);
+                        value->children.push_back(std::move(base));
+                        lowered = std::move(value);
+                    }
                     frames.pop_back();
                     continue;
                 }
