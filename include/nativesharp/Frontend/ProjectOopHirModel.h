@@ -995,6 +995,12 @@ private:
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;
+    std::optional<std::size_t> cleanupRegionOrdinal(
+        const MethodCleanupRegion* region) const;
+    std::unique_ptr<ProjectOopHirNode> lowerExceptionOrExitStatement(
+        const ast::AstNode* statement,
+        std::size_t memberOrdinal,
+        std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         const ast::AstNode* syntax,
         std::string_view parameterTypeKey,
