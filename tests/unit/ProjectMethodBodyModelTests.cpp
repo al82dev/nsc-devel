@@ -844,6 +844,33 @@ void testDeepNestedSwitchStatements(TestContext& tests, const std::filesystem::p
         "256 nested switch statements bind without host-stack failure");
 }
 
+void testDeepNestedSwitchParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 4096;
+    std::string source = "class DeepSwitchParser { int Run(int value) { ";
+    source.reserve(source.size() + depth * 54U + 64U);
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "switch (value) { case 0: ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "break; default: break; } ";
+    source += "return value; } }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "DeepNestedSwitchParser.ns",
+        std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "4096 nested switch sections parse through heap-backed continuations");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1173,6 +1200,7 @@ int main()
     testDeepNestedForeachLoops(tests, root);
     testDeepNestedUsingStatements(tests, root);
     testDeepNestedSwitchStatements(tests, root);
+    testDeepNestedSwitchParser(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);

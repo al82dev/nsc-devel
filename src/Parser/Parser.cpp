@@ -10909,6 +10909,7 @@ private:
         ParseWhile,
         ParseDoWhile,
         ParseFor,
+        ParseSwitch,
         ParseEmbedded,
         WrapEmbedded,
         ParseBlock,
@@ -10918,7 +10919,10 @@ private:
         FinishElse,
         FinishWhile,
         FinishDoWhile,
-        FinishFor
+        FinishFor,
+        ContinueSwitch,
+        ContinueSwitchSection,
+        AppendSwitchStatement
     };
     struct Work final
     {
@@ -10930,6 +10934,14 @@ private:
         std::size_t beginIndex = 0;
         ast::AstNode* block = nullptr;
         ast::AstNode* destination = nullptr;
+    };
+    struct SwitchParseState final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t sectionBegin = 0;
+        ast::AstNode* conditionDeclaration = nullptr;
+        ast::AstNode* node = nullptr;
+        ast::AstNode* section = nullptr;
     };
 
     bool ordinaryIfAtCursor() const noexcept
@@ -10951,7 +10963,8 @@ private:
     bool structuredControlAtCursor() const noexcept
     {
         return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
-            parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor);
+            parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
+            parser_.at(TokenKind::KwSwitch);
     }
 
     ast::AstNode* wrapEmbedded(ast::AstNode* statement)
@@ -10986,6 +10999,7 @@ private:
         case WorkKind::ParseWhile: parseWhile(); break;
         case WorkKind::ParseDoWhile: parseDoWhile(); break;
         case WorkKind::ParseFor: parseFor(); break;
+        case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
         case WorkKind::WrapEmbedded: finishWrapEmbedded(); break;
         case WorkKind::ParseBlock: parseBlock(); break;
@@ -10996,6 +11010,9 @@ private:
         case WorkKind::FinishWhile: finishWhile(current.stateIndex); break;
         case WorkKind::FinishDoWhile: finishDoWhile(current.stateIndex); break;
         case WorkKind::FinishFor: finishFor(current.stateIndex); break;
+        case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
+        case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
+        case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
         }
     }
 
@@ -11005,6 +11022,7 @@ private:
         else if (ordinaryWhileAtCursor()) work_.push_back({WorkKind::ParseWhile, 0});
         else if (parser_.at(TokenKind::KwDo)) work_.push_back({WorkKind::ParseDoWhile, 0});
         else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
+        else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else values_.push_back(parser_.parseStatement());
     }
 
@@ -11060,6 +11078,158 @@ private:
         }
         work_.push_back({WorkKind::FinishFor, index});
         work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void parseSwitch()
+    {
+        const std::size_t index = switchStates_.size();
+        switchStates_.emplace_back();
+        SwitchParseState& state = switchStates_.back();
+        state.beginIndex = parser_.index_;
+        parser_.consume();
+        parser_.expect(TokenKind::LeftParen, "'(' after 'switch'");
+        ast::AstNode* governing = parseSwitchGoverning(state);
+        parser_.expect(TokenKind::RightParen, "')' after the switch governing expression");
+        parser_.expect(TokenKind::LeftBrace, "'{' to open the switch body");
+        state.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SwitchStatement,
+            parser_.tokenRangeFrom(state.beginIndex));
+        state.node->setFirst(governing);
+        work_.push_back({WorkKind::ContinueSwitch, index});
+    }
+
+    ast::AstNode* parseSwitchGoverning(SwitchParseState& state)
+    {
+        if (!parser_.looksLikeConditionDeclaration()) return parser_.parseExpression();
+        state.conditionDeclaration = parser_.parseVariableDeclaration(false);
+        const ast::AstNode* binding = conditionDeclarationBinding(
+            state.conditionDeclaration,
+            parser_.diagnostics_);
+        return binding != nullptr
+            ? parser_.makeIdentifierExpression(binding->range(), binding->text())
+            : nullptr;
+    }
+
+    void continueSwitch(std::size_t index)
+    {
+        SwitchParseState& state = switchStates_[index];
+        if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+        {
+            values_.push_back(finishSwitch(state));
+            return;
+        }
+        if (!parser_.atSwitchLabel())
+        {
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                parser_.current().range(),
+                "expected 'case' or 'default' at the start of a switch section");
+            parser_.consume();
+            work_.push_back({WorkKind::ContinueSwitch, index});
+            return;
+        }
+        startSwitchSection(index);
+    }
+
+    void startSwitchSection(std::size_t index)
+    {
+        SwitchParseState& state = switchStates_[index];
+        state.sectionBegin = parser_.index_;
+        state.section = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SwitchSection,
+            parser_.current().range());
+        std::uint64_t labelCount = 0;
+        while (parser_.atSwitchLabel())
+        {
+            appendSwitchLabel(state.section);
+            ++labelCount;
+        }
+        state.section->setIntegerValue(labelCount);
+        work_.push_back({WorkKind::ContinueSwitch, index});
+        work_.push_back({WorkKind::ContinueSwitchSection, index});
+    }
+
+    void appendSwitchLabel(ast::AstNode* section)
+    {
+        const std::size_t beginIndex = parser_.index_;
+        const bool isDefault = parser_.at(TokenKind::KwDefault);
+        parser_.consume();
+        if (!isDefault && parser_.at(TokenKind::LeftBracket))
+            reportDeferredLanguage3(
+                parser_.diagnostics_,
+                parser_.current().range(),
+                language::Language3Feature::ListPatterns);
+        ast::AstNode* value = isDefault ? nullptr : parser_.parseExpression();
+        parser_.expect(
+            TokenKind::Colon,
+            isDefault ? "':' after 'default'" : "':' after the case value");
+        ast::AstNode* label = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SwitchLabel,
+            parser_.tokenRangeFrom(beginIndex));
+        label->setFlag(isDefault);
+        label->setFirst(value);
+        section->addChild(label);
+    }
+
+    void continueSwitchSection(const Work& current)
+    {
+        SwitchParseState& state = switchStates_[current.stateIndex];
+        if (parser_.atSwitchLabel() || parser_.at(TokenKind::RightBrace) ||
+            parser_.at(TokenKind::EndOfFile))
+        {
+            state.section->setRange(parser_.tokenRangeFrom(state.sectionBegin));
+            state.node->addChild(state.section);
+            return;
+        }
+        const std::size_t before = parser_.index_;
+        work_.push_back(current);
+        if (structuredControlAtCursor())
+            pushSwitchStatement(current.stateIndex, WorkKind::ParseControl);
+        else if (parser_.at(TokenKind::LeftBrace))
+            pushSwitchStatement(current.stateIndex, WorkKind::ParseBlock);
+        else
+        {
+            appendSwitchStatement(state, parser_.parseStatement());
+            if (parser_.index_ == before) parser_.consume();
+        }
+    }
+
+    void pushSwitchStatement(std::size_t index, WorkKind child)
+    {
+        work_.push_back({WorkKind::AppendSwitchStatement, index});
+        work_.push_back({child, 0});
+    }
+
+    void appendSwitchStatement(std::size_t index)
+    {
+        appendSwitchStatement(switchStates_[index], popValue());
+    }
+
+    static void appendSwitchStatement(SwitchParseState& state, ast::AstNode* statement)
+    {
+        if (statement == nullptr) return;
+        if (statement->kind() == ast::AstNodeKind::BlockStatement &&
+            statement->auxiliaryText() == "conditional-pattern-inline")
+        {
+            for (ast::AstNode* child : statement->children()) state.section->addChild(child);
+            return;
+        }
+        state.section->addChild(statement);
+    }
+
+    ast::AstNode* finishSwitch(SwitchParseState& state)
+    {
+        parser_.expect(TokenKind::RightBrace, "'}' to close the switch");
+        state.node->setRange(parser_.tokenRangeFrom(state.beginIndex));
+        if (state.conditionDeclaration == nullptr) return state.node;
+        ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            state.node->range());
+        lowered->setAuxiliaryText("condition-declaration");
+        lowered->addChild(state.conditionDeclaration);
+        lowered->addChild(state.node);
+        return lowered;
     }
 
     void parseEmbedded()
@@ -11178,6 +11348,7 @@ private:
     std::vector<WhileParseState> whileStates_;
     std::vector<DoWhileParseState> doWhileStates_;
     std::vector<ForParseState> forStates_;
+    std::vector<SwitchParseState> switchStates_;
     std::vector<BlockParseState> blockStates_;
     std::vector<Work> work_;
     std::vector<ast::AstNode*> values_;
@@ -11357,112 +11528,7 @@ bool Parser::atSwitchLabel() const noexcept
 // would have to be guessed from syntax.
 ast::AstNode* Parser::parseSwitchStatement()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-    expect(TokenKind::LeftParen, "'(' after 'switch'");
-    ast::AstNode* conditionDeclaration = nullptr;
-    ast::AstNode* governing = nullptr;
-    if (looksLikeConditionDeclaration())
-    {
-        conditionDeclaration = parseVariableDeclaration(false);
-        const ast::AstNode* binding = conditionDeclarationBinding(
-            conditionDeclaration, diagnostics_);
-        if (binding != nullptr)
-        {
-            governing = makeIdentifierExpression(binding->range(), binding->text());
-        }
-    }
-    else
-    {
-        governing = parseExpression();
-    }
-    expect(TokenKind::RightParen, "')' after the switch governing expression");
-    expect(TokenKind::LeftBrace, "'{' to open the switch body");
-
-    ast::AstNode* node =
-        arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchStatement, tokenRangeFrom(beginIndex));
-    node->setFirst(governing);
-
-    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
-    {
-        if (!atSwitchLabel())
-        {
-            // Statements can only live inside a section. Report once, then drop the token so the
-            // loop makes progress -- without this the parser spins here on malformed input.
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedToken,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                "expected 'case' or 'default' at the start of a switch section");
-            consume();
-            continue;
-        }
-
-        const std::size_t sectionBegin = index_;
-        ast::AstNode* section =
-            arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchSection, current().range());
-
-        std::uint64_t labelCount = 0;
-        while (atSwitchLabel())
-        {
-            const std::size_t labelBegin = index_;
-            const bool isDefault = at(TokenKind::KwDefault);
-            consume();
-            if (!isDefault && at(TokenKind::LeftBracket))
-            {
-                reportDeferredLanguage3(
-                    diagnostics_, current().range(), language::Language3Feature::ListPatterns);
-            }
-            ast::AstNode* value = isDefault ? nullptr : parseExpression();
-            expect(TokenKind::Colon, isDefault ? "':' after 'default'" : "':' after the case value");
-
-            ast::AstNode* label =
-                arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchLabel, tokenRangeFrom(labelBegin));
-            label->setFlag(isDefault);
-            label->setFirst(value);
-            section->addChild(label);
-            ++labelCount;
-        }
-        section->setIntegerValue(labelCount);
-
-        while (!atSwitchLabel() && !at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
-        {
-            const std::size_t before = index_;
-            ast::AstNode* statement = parseStatement();
-            if (statement != nullptr)
-            {
-                if (statement->kind() == ast::AstNodeKind::BlockStatement &&
-                    statement->auxiliaryText() == "conditional-pattern-inline")
-                {
-                    for (ast::AstNode* child : statement->children()) section->addChild(child);
-                }
-                else
-                {
-                    section->addChild(statement);
-                }
-            }
-            if (index_ == before)
-            {
-                consume();
-            }
-        }
-
-        section->setRange(tokenRangeFrom(sectionBegin));
-        node->addChild(section);
-    }
-
-    expect(TokenKind::RightBrace, "'}' to close the switch");
-    node->setRange(tokenRangeFrom(beginIndex));
-    if (conditionDeclaration != nullptr)
-    {
-        ast::AstNode* lowered = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, node->range());
-        lowered->setAuxiliaryText("condition-declaration");
-        lowered->addChild(conditionDeclaration);
-        lowered->addChild(node);
-        return lowered;
-    }
-    return node;
+    return parseStructuredControlStatement();
 }
 
 Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
