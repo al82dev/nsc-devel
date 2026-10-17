@@ -49,6 +49,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         ResultPropagation,
         Destruction,
         StackAllocation,
+        StorageUnary,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -175,6 +176,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             const MethodCoreBinding* core = coreBinding(syntax);
             if (core != nullptr && core->kind == MethodCoreOperationKind::StackAllocation)
                 return IterativeExpressionKind::StackAllocation;
+        }
+        if ((syntax->kind() == ast::AstNodeKind::UnaryExpression ||
+             syntax->kind() == ast::AstNodeKind::PostfixExpression) &&
+            syntax->first() != nullptr)
+        {
+            const MethodCallBinding* operatorCall = callBinding(syntax);
+            const bool userOperator = operatorCall != nullptr &&
+                operatorCall->resolution == MethodCallResolutionKind::Resolved &&
+                operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
+                callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator;
+            if (!userOperator &&
+                (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
+                 syntax->tokenKind() == lexer::TokenKind::MinusMinus))
+            {
+                if (!address && expressionType(syntax->first()) != nullptr)
+                    return IterativeExpressionKind::StorageUnary;
+            }
+            else if (!userOperator && syntax->tokenKind() == lexer::TokenKind::Amp && !address)
+            {
+                const MethodNameBinding* target = nameBinding(syntax->first());
+                const bool bitField = target != nullptr &&
+                    !target->candidateMemberOrdinals.empty() && memberModel_ != nullptr &&
+                    target->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                    memberModel_->members()[target->candidateMemberOrdinals.front()].isBitField;
+                if (!bitField) return IterativeExpressionKind::StorageUnary;
+            }
+            else if (!userOperator && syntax->tokenKind() == lexer::TokenKind::Star)
+            {
+                return IterativeExpressionKind::StorageUnary;
+            }
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -437,6 +469,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (*currentKind == IterativeExpressionKind::Destruction)
                 {
                     currentAddressContext = frames.back().operandAddressContext;
+                }
+                else if (*currentKind == IterativeExpressionKind::StorageUnary)
+                {
+                    currentAddressContext =
+                        frames.back().syntax->tokenKind() != lexer::TokenKind::Star;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -1219,6 +1256,80 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     allocation->elementTypeKey = frame.core->elementTypeKey;
                     allocation->children.push_back(std::move(lowered));
                     lowered = std::move(allocation);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StorageUnary)
+                {
+                    const MethodExpressionTypeBinding* frameType = expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate = delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
+                        frame.syntax->tokenKind() == lexer::TokenKind::MinusMinus)
+                    {
+                        const MethodExpressionTypeBinding* targetType =
+                            expressionType(frame.syntax->first());
+                        auto step = makeNode(
+                            ProjectOopHirNodeKind::CompoundStore,
+                            frame.syntax,
+                            targetType->typeKey);
+                        step->operation = frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus
+                            ? lexer::TokenKind::Plus
+                            : lexer::TokenKind::Minus;
+                        step->booleanValue =
+                            frame.syntax->kind() == ast::AstNodeKind::PostfixExpression;
+                        std::unique_ptr<ProjectOopHirNode> one;
+                        if (ProjectTypeConversion::isPointer(targetType->typeKey))
+                        {
+                            step->elementTypeKey = targetType->typeKey.substr(
+                                0, targetType->typeKey.size() - 1);
+                            one = makeNode(
+                                ProjectOopHirNodeKind::IntegerConstant,
+                                frame.syntax,
+                                "builtin:nint");
+                            one->integerValue = 1;
+                        }
+                        else if (ProjectTypeConversion::isNumeric(targetType->typeKey) &&
+                                 !ProjectTypeConversion::isIntegral(targetType->typeKey))
+                        {
+                            one = makeNode(
+                                ProjectOopHirNodeKind::FloatingConstant,
+                                frame.syntax,
+                                targetType->typeKey);
+                            one->floatingValue = 1.0;
+                        }
+                        else
+                        {
+                            one = makeNode(
+                                ProjectOopHirNodeKind::IntegerConstant,
+                                frame.syntax,
+                                targetType->typeKey);
+                            one->integerValue = 1;
+                        }
+                        step->children.push_back(std::move(lowered));
+                        step->children.push_back(std::move(one));
+                        lowered = std::move(step);
+                    }
+                    else if (frame.syntax->tokenKind() == lexer::TokenKind::Amp)
+                    {
+                        auto address = makeNode(
+                            ProjectOopHirNodeKind::AddressValue,
+                            frame.syntax,
+                            resultType);
+                        address->children.push_back(std::move(lowered));
+                        lowered = std::move(address);
+                    }
+                    else if (!frame.addressContext)
+                    {
+                        auto load = makeNode(
+                            ProjectOopHirNodeKind::PointerLoad,
+                            frame.syntax,
+                            resultType);
+                        load->children.push_back(std::move(lowered));
+                        lowered = std::move(load);
+                    }
                     frames.pop_back();
                     continue;
                 }
