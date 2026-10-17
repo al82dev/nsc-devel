@@ -45,6 +45,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         BuiltinBinary,
         Conditional,
         InstanceField,
+        NullConditionalField,
     };
     struct IterativeExpressionFrame final
     {
@@ -114,6 +115,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         {
             return IterativeExpressionKind::Conditional;
         }
+        if (!address && syntax->kind() == ast::AstNodeKind::NullConditionalMemberExpression &&
+            accessorGetterBinding(syntax) == nullptr)
+        {
+            const MethodNameBinding* binding = nameBinding(syntax);
+            if (binding != nullptr &&
+                binding->kind == MethodNameBindingKind::ExplicitObjectField &&
+                binding->candidateMemberOrdinals.size() == 1U && syntax->first() != nullptr)
+            {
+                return IterativeExpressionKind::NullConditionalField;
+            }
+        }
         if (syntax->kind() == ast::AstNodeKind::MemberExpression &&
             coreBinding(syntax) == nullptr && accessorGetterBinding(syntax) == nullptr &&
             callBinding(syntax) == nullptr &&
@@ -150,16 +162,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 IterativeExpressionFrame frame{
                     *currentKind, current, currentAddressContext, 0U,
                     nullptr, nullptr, nullptr, false};
-                if (*currentKind == IterativeExpressionKind::InstanceField)
+                if (*currentKind == IterativeExpressionKind::InstanceField ||
+                    *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
                     frame.fieldBinding = nameBinding(current);
-                    frame.materializeReceiverTemporary =
-                        isStructValueType(frame.fieldBinding->receiverTypeKey) &&
-                        !isNaturallyAddressable(frame.fieldBinding->receiverSyntax);
+                    if (*currentKind == IterativeExpressionKind::InstanceField)
+                    {
+                        frame.materializeReceiverTemporary =
+                            isStructValueType(frame.fieldBinding->receiverTypeKey) &&
+                            !isNaturallyAddressable(frame.fieldBinding->receiverSyntax);
+                    }
                 }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::NullConditionalField)
+                    current = current->first();
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -276,6 +294,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         *field->memberOrdinal < memberModel_->members().size() &&
                         memberModel_->members()[*field->memberOrdinal].isVolatile;
                     field->baseReceiver = binding.baseReceiver;
+                    field->children.push_back(std::move(lowered));
+                    lowered = std::move(field);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NullConditionalField)
+                {
+                    const MethodExpressionTypeBinding* frameType =
+                        expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate =
+                        delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    const MethodExpressionTypeBinding* receiverFlow =
+                        expressionType(frame.syntax->first());
+                    const bool provenNonNull =
+                        receiverFlow != nullptr && receiverFlow->flowProvenNonNull;
+                    auto field = makeNode(
+                        provenNonNull
+                            ? ProjectOopHirNodeKind::FieldValue
+                            : ProjectOopHirNodeKind::NullConditionalFieldValue,
+                        frame.syntax,
+                        resultType);
+                    field->memberOrdinal = frame.fieldBinding->candidateMemberOrdinals.front();
+                    field->booleanValue = provenNonNull;
+                    field->volatileAccess = memberModel_ != nullptr &&
+                        *field->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*field->memberOrdinal].isVolatile;
                     field->children.push_back(std::move(lowered));
                     lowered = std::move(field);
                     frames.pop_back();
