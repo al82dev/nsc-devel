@@ -354,6 +354,14 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
 {
     error.clear();
     workerCount = std::max<std::size_t>(1, workerCount);
+    // NSC305-L06D. At O0, using the requested worker count as the code-unit count
+    // over-partitions cold builds: beyond eight units the duplicated LLVM setup,
+    // emission, verification and cache publication exceed the scheduling gain.
+    // Keep the requested worker pool, but cap only the number of O0 partitions.
+    constexpr std::size_t maxColdO0CodeUnits = 8;
+    const std::size_t partitionCount = optimizationLevel == LlvmOptimizationLevel::O0
+        ? std::min(workerCount, maxColdO0CodeUnits)
+        : workerCount;
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
 
     ProjectOopCodePartition partition;
@@ -362,7 +370,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     bool partitionPlanHit = false;
     if (cache != nullptr && cache->enabled())
     {
-        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(mirModel, workerCount);
+        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(mirModel, partitionCount);
         if (!cache->restoreCodePartitionPlan(
                 partitionPlanKey, partitionPlanPayload, partitionPlanHit, error))
             return nullptr;
@@ -374,7 +382,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             ? ProjectOopCodePartitionPolicy::StableIncremental
             : ProjectOopCodePartitionPolicy::Balanced;
     if (!partition.build(
-            mirModel, workerCount, error, partitionPolicy,
+            mirModel, partitionCount, error, partitionPolicy,
             partitionPlanHit ? partitionPlanPayload : std::string_view{}))
         return nullptr;
     // LLVM can only inline a call while caller and callee coexist in the same module. Until

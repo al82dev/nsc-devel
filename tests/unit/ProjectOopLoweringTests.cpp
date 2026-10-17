@@ -447,6 +447,19 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
                 "second equivalent generation restores every verified code unit from content cache" +
                     (objectGenerationError.empty() ? std::string{} : ": " + objectGenerationError));
 
+            objectGenerationError.clear();
+            auto coldO0Bundle = objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(),
+                nativesharp::llvm_backend::DebugInformationKind::None,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 16, {},
+                objectGenerationError);
+            tests.expect(coldO0Bundle != nullptr && objectGenerationError.empty() &&
+                    coldO0Bundle->codeUnitCount() <= 8 &&
+                    coldO0Bundle->objectFiles().size() == coldO0Bundle->codeUnitCount() + 1,
+                "O0 keeps the requested worker pool but caps cold LLVM code-unit granularity at eight" +
+                    (objectGenerationError.empty() ? std::string{} : ": " + objectGenerationError));
+
             nativesharp::linker::WindowsLibraryBuilder partitionedBuilder;
             const std::vector<std::string> exports = {mir.functions()[1].mangledName};
             std::string linkError;
