@@ -60,6 +60,34 @@ void testDeepAstWalk(
     tests.expect(compilation.namespaceFunctionModel() != nullptr,
         "the deep AST publishes its namespace-function model");
 }
+
+void testDeepExpressionName(
+    nativesharp::tests::TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeepExpressionName";
+    writeFile(
+        directory / "DeepExpressionName.nsproj",
+        "<Project><PropertyGroup><Name>DeepExpressionName</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
+
+    constexpr std::size_t depth = 2048;
+    std::string source = "class Box { int Run() { return Root";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += ".Part";
+    }
+    source += "(); } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(
+        directory / "DeepExpressionName.nsproj",
+        error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "namespace lookup reconstructs a 2,048-segment name without using the native stack");
+}
 }
 
 int main()
@@ -126,6 +154,7 @@ int main()
     }
 
     testDeepAstWalk(tests, root);
+    testDeepExpressionName(tests, root);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();

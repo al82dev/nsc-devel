@@ -295,16 +295,32 @@ std::string joinName(std::span<const std::string> segments)
 std::optional<std::string> expressionName(const ast::AstNode* expression)
 {
     if (expression == nullptr) return std::nullopt;
-    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
-        return expression->text().empty() ? std::nullopt
-                                        : std::optional<std::string>(expression->text());
-    if (expression->kind() != ast::AstNodeKind::MemberExpression ||
-        expression->first() == nullptr || expression->text().empty()) return std::nullopt;
-    std::optional<std::string> prefix = expressionName(expression->first());
-    if (!prefix.has_value()) return std::nullopt;
-    prefix->push_back('.');
-    *prefix += expression->text();
-    return prefix;
+    std::vector<std::string_view> members;
+    std::size_t outputSize = 0;
+    const ast::AstNode* current = expression;
+    while (current != nullptr && current->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        if (current->first() == nullptr || current->text().empty()) return std::nullopt;
+        members.push_back(current->text());
+        outputSize += current->text().size() + 1U;
+        current = current->first();
+    }
+    if (current == nullptr || current->kind() != ast::AstNodeKind::IdentifierExpression ||
+        current->text().empty())
+    {
+        return std::nullopt;
+    }
+
+    outputSize += current->text().size();
+    std::string result;
+    result.reserve(outputSize);
+    result += current->text();
+    for (auto iterator = members.rbegin(); iterator != members.rend(); ++iterator)
+    {
+        result.push_back('.');
+        result += *iterator;
+    }
+    return result;
 }
 }
 
