@@ -17,6 +17,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -1357,186 +1358,204 @@ void ProjectNameLookup::bindScope(
     }
 }
 
-void ProjectNameLookup::bindNode(
-    const ProjectSyntaxUnit& unit,
-    const ast::AstNode* node,
-    const std::vector<std::string>& namespaceSegments,
-    const LookupEnvironment& environment,
-    diagnostics::DiagnosticEngine& diagnostics,
-    UnitBindingIndex& index)
+void ProjectNameLookup::bindNode(const ProjectSyntaxUnit& unit, const ast::AstNode* node,
+                                 const std::vector<std::string>& namespaceSegments,
+                                 const LookupEnvironment& environment, diagnostics::DiagnosticEngine& diagnostics,
+                                 UnitBindingIndex& index)
 {
-    if (node == nullptr)
+    enum class Stage : std::uint8_t
     {
-        return;
-    }
+        Enter,
+        AfterArrayCounts
+    };
+    struct Frame final
+    {
+        const ast::AstNode* node = nullptr;
+        const LookupEnvironment* environment = nullptr;
+        Stage stage = Stage::Enter;
+    };
 
-    if (!node->genericParameters().empty())
+    std::deque<LookupEnvironment> scopedEnvironments;
+    std::vector<Frame> frames;
+    frames.push_back(Frame{node, &environment, Stage::Enter});
+    while (!frames.empty())
     {
-        // NSC-LIMIT-007, segunda vuelta. UNA PLANTILLA TAMBIEN RESUELVE SUS CONSTRAINTS, aunque
-        // nadie la instancie.
-        //
-        // Este `return` existe porque el cuerpo de una plantilla habla de `T`, que no es un tipo y
-        // no se puede resolver; la especializacion clonada es la que se visita. Pero los tipos
-        // ESCRITOS EN UN `where` no son eso: `where T : IComponente` nombra a `IComponente`, que
-        // existe con independencia de que `T` llegue a cerrarse. Sin esta vuelta, una plantilla
-        // nunca instanciada se llevaba sus errores de DECLARACION --`where T : MiEnum`-- sin que
-        // los viera nadie, y la promesa del ID quedaba a medias: el error existia solo si alguien
-        // usaba la plantilla.
-        //
-        // Solo los tipos de constraint: el argumento sustituido no existe en una plantilla, y el
-        // parser ya rechaza que un constraint nombre otro parametro generico, de modo que aqui no
-        // puede llegar por construccion un nombre irresoluble.
+        const Frame frame = frames.back();
+        frames.pop_back();
+        node = frame.node;
+        if (node == nullptr || frame.environment == nullptr)
+            continue;
+        const LookupEnvironment* activeEnvironment = frame.environment;
+
+        if (frame.stage == Stage::Enter)
+        {
+            if (!node->genericParameters().empty())
+            {
+                // NSC-LIMIT-007, segunda vuelta. UNA PLANTILLA TAMBIEN RESUELVE SUS
+                // CONSTRAINTS, aunque nadie la instancie.
+                //
+                // Este `return` existe porque el cuerpo de una plantilla habla de `T`,
+                // que no es un tipo y no se puede resolver; la especializacion clonada
+                // es la que se visita. Pero los tipos ESCRITOS EN UN `where` no son
+                // eso: `where T : IComponente` nombra a `IComponente`, que existe con
+                // independencia de que `T` llegue a cerrarse. Sin esta vuelta, una
+                // plantilla nunca instanciada se llevaba sus errores de DECLARACION
+                // --`where T : MiEnum`-- sin que los viera nadie, y la promesa del ID
+                // quedaba a medias: el error existia solo si alguien usaba la
+                // plantilla.
+                //
+                // Solo los tipos de constraint: el argumento sustituido no existe en
+                // una plantilla, y el parser ya rechaza que un constraint nombre otro
+                // parametro generico, de modo que aqui no puede llegar por construccion
+                // un nombre irresoluble.
+                for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+                {
+                    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+                    {
+                        bindTypeSyntax(unit, constraint, namespaceSegments, *activeEnvironment, diagnostics, index);
+                    }
+                    if (clause.equalityConstraint != nullptr &&
+                        std::find(node->genericParameters().begin(), node->genericParameters().end(),
+                                  std::string(clause.equalityConstraint->baseName())) ==
+                            node->genericParameters().end())
+                    {
+                        std::string constantType;
+                        std::string constantValue;
+                        if (!language::parseConstGenericArgumentMarker(clause.equalityConstraint->baseName(),
+                                                                       constantType, constantValue))
+                        {
+                            bindTypeSyntax(unit, clause.equalityConstraint, namespaceSegments, *activeEnvironment,
+                                           diagnostics, index);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+            {
+                std::vector<std::string> nestedNamespace = namespaceSegments;
+                const std::vector<std::string> segments = splitQualifiedName(node->text());
+                nestedNamespace.insert(nestedNamespace.end(), segments.begin(), segments.end());
+                bindScope(unit, node, nestedNamespace, *activeEnvironment, diagnostics, index);
+                continue;
+            }
+
+            // NSC-LIMIT-009. Entrar en un tipo AMPLIA el alcance: dentro de `Outer`,
+            // `Item` se busca primero como `Outer.Item`, y un anidado `private` de
+            // `Outer` se ve. El entorno se copia solo cuando de verdad se entra en un
+            // tipo; en cualquier otro nodo se sigue usando el heredado, que es la
+            // referencia que llega, sin copias por nodo del arbol.
+            if (isNamedTypeDeclaration(node->kind()))
+            {
+                const auto ordinal = typeOrdinalBySyntax_.find(node);
+                if (ordinal != typeOrdinalBySyntax_.end())
+                {
+                    scopedEnvironments.push_back(*activeEnvironment);
+                    scopedEnvironments.back().enclosingTypeOrdinals.push_back(ordinal->second);
+                    activeEnvironment = &scopedEnvironments.back();
+                }
+            }
+            const LookupEnvironment& scope = *activeEnvironment;
+
+            if (node->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope, index);
+            }
+            else if (node->kind() == ast::AstNodeKind::NameOfExpression)
+            {
+                const ast::AstNode* target = node->first();
+                while (target != nullptr && (target->kind() == ast::AstNodeKind::CallExpression ||
+                                             target->kind() == ast::AstNodeKind::IndexExpression))
+                    target = target->first();
+                if (node->typeSyntax() != nullptr && node->typeSyntax()->typeArguments().empty())
+                {
+                    bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
+                }
+                else
+                {
+                    bindExpressionTypeReceiver(unit, target, namespaceSegments, scope, index);
+                    if (node->typeSyntax() != nullptr)
+                    {
+                        for (const ast::TypeSyntax* argument : node->typeSyntax()->typeArguments())
+                            bindTypeSyntax(unit, argument, namespaceSegments, scope, diagnostics, index);
+                    }
+                }
+            }
+
+            if (node->typeSyntax() != nullptr && node->kind() != ast::AstNodeKind::NameOfExpression)
+            {
+                bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
+                std::vector<const ast::AstNode*> arrayCounts;
+                for (const ast::TypeModifierSyntax& modifier : node->typeSyntax()->modifiers())
+                {
+                    if (modifier.arrayCount != nullptr)
+                        arrayCounts.push_back(modifier.arrayCount);
+                }
+                if (!arrayCounts.empty())
+                {
+                    frames.push_back(Frame{node, activeEnvironment, Stage::AfterArrayCounts});
+                    for (auto iterator = arrayCounts.rbegin(); iterator != arrayCounts.rend(); ++iterator)
+                        frames.push_back(Frame{*iterator, activeEnvironment, Stage::Enter});
+                    continue;
+                }
+            }
+        }
+
+        const LookupEnvironment& scope = *activeEnvironment;
+        if (node->throwsTypeSyntax() != nullptr)
+        {
+            bindTypeSyntax(unit, node->throwsTypeSyntax(), namespaceSegments, scope, diagnostics, index);
+        }
+        for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
+        {
+            bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics, index);
+        }
+        // NSC-LIMIT-007. Los tipos escritos en un `where` son referencias de tipo
+        // como cualquier otra y se resuelven por el mismo camino: con el mismo
+        // alcance, los mismos `using` y los mismos alias. Sin esta vuelta quedaban
+        // sin resolver y la validacion de constraints solo veia
+        // `unresolved:IComponente` -- que la habria obligado a llevar su propia
+        // resolucion de nombres, o sea una segunda copia de la unica cosa que este
+        // fichero hace.
         for (const ast::GenericConstraintClause& clause : node->genericConstraints())
         {
             for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             {
-                bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics, index);
+                bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics, index);
             }
-            if (clause.equalityConstraint != nullptr &&
-                std::find(
-                    node->genericParameters().begin(), node->genericParameters().end(),
-                    std::string(clause.equalityConstraint->baseName())) ==
-                    node->genericParameters().end())
+            if (clause.equalityConstraint != nullptr)
             {
                 std::string constantType;
                 std::string constantValue;
-                if (!language::parseConstGenericArgumentMarker(
-                        clause.equalityConstraint->baseName(), constantType, constantValue))
+                if (!language::parseConstGenericArgumentMarker(clause.equalityConstraint->baseName(), constantType,
+                                                               constantValue))
                 {
-                    bindTypeSyntax(
-                        unit, clause.equalityConstraint, namespaceSegments, environment,
-                        diagnostics, index);
+                    bindTypeSyntax(unit, clause.equalityConstraint, namespaceSegments, scope, diagnostics, index);
                 }
             }
-        }
-        return;
-    }
-
-    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
-    {
-        std::vector<std::string> nestedNamespace = namespaceSegments;
-        const std::vector<std::string> segments = splitQualifiedName(node->text());
-        nestedNamespace.insert(nestedNamespace.end(), segments.begin(), segments.end());
-        bindScope(unit, node, nestedNamespace, environment, diagnostics, index);
-        return;
-    }
-
-    // NSC-LIMIT-009. Entrar en un tipo AMPLIA el alcance: dentro de `Outer`, `Item` se busca
-    // primero como `Outer.Item`, y un anidado `private` de `Outer` se ve. El entorno se copia solo
-    // cuando de verdad se entra en un tipo; en cualquier otro nodo se sigue usando el heredado,
-    // que es la referencia que llega, sin copias por nodo del arbol.
-    LookupEnvironment scopedEnvironment;
-    const LookupEnvironment* activeEnvironment = &environment;
-    if (isNamedTypeDeclaration(node->kind()))
-    {
-        const auto ordinal = typeOrdinalBySyntax_.find(node);
-        if (ordinal != typeOrdinalBySyntax_.end())
-        {
-            scopedEnvironment = environment;
-            scopedEnvironment.enclosingTypeOrdinals.push_back(ordinal->second);
-            activeEnvironment = &scopedEnvironment;
-        }
-    }
-    const LookupEnvironment& scope = *activeEnvironment;
-
-    if (node->kind() == ast::AstNodeKind::MemberExpression)
-    {
-        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope, index);
-    }
-    else if (node->kind() == ast::AstNodeKind::NameOfExpression)
-    {
-        const ast::AstNode* target = node->first();
-        while (target != nullptr &&
-               (target->kind() == ast::AstNodeKind::CallExpression ||
-                target->kind() == ast::AstNodeKind::IndexExpression))
-            target = target->first();
-        if (node->typeSyntax() != nullptr && node->typeSyntax()->typeArguments().empty())
-        {
-            bindTypeSyntax(
-                unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
-        }
-        else
-        {
-            bindExpressionTypeReceiver(unit, target, namespaceSegments, scope, index);
-            if (node->typeSyntax() != nullptr)
+            std::string substitutedConstantType;
+            std::string substitutedConstantValue;
+            if (clause.substitutedArgument != nullptr &&
+                !language::parseConstGenericArgumentMarker(clause.substitutedArgument->baseName(),
+                                                           substitutedConstantType, substitutedConstantValue))
             {
-                for (const ast::TypeSyntax* argument : node->typeSyntax()->typeArguments())
-                    bindTypeSyntax(
-                        unit, argument, namespaceSegments, scope, diagnostics, index);
+                bindTypeSyntax(unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics, index);
             }
         }
-    }
 
-    if (node->typeSyntax() != nullptr && node->kind() != ast::AstNodeKind::NameOfExpression)
-    {
-        bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
-        for (const ast::TypeModifierSyntax& modifier : node->typeSyntax()->modifiers())
-        {
-            if (modifier.arrayCount != nullptr)
-            {
-                bindNode(unit, modifier.arrayCount, namespaceSegments, scope, diagnostics, index);
-            }
-        }
-    }
-    if (node->throwsTypeSyntax() != nullptr)
-    {
-        bindTypeSyntax(
-            unit, node->throwsTypeSyntax(), namespaceSegments, scope, diagnostics, index);
-    }
-    for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
-    {
-        bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics, index);
-    }
-    // NSC-LIMIT-007. Los tipos escritos en un `where` son referencias de tipo como cualquier otra
-    // y se resuelven por el mismo camino: con el mismo alcance, los mismos `using` y los mismos
-    // alias. Sin esta vuelta quedaban sin resolver y la validacion de constraints solo veia
-    // `unresolved:IComponente` -- que la habria obligado a llevar su propia resolucion de
-    // nombres, o sea una segunda copia de la unica cosa que este fichero hace.
-    for (const ast::GenericConstraintClause& clause : node->genericConstraints())
-    {
-        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
-        {
-            bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics, index);
-        }
-        if (clause.equalityConstraint != nullptr)
-        {
-            std::string constantType;
-            std::string constantValue;
-            if (!language::parseConstGenericArgumentMarker(
-                    clause.equalityConstraint->baseName(), constantType, constantValue))
-            {
-                bindTypeSyntax(
-                    unit, clause.equalityConstraint, namespaceSegments, scope, diagnostics, index);
-            }
-        }
-        std::string substitutedConstantType;
-        std::string substitutedConstantValue;
-        if (clause.substitutedArgument != nullptr &&
-            !language::parseConstGenericArgumentMarker(
-                clause.substitutedArgument->baseName(),
-                substitutedConstantType,
-                substitutedConstantValue))
-        {
-            bindTypeSyntax(
-                unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics, index);
-        }
-    }
-
-    bindNode(unit, node->first(), namespaceSegments, scope, diagnostics, index);
-    bindNode(unit, node->second(), namespaceSegments, scope, diagnostics, index);
-    bindNode(unit, node->third(), namespaceSegments, scope, diagnostics, index);
-    for (const ast::AstNode* child : node->children())
-    {
-        bindNode(unit, child, namespaceSegments, scope, diagnostics, index);
+        const std::span<ast::AstNode* const> children = node->children();
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            frames.push_back(Frame{*iterator, activeEnvironment, Stage::Enter});
+        frames.push_back(Frame{node->third(), activeEnvironment, Stage::Enter});
+        frames.push_back(Frame{node->second(), activeEnvironment, Stage::Enter});
+        frames.push_back(Frame{node->first(), activeEnvironment, Stage::Enter});
     }
 }
 
-void ProjectNameLookup::bindExpressionTypeReceiver(
-    const ProjectSyntaxUnit& unit,
-    const ast::AstNode* expression,
-    const std::vector<std::string>& namespaceSegments,
-    const LookupEnvironment& environment,
-    UnitBindingIndex& index)
+void ProjectNameLookup::bindExpressionTypeReceiver(const ProjectSyntaxUnit& unit, const ast::AstNode* expression,
+                                                   const std::vector<std::string>& namespaceSegments,
+                                                   const LookupEnvironment& environment, UnitBindingIndex& index)
 {
     if (expression == nullptr || index.expressionTypeBindingBySyntax.contains(expression))
     {
@@ -1548,16 +1567,16 @@ void ProjectNameLookup::bindExpressionTypeReceiver(
     {
         return;
     }
-    std::vector<std::size_t> candidates = resolveExpressionTypeCandidates(
-        unit.projectOrdinal(), namespaceSegments, environment, *writtenName);
+    std::vector<std::size_t> candidates =
+        resolveExpressionTypeCandidates(unit.projectOrdinal(), namespaceSegments, environment, *writtenName);
     if (candidates.empty())
     {
         return;
     }
 
     const std::size_t ordinal = index.expressionTypeBindings.size();
-    index.expressionTypeBindings.push_back(ExpressionTypeNameBinding{
-        expression, *writtenName, std::move(candidates), environment.enclosingTypeOrdinals});
+    index.expressionTypeBindings.push_back(
+        ExpressionTypeNameBinding{expression, *writtenName, std::move(candidates), environment.enclosingTypeOrdinals});
     index.expressionTypeBindingBySyntax.emplace(expression, ordinal);
 }
 

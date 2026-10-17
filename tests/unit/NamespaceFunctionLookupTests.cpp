@@ -82,11 +82,11 @@ void testDeepExpressionName(
 
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
-    const bool ok = compilation.compileProjectGenerics(
+    const bool ok = compilation.compileProjectNames(
         directory / "DeepExpressionName.nsproj",
         error);
     tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
-        "generic lookup reconstructs a 16,384-segment name without using the native stack");
+        "name lookup binds a 16,384-segment expression without using the native stack");
 }
 }
 
