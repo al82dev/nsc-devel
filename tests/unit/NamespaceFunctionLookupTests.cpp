@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <string_view>
 
 namespace
@@ -23,6 +24,41 @@ const nativesharp::frontend::NamespaceFunctionReferenceBinding* findBinding(
     for (const auto& binding : model.referenceBindings())
         if (binding.writtenName == writtenName) return &binding;
     return nullptr;
+}
+
+void testDeepAstWalk(
+    nativesharp::tests::TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeepAstWalk";
+    writeFile(
+        directory / "DeepAstWalk.nsproj",
+        "<Project><PropertyGroup><Name>DeepAstWalk</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
+
+    constexpr std::size_t depth = 1024;
+    std::string source = "class Box { int Run() {\n";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "if (true) {\n";
+    }
+    source += "return 0;\n";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "}\n";
+    }
+    source += "} }\n";
+    writeFile(directory / "Main.ns", source);
+
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(
+        directory / "DeepAstWalk.nsproj",
+        error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "namespace-function lookup walks 1,024 nested controls without using the native stack");
+    tests.expect(compilation.namespaceFunctionModel() != nullptr,
+        "the deep AST publishes its namespace-function model");
 }
 }
 
@@ -88,6 +124,8 @@ int main()
                 "call syntax maps back to its stable binding");
         }
     }
+
+    testDeepAstWalk(tests, root);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();

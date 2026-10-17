@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -920,17 +919,31 @@ bool ProjectNamespaceFunctionModel::build(
         const ProjectSyntaxUnit& unit = *unitPointer;
         std::unordered_set<const ast::AstNode*> visited;
         std::unordered_set<const ast::AstNode*> directCallCallees;
-        std::function<void(const ast::AstNode*, const std::string&, const FunctionLookupEnvironment&)>
-            walkNode;
-        std::function<void(const ast::AstNode*, const std::string&, const FunctionLookupEnvironment&)>
-            walkScope;
+        enum class WalkKind
+        {
+            Scope,
+            Node
+        };
+        struct WalkWork
+        {
+            WalkKind kind;
+            const ast::AstNode* node;
+            std::size_t namespaceIndex;
+            std::size_t environmentIndex;
+        };
+        std::vector<std::string> lexicalNamespaces{std::string{}};
+        std::vector<FunctionLookupEnvironment> environments{FunctionLookupEnvironment{}};
+        std::vector<WalkWork> work;
 
-        walkScope = [&](const ast::AstNode* scopeNode,
-                        const std::string& lexicalNamespace,
-                        const FunctionLookupEnvironment& inherited)
+        const auto walkScope = [&](const ast::AstNode* scopeNode,
+                                   std::size_t namespaceIndex,
+                                   std::size_t inheritedEnvironmentIndex)
         {
             if (scopeNode == nullptr) return;
-            FunctionLookupEnvironment environment = inherited;
+            const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
+            const std::size_t environmentIndex = environments.size();
+            environments.push_back(environments[inheritedEnvironmentIndex]);
+            FunctionLookupEnvironment& environment = environments[environmentIndex];
             for (const ast::AstNode* child : scopeNode->children())
             {
                 if (child == nullptr) continue;
@@ -956,8 +969,10 @@ bool ProjectNamespaceFunctionModel::build(
                 }
             }
 
-            for (const ast::AstNode* child : scopeNode->children())
+            const std::vector<ast::AstNode*>& children = scopeNode->children();
+            for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
             {
+                const ast::AstNode* child = *iterator;
                 if (child == nullptr ||
                     child->kind() == ast::AstNodeKind::UsingNamespaceDirective ||
                     child->kind() == ast::AstNodeKind::UsingAliasDirective)
@@ -973,20 +988,32 @@ bool ProjectNamespaceFunctionModel::build(
                         if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
                         nestedNamespace += segment;
                     }
-                    walkScope(child, nestedNamespace, environment);
+                    const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
+                    lexicalNamespaces.push_back(std::move(nestedNamespace));
+                    work.push_back(WalkWork{
+                        WalkKind::Scope,
+                        child,
+                        nestedNamespaceIndex,
+                        environmentIndex});
                 }
                 else
                 {
-                    walkNode(child, lexicalNamespace, environment);
+                    work.push_back(WalkWork{
+                        WalkKind::Node,
+                        child,
+                        namespaceIndex,
+                        environmentIndex});
                 }
             }
         };
 
-        walkNode = [&](const ast::AstNode* node,
-                       const std::string& lexicalNamespace,
-                       const FunctionLookupEnvironment& environment)
+        const auto walkNode = [&](const ast::AstNode* node,
+                                  std::size_t namespaceIndex,
+                                  std::size_t environmentIndex)
         {
             if (node == nullptr || !visited.insert(node).second) return;
+            const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
+            const FunctionLookupEnvironment& environment = environments[environmentIndex];
             if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
             {
                 std::string nestedNamespace = lexicalNamespace;
@@ -995,7 +1022,13 @@ bool ProjectNamespaceFunctionModel::build(
                     if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
                     nestedNamespace += segment;
                 }
-                walkScope(node, nestedNamespace, environment);
+                const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
+                lexicalNamespaces.push_back(std::move(nestedNamespace));
+                work.push_back(WalkWork{
+                    WalkKind::Scope,
+                    node,
+                    nestedNamespaceIndex,
+                    environmentIndex});
                 return;
             }
 
@@ -1205,14 +1238,37 @@ bool ProjectNamespaceFunctionModel::build(
                     }
                 }
             }
-            walkNode(node->first(), lexicalNamespace, environment);
-            walkNode(node->second(), lexicalNamespace, environment);
-            walkNode(node->third(), lexicalNamespace, environment);
-            for (const ast::AstNode* child : node->children())
-                walkNode(child, lexicalNamespace, environment);
+            const std::vector<ast::AstNode*>& children = node->children();
+            for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            {
+                work.push_back(WalkWork{
+                    WalkKind::Node,
+                    *iterator,
+                    namespaceIndex,
+                    environmentIndex});
+            }
+            work.push_back(WalkWork{
+                WalkKind::Node, node->third(), namespaceIndex, environmentIndex});
+            work.push_back(WalkWork{
+                WalkKind::Node, node->second(), namespaceIndex, environmentIndex});
+            work.push_back(WalkWork{
+                WalkKind::Node, node->first(), namespaceIndex, environmentIndex});
         };
 
-        walkScope(unit.syntaxTree(), {}, FunctionLookupEnvironment{});
+        work.push_back(WalkWork{WalkKind::Scope, unit.syntaxTree(), 0U, 0U});
+        while (!work.empty())
+        {
+            const WalkWork current = work.back();
+            work.pop_back();
+            if (current.kind == WalkKind::Scope)
+            {
+                walkScope(current.node, current.namespaceIndex, current.environmentIndex);
+            }
+            else
+            {
+                walkNode(current.node, current.namespaceIndex, current.environmentIndex);
+            }
+        }
     }
 
     built_ = diagnostics.errorCount() == initialErrorCount;
