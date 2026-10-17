@@ -440,6 +440,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/HIR/HirAggregateLowering.cpp
     src/Frontend/HIR/HirAsyncLowering.cpp
     src/Frontend/HIR/HirCallLowering.cpp
+    src/Frontend/HIR/HirConversion.cpp
     src/Frontend/HIR/HirExpressionMachine.cpp
     src/Frontend/HIR/HirExceptionAndCleanup.cpp
     src/Frontend/HIR/HirFunctionLowerer.cpp
