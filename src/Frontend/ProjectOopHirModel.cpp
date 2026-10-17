@@ -1,6 +1,7 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "HIR/HirLoweringSupport.h"
 
 #include "nativesharp/Sema/EffectContext.h"
 
@@ -569,18 +570,6 @@ std::string typeSuffix(const ClassMemberSymbol& member)
         result += "__to__" + compilation::symbolFragmentForIdentityKey(member.declaredTypeKey);
     }
     return result;
-}
-
-std::unique_ptr<ProjectOopHirNode> makeNode(
-    ProjectOopHirNodeKind kind,
-    const ast::AstNode* syntax,
-    std::string typeKey = {})
-{
-    auto node = std::make_unique<ProjectOopHirNode>();
-    node->kind = kind;
-    node->syntax = syntax;
-    node->typeKey = std::move(typeKey);
-    return node;
 }
 
 // Item 323 deliberately proves only uses that cannot expose the address of the containing class.
