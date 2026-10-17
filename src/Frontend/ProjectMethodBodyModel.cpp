@@ -33,7 +33,9 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <fstream>
 #include <limits>
+#include <mutex>
 #include <ranges>
 #include <string>
 #include <unordered_set>
@@ -44,6 +46,37 @@ namespace nativesharp::frontend
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+// INSTRUMENTATION CODE: temporary crash-surviving breadcrumbs for the deterministic
+// method-bodies stack overflow. Each record opens, flushes and closes the file so the last
+// completed boundary remains available when Windows terminates the compiler process.
+constexpr char kMethodBodyTracePath[] = R"(A:\temp\nsc-method-bodies-trace.log)";
+
+std::mutex& methodBodyTraceMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+void resetMethodBodyTrace()
+{
+    const std::lock_guard<std::mutex> lock(methodBodyTraceMutex());
+    std::ofstream trace(kMethodBodyTracePath, std::ios::binary | std::ios::trunc);
+    if (!trace) return;
+    trace << "nsc-method-bodies-trace version=1\r\n";
+    trace.flush();
+}
+
+void writeMethodBodyTrace(std::string_view event, std::string_view detail = {})
+{
+    const std::lock_guard<std::mutex> lock(methodBodyTraceMutex());
+    std::ofstream trace(kMethodBodyTracePath, std::ios::binary | std::ios::app);
+    if (!trace) return;
+    trace << "[NSC METHOD BODIES INSTRUMENTATION CODE] event=" << event;
+    if (!detail.empty()) trace << '|' << detail;
+    trace << "\r\n";
+    trace.flush();
+}
 
 language::PointerContract pointerContractFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
@@ -949,6 +982,15 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
 ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
     const ProjectCallableAnalysisContext& context) const
 {
+    const ClassMemberSymbol* callable = methodSymbol(context.callableOrdinal());
+    std::string traceDetail = "wave=" + std::to_string(context.waveOrdinal()) +
+        "|ordinal=" + std::to_string(context.callableOrdinal());
+    if (callable != nullptr)
+    {
+        traceDetail += "|name=" + callable->name + "|signature=" + callable->signatureKey +
+            "|source=" + callable->sourcePath;
+    }
+    writeMethodBodyTrace("CALLABLE-BEGIN", traceDetail);
     std::unique_ptr<ProjectMethodBodyModel> shard = createCallableShard(context);
     diagnostics::DiagnosticEngine localDiagnostics(
         std::numeric_limits<std::size_t>::max());
@@ -958,6 +1000,7 @@ ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
         std::move(shard), std::move(localDiagnostics));
     collectCallableDiscoveries(result);
     result.normalizeDiscoveredCallables();
+    writeMethodBodyTrace("CALLABLE-END", traceDetail);
     return result;
 }
 
@@ -1013,6 +1056,12 @@ bool ProjectMethodBodyModel::build(
     {
         return !diagnostics.hasErrors();
     }
+    resetMethodBodyTrace();
+    writeMethodBodyTrace(
+        "BUILD-BEGIN",
+        "members=" + std::to_string(memberModel.members().size()) +
+            "|namespace-functions=" + std::to_string(namespaceFunctionModel.functions().size()) +
+            "|workers=" + std::to_string(options.workerCount));
     ownershipFlowStatistics_ = {};
     escapePropagationStatistics_ = {};
     callableAnalysisStatistics_ = {};
@@ -1275,6 +1324,8 @@ bool ProjectMethodBodyModel::build(
             callableWorklist.push_back(namespaceCallableBase_ + functionOrdinal);
     }
     callableAnalysisStatistics_.callablesQueued = callableWorklist.size();
+    writeMethodBodyTrace(
+        "WORKLIST-READY", "callables=" + std::to_string(callableWorklist.size()));
 
     std::size_t workCursor = 0;
     std::size_t waveOrdinal = 0;
@@ -1310,6 +1361,10 @@ bool ProjectMethodBodyModel::build(
 
         std::vector<ProjectCallableAnalysisResult> waveResults;
         std::string waveError;
+        writeMethodBodyTrace(
+            "WAVE-BEGIN",
+            "wave=" + std::to_string(waveOrdinal) +
+                "|callables=" + std::to_string(eligibleCallables.size()));
         const bool waveComplete = waveScheduler.run(
             eligibleCallables,
             waveOrdinal,
@@ -1357,9 +1412,15 @@ bool ProjectMethodBodyModel::build(
         callableWorklist.insert(
             callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
         callableAnalysisStatistics_.callablesQueued += newlyDemanded.size();
+        writeMethodBodyTrace(
+            "WAVE-END",
+            "wave=" + std::to_string(waveOrdinal) +
+                "|analyzed=" + std::to_string(eligibleCallables.size()) +
+                "|discovered=" + std::to_string(newlyDemanded.size()));
         ++waveOrdinal;
     }
 
+    writeMethodBodyTrace("FIELD-INITIALIZERS-BEGIN");
     // Stage 37: field initializers are semantic executable contexts too.  They deliberately have
     // no implicit-this context: an initializer may use literals, locals do not exist, and static
     // members may be referenced, but partially-constructed instance state is not addressable.
@@ -1468,6 +1529,7 @@ bool ProjectMethodBodyModel::build(
                 "const fields are limited to integral, bool, float, double, and string types");
         }
     }
+    writeMethodBodyTrace("FIELD-INITIALIZERS-END");
     // NSC-LIMIT-019. Validate after every initializer has been analyzed. ProjectMemberModel orders
     // types by stable identity rather than source order, so a transitive evaluator needs all name
     // and expression bindings to exist before it follows qualified dependencies.
@@ -1489,6 +1551,7 @@ bool ProjectMethodBodyModel::build(
         }
     }
 
+    writeMethodBodyTrace("POST-ANALYSIS-BEGIN");
     verifyOutParameterAssignments(diagnostics);
     verifyRequiredFieldAssignments(diagnostics);
 
@@ -1552,8 +1615,11 @@ bool ProjectMethodBodyModel::build(
         }
     }
 
+    writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);
+    writeMethodBodyTrace("ESCAPE-SUMMARIES-END");
     built_ = true;
+    writeMethodBodyTrace("BUILD-END");
     return !diagnostics.hasErrors();
 }
 
