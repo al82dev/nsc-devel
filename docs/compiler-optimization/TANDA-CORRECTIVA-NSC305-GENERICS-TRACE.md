@@ -15,12 +15,12 @@ dos correcciones locales anteriores de G09 no cierran el incidente externo.
 | Dimensión | Alcance autorizado |
 |---|---|
 | Objetivo | Persistir el último punto causal alcanzado dentro de `generics` antes de que Windows termine el proceso. |
-| Naturaleza | Instrumentación diagnóstica, optativa y sin efecto semántico. |
+| Naturaleza | Instrumentación diagnóstica, temporal y sin efecto semántico. |
 | Repositorio | Sólo `A:\nsc-devel`. |
 | Componentes | Driver, `ProjectCompilation`, `ProjectGenericModel` y prueba focal del driver. |
 | Comportamiento preservado | Sintaxis, diagnósticos, especializaciones, orden, artefactos, ABI y NSMETA. |
 | Consola | El progreso normal conserva su salida concisa; el detalle no se imprime en consola. |
-| Archivo | Sólo se escribe cuando el usuario proporciona `--generics-trace=<file>`. |
+| Archivo | Temporalmente usa `A:\temp\nsc-generics-trace.log`; una opción explícita reemplaza la ruta. |
 | Acciones prohibidas | Aumentar stack, reducir límites, ocultar recursión, corregir causas no demostradas, activar el paralelismo G09, abrir L05, ejecutar baseline, instalar o desplegar. |
 | Criterio inmediato | Un build focal produce un log ordenado, vaciado por línea, con build hash y checkpoints internos, sin añadirlos a stdout. |
 | Criterio causal posterior | El escenario externo produce un último checkpoint que reduce el defecto a una subfase, unidad, onda, demanda o especialización concreta. |
@@ -43,7 +43,19 @@ resumen. La consola únicamente conservaba `-- NSC: generics`, de modo que no di
 La ausencia de esa frontera obligaba a tratar muchas funciones recursivas como sospechosas sin una
 cadena causal. Eso no satisface la regla de localidad causal.
 
-## Contrato de `--generics-trace`
+## Contrato temporal del rastro
+
+Mientras permanezca abierta esta investigación, toda acción sobre un proyecto `.nsproj` abre y
+trunca automáticamente:
+
+```text
+A:\temp\nsc-generics-trace.log
+```
+
+No se requiere modificar la GUI ni su lista de parámetros. Esta activación predeterminada es
+instrumentación temporal y debe retirarse después de corregir y verificar el `0xC00000FD`.
+
+La opción explícita conserva prioridad y permite reemplazar la ruta predeterminada:
 
 La nueva opción es:
 
@@ -66,7 +78,7 @@ El archivo:
 5. ejecuta `flush()` después de cada línea;
 6. no depende de que el proceso termine correctamente;
 7. no añade el detalle a stdout ni a stderr;
-8. no se crea cuando la opción no está presente.
+8. se crea automáticamente para acciones sobre `.nsproj`, aunque la opción no esté presente.
 
 Un trabajo genera siempre un par `WorkStarted` / `WorkFinished` durante una salida normal. Si el
 proceso muere dentro del trabajo, el inicio ya quedó persistido y el cierre falta. La última apertura
@@ -115,6 +127,11 @@ una optimización distinta y queda expresamente fuera de este alcance.
 
 ## Validación local
 
+- Activación temporal predeterminada, build previo al commit `d8df9949aaafef10`: PASS.
+- La ejecución focal de `generics-32` omitió deliberadamente `--generics-trace`: PASS, exit 0.
+- `A:\temp\nsc-generics-trace.log` fue creado automáticamente con 231 líneas y 18,403 bytes.
+- El encabezado registró `d8df9949aaafef10` y el evento 230 cerró
+  `generics.type-demand-waves`; ningún checkpoint detallado apareció en consola.
 - Construcción focal de `nsc`: PASS; contrato de runtime estático: PASS.
 - Build focal usado por esa validación previa al commit: `649a4b90937db242`.
 - Ejecución focal de `generics-32` con `-j 16`, `--progress` y `--generics-trace`: PASS, exit 0.
@@ -129,12 +146,9 @@ una optimización distinta y queda expresamente fuera de este alcance.
 
 ## Siguiente evidencia obligatoria
 
-El escenario externo debe repetirse con el `nsc.exe` construido por este commit y añadir una ruta
-explícita al comando, por ejemplo:
-
-```text
---generics-trace=<ruta-escribible>\nsc-generics-trace.log
-```
+El escenario externo debe repetirse desde la GUI, sin cambiar sus parámetros, con el `nsc.exe`
+construido por este cambio. El directorio `A:\temp` ya fue preparado por el usuario y el compilador
+escribirá automáticamente `A:\temp\nsc-generics-trace.log`.
 
 Después del `0xC00000FD` se conserva el archivo completo. No se modifica código causal hasta leer:
 

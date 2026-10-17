@@ -133,6 +133,11 @@ namespace
 {
 using target::BuiltinLayoutKind;
 
+// Temporary crash instrumentation for the active NSC 3.0.5 generics investigation.
+// Remove this default after the external STATUS_STACK_OVERFLOW has been corrected.
+constexpr char kTemporaryDefaultGenericsTracePath[] =
+    R"(A:\temp\nsc-generics-trace.log)";
+
 bool parseBoundedDecimal(
     std::string_view text, std::size_t maximum, std::size_t& value) noexcept
 {
@@ -4650,6 +4655,15 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         isProjectBuildAction(normalizedArguments[0]);
     const bool projectSettingsAction = normalizedArguments.size() >= 2U &&
         std::filesystem::path(std::string(normalizedArguments[1])).extension() == ".nsproj";
+    if (projectSettingsAction && !genericsTraceSeen)
+    {
+        if (!executionScope.openGenericsTrace(kTemporaryDefaultGenericsTracePath))
+        {
+            error << "nsc: error: could not open temporary generics trace file '"
+                  << kTemporaryDefaultGenericsTracePath << "'\n";
+            return ExitCode::CompilationError;
+        }
+    }
     if (projectSettingsAction)
     {
         std::string settingsError;
@@ -6000,8 +6014,9 @@ void Driver::printHelp(std::ostream &output)
               "by default; --progress enables the same stream on diagnostic commands.\n"
            << "--progress=json emits one stable JSON event per line; "
               "--progress-format=text|json selects the renderer.\n"
-           << "--generics-trace=<file> flushes detailed generics checkpoints directly to a file "
-              "without adding them to console progress.\n"
+           << "--generics-trace=<file> overrides the temporary default "
+              "A:\\temp\\nsc-generics-trace.log and keeps detailed checkpoints out of console "
+              "progress.\n"
            << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
            << "--language en|es selects human-readable console messages; --no-banner suppresses "
