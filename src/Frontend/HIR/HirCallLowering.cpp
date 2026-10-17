@@ -466,6 +466,56 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
     return node;
 }
 
+ProjectOopHirModel::BoundCallTarget ProjectOopHirModel::resolveBoundCallTarget(
+    const MethodCallBinding& binding) const noexcept
+{
+    BoundCallTarget target{
+        *binding.selectedMemberOrdinal,
+        binding.receiverSyntax,
+        binding.receiverTypeKey,
+        binding.interfaceCall};
+    // A cast of a fresh concrete object has one exact dynamic type. Preserve the historical
+    // interface-slot devirtualization before an iterative frame chooses which receiver to visit.
+    if (!target.interfaceDispatch || interfaceModel_ == nullptr || memberModel_ == nullptr ||
+        !binding.receiverTypeOrdinal.has_value() || target.receiverSyntax == nullptr ||
+        (target.receiverSyntax->kind() != ast::AstNodeKind::CastExpression &&
+         target.receiverSyntax->kind() != ast::AstNodeKind::SafeCastExpression) ||
+        target.receiverSyntax->first() == nullptr ||
+        (target.receiverSyntax->first()->kind() != ast::AstNodeKind::NewExpression &&
+         target.receiverSyntax->first()->kind() != ast::AstNodeKind::ObjectCreationExpression))
+    {
+        return target;
+    }
+
+    const ast::AstNode* concreteReceiver = target.receiverSyntax->first();
+    const MethodExpressionTypeBinding* concreteType = expressionType(concreteReceiver);
+    const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
+        ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
+        : std::nullopt;
+    const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
+        ? interfaceModel_->tablePlan(*concreteTypeOrdinal, *binding.receiverTypeOrdinal)
+        : nullptr;
+    if (plan == nullptr) return target;
+
+    const auto contract = std::find(
+        plan->interfaceMethodMemberOrdinals.begin(),
+        plan->interfaceMethodMemberOrdinals.end(),
+        target.memberOrdinal);
+    if (contract == plan->interfaceMethodMemberOrdinals.end()) return target;
+    const std::size_t slot = static_cast<std::size_t>(
+        contract - plan->interfaceMethodMemberOrdinals.begin());
+    if (slot >= plan->implementationMemberOrdinals.size() ||
+        !plan->implementationMemberOrdinals[slot].has_value())
+    {
+        return target;
+    }
+    target.memberOrdinal = *plan->implementationMemberOrdinals[slot];
+    target.receiverSyntax = concreteReceiver;
+    target.receiverTypeKey = concreteType->typeKey;
+    target.interfaceDispatch = false;
+    return target;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -475,7 +525,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     const MethodCallBinding* binding,
     const std::vector<const ast::AstNode*>& argumentSyntaxes,
     std::unique_ptr<ProjectOopHirNode> preloweredLast,
-    bool nullConditional)
+    bool nullConditional,
+    std::unique_ptr<ProjectOopHirNode> preloweredReceiver)
 {
     if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
         !binding->selectedMemberOrdinal.has_value())
@@ -483,51 +534,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
         error = "Stage 38 requires a resolved synthetic call binding";
         return nullptr;
     }
-    std::size_t selectedMemberOrdinal = *binding->selectedMemberOrdinal;
-    const ast::AstNode* receiverSyntax = binding->receiverSyntax;
-    std::string_view receiverTypeKey = binding->receiverTypeKey;
-    bool interfaceDispatch = binding->interfaceCall;
-
-    // An interface conversion whose operand is a freshly constructed concrete object has one
-    // exact dynamic type. Resolve its interface slot now so the ordinary direct-call path can
-    // honor the implementation's inlining policy. This is deliberately narrow: locals,
-    // parameters, fields, and arbitrary expressions still use runtime interface dispatch.
-    if (interfaceDispatch && interfaceModel_ != nullptr && memberModel_ != nullptr &&
-        binding->receiverTypeOrdinal.has_value() && receiverSyntax != nullptr &&
-        (receiverSyntax->kind() == ast::AstNodeKind::CastExpression ||
-         receiverSyntax->kind() == ast::AstNodeKind::SafeCastExpression) &&
-        receiverSyntax->first() != nullptr &&
-        (receiverSyntax->first()->kind() == ast::AstNodeKind::NewExpression ||
-         receiverSyntax->first()->kind() == ast::AstNodeKind::ObjectCreationExpression))
-    {
-        const MethodExpressionTypeBinding* concreteType = expressionType(receiverSyntax->first());
-        const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
-            ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
-            : std::nullopt;
-        const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
-            ? interfaceModel_->tablePlan(*concreteTypeOrdinal, *binding->receiverTypeOrdinal)
-            : nullptr;
-        if (plan != nullptr)
-        {
-            const auto contract = std::find(
-                plan->interfaceMethodMemberOrdinals.begin(),
-                plan->interfaceMethodMemberOrdinals.end(),
-                selectedMemberOrdinal);
-            if (contract != plan->interfaceMethodMemberOrdinals.end())
-            {
-                const std::size_t slot = static_cast<std::size_t>(
-                    contract - plan->interfaceMethodMemberOrdinals.begin());
-                if (slot < plan->implementationMemberOrdinals.size() &&
-                    plan->implementationMemberOrdinals[slot].has_value())
-                {
-                    selectedMemberOrdinal = *plan->implementationMemberOrdinals[slot];
-                    receiverSyntax = receiverSyntax->first();
-                    receiverTypeKey = concreteType->typeKey;
-                    interfaceDispatch = false;
-                }
-            }
-        }
-    }
+    const BoundCallTarget target = resolveBoundCallTarget(*binding);
+    const std::size_t selectedMemberOrdinal = target.memberOrdinal;
     auto node = makeNode(
         binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
         expression,
@@ -546,15 +554,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
         node->memberOrdinal = selectedMemberOrdinal;
     }
     node->baseReceiver = binding->baseReceiver;
-    node->interfaceDispatch = interfaceDispatch;
+    node->interfaceDispatch = target.interfaceDispatch;
     node->nullConditionalCall = nullConditional;
     node->booleanValue = typeBinding != nullptr &&
         typeBinding->flowActiveVariantCase.has_value();
-    if (interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+    if (target.interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
     if (!binding->staticCall)
     {
-        auto receiver = lowerReceiver(
-            receiverSyntax, receiverTypeKey, memberOrdinal, error);
+        auto receiver = preloweredReceiver != nullptr
+            ? std::move(preloweredReceiver)
+            : lowerReceiver(
+                target.receiverSyntax, target.receiverTypeKey, memberOrdinal, error);
         if (receiver == nullptr) return nullptr;
         node->children.push_back(std::move(receiver));
     }
@@ -611,6 +621,58 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, selectedMember.declaredTypeKey);
     load->children.push_back(std::move(loweredCall));
     return load;
+}
+
+bool ProjectOopHirModel::validateNoHeapDirectCall(
+    std::size_t callerMemberOrdinal,
+    const MethodCallBinding& binding,
+    std::string& error) const
+{
+    // Recursive lowering used to run this check once for every nested getter. An explicit frame
+    // must do the same instead of validating only the outermost expression after unwinding.
+    if (memberModel_ == nullptr || callerMemberOrdinal >= memberModel_->members().size())
+        return true;
+    const ClassMemberSymbol& caller = memberModel_->members()[callerMemberOrdinal];
+    if (!sema::EffectContext(caller.effects).allows(sema::Effect::NoHeap) ||
+        binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedMemberOrdinal.has_value() ||
+        *binding.selectedMemberOrdinal >= memberModel_->members().size())
+    {
+        return true;
+    }
+    const ClassMemberSymbol& callee =
+        memberModel_->members()[*binding.selectedMemberOrdinal];
+    if (callee.isNoHeap) return true;
+    error = "NS3030: noheap callable '" + caller.signatureKey +
+        "' cannot call non-noheap callable '" + callee.signatureKey + "'";
+    return false;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerPropertyGetterWithReceiver(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error,
+    const MethodCallBinding& binding,
+    bool nullConditional,
+    bool flowProvenNonNull,
+    std::unique_ptr<ProjectOopHirNode> receiver)
+{
+    auto call = lowerBoundCall(
+        expression,
+        memberOrdinal,
+        addressContext,
+        error,
+        expressionType(expression),
+        &binding,
+        {},
+        nullptr,
+        nullConditional,
+        std::move(receiver));
+    if (call == nullptr || !validateNoHeapDirectCall(memberOrdinal, binding, error))
+        return nullptr;
+    if (flowProvenNonNull) call->stringValue = "flow-nonnull";
+    return call;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(

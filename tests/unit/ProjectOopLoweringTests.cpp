@@ -279,6 +279,23 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerPropertyGetterExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& type,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, callerMemberOrdinal, false, error);
+    }
+
     static void setRuntimeTypeBinding(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -1909,6 +1926,147 @@ void testDeepClassFieldExpressionLowering(TestContext& tests)
     destroyHirTreeIteratively(address);
 }
 
+bool preparePropertyGetterFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    std::size_t& getterOrdinal,
+    std::size_t& callerOrdinal,
+    std::string& nodeType,
+    std::string& error)
+{
+    const auto directory = root / "DeepPropertyGetter";
+    writeProject(directory, "DeepPropertyGetter");
+    writeFile(
+        directory / "Main.ns",
+        "namespace Deep; public class Node { "
+        "public Node Next { get { return this; } } "
+        "public Node Probe(Node node) { return node.Next; } }");
+    if (!compilation.compileProjectOopHir(directory / "DeepPropertyGetter.nsproj", error) ||
+        compilation.memberModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundGetter = false;
+    bool foundCaller = false;
+    const auto members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const auto& member = members[ordinal];
+        if (member.isPropertyAccessor && !member.isIndexerAccessor && member.isGetter &&
+            member.associatedName == "Next")
+        {
+            getterOrdinal = ordinal;
+            nodeType = member.declaredTypeKey;
+            foundGetter = true;
+        }
+        if (!member.isPropertyAccessor && member.name == "Probe")
+        {
+            callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundGetter && foundCaller && !nodeType.empty();
+}
+
+struct DeepPropertyGetterSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepPropertyGetterSyntax makeDeepPropertyGetterSyntax(
+    std::size_t depth,
+    std::size_t getterOrdinal,
+    const std::string& nodeType)
+{
+    DeepPropertyGetterSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.calls.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::MemberExpression, nativesharp::SourceRange{}));
+        fixture.nodes.back()->setFirst(current);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = fixture.nodes.back().get();
+        call.receiverSyntax = current;
+        call.receiverTypeKey = nodeType;
+        call.selectedMemberOrdinal = getterOrdinal;
+        call.resultTypeKey = nodeType;
+        current = fixture.nodes.back().get();
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool propertyGetterChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    std::size_t getterOrdinal,
+    const std::string& nodeType)
+{
+    std::size_t observedDepth = 0;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall)
+    {
+        if (node->memberOrdinal != getterOrdinal || node->typeKey != nodeType ||
+            node->children.size() != 1U || node->interfaceDispatch || node->nullConditionalCall)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue;
+}
+
+void testDeepPropertyGetterExpressionLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    std::size_t getterOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string nodeType;
+    std::string error;
+    const bool prepared = preparePropertyGetterFixture(
+        root, compilation, getterOrdinal, callerOrdinal, nodeType, error);
+    tests.expect(prepared, "the property-getter depth fixture builds semantic accessors (" +
+        error + ")");
+    if (!prepared) return;
+
+    DeepPropertyGetterSyntax syntax =
+        makeDeepPropertyGetterSyntax(nestingDepth, getterOrdinal, nodeType);
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = nodeType;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerPropertyGetterExpression(
+            model,
+            *compilation.memberModel(),
+            callerOrdinal,
+            syntax.root,
+            syntax.nodes,
+            syntax.calls,
+            type,
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level property-getter chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(propertyGetterChainMatches(
+            lowered.get(), nestingDepth, getterOrdinal, nodeType),
+        "iterative property-getter lowering preserves every call and receiver in source order");
+    destroyHirTreeIteratively(lowered);
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2818,6 +2976,10 @@ int main()
     {
         testDeepClassFieldExpressionLowering(tests);
     }
+    else if (focusValue == "hir-property-getter-depth")
+    {
+        testDeepPropertyGetterExpressionLowering(tests, root);
+    }
     else if (focusValue == "hir-overflow-policy-depth")
     {
         testDeepOverflowPolicyExpressionLowering(tests);
@@ -2890,6 +3052,7 @@ int main()
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepClassFieldExpressionLowering(tests);
+        testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);

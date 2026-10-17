@@ -920,6 +920,18 @@ private:
         std::unique_ptr<ProjectOopHirNode> whenTrue,
         std::unique_ptr<ProjectOopHirNode> whenFalse);
 
+    struct BoundCallTarget final
+    {
+        std::size_t memberOrdinal = 0;
+        const ast::AstNode* receiverSyntax = nullptr;
+        std::string_view receiverTypeKey;
+        bool interfaceDispatch = false;
+    };
+
+    // Resolve the receiver that lowerBoundCall will actually consume. Keeping this decision in one
+    // helper lets an iterative caller lower that exact receiver before it resumes the call frame.
+    BoundCallTarget resolveBoundCallTarget(const MethodCallBinding& binding) const noexcept;
+
     std::unique_ptr<ProjectOopHirNode> lowerBoundCall(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
@@ -929,7 +941,24 @@ private:
         const MethodCallBinding* binding,
         const std::vector<const ast::AstNode*>& argumentSyntaxes,
         std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr,
-        bool nullConditional = false);
+        bool nullConditional = false,
+        std::unique_ptr<ProjectOopHirNode> preloweredReceiver = nullptr);
+
+    bool validateNoHeapDirectCall(
+        std::size_t callerMemberOrdinal,
+        const MethodCallBinding& binding,
+        std::string& error) const;
+    // Completes a getter whose only recursive child (the receiver) was already lowered by the
+    // expression worklist. All other call metadata and diagnostics remain in lowerBoundCall.
+    std::unique_ptr<ProjectOopHirNode> lowerPropertyGetterWithReceiver(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error,
+        const MethodCallBinding& binding,
+        bool nullConditional,
+        bool flowProvenNonNull,
+        std::unique_ptr<ProjectOopHirNode> receiver);
 
     std::unique_ptr<ProjectOopHirNode> lowerEventBackingField(
         const ast::AstNode* expression,
