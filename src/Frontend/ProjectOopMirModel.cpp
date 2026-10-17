@@ -617,6 +617,7 @@ ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targ
         setFlag(12, function.hasClosureEnvironment);
         setFlag(13, function.capturesThisCell);
         setFlag(14, function.isGeneratorConstructor);
+        setFlag(15, function.isTransportedInlineBody);
         appendMirU32(out, flags);
     }
     appendMirU32(out, function.effects.bits());
@@ -761,6 +762,7 @@ ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targ
     function.hasClosureEnvironment = flag(12);
     function.capturesThisCell = flag(13);
     function.isGeneratorConstructor = flag(14);
+    function.isTransportedInlineBody = flag(15);
     std::uint32_t effectBits = 0;
     if (!reader.u32(effectBits)) return false;
     function.effects = sema::EffectSet{};
@@ -2497,6 +2499,7 @@ bool ProjectOopMirModel::build(
         function.isImportedC = source.isImportedC;
         function.isVariadic = source.isVariadic;
         function.isImportedNative = source.isImportedNative;
+        function.isTransportedInlineBody = source.isTransportedInlineBody;
         function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
         function.importDllName = source.importDllName;
         function.importRequiresRuntimeBinding = source.importRequiresRuntimeBinding;

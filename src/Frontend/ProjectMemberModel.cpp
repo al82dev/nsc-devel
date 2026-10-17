@@ -1946,6 +1946,7 @@ bool ProjectMemberModel::collectTypeMembers(
                 (memberNode->hasModifier(lexer::TokenKind::KwInline) ||
                  memberNode->hasModifier(lexer::TokenKind::KwForceInline));
             symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody;
+            symbol.isTransportedInlineBody = transportedInlineBody;
             symbol.name = memberNode->text();
             // NS304-T05-F03: `async` viaja como token `;async` en auxiliaryText
             // (Parser.cpp:4033-4035). Un metodo async devuelve un Future opaco lazy

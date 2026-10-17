@@ -729,6 +729,7 @@ struct ProjectOopHirFunction final
     // A public NativeSharp method materialized from .nsmeta. Its source declaration participates
     // in ordinary overload resolution, but its body and symbol live in the referenced library.
     bool isImportedNative = false;
+    bool isTransportedInlineBody = false;
     // Producer-owned callable synthesized for a source class that declares no constructor.
     // It freezes base chaining plus instance field initializers behind the ordinary ctor ABI.
     bool isSyntheticImplicitConstructor = false;

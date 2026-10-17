@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -142,13 +143,16 @@ bool ProjectOopCodePartition::build(
     }
 
     const std::span<const frontend::ProjectOopMirFunction> functions = mirModel.functions();
+    const std::vector<std::uint8_t> reachableDefinitions =
+        projectOopReachableDefinitionMask(mirModel);
     unitByFunction_.resize(functions.size());
     std::vector<PartitionCandidate> candidates;
     candidates.reserve(functions.size());
     for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
     {
         const frontend::ProjectOopMirFunction& function = functions[ordinal];
-        if (function.isImportedC || function.isImportedNative) continue;
+        if (function.isImportedC || function.isImportedNative ||
+            ordinal >= reachableDefinitions.size() || reachableDefinitions[ordinal] == 0U) continue;
         candidates.push_back(PartitionCandidate{
             ordinal,
             std::max<std::uint64_t>(1, nodeCost(function.body.get())),
@@ -406,10 +410,13 @@ std::string ProjectOopCodePartition::persistentPlanKey(
 {
     std::vector<std::pair<std::string_view, std::size_t>> identities;
     const std::span<const frontend::ProjectOopMirFunction> functions = mirModel.functions();
+    const std::vector<std::uint8_t> reachableDefinitions =
+        projectOopReachableDefinitionMask(mirModel);
     identities.reserve(functions.size());
     for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
     {
-        if (functions[ordinal].isImportedC || functions[ordinal].isImportedNative) continue;
+        if (functions[ordinal].isImportedC || functions[ordinal].isImportedNative ||
+            ordinal >= reachableDefinitions.size() || reachableDefinitions[ordinal] == 0U) continue;
         identities.emplace_back(functions[ordinal].mangledName, ordinal);
     }
     std::sort(identities.begin(), identities.end(), [](const auto& left, const auto& right) {

@@ -213,6 +213,7 @@ void writeFunction(
     output.scalar(function.isImportedC);
     output.scalar(function.isVariadic);
     output.scalar(function.isImportedNative);
+    output.scalar(function.isTransportedInlineBody);
     output.scalar(function.isSyntheticImplicitConstructor);
     output.text(function.importDllName);
     output.scalar(function.importRequiresRuntimeBinding);

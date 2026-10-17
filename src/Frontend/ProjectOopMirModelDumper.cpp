@@ -293,6 +293,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << (function.isExportedC ? " export-c=" + function.cAbiName : "");
         if (function.isVariadic) output << " variadic";
         if (function.isImportedNative) output << " import-native";
+        if (function.isTransportedInlineBody) output << " transported-inline";
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
             output << ",p" << index << ':' << function.parameterTypeKeys[index]
                    << '[' << projectOopMirAbiPassingName(function.abi.parameterPassing[index])

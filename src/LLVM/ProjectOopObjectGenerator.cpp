@@ -1,4 +1,5 @@
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 
 #include "nativesharp/LLVM/FloatingPointMode.h"
 
@@ -385,6 +386,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             mirModel, partitionCount, error, partitionPolicy,
             partitionPlanHit ? partitionPlanPayload : std::string_view{}))
         return nullptr;
+    const std::vector<std::uint8_t> reachableDefinitions =
+        projectOopReachableDefinitionMask(mirModel);
     // LLVM can only inline a call while caller and callee coexist in the same module. Until
     // code-unit summary import is available, splitting a full-debug optimized build silently
     // removes its CodeView/PDB inline scopes. More importantly, splitting any build containing a
@@ -394,10 +397,18 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const bool requiresWholeModuleDebugInlining =
         debugInformation == DebugInformationKind::Full &&
         optimizationLevel != LlvmOptimizationLevel::O0;
-    const bool requiresWholeModuleRequiredInlining = std::ranges::any_of(
-        mirModel.functions(), [](const frontend::ProjectOopMirFunction& function) {
-            return function.inliningPolicy == frontend::InliningPolicy::Required;
-        });
+    bool requiresWholeModuleRequiredInlining = false;
+    for (std::size_t ordinal = 0; ordinal < mirModel.functions().size(); ++ordinal)
+    {
+        const frontend::ProjectOopMirFunction& function = mirModel.functions()[ordinal];
+        if (function.inliningPolicy == frontend::InliningPolicy::Required &&
+            (!function.isTransportedInlineBody ||
+             (ordinal < reachableDefinitions.size() && reachableDefinitions[ordinal] != 0U)))
+        {
+            requiresWholeModuleRequiredInlining = true;
+            break;
+        }
+    }
     // Full LTO deliberately keeps the complete program in one LLVM module. This makes
     // inter-unit inlining, global DCE and constant propagation happen before native object
     // emission instead of asking the PE linker to recover information already discarded.
@@ -441,9 +452,16 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             lineTableSourceIdentity = projectOopLineTableSourceIdentity(
                 sourceManager, debugPrefixMaps, sourceRanges);
         }
-        std::vector<std::size_t> allFunctionOrdinals(mirModel.functions().size());
-        for (std::size_t ordinal = 0; ordinal < allFunctionOrdinals.size(); ++ordinal)
-            allFunctionOrdinals[ordinal] = ordinal;
+        std::vector<std::size_t> allFunctionOrdinals;
+        allFunctionOrdinals.reserve(mirModel.functions().size());
+        for (std::size_t ordinal = 0; ordinal < mirModel.functions().size(); ++ordinal)
+        {
+            const frontend::ProjectOopMirFunction& function = mirModel.functions()[ordinal];
+            if (function.isTransportedInlineBody &&
+                (ordinal >= reachableDefinitions.size() || reachableDefinitions[ordinal] == 0U))
+                continue;
+            allFunctionOrdinals.push_back(ordinal);
+        }
         for (std::size_t moduleOrdinal = 0; moduleOrdinal < moduleCount; ++moduleOrdinal)
         {
             std::span<const std::size_t> definitions;

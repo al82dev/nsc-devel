@@ -1666,6 +1666,7 @@ bool ProjectOopHirModel::buildImpl(
         function.isNoHeap = member.isNoHeap;
         function.effects = member.effects;
         function.inliningPolicy = member.inliningPolicy;
+        function.isTransportedInlineBody = member.isTransportedInlineBody;
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
         constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";

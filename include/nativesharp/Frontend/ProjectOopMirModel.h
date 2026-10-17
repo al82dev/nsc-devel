@@ -827,6 +827,7 @@ struct ProjectOopMirFunction final
     bool isImportedC = false;
     bool isVariadic = false;
     bool isImportedNative = false;
+    bool isTransportedInlineBody = false;
     bool isSyntheticImplicitConstructor = false;
     std::string importDllName;
     // C1.2 "import identity" -- see ProjectOopHirFunction for the full note.

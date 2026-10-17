@@ -97,6 +97,18 @@ namespace CrossLibrary
         public static forceinline int Required(int value) { return value + 1; }
         public static inline int Preferred(int value) { return value + 2; }
         public static noinline int Boundary(int value) { return value + 3; }
+        public static inline int Unused01(int value) { return value + 101; }
+        public static inline int Unused02(int value) { return value + 102; }
+        public static inline int Unused03(int value) { return value + 103; }
+        public static inline int Unused04(int value) { return value + 104; }
+        public static inline int Unused05(int value) { return value + 105; }
+        public static inline int Unused06(int value) { return value + 106; }
+        public static inline int Unused07(int value) { return value + 107; }
+        public static inline int Unused08(int value) { return value + 108; }
+        public static inline int Unused09(int value) { return value + 109; }
+        public static inline int Unused10(int value) { return value + 110; }
+        public static inline int Unused11(int value) { return value + 111; }
+        public static inline int Unused12(int value) { return value + 112; }
     }
 
     public struct Cell
@@ -129,6 +141,7 @@ namespace CrossLibrary
     const auto* preferred = findMember(metadata, "Preferred");
     const auto* boundary = findMember(metadata, "Boundary");
     const auto* read = findMember(metadata, "Read");
+    const auto* unused = findMember(metadata, "Unused01");
     const auto policyOf = [](const nativesharp::interop::LibraryMetadataMember* member) {
         return member == nullptr ? 99U :
             (member->flags & nativesharp::interop::kMetadataMemberInliningMask) >>
@@ -146,6 +159,8 @@ namespace CrossLibrary
     tests.expect(boundary != nullptr && boundary->inlineSourceText.empty() &&
                      policyOf(boundary) == static_cast<unsigned>(InliningPolicy::Forbidden),
         "noinline crosses metadata as policy without duplicating its implementation body");
+    tests.expect(unused != nullptr && !unused->inlineSourceText.empty(),
+        "unused inline body is transported so reachability, not metadata omission, decides emission");
 
     LibraryMetadata downLevel = metadata;
     downLevel.formatMinor = 12U;
@@ -210,11 +225,14 @@ class Program
                          hasCallTo(output, read->mangledName) &&
                          hasCallTo(output, boundary->mangledName),
             "raw O0 IR resolves calls to producer physical identities before optimization");
+        tests.expect(unused != nullptr &&
+                         output.find(unused->mangledName) == std::string::npos,
+            "unused transported inline body is absent from consumer LLVM IR");
     }
 
     const std::string executable = (consumer / "InlineConsumer.exe").string();
-    const std::array<std::string_view, 5> executableArguments = {
-        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
+    const std::array<std::string_view, 7> executableArguments = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable, "-j", "16"};
     output.clear();
     error.clear();
     const bool emitted = runDriver(executableArguments, output, error) == ExitCode::Success;

@@ -176,6 +176,7 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
                << (function.isExportedC ? " export-c=" + function.cAbiName : "")
                << (function.isVariadic ? " variadic" : "")
                << (function.isImportedNative ? " import-native" : "")
+               << (function.isTransportedInlineBody ? " transported-inline" : "")
                << " return=" << function.returnTypeKey
                << " throws=" << (function.errorTypeKey.empty()
                     ? "<none>" : function.errorTypeKey)

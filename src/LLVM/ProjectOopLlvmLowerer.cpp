@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 #include "nativesharp/LLVM/LlvmDebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmModuleMetadata.h"
 #include "nativesharp/LLVM/LlvmRuntimeNames.h"
@@ -1321,6 +1322,7 @@ public:
           debugPrefixMaps_(debugPrefixMaps.begin(), debugPrefixMaps.end()),
           partitioned_(partitioned),
           ownsModuleGlobals_(ownsModuleGlobals),
+          reachableDefinitions_(projectOopReachableDefinitionMask(mirModel)),
           functionDefinitions_(mirModel.functions().size(), false),
           functionDeclarations_(mirModel.functions().size(), false),
           restrictFunctionDeclarations_(!declarationOrdinals.empty()),
@@ -4181,6 +4183,9 @@ private:
         const std::span<const frontend::ProjectOopMirFunction> mirFunctions = mirModel_.functions();
         for (std::size_t functionOrdinal = 0; functionOrdinal < mirFunctions.size(); ++functionOrdinal)
         {
+            if (mirFunctions[functionOrdinal].isTransportedInlineBody &&
+                (functionOrdinal >= reachableDefinitions_.size() ||
+                 reachableDefinitions_[functionOrdinal] == 0U)) continue;
             if (partitioned_ && !ownsModuleGlobals_ &&
                 restrictFunctionDeclarations_ &&
                 !functionDeclarations_[functionOrdinal]) continue;
@@ -4767,6 +4772,11 @@ private:
         std::vector<std::size_t> typedCatchOrdinals;
         for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
         {
+            const std::size_t ordinal = static_cast<std::size_t>(
+                &function - mirModel_.functions().data());
+            if (function.isTransportedInlineBody &&
+                (ordinal >= reachableDefinitions_.size() || reachableDefinitions_[ordinal] == 0U))
+                continue;
             if (function.body == nullptr) continue; // imported C declarations carry no body
             collectTypedCatchTypeOrdinals(function.body.get(), typedCatchOrdinals);
         }
@@ -4875,6 +4885,9 @@ private:
         for (std::size_t functionOrdinal = 0; functionOrdinal < mirFunctions.size(); ++functionOrdinal)
         {
             const frontend::ProjectOopMirFunction& function = mirFunctions[functionOrdinal];
+            if (function.isTransportedInlineBody &&
+                (functionOrdinal >= reachableDefinitions_.size() ||
+                 reachableDefinitions_[functionOrdinal] == 0U)) continue;
             // Interop Foundation: imported C functions stay DECLARATIONS -- declareFunctions gave
             // them their (ABI-mapped) prototype and the definition lives in the external DLL.
             // C1.2 "import identity" is the one exception: an import whose C symbol name is
@@ -4955,6 +4968,9 @@ private:
         const std::span<const frontend::ProjectOopMirFunction> functions = mirModel_.functions();
         for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
         {
+            if (functions[ordinal].isTransportedInlineBody &&
+                (ordinal >= reachableDefinitions_.size() || reachableDefinitions_[ordinal] == 0U))
+                continue;
             // A non-coordinator partition only needs declarations for callback thunks referenced
             // by bodies that it owns. Scanning every MIR body here used to be harmless because
             // every partition declared every function; after declaration pruning it asks this
@@ -22292,6 +22308,7 @@ private:
     std::vector<DebugPrefixMap> debugPrefixMaps_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
+    std::vector<std::uint8_t> reachableDefinitions_;
     std::vector<bool> functionDefinitions_;
     std::vector<bool> functionDeclarations_;
     bool restrictFunctionDeclarations_ = false;
