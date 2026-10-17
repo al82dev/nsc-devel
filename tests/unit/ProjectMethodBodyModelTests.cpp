@@ -526,6 +526,31 @@ void testDeepNestedValueExpression(TestContext& tests, const std::filesystem::pa
         "deep nested call and binary expressions bind through the heap-backed worklist");
 }
 
+void testDeepNestedBlocks(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 1024;
+    const std::filesystem::path directory = root / "DeepNestedBlocks";
+    writeProject(directory, "DeepNestedBlocks");
+
+    std::string source = "class DeepBlocks { int Run() { ";
+    source.reserve(source.size() + depth * 4U + 64U);
+    for (std::size_t index = 0; index < depth; ++index) source += "{ ";
+    source += "int value = 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return 0; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedBlocks.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "1024 nested lexical blocks bind through heap-backed statement frames");
+    tests.expect(compilation.methodBodyModel() != nullptr &&
+            compilation.methodBodyModel()->scopes().size() == depth + 1U,
+        "deep lexical traversal preserves every nested block scope");
+}
+
 void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path alpha = root / "QualifiedAlpha";
@@ -801,6 +826,7 @@ int main()
     testDiagnosticsAndContexts(tests, root);
     testLongLogicalChains(tests, root);
     testDeepNestedValueExpression(tests, root);
+    testDeepNestedBlocks(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
     testDenseOwnershipSnapshots(tests, root);
     testDeterministicCallableWaves(tests, root);

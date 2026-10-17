@@ -128,36 +128,66 @@ void ProjectMethodBodyModel::analyzeBlock(
         return;
     }
 
-    std::size_t activeScope = scopeOrdinal;
-    if (createNestedScope)
+    struct BlockFrame final
     {
-        activeScope = createScope(MethodScopeKind::Block, methodMemberOrdinal, scopeOrdinal);
-    }
+        const ast::AstNode* block = nullptr;
+        std::size_t activeScope = 0;
+        std::size_t nextStatement = 0;
+        std::size_t cleanupDepthAtEntry = 0;
+        bool deferCaptureBoundary = false;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
 
-    const bool deferCaptureBoundary =
-        block->auxiliaryText() == "defer-capture-boundary";
-    if (deferCaptureBoundary)
+    std::vector<BlockFrame> frames;
+    frames.reserve(16);
+    const auto pushBlock = [&](const ast::AstNode* nestedBlock,
+                               std::size_t parentScope,
+                               bool createScopeForBlock,
+                               std::optional<OwnershipFlowSnapshot> restoreAfterExit = std::nullopt)
     {
-        DeferCaptureContext context;
-        context.boundaryScopeOrdinal = activeScope;
-        std::string_view names(block->text());
-        std::size_t begin = 0;
-        while (begin <= names.size())
+        std::size_t activeScope = parentScope;
+        if (createScopeForBlock)
         {
-            const std::size_t end = names.find(',', begin);
-            const std::string_view name = names.substr(
-                begin, end == std::string_view::npos ? names.size() - begin : end - begin);
-            if (name == "this") context.capturesThis = true;
-            else if (!name.empty()) context.allowedNames.emplace(name);
-            if (end == std::string_view::npos) break;
-            begin = end + 1;
+            activeScope = createScope(MethodScopeKind::Block, methodMemberOrdinal, parentScope);
         }
-        deferCaptureStack_.push_back(std::move(context));
-    }
 
-    const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
-    for (const ast::AstNode* statement : block->children())
+        const bool deferCaptureBoundary =
+            nestedBlock->auxiliaryText() == "defer-capture-boundary";
+        if (deferCaptureBoundary)
+        {
+            DeferCaptureContext context;
+            context.boundaryScopeOrdinal = activeScope;
+            std::string_view names(nestedBlock->text());
+            std::size_t begin = 0;
+            while (begin <= names.size())
+            {
+                const std::size_t end = names.find(',', begin);
+                const std::string_view name = names.substr(
+                    begin, end == std::string_view::npos ? names.size() - begin : end - begin);
+                if (name == "this") context.capturesThis = true;
+                else if (!name.empty()) context.allowedNames.emplace(name);
+                if (end == std::string_view::npos) break;
+                begin = end + 1;
+            }
+            deferCaptureStack_.push_back(std::move(context));
+        }
+
+        frames.push_back(BlockFrame{
+            nestedBlock,
+            activeScope,
+            0,
+            activeCleanupRegions_.size(),
+            deferCaptureBoundary,
+            std::move(restoreAfterExit)});
+    };
+
+    pushBlock(block, scopeOrdinal, createNestedScope);
+    while (!frames.empty())
     {
+        BlockFrame& frame = frames.back();
+        if (frame.nextStatement < frame.block->children().size())
+        {
+            const ast::AstNode* statement = frame.block->children()[frame.nextStatement++];
         // A switch section keeps its labels in the same child list as its statements, and the
         // labels were already analyzed and folded by analyzeSwitch before this runs. Skipping
         // them here is what lets a section reuse this routine wholesale -- nested scope, cleanup
@@ -167,179 +197,253 @@ void ProjectMethodBodyModel::analyzeBlock(
         {
             continue;
         }
-        if (ownershipFlowReachable_)
-        {
-            analyzeStatement(statement, methodMemberOrdinal, activeScope, diagnostics);
+
+            std::optional<OwnershipFlowSnapshot> restoreAfterStatement;
+            if (!ownershipFlowReachable_)
+            {
+                // Unreachable source still needs semantic/type binding because later HIR/MIR
+                // construction walks the full AST. Analyze it in a disposable reachable probe,
+                // then restore the terminated ownership state so dead code never contributes to
+                // a subsequent control-flow join. A nested block keeps that restoration on its
+                // heap frame until every descendant has been processed.
+                restoreAfterStatement = captureOwnershipFlow();
+                OwnershipFlowSnapshot probeState = *restoreAfterStatement;
+                probeState.reachable = true;
+                restoreOwnershipFlow(probeState);
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::BlockStatement)
+            {
+                const std::size_t parentScope = frame.activeScope;
+                const bool createScopeForBlock =
+                    statement->auxiliaryText() != "declaration-list";
+                pushBlock(
+                    statement,
+                    parentScope,
+                    createScopeForBlock,
+                    std::move(restoreAfterStatement));
+                continue;
+            }
+
+            analyzeStatement(statement, methodMemberOrdinal, frame.activeScope, diagnostics);
+            if (restoreAfterStatement.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterStatement);
+            }
             continue;
         }
 
-        // Unreachable source still needs semantic/type binding because later HIR/MIR
-        // construction walks the full AST. Analyze it in a disposable reachable probe,
-        // then restore the terminated ownership state so dead code never contributes to
-        // a subsequent control-flow join.
-        const OwnershipFlowSnapshot terminatedState = captureOwnershipFlow();
-        OwnershipFlowSnapshot probeState = terminatedState;
-        probeState.reachable = true;
-        restoreOwnershipFlow(probeState);
-        analyzeStatement(statement, methodMemberOrdinal, activeScope, diagnostics);
-        restoreOwnershipFlow(terminatedState);
-    }
-    // NS304-T07-F06: a scoped child borrow of a local that dies here (block exit) is a dangling
-    // Future. Reject it unless a Join already discharged the borrow.
-    if (!scopedChildBorrows_.empty())
-    {
-        const std::span<const MethodLocalSymbol> frameLocals = locals();
-        for (std::size_t ordinal = 0; ordinal < frameLocals.size(); ++ordinal)
-        {
-            if (frameLocals[ordinal].scopeOrdinal == activeScope &&
-                scopedChildBorrows_.contains(ordinal))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    block->range(),
-                    "scoped child borrow outlives its source; join or cancel the TaskScope "
-                    "before leaving the source lifetime");
-                break;
-            }
-        }
-    }
-    for (std::size_t index = activeCleanupRegions_.size(); index > cleanupDepthAtEntry; --index)
-    {
-        recordNormalCleanupContinuation(
-            activeCleanupRegions_[index - 1], block, methodMemberOrdinal, activeScope);
-    }
-    activeCleanupRegions_.resize(cleanupDepthAtEntry);
-    if (deferCaptureBoundary) deferCaptureStack_.pop_back();
-    constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
-    if (block->auxiliaryText().starts_with(matchCoveragePrefix) && !block->text().empty())
-    {
-        std::vector<language::MatchArmCoverage> arms;
-        std::string_view encoded(block->auxiliaryText());
-        encoded.remove_prefix(matchCoveragePrefix.size());
-        std::size_t begin = 0;
-        while (begin <= encoded.size())
-        {
-            const std::size_t end = encoded.find(';', begin);
-            const std::string_view armText = encoded.substr(
-                begin, end == std::string_view::npos ? encoded.size() - begin : end - begin);
-            language::MatchArmCoverage arm;
-            std::string_view casesText = armText;
-            if (!casesText.empty() && casesText.front() == '~')
-            {
-                arm.hasGuard = true;
-                casesText.remove_prefix(1);
-            }
-            arm.wildcard = casesText == "*";
-            if (!arm.wildcard && casesText != "?" && !casesText.empty() && casesText.front() == '#')
-            {
-                std::size_t lengthBegin = 0;
-                while (lengthBegin <= casesText.size())
-                {
-                    const std::size_t lengthEnd = casesText.find('|', lengthBegin);
-                    std::string_view item = casesText.substr(
-                        lengthBegin,
-                        lengthEnd == std::string_view::npos
-                            ? casesText.size() - lengthBegin : lengthEnd - lengthBegin);
-                    if (!item.empty() && item.front() == '#') item.remove_prefix(1);
-                    const bool hasRest = !item.empty() && item.back() == '+';
-                    if (hasRest) item.remove_suffix(1);
-                    arm.listLengths.push_back({
-                        static_cast<std::size_t>(std::stoull(std::string(item))), hasRest});
-                    if (lengthEnd == std::string_view::npos) break;
-                    lengthBegin = lengthEnd + 1;
-                }
-            }
-            else if (!arm.wildcard && casesText != "?")
-            {
-                std::size_t caseBegin = 0;
-                while (caseBegin <= casesText.size())
-                {
-                    const std::size_t caseEnd = casesText.find('|', caseBegin);
-                    const std::string_view name = casesText.substr(
-                        caseBegin,
-                        caseEnd == std::string_view::npos
-                            ? casesText.size() - caseBegin : caseEnd - caseBegin);
-                    if (!name.empty()) arm.cases.emplace_back(name);
-                    if (caseEnd == std::string_view::npos) break;
-                    caseBegin = caseEnd + 1;
-                }
-            }
-            arms.push_back(std::move(arm));
-            if (end == std::string_view::npos) break;
-            begin = end + 1;
-        }
+        const ast::AstNode* const block = frame.block;
+        const std::size_t activeScope = frame.activeScope;
+        const std::size_t cleanupDepthAtEntry = frame.cleanupDepthAtEntry;
+        const bool deferCaptureBoundary = frame.deferCaptureBoundary;
 
-        std::vector<std::string> domain;
-        if (const std::optional<ScopeName> source =
-                lookupScopeNameInScope(activeScope, block->text());
-            source.has_value() && source->kind == ScopeNameKind::Local &&
-            source->semanticOrdinal < locals_.size() && nameLookup_ != nullptr)
+        // NS304-T07-F06: a scoped child borrow of a local that dies here (block exit) is a dangling
+        // Future. Reject it unless a Join already discharged the borrow.
+        if (!scopedChildBorrows_.empty())
         {
-            const std::optional<std::size_t> typeOrdinal =
-                namedTypeOrdinalForTypeKey(locals_[source->semanticOrdinal].typeKey);
-            if (typeOrdinal.has_value() && *typeOrdinal < nameLookup_->namedTypes().size())
+            const std::span<const MethodLocalSymbol> frameLocals = locals();
+            for (std::size_t ordinal = 0; ordinal < frameLocals.size(); ++ordinal)
             {
-                const ast::AstNode* declaration = nameLookup_->namedTypes()[*typeOrdinal].syntax;
-                constexpr std::string_view casesMarker = "cases=";
-                if (declaration != nullptr && declaration->auxiliaryText().starts_with("variant,"))
+                if (frameLocals[ordinal].scopeOrdinal == activeScope &&
+                    scopedChildBorrows_.contains(ordinal))
                 {
-                    const std::string_view metadata(declaration->auxiliaryText());
-                    const std::size_t casesBegin = metadata.find(casesMarker);
-                    if (casesBegin != std::string_view::npos)
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        block->range(),
+                        "scoped child borrow outlives its source; join or cancel the TaskScope "
+                        "before leaving the source lifetime");
+                    break;
+                }
+            }
+        }
+        for (std::size_t index = activeCleanupRegions_.size(); index > cleanupDepthAtEntry; --index)
+        {
+            recordNormalCleanupContinuation(
+                activeCleanupRegions_[index - 1], block, methodMemberOrdinal, activeScope);
+        }
+        activeCleanupRegions_.resize(cleanupDepthAtEntry);
+        if (deferCaptureBoundary) deferCaptureStack_.pop_back();
+        constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
+        if (block->auxiliaryText().starts_with(matchCoveragePrefix) && !block->text().empty())
+        {
+            std::vector<language::MatchArmCoverage> arms;
+            std::string_view encoded(block->auxiliaryText());
+            encoded.remove_prefix(matchCoveragePrefix.size());
+            std::size_t begin = 0;
+            while (begin <= encoded.size())
+            {
+                const std::size_t end = encoded.find(';', begin);
+                const std::string_view armText = encoded.substr(
+                    begin, end == std::string_view::npos ? encoded.size() - begin : end - begin);
+                language::MatchArmCoverage arm;
+                std::string_view casesText = armText;
+                if (!casesText.empty() && casesText.front() == '~')
+                {
+                    arm.hasGuard = true;
+                    casesText.remove_prefix(1);
+                }
+                arm.wildcard = casesText == "*";
+                if (!arm.wildcard && casesText != "?" && !casesText.empty() && casesText.front() == '#')
+                {
+                    std::size_t lengthBegin = 0;
+                    while (lengthBegin <= casesText.size())
                     {
-                        std::string_view cases = metadata.substr(casesBegin + casesMarker.size());
-                        std::size_t caseBegin = 0;
-                        while (caseBegin <= cases.size())
+                        const std::size_t lengthEnd = casesText.find('|', lengthBegin);
+                        std::string_view item = casesText.substr(
+                            lengthBegin,
+                            lengthEnd == std::string_view::npos
+                                ? casesText.size() - lengthBegin : lengthEnd - lengthBegin);
+                        if (!item.empty() && item.front() == '#') item.remove_prefix(1);
+                        const bool hasRest = !item.empty() && item.back() == '+';
+                        if (hasRest) item.remove_suffix(1);
+                        arm.listLengths.push_back({
+                            static_cast<std::size_t>(std::stoull(std::string(item))), hasRest});
+                        if (lengthEnd == std::string_view::npos) break;
+                        lengthBegin = lengthEnd + 1;
+                    }
+                }
+                else if (!arm.wildcard && casesText != "?")
+                {
+                    std::size_t caseBegin = 0;
+                    while (caseBegin <= casesText.size())
+                    {
+                        const std::size_t caseEnd = casesText.find('|', caseBegin);
+                        const std::string_view name = casesText.substr(
+                            caseBegin,
+                            caseEnd == std::string_view::npos
+                                ? casesText.size() - caseBegin : caseEnd - caseBegin);
+                        if (!name.empty()) arm.cases.emplace_back(name);
+                        if (caseEnd == std::string_view::npos) break;
+                        caseBegin = caseEnd + 1;
+                    }
+                }
+                arms.push_back(std::move(arm));
+                if (end == std::string_view::npos) break;
+                begin = end + 1;
+            }
+
+            std::vector<std::string> domain;
+            if (const std::optional<ScopeName> source =
+                    lookupScopeNameInScope(activeScope, block->text());
+                source.has_value() && source->kind == ScopeNameKind::Local &&
+                source->semanticOrdinal < locals_.size() && nameLookup_ != nullptr)
+            {
+                const std::optional<std::size_t> typeOrdinal =
+                    namedTypeOrdinalForTypeKey(locals_[source->semanticOrdinal].typeKey);
+                if (typeOrdinal.has_value() && *typeOrdinal < nameLookup_->namedTypes().size())
+                {
+                    const ast::AstNode* declaration = nameLookup_->namedTypes()[*typeOrdinal].syntax;
+                    constexpr std::string_view casesMarker = "cases=";
+                    if (declaration != nullptr && declaration->auxiliaryText().starts_with("variant,"))
+                    {
+                        const std::string_view metadata(declaration->auxiliaryText());
+                        const std::size_t casesBegin = metadata.find(casesMarker);
+                        if (casesBegin != std::string_view::npos)
                         {
-                            const std::size_t caseEnd = cases.find('|', caseBegin);
-                            std::string_view item = cases.substr(
-                                caseBegin,
-                                caseEnd == std::string_view::npos
-                                    ? cases.size() - caseBegin : caseEnd - caseBegin);
-                            if (const std::size_t payload = item.find(':');
-                                payload != std::string_view::npos) item = item.substr(0, payload);
-                            if (!item.empty()) domain.emplace_back(item);
-                            if (caseEnd == std::string_view::npos) break;
-                            caseBegin = caseEnd + 1;
+                            std::string_view cases = metadata.substr(casesBegin + casesMarker.size());
+                            std::size_t caseBegin = 0;
+                            while (caseBegin <= cases.size())
+                            {
+                                const std::size_t caseEnd = cases.find('|', caseBegin);
+                                std::string_view item = cases.substr(
+                                    caseBegin,
+                                    caseEnd == std::string_view::npos
+                                        ? cases.size() - caseBegin : caseEnd - caseBegin);
+                                if (const std::size_t payload = item.find(':');
+                                    payload != std::string_view::npos) item = item.substr(0, payload);
+                                if (!item.empty()) domain.emplace_back(item);
+                                if (caseEnd == std::string_view::npos) break;
+                                caseBegin = caseEnd + 1;
+                            }
+                        }
+                    }
+                    // Closed generic variants and NSMETA-rehydrated declarations may expose their
+                    // concrete API through generated members even when the aggregate syntax attached
+                    // to the specialized type no longer carries the original compact marker. The
+                    // factory marker is part of the same compiler-owned contract used by metadata.
+                    if (domain.empty() && memberModel_ != nullptr)
+                    {
+                        constexpr std::string_view factoryPrefix = "variant-case-factory:";
+                        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+                        {
+                            if (memberOrdinal >= memberModel_->members().size()) continue;
+                            const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                            if (member.syntax == nullptr ||
+                                !member.syntax->auxiliaryText().starts_with(factoryPrefix)) continue;
+                            std::string_view marker(member.syntax->auxiliaryText());
+                            marker.remove_prefix(factoryPrefix.size());
+                            if (const std::size_t tag = marker.rfind(':');
+                                tag != std::string_view::npos) marker = marker.substr(0, tag);
+                            if (!marker.empty() &&
+                                std::ranges::find(domain, marker) == domain.end())
+                                domain.emplace_back(marker);
                         }
                     }
                 }
-                // Closed generic variants and NSMETA-rehydrated declarations may expose their
-                // concrete API through generated members even when the aggregate syntax attached
-                // to the specialized type no longer carries the original compact marker. The
-                // factory marker is part of the same compiler-owned contract used by metadata.
-                if (domain.empty() && memberModel_ != nullptr)
-                {
-                    constexpr std::string_view factoryPrefix = "variant-case-factory:";
-                    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+            }
+
+            if (domain.empty())
+            {
+                const bool hasListLength = std::ranges::any_of(
+                    arms, [](const language::MatchArmCoverage& arm)
                     {
-                        if (memberOrdinal >= memberModel_->members().size()) continue;
-                        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-                        if (member.syntax == nullptr ||
-                            !member.syntax->auxiliaryText().starts_with(factoryPrefix)) continue;
-                        std::string_view marker(member.syntax->auxiliaryText());
-                        marker.remove_prefix(factoryPrefix.size());
-                        if (const std::size_t tag = marker.rfind(':');
-                            tag != std::string_view::npos) marker = marker.substr(0, tag);
-                        if (!marker.empty() &&
-                            std::ranges::find(domain, marker) == domain.end())
-                            domain.emplace_back(marker);
+                        return !arm.listLengths.empty();
+                    });
+                if (hasListLength)
+                {
+                    const language::ExhaustivenessResult result = language::analyzeListMatch(arms);
+                    for (const std::size_t arm : result.unreachableArms)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            block->range(),
+                            "match arm #" + std::to_string(arm + 1) +
+                                " is unreachable for the list-length domain");
+                    }
+                    if (!result.exhaustive)
+                    {
+                        std::string message = "non-exhaustive match; missing list length";
+                        if (result.missingCases.empty())
+                        {
+                            message += ": a list pattern needs a rest or wildcard arm to cover "
+                                "unbounded lengths";
+                        }
+                        else
+                        {
+                            message += result.missingCases.size() == 1 ? ": " : "s: ";
+                            for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                            {
+                                if (index != 0) message += ", ";
+                                message += result.missingCases[index];
+                            }
+                        }
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            block->range(),
+                            message);
                     }
                 }
-            }
-        }
-
-        if (domain.empty())
-        {
-            const bool hasListLength = std::ranges::any_of(
-                arms, [](const language::MatchArmCoverage& arm)
+                else if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
+                    {
+                        return arm.wildcard && !arm.hasGuard;
+                    }))
                 {
-                    return !arm.listLengths.empty();
-                });
-            if (hasListLength)
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        block->range(),
+                        "match over an open or unresolved domain requires a final wildcard or "
+                        "binding arm");
+                }
+            }
+            else
             {
-                const language::ExhaustivenessResult result = language::analyzeListMatch(arms);
+                const language::ExhaustivenessResult result =
+                    language::analyzeClosedMatch(domain, arms);
                 for (const std::size_t arm : result.unreachableArms)
                 {
                     diagnostics.report(
@@ -347,73 +451,32 @@ void ProjectMethodBodyModel::analyzeBlock(
                         diagnostics::DiagnosticSeverity::Error,
                         block->range(),
                         "match arm #" + std::to_string(arm + 1) +
-                            " is unreachable for the list-length domain");
+                            " is unreachable for the closed variant domain");
                 }
                 if (!result.exhaustive)
                 {
-                    std::string message = "non-exhaustive match; missing list length";
-                    if (result.missingCases.empty())
+                    std::string message = "non-exhaustive match; missing variant case";
+                    message += result.missingCases.size() == 1 ? ": " : "s: ";
+                    for (std::size_t index = 0; index < result.missingCases.size(); ++index)
                     {
-                        message += ": a list pattern needs a rest or wildcard arm to cover "
-                            "unbounded lengths";
-                    }
-                    else
-                    {
-                        message += result.missingCases.size() == 1 ? ": " : "s: ";
-                        for (std::size_t index = 0; index < result.missingCases.size(); ++index)
-                        {
-                            if (index != 0) message += ", ";
-                            message += result.missingCases[index];
-                        }
+                        if (index != 0) message += ", ";
+                        message += result.missingCases[index];
                     }
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         block->range(),
-                        message);
+                        std::move(message));
                 }
-            }
-            else if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
-                {
-                    return arm.wildcard && !arm.hasGuard;
-                }))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    block->range(),
-                    "match over an open or unresolved domain requires a final wildcard or "
-                    "binding arm");
             }
         }
-        else
+
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+            std::move(frame.restoreAfterExit);
+        frames.pop_back();
+        if (restoreAfterExit.has_value())
         {
-            const language::ExhaustivenessResult result =
-                language::analyzeClosedMatch(domain, arms);
-            for (const std::size_t arm : result.unreachableArms)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    block->range(),
-                    "match arm #" + std::to_string(arm + 1) +
-                        " is unreachable for the closed variant domain");
-            }
-            if (!result.exhaustive)
-            {
-                std::string message = "non-exhaustive match; missing variant case";
-                message += result.missingCases.size() == 1 ? ": " : "s: ";
-                for (std::size_t index = 0; index < result.missingCases.size(); ++index)
-                {
-                    if (index != 0) message += ", ";
-                    message += result.missingCases[index];
-                }
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    block->range(),
-                    std::move(message));
-            }
+            restoreOwnershipFlow(*restoreAfterExit);
         }
     }
 }
@@ -495,25 +558,42 @@ void ProjectMethodBodyModel::analyzeStatement(
             deconstructionBindings_.push_back(*deconstruction);
 
             std::unordered_set<std::string> declaredHere;
-            std::function<void(const ast::AstNode*, const std::string&, const std::string&)>
-                bindPattern;
-            bindPattern = [&](const ast::AstNode* binding, const std::string& typeKey,
-                              const std::string& path)
+            struct PatternWork final
             {
-                if (binding == nullptr) return;
+                const ast::AstNode* binding = nullptr;
+                std::string typeKey;
+                std::string path;
+            };
+            std::vector<PatternWork> patternWork;
+            patternWork.reserve(statement->children().size());
+            for (std::size_t index = statement->children().size(); index > 0; --index)
+            {
+                const std::size_t childIndex = index - 1;
+                patternWork.push_back(PatternWork{
+                    statement->children()[childIndex],
+                    (*elements)[childIndex],
+                    std::to_string(childIndex)});
+            }
+
+            while (!patternWork.empty())
+            {
+                PatternWork work = std::move(patternWork.back());
+                patternWork.pop_back();
+                const ast::AstNode* const binding = work.binding;
+                if (binding == nullptr) continue;
                 if (binding->kind() == ast::AstNodeKind::TupleExpression)
                 {
                     const std::optional<std::vector<std::string>> nested =
-                        ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+                        ProjectTypeConversion::tupleElementTypeKeys(work.typeKey);
                     if (!nested.has_value())
                     {
                         diagnostics.report(
                             diagnostics::DiagnosticId::InvalidOperand,
                             diagnostics::DiagnosticSeverity::Error,
                             binding->range(),
-                            "nested deconstruction pattern at " + path +
+                            "nested deconstruction pattern at " + work.path +
                                 " requires a tuple element");
-                        return;
+                        continue;
                     }
                     if (nested->size() != binding->children().size())
                     {
@@ -521,17 +601,21 @@ void ProjectMethodBodyModel::analyzeStatement(
                             diagnostics::DiagnosticId::InvalidArgumentCount,
                             diagnostics::DiagnosticSeverity::Error,
                             binding->range(),
-                            "nested deconstruction pattern at " + path + " has " +
+                            "nested deconstruction pattern at " + work.path + " has " +
                                 std::to_string(binding->children().size()) +
                                 " binding(s), but the tuple element has " +
                                 std::to_string(nested->size()));
-                        return;
+                        continue;
                     }
-                    for (std::size_t index = 0; index < nested->size(); ++index)
-                        bindPattern(
-                            binding->children()[index], (*nested)[index],
-                            path + "." + std::to_string(index));
-                    return;
+                    for (std::size_t index = nested->size(); index > 0; --index)
+                    {
+                        const std::size_t childIndex = index - 1;
+                        patternWork.push_back(PatternWork{
+                            binding->children()[childIndex],
+                            (*nested)[childIndex],
+                            work.path + "." + std::to_string(childIndex)});
+                    }
+                    continue;
                 }
                 if (binding->kind() != ast::AstNodeKind::IdentifierExpression)
                 {
@@ -540,9 +624,9 @@ void ProjectMethodBodyModel::analyzeStatement(
                         diagnostics::DiagnosticSeverity::Error,
                         binding->range(),
                         "deconstruction declaration patterns contain only names, '_', or tuples");
-                    return;
+                    continue;
                 }
-                if (binding->text() == "_") return;
+                if (binding->text() == "_") continue;
                 if (!declaredHere.insert(binding->text()).second)
                 {
                     diagnostics.report(
@@ -550,7 +634,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                         diagnostics::DiagnosticSeverity::Error,
                         binding->range(),
                         "duplicate deconstruction binding '" + binding->text() + "'");
-                    return;
+                    continue;
                 }
                 const std::optional<ScopeName> sameScope =
                     lookupScopeNameInScope(scopeOrdinal, binding->text());
@@ -563,7 +647,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                         "duplicate local/parameter name '" + binding->text() +
                             "' in the same method scope");
                     reportPrevious(sameScope->range, diagnostics, "previous declaration is here");
-                    return;
+                    continue;
                 }
                 MethodLocalSymbol local;
                 local.methodMemberOrdinal = methodMemberOrdinal;
@@ -574,7 +658,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                 local.range = binding->range();
                 local.syntax = binding;
                 local.name = binding->text();
-                local.typeKey = typeKey;
+                local.typeKey = std::move(work.typeKey);
                 local.lambdaOrdinal = currentLambdaOrdinal_;
                 if (const std::optional<ScopeName> outer =
                         lookupScopeName(scopeOrdinal, binding->text());
@@ -604,12 +688,6 @@ void ProjectMethodBodyModel::analyzeStatement(
                     localOrdinal,
                     binding->range()});
                 assignedLocals_.insert(localOrdinal);
-            };
-            for (std::size_t index = 0; index < statement->children().size(); ++index)
-            {
-                bindPattern(
-                    statement->children()[index], (*elements)[index],
-                    std::to_string(index));
             }
             break;
         }
