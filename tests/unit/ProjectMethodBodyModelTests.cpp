@@ -1,8 +1,13 @@
+#include "nativesharp/AST/AstArena.h"
+#include "nativesharp/AST/AstDumper.h"
 #include "nativesharp/Diagnostics/Diagnostic.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModelDumper.h"
+#include "nativesharp/Lexer/Lexer.h"
+#include "nativesharp/Parser/Parser.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include "../support/TestContext.h"
 
@@ -12,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -618,6 +624,28 @@ void testDeepNestedLoops(TestContext& tests, const std::filesystem::path& root)
         "256 nested while bodies bind without host-stack failure");
 }
 
+void testDeepNestedDoWhileLoops(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 512;
+    const std::filesystem::path directory = root / "DeepNestedDoWhileLoops";
+    writeProject(directory, "DeepNestedDoWhileLoops");
+
+    std::string source = "class DeepDoWhile { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index) source += "do { ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "} while (false); ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedDoWhileLoops.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "512 nested do-while bodies bind without host-stack failure");
+}
+
 void testDeepNestedForLoops(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 128;
@@ -647,6 +675,96 @@ void testDeepNestedForLoops(TestContext& tests, const std::filesystem::path& roo
     }
     tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
         "128 nested for bodies bind without host-stack failure: " + detail);
+}
+
+std::string makeDeepMixedR04BSource(std::size_t depth)
+{
+    std::string source = "class DeepMixed { int Run(int value) { ";
+    source.reserve(source.size() + depth * 28U + 64U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        switch (index % 4U)
+        {
+        case 0: source += "if (value >= 0) { "; break;
+        case 1: source += "while (value > 0) { "; break;
+        case 2: source += "do { "; break;
+        default: source += "for (;;) { "; break;
+        }
+    }
+    source += "value = 0; ";
+    for (std::size_t index = depth; index > 0; --index)
+    {
+        source += (index - 1U) % 4U == 2U ? "} while (false); " : "} ";
+    }
+    source += "return value; } }\n";
+    return source;
+}
+
+void testDeepMixedR04BParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 4096;
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "DeepMixedR04BParser.ns", makeDeepMixedR04BSource(depth));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "4096 mixed if/while/do/for bodies parse through heap-backed continuations");
+}
+
+void testMixedR04BAstShape(TestContext& tests)
+{
+    constexpr std::string_view source = R"ns(
+class Shape {
+    int Run() {
+        if (true) while (false) { }
+        else do { for (;;) { } } while (false);
+        return 0;
+    }
+}
+)ns";
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "MixedR04BAstShape.ns",
+        std::string(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    std::ostringstream dump;
+    nativesharp::ast::AstDumper{}.dump(root, dump);
+    const std::string tree = dump.str();
+    const std::size_t ifPosition = tree.find("IfStatement");
+    const std::size_t whilePosition = tree.find("WhileStatement", ifPosition);
+    const std::size_t doPosition = tree.find("DoWhileStatement", whilePosition);
+    const std::size_t forPosition = tree.find("ForStatement", doPosition);
+    tests.expect(root != nullptr && !diagnostics.hasErrors() &&
+            ifPosition < whilePosition && whilePosition < doPosition && doPosition < forPosition,
+        "mixed embedded if/while/do/for retain their ordered AST node shape");
+}
+
+void testDeepMixedR04BControl(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepMixedR04BControl";
+    writeProject(directory, "DeepMixedR04BControl");
+    const std::string source = makeDeepMixedR04BSource(depth);
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepMixedR04BControl.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 mixed if/while/do/for bodies bind without host-stack failure");
 }
 
 void testDeepNestedForeachLoops(TestContext& tests, const std::filesystem::path& root)
@@ -1047,7 +1165,11 @@ int main()
     testDeepElseIfChain(tests, root);
     testDeepNestedControlBodies(tests, root);
     testDeepNestedLoops(tests, root);
+    testDeepNestedDoWhileLoops(tests, root);
     testDeepNestedForLoops(tests, root);
+    testDeepMixedR04BParser(tests);
+    testMixedR04BAstShape(tests);
+    testDeepMixedR04BControl(tests, root);
     testDeepNestedForeachLoops(tests, root);
     testDeepNestedUsingStatements(tests, root);
     testDeepNestedSwitchStatements(tests, root);

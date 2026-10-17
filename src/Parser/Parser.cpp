@@ -10881,16 +10881,44 @@ ast::AstNode* Parser::lowerIfStatement(const IfParseState& state, ast::AstNode* 
 
 ast::AstNode* Parser::parseIfStatement()
 {
+    return parseStructuredControlStatement();
+}
+
+class Parser::StructuredControlParser final
+{
+public:
+    explicit StructuredControlParser(Parser& parser) noexcept : parser_(parser) {}
+
+    ast::AstNode* parse()
+    {
+        work_.push_back({WorkKind::ParseControl, 0});
+        while (!work_.empty())
+        {
+            const Work current = work_.back();
+            work_.pop_back();
+            dispatch(current);
+        }
+        return values_.empty() ? nullptr : values_.back();
+    }
+
+private:
     enum class WorkKind
     {
+        ParseControl,
         ParseIf,
+        ParseWhile,
+        ParseDoWhile,
+        ParseFor,
         ParseEmbedded,
         WrapEmbedded,
         ParseBlock,
         ContinueBlock,
         AppendBlock,
         FinishThen,
-        FinishElse
+        FinishElse,
+        FinishWhile,
+        FinishDoWhile,
+        FinishFor
     };
     struct Work final
     {
@@ -10904,19 +10932,29 @@ ast::AstNode* Parser::parseIfStatement()
         ast::AstNode* destination = nullptr;
     };
 
-    std::vector<IfParseState> ifStates;
-    std::vector<BlockParseState> blockStates;
-    std::vector<Work> work;
-    std::vector<ast::AstNode*> values;
-    work.push_back({WorkKind::ParseIf, 0});
-
-    const auto ordinaryIfAtCursor = [&]() noexcept
+    bool ordinaryIfAtCursor() const noexcept
     {
-        const bool conditional = peek().kind() == TokenKind::LeftParen &&
-            peek(2).kind() == TokenKind::Identifier && peek(2).lexeme() == "let";
-        return at(TokenKind::KwIf) && !conditional;
-    };
-    const auto wrapEmbedded = [&](ast::AstNode* statement)
+        const bool conditional = parser_.peek().kind() == TokenKind::LeftParen &&
+            parser_.peek(2).kind() == TokenKind::Identifier &&
+            parser_.peek(2).lexeme() == "let";
+        return parser_.at(TokenKind::KwIf) && !conditional;
+    }
+
+    bool ordinaryWhileAtCursor() const noexcept
+    {
+        const bool conditional = parser_.peek().kind() == TokenKind::LeftParen &&
+            parser_.peek(2).kind() == TokenKind::Identifier &&
+            parser_.peek(2).lexeme() == "let";
+        return parser_.at(TokenKind::KwWhile) && !conditional;
+    }
+
+    bool structuredControlAtCursor() const noexcept
+    {
+        return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
+            parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor);
+    }
+
+    ast::AstNode* wrapEmbedded(ast::AstNode* statement)
     {
         if (statement != nullptr &&
             (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
@@ -10924,145 +10962,230 @@ ast::AstNode* Parser::parseIfStatement()
              (statement->kind() == ast::AstNodeKind::BlockStatement &&
               statement->auxiliaryText() == "conditional-pattern-inline")))
         {
-            diagnostics_.report(
+            parser_.diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedToken,
                 diagnostics::DiagnosticSeverity::Error,
                 statement->range(),
                 "a declaration used as an if or else body requires an explicit '{ ... }' block");
         }
-        const SourceRange range = statement != nullptr ? statement->range() : current().range();
-        ast::AstNode* block = arena_.make<ast::AstNode>(
+        const SourceRange range = statement != nullptr
+            ? statement->range()
+            : parser_.current().range();
+        ast::AstNode* block = parser_.arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, range);
         if (statement != nullptr) block->addChild(statement);
         return block;
-    };
+    }
 
-    while (!work.empty())
+    void dispatch(const Work& current)
     {
-        const Work currentWork = work.back();
-        work.pop_back();
-        switch (currentWork.kind)
+        switch (current.kind)
         {
-        case WorkKind::ParseIf:
-        {
-            const std::size_t ifIndex = ifStates.size();
-            ifStates.emplace_back();
-            parseIfHeader(ifStates.back());
-            work.push_back({WorkKind::FinishThen, ifIndex});
-            work.push_back({WorkKind::ParseEmbedded, 0});
-            break;
-        }
-        case WorkKind::ParseEmbedded:
-            if (at(TokenKind::LeftBrace))
-            {
-                work.push_back({WorkKind::ParseBlock, 0});
-            }
-            else if (at(TokenKind::Semicolon))
-            {
-                const SourceRange range = consume().range();
-                values.push_back(arena_.make<ast::AstNode>(
-                    ast::AstNodeKind::BlockStatement, range));
-            }
-            else if (ordinaryIfAtCursor())
-            {
-                work.push_back({WorkKind::WrapEmbedded, 0});
-                work.push_back({WorkKind::ParseIf, 0});
-            }
-            else
-            {
-                values.push_back(wrapEmbedded(parseStatement()));
-            }
-            break;
-        case WorkKind::WrapEmbedded:
-        {
-            ast::AstNode* statement = values.back();
-            values.pop_back();
-            values.push_back(wrapEmbedded(statement));
-            break;
-        }
-        case WorkKind::ParseBlock:
-        {
-            BlockParseState state;
-            state.beginIndex = index_;
-            expect(TokenKind::LeftBrace, "'{'");
-            state.block = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement,
-                tokenRangeFrom(state.beginIndex));
-            state.destination = state.block;
-            const std::size_t blockIndex = blockStates.size();
-            blockStates.push_back(state);
-            work.push_back({WorkKind::ContinueBlock, blockIndex});
-            break;
-        }
-        case WorkKind::ContinueBlock:
-        {
-            BlockParseState& state = blockStates[currentWork.stateIndex];
-            if (at(TokenKind::RightBrace) || at(TokenKind::EndOfFile))
-            {
-                expect(TokenKind::RightBrace, "'}'");
-                state.block->setRange(tokenRangeFrom(state.beginIndex));
-                values.push_back(state.block);
-                break;
-            }
-
-            const std::size_t before = index_;
-            work.push_back(currentWork);
-            if (ordinaryIfAtCursor())
-            {
-                work.push_back({WorkKind::AppendBlock, currentWork.stateIndex});
-                work.push_back({WorkKind::ParseIf, 0});
-            }
-            else if (at(TokenKind::LeftBrace))
-            {
-                work.push_back({WorkKind::AppendBlock, currentWork.stateIndex});
-                work.push_back({WorkKind::ParseBlock, 0});
-            }
-            else
-            {
-                appendParsedStatement(state.destination, parseStatement());
-                if (index_ == before) consume();
-            }
-            break;
-        }
-        case WorkKind::AppendBlock:
-        {
-            ast::AstNode* statement = values.back();
-            values.pop_back();
-            appendParsedStatement(
-                blockStates[currentWork.stateIndex].destination,
-                statement);
-            break;
-        }
-        case WorkKind::FinishThen:
-        {
-            IfParseState& state = ifStates[currentWork.stateIndex];
-            state.thenBlock = values.back();
-            values.pop_back();
-            if (!consumeIf(TokenKind::KwElse))
-            {
-                values.push_back(lowerIfStatement(state, nullptr));
-                break;
-            }
-            work.push_back({WorkKind::FinishElse, currentWork.stateIndex});
-            if (at(TokenKind::KwIf))
-                work.push_back({WorkKind::ParseIf, 0});
-            else
-                work.push_back({WorkKind::ParseEmbedded, 0});
-            break;
-        }
-        case WorkKind::FinishElse:
-        {
-            ast::AstNode* elseNode = values.back();
-            values.pop_back();
-            values.push_back(lowerIfStatement(
-                ifStates[currentWork.stateIndex],
-                elseNode));
-            break;
-        }
+        case WorkKind::ParseControl: parseControl(); break;
+        case WorkKind::ParseIf: parseIf(); break;
+        case WorkKind::ParseWhile: parseWhile(); break;
+        case WorkKind::ParseDoWhile: parseDoWhile(); break;
+        case WorkKind::ParseFor: parseFor(); break;
+        case WorkKind::ParseEmbedded: parseEmbedded(); break;
+        case WorkKind::WrapEmbedded: finishWrapEmbedded(); break;
+        case WorkKind::ParseBlock: parseBlock(); break;
+        case WorkKind::ContinueBlock: continueBlock(current); break;
+        case WorkKind::AppendBlock: appendBlock(current.stateIndex); break;
+        case WorkKind::FinishThen: finishThen(current.stateIndex); break;
+        case WorkKind::FinishElse: finishElse(current.stateIndex); break;
+        case WorkKind::FinishWhile: finishWhile(current.stateIndex); break;
+        case WorkKind::FinishDoWhile: finishDoWhile(current.stateIndex); break;
+        case WorkKind::FinishFor: finishFor(current.stateIndex); break;
         }
     }
 
-    return values.empty() ? nullptr : values.back();
+    void parseControl()
+    {
+        if (ordinaryIfAtCursor()) work_.push_back({WorkKind::ParseIf, 0});
+        else if (ordinaryWhileAtCursor()) work_.push_back({WorkKind::ParseWhile, 0});
+        else if (parser_.at(TokenKind::KwDo)) work_.push_back({WorkKind::ParseDoWhile, 0});
+        else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
+        else values_.push_back(parser_.parseStatement());
+    }
+
+    void parseIf()
+    {
+        const std::size_t index = ifStates_.size();
+        ifStates_.emplace_back();
+        parser_.parseIfHeader(ifStates_.back());
+        work_.push_back({WorkKind::FinishThen, index});
+        work_.push_back({WorkKind::ParseEmbedded, 0});
+    }
+
+    void parseWhile()
+    {
+        const std::size_t index = whileStates_.size();
+        whileStates_.emplace_back();
+        parser_.parseWhileHeader(whileStates_.back());
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after while condition");
+            values_.push_back(parser_.lowerWhileStatement(whileStates_[index], nullptr));
+            return;
+        }
+        work_.push_back({WorkKind::FinishWhile, index});
+        work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void parseDoWhile()
+    {
+        const std::size_t index = doWhileStates_.size();
+        doWhileStates_.push_back({parser_.index_});
+        parser_.consume();
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after 'do'");
+            values_.push_back(parser_.lowerDoWhileStatement(doWhileStates_[index], nullptr));
+            return;
+        }
+        work_.push_back({WorkKind::FinishDoWhile, index});
+        work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void parseFor()
+    {
+        const std::size_t index = forStates_.size();
+        forStates_.emplace_back();
+        parser_.parseForHeader(forStates_.back());
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
+            values_.push_back(parser_.lowerForStatement(forStates_[index], nullptr));
+            return;
+        }
+        work_.push_back({WorkKind::FinishFor, index});
+        work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void parseEmbedded()
+    {
+        if (parser_.at(TokenKind::LeftBrace))
+            work_.push_back({WorkKind::ParseBlock, 0});
+        else if (parser_.at(TokenKind::Semicolon))
+            values_.push_back(parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, parser_.consume().range()));
+        else if (structuredControlAtCursor())
+        {
+            work_.push_back({WorkKind::WrapEmbedded, 0});
+            work_.push_back({WorkKind::ParseControl, 0});
+        }
+        else
+            values_.push_back(wrapEmbedded(parser_.parseStatement()));
+    }
+
+    void finishWrapEmbedded()
+    {
+        ast::AstNode* statement = popValue();
+        values_.push_back(wrapEmbedded(statement));
+    }
+
+    void parseBlock()
+    {
+        BlockParseState state;
+        state.beginIndex = parser_.index_;
+        parser_.expect(TokenKind::LeftBrace, "'{'");
+        state.block = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            parser_.tokenRangeFrom(state.beginIndex));
+        state.destination = state.block;
+        const std::size_t index = blockStates_.size();
+        blockStates_.push_back(state);
+        work_.push_back({WorkKind::ContinueBlock, index});
+    }
+
+    void continueBlock(const Work& current)
+    {
+        BlockParseState& state = blockStates_[current.stateIndex];
+        if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+        {
+            parser_.expect(TokenKind::RightBrace, "'}'");
+            state.block->setRange(parser_.tokenRangeFrom(state.beginIndex));
+            values_.push_back(state.block);
+            return;
+        }
+
+        const std::size_t before = parser_.index_;
+        work_.push_back(current);
+        if (structuredControlAtCursor()) pushBlockChild(current.stateIndex, WorkKind::ParseControl);
+        else if (parser_.at(TokenKind::LeftBrace)) pushBlockChild(current.stateIndex, WorkKind::ParseBlock);
+        else
+        {
+            parser_.appendParsedStatement(state.destination, parser_.parseStatement());
+            if (parser_.index_ == before) parser_.consume();
+        }
+    }
+
+    void pushBlockChild(std::size_t blockIndex, WorkKind child)
+    {
+        work_.push_back({WorkKind::AppendBlock, blockIndex});
+        work_.push_back({child, 0});
+    }
+
+    void appendBlock(std::size_t index)
+    {
+        parser_.appendParsedStatement(blockStates_[index].destination, popValue());
+    }
+
+    void finishThen(std::size_t index)
+    {
+        IfParseState& state = ifStates_[index];
+        state.thenBlock = popValue();
+        if (!parser_.consumeIf(TokenKind::KwElse))
+        {
+            values_.push_back(parser_.lowerIfStatement(state, nullptr));
+            return;
+        }
+        work_.push_back({WorkKind::FinishElse, index});
+        work_.push_back({parser_.at(TokenKind::KwIf)
+            ? WorkKind::ParseIf
+            : WorkKind::ParseEmbedded, 0});
+    }
+
+    void finishElse(std::size_t index)
+    {
+        values_.push_back(parser_.lowerIfStatement(ifStates_[index], popValue()));
+    }
+
+    void finishWhile(std::size_t index)
+    {
+        values_.push_back(parser_.lowerWhileStatement(whileStates_[index], popValue()));
+    }
+
+    void finishDoWhile(std::size_t index)
+    {
+        values_.push_back(parser_.lowerDoWhileStatement(doWhileStates_[index], popValue()));
+    }
+
+    void finishFor(std::size_t index)
+    {
+        values_.push_back(parser_.lowerForStatement(forStates_[index], popValue()));
+    }
+
+    ast::AstNode* popValue()
+    {
+        ast::AstNode* value = values_.back();
+        values_.pop_back();
+        return value;
+    }
+
+    Parser& parser_;
+    std::vector<IfParseState> ifStates_;
+    std::vector<WhileParseState> whileStates_;
+    std::vector<DoWhileParseState> doWhileStates_;
+    std::vector<ForParseState> forStates_;
+    std::vector<BlockParseState> blockStates_;
+    std::vector<Work> work_;
+    std::vector<ast::AstNode*> values_;
+};
+
+ast::AstNode* Parser::parseStructuredControlStatement()
+{
+    return StructuredControlParser(*this).parse();
 }
 
 ast::AstNode* Parser::parseEmbeddedStatementBlock()
@@ -11100,40 +11223,38 @@ ast::AstNode* Parser::parseEmbeddedStatementBlock()
     return block;
 }
 
-ast::AstNode* Parser::parseWhileStatement()
+void Parser::parseWhileHeader(WhileParseState& state)
 {
-    const std::size_t beginIndex = index_;
+    state.beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
-    ast::AstNode* conditionDeclaration = nullptr;
-    ast::AstNode* condition = nullptr;
     if (looksLikeConditionDeclaration())
     {
-        conditionDeclaration = parseVariableDeclaration(false);
+        state.conditionDeclaration = parseVariableDeclaration(false);
         const ast::AstNode* binding = conditionDeclarationBinding(
-            conditionDeclaration, diagnostics_);
+            state.conditionDeclaration, diagnostics_);
         if (binding != nullptr)
         {
-            condition = makeIdentifierExpression(binding->range(), binding->text());
+            state.condition = makeIdentifierExpression(binding->range(), binding->text());
         }
     }
     else
     {
-        condition = parseExpression();
+        state.condition = parseExpression();
     }
     expect(TokenKind::RightParen, "')'");
-    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (body == nullptr)
-    {
-        expect(TokenKind::LeftBrace, "'{' after while condition");
-    }
+}
 
-    const SourceRange statementRange = tokenRangeFrom(beginIndex);
+ast::AstNode* Parser::lowerWhileStatement(
+    const WhileParseState& state,
+    ast::AstNode* body)
+{
+    const SourceRange statementRange = tokenRangeFrom(state.beginIndex);
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::WhileStatement, statementRange);
-    if (conditionDeclaration == nullptr)
+    if (state.conditionDeclaration == nullptr)
     {
-        node->setFirst(condition);
+        node->setFirst(state.condition);
         node->setSecond(body);
         return node;
     }
@@ -11145,16 +11266,16 @@ ast::AstNode* Parser::parseWhileStatement()
     ast::AstNode* iteration = arena_.make<ast::AstNode>(
         ast::AstNodeKind::BlockStatement, statementRange);
     iteration->setAuxiliaryText("condition-declaration-iteration");
-    iteration->addChild(conditionDeclaration);
+    iteration->addChild(state.conditionDeclaration);
 
     ast::AstNode* stopCondition = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::UnaryExpression, condition->range());
+        ast::AstNodeKind::UnaryExpression, state.condition->range());
     stopCondition->setTokenKind(TokenKind::Bang);
-    stopCondition->setFirst(condition);
+    stopCondition->setFirst(state.condition);
     ast::AstNode* stopBody = arena_.make<ast::AstNode>(
         ast::AstNodeKind::BlockStatement, statementRange);
     stopBody->addChild(arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BreakStatement, condition->range()));
+        ast::AstNodeKind::BreakStatement, state.condition->range()));
     ast::AstNode* stop = arena_.make<ast::AstNode>(
         ast::AstNodeKind::IfStatement, statementRange);
     stop->setFirst(stopCondition);
@@ -11170,6 +11291,11 @@ ast::AstNode* Parser::parseWhileStatement()
     return node;
 }
 
+ast::AstNode* Parser::parseWhileStatement()
+{
+    return parseStructuredControlStatement();
+}
+
 // `do { ... } while (condition);`
 //
 // The node carries its operands in the SAME slots as a while statement -- first() is the
@@ -11182,20 +11308,22 @@ ast::AstNode* Parser::parseWhileStatement()
 // The trailing `;` is required, as in C and C#.
 ast::AstNode* Parser::parseDoWhileStatement()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (body == nullptr)
-    {
-        expect(TokenKind::LeftBrace, "'{' after 'do'");
-    }
+    return parseStructuredControlStatement();
+}
+
+ast::AstNode* Parser::lowerDoWhileStatement(
+    const DoWhileParseState& state,
+    ast::AstNode* body)
+{
     expect(TokenKind::KwWhile, "'while' after the do-loop body");
     expect(TokenKind::LeftParen, "'('");
     ast::AstNode* condition = parseExpression();
     expect(TokenKind::RightParen, "')'");
     expect(TokenKind::Semicolon, "';' after the do-while condition");
 
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::DoWhileStatement, tokenRangeFrom(beginIndex));
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::DoWhileStatement,
+        tokenRangeFrom(state.beginIndex));
     node->setFirst(condition);
     node->setSecond(body);
     return node;
@@ -13096,71 +13224,74 @@ ast::AstNode* Parser::parseComprehensionExpression()
     return loop;
 }
 
-ast::AstNode* Parser::parseForStatement()
+ast::AstNode* Parser::parseForExpressionList(std::size_t beginIndex)
 {
-    const std::size_t beginIndex = index_;
+    ast::AstNode* first = parseExpression();
+    if (!at(TokenKind::Comma)) return first;
+
+    ast::AstNode* sequence = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement,
+        first != nullptr ? first->range() : current().range());
+    if (first != nullptr) sequence->addChild(makeExpressionStatement(first));
+    while (consumeIf(TokenKind::Comma))
+    {
+        ast::AstNode* expression = parseExpression();
+        if (expression != nullptr) sequence->addChild(makeExpressionStatement(expression));
+    }
+    sequence->setRange(tokenRangeFrom(beginIndex));
+    return sequence;
+}
+
+void Parser::parseForHeader(ForParseState& state)
+{
+    state.beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
 
-    const auto parseExpressionList = [&]() -> ast::AstNode*
-    {
-        ast::AstNode* first = parseExpression();
-        if (!at(TokenKind::Comma)) return first;
-
-        ast::AstNode* sequence = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement,
-            first != nullptr ? first->range() : current().range());
-        if (first != nullptr) sequence->addChild(makeExpressionStatement(first));
-        while (consumeIf(TokenKind::Comma))
-        {
-            ast::AstNode* expression = parseExpression();
-            if (expression != nullptr) sequence->addChild(makeExpressionStatement(expression));
-        }
-        sequence->setRange(tokenRangeFrom(beginIndex));
-        return sequence;
-    };
-
-    ast::AstNode* initializer = nullptr;
     if (!at(TokenKind::Semicolon))
     {
         if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVolatile) ||
             at(TokenKind::KwVar) || canStartTypeAt(index_))
         {
-            initializer = parseVariableDeclaration(false);
+            state.initializer = parseVariableDeclaration(false);
         }
         else
         {
-            initializer = parseExpressionList();
+            state.initializer = parseForExpressionList(state.beginIndex);
         }
     }
     expect(TokenKind::Semicolon, "';'");
 
-    ast::AstNode* condition = nullptr;
     if (!at(TokenKind::Semicolon))
     {
-        condition = parseExpression();
+        state.condition = parseExpression();
     }
     expect(TokenKind::Semicolon, "';'");
 
-    ast::AstNode* increment = nullptr;
     if (!at(TokenKind::RightParen))
     {
-        increment = parseExpressionList();
+        state.increment = parseForExpressionList(state.beginIndex);
     }
     expect(TokenKind::RightParen, "')'");
+}
 
-    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (body == nullptr)
-    {
-        expect(TokenKind::LeftBrace, "'{' after for clause");
-    }
-
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ForStatement, tokenRangeFrom(beginIndex));
-    node->setFirst(initializer);
-    node->setSecond(condition);
-    node->setThird(increment);
+ast::AstNode* Parser::lowerForStatement(
+    const ForParseState& state,
+    ast::AstNode* body)
+{
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ForStatement,
+        tokenRangeFrom(state.beginIndex));
+    node->setFirst(state.initializer);
+    node->setSecond(state.condition);
+    node->setThird(state.increment);
     node->addChild(body);
     return node;
+}
+
+ast::AstNode* Parser::parseForStatement()
+{
+    return parseStructuredControlStatement();
 }
 
 // ---------------------------------------------------------------------------------------------

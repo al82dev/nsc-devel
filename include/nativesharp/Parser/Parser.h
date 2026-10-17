@@ -319,6 +319,27 @@ private:
         ast::AstNode* condition = nullptr;
         ast::AstNode* thenBlock = nullptr;
     };
+    class StructuredControlParser;
+    // Carries a while header across heap-backed body parsing without retaining a C++ frame.
+    struct WhileParseState final
+    {
+        std::size_t beginIndex = 0;
+        ast::AstNode* conditionDeclaration = nullptr;
+        ast::AstNode* condition = nullptr;
+    };
+    // Carries the source start of a do-while until its body and trailing condition are complete.
+    struct DoWhileParseState final
+    {
+        std::size_t beginIndex = 0;
+    };
+    // Carries the three for-clause components while its block body is parsed iteratively.
+    struct ForParseState final
+    {
+        std::size_t beginIndex = 0;
+        ast::AstNode* initializer = nullptr;
+        ast::AstNode* condition = nullptr;
+        ast::AstNode* increment = nullptr;
+    };
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     Pattern parsePattern(bool implicitBinding);
     Pattern parseAndPattern(bool implicitBinding);
@@ -364,10 +385,14 @@ private:
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseEmbeddedStatementBlock();
     ast::AstNode* parseIfStatement();
+    ast::AstNode* parseStructuredControlStatement();
     void parseIfHeader(IfParseState& state);
     ast::AstNode* lowerIfStatement(const IfParseState& state, ast::AstNode* elseNode);
     ast::AstNode* parseWhileStatement();
+    void parseWhileHeader(WhileParseState& state);
+    ast::AstNode* lowerWhileStatement(const WhileParseState& state, ast::AstNode* body);
     ast::AstNode* parseDoWhileStatement();
+    ast::AstNode* lowerDoWhileStatement(const DoWhileParseState& state, ast::AstNode* body);
     ast::AstNode* parseSwitchStatement();
     // T03 statement match is lowered early to one hidden governing local plus an if/else decision
     // tree over generated case tests and guarded payload extractors. The source expression is
@@ -385,6 +410,9 @@ private:
     // immediately -- otherwise a section that begins with `default(int)` would be misread.
     bool atSwitchLabel() const noexcept;
     ast::AstNode* parseForStatement();
+    void parseForHeader(ForParseState& state);
+    ast::AstNode* parseForExpressionList(std::size_t beginIndex);
+    ast::AstNode* lowerForStatement(const ForParseState& state, ast::AstNode* body);
     ast::AstNode* parseForeachStatement();
     bool parseForeachHeader(ForeachParseState& state);
     ast::AstNode* lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body);
