@@ -244,6 +244,50 @@ distinguir exactamente entre fallo durante el inicializador, durante la escritur
   cualquiera de esas cadenas de instrumentación.
 - Los objetos focales quedaron fuera del repositorio, bajo `A:\temp`.
 
+## Tercera evidencia externa: fallo dentro de `ClearHashCodeSlots`
+
+La ejecución posterior con las marcas de campos conserva una traza nueva y no acumulada. Su último
+evento es `ENTER` de
+`Dictionary<string,string>.ClearHashCodeSlots`; no existe el `EXIT` correspondiente. Antes de ese punto:
+
+- Los stores de `hasher`, `buckets`, `entryHashCodes`, `entryNext`, `entryKeys`, `entryValues`, `count`,
+  `freeFirst` y `freeCount` tienen parejas completas `FIELD-STORE-BEGIN/END`.
+- Las cinco reservas de arreglos terminan y se publican en sus campos.
+- `ClearBucketSlots`, que ejecuta el mismo patrón de bucle y store sobre `buckets`, entra y sale.
+- El fallo aparece al comenzar el patrón equivalente sobre `entryHashCodes`.
+- El checkpoint manual continúa en `010 program.before-game-constructor`; no hay `FREE-BEGIN`.
+
+La nueva evidencia descarta una caída posterior al segundo diccionario: la ejecución actual no termina
+siquiera el primer `Dictionary<string,string>`. Debido a que `ClearBucketSlots` puede haber escrito fuera
+de su bloque y el daño manifestarse al tocar `entryHashCodes`, el último nombre de función no basta para
+distinguir causa de detección.
+
+### Segunda ampliación autorizada del SCOPE LOCK
+
+Dentro del mismo bit 2 de instrumentación Debug se añaden fronteras para:
+
+- `FIELD-LOAD-BEGIN/END` con nombre y offset del campo;
+- `ARRAY-LENGTH-BEGIN/END`;
+- `ARRAY-ELEMENT-BEGIN/END` alrededor de receptor, índice, bounds check y dirección/load;
+- `ARRAY-STORE-BEGIN/END` alrededor de la escritura efectiva.
+
+La repetición de estos registros permite contar las iteraciones de `ClearBucketSlots` y determinar si
+el primer acceso a `entryHashCodes` falla al cargar el campo, leer `Length`, calcular la dirección o
+escribir el elemento. Continúan siendo strings estáticos emitidos sólo en Full Debug; no se modifica
+layout, ABI, NSMETA, el código fuente de la biblioteca ni el consumidor.
+
+### Evidencia focal de la segunda ampliación
+
+- `cmake --build build-clang --target nsc --parallel 16`: PASS; contrato de host runtime estático:
+  PASS; build hash `fd084ae10bee61aa`.
+- Fixture existente `tests/bug_triage/b5_ctor_owned_field_array`, emisión O0 Full Debug a objeto:
+  PASS incluido el verificador LLVM.
+- El objeto Full Debug contiene las ocho fronteras nuevas: begin/end de field load, array length,
+  array element y array store.
+- La misma fixture emitida con `-O0 -g0`: PASS incluido el verificador LLVM; cero coincidencias para
+  las ocho fronteras.
+- Ambos objetos quedaron fuera del repositorio en `A:\temp`.
+
 ## Validación pendiente y bloqueo de esta máquina
 
 No se afirma todavía que el archivo físico haya sido escrito por un ejecutable. La construcción focal de un

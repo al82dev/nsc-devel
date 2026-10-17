@@ -2949,6 +2949,53 @@ private:
             "|function=" + callable + "|symbol=" + currentMirFunction_->mangledName + "\r\n";
     }
 
+    std::string runtimeDebugFieldLoadRecord(
+        const frontend::ProjectOopMirNode& field,
+        std::string_view event) const
+    {
+        if (memberModel_ == nullptr || currentMirFunction_ == nullptr ||
+            (field.kind != frontend::ProjectOopMirNodeKind::FieldLoad &&
+             field.kind != frontend::ProjectOopMirNodeKind::BitFieldLoad) ||
+            !field.memberOrdinal.has_value() ||
+            *field.memberOrdinal >= memberModel_->members().size())
+        {
+            return {};
+        }
+        const frontend::ClassMemberSymbol& member =
+            memberModel_->members()[*field.memberOrdinal];
+        std::string owner = "<unknown>";
+        if (member.declaringTypeOrdinal < nameLookup_.namedTypes().size())
+        {
+            owner = nameLookup_.namedTypes()[member.declaringTypeOrdinal]
+                .identity.fullyQualifiedName();
+        }
+        const std::string& callable = currentMirFunction_->debugDisplayName.empty()
+            ? currentMirFunction_->mangledName
+            : currentMirFunction_->debugDisplayName;
+        return "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=" + std::string(event) +
+            "|storage=instance|class=" + owner + "|field=" + member.name +
+            "|member-ordinal=" + std::to_string(*field.memberOrdinal) +
+            "|offset=" + std::to_string(field.immediate) + "|type=" + field.typeKey +
+            "|function=" + callable + "|symbol=" + currentMirFunction_->mangledName + "\r\n";
+    }
+
+    std::string runtimeDebugArrayRecord(
+        const frontend::ProjectOopMirNode& node,
+        std::string_view event) const
+    {
+        if (currentMirFunction_ == nullptr) return {};
+        const std::string& callable = currentMirFunction_->debugDisplayName.empty()
+            ? currentMirFunction_->mangledName
+            : currentMirFunction_->debugDisplayName;
+        const std::string elementType = node.elementTypeKey.empty()
+            ? node.typeKey
+            : node.elementTypeKey;
+        return "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=" + std::string(event) +
+            "|element-type=" + elementType + "|element-size=" +
+            std::to_string(node.immediate) + "|alignment=" + std::to_string(node.alignment) +
+            "|function=" + callable + "|symbol=" + currentMirFunction_->mangledName + "\r\n";
+    }
+
     bool declareRuntime(std::string& error)
     {
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
@@ -10755,6 +10802,13 @@ private:
                         values.push_back(failValue(error, "Macro A field access requires exactly one explicit receiver operand"));
                         continue;
                     }
+                    const std::string record =
+                        runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-BEGIN");
+                    if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
                     frames.push_back({current, 1, nullptr});
                     frames.push_back({current->children.front().get(), 0, nullptr});
                     continue;
@@ -10767,6 +10821,13 @@ private:
                 if (address == nullptr || type == nullptr) { values.push_back(nullptr); continue; }
                 LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
                 if (current->volatileAccess) LLVMSetVolatile(load, 1);
+                const std::string record =
+                    runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
+                if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
                 values.push_back(load);
                 continue;
             }
@@ -10811,6 +10872,13 @@ private:
                         values.push_back(failValue(error, "Stage 41 array/string index requires receiver and index"));
                         continue;
                     }
+                    const std::string record =
+                        runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-BEGIN");
+                    if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
                     frames.push_back({current, 1, nullptr});
                     frames.push_back({current->children[0].get(), 0, nullptr});
                     continue;
@@ -10835,20 +10903,40 @@ private:
                 if (current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
                     current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)
                 {
+                    const std::string record =
+                        runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-END");
+                    if (address != nullptr && !record.empty() &&
+                        !emitRuntimeDebugTrace(4U, record, error))
+                    {
+                        address = nullptr;
+                    }
                     values.push_back(address);
                     continue;
                 }
                 if (address == nullptr) { values.push_back(nullptr); continue; }
                 if (current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad)
                 {
-                    values.push_back(LLVMBuildLoad2(
-                        builder_, LLVMInt8TypeInContext(context_), address, "string.element.load"));
+                    LLVMValueRef loaded = LLVMBuildLoad2(
+                        builder_, LLVMInt8TypeInContext(context_), address, "string.element.load");
+                    const std::string record =
+                        runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-END");
+                    if (!record.empty() && !emitRuntimeDebugTrace(4U, record, error))
+                        loaded = nullptr;
+                    values.push_back(loaded);
                     continue;
                 }
                 LLVMTypeRef type = llvmType(current->elementTypeKey, error);
-                values.push_back(type != nullptr
+                LLVMValueRef loaded = type != nullptr
                     ? LLVMBuildLoad2(builder_, type, address, "array.element.load")
-                    : nullptr);
+                    : nullptr;
+                const std::string record =
+                    runtimeDebugArrayRecord(*current, "ARRAY-ELEMENT-END");
+                if (loaded != nullptr && !record.empty() &&
+                    !emitRuntimeDebugTrace(4U, record, error))
+                {
+                    loaded = nullptr;
+                }
+                values.push_back(loaded);
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::FutureFieldAddress)
@@ -11910,6 +11998,18 @@ private:
                         values.push_back(nullptr);
                         continue;
                     }
+                    if (current->children[0]->kind ==
+                        frontend::ProjectOopMirNodeKind::ArrayElementAddress)
+                    {
+                        const std::string arrayRecord = runtimeDebugArrayRecord(
+                            *current->children[0], "ARRAY-STORE-BEGIN");
+                        if (!arrayRecord.empty() &&
+                            !emitRuntimeDebugTrace(4U, arrayRecord, error))
+                        {
+                            values.push_back(nullptr);
+                            continue;
+                        }
+                    }
                     frames.push_back({current, 1, nullptr, 0});
                     frames.push_back({current->children[0].get(), 0, nullptr});
                     continue;
@@ -11935,6 +12035,17 @@ private:
                         !emitRuntimeDebugTrace(4U, fieldRecord, error))
                     {
                         stored = nullptr;
+                    }
+                    if (stored != nullptr && current->children[0]->kind ==
+                        frontend::ProjectOopMirNodeKind::ArrayElementAddress)
+                    {
+                        const std::string arrayRecord = runtimeDebugArrayRecord(
+                            *current->children[0], "ARRAY-STORE-END");
+                        if (!arrayRecord.empty() &&
+                            !emitRuntimeDebugTrace(4U, arrayRecord, error))
+                        {
+                            stored = nullptr;
+                        }
                     }
                 }
                 values.push_back(stored);
@@ -17129,12 +17240,22 @@ private:
         (void)stringValue;
         if (node->children.size() != 1)
             return failValue(error, "Stage 41 native Length requires one receiver");
+        const std::string beginRecord =
+            runtimeDebugArrayRecord(*node, "ARRAY-LENGTH-BEGIN");
+        if (!beginRecord.empty() && !emitRuntimeDebugTrace(4U, beginRecord, error))
+            return nullptr;
         LLVMValueRef object = lowerExpression(node->children.front().get(), error);
         if (object == nullptr) return nullptr;
         object = checkedReceiver(object, error);
         if (object == nullptr) return nullptr;
         LLVMValueRef length64 = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), object, "native.length64");
-        return LLVMBuildTrunc(builder_, length64, LLVMInt32TypeInContext(context_), "native.length");
+        LLVMValueRef length =
+            LLVMBuildTrunc(builder_, length64, LLVMInt32TypeInContext(context_), "native.length");
+        const std::string endRecord =
+            runtimeDebugArrayRecord(*node, "ARRAY-LENGTH-END");
+        return !endRecord.empty() && !emitRuntimeDebugTrace(4U, endRecord, error)
+            ? nullptr
+            : length;
     }
 
     // NSC305-L04. The array/string element-address compute (the bounds check + the GEP), separated
