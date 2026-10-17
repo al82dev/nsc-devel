@@ -410,6 +410,13 @@ const char* cacheMissReasonName(CacheMissReason reason) noexcept
     return "unknown";
 }
 
+std::filesystem::path defaultProjectArtifactCacheRoot(
+    const std::filesystem::path& projectFile)
+{
+    return (projectFile.lexically_normal().parent_path() /
+        "obj" / "nativesharp" / "artifact-cache").lexically_normal();
+}
+
 void CompilationArtifactCache::setRoot(std::filesystem::path root)
 {
     root_ = std::move(root).lexically_normal();

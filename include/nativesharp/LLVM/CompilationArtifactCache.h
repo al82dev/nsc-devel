@@ -27,6 +27,9 @@ enum class CacheMissReason
 
 const char* cacheMissReasonName(CacheMissReason reason) noexcept;
 
+std::filesystem::path defaultProjectArtifactCacheRoot(
+    const std::filesystem::path& projectFile);
+
 class CompilationArtifactCache final
 {
 public:

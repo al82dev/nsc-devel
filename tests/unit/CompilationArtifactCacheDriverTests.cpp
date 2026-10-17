@@ -28,19 +28,22 @@ int main()
         std::ostringstream error;
         tests.expect(run({}, output, error) == ExitCode::Success &&
                 output.str().find("--artifact-cache=<absolute-directory>") != std::string::npos &&
+                output.str().find("--no-artifact-cache") != std::string::npos &&
+                output.str().find("obj/nativesharp/artifact-cache") != std::string::npos &&
                 output.str().find("--artifact-cache-max-mb=N") != std::string::npos,
-            "help documents verified content-addressed object reuse");
+            "help documents the default root, replacement, opt-out and capacity");
     }
     {
         std::ostringstream output;
         std::ostringstream error;
         const std::vector<std::string_view> arguments = {
             "--emit-project-oop-lib", "input.nsproj", "-o", "output.lib",
+            "--no-artifact-cache",
             "--artifact-cache-max-mb=128"};
         const ExitCode result = run(arguments, output, error);
         tests.expect(result == ExitCode::CommandLineError &&
-                error.str().find("requires --artifact-cache") != std::string::npos,
-            "a cache capacity cannot silently apply without a cache root (exit " +
+                error.str().find("conflicting artifact-cache policy") != std::string::npos,
+            "an explicit cache capacity cannot coexist with the opt-out (exit " +
                 std::to_string(static_cast<int>(result)) + "): " + error.str());
     }
     {
@@ -69,8 +72,8 @@ int main()
             "--emit-project-oop-lib", "input.nsproj", "-o", "output.lib",
             "--artifact-cache=A:/one", "--artifact-cache=A:/two"};
         tests.expect(run(arguments, output, error) == ExitCode::CommandLineError &&
-                error.str().find("duplicate artifact-cache") != std::string::npos,
-            "duplicate artifact-cache policy is rejected deterministically");
+                error.str().find("conflicting artifact-cache policy") != std::string::npos,
+            "conflicting artifact-cache roots are rejected deterministically");
     }
     return tests.result();
 }

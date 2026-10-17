@@ -43,6 +43,11 @@ int main()
     std::filesystem::remove_all(root, ignored);
     std::filesystem::create_directories(root);
 
+    tests.expect(nativesharp::llvm_backend::defaultProjectArtifactCacheRoot(
+            std::filesystem::path{"A:/work/Game/Game.nsproj"}) ==
+            std::filesystem::path{"A:/work/Game/obj/nativesharp/artifact-cache"},
+        "project cache root follows the deterministic obj/nativesharp convention");
+
     CompilationArtifactCache cache;
     cache.setRoot(root / "cache");
     tests.expect(nativesharp::llvm_backend::kCodegenCacheIdentity.size() == 64 &&

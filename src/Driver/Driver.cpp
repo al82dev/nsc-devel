@@ -3987,6 +3987,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
+    bool artifactCacheDisabled = false;
     bool artifactCacheMaximumSeen = false;
 #if 0 // INSTRUMENTATION CODE
     bool genericsTraceSeen = false;
@@ -4338,13 +4339,26 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             jobPolicy.setReservedCores(reserved);
             continue;
         }
+        if (argument == "--no-artifact-cache")
+        {
+            if (artifactCacheDisabled || artifactCacheSeen)
+            {
+                error << "nsc: error: " << compilerText(
+                    "conflicting artifact-cache policy\n",
+                    "la política de caché de artefactos tiene opciones incompatibles\n");
+                return ExitCode::CommandLineError;
+            }
+            artifactCacheDisabled = true;
+            continue;
+        }
         static constexpr std::string_view artifactCachePrefix = "--artifact-cache=";
         if (argument.starts_with(artifactCachePrefix))
         {
-            if (artifactCacheSeen)
+            if (artifactCacheSeen || artifactCacheDisabled)
             {
                 error << "nsc: error: " << compilerText(
-                    "duplicate artifact-cache directory\n", "el directorio de caché de artefactos está repetido\n");
+                    "conflicting artifact-cache policy\n",
+                    "la política de caché de artefactos tiene opciones incompatibles\n");
                 return ExitCode::CommandLineError;
             }
             artifactCacheSeen = true;
@@ -4647,11 +4661,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         normalizedArguments.push_back(argument);
     }
 
-    if (artifactCacheMaximumSeen && !artifactCacheSeen)
+    if (artifactCacheDisabled && artifactCacheMaximumSeen)
     {
         error << "nsc: error: " << compilerText(
-            "--artifact-cache-max-mb requires --artifact-cache\n",
-            "--artifact-cache-max-mb requiere --artifact-cache\n");
+            "conflicting artifact-cache policy\n",
+            "la política de caché de artefactos tiene opciones incompatibles\n");
         return ExitCode::CommandLineError;
     }
 
@@ -4836,13 +4850,32 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                  "object, executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
-    if (artifactCacheSeen && !artifactCacheCapableInvocation)
+    if ((artifactCacheSeen || artifactCacheDisabled || artifactCacheMaximumSeen) &&
+        !artifactCacheCapableInvocation)
     {
-        error << "nsc: error: --artifact-cache is supported when emitting a project OOP "
-                 "executable, static library, or DLL\n";
+        error << "nsc: error: artifact-cache options are supported when emitting a project "
+                 "OOP executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
-    if (artifactCacheMaximumSeen)
+    bool defaultArtifactCache = false;
+    if (artifactCacheCapableInvocation && !artifactCacheSeen && !artifactCacheDisabled)
+    {
+        std::error_code pathError;
+        const std::filesystem::path projectFile =
+            std::filesystem::absolute(std::filesystem::path{args[1]}, pathError);
+        if (pathError)
+        {
+            error << "nsc: error: cannot resolve project path for artifact cache: "
+                  << pathError.message() << '\n';
+            return ExitCode::CommandLineError;
+        }
+        artifactCache.setRoot(
+            llvm_backend::defaultProjectArtifactCacheRoot(projectFile));
+        defaultArtifactCache = true;
+        if (!artifactCacheMaximumSeen)
+            artifactCacheMaximumBytes = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+    }
+    if (artifactCacheMaximumSeen || defaultArtifactCache)
     {
         std::size_t evictedEntries = 0;
         std::uintmax_t evictedBytes = 0;
@@ -6001,8 +6034,9 @@ void Driver::printHelp(std::ostream &output)
                << "--o2-budget-ms=N establece el presupuesto consultivo de LLVM O2 sin cambiar el artefacto ni el código de salida.\n"
                << "--llvm-pass-trace habilita la traza completa y costosa de pases LLVM.\n"
                << "-j N limita los trabajos; --reserve-cores=N conserva capacidad del equipo.\n"
-               << "--artifact-cache=<directorio-absoluto> habilita reutilización verificada por contenido.\n"
-               << "--artifact-cache-max-mb=N limita el almacén y expulsa primero publicaciones antiguas completas.\n"
+               << "Los proyectos EXE/LIB/DLL usan por defecto obj/nativesharp/artifact-cache (2 GiB).\n"
+               << "--artifact-cache=<directorio-absoluto> reemplaza esa raíz; --no-artifact-cache la deshabilita.\n"
+               << "--artifact-cache-max-mb=N cambia el límite y expulsa primero publicaciones antiguas completas.\n"
                << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
                << "--generic-depth-limit=N y --generic-instantiation-limit=N ajustan los presupuestos de monomorfización; "
                   "sin ellos se conservan los mínimos normativos 64 y 16384.\n"
@@ -6048,9 +6082,9 @@ void Driver::printHelp(std::ostream &output)
               "diagnostics for optimized builds.\n"
            << "-j N (or -jN) caps compiler jobs; --reserve-cores=N keeps host capacity free. "
               "Use --print-job-policy to inspect the effective value.\n"
-           << "--artifact-cache=<absolute-directory> enables verified content-addressed reuse "
-              "for project objects, runtime objects and final static archives.\n"
-           << "--artifact-cache-max-mb=N bounds the store and evicts complete oldest publications first.\n"
+           << "Project EXE/LIB/DLL builds default to obj/nativesharp/artifact-cache (2 GiB).\n"
+           << "--artifact-cache=<absolute-directory> replaces that root; --no-artifact-cache disables it.\n"
+           << "--artifact-cache-max-mb=N changes the bound and evicts complete oldest publications first.\n"
            << "--library-reference-root <absolute-directory> resolves relative LibraryReference "
               "Include, Metadata, and Runtime paths from one configuration-specific directory.\n"
            << "--generic-depth-limit=N and --generic-instantiation-limit=N configure "
