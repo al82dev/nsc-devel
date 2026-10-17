@@ -312,6 +312,13 @@ private:
         ast::AstNode* collection = nullptr;
         ast::AstNode* collectionProbe = nullptr;
     };
+    struct IfParseState final
+    {
+        std::size_t beginIndex = 0;
+        ast::AstNode* conditionDeclaration = nullptr;
+        ast::AstNode* condition = nullptr;
+        ast::AstNode* thenBlock = nullptr;
+    };
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     Pattern parsePattern(bool implicitBinding);
     Pattern parseAndPattern(bool implicitBinding);
@@ -357,6 +364,8 @@ private:
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseEmbeddedStatementBlock();
     ast::AstNode* parseIfStatement();
+    void parseIfHeaderAndBody(IfParseState& state);
+    ast::AstNode* lowerIfStatement(const IfParseState& state, ast::AstNode* elseNode);
     ast::AstNode* parseWhileStatement();
     ast::AstNode* parseDoWhileStatement();
     ast::AstNode* parseSwitchStatement();

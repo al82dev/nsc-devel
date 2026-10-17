@@ -10839,62 +10839,75 @@ ast::AstNode* Parser::parseConditionalPatternStatement()
     return lowered;
 }
 
-ast::AstNode* Parser::parseIfStatement()
+void Parser::parseIfHeaderAndBody(IfParseState& state)
 {
-    const std::size_t beginIndex = index_;
+    state.beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
-    ast::AstNode* conditionDeclaration = nullptr;
-    ast::AstNode* condition = nullptr;
     if (looksLikeConditionDeclaration())
     {
-        conditionDeclaration = parseVariableDeclaration(false);
+        state.conditionDeclaration = parseVariableDeclaration(false);
         const ast::AstNode* binding = conditionDeclarationBinding(
-            conditionDeclaration, diagnostics_);
+            state.conditionDeclaration, diagnostics_);
         if (binding != nullptr)
         {
-            condition = makeIdentifierExpression(binding->range(), binding->text());
+            state.condition = makeIdentifierExpression(binding->range(), binding->text());
         }
     }
     else
     {
-        condition = parseExpression();
+        state.condition = parseExpression();
     }
     expect(TokenKind::RightParen, "')'");
-    ast::AstNode* thenBlock = parseEmbeddedStatementBlock();
+    state.thenBlock = parseEmbeddedStatementBlock();
+}
 
-    ast::AstNode* elseNode = nullptr;
-    if (consumeIf(TokenKind::KwElse))
+ast::AstNode* Parser::lowerIfStatement(const IfParseState& state, ast::AstNode* elseNode)
+{
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, tokenRangeFrom(state.beginIndex));
+    node->setFirst(state.condition);
+    node->setSecond(state.thenBlock);
+    node->setThird(elseNode);
+    if (state.conditionDeclaration == nullptr) return node;
+
+    ast::AstNode* lowered = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement,
+        tokenRangeFrom(state.beginIndex));
+    lowered->setAuxiliaryText("condition-declaration");
+    lowered->addChild(state.conditionDeclaration);
+    lowered->addChild(node);
+    return lowered;
+}
+
+ast::AstNode* Parser::parseIfStatement()
+{
+    std::vector<IfParseState> branches;
+    ast::AstNode* terminalElse = nullptr;
+
+    while (true)
     {
+        IfParseState state;
+        parseIfHeaderAndBody(state);
+        branches.push_back(state);
+
+        if (!consumeIf(TokenKind::KwElse)) break;
         if (at(TokenKind::KwIf))
         {
-            elseNode = parseIfStatement();
+            continue;
         }
-        else if (at(TokenKind::LeftBrace))
-        {
-            elseNode = parseBlock();
-        }
-        else
-        {
-            elseNode = parseEmbeddedStatementBlock();
-        }
+        terminalElse = at(TokenKind::LeftBrace)
+            ? parseBlock()
+            : parseEmbeddedStatementBlock();
+        break;
     }
 
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::IfStatement, tokenRangeFrom(beginIndex));
-    node->setFirst(condition);
-    node->setSecond(thenBlock);
-    node->setThird(elseNode);
-    if (conditionDeclaration != nullptr)
+    ast::AstNode* result = terminalElse;
+    for (auto branch = branches.rbegin(); branch != branches.rend(); ++branch)
     {
-        ast::AstNode* lowered = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement,
-            tokenRangeFrom(beginIndex));
-        lowered->setAuxiliaryText("condition-declaration");
-        lowered->addChild(conditionDeclaration);
-        lowered->addChild(node);
-        return lowered;
+        result = lowerIfStatement(*branch, result);
     }
-    return node;
+    return result;
 }
 
 ast::AstNode* Parser::parseEmbeddedStatementBlock()
