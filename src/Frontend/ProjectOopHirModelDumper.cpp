@@ -4,12 +4,13 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <sstream>
+#include <vector>
 
 namespace nativesharp::frontend
 {
 namespace
 {
-void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int depth)
+void dumpNodeLine(std::ostringstream& output, const ProjectOopHirNode* node, int depth)
 {
     if (node == nullptr)
     {
@@ -152,9 +153,31 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
         output << " object-ownership=" << sema::ownershipKindName(node->objectLifetimeOwnership)
                << " storage-ownership=" << sema::ownershipKindName(node->storageOwnership);
     output << '\n';
-    for (const auto& child : node->children)
+}
+
+void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int depth)
+{
+    struct Frame final
     {
-        dumpNode(output, child.get(), depth + 1);
+        const ProjectOopHirNode* node = nullptr;
+        int depth = 0;
+    };
+
+    std::vector<Frame> stack;
+    stack.push_back(Frame{node, depth});
+    while (!stack.empty())
+    {
+        const Frame frame = stack.back();
+        stack.pop_back();
+        dumpNodeLine(output, frame.node, frame.depth);
+        if (frame.node == nullptr) continue;
+
+        for (auto child = frame.node->children.rbegin();
+             child != frame.node->children.rend();
+             ++child)
+        {
+            stack.push_back(Frame{child->get(), frame.depth + 1});
+        }
     }
 }
 }

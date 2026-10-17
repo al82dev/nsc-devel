@@ -106,6 +106,24 @@ struct ProjectOopHirModelTestAccess final
         for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &binding;
         return model.lowerStatement(statement, 0U, error);
     }
+
+    static void setDumperBody(
+        ProjectOopHirModel& model,
+        std::unique_ptr<ProjectOopHirNode> body)
+    {
+        ProjectOopHirFunction function;
+        function.isStatic = true;
+        function.mangledName = "deep_hir_dump";
+        function.returnTypeKey = "builtin:void";
+        function.body = std::move(body);
+        model.functions_.push_back(std::move(function));
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> takeDumperBody(ProjectOopHirModel& model)
+    {
+        if (model.functions_.empty()) return nullptr;
+        return std::move(model.functions_.front().body);
+    }
 };
 }
 
@@ -1839,6 +1857,38 @@ void testStaticAssertShortCircuitEvaluation(TestContext& tests)
         nativesharp::lexer::TokenKind::KwTrue,
         "");
 }
+
+void testDeepHirDump(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 8192;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    root->typeKey = "builtin:void";
+    auto* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto child = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        child->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        child->typeKey = "builtin:void";
+        cursor->children.push_back(std::move(child));
+        cursor = cursor->children.front().get();
+    }
+
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setDumperBody(
+        model, std::move(root));
+    const std::string dump = nativesharp::frontend::ProjectOopHirModelDumper::dump(model);
+    tests.expect(
+        static_cast<std::size_t>(std::count(dump.begin(), dump.end(), '\n')) ==
+            nestingDepth + 4U,
+        "an 8192-level HIR tree dumps without process-stack recursion");
+    tests.expect(dump.starts_with("project.oop.hir functions=1\n") &&
+            dump.find("function #0 deep_hir_dump abi=static") != std::string::npos &&
+            dump.find("field-initializers=0\n") != std::string::npos,
+        "iterative HIR dumping preserves header, function contract, preorder, and footer");
+    auto body = nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(model);
+    destroyHirTreeIteratively(body);
+}
 }
 
 int main()
@@ -1909,6 +1959,10 @@ int main()
     else if (focusValue == "hir-static-assert-short-circuit")
     {
         testStaticAssertShortCircuitEvaluation(tests);
+    }
+    else if (focusValue == "hir-dump-depth")
+    {
+        testDeepHirDump(tests);
     }
     else
     {
