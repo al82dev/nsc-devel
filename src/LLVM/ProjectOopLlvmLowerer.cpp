@@ -12705,6 +12705,1378 @@ private:
                 }
                 continue;
             }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt64 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedExchangeInt64)
+            {
+                const bool add = current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt64;
+                if (frame.phase == 0)
+                {
+                    if (current->integerValue != 0U)
+                    {
+                        if (current->children.size() != 2)
+                        {
+                            values.push_back(failValue(error, add ? "ordered atomic Add requires pointer and value arguments" : "ordered atomic Exchange requires pointer and value arguments"));
+                            continue;
+                        }
+                        const std::optional<LLVMAtomicOrdering> ordering =
+                            orderedAtomicRmwOrdering(current->integerValue);
+                        if (!ordering.has_value())
+                        {
+                            values.push_back(failValue(error, "ordered atomic RMW carries an invalid MemoryOrder"));
+                            continue;
+                        }
+                    }
+                    else if (current->children.size() != 2 ||
+                             (add && interlockedAddInt64Function_ == nullptr) ||
+                             (!add && interlockedExchangeInt64Function_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.2 Interlocked int64 RMW requires two arguments and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef location = values.back();
+                    values.pop_back();
+                    if (location == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, location, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicRmwOrdering(current->integerValue);
+                    values.push_back(buildOrderedAtomicRmw(
+                        builder_, add ? LLVMAtomicRMWBinOpAdd : LLVMAtomicRMWBinOpXchg,
+                        frame.lhs, value, *ordering, 8U, add,
+                        add ? "atomic.add.ordered.i64" : "atomic.exchange.ordered.i64"));
+                }
+                else
+                {
+                    LLVMValueRef args[] = {frame.lhs, value};
+                    if (add)
+                        values.push_back(buildNoUnwindCall(
+                            interlockedAddInt64FunctionType_, interlockedAddInt64Function_, args, 2, "interlocked.add.i64"));
+                    else
+                        values.push_back(buildNoUnwindCall(
+                            interlockedExchangeInt64FunctionType_, interlockedExchangeInt64Function_, args, 2, "interlocked.exchange.i64"));
+                }
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt64)
+            {
+                const bool i32 = current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32;
+                if (frame.phase == 0)
+                {
+                    if (current->integerValue != 0U)
+                    {
+                        if (current->children.size() != 1)
+                        {
+                            values.push_back(failValue(error, "ordered atomic Load requires one pointer argument"));
+                            continue;
+                        }
+                        const std::optional<LLVMAtomicOrdering> ordering =
+                            orderedAtomicLoadOrdering(current->integerValue);
+                        if (!ordering.has_value())
+                        {
+                            values.push_back(failValue(error, "ordered atomic Load carries an invalid MemoryOrder"));
+                            continue;
+                        }
+                    }
+                    else if (current->children.size() != 1 ||
+                             (i32 && atomicLoadInt32Function_ == nullptr) ||
+                             (!i32 && atomicLoadInt64Function_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "atomic Load requires one pointer argument and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef location = values.back();
+                values.pop_back();
+                if (location == nullptr) { values.push_back(nullptr); continue; }
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicLoadOrdering(current->integerValue);
+                    LLVMValueRef load = LLVMBuildLoad2(
+                        builder_, i32 ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_),
+                        location, i32 ? "atomic.load.ordered.i32" : "atomic.load.ordered.i64");
+                    LLVMSetOrdering(load, *ordering);
+                    LLVMSetAlignment(load, i32 ? 4U : 8U);
+                    values.push_back(load);
+                }
+                else
+                {
+                    LLVMValueRef args[] = {location};
+                    if (i32)
+                        values.push_back(buildNoUnwindCall(
+                            atomicLoadInt32FunctionType_, atomicLoadInt32Function_, args, 1, "atomic.load.i32"));
+                    else
+                        values.push_back(buildNoUnwindCall(
+                            atomicLoadInt64FunctionType_, atomicLoadInt64Function_, args, 1, "atomic.load.i64"));
+                }
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt64)
+            {
+                const bool i32 = current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32;
+                if (frame.phase == 0)
+                {
+                    if (current->integerValue != 0U)
+                    {
+                        if (current->children.size() != 2)
+                        {
+                            values.push_back(failValue(error, "ordered atomic Store requires pointer and value arguments"));
+                            continue;
+                        }
+                        const std::optional<LLVMAtomicOrdering> ordering =
+                            orderedAtomicStoreOrdering(current->integerValue);
+                        if (!ordering.has_value())
+                        {
+                            values.push_back(failValue(error, "ordered atomic Store carries an invalid MemoryOrder"));
+                            continue;
+                        }
+                    }
+                    else if (current->children.size() != 2 ||
+                             (i32 && atomicStoreInt32Function_ == nullptr) ||
+                             (!i32 && atomicStoreInt64Function_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "atomic Store requires two arguments and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef location = values.back();
+                    values.pop_back();
+                    if (location == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, location, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicStoreOrdering(current->integerValue);
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, frame.lhs);
+                    LLVMSetOrdering(store, *ordering);
+                    LLVMSetAlignment(store, i32 ? 4U : 8U);
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else
+                {
+                    LLVMValueRef args[] = {frame.lhs, value};
+                    if (i32)
+                        buildNoUnwindCall(atomicStoreInt32FunctionType_, atomicStoreInt32Function_, args, 2, "");
+                    else
+                        buildNoUnwindCall(atomicStoreInt64FunctionType_, atomicStoreInt64Function_, args, 2, "");
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicLoadPointer)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "AtomicPointer.Load requires one pointer-location argument"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef location = values.back();
+                values.pop_back();
+                if (location == nullptr) { values.push_back(nullptr); continue; }
+                const LLVMAtomicOrdering ordering = current->integerValue == 0U
+                    ? LLVMAtomicOrderingSequentiallyConsistent
+                    : orderedAtomicLoadOrdering(current->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
+                if (ordering == LLVMAtomicOrderingNotAtomic)
+                {
+                    values.push_back(failValue(error, "AtomicPointer.Load carries an invalid MemoryOrder"));
+                    continue;
+                }
+                LLVMTypeRef pointerType = llvmType("builtin:void*", error);
+                if (pointerType == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef load = LLVMBuildLoad2(builder_, pointerType, location, "atomic.load.pointer");
+                LLVMSetOrdering(load, ordering);
+                LLVMSetAlignment(load, 8U);
+                values.push_back(load);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicStorePointer ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedExchangePointer)
+            {
+                const bool store = current->kind == frontend::ProjectOopMirNodeKind::CoreAtomicStorePointer;
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 2)
+                    {
+                        values.push_back(failValue(error, store ? "AtomicPointer.Store requires pointer-location and value arguments" : "AtomicPointer.Exchange requires pointer-location and value arguments"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef location = values.back();
+                    values.pop_back();
+                    if (location == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, location, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                const LLVMAtomicOrdering ordering = current->integerValue == 0U
+                    ? LLVMAtomicOrderingSequentiallyConsistent
+                    : (store
+                        ? orderedAtomicStoreOrdering(current->integerValue).value_or(LLVMAtomicOrderingNotAtomic)
+                        : orderedAtomicRmwOrdering(current->integerValue).value_or(LLVMAtomicOrderingNotAtomic));
+                if (ordering == LLVMAtomicOrderingNotAtomic)
+                {
+                    values.push_back(failValue(error, store ? "AtomicPointer.Store carries an invalid MemoryOrder" : "AtomicPointer.Exchange carries an invalid MemoryOrder"));
+                    continue;
+                }
+                if (store)
+                {
+                    LLVMValueRef storeInsn = LLVMBuildStore(builder_, value, frame.lhs);
+                    LLVMSetOrdering(storeInsn, ordering);
+                    LLVMSetAlignment(storeInsn, 8U);
+                    values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                }
+                else
+                {
+                    values.push_back(buildOrderedAtomicRmw(
+                        builder_, LLVMAtomicRMWBinOpXchg, frame.lhs, value, ordering, 8U,
+                        false, "atomic.exchange.pointer"));
+                }
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64)
+            {
+                const bool i32 = current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32;
+                if (frame.phase == 0)
+                {
+                    if (current->integerValue != 0U)
+                    {
+                        if (current->children.size() != 3)
+                        {
+                            values.push_back(failValue(error, "ordered atomic CompareExchange requires pointer, value, and comparand arguments"));
+                            continue;
+                        }
+                        const std::optional<LLVMAtomicOrdering> successOrder =
+                            orderedAtomicRmwOrdering(current->integerValue & 0xffU);
+                        const std::optional<LLVMAtomicOrdering> failureOrder =
+                            orderedAtomicLoadOrdering((current->integerValue >> 8U) & 0xffU);
+                        if (!successOrder.has_value() || !failureOrder.has_value())
+                        {
+                            values.push_back(failValue(error, "ordered atomic CompareExchange carries invalid MemoryOrder metadata"));
+                            continue;
+                        }
+                    }
+                    else if (current->children.size() != 3 ||
+                             (i32 && interlockedCompareExchangeInt32Function_ == nullptr) ||
+                             (!i32 && interlockedCompareExchangeInt64Function_ == nullptr))
+                    {
+                        values.push_back(failValue(error, "Stage 54.2 Interlocked.CompareExchange requires three arguments and runtime hook"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef comparand = values.back();
+                values.pop_back();
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                LLVMValueRef location = values.back();
+                values.pop_back();
+                if (location == nullptr || value == nullptr || comparand == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> successOrder =
+                        orderedAtomicRmwOrdering(current->integerValue & 0xffU);
+                    const std::optional<LLVMAtomicOrdering> failureOrder =
+                        orderedAtomicLoadOrdering((current->integerValue >> 8U) & 0xffU);
+                    values.push_back(buildOrderedAtomicCompareExchange(
+                        builder_, location, value, comparand, *successOrder, *failureOrder,
+                        i32 ? 4U : 8U,
+                        i32 ? "atomic.compare_exchange.ordered.i32" : "atomic.compare_exchange.ordered.i64"));
+                }
+                else
+                {
+                    LLVMValueRef args[] = {location, value, comparand};
+                    if (i32)
+                        values.push_back(buildNoUnwindCall(
+                            interlockedCompareExchangeInt32FunctionType_, interlockedCompareExchangeInt32Function_, args, 3, "interlocked.cmpxchg.i32"));
+                    else
+                        values.push_back(buildNoUnwindCall(
+                            interlockedCompareExchangeInt64FunctionType_, interlockedCompareExchangeInt64Function_, args, 3, "interlocked.cmpxchg.i64"));
+                }
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangePointer)
+            {
+                if (current->children.size() != 3)
+                {
+                    values.push_back(failValue(error, "AtomicPointer.CompareExchange requires pointer-location, value, and comparand arguments"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef comparand = values.back();
+                values.pop_back();
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                LLVMValueRef location = values.back();
+                values.pop_back();
+                if (location == nullptr || value == nullptr || comparand == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMAtomicOrdering successOrder = LLVMAtomicOrderingSequentiallyConsistent;
+                LLVMAtomicOrdering failureOrder = LLVMAtomicOrderingSequentiallyConsistent;
+                if (current->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> orderedSuccess =
+                        orderedAtomicRmwOrdering(current->integerValue & 0xffU);
+                    const std::optional<LLVMAtomicOrdering> orderedFailure =
+                        orderedAtomicLoadOrdering((current->integerValue >> 8U) & 0xffU);
+                    if (!orderedSuccess.has_value() || !orderedFailure.has_value())
+                    {
+                        values.push_back(failValue(error, "AtomicPointer.CompareExchange carries invalid MemoryOrder metadata"));
+                        continue;
+                    }
+                    successOrder = *orderedSuccess;
+                    failureOrder = *orderedFailure;
+                }
+                values.push_back(buildOrderedAtomicCompareExchange(
+                    builder_, location, value, comparand, successOrder, failureOrder, 8U,
+                    "atomic.compare_exchange.pointer"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdLoadAligned128 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdLoadUnaligned128)
+            {
+                const bool aligned = current->kind == frontend::ProjectOopMirNodeKind::CoreSimdLoadAligned128;
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, aligned ? "aligned SIMD load requires one pointer operand" : "unaligned SIMD load requires one pointer operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef source = values.back();
+                values.pop_back();
+                if (source == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
+                LLVMValueRef vector = LLVMBuildLoad2(
+                    builder_, vectorType, source, aligned ? "simd.load.aligned" : "simd.load.unaligned");
+                LLVMSetAlignment(vector, aligned ? 16U : 1U);
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, 16U, aligned ? "simd.load.carrier.addr" : "simd.unaligned.load.carrier.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, vector, slot);
+                LLVMSetAlignment(store, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(
+                    builder_, carrier, slot, aligned ? "simd.load.carrier" : "simd.unaligned.load.carrier");
+                LLVMSetAlignment(result, 16U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdStoreAligned128 ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdStoreUnaligned128)
+            {
+                const bool aligned = current->kind == frontend::ProjectOopMirNodeKind::CoreSimdStoreAligned128;
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 2)
+                    {
+                        values.push_back(failValue(error, aligned ? "aligned SIMD store requires pointer and value operands" : "unaligned SIMD store requires pointer and value operands"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef destination = values.back();
+                    values.pop_back();
+                    if (destination == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, destination, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->children[1]->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, 16U, aligned ? "simd.store.carrier.addr" : "simd.unaligned.store.carrier.addr");
+                LLVMValueRef carrierStore = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(carrierStore, 16U);
+                LLVMValueRef vector = LLVMBuildLoad2(
+                    builder_, vectorType, slot, aligned ? "simd.store.vector" : "simd.unaligned.store.vector");
+                LLVMSetAlignment(vector, 16U);
+                LLVMValueRef store = LLVMBuildStore(builder_, vector, frame.lhs);
+                LLVMSetAlignment(store, aligned ? 16U : 1U);
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreCpuPrefetchRead)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "PrefetchRead requires one pointer operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef address = values.back();
+                values.pop_back();
+                if (address == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef parameters[] = {LLVMPointerTypeInContext(context_, 0), i32, i32, i32};
+                LLVMTypeRef type = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 4U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.prefetch.p0");
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, "llvm.prefetch.p0", type);
+                LLVMValueRef arguments[] = {address, LLVMConstInt(i32, 0, 0),
+                    LLVMConstInt(i32, 3, 0), LLVMConstInt(i32, 1, 0)};
+                LLVMBuildCall2(builder_, type, intrinsic, arguments, 4U, "");
+                values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreHalfFromFloat)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "Half.FromFloat requires one float operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef binary16 = LLVMBuildFPTrunc(
+                    builder_, value, LLVMHalfTypeInContext(context_), "half.from.float");
+                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.result.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, binary16, slot);
+                LLVMSetAlignment(store, 2U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "half.result");
+                LLVMSetAlignment(result, 2U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreHalfToFloat)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "Half.ToFloat requires one Half operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->children.front()->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.source.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, 2U);
+                LLVMValueRef binary16 = LLVMBuildLoad2(
+                    builder_, LLVMHalfTypeInContext(context_), slot, "half.source");
+                LLVMSetAlignment(binary16, 2U);
+                values.push_back(LLVMBuildFPExt(
+                    builder_, binary16, LLVMFloatTypeInContext(context_), "half.to.float"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreMonitorWait)
+            {
+                if (current->children.size() != 2 || monitorWaitFunction_ == nullptr)
+                {
+                    values.push_back(failValue(error, "Stage 54.4 Monitor.Wait requires a receiver + timeout argument and runtime hook"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef receiver = values.back();
+                    values.pop_back();
+                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    receiver = checkedReceiver(receiver, error);
+                    if (receiver == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, receiver, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef timeout = values.back();
+                values.pop_back();
+                if (timeout == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef cvOffset = LLVMConstInt(LLVMInt64TypeInContext(context_), current->immediate, 0);
+                LLVMValueRef cvIndices[] = {cvOffset};
+                LLVMValueRef cvPointer = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), frame.lhs, cvIndices, 1, "monitor.cv.addr");
+                LLVMValueRef lockOffset = LLVMConstInt(LLVMInt64TypeInContext(context_), current->secondaryImmediate, 0);
+                LLVMValueRef lockIndices[] = {lockOffset};
+                LLVMValueRef lockPointer = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), frame.lhs, lockIndices, 1, "monitor.lock.addr");
+                LLVMValueRef args[] = {cvPointer, lockPointer, timeout};
+                values.push_back(buildNoUnwindCall(monitorWaitFunctionType_, monitorWaitFunction_, args, 3, "monitor.wait"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "Float32x4 SIMD operation requires two operands"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, left, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (right == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned laneCount = compactFloatVectorLaneCount(current->typeKey);
+                if (laneCount < 2U || laneCount > 4U)
+                {
+                    values.push_back(failValue(error, "compact floating SIMD intrinsic carries an unsupported type"));
+                    continue;
+                }
+                const unsigned alignment = laneCount == 4U ? 16U : 4U;
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), laneCount);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, alignment, "simd.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, alignment, "simd.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, frame.lhs, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, alignment);
+                LLVMSetAlignment(rightStore, alignment);
+                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.left");
+                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.right");
+                LLVMSetAlignment(leftVector, alignment);
+                LLVMSetAlignment(rightVector, alignment);
+                LLVMValueRef vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
+                vectorResult = applyFloatingPointMode(vectorResult, true);
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, alignment);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
+                LLVMSetAlignment(result, alignment);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "128-bit integer SIMD operation requires two operands"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, left, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (right == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned laneBits = integerSimd128LaneBits(current->typeKey);
+                if (laneBits == 0U)
+                {
+                    values.push_back(failValue(error, "integer SIMD intrinsic carries an unsupported type"));
+                    continue;
+                }
+                LLVMTypeRef elementType = laneBits == 32U
+                    ? LLVMInt32TypeInContext(context_)
+                    : LLVMInt64TypeInContext(context_);
+                LLVMTypeRef vectorType = LLVMVectorType(elementType, 128U / laneBits);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 16U, "simd.int.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 16U, "simd.int.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, frame.lhs, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, 16U);
+                LLVMSetAlignment(rightStore, 16U);
+                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.int.left");
+                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int.right");
+                LLVMSetAlignment(leftVector, 16U);
+                LLVMSetAlignment(rightVector, 16U);
+                LLVMValueRef vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int.multiply");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.int.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.int.result");
+                LLVMSetAlignment(result, 16U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::TemporaryAddress)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "C6 temporary address requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, structAlignmentFor(current->typeKey), "struct.temp");
+                if (slot == nullptr)
+                {
+                    values.push_back(failValue(error, "C6 could not reserve storage for a struct temporary"));
+                    continue;
+                }
+                LLVMBuildStore(builder_, value, slot);
+                values.push_back(slot);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreBitPopulationCount ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreBitTrailingZeroCount)
+            {
+                if (frame.phase == 0)
+                {
+                    if (current->children.size() != 1)
+                    {
+                        values.push_back(failValue(error, "bit-count intrinsic requires one operand"));
+                        continue;
+                    }
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children.front().get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                if (value == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef integerType = llvmType(current->typeKey, error);
+                if (integerType == nullptr) { values.push_back(nullptr); continue; }
+                const bool wide = current->typeKey == "builtin:ulong";
+                const char* baseName = current->kind == frontend::ProjectOopMirNodeKind::CoreBitPopulationCount
+                    ? "llvm.ctpop." : current->kind == frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount
+                    ? "llvm.ctlz." : "llvm.cttz.";
+                const std::string intrinsicName = std::string(baseName) + (wide ? "i64" : "i32");
+                LLVMTypeRef parameters[2] = {integerType, LLVMInt1TypeInContext(context_)};
+                const bool hasZeroFlag =
+                    current->kind != frontend::ProjectOopMirNodeKind::CoreBitPopulationCount;
+                LLVMTypeRef intrinsicType = LLVMFunctionType(
+                    integerType, parameters, hasZeroFlag ? 2U : 1U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
+                if (intrinsic == nullptr)
+                    intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
+                LLVMValueRef arguments[2] = {value, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+                values.push_back(LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments,
+                    hasZeroFlag ? 2U : 1U, "bit.count"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreBitRotateLeft ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreBitRotateRight ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreBitByteSwap)
+            {
+                const bool byteSwap = current->kind == frontend::ProjectOopMirNodeKind::CoreBitByteSwap;
+                if (current->children.size() != (byteSwap ? 1U : 2U))
+                {
+                    values.push_back(failValue(error, "rotate/byte-swap intrinsic has invalid operands"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef value = values.back();
+                    values.pop_back();
+                    if (value == nullptr) { values.push_back(nullptr); continue; }
+                    if (byteSwap)
+                    {
+                        LLVMTypeRef integerType = llvmType(current->typeKey, error);
+                        if (integerType == nullptr) { values.push_back(nullptr); continue; }
+                        const bool wide = current->typeKey == "builtin:ulong";
+                        const std::string intrinsicName = std::string("llvm.bswap.") + (wide ? "i64" : "i32");
+                        LLVMTypeRef parameters[3] = {integerType, integerType, integerType};
+                        LLVMTypeRef intrinsicType = LLVMFunctionType(integerType, parameters, 1U, 0);
+                        LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
+                        if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
+                        LLVMValueRef arguments[3] = {value, value, nullptr};
+                        values.push_back(LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments, 1U, "bit.byte.swap"));
+                        continue;
+                    }
+                    frames.push_back({current, 2, value, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef offset = values.back();
+                values.pop_back();
+                if (offset == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef integerType = llvmType(current->typeKey, error);
+                if (integerType == nullptr) { values.push_back(nullptr); continue; }
+                const bool wide = current->typeKey == "builtin:ulong";
+                const char* operation = current->kind == frontend::ProjectOopMirNodeKind::CoreBitRotateLeft ? "fshl" : "fshr";
+                const std::string intrinsicName = std::string("llvm.") + operation + (wide ? ".i64" : ".i32");
+                LLVMTypeRef parameters[3] = {integerType, integerType, integerType};
+                LLVMTypeRef intrinsicType = LLVMFunctionType(integerType, parameters, 3U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
+                LLVMValueRef arguments[3] = {frame.lhs, frame.lhs, offset};
+                values.push_back(LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments, 3U, "bit.rotate"));
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Multiply)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "256-bit floating SIMD operation requires two operands"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, left, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (right == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned laneBits = floatingSimd256LaneBits(current->typeKey);
+                if (laneBits == 0U)
+                {
+                    values.push_back(failValue(error, "floating SIMD intrinsic carries an unsupported type"));
+                    continue;
+                }
+                LLVMTypeRef elementType = laneBits == 32U
+                    ? LLVMFloatTypeInContext(context_)
+                    : LLVMDoubleTypeInContext(context_);
+                LLVMTypeRef vectorType = LLVMVectorType(elementType, 256U / laneBits);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, frame.lhs, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, 32U);
+                LLVMSetAlignment(rightStore, 32U);
+                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.fp256.left");
+                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.fp256.right");
+                LLVMSetAlignment(leftVector, 32U);
+                LLVMSetAlignment(rightVector, 32U);
+                LLVMValueRef vectorResult = nullptr;
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add)
+                    vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.fp256.add");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract)
+                    vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.fp256.subtract");
+                else
+                    vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.fp256.multiply");
+                vectorResult = applyFloatingPointMode(vectorResult, true);
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 32U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.fp256.result");
+                LLVMSetAlignment(result, 32U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Add ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Subtract ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Multiply)
+            {
+                if (current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "256-bit integer SIMD operation requires two operands"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, left, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef right = values.back();
+                values.pop_back();
+                if (right == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned laneBits = integerSimd256LaneBits(current->typeKey);
+                if (laneBits == 0U)
+                {
+                    values.push_back(failValue(error, "256-bit integer SIMD intrinsic carries an unsupported type"));
+                    continue;
+                }
+                LLVMTypeRef elementType = laneBits == 32U
+                    ? LLVMInt32TypeInContext(context_)
+                    : LLVMInt64TypeInContext(context_);
+                LLVMTypeRef vectorType = LLVMVectorType(elementType, 256U / laneBits);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 32U, "simd.int256.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 32U, "simd.int256.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, frame.lhs, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, 32U);
+                LLVMSetAlignment(rightStore, 32U);
+                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.int256.left");
+                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int256.right");
+                LLVMSetAlignment(leftVector, 32U);
+                LLVMSetAlignment(rightVector, 32U);
+                LLVMValueRef vectorResult = nullptr;
+                if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Add)
+                    vectorResult = LLVMBuildAdd(builder_, leftVector, rightVector, "simd.int256.add");
+                else if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Subtract)
+                    vectorResult = LLVMBuildSub(builder_, leftVector, rightVector, "simd.int256.subtract");
+                else
+                    vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int256.multiply");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 32U, "simd.int256.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 32U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.int256.result");
+                LLVMSetAlignment(result, 32U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdSqrt ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd)
+            {
+                const bool fma = current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd;
+                if (current->children.size() != (fma ? 3U : 1U))
+                {
+                    values.push_back(failValue(error, "SIMD sqrt/FMA carries an invalid operand count"));
+                    continue;
+                }
+                if (frame.phase < current->children.size())
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+                std::vector<LLVMValueRef> sourceValues(current->children.size());
+                bool allValid = true;
+                for (std::size_t i = current->children.size(); i > 0; --i)
+                {
+                    sourceValues[i - 1] = values.back();
+                    values.pop_back();
+                    if (sourceValues[i - 1] == nullptr) allValid = false;
+                }
+                if (!allValid) { values.push_back(nullptr); continue; }
+                LLVMValueRef vectors[3]{};
+                for (std::size_t index = 0; index < current->children.size(); ++index)
+                {
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.math.source.addr");
+                    LLVMValueRef store = LLVMBuildStore(builder_, sourceValues[index], slot);
+                    LLVMSetAlignment(store, 16U);
+                    vectors[index] = LLVMBuildLoad2(builder_, vectorType, slot, "simd.math.source");
+                    LLVMSetAlignment(vectors[index], 16U);
+                }
+                LLVMValueRef vectorResult = nullptr;
+                if (fma)
+                {
+                    LLVMTypeRef parameters[] = {vectorType, vectorType, vectorType};
+                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, parameters, 3U, 0);
+                    LLVMValueRef intrinsic = LLVMAddFunction(module_, "llvm.fma.v4f32", intrinsicType);
+                    vectorResult = LLVMBuildCall2(builder_, intrinsicType, intrinsic, vectors, 3U, "simd.fma");
+                }
+                else
+                {
+                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, &vectorType, 1U, 0);
+                    LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.sqrt.v4f32");
+                    if (intrinsic == nullptr)
+                        intrinsic = LLVMAddFunction(module_, "llvm.sqrt.v4f32", intrinsicType);
+                    LLVMValueRef squareRoot = LLVMBuildCall2(
+                        builder_, intrinsicType, intrinsic, vectors, 1U, "simd.sqrt");
+                    if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt)
+                    {
+                        LLVMValueRef ones[4]{};
+                        for (LLVMValueRef& one : ones)
+                            one = LLVMConstReal(LLVMFloatTypeInContext(context_), 1.0);
+                        vectorResult = LLVMBuildFDiv(
+                            builder_, LLVMConstVector(ones, 4U), squareRoot, "simd.rsqrt");
+                        vectorResult = applyFloatingPointMode(vectorResult);
+                    }
+                    else
+                    {
+                        vectorResult = squareRoot;
+                    }
+                }
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.math.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.math.result");
+                LLVMSetAlignment(result, 16U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdSwizzleWzyx ||
+                current->kind == frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh)
+            {
+                const bool twoSources = current->kind == frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh;
+                if (current->children.size() != (twoSources ? 2U : 1U))
+                {
+                    values.push_back(failValue(error, "SIMD shuffle carries an invalid operand count"));
+                    continue;
+                }
+                if (frame.phase == 0)
+                {
+                    frames.push_back({current, 1, nullptr, 0});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (frame.phase == 1 && twoSources)
+                {
+                    LLVMValueRef first = values.back();
+                    values.pop_back();
+                    if (first == nullptr) { values.push_back(nullptr); continue; }
+                    frames.push_back({current, 2, first, 0});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef firstValue;
+                LLVMValueRef secondValue;
+                if (twoSources)
+                {
+                    secondValue = values.back();
+                    values.pop_back();
+                    firstValue = frame.lhs;
+                }
+                else
+                {
+                    firstValue = values.back();
+                    values.pop_back();
+                    secondValue = nullptr;
+                }
+                if (firstValue == nullptr || (twoSources && secondValue == nullptr))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+                auto loadVector = [&](LLVMValueRef value, const char* name) {
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, name);
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                    LLVMSetAlignment(store, 16U);
+                    LLVMValueRef vector = LLVMBuildLoad2(builder_, vectorType, slot, name);
+                    LLVMSetAlignment(vector, 16U);
+                    return vector;
+                };
+                LLVMValueRef first = loadVector(firstValue, "shuffle.first");
+                LLVMValueRef second = twoSources
+                    ? loadVector(secondValue, "shuffle.second")
+                    : LLVMGetUndef(vectorType);
+                const unsigned swizzleIndices[] = {3U, 2U, 1U, 0U};
+                const unsigned shuffleIndices[] = {0U, 1U, 6U, 7U};
+                LLVMValueRef maskValues[4]{};
+                for (unsigned index = 0; index < 4U; ++index)
+                    maskValues[index] = LLVMConstInt(LLVMInt32TypeInContext(context_),
+                        twoSources ? shuffleIndices[index] : swizzleIndices[index], 0);
+                LLVMValueRef shuffled = LLVMBuildShuffleVector(
+                    builder_, first, second, LLVMConstVector(maskValues, 4U), "simd.shuffle");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "shuffle.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, shuffled, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "shuffle.result");
+                LLVMSetAlignment(result, 16U);
+                values.push_back(result);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::StringViewFromString)
+            {
+                if (current->children.size() != 3 && current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "StringView rest capture requires receiver, start and length"));
+                    continue;
+                }
+                const std::size_t operandCount = current->children.size();
+                if (frame.phase < operandCount)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef countRaw = nullptr;
+                if (operandCount == 3)
+                {
+                    countRaw = values.back();
+                    values.pop_back();
+                }
+                LLVMValueRef rawIndex = values.back();
+                values.pop_back();
+                LLVMValueRef object = values.back();
+                values.pop_back();
+                if (object == nullptr || rawIndex == nullptr || (operandCount == 3 && countRaw == nullptr))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                object = checkedReceiver(object, error);
+                if (object == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef index = normalizeNativeIndexFromValue(current->children[1].get(), rawIndex, error);
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef length = LLVMBuildLoad2(
+                    builder_, LLVMInt64TypeInContext(context_), object, "stringview.length");
+                LLVMValueRef count = operandCount == 3 ? countRaw : length;
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count, LLVMConstInt(LLVMTypeOf(count), 0, 0), "stringview.empty");
+                LLVMValueRef inRange = LLVMBuildICmp(
+                    builder_, LLVMIntULT, index, length, "stringview.inrange");
+                if (isSignedInteger(current->children[1]->typeKey))
+                {
+                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                    LLVMValueRef nonNegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, index, zero, "stringview.nonneg");
+                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "stringview.nonempty.inrange");
+                }
+                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "stringview.valid");
+                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "stringview.index", error))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), 8, 0),
+                    "stringview.offset");
+                LLVMValueRef indices[] = {offset};
+                LLVMValueRef gepData = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data.gep");
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(
+                    builder_, countIsZero, nullData, gepData, "stringview.data");
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned alignment = structAlignmentFor(current->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "stringview.init");
+                if (slot == nullptr)
+                {
+                    values.push_back(failValue(error, "StringView rest capture could not reserve storage"));
+                    continue;
+                }
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "stringview.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "stringview.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "stringview.init.value");
+                if (alignment > 1U) LLVMSetAlignment(loaded, alignment);
+                values.push_back(loaded);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::SpanFromArray ||
+                current->kind == frontend::ProjectOopMirNodeKind::ReadOnlySpanFromArray)
+            {
+                if (current->children.size() != 3 && current->children.size() != 2)
+                {
+                    values.push_back(failValue(error, "Span rest capture requires receiver, start and length"));
+                    continue;
+                }
+                const std::size_t operandCount = current->children.size();
+                if (frame.phase < operandCount)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef countRaw = nullptr;
+                if (operandCount == 3)
+                {
+                    countRaw = values.back();
+                    values.pop_back();
+                }
+                LLVMValueRef rawIndex = values.back();
+                values.pop_back();
+                LLVMValueRef object = values.back();
+                values.pop_back();
+                if (object == nullptr || rawIndex == nullptr || (operandCount == 3 && countRaw == nullptr))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                object = checkedReceiver(object, error);
+                if (object == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef index = normalizeNativeIndexFromValue(current->children[1].get(), rawIndex, error);
+                if (index == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef length = LLVMBuildLoad2(
+                    builder_, LLVMInt64TypeInContext(context_), object, "span.length");
+                LLVMValueRef count = operandCount == 3 ? countRaw : length;
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, count, LLVMConstInt(LLVMTypeOf(count), 0, 0), "span.empty");
+                LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "span.inrange");
+                if (isSignedInteger(current->children[1]->typeKey))
+                {
+                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+                    LLVMValueRef nonNegative = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, index, zero, "span.nonneg");
+                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "span.nonempty.inrange");
+                }
+                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "span.valid");
+                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "span.index", error))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                const auto [elementSize, elementAlignment] = captureValueLayout(current->elementTypeKey, error);
+                if (elementSize == 0) { values.push_back(nullptr); continue; }
+                const std::uint64_t dataOffset =
+                    (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+                LLVMValueRef scaled = LLVMBuildMul(
+                    builder_, index,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0), "span.index.scaled");
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, scaled,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "span.offset");
+                LLVMValueRef indices[] = {offset};
+                LLVMValueRef gepData = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "span.data.gep");
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(builder_, countIsZero, nullData, gepData, "span.data");
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned carrierAlignment = structAlignmentFor(current->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(carrier, carrierAlignment, "span.init");
+                if (slot == nullptr)
+                {
+                    values.push_back(failValue(error, "Span rest capture could not reserve storage"));
+                    continue;
+                }
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "span.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "span.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "span.init.value");
+                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
+                values.push_back(loaded);
+                continue;
+            }
+            if (current->kind == frontend::ProjectOopMirNodeKind::SpanFromFixedArray ||
+                current->kind == frontend::ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray)
+            {
+                if (current->children.size() != 3)
+                {
+                    values.push_back(failValue(error, "fixed-array Span rest capture requires receiver, start and length"));
+                    continue;
+                }
+                const std::optional<std::uint64_t> fixedCount =
+                    frontend::ProjectMemberModel::fixedArrayCount(current->children[0]->typeKey);
+                if (!fixedCount.has_value())
+                {
+                    values.push_back(failValue(error, "fixed-array Span rest capture lost its source extent"));
+                    continue;
+                }
+                if (frame.phase < 3)
+                {
+                    const std::size_t index = frame.phase;
+                    frames.push_back({current, static_cast<std::uint8_t>(index + 1), nullptr, 0});
+                    frames.push_back({current->children[index].get(), 0, nullptr});
+                    continue;
+                }
+                LLVMValueRef count = values.back();
+                values.pop_back();
+                LLVMValueRef rawStart = values.back();
+                values.pop_back();
+                LLVMValueRef base = values.back();
+                values.pop_back();
+                if (base == nullptr || rawStart == nullptr || count == nullptr)
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef start = normalizeNativeIndexFromValue(current->children[1].get(), rawStart, error);
+                if (start == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef countNative = convert(
+                    count, current->children[2]->typeKey, "builtin:nuint", error);
+                if (countNative == nullptr) { values.push_back(nullptr); continue; }
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+                LLVMValueRef zero64 = LLVMConstInt(i64, 0, 0);
+                if (isSignedInteger(current->children[1]->typeKey))
+                {
+                    LLVMValueRef valid = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, start, zero64, "fixed.span.start.nonnegative");
+                    if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "fixed.span.start", error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                }
+                if (isSignedInteger(current->children[2]->typeKey))
+                {
+                    LLVMValueRef valid = LLVMBuildICmp(
+                        builder_, LLVMIntSGE, countNative, zero64, "fixed.span.count.nonnegative");
+                    if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "fixed.span.count", error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                }
+                LLVMValueRef extent = LLVMConstInt(i64, *fixedCount, 0);
+                LLVMValueRef startFits = LLVMBuildICmp(
+                    builder_, LLVMIntULE, start, extent, "fixed.span.start.fits");
+                if (!emitGuard(startFits, LlvmTrapReason::BoundsViolation, "fixed.span.start.bounds", error))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                LLVMValueRef remaining = LLVMBuildSub(builder_, extent, start, "fixed.span.remaining");
+                LLVMValueRef countFits = LLVMBuildICmp(
+                    builder_, LLVMIntULE, countNative, remaining, "fixed.span.count.fits");
+                if (!emitGuard(countFits, LlvmTrapReason::BoundsViolation, "fixed.span.count.bounds", error))
+                {
+                    values.push_back(nullptr);
+                    continue;
+                }
+                const auto [elementSize, ignoredAlignment] =
+                    captureValueLayout(current->elementTypeKey, error);
+                (void)ignoredAlignment;
+                if (elementSize == 0) { values.push_back(nullptr); continue; }
+                LLVMValueRef scaled = LLVMBuildMul(
+                    builder_, start, LLVMConstInt(i64, elementSize, 0), "fixed.span.start.scaled");
+                LLVMValueRef indices[] = {scaled};
+                LLVMValueRef dataAddress = LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "fixed.span.data.gep");
+                LLVMValueRef countIsZero = LLVMBuildICmp(
+                    builder_, LLVMIntEQ, countNative, zero64, "fixed.span.empty");
+                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+                LLVMValueRef data = LLVMBuildSelect(
+                    builder_, countIsZero, nullData, dataAddress, "fixed.span.data");
+                LLVMTypeRef carrier = llvmType(current->typeKey, error);
+                if (carrier == nullptr) { values.push_back(nullptr); continue; }
+                const unsigned carrierAlignment = structAlignmentFor(current->typeKey);
+                LLVMValueRef slot = entryBlockAlloca(carrier, carrierAlignment, "fixed.span.init");
+                if (slot == nullptr)
+                {
+                    values.push_back(failValue(error, "fixed-array Span rest capture could not reserve storage"));
+                    continue;
+                }
+                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
+                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "fixed.span.count.addr"));
+                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "fixed.span.init.value");
+                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
+                values.push_back(loaded);
+                continue;
+            }
             // The remaining families still use the recursive lowerExpression.
             values.push_back(lowerExpression(current, error));
         }
@@ -12951,213 +14323,19 @@ private:
             // without calling StringView.Of. The data pointer is the same bounds-checked GEP
             // as StringCharacterPointer; the count is the length operand.
             case frontend::ProjectOopMirNodeKind::StringViewFromString:
-            {
-                // NS304-T11-F02: two children mean the WHOLE string (count derives from the
-                // object's own length header); three children are the rest-capture form.
-                if (node->children.size() != 3 && node->children.size() != 2)
-                    return failValue(error, "StringView rest capture requires receiver, start and length");
-                LLVMValueRef object = lowerExpression(node->children[0].get(), error);
-                if (object == nullptr) return nullptr;
-                object = checkedReceiver(object, error);
-                if (object == nullptr) return nullptr;
-                LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-                if (index == nullptr) return nullptr;
-                LLVMValueRef length = LLVMBuildLoad2(
-                    builder_, LLVMInt64TypeInContext(context_), object, "stringview.length");
-                LLVMValueRef count = node->children.size() == 3
-                    ? lowerExpression(node->children[2].get(), error)
-                    : length;
-                if (count == nullptr) return nullptr;
-                // An empty rest (count == 0) is valid and yields {null, 0}; it must not run the
-                // start < length bounds check, because a valid empty rest has start == length.
-                LLVMValueRef countIsZero = LLVMBuildICmp(
-                    builder_, LLVMIntEQ, count,
-                    LLVMConstInt(LLVMTypeOf(count), 0, 0), "stringview.empty");
-                LLVMValueRef inRange = LLVMBuildICmp(
-                    builder_, LLVMIntULT, index, length, "stringview.inrange");
-                if (isSignedInteger(node->children[1]->typeKey))
-                {
-                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
-                    LLVMValueRef nonNegative = LLVMBuildICmp(
-                        builder_, LLVMIntSGE, index, zero, "stringview.nonneg");
-                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "stringview.nonempty.inrange");
-                }
-                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "stringview.valid");
-                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "stringview.index", error))
-                    return nullptr;
-                LLVMValueRef offset = LLVMBuildAdd(
-                    builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), 8, 0),
-                    "stringview.offset");
-                LLVMValueRef indices[] = {offset};
-                LLVMValueRef gepData = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "stringview.data.gep");
-                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
-                LLVMValueRef data = LLVMBuildSelect(
-                    builder_, countIsZero, nullData, gepData, "stringview.data");
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned alignment = structAlignmentFor(node->typeKey);
-                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "stringview.init");
-                if (slot == nullptr)
-                    return failValue(error, "StringView rest capture could not reserve storage");
-                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "stringview.start.addr"));
-                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "stringview.count.addr"));
-                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "stringview.init.value");
-                if (alignment > 1U) LLVMSetAlignment(loaded, alignment);
-                return loaded;
-            }
+                return lowerExpressionIterative(node, error);
             // NS304-T03-F03: list-pattern rest capture over a native array -> Span<T>/ReadOnlySpan<T>
             // (`{ T* data; int count }`). Same no-copy synthesis as StringView, but the data pointer
             // is the array element address and the element size comes from `elementTypeKey`.
             case frontend::ProjectOopMirNodeKind::SpanFromArray:
             case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromArray:
-            {
-                // NS304-T11-F02: two children mean the WHOLE array (count derives from the object's
-                // own length header); three children are the rest-capture form (explicit count).
-                if (node->children.size() != 3 && node->children.size() != 2)
-                    return failValue(error, "Span rest capture requires receiver, start and length");
-                LLVMValueRef object = lowerExpression(node->children[0].get(), error);
-                if (object == nullptr) return nullptr;
-                object = checkedReceiver(object, error);
-                if (object == nullptr) return nullptr;
-                LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
-                if (index == nullptr) return nullptr;
-                LLVMValueRef length = LLVMBuildLoad2(
-                    builder_, LLVMInt64TypeInContext(context_), object, "span.length");
-                LLVMValueRef count = node->children.size() == 3
-                    ? lowerExpression(node->children[2].get(), error)
-                    : length;
-                if (count == nullptr) return nullptr;
-                LLVMValueRef countIsZero = LLVMBuildICmp(
-                    builder_, LLVMIntEQ, count,
-                    LLVMConstInt(LLVMTypeOf(count), 0, 0), "span.empty");
-                LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "span.inrange");
-                if (isSignedInteger(node->children[1]->typeKey))
-                {
-                    LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
-                    LLVMValueRef nonNegative = LLVMBuildICmp(
-                        builder_, LLVMIntSGE, index, zero, "span.nonneg");
-                    inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "span.nonempty.inrange");
-                }
-                LLVMValueRef valid = LLVMBuildOr(builder_, countIsZero, inRange, "span.valid");
-                if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "span.index", error))
-                    return nullptr;
-                const auto [elementSize, elementAlignment] = captureValueLayout(node->elementTypeKey, error);
-                if (elementSize == 0) return nullptr;
-                const std::uint64_t dataOffset =
-                    (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
-                LLVMValueRef scaled = LLVMBuildMul(
-                    builder_, index,
-                    LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0), "span.index.scaled");
-                LLVMValueRef offset = LLVMBuildAdd(
-                    builder_, scaled,
-                    LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "span.offset");
-                LLVMValueRef indices[] = {offset};
-                LLVMValueRef gepData = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "span.data.gep");
-                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
-                LLVMValueRef data = LLVMBuildSelect(builder_, countIsZero, nullData, gepData, "span.data");
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned carrierAlignment = structAlignmentFor(node->typeKey);
-                LLVMValueRef slot = entryBlockAlloca(carrier, carrierAlignment, "span.init");
-                if (slot == nullptr)
-                    return failValue(error, "Span rest capture could not reserve storage");
-                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "span.start.addr"));
-                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "span.count.addr"));
-                LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "span.init.value");
-                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
-                return loaded;
-            }
+                return lowerExpressionIterative(node, error);
             // NS304-T03-F03: fixed-array rest capture is a borrowed Span view over inline storage.
             // Unlike a native array there is no object header: the receiver is already the address
             // of the fixed array, and the extent is carried by its canonical type identity.
             case frontend::ProjectOopMirNodeKind::SpanFromFixedArray:
             case frontend::ProjectOopMirNodeKind::ReadOnlySpanFromFixedArray:
-            {
-                if (node->children.size() != 3)
-                    return failValue(
-                        error, "fixed-array Span rest capture requires receiver, start and length");
-                const std::optional<std::uint64_t> fixedCount =
-                    frontend::ProjectMemberModel::fixedArrayCount(node->children[0]->typeKey);
-                if (!fixedCount.has_value())
-                    return failValue(error, "fixed-array Span rest capture lost its source extent");
-
-                LLVMValueRef base = lowerExpression(node->children[0].get(), error);
-                if (base == nullptr) return nullptr;
-                LLVMValueRef start = normalizeNativeIndex(node->children[1].get(), error);
-                if (start == nullptr) return nullptr;
-                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
-                if (count == nullptr) return nullptr;
-                LLVMValueRef countNative = convert(
-                    count, node->children[2]->typeKey, "builtin:nuint", error);
-                if (countNative == nullptr) return nullptr;
-
-                LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-                LLVMValueRef zero64 = LLVMConstInt(i64, 0, 0);
-                if (isSignedInteger(node->children[1]->typeKey))
-                {
-                    LLVMValueRef valid = LLVMBuildICmp(
-                        builder_, LLVMIntSGE, start, zero64, "fixed.span.start.nonnegative");
-                    if (!emitGuard(
-                            valid, LlvmTrapReason::BoundsViolation,
-                            "fixed.span.start", error)) return nullptr;
-                }
-                if (isSignedInteger(node->children[2]->typeKey))
-                {
-                    LLVMValueRef valid = LLVMBuildICmp(
-                        builder_, LLVMIntSGE, countNative, zero64,
-                        "fixed.span.count.nonnegative");
-                    if (!emitGuard(
-                            valid, LlvmTrapReason::BoundsViolation,
-                            "fixed.span.count", error)) return nullptr;
-                }
-
-                LLVMValueRef extent = LLVMConstInt(i64, *fixedCount, 0);
-                LLVMValueRef startFits = LLVMBuildICmp(
-                    builder_, LLVMIntULE, start, extent, "fixed.span.start.fits");
-                if (!emitGuard(
-                        startFits, LlvmTrapReason::BoundsViolation,
-                        "fixed.span.start.bounds", error)) return nullptr;
-                LLVMValueRef remaining = LLVMBuildSub(
-                    builder_, extent, start, "fixed.span.remaining");
-                LLVMValueRef countFits = LLVMBuildICmp(
-                    builder_, LLVMIntULE, countNative, remaining, "fixed.span.count.fits");
-                if (!emitGuard(
-                        countFits, LlvmTrapReason::BoundsViolation,
-                        "fixed.span.count.bounds", error)) return nullptr;
-
-                const auto [elementSize, ignoredAlignment] =
-                    captureValueLayout(node->elementTypeKey, error);
-                (void)ignoredAlignment;
-                if (elementSize == 0) return nullptr;
-                LLVMValueRef scaled = LLVMBuildMul(
-                    builder_, start,
-                    LLVMConstInt(i64, elementSize, 0), "fixed.span.start.scaled");
-                LLVMValueRef indices[] = {scaled};
-                LLVMValueRef dataAddress = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), base, indices, 1,
-                    "fixed.span.data.gep");
-                LLVMValueRef countIsZero = LLVMBuildICmp(
-                    builder_, LLVMIntEQ, countNative, zero64, "fixed.span.empty");
-                LLVMValueRef nullData = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
-                LLVMValueRef data = LLVMBuildSelect(
-                    builder_, countIsZero, nullData, dataAddress, "fixed.span.data");
-
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned carrierAlignment = structAlignmentFor(node->typeKey);
-                LLVMValueRef slot = entryBlockAlloca(
-                    carrier, carrierAlignment, "fixed.span.init");
-                if (slot == nullptr)
-                    return failValue(error, "fixed-array Span rest capture could not reserve storage");
-                LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
-                LLVMBuildStore(builder_, count, byteOffset(slot, 8, "fixed.span.count.addr"));
-                LLVMValueRef loaded = LLVMBuildLoad2(
-                    builder_, carrier, slot, "fixed.span.init.value");
-                if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
-                return loaded;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::StringSubstring:
                 return lowerStringSubstring(node, error);
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:
@@ -13335,225 +14513,26 @@ private:
             }
 
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 1)
-                        return failValue(error, "ordered atomic Load requires one pointer argument");
-                    LLVMValueRef location = lowerExpression(node->children.front().get(), error);
-                    if (location == nullptr) return nullptr;
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicLoadOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic Load carries an invalid MemoryOrder");
-                    LLVMValueRef load = LLVMBuildLoad2(
-                        builder_, LLVMInt32TypeInContext(context_), location, "atomic.load.ordered.i32");
-                    LLVMSetOrdering(load, *ordering);
-                    LLVMSetAlignment(load, 4U);
-                    return load;
-                }
-                if (node->children.size() != 1 || atomicLoadInt32Function_ == nullptr)
-                    return failValue(error, "atomic Load(int*) requires one pointer argument and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef args[] = {location};
-                return buildNoUnwindCall(
-                    atomicLoadInt32FunctionType_, atomicLoadInt32Function_, args, 1, "atomic.load.i32");
-            }
+                return lowerExpressionIterative(node, error);
             // Entrega 228: Float32x4 conserva su carrier agregado publico, pero la operacion
             // interna se realiza sobre <4 x float>. Con punteros opacos basta un alloca del
             // carrier para reinterpretar sin cambiar firmas, layout, PDB ni metadata.
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "Float32x4 SIMD operation requires two operands");
-                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-                if (left == nullptr) return nullptr;
-                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-                if (right == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned laneCount = compactFloatVectorLaneCount(node->typeKey);
-                if (laneCount < 2U || laneCount > 4U)
-                    return failValue(error, "compact floating SIMD intrinsic carries an unsupported type");
-                const unsigned alignment = laneCount == 4U ? 16U : 4U;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), laneCount);
-                LLVMValueRef leftSlot = entryBlockAlloca(carrier, alignment, "simd.left.addr");
-                LLVMValueRef rightSlot = entryBlockAlloca(carrier, alignment, "simd.right.addr");
-                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
-                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
-                LLVMSetAlignment(leftStore, alignment);
-                LLVMSetAlignment(rightStore, alignment);
-                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.left");
-                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.right");
-                LLVMSetAlignment(leftVector, alignment);
-                LLVMSetAlignment(rightVector, alignment);
-                LLVMValueRef vectorResult = nullptr;
-                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add)
-                    vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.add");
-                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract)
-                    vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
-                else
-                    vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
-                vectorResult = applyFloatingPointMode(vectorResult, true);
-                LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
-                LLVMSetAlignment(resultStore, alignment);
-                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
-                LLVMSetAlignment(result, alignment);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreHalfFromFloat:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "Half.FromFloat requires one float operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef halfType = LLVMHalfTypeInContext(context_);
-                LLVMValueRef binary16 = LLVMBuildFPTrunc(builder_, value, halfType, "half.from.float");
-                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.result.addr");
-                LLVMValueRef store = LLVMBuildStore(builder_, binary16, slot);
-                LLVMSetAlignment(store, 2U);
-                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "half.result");
-                LLVMSetAlignment(result, 2U);
-                return result;
-            }
             case frontend::ProjectOopMirNodeKind::CoreHalfToFloat:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "Half.ToFloat requires one Half operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->children.front()->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.source.addr");
-                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-                LLVMSetAlignment(store, 2U);
-                LLVMValueRef binary16 = LLVMBuildLoad2(
-                    builder_, LLVMHalfTypeInContext(context_), slot, "half.source");
-                LLVMSetAlignment(binary16, 2U);
-                return LLVMBuildFPExt(
-                    builder_, binary16, LLVMFloatTypeInContext(context_), "half.to.float");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdSwizzleWzyx:
             case frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh:
-            {
-                const bool twoSources =
-                    node->kind == frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh;
-                if (node->children.size() != (twoSources ? 2U : 1U))
-                    return failValue(error, "SIMD shuffle carries an invalid operand count");
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
-                auto loadVector = [&](const frontend::ProjectOopMirNode* child, const char* name) {
-                    LLVMValueRef value = lowerExpression(child, error);
-                    if (value == nullptr) return static_cast<LLVMValueRef>(nullptr);
-                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, name);
-                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-                    LLVMSetAlignment(store, 16U);
-                    LLVMValueRef vector = LLVMBuildLoad2(builder_, vectorType, slot, name);
-                    LLVMSetAlignment(vector, 16U);
-                    return vector;
-                };
-                LLVMValueRef first = loadVector(node->children[0].get(), "shuffle.first");
-                if (first == nullptr) return nullptr;
-                LLVMValueRef second = twoSources
-                    ? loadVector(node->children[1].get(), "shuffle.second")
-                    : LLVMGetUndef(vectorType);
-                if (second == nullptr) return nullptr;
-                const unsigned swizzleIndices[] = {3U, 2U, 1U, 0U};
-                const unsigned shuffleIndices[] = {0U, 1U, 6U, 7U};
-                LLVMValueRef maskValues[4]{};
-                for (unsigned index = 0; index < 4U; ++index)
-                    maskValues[index] = LLVMConstInt(LLVMInt32TypeInContext(context_),
-                        twoSources ? shuffleIndices[index] : swizzleIndices[index], 0);
-                LLVMValueRef shuffled = LLVMBuildShuffleVector(
-                    builder_, first, second, LLVMConstVector(maskValues, 4U), "simd.shuffle");
-                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "shuffle.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, shuffled, resultSlot);
-                LLVMSetAlignment(resultStore, 16U);
-                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "shuffle.result");
-                LLVMSetAlignment(result, 16U);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdSqrt:
             case frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt:
             case frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd:
-            {
-                const bool fma = node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd;
-                if (node->children.size() != (fma ? 3U : 1U))
-                    return failValue(error, "SIMD sqrt/FMA carries an invalid operand count");
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
-                LLVMValueRef vectors[3]{};
-                for (std::size_t index = 0; index < node->children.size(); ++index)
-                {
-                    LLVMValueRef value = lowerExpression(node->children[index].get(), error);
-                    if (value == nullptr) return nullptr;
-                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.math.source.addr");
-                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-                    LLVMSetAlignment(store, 16U);
-                    vectors[index] = LLVMBuildLoad2(builder_, vectorType, slot, "simd.math.source");
-                    LLVMSetAlignment(vectors[index], 16U);
-                }
-                LLVMValueRef vectorResult = nullptr;
-                if (fma)
-                {
-                    LLVMTypeRef parameters[] = {vectorType, vectorType, vectorType};
-                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, parameters, 3U, 0);
-                    LLVMValueRef intrinsic = LLVMAddFunction(module_, "llvm.fma.v4f32", intrinsicType);
-                    vectorResult = LLVMBuildCall2(builder_, intrinsicType, intrinsic, vectors, 3U, "simd.fma");
-                }
-                else
-                {
-                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, &vectorType, 1U, 0);
-                    LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.sqrt.v4f32");
-                    if (intrinsic == nullptr)
-                        intrinsic = LLVMAddFunction(module_, "llvm.sqrt.v4f32", intrinsicType);
-                    LLVMValueRef squareRoot = LLVMBuildCall2(
-                        builder_, intrinsicType, intrinsic, vectors, 1U, "simd.sqrt");
-                    if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt)
-                    {
-                        LLVMValueRef ones[4]{};
-                        for (LLVMValueRef& one : ones)
-                            one = LLVMConstReal(LLVMFloatTypeInContext(context_), 1.0);
-                        vectorResult = LLVMBuildFDiv(
-                            builder_, LLVMConstVector(ones, 4U), squareRoot, "simd.rsqrt");
-                        vectorResult = applyFloatingPointMode(vectorResult);
-                    }
-                    else
-                    {
-                        vectorResult = squareRoot;
-                    }
-                }
-                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.math.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
-                LLVMSetAlignment(resultStore, 16U);
-                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.math.result");
-                LLVMSetAlignment(result, 16U);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreCpuPrefetchRead:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "PrefetchRead requires one pointer operand");
-                LLVMValueRef address = lowerExpression(node->children.front().get(), error);
-                if (address == nullptr) return nullptr;
-                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-                LLVMTypeRef parameters[] = {LLVMPointerTypeInContext(context_, 0), i32, i32, i32};
-                LLVMTypeRef type = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 4U, 0);
-                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.prefetch.p0");
-                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, "llvm.prefetch.p0", type);
-                LLVMValueRef arguments[] = {address, LLVMConstInt(i32, 0, 0),
-                    LLVMConstInt(i32, 3, 0), LLVMConstInt(i32, 1, 0)};
-                LLVMBuildCall2(builder_, type, intrinsic, arguments, 4U, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreCpuPause:
             {
                 if (!node->children.empty()) return failValue(error, "Pause cannot have operands");
@@ -13575,364 +14554,33 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreBitRotateLeft:
             case frontend::ProjectOopMirNodeKind::CoreBitRotateRight:
             case frontend::ProjectOopMirNodeKind::CoreBitByteSwap:
-            {
-                const bool byteSwap = node->kind == frontend::ProjectOopMirNodeKind::CoreBitByteSwap;
-                if (node->children.size() != (byteSwap ? 1U : 2U))
-                    return failValue(error, "rotate/byte-swap intrinsic has invalid operands");
-                LLVMValueRef value = lowerExpression(node->children[0].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef offset = byteSwap ? nullptr : lowerExpression(node->children[1].get(), error);
-                if (!byteSwap && offset == nullptr) return nullptr;
-                LLVMTypeRef integerType = llvmType(node->typeKey, error);
-                if (integerType == nullptr) return nullptr;
-                const bool wide = node->typeKey == "builtin:ulong";
-                const char* operation = byteSwap ? "bswap" :
-                    node->kind == frontend::ProjectOopMirNodeKind::CoreBitRotateLeft ? "fshl" : "fshr";
-                const std::string intrinsicName = std::string("llvm.") + operation + (wide ? ".i64" : ".i32");
-                LLVMTypeRef parameters[3] = {integerType, integerType, integerType};
-                LLVMTypeRef intrinsicType = LLVMFunctionType(integerType, parameters, byteSwap ? 1U : 3U, 0);
-                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
-                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
-                LLVMValueRef arguments[3] = {value, value, offset};
-                return LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments, byteSwap ? 1U : 3U,
-                    byteSwap ? "bit.byte.swap" : "bit.rotate");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreBitPopulationCount:
             case frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount:
             case frontend::ProjectOopMirNodeKind::CoreBitTrailingZeroCount:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "bit-count intrinsic requires one operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef integerType = llvmType(node->typeKey, error);
-                if (integerType == nullptr) return nullptr;
-                const bool wide = node->typeKey == "builtin:ulong";
-                const char* baseName = node->kind == frontend::ProjectOopMirNodeKind::CoreBitPopulationCount
-                    ? "llvm.ctpop." : node->kind == frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount
-                    ? "llvm.ctlz." : "llvm.cttz.";
-                const std::string intrinsicName = std::string(baseName) + (wide ? "i64" : "i32");
-                LLVMTypeRef parameters[2] = {integerType, LLVMInt1TypeInContext(context_)};
-                const bool hasZeroFlag =
-                    node->kind != frontend::ProjectOopMirNodeKind::CoreBitPopulationCount;
-                LLVMTypeRef intrinsicType = LLVMFunctionType(
-                    integerType, parameters, hasZeroFlag ? 2U : 1U, 0);
-                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
-                if (intrinsic == nullptr)
-                    intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
-                LLVMValueRef arguments[2] = {value, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
-                return LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments,
-                    hasZeroFlag ? 2U : 1U, "bit.count");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "128-bit integer SIMD operation requires two operands");
-                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-                if (left == nullptr) return nullptr;
-                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-                if (right == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned laneBits = integerSimd128LaneBits(node->typeKey);
-                if (laneBits == 0U)
-                    return failValue(error, "integer SIMD intrinsic carries an unsupported type");
-                LLVMTypeRef elementType = laneBits == 32U
-                    ? LLVMInt32TypeInContext(context_)
-                    : LLVMInt64TypeInContext(context_);
-                LLVMTypeRef vectorType = LLVMVectorType(elementType, 128U / laneBits);
-                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 16U, "simd.int.left.addr");
-                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 16U, "simd.int.right.addr");
-                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
-                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
-                LLVMSetAlignment(leftStore, 16U);
-                LLVMSetAlignment(rightStore, 16U);
-                LLVMValueRef leftVector =
-                    LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.int.left");
-                LLVMValueRef rightVector =
-                    LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int.right");
-                LLVMSetAlignment(leftVector, 16U);
-                LLVMSetAlignment(rightVector, 16U);
-                LLVMValueRef vectorResult = nullptr;
-                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Add)
-                    vectorResult = LLVMBuildAdd(builder_, leftVector, rightVector, "simd.int.add");
-                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract)
-                    vectorResult = LLVMBuildSub(builder_, leftVector, rightVector, "simd.int.subtract");
-                else
-                    vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int.multiply");
-                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.int.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
-                LLVMSetAlignment(resultStore, 16U);
-                LLVMValueRef result =
-                    LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.int.result");
-                LLVMSetAlignment(result, 16U);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Multiply:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "256-bit floating SIMD operation requires two operands");
-                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-                if (left == nullptr) return nullptr;
-                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-                if (right == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned laneBits = floatingSimd256LaneBits(node->typeKey);
-                if (laneBits == 0U)
-                    return failValue(error, "floating SIMD intrinsic carries an unsupported type");
-                LLVMTypeRef elementType = laneBits == 32U
-                    ? LLVMFloatTypeInContext(context_)
-                    : LLVMDoubleTypeInContext(context_);
-                LLVMTypeRef vectorType = LLVMVectorType(elementType, 256U / laneBits);
-                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.left.addr");
-                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.right.addr");
-                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
-                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
-                LLVMSetAlignment(leftStore, 32U);
-                LLVMSetAlignment(rightStore, 32U);
-                LLVMValueRef leftVector =
-                    LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.fp256.left");
-                LLVMValueRef rightVector =
-                    LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.fp256.right");
-                LLVMSetAlignment(leftVector, 32U);
-                LLVMSetAlignment(rightVector, 32U);
-                LLVMValueRef vectorResult = nullptr;
-                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add)
-                    vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.fp256.add");
-                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract)
-                    vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.fp256.subtract");
-                else
-                    vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.fp256.multiply");
-                vectorResult = applyFloatingPointMode(vectorResult, true);
-                LLVMValueRef resultSlot =
-                    entryBlockAlloca(carrier, 32U, "simd.fp256.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
-                LLVMSetAlignment(resultStore, 32U);
-                LLVMValueRef result =
-                    LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.fp256.result");
-                LLVMSetAlignment(result, 32U);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdInt256Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt256Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt256Multiply:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "256-bit integer SIMD operation requires two operands");
-                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-                if (left == nullptr) return nullptr;
-                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-                if (right == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                const unsigned laneBits = integerSimd256LaneBits(node->typeKey);
-                if (laneBits == 0U)
-                    return failValue(error, "256-bit integer SIMD intrinsic carries an unsupported type");
-                LLVMTypeRef elementType = laneBits == 32U
-                    ? LLVMInt32TypeInContext(context_)
-                    : LLVMInt64TypeInContext(context_);
-                LLVMTypeRef vectorType = LLVMVectorType(elementType, 256U / laneBits);
-                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 32U, "simd.int256.left.addr");
-                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 32U, "simd.int256.right.addr");
-                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
-                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
-                LLVMSetAlignment(leftStore, 32U);
-                LLVMSetAlignment(rightStore, 32U);
-                LLVMValueRef leftVector =
-                    LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.int256.left");
-                LLVMValueRef rightVector =
-                    LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int256.right");
-                LLVMSetAlignment(leftVector, 32U);
-                LLVMSetAlignment(rightVector, 32U);
-                LLVMValueRef vectorResult = nullptr;
-                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Add)
-                    vectorResult = LLVMBuildAdd(builder_, leftVector, rightVector, "simd.int256.add");
-                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt256Subtract)
-                    vectorResult = LLVMBuildSub(builder_, leftVector, rightVector, "simd.int256.subtract");
-                else
-                    vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int256.multiply");
-                LLVMValueRef resultSlot =
-                    entryBlockAlloca(carrier, 32U, "simd.int256.result.addr");
-                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
-                LLVMSetAlignment(resultStore, 32U);
-                LLVMValueRef result =
-                    LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.int256.result");
-                LLVMSetAlignment(result, 32U);
-                return result;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreSimdLoadAligned128:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "aligned SIMD load requires one pointer operand");
-                LLVMValueRef source = lowerExpression(node->children.front().get(), error);
-                if (source == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType =
-                    LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
-                LLVMValueRef vector =
-                    LLVMBuildLoad2(builder_, vectorType, source, "simd.load.aligned");
-                LLVMSetAlignment(vector, 16U);
-                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.load.carrier.addr");
-                LLVMValueRef store = LLVMBuildStore(builder_, vector, slot);
-                LLVMSetAlignment(store, 16U);
-                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "simd.load.carrier");
-                LLVMSetAlignment(result, 16U);
-                return result;
-            }
             case frontend::ProjectOopMirNodeKind::CoreSimdStoreAligned128:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "aligned SIMD store requires pointer and value operands");
-                LLVMValueRef destination = lowerExpression(node->children[0].get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                const std::string& valueTypeKey = node->children[1]->typeKey;
-                LLVMTypeRef carrier = llvmType(valueTypeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType =
-                    LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
-                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.store.carrier.addr");
-                LLVMValueRef carrierStore = LLVMBuildStore(builder_, value, slot);
-                LLVMSetAlignment(carrierStore, 16U);
-                LLVMValueRef vector =
-                    LLVMBuildLoad2(builder_, vectorType, slot, "simd.store.vector");
-                LLVMSetAlignment(vector, 16U);
-                LLVMValueRef store = LLVMBuildStore(builder_, vector, destination);
-                LLVMSetAlignment(store, 16U);
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreSimdLoadUnaligned128:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "unaligned SIMD load requires one pointer operand");
-                LLVMValueRef source = lowerExpression(node->children.front().get(), error);
-                if (source == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
-                LLVMValueRef vector =
-                    LLVMBuildLoad2(builder_, vectorType, source, "simd.load.unaligned");
-                LLVMSetAlignment(vector, 1U);
-                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.unaligned.load.carrier.addr");
-                LLVMValueRef store = LLVMBuildStore(builder_, vector, slot);
-                LLVMSetAlignment(store, 16U);
-                LLVMValueRef result =
-                    LLVMBuildLoad2(builder_, carrier, slot, "simd.unaligned.load.carrier");
-                LLVMSetAlignment(result, 16U);
-                return result;
-            }
             case frontend::ProjectOopMirNodeKind::CoreSimdStoreUnaligned128:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "unaligned SIMD store requires pointer and value operands");
-                LLVMValueRef destination = lowerExpression(node->children[0].get(), error);
-                if (destination == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->children[1]->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
-                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.unaligned.store.carrier.addr");
-                LLVMValueRef carrierStore = LLVMBuildStore(builder_, value, slot);
-                LLVMSetAlignment(carrierStore, 16U);
-                LLVMValueRef vector =
-                    LLVMBuildLoad2(builder_, vectorType, slot, "simd.unaligned.store.vector");
-                LLVMSetAlignment(vector, 16U);
-                LLVMValueRef store = LLVMBuildStore(builder_, vector, destination);
-                LLVMSetAlignment(store, 1U);
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Store requires pointer and value arguments");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicStoreOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic Store carries an invalid MemoryOrder");
-                    LLVMValueRef store = LLVMBuildStore(builder_, value, location);
-                    LLVMSetOrdering(store, *ordering);
-                    LLVMSetAlignment(store, 4U);
-                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-                }
-                if (node->children.size() != 2 || atomicStoreInt32Function_ == nullptr)
-                    return failValue(error, "atomic Store(int*, int) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                buildNoUnwindCall(atomicStoreInt32FunctionType_, atomicStoreInt32Function_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
-            case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt64:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 1)
-                        return failValue(error, "ordered atomic Load requires one pointer argument");
-                    LLVMValueRef location = lowerExpression(node->children.front().get(), error);
-                    if (location == nullptr) return nullptr;
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicLoadOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic Load carries an invalid MemoryOrder");
-                    LLVMValueRef load = LLVMBuildLoad2(
-                        builder_, LLVMInt64TypeInContext(context_), location, "atomic.load.ordered.i64");
-                    LLVMSetOrdering(load, *ordering);
-                    LLVMSetAlignment(load, 8U);
-                    return load;
-                }
-                if (node->children.size() != 1 || atomicLoadInt64Function_ == nullptr)
-                    return failValue(error, "atomic Load(long*) requires one pointer argument and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef args[] = {location};
-                return buildNoUnwindCall(
-                    atomicLoadInt64FunctionType_, atomicLoadInt64Function_, args, 1, "atomic.load.i64");
-            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt64:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Store requires pointer and value arguments");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicStoreOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic Store carries an invalid MemoryOrder");
-                    LLVMValueRef store = LLVMBuildStore(builder_, value, location);
-                    LLVMSetOrdering(store, *ordering);
-                    LLVMSetAlignment(store, 8U);
-                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-                }
-                if (node->children.size() != 2 || atomicStoreInt64Function_ == nullptr)
-                    return failValue(error, "atomic Store(long*, long) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                buildNoUnwindCall(atomicStoreInt64FunctionType_, atomicStoreInt64Function_, args, 2, "");
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
+                return lowerExpressionIterative(node, error);
+            case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt64:
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreInterlockedIncrementInt32:
             case frontend::ProjectOopMirNodeKind::CoreInterlockedDecrementInt32:
                 return lowerExpressionIterative(node, error);
@@ -13947,216 +14595,22 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreInterlockedExchangeInt32:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreInterlockedAddInt64:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Add requires pointer and value arguments");
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicRmwOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic RMW carries an invalid MemoryOrder");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    return buildOrderedAtomicRmw(
-                        builder_, LLVMAtomicRMWBinOpAdd, location, value, *ordering, 8U,
-                        true, "atomic.add.ordered.i64");
-                }
-                if (node->children.size() != 2 || interlockedAddInt64Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.Add(long*, long) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                return buildNoUnwindCall(
-                    interlockedAddInt64FunctionType_, interlockedAddInt64Function_, args, 2, "interlocked.add.i64");
-            }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedExchangeInt64:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 2)
-                        return failValue(error, "ordered atomic Exchange requires pointer and value arguments");
-                    const std::optional<LLVMAtomicOrdering> ordering =
-                        orderedAtomicRmwOrdering(node->integerValue);
-                    if (!ordering.has_value())
-                        return failValue(error, "ordered atomic RMW carries an invalid MemoryOrder");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    return buildOrderedAtomicRmw(
-                        builder_, LLVMAtomicRMWBinOpXchg, location, value, *ordering, 8U,
-                        false, "atomic.exchange.ordered.i64");
-                }
-                if (node->children.size() != 2 || interlockedExchangeInt64Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.Exchange(long*, long) requires two arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value};
-                return buildNoUnwindCall(
-                    interlockedExchangeInt64FunctionType_, interlockedExchangeInt64Function_, args, 2, "interlocked.exchange.i64");
-            }
+                return lowerExpressionIterative(node, error);
             // CompareExchange takes three operands -- location, value, comparand -- same order as
             // Win32's InterlockedCompareExchange(Destination, Exchange, Comparand) and C#'s
             // Interlocked.CompareExchange(location, value, comparand). Returns the OLD value
             // regardless of whether the comparison matched, forwarded directly from Win32.
             case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 3)
-                        return failValue(error, "ordered atomic CompareExchange requires pointer, value, and comparand arguments");
-                    const std::optional<LLVMAtomicOrdering> successOrder =
-                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
-                    const std::optional<LLVMAtomicOrdering> failureOrder =
-                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
-                    if (!successOrder.has_value() || !failureOrder.has_value())
-                        return failValue(error, "ordered atomic CompareExchange carries invalid MemoryOrder metadata");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
-                    if (comparand == nullptr) return nullptr;
-                    return buildOrderedAtomicCompareExchange(
-                        builder_, location, value, comparand, *successOrder, *failureOrder, 4U,
-                        "atomic.compare_exchange.ordered.i32");
-                }
-                if (node->children.size() != 3 || interlockedCompareExchangeInt32Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.CompareExchange(int*, int, int) requires three arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
-                if (comparand == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value, comparand};
-                return buildNoUnwindCall(
-                    interlockedCompareExchangeInt32FunctionType_, interlockedCompareExchangeInt32Function_, args, 3, "interlocked.cmpxchg.i32");
-            }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64:
-            {
-                if (node->integerValue != 0U)
-                {
-                    if (node->children.size() != 3)
-                        return failValue(error, "ordered atomic CompareExchange requires pointer, value, and comparand arguments");
-                    const std::optional<LLVMAtomicOrdering> successOrder =
-                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
-                    const std::optional<LLVMAtomicOrdering> failureOrder =
-                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
-                    if (!successOrder.has_value() || !failureOrder.has_value())
-                        return failValue(error, "ordered atomic CompareExchange carries invalid MemoryOrder metadata");
-                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                    if (location == nullptr) return nullptr;
-                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                    if (value == nullptr) return nullptr;
-                    LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
-                    if (comparand == nullptr) return nullptr;
-                    return buildOrderedAtomicCompareExchange(
-                        builder_, location, value, comparand, *successOrder, *failureOrder, 8U,
-                        "atomic.compare_exchange.ordered.i64");
-                }
-                if (node->children.size() != 3 || interlockedCompareExchangeInt64Function_ == nullptr)
-                    return failValue(error, "Stage 54.2 Interlocked.CompareExchange(long*, long, long) requires three arguments and runtime hook");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
-                if (comparand == nullptr) return nullptr;
-                LLVMValueRef args[] = {location, value, comparand};
-                return buildNoUnwindCall(
-                    interlockedCompareExchangeInt64FunctionType_, interlockedCompareExchangeInt64Function_, args, 3, "interlocked.cmpxchg.i64");
-            }
+                return lowerExpressionIterative(node, error);
 
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadPointer:
-            {
-                if (node->children.size() != 1)
-                    return failValue(error, "AtomicPointer.Load requires one pointer-location argument");
-                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
-                if (location == nullptr) return nullptr;
-                const LLVMAtomicOrdering ordering = node->integerValue == 0U
-                    ? LLVMAtomicOrderingSequentiallyConsistent
-                    : orderedAtomicLoadOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
-                if (ordering == LLVMAtomicOrderingNotAtomic)
-                    return failValue(error, "AtomicPointer.Load carries an invalid MemoryOrder");
-                LLVMTypeRef pointerType = llvmType("builtin:void*", error);
-                if (pointerType == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, pointerType, location, "atomic.load.pointer");
-                LLVMSetOrdering(load, ordering);
-                LLVMSetAlignment(load, 8U);
-                return load;
-            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStorePointer:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "AtomicPointer.Store requires pointer-location and value arguments");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                const LLVMAtomicOrdering ordering = node->integerValue == 0U
-                    ? LLVMAtomicOrderingSequentiallyConsistent
-                    : orderedAtomicStoreOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
-                if (ordering == LLVMAtomicOrderingNotAtomic)
-                    return failValue(error, "AtomicPointer.Store carries an invalid MemoryOrder");
-                LLVMValueRef store = LLVMBuildStore(builder_, value, location);
-                LLVMSetOrdering(store, ordering);
-                LLVMSetAlignment(store, 8U);
-                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
-            }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedExchangePointer:
-            {
-                if (node->children.size() != 2)
-                    return failValue(error, "AtomicPointer.Exchange requires pointer-location and value arguments");
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                const LLVMAtomicOrdering ordering = node->integerValue == 0U
-                    ? LLVMAtomicOrderingSequentiallyConsistent
-                    : orderedAtomicRmwOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
-                if (ordering == LLVMAtomicOrderingNotAtomic)
-                    return failValue(error, "AtomicPointer.Exchange carries an invalid MemoryOrder");
-                return buildOrderedAtomicRmw(
-                    builder_, LLVMAtomicRMWBinOpXchg, location, value, ordering, 8U,
-                    false, "atomic.exchange.pointer");
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangePointer:
-            {
-                if (node->children.size() != 3)
-                    return failValue(
-                        error, "AtomicPointer.CompareExchange requires pointer-location, value, and comparand arguments");
-                LLVMAtomicOrdering successOrder = LLVMAtomicOrderingSequentiallyConsistent;
-                LLVMAtomicOrdering failureOrder = LLVMAtomicOrderingSequentiallyConsistent;
-                if (node->integerValue != 0U)
-                {
-                    const std::optional<LLVMAtomicOrdering> orderedSuccess =
-                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
-                    const std::optional<LLVMAtomicOrdering> orderedFailure =
-                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
-                    if (!orderedSuccess.has_value() || !orderedFailure.has_value())
-                        return failValue(
-                            error, "AtomicPointer.CompareExchange carries invalid MemoryOrder metadata");
-                    successOrder = *orderedSuccess;
-                    failureOrder = *orderedFailure;
-                }
-                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
-                if (location == nullptr) return nullptr;
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
-                if (comparand == nullptr) return nullptr;
-                return buildOrderedAtomicCompareExchange(
-                    builder_, location, value, comparand, successOrder, failureOrder, 8U,
-                    "atomic.compare_exchange.pointer");
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 54.3 "Mutex". MutexCreate takes ZERO operands (the first zero-operand core
             // operation in the project) and returns the real, meaningful i64 HANDLE (as nint) --
@@ -14192,26 +14646,7 @@ private:
             // never re-validated twice for the same call, unlike two independent FieldAddress
             // nodes would each do.
             case frontend::ProjectOopMirNodeKind::CoreMonitorWait:
-            {
-                if (node->children.size() != 2 || monitorWaitFunction_ == nullptr)
-                    return failValue(error, "Stage 54.4 Monitor.Wait requires a receiver + timeout argument and runtime hook");
-                LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
-                if (receiver == nullptr) return nullptr;
-                receiver = checkedReceiver(receiver, error);
-                if (receiver == nullptr) return nullptr;
-                LLVMValueRef cvOffset = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
-                LLVMValueRef cvIndices[] = {cvOffset};
-                LLVMValueRef cvPointer = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), receiver, cvIndices, 1, "monitor.cv.addr");
-                LLVMValueRef lockOffset = LLVMConstInt(LLVMInt64TypeInContext(context_), node->secondaryImmediate, 0);
-                LLVMValueRef lockIndices[] = {lockOffset};
-                LLVMValueRef lockPointer = LLVMBuildGEP2(
-                    builder_, LLVMInt8TypeInContext(context_), receiver, lockIndices, 1, "monitor.lock.addr");
-                LLVMValueRef timeout = lowerExpression(node->children[1].get(), error);
-                if (timeout == nullptr) return nullptr;
-                LLVMValueRef args[] = {cvPointer, lockPointer, timeout};
-                return buildNoUnwindCall(monitorWaitFunctionType_, monitorWaitFunction_, args, 3, "monitor.wait");
-            }
+                return lowerExpressionIterative(node, error);
 
             // Stage 54.5 "Otras primitivas de sincronizacion". SemaphoreCreate: two explicit i32
             // operands (initialCount, maximumCount), a REAL i64 HANDLE result -- no dummy-i1
@@ -14373,34 +14808,7 @@ private:
             case frontend::ProjectOopMirNodeKind::InterfaceInstanceCall:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::TemporaryAddress:
-            {
-                // C6 "struct members": give a struct temporary a home, and hand back its address.
-                //
-                // One entry-block slot, the value stored into it, the slot returned. Entry block,
-                // not here, so a loop does not grow the stack.
-                //
-                // MEASURED, and worth writing down because the assumption is easy to make the
-                // other way round: an INDIRECT aggregate is NOT already a pointer at this level.
-                // A call that returns one writes into an sret slot and then LOADS it
-                // (`abi.sret.load`), so what an expression of that type hands over is the loaded
-                // `[N x i8]` value, exactly like a direct aggregate hands over its integer. The
-                // first version of this case short-circuited on isIndirectStructTypeKey and
-                // returned that value as if it were an address; the verifier caught it
-                // immediately ("GEP base pointer is not a vector", GEPing into a loaded
-                // [12 x i8]). So both shapes take the same path, which is also the simpler one.
-                if (node->children.size() != 1)
-                    return failValue(error, "C6 temporary address requires one operand");
-                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                if (value == nullptr) return nullptr;
-                LLVMTypeRef carrier = llvmType(node->typeKey, error);
-                if (carrier == nullptr) return nullptr;
-                LLVMValueRef slot = entryBlockAlloca(
-                    carrier, structAlignmentFor(node->typeKey), "struct.temp");
-                if (slot == nullptr)
-                    return failValue(error, "C6 could not reserve storage for a struct temporary");
-                LLVMBuildStore(builder_, value, slot);
-                return slot;
-            }
+                return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::ValueConstruct:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::PlacementConstruct:
