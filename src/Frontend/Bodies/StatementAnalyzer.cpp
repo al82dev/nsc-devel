@@ -242,6 +242,24 @@ void ProjectMethodBodyModel::analyzeBlock(
         std::optional<OwnershipFlowSnapshot> restoreAfterExit;
     };
 
+    enum class TryStage
+    {
+        Start,
+        AfterTryBody,
+        NextCatch,
+        AfterCatch,
+        AfterFinally
+    };
+
+    struct TryFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t scopeOrdinal = 0;
+        TryStage stage = TryStage::Start;
+        std::optional<TryAnalysisState> state;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
     using StatementFrame =
         std::variant<
             BlockFrame,
@@ -250,7 +268,8 @@ void ProjectMethodBodyModel::analyzeBlock(
             ForFrame,
             ForeachFrame,
             UsingFrame,
-            SwitchFrame>;
+            SwitchFrame,
+            TryFrame>;
     std::vector<StatementFrame> frames;
     frames.reserve(16);
     const auto pushBlock = [&](const ast::AstNode* nestedBlock,
@@ -1047,6 +1066,102 @@ void ProjectMethodBodyModel::analyzeBlock(
             continue;
         }
 
+        if (TryFrame* tryFrame = std::get_if<TryFrame>(&frames.back()); tryFrame != nullptr)
+        {
+            if (tryFrame->stage == TryStage::Start)
+            {
+                tryFrame->state = beginTry(
+                    tryFrame->statement,
+                    methodMemberOrdinal,
+                    tryFrame->scopeOrdinal,
+                    diagnostics);
+                if (!tryFrame->state.has_value())
+                {
+                    std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                        std::move(tryFrame->restoreAfterExit);
+                    frames.pop_back();
+                    if (restoreAfterExit.has_value())
+                    {
+                        restoreOwnershipFlow(*restoreAfterExit);
+                    }
+                    continue;
+                }
+
+                const ast::AstNode* const tryBody = tryFrame->statement->first();
+                const std::size_t tryScope = tryFrame->scopeOrdinal;
+                tryFrame->stage = TryStage::AfterTryBody;
+                if (tryBody != nullptr)
+                {
+                    pushBlock(tryBody, tryScope, true);
+                }
+                continue;
+            }
+
+            if (tryFrame->stage == TryStage::AfterTryBody)
+            {
+                completeTryBody(*tryFrame->state);
+                tryFrame->stage = TryStage::NextCatch;
+                continue;
+            }
+
+            if (tryFrame->stage == TryStage::AfterCatch)
+            {
+                finishCurrentCatch(*tryFrame->state);
+                tryFrame->stage = TryStage::NextCatch;
+                continue;
+            }
+
+            if (tryFrame->stage == TryStage::NextCatch)
+            {
+                const ast::AstNode* catchBody = nullptr;
+                if (prepareNextCatch(
+                        *tryFrame->state,
+                        catchBody,
+                        methodMemberOrdinal,
+                        diagnostics))
+                {
+                    const std::size_t catchScope = tryFrame->state->currentCatchScope;
+                    tryFrame->stage = TryStage::AfterCatch;
+                    if (catchBody != nullptr)
+                    {
+                        pushBlock(catchBody, catchScope, false);
+                    }
+                    continue;
+                }
+
+                const ast::AstNode* finallyBody = nullptr;
+                if (prepareFinally(*tryFrame->state, finallyBody))
+                {
+                    const std::size_t finallyScope = tryFrame->scopeOrdinal;
+                    tryFrame->stage = TryStage::AfterFinally;
+                    if (finallyBody != nullptr)
+                    {
+                        pushBlock(finallyBody, finallyScope, true);
+                    }
+                    continue;
+                }
+
+                std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                    std::move(tryFrame->restoreAfterExit);
+                frames.pop_back();
+                if (restoreAfterExit.has_value())
+                {
+                    restoreOwnershipFlow(*restoreAfterExit);
+                }
+                continue;
+            }
+
+            finishFinally(*tryFrame->state);
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(tryFrame->restoreAfterExit);
+            frames.pop_back();
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
         BlockFrame& frame = std::get<BlockFrame>(frames.back());
         if (frame.nextStatement < frame.block->children().size())
         {
@@ -1155,6 +1270,18 @@ void ProjectMethodBodyModel::analyzeBlock(
                     statement,
                     switchScope,
                     SwitchStage::Start,
+                    std::nullopt,
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::TryStatement)
+            {
+                const std::size_t tryScope = frame.activeScope;
+                frames.emplace_back(TryFrame{
+                    statement,
+                    tryScope,
+                    TryStage::Start,
                     std::nullopt,
                     std::move(restoreAfterStatement)});
                 continue;
@@ -2551,6 +2678,255 @@ void ProjectMethodBodyModel::analyzeUsing(
         analyzeBlock(state->body, methodMemberOrdinal, state->usingScope, false, diagnostics);
     }
     finishUsing(*state);
+}
+
+std::optional<ProjectMethodBodyModel::TryAnalysisState>
+ProjectMethodBodyModel::beginTry(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (statement == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr ||
+        inheritanceModel_ == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    if (statement->children().empty() && statement->second() == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "try statement requires at least one catch clause or a finally block");
+    }
+
+    std::optional<std::size_t> cleanupRegionOrdinal;
+    if (statement->second() != nullptr)
+    {
+        cleanupRegionOrdinal = createCleanupRegion(
+            MethodCleanupRegionKind::Finally,
+            statement,
+            statement->second(),
+            methodMemberOrdinal,
+            scopeOrdinal);
+        recordNormalCleanupContinuation(
+            *cleanupRegionOrdinal, statement, methodMemberOrdinal, scopeOrdinal);
+        activeCleanupRegions_.push_back(*cleanupRegionOrdinal);
+    }
+
+    TryAnalysisState state;
+    state.statement = statement;
+    state.scopeOrdinal = scopeOrdinal;
+    state.cleanupRegionOrdinal = cleanupRegionOrdinal;
+    state.tryEntryState = captureOwnershipFlow();
+    state.throwStateBegin = throwFlowStates_.size();
+    return state;
+}
+
+void ProjectMethodBodyModel::completeTryBody(TryAnalysisState& state)
+{
+    state.tryExitState = captureOwnershipFlow();
+    state.catchEntryState = joinOwnershipFlow(state.tryEntryState, state.tryExitState);
+    for (std::size_t index = state.throwStateBegin; index < throwFlowStates_.size(); ++index)
+    {
+        state.catchEntryState = joinOwnershipFlow(
+            state.catchEntryState, throwFlowStates_[index]);
+    }
+    state.joinedExitState = state.tryExitState;
+    state.exceptionRoot = exceptionRootTypeOrdinal();
+}
+
+bool ProjectMethodBodyModel::prepareNextCatch(
+    TryAnalysisState& state,
+    const ast::AstNode*& body,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    body = nullptr;
+    while (state.nextCatchChild < state.statement->children().size())
+    {
+        const ast::AstNode* catchClause =
+            state.statement->children()[state.nextCatchChild++];
+        if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
+        {
+            continue;
+        }
+
+        const std::size_t catchScope = createScope(
+            MethodScopeKind::Catch, methodMemberOrdinal, state.scopeOrdinal);
+        MethodExceptionBinding binding;
+        binding.kind = MethodExceptionOperationKind::Catch;
+        binding.syntax = catchClause;
+        binding.methodMemberOrdinal = methodMemberOrdinal;
+        binding.scopeOrdinal = catchScope;
+        binding.catchAll = catchClause->flag();
+        binding.hasFilter = catchClause->second() != nullptr;
+        binding.filterAlwaysTrue = !binding.hasFilter ||
+            (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+             catchClause->second()->tokenKind() == lexer::TokenKind::KwTrue);
+
+        if (state.sawCatchAll)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                catchClause->range(),
+                "catch clause is unreachable because a previous catch-all handles every exception");
+        }
+
+        if (catchClause->flag())
+        {
+            if (binding.filterAlwaysTrue) state.sawCatchAll = true;
+            binding.exceptionTypeKey = "<any-exception>";
+        }
+        else
+        {
+            const std::string typeKey = memberModel_->canonicalTypeKey(
+                catchClause->typeSyntax(), *nameLookup_);
+            binding.exceptionTypeKey = typeKey;
+            const std::optional<std::size_t> typeOrdinal =
+                inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+            binding.exceptionTypeOrdinal = typeOrdinal;
+
+            if (!state.exceptionRoot.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->range(),
+                    "NativeSharp.Core.Exception must be declared before typed catch/throw semantics can be used");
+            }
+            else if (!typeOrdinal.has_value() || !isExceptionTypeOrdinal(*typeOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->range(),
+                    "catch type '" + typeKey +
+                        "' must be NativeSharp.Core.Exception or derive from it");
+            }
+            else
+            {
+                for (const std::size_t previous : state.previousTypedCatchOrdinals)
+                {
+                    if (inheritanceModel_->isDerivedFrom(*typeOrdinal, previous, true))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            catchClause->range(),
+                            "catch type '" + typeKey +
+                                "' is unreachable because an earlier catch handles the same or a base exception type");
+                        break;
+                    }
+                }
+                if (binding.filterAlwaysTrue)
+                {
+                    state.previousTypedCatchOrdinals.push_back(*typeOrdinal);
+                }
+            }
+            if (!catchClause->text().empty())
+            {
+                addCatchLocal(
+                    catchClause, typeKey, methodMemberOrdinal, catchScope, diagnostics);
+            }
+        }
+
+        restoreOwnershipFlow(state.catchEntryState);
+        if (binding.hasFilter)
+        {
+            const ExpressionResult filter = analyzeExpression(
+                catchClause->second(), methodMemberOrdinal, catchScope, diagnostics);
+            if (filter.valid &&
+                filter.typeKey != "builtin:bool" &&
+                filter.typeKey != "builtin:never")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCondition,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->second()->range(),
+                    "catch filter expression must have type bool");
+            }
+            if (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                catchClause->second()->tokenKind() == lexer::TokenKind::KwFalse)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->second()->range(),
+                    "catch filter is unreachable because its condition is always false");
+            }
+        }
+
+        exceptionBindings_.push_back(std::move(binding));
+        ++currentCatchDepth_;
+        currentCatchErrorTypes_.push_back(catchClause->flag()
+            ? (state.exceptionRoot.has_value()
+                ? inheritanceModel_->typeKeyForOrdinal(*state.exceptionRoot)
+                : std::string{"<any-exception>"})
+            : memberModel_->canonicalTypeKey(catchClause->typeSyntax(), *nameLookup_));
+        state.currentCatchScope = catchScope;
+        state.catchContextActive = true;
+        body = catchClause->first();
+        return true;
+    }
+    return false;
+}
+
+void ProjectMethodBodyModel::finishCurrentCatch(TryAnalysisState& state)
+{
+    if (!state.catchContextActive) return;
+    currentCatchErrorTypes_.pop_back();
+    --currentCatchDepth_;
+    state.joinedExitState = joinOwnershipFlow(
+        state.joinedExitState, captureOwnershipFlow());
+    state.catchContextActive = false;
+}
+
+bool ProjectMethodBodyModel::prepareFinally(
+    TryAnalysisState& state,
+    const ast::AstNode*& body)
+{
+    restoreOwnershipFlow(state.joinedExitState);
+    if (state.cleanupRegionOrdinal.has_value())
+    {
+        activeCleanupRegions_.pop_back();
+    }
+
+    body = state.statement->second();
+    if (body == nullptr) return false;
+
+    state.postTryState = captureOwnershipFlow();
+    OwnershipFlowSnapshot finallyInput = state.postTryState;
+    if (!finallyInput.reachable)
+    {
+        finallyInput = state.catchEntryState;
+        finallyInput.reachable = true;
+    }
+    restoreOwnershipFlow(finallyInput);
+    finallyStack_.push_back(FinallyContext{
+        *state.cleanupRegionOrdinal,
+        loopStack_.size()});
+    state.finallyContextActive = true;
+    return true;
+}
+
+void ProjectMethodBodyModel::finishFinally(TryAnalysisState& state)
+{
+    if (!state.finallyContextActive) return;
+    finallyStack_.pop_back();
+    const OwnershipFlowSnapshot finalState = captureOwnershipFlow();
+    if (state.postTryState.reachable)
+    {
+        restoreOwnershipFlow(finalState);
+    }
+    else
+    {
+        restoreOwnershipFlow(state.postTryState);
+    }
+    state.finallyContextActive = false;
 }
 
 void ProjectMethodBodyModel::analyzeTry(

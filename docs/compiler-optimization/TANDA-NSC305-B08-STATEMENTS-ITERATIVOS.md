@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-17
 Rama: `development`
-Estado: subfase estructural terminada; continuaciones de control pendientes en B08F
+Estado: B08 y B08F terminados; límite de parser separado como R04
 
 ## Objetivo
 
@@ -123,6 +123,26 @@ La prueba exploratoria de 256 `foreach` no llegó a `method-bodies`: el último 
 192 para probar la ruta que sí alcanza el binder, y el límite de parser se conserva como pendiente
 explícito; no se atribuye falsamente al binder ni se considera resuelto.
 
-Este es un checkpoint, no el cierre de B08F. `try`/`catch`/`finally` todavía requiere su frame de
-continuación y la auditoría final debe demostrar que ninguna ruta estructural normal vuelve a
-entrar síncronamente a `analyzeBlock`.
+El commit de checkpoint no cerró B08F porque `try`/`catch`/`finally` todavía requería su frame de
+continuación.
+
+## Cierre de B08F
+
+`TryFrame` completa la máquina de estados con etapas explícitas para cuerpo `try`, cada cuerpo
+`catch` y `finally`. El estado conservado incluye cleanup de `finally`, rango de estados de
+`throw`, entrada y salida del `try`, entrada común de catches, scopes y filtros de cada catch,
+profundidad/error type activo, joins y restauración final del ownership flow.
+
+Se añadieron dos regresiones independientes: 256 `try/finally` anidados y 256 cuerpos `catch`
+anidados. Ambas alcanzan `method-bodies` y pasan. El gate focal final de B08F es `PASS: 87 checks`;
+`nsc.exe` se construyó otra vez y el contrato de host runtime estático pasó.
+
+La reauditoría de llamadas confirmó que la ruta normal de `analyzeBlock` intercepta antes del
+dispatcher todos los statements estructurales: bloques, `if`, bucles, `for`, `foreach`, `using`,
+`switch` y `try`. La única llamada externa a `analyzeStatement` procede de bindings de arms de
+`match`, cuyo contrato contiene exclusivamente declaraciones variables/deconstruction. Los cases
+históricos del dispatcher permanecen como fallback defensivo, pero no forman una cadena recursiva
+en el pipeline normal ni son usados por los fixtures profundos.
+
+B08F queda cerrado. R04 permanece abierto porque es un desbordamiento independiente de
+`syntax-parse`, demostrado antes de que exista el modelo de method bodies.

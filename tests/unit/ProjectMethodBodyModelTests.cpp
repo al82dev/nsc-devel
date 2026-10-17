@@ -726,6 +726,48 @@ void testDeepNestedSwitchStatements(TestContext& tests, const std::filesystem::p
         "256 nested switch statements bind without host-stack failure");
 }
 
+void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedTryFinallyStatements";
+    writeProject(directory, "DeepNestedTryFinallyStatements");
+
+    std::string source = "class DeepTry { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index) source += "try { ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} finally { } ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedTryFinallyStatements.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested try/finally statements bind without host-stack failure");
+}
+
+void testDeepNestedCatchBodies(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedCatchBodies";
+    writeProject(directory, "DeepNestedCatchBodies");
+
+    std::string source = "class DeepCatch { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index) source += "try { } catch { ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedCatchBodies.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested catch bodies bind without host-stack failure");
+}
+
 void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path alpha = root / "QualifiedAlpha";
@@ -1009,6 +1051,8 @@ int main()
     testDeepNestedForeachLoops(tests, root);
     testDeepNestedUsingStatements(tests, root);
     testDeepNestedSwitchStatements(tests, root);
+    testDeepNestedTryFinallyStatements(tests, root);
+    testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
     testDenseOwnershipSnapshots(tests, root);
     testDeterministicCallableWaves(tests, root);
