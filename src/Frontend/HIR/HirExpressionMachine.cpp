@@ -47,6 +47,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         CoreMember,
         InstanceField,
         NullConditionalField,
+        RangeSlice,
     };
     struct IterativeExpressionFrame final
     {
@@ -57,6 +58,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         std::unique_ptr<ProjectOopHirNode> first;
         std::unique_ptr<ProjectOopHirNode> second;
         const MethodNameBinding* fieldBinding = nullptr;
+        const MethodRangeSliceBinding* rangeBinding = nullptr;
         bool materializeReceiverTemporary = false;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
@@ -146,6 +148,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return IterativeExpressionKind::NullConditionalField;
             }
         }
+        if (!address &&
+            (syntax->kind() == ast::AstNodeKind::IndexExpression ||
+             syntax->kind() == ast::AstNodeKind::NullConditionalIndexExpression))
+        {
+            const MethodRangeSliceBinding* range = rangeSliceBinding(syntax);
+            if (range != nullptr && memberModel_ != nullptr &&
+                range->lengthMemberOrdinal < memberModel_->members().size() &&
+                range->sliceMemberOrdinal < memberModel_->members().size() &&
+                range->receiverSyntax != nullptr &&
+                range->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
+                !range->receiverTypeKey.empty())
+            {
+                return IterativeExpressionKind::RangeSlice;
+            }
+        }
         if (syntax->kind() == ast::AstNodeKind::MemberExpression &&
             coreBinding(syntax) == nullptr && accessorGetterBinding(syntax) == nullptr &&
             callBinding(syntax) == nullptr &&
@@ -181,7 +198,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             {
                 IterativeExpressionFrame frame{
                     *currentKind, current, currentAddressContext, 0U,
-                    nullptr, nullptr, nullptr, false};
+                    nullptr, nullptr, nullptr, nullptr, false};
                 if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
@@ -193,15 +210,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                             !isNaturallyAddressable(frame.fieldBinding->receiverSyntax);
                     }
                 }
+                else if (*currentKind == IterativeExpressionKind::RangeSlice)
+                {
+                    frame.rangeBinding = rangeSliceBinding(current);
+                    frame.materializeReceiverTemporary =
+                        isStructValueType(frame.rangeBinding->receiverTypeKey) &&
+                        !isNaturallyAddressable(frame.rangeBinding->receiverSyntax);
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::RangeSlice)
+                    current = frames.back().rangeBinding->receiverSyntax;
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                 {
                     currentAddressContext =
                         isStructValueType(frames.back().fieldBinding->receiverTypeKey) &&
+                        !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::RangeSlice)
+                {
+                    currentAddressContext =
+                        isStructValueType(frames.back().rangeBinding->receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
@@ -358,6 +390,92 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         memberModel_->members()[*field->memberOrdinal].isVolatile;
                     field->children.push_back(std::move(lowered));
                     lowered = std::move(field);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::RangeSlice)
+                {
+                    const MethodRangeSliceBinding& range = *frame.rangeBinding;
+                    if (frame.stage == 0U)
+                    {
+                        if (frame.materializeReceiverTemporary)
+                        {
+                            auto temporary = makeNode(
+                                ProjectOopHirNodeKind::TemporaryAddress,
+                                range.receiverSyntax,
+                                range.receiverTypeKey);
+                            temporary->elementTypeKey = range.receiverTypeKey;
+                            temporary->children.push_back(std::move(lowered));
+                            lowered = std::move(temporary);
+                        }
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        if (range.startSyntax != nullptr)
+                        {
+                            current = range.startSyntax;
+                            currentAddressContext = false;
+                            descend = true;
+                            break;
+                        }
+                        lowered = makeNode(
+                            ProjectOopHirNodeKind::IntegerConstant,
+                            frame.syntax,
+                            "builtin:int");
+                        lowered->integerValue = 0;
+                        continue;
+                    }
+                    if (frame.stage == 1U)
+                    {
+                        if (range.startSyntax != nullptr && range.startConversion.exists() &&
+                            range.startConversion.kind != ProjectConversionKind::Identity)
+                        {
+                            lowered = wrapImplicitConversion(
+                                std::move(lowered), range.startConversion, range.startSyntax);
+                        }
+                        frame.second = std::move(lowered);
+                        frame.stage = 2U;
+                        if (range.endSyntax != nullptr)
+                        {
+                            current = range.endSyntax;
+                            currentAddressContext = false;
+                            descend = true;
+                            break;
+                        }
+                        lowered = makeNode(
+                            ProjectOopHirNodeKind::IntegerConstant,
+                            frame.syntax,
+                            "builtin:int");
+                        lowered->integerValue = 0;
+                        continue;
+                    }
+                    if (range.endSyntax != nullptr && range.endConversion.exists() &&
+                        range.endConversion.kind != ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered), range.endConversion, range.endSyntax);
+                    }
+                    const ClassMemberSymbol& sliceMember =
+                        memberModel_->members()[range.sliceMemberOrdinal];
+                    auto slice = makeNode(
+                        ProjectOopHirNodeKind::RangeSlice,
+                        frame.syntax,
+                        range.resultTypeKey);
+                    slice->elementTypeKey = range.receiverTypeKey;
+                    slice->memberOrdinal = range.sliceMemberOrdinal;
+                    slice->secondaryMemberOrdinal = range.lengthMemberOrdinal;
+                    slice->referenceResult = sliceMember.isReferenceReturn;
+                    slice->integerValue =
+                        (range.hasStart ? 1U : 0U) |
+                        (range.startFromEnd ? 2U : 0U) |
+                        (range.hasEnd ? 4U : 0U) |
+                        (range.endFromEnd ? 8U : 0U) |
+                        (range.boundsStaticallyProven ? 16U : 0U);
+                    slice->argumentCount = 2U;
+                    slice->argumentParameterOrdinals = {0U, 1U};
+                    slice->children.push_back(std::move(frame.first));
+                    slice->children.push_back(std::move(frame.second));
+                    slice->children.push_back(std::move(lowered));
+                    lowered = std::move(slice);
                     frames.pop_back();
                     continue;
                 }
