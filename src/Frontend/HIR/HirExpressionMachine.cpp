@@ -46,6 +46,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Conditional,
         NullCoalescing,
         NullCoalescingAssignment,
+        ResultPropagation,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -67,6 +68,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         const MethodRangeSliceBinding* rangeBinding = nullptr;
         const MethodCoreBinding* core = nullptr;
         const MethodVariableArrayIndexBinding* variableArrayIndex = nullptr;
+        const MethodResultPropagationBinding* resultPropagation = nullptr;
+        const MethodStructuredExitBinding* structuredExit = nullptr;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -139,6 +142,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             expressionType(syntax->first()) != nullptr)
         {
             return IterativeExpressionKind::NullCoalescingAssignment;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
+        {
+            const MethodResultPropagationBinding* binding = resultPropagationBinding(syntax);
+            const MethodStructuredExitBinding* exit = structuredExitBinding(syntax);
+            if (binding != nullptr && binding->operandSyntax != nullptr && exit != nullptr &&
+                exit->kind == MethodStructuredExitKind::Return)
+            {
+                return IterativeExpressionKind::ResultPropagation;
+            }
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -339,6 +352,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     frame.operands.reserve(frame.operandSyntaxes.size());
                 }
+                else if (*currentKind == IterativeExpressionKind::ResultPropagation)
+                {
+                    frame.resultPropagation = resultPropagationBinding(current);
+                    frame.structuredExit = structuredExitBinding(current);
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
@@ -347,6 +365,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (*currentKind == IterativeExpressionKind::CoreIndex ||
                     *currentKind == IterativeExpressionKind::RawIndex)
                     current = current->first();
+                else if (*currentKind == IterativeExpressionKind::ResultPropagation)
+                    current = frames.back().resultPropagation->operandSyntax;
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -993,6 +1013,49 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     assignment->children.push_back(std::move(frame.first));
                     assignment->children.push_back(std::move(lowered));
                     lowered = std::move(assignment);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::ResultPropagation)
+                {
+                    const MethodExpressionTypeBinding* frameType =
+                        expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate =
+                        delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    auto propagation = makeNode(
+                        ProjectOopHirNodeKind::ResultPropagation,
+                        frame.syntax,
+                        resultType);
+                    propagation->resultSourceCarrierTypeKey =
+                        frame.resultPropagation->sourceCarrierTypeKey;
+                    propagation->resultSourceErrorTypeKey =
+                        frame.resultPropagation->sourceErrorTypeKey;
+                    propagation->resultReturnCarrierTypeKey =
+                        frame.resultPropagation->returnCarrierTypeKey;
+                    propagation->resultReturnErrorTypeKey =
+                        frame.resultPropagation->returnErrorTypeKey;
+                    propagation->resultSuccessTag = frame.resultPropagation->sourceSuccessTag;
+                    propagation->resultErrorTag = frame.resultPropagation->sourceErrorTag;
+                    propagation->resultReturnErrorTag = frame.resultPropagation->returnErrorTag;
+                    propagation->resultSuccessTestMemberOrdinal =
+                        frame.resultPropagation->sourceSuccessTestMemberOrdinal;
+                    propagation->resultSuccessExtractorMemberOrdinal =
+                        frame.resultPropagation->sourceSuccessExtractorMemberOrdinal;
+                    propagation->resultErrorExtractorMemberOrdinal =
+                        frame.resultPropagation->sourceErrorExtractorMemberOrdinal;
+                    propagation->resultErrorFactoryMemberOrdinal =
+                        frame.resultPropagation->returnErrorFactoryMemberOrdinal;
+                    propagation->resultErrorConversionMemberOrdinal =
+                        frame.resultPropagation->errorConversionMemberOrdinal;
+                    propagation->cleanupRegionOrdinals =
+                        frame.structuredExit->cleanupRegionOrdinals;
+                    propagation->cleanupContinuationKind =
+                        MethodCleanupContinuationKind::Return;
+                    propagation->children.push_back(std::move(lowered));
+                    lowered = std::move(propagation);
                     frames.pop_back();
                     continue;
                 }
