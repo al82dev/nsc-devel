@@ -45,6 +45,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         BuiltinBinary,
         Conditional,
         NullCoalescing,
+        NullCoalescingAssignment,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -131,6 +132,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             syntax->first() != nullptr && syntax->second() != nullptr)
         {
             return IterativeExpressionKind::NullCoalescing;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->tokenKind() == lexer::TokenKind::QuestionQuestionEqual &&
+            syntax->first() != nullptr && syntax->second() != nullptr &&
+            expressionType(syntax->first()) != nullptr)
+        {
+            return IterativeExpressionKind::NullCoalescingAssignment;
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -357,6 +365,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 {
                     currentAddressContext = frames.back().baseIsFixedArray ||
                         frames.back().baseIsFlexibleArray;
+                }
+                else if (*currentKind == IterativeExpressionKind::NullCoalescingAssignment)
+                {
+                    currentAddressContext = true;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -937,6 +949,50 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     coalescing->children.push_back(std::move(frame.first));
                     coalescing->children.push_back(std::move(lowered));
                     lowered = std::move(coalescing);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NullCoalescingAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const MethodExpressionTypeBinding* targetType =
+                        expressionType(frame.syntax->first());
+                    const MethodExpressionTypeBinding* rhsType =
+                        expressionType(frame.syntax->second());
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        lowered->typeKey,
+                        targetType->typeKey,
+                        rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                    if (!conversion.exists())
+                    {
+                        error = "T01-F03 null-coalescing assignment RHS cannot convert from '" +
+                            lowered->typeKey + "' to '" + targetType->typeKey + "'";
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    if (conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered), conversion, frame.syntax->second());
+                    }
+                    auto assignment = makeNode(
+                        ProjectOopHirNodeKind::NullCoalescingAssignment,
+                        frame.syntax,
+                        targetType->typeKey);
+                    assignment->children.push_back(std::move(frame.first));
+                    assignment->children.push_back(std::move(lowered));
+                    lowered = std::move(assignment);
                     frames.pop_back();
                     continue;
                 }
