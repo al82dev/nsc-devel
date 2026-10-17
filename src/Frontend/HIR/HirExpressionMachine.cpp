@@ -36,9 +36,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     bool addressContext,
     std::string& error)
 {
+    std::vector<const ast::AstNode*> overflowPolicyFrames;
+    const ast::AstNode* overflowPolicyLeaf = expression;
+    while (overflowPolicyLeaf != nullptr &&
+        overflowPolicyLeaf->kind() == ast::AstNodeKind::OverflowPolicyExpression &&
+        callBinding(overflowPolicyLeaf) == nullptr &&
+        delegateBinding(overflowPolicyLeaf) == nullptr &&
+        lambdaBinding(overflowPolicyLeaf) == nullptr)
+    {
+        overflowPolicyFrames.push_back(overflowPolicyLeaf);
+        overflowPolicyLeaf = overflowPolicyLeaf->first();
+    }
+
     std::vector<const ast::AstNode*> builtinUnaryFrames;
     const ast::AstNode* unaryLeaf = expression;
-    while (unaryLeaf != nullptr && unaryLeaf->kind() == ast::AstNodeKind::UnaryExpression &&
+    while (overflowPolicyFrames.empty() && unaryLeaf != nullptr &&
+        unaryLeaf->kind() == ast::AstNodeKind::UnaryExpression &&
         unaryLeaf->tokenKind() != lexer::TokenKind::Amp &&
         unaryLeaf->tokenKind() != lexer::TokenKind::Star &&
         unaryLeaf->tokenKind() != lexer::TokenKind::PlusPlus &&
@@ -51,7 +64,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     }
 
     std::unique_ptr<ProjectOopHirNode> lowered;
-    if (!builtinUnaryFrames.empty())
+    if (!overflowPolicyFrames.empty())
+    {
+        lowered = lowerExpression(overflowPolicyLeaf, memberOrdinal, addressContext, error);
+        if (lowered != nullptr)
+        {
+            for (auto frame = overflowPolicyFrames.rbegin();
+                 frame != overflowPolicyFrames.rend(); ++frame)
+            {
+                auto policy = makeNode(
+                    ProjectOopHirNodeKind::OverflowPolicy, *frame, lowered->typeKey);
+                policy->stringValue = (*frame)->auxiliaryText();
+                policy->children.push_back(std::move(lowered));
+                lowered = std::move(policy);
+            }
+        }
+        else if (!lastErrorRange_.isValid())
+        {
+            lastErrorRange_ = overflowPolicyFrames.back()->range();
+        }
+    }
+    else if (!builtinUnaryFrames.empty())
     {
         lowered = lowerExpression(unaryLeaf, memberOrdinal, false, error);
         if (lowered != nullptr)

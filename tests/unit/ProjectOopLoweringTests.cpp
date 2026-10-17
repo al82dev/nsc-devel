@@ -1455,6 +1455,54 @@ void testDeepBuiltinUnaryExpressionLowering(TestContext& tests)
         "iterative builtin unary lowering preserves every operator and its literal leaf");
     destroyHirTreeIteratively(lowered);
 }
+
+void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::OverflowPolicyExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setAuxiliaryText(index % 2U == 0U ? "checked" : "unchecked");
+        syntax.back()->setFirst(current);
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding binding;
+    binding.typeKey = "builtin:int";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+        model, current, syntax, binding, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level overflow-policy expression lowers without process-stack recursion (" +
+            error + ")");
+
+    std::size_t observedDepth = 0;
+    bool policiesPreserved = true;
+    auto* cursor = lowered.get();
+    while (cursor != nullptr &&
+        cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::OverflowPolicy)
+    {
+        const std::size_t sourceIndex = nestingDepth - observedDepth - 1U;
+        policiesPreserved = policiesPreserved && cursor->stringValue ==
+            (sourceIndex % 2U == 0U ? "checked" : "unchecked");
+        ++observedDepth;
+        cursor = cursor->children.empty() ? nullptr : cursor->children.front().get();
+    }
+    tests.expect(observedDepth == nestingDepth && policiesPreserved && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant,
+        "iterative overflow-policy lowering preserves every policy and its literal leaf");
+    destroyHirTreeIteratively(lowered);
+}
 }
 
 int main()
@@ -1502,6 +1550,10 @@ int main()
     {
         testDeepBuiltinUnaryExpressionLowering(tests);
     }
+    else if (focusValue == "hir-overflow-policy-depth")
+    {
+        testDeepOverflowPolicyExpressionLowering(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1516,6 +1568,7 @@ int main()
         testDeepAsyncPollReturnRewrite(tests);
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
+        testDeepOverflowPolicyExpressionLowering(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
