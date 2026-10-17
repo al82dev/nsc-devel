@@ -383,6 +383,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp
     src/Frontend/Bodies/BodyScopeAndFlow.cpp
     src/Frontend/Bodies/ExpressionAnalyzer.cpp
+    src/Frontend/Bodies/CallAnalyzer.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
