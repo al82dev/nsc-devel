@@ -41,6 +41,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     {
         OverflowPolicy,
         BuiltinUnary,
+        Conversion,
         BuiltinBinary,
         Conditional,
     };
@@ -72,6 +73,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             lambdaBinding(syntax) == nullptr)
         {
             return IterativeExpressionKind::BuiltinUnary;
+        }
+        if (syntax->kind() == ast::AstNodeKind::TypeTestExpression ||
+            syntax->kind() == ast::AstNodeKind::SafeCastExpression ||
+            syntax->kind() == ast::AstNodeKind::CastExpression)
+        {
+            const MethodRuntimeTypeBinding* runtime = runtimeTypeBinding(syntax);
+            if ((syntax->kind() == ast::AstNodeKind::TypeTestExpression ||
+                 syntax->kind() == ast::AstNodeKind::SafeCastExpression) && runtime == nullptr)
+            {
+                return std::nullopt;
+            }
+            if (syntax->kind() == ast::AstNodeKind::TypeTestExpression ||
+                syntax->kind() == ast::AstNodeKind::SafeCastExpression ||
+                (runtime != nullptr &&
+                 runtime->kind == MethodRuntimeTypeOperationKind::CheckedCast))
+            {
+                return IterativeExpressionKind::Conversion;
+            }
+            const MethodCallBinding* conversionCall = callBinding(syntax);
+            const bool userDefined = conversionCall != nullptr &&
+                conversionCall->resolution == MethodCallResolutionKind::Resolved &&
+                conversionCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion;
+            if (!userDefined) return IterativeExpressionKind::Conversion;
         }
         if (syntax->kind() == ast::AstNodeKind::BinaryExpression &&
             coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
@@ -149,6 +175,41 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     unary->operation = frame.syntax->tokenKind();
                     unary->children.push_back(std::move(lowered));
                     lowered = std::move(unary);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::Conversion)
+                {
+                    const MethodExpressionTypeBinding* frameType =
+                        expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate =
+                        delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    const MethodRuntimeTypeBinding* runtime = runtimeTypeBinding(frame.syntax);
+                    ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::Conversion;
+                    if (frame.syntax->kind() == ast::AstNodeKind::TypeTestExpression ||
+                        frame.syntax->kind() == ast::AstNodeKind::SafeCastExpression)
+                    {
+                        nodeKind = runtime != nullptr &&
+                                runtime->kind == MethodRuntimeTypeOperationKind::TypeTest
+                            ? ProjectOopHirNodeKind::RuntimeTypeTest
+                            : ProjectOopHirNodeKind::SafeReferenceCast;
+                    }
+                    else if (runtime != nullptr &&
+                        runtime->kind == MethodRuntimeTypeOperationKind::CheckedCast)
+                    {
+                        nodeKind = ProjectOopHirNodeKind::CheckedReferenceCast;
+                    }
+                    auto conversion = makeNode(nodeKind, frame.syntax, resultType);
+                    if (runtime != nullptr)
+                    {
+                        conversion->targetTypeOrdinal = runtime->targetTypeOrdinal;
+                        conversion->targetIsInterface = runtime->targetIsInterface;
+                    }
+                    conversion->children.push_back(std::move(lowered));
+                    lowered = std::move(conversion);
                     frames.pop_back();
                     continue;
                 }

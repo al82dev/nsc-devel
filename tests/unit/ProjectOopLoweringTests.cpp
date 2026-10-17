@@ -259,6 +259,14 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static void setRuntimeTypeBinding(
+        ProjectOopHirModel& model,
+        const ast::AstNode* syntax,
+        const MethodRuntimeTypeBinding& binding)
+    {
+        model.runtimeTypeBindingBySyntax_[syntax] = &binding;
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerStatement(
         ProjectOopHirModel& model,
         const ast::AstNode* statement,
@@ -1688,6 +1696,132 @@ void testDeepBuiltinUnaryExpressionLowering(TestContext& tests)
     destroyHirTreeIteratively(lowered);
 }
 
+void testDeepConversionExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CastExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setFirst(current);
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding binding;
+    binding.typeKey = "builtin:int";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+        model, current, syntax, binding, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level conversion chain lowers without process-stack recursion (" +
+            error + ")");
+
+    std::size_t observedDepth = 0;
+    auto* cursor = lowered.get();
+    while (cursor != nullptr &&
+        cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::Conversion)
+    {
+        ++observedDepth;
+        cursor = cursor->children.empty() ? nullptr : cursor->children.front().get();
+    }
+    tests.expect(observedDepth == nestingDepth && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant,
+        "iterative conversion lowering preserves every cast and its literal leaf");
+    destroyHirTreeIteratively(lowered);
+
+    const auto checkRuntime = [&](
+        nativesharp::ast::AstNodeKind syntaxKind,
+        nativesharp::frontend::MethodRuntimeTypeOperationKind operation,
+        nativesharp::frontend::ProjectOopHirNodeKind expectedKind,
+        std::string resultType)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> runtimeSyntax;
+        runtimeSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        runtimeSyntax.back()->setIntegerValue(9U);
+        auto* runtimeLiteral = runtimeSyntax.back().get();
+        runtimeSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            syntaxKind,
+            nativesharp::SourceRange{}));
+        runtimeSyntax.back()->setFirst(runtimeLiteral);
+        auto* runtimeExpression = runtimeSyntax.back().get();
+
+        nativesharp::frontend::MethodExpressionTypeBinding runtimeType;
+        runtimeType.typeKey = std::move(resultType);
+        nativesharp::frontend::MethodRuntimeTypeBinding runtimeBinding;
+        runtimeBinding.kind = operation;
+        runtimeBinding.syntax = runtimeExpression;
+        runtimeBinding.targetTypeOrdinal = 37U;
+        runtimeBinding.targetIsInterface = true;
+        ProjectOopHirModel runtimeModel;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setRuntimeTypeBinding(
+            runtimeModel, runtimeExpression, runtimeBinding);
+        std::string runtimeError;
+        auto runtimeLowered =
+            nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+                runtimeModel,
+                runtimeExpression,
+                runtimeSyntax,
+                runtimeType,
+                runtimeError);
+        return runtimeLowered != nullptr && runtimeError.empty() &&
+            runtimeLowered->kind == expectedKind &&
+            runtimeLowered->targetTypeOrdinal == 37U &&
+            runtimeLowered->targetIsInterface &&
+            runtimeLowered->children.size() == 1U &&
+            runtimeLowered->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant;
+    };
+    tests.expect(checkRuntime(
+            nativesharp::ast::AstNodeKind::TypeTestExpression,
+            nativesharp::frontend::MethodRuntimeTypeOperationKind::TypeTest,
+            nativesharp::frontend::ProjectOopHirNodeKind::RuntimeTypeTest,
+            "builtin:bool"),
+        "iterative type-test lowering preserves runtime target metadata");
+    tests.expect(checkRuntime(
+            nativesharp::ast::AstNodeKind::SafeCastExpression,
+            nativesharp::frontend::MethodRuntimeTypeOperationKind::SafeCast,
+            nativesharp::frontend::ProjectOopHirNodeKind::SafeReferenceCast,
+            "type:Target"),
+        "iterative safe-cast lowering preserves runtime target metadata");
+    tests.expect(checkRuntime(
+            nativesharp::ast::AstNodeKind::CastExpression,
+            nativesharp::frontend::MethodRuntimeTypeOperationKind::CheckedCast,
+            nativesharp::frontend::ProjectOopHirNodeKind::CheckedReferenceCast,
+            "type:Target"),
+        "iterative checked-cast lowering preserves runtime target metadata");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> missingBindingSyntax;
+    missingBindingSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::TypeTestExpression,
+        nativesharp::SourceRange{}));
+    nativesharp::frontend::MethodExpressionTypeBinding missingBindingType;
+    missingBindingType.typeKey = "builtin:bool";
+    ProjectOopHirModel missingBindingModel;
+    std::string missingBindingError;
+    auto missingBinding =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+            missingBindingModel,
+            missingBindingSyntax.front().get(),
+            missingBindingSyntax,
+            missingBindingType,
+            missingBindingError);
+    tests.expect(missingBinding == nullptr &&
+            missingBindingError ==
+                "Stage 39 runtime type operation lost its semantic binding",
+        "missing runtime binding fails before visiting the conversion operand");
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2588,6 +2722,10 @@ int main()
     else if (focusValue == "hir-builtin-unary-depth")
     {
         testDeepBuiltinUnaryExpressionLowering(tests);
+    }
+    else if (focusValue == "hir-conversion-depth")
+    {
+        testDeepConversionExpressionLowering(tests);
     }
     else if (focusValue == "hir-overflow-policy-depth")
     {
