@@ -8,8 +8,1382 @@
 #include "nativesharp/Sema/TypeContext.h"
 #include "nativesharp/Sema/TypeKind.h"
 
+#include <utility>
+#include <vector>
+
 namespace nativesharp::hir
 {
+namespace
+{
+enum class LoweringFrameKind
+{
+    Global,
+    Struct,
+    Enum,
+    Function,
+    GlobalVariable,
+    Block,
+    Statement,
+    LocalVariable,
+    Expression,
+    Address,
+    ConvertedOperand
+};
+
+struct LoweringFrame final
+{
+    LoweringFrameKind kind;
+    ast::AstNode* node;
+    const ast::AstNode* owner = nullptr;
+    int operandIndex = -1;
+    bool loadLValue = true;
+    std::size_t state = 0;
+    std::size_t index = 0;
+    HirNode* result = nullptr;
+    HirNode* first = nullptr;
+    HirNode* second = nullptr;
+    const sema::ExpressionInfo* info = nullptr;
+    sema::Type* dimensionType = nullptr;
+};
+
+/// Executes the base AST-to-HIR lowering with heap-backed continuation frames.
+class IterativeHirLowering final
+{
+public:
+    IterativeHirLowering(
+        HirArena& arena,
+        sema::TypeContext& types,
+        const sema::SemanticModel& semanticModel,
+        std::string& error)
+        : arena_(arena), types_(types), semanticModel_(semanticModel), error_(error)
+    {
+        frames_.reserve(128);
+    }
+
+    HirNode* lowerGlobal(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Global, node});
+    }
+
+    HirNode* lowerStruct(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Struct, node});
+    }
+
+    HirNode* lowerEnum(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Enum, node});
+    }
+
+    HirNode* lowerFunction(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Function, node});
+    }
+
+    HirNode* lowerGlobalVariable(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::GlobalVariable, node});
+    }
+
+    HirNode* lowerBlock(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Block, node});
+    }
+
+    HirNode* lowerStatement(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Statement, node});
+    }
+
+    HirNode* lowerLocalVariable(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::LocalVariable, node});
+    }
+
+    HirNode* lowerExpression(ast::AstNode* node, bool loadLValue)
+    {
+        LoweringFrame frame{LoweringFrameKind::Expression, node};
+        frame.loadLValue = loadLValue;
+        return run(std::move(frame));
+    }
+
+    HirNode* lowerAddress(ast::AstNode* node)
+    {
+        return run({LoweringFrameKind::Address, node});
+    }
+
+    HirNode* lowerConvertedOperand(
+        const ast::AstNode* owner,
+        ast::AstNode* operand,
+        int operandIndex)
+    {
+        LoweringFrame frame{LoweringFrameKind::ConvertedOperand, operand};
+        frame.owner = owner;
+        frame.operandIndex = operandIndex;
+        return run(std::move(frame));
+    }
+
+private:
+    HirNode* run(LoweringFrame initial)
+    {
+        std::vector<LoweringFrame>& frames = frames_;
+        frames.clear();
+        frames.push_back(std::move(initial));
+
+        HirNode* completed = nullptr;
+        bool hasCompleted = false;
+        auto finish = [&](HirNode* result)
+        {
+            frames.pop_back();
+            completed = result;
+            hasCompleted = true;
+        };
+        auto takeCompleted = [&]()
+        {
+            HirNode* result = completed;
+            completed = nullptr;
+            hasCompleted = false;
+            return result;
+        };
+        auto descend = [&](LoweringFrame child)
+        {
+            hasCompleted = false;
+            frames.push_back(std::move(child));
+        };
+
+        while (!frames.empty())
+        {
+            LoweringFrame& frame = frames.back();
+            switch (frame.kind)
+            {
+                case LoweringFrameKind::Global:
+                    switch (frame.node->kind())
+                    {
+                        case ast::AstNodeKind::StructDeclaration:
+                            frame.kind = LoweringFrameKind::Struct;
+                            continue;
+                        case ast::AstNodeKind::EnumDeclaration:
+                            frame.kind = LoweringFrameKind::Enum;
+                            continue;
+                        case ast::AstNodeKind::FunctionDeclaration:
+                            frame.kind = LoweringFrameKind::Function;
+                            continue;
+                        case ast::AstNodeKind::GlobalVariableDeclaration:
+                            frame.kind = LoweringFrameKind::GlobalVariable;
+                            continue;
+                        default:
+                            fail("unsupported global AST node while building HIR");
+                            finish(nullptr);
+                            continue;
+                    }
+
+                case LoweringFrameKind::Struct:
+                {
+                    sema::Symbol* symbol = boundSymbol(frame.node);
+                    if (symbol == nullptr)
+                    {
+                        finish(nullptr);
+                        continue;
+                    }
+                    HirNode* result = arena_.make(HirNodeKind::StructDeclaration, frame.node->range());
+                    result->setSymbol(symbol);
+                    result->setType(symbol->type());
+                    for (ast::AstNode* fieldNode : frame.node->children())
+                    {
+                        sema::Symbol* field = boundSymbol(fieldNode);
+                        if (field == nullptr)
+                        {
+                            result = nullptr;
+                            break;
+                        }
+                        HirNode* fieldHir = arena_.make(HirNodeKind::FieldDeclaration, fieldNode->range());
+                        fieldHir->setSymbol(field);
+                        fieldHir->setType(field->type());
+                        if (field->hasFieldOffset())
+                            fieldHir->setOffset(field->fieldOffset());
+                        result->addChild(fieldHir);
+                    }
+                    finish(result);
+                    continue;
+                }
+
+                case LoweringFrameKind::Enum:
+                {
+                    sema::Symbol* symbol = boundSymbol(frame.node);
+                    if (symbol == nullptr)
+                    {
+                        finish(nullptr);
+                        continue;
+                    }
+                    HirNode* result = arena_.make(HirNodeKind::EnumDeclaration, frame.node->range());
+                    result->setSymbol(symbol);
+                    result->setType(symbol->type());
+                    for (ast::AstNode* memberNode : frame.node->children())
+                    {
+                        sema::Symbol* member = boundSymbol(memberNode);
+                        if (member == nullptr)
+                        {
+                            result = nullptr;
+                            break;
+                        }
+                        HirNode* memberHir = arena_.make(
+                            HirNodeKind::EnumMemberDeclaration, memberNode->range());
+                        memberHir->setSymbol(member);
+                        memberHir->setType(member->type());
+                        memberHir->setConstant(member->constantValue());
+                        result->addChild(memberHir);
+                    }
+                    finish(result);
+                    continue;
+                }
+
+                case LoweringFrameKind::Function:
+                    if (frame.state == 0)
+                    {
+                        sema::Symbol* symbol = boundSymbol(frame.node);
+                        if (symbol == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result = arena_.make(
+                            HirNodeKind::FunctionDeclaration, frame.node->range());
+                        frame.result->setSymbol(symbol);
+                        frame.result->setType(symbol->type());
+                        const std::vector<sema::Type*>& parameterTypes =
+                            symbol->type()->parameterTypes();
+                        for (std::size_t index = 0; index < frame.node->children().size(); ++index)
+                        {
+                            ast::AstNode* parameterNode = frame.node->children()[index];
+                            sema::Symbol* parameter = semanticModel_.symbol(parameterNode);
+                            if (parameter == nullptr && frame.node->first() != nullptr)
+                            {
+                                frame.result = nullptr;
+                                break;
+                            }
+                            HirNode* parameterHir = arena_.make(
+                                HirNodeKind::ParameterDeclaration, parameterNode->range());
+                            parameterHir->setSymbol(parameter);
+                            parameterHir->setType(
+                                parameter != nullptr ? parameter->type() : parameterTypes[index]);
+                            frame.result->addChild(parameterHir);
+                        }
+                        if (frame.result == nullptr || frame.node->first() == nullptr)
+                        {
+                            finish(frame.result);
+                            continue;
+                        }
+                        frame.state = 1;
+                        descend({LoweringFrameKind::Block, frame.node->first()});
+                        continue;
+                    }
+                    if (hasCompleted)
+                    {
+                        HirNode* body = takeCompleted();
+                        if (body == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result->setFirst(body);
+                        finish(frame.result);
+                        continue;
+                    }
+                    break;
+
+                case LoweringFrameKind::GlobalVariable:
+                    if (frame.state == 0)
+                    {
+                        sema::Symbol* symbol = boundSymbol(frame.node);
+                        if (symbol == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result = arena_.make(
+                            HirNodeKind::GlobalVariableDeclaration, frame.node->range());
+                        frame.result->setSymbol(symbol);
+                        frame.result->setType(symbol->type());
+                        if (frame.node->first() == nullptr)
+                        {
+                            finish(frame.result);
+                            continue;
+                        }
+                        frame.state = 1;
+                        LoweringFrame child{
+                            LoweringFrameKind::ConvertedOperand, frame.node->first()};
+                        child.owner = frame.node;
+                        descend(std::move(child));
+                        continue;
+                    }
+                    if (hasCompleted)
+                    {
+                        HirNode* initializer = takeCompleted();
+                        if (initializer == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result->setFirst(initializer);
+                        finish(frame.result);
+                        continue;
+                    }
+                    break;
+
+                case LoweringFrameKind::Block:
+                    if (frame.state == 0)
+                    {
+                        frame.result = arena_.make(HirNodeKind::Block, frame.node->range());
+                        frame.state = 1;
+                    }
+                    if (hasCompleted)
+                    {
+                        HirNode* statement = takeCompleted();
+                        if (statement == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result->addChild(statement);
+                        ++frame.index;
+                    }
+                    if (frame.index == frame.node->children().size())
+                    {
+                        finish(frame.result);
+                        continue;
+                    }
+                    descend({LoweringFrameKind::Statement, frame.node->children()[frame.index]});
+                    continue;
+
+                case LoweringFrameKind::Statement:
+                    if (lowerStatementFrame(frame, frames, completed, hasCompleted))
+                        continue;
+                    break;
+
+                case LoweringFrameKind::LocalVariable:
+                    if (frame.state == 0)
+                    {
+                        sema::Symbol* symbol = boundSymbol(frame.node);
+                        if (symbol == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result = arena_.make(
+                            HirNodeKind::LocalVariableDeclaration, frame.node->range());
+                        frame.result->setSymbol(symbol);
+                        frame.result->setType(symbol->type());
+                        if (frame.node->first() == nullptr)
+                        {
+                            finish(frame.result);
+                            continue;
+                        }
+                        frame.state = 1;
+                        LoweringFrame child{
+                            LoweringFrameKind::ConvertedOperand, frame.node->first()};
+                        child.owner = frame.node;
+                        descend(std::move(child));
+                        continue;
+                    }
+                    if (hasCompleted)
+                    {
+                        HirNode* initializer = takeCompleted();
+                        if (initializer == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        frame.result->setFirst(initializer);
+                        finish(frame.result);
+                        continue;
+                    }
+                    break;
+
+                case LoweringFrameKind::Expression:
+                    if (lowerExpressionFrame(frame, frames, completed, hasCompleted))
+                        continue;
+                    break;
+
+                case LoweringFrameKind::Address:
+                    if (lowerAddressFrame(frame, frames, completed, hasCompleted))
+                        continue;
+                    break;
+
+                case LoweringFrameKind::ConvertedOperand:
+                    if (frame.state == 0)
+                    {
+                        frame.state = 1;
+                        descend({LoweringFrameKind::Expression, frame.node});
+                        continue;
+                    }
+                    if (hasCompleted)
+                    {
+                        HirNode* value = takeCompleted();
+                        if (value == nullptr)
+                        {
+                            finish(nullptr);
+                            continue;
+                        }
+                        for (const sema::ConversionInfo& conversion :
+                            semanticModel_.conversions(frame.owner))
+                        {
+                            if (conversion.role == sema::ConversionRole::Result ||
+                                conversion.operand != frame.node)
+                            {
+                                continue;
+                            }
+                            if (frame.operandIndex >= 0 && conversion.operandIndex >= 0 &&
+                                conversion.operandIndex != frame.operandIndex)
+                            {
+                                continue;
+                            }
+                            value = wrapConversion(frame.owner->range(), value, conversion);
+                            if (value == nullptr)
+                                break;
+                        }
+                        finish(value);
+                        continue;
+                    }
+                    break;
+            }
+
+            finish(nullptr);
+        }
+        return hasCompleted ? completed : nullptr;
+    }
+
+    bool lowerStatementFrame(
+        LoweringFrame& frame,
+        std::vector<LoweringFrame>& frames,
+        HirNode*& completed,
+        bool& hasCompleted)
+    {
+        auto takeCompleted = [&]()
+        {
+            HirNode* result = completed;
+            completed = nullptr;
+            hasCompleted = false;
+            return result;
+        };
+        auto finish = [&](HirNode* result)
+        {
+            frames.pop_back();
+            completed = result;
+            hasCompleted = true;
+        };
+        auto descend = [&](LoweringFrame child)
+        {
+            hasCompleted = false;
+            frames.push_back(std::move(child));
+        };
+
+        if (frame.state == 0)
+        {
+            switch (frame.node->kind())
+            {
+                case ast::AstNodeKind::BlockStatement:
+                    frame.kind = LoweringFrameKind::Block;
+                    return true;
+                case ast::AstNodeKind::VariableDeclarationStatement:
+                    frame.kind = LoweringFrameKind::LocalVariable;
+                    return true;
+                case ast::AstNodeKind::IfStatement:
+                    frame.result = arena_.make(HirNodeKind::If, frame.node->range());
+                    frame.state = 10;
+                    descend({LoweringFrameKind::Expression, frame.node->first()});
+                    return true;
+                case ast::AstNodeKind::WhileStatement:
+                    frame.result = arena_.make(HirNodeKind::While, frame.node->range());
+                    frame.state = 20;
+                    descend({LoweringFrameKind::Expression, frame.node->first()});
+                    return true;
+                case ast::AstNodeKind::ForStatement:
+                    frame.result = arena_.make(HirNodeKind::For, frame.node->range());
+                    frame.state = 30;
+                    if (frame.node->first() != nullptr)
+                    {
+                        const ast::AstNodeKind kind = frame.node->first()->kind();
+                        LoweringFrame child{
+                            kind == ast::AstNodeKind::BlockStatement
+                                ? LoweringFrameKind::Block
+                                : kind == ast::AstNodeKind::VariableDeclarationStatement
+                                    ? LoweringFrameKind::LocalVariable
+                                    : LoweringFrameKind::Expression,
+                            frame.node->first()};
+                        if (child.kind == LoweringFrameKind::Expression)
+                            child.loadLValue = false;
+                        descend(std::move(child));
+                    }
+                    return true;
+                case ast::AstNodeKind::BreakStatement:
+                    finish(arena_.make(HirNodeKind::Break, frame.node->range()));
+                    return true;
+                case ast::AstNodeKind::ContinueStatement:
+                    finish(arena_.make(HirNodeKind::Continue, frame.node->range()));
+                    return true;
+                case ast::AstNodeKind::ReturnStatement:
+                    frame.result = arena_.make(HirNodeKind::Return, frame.node->range());
+                    if (frame.node->first() == nullptr)
+                    {
+                        frame.result->setType(types_.builtin(sema::TypeKind::Void));
+                        finish(frame.result);
+                    }
+                    else
+                    {
+                        frame.state = 40;
+                        LoweringFrame child{
+                            LoweringFrameKind::ConvertedOperand, frame.node->first()};
+                        child.owner = frame.node;
+                        descend(std::move(child));
+                    }
+                    return true;
+                case ast::AstNodeKind::ExpressionStatement:
+                {
+                    frame.result = arena_.make(
+                        HirNodeKind::ExpressionStatement, frame.node->range());
+                    frame.state = 50;
+                    LoweringFrame child{LoweringFrameKind::Expression, frame.node->first()};
+                    child.loadLValue = false;
+                    descend(std::move(child));
+                    return true;
+                }
+                case ast::AstNodeKind::StaticAssertStatement:
+                    finish(arena_.make(HirNodeKind::Block, frame.node->range()));
+                    return true;
+                default:
+                    fail("unsupported statement AST node while building HIR");
+                    finish(nullptr);
+                    return true;
+            }
+        }
+
+        if (frame.state == 10 && hasCompleted)
+        {
+            frame.result->setFirst(takeCompleted());
+            frame.state = 11;
+            descend({LoweringFrameKind::Block, frame.node->second()});
+            return true;
+        }
+        if (frame.state == 11 && hasCompleted)
+        {
+            frame.result->setSecond(takeCompleted());
+            if (frame.node->third() == nullptr)
+            {
+                finish(frame.result->first() == nullptr || frame.result->second() == nullptr
+                    ? nullptr : frame.result);
+                return true;
+            }
+            frame.state = 12;
+            descend({
+                frame.node->third()->kind() == ast::AstNodeKind::BlockStatement
+                    ? LoweringFrameKind::Block : LoweringFrameKind::Statement,
+                frame.node->third()});
+            return true;
+        }
+        if (frame.state == 12 && hasCompleted)
+        {
+            frame.result->setThird(takeCompleted());
+            finish(frame.result->first() == nullptr || frame.result->second() == nullptr
+                ? nullptr : frame.result);
+            return true;
+        }
+
+        if (frame.state == 20 && hasCompleted)
+        {
+            frame.result->setFirst(takeCompleted());
+            frame.state = 21;
+            descend({LoweringFrameKind::Block, frame.node->second()});
+            return true;
+        }
+        if (frame.state == 21 && hasCompleted)
+        {
+            frame.result->setSecond(takeCompleted());
+            finish(frame.result->first() == nullptr || frame.result->second() == nullptr
+                ? nullptr : frame.result);
+            return true;
+        }
+
+        if (frame.state == 30)
+        {
+            if (frame.node->first() != nullptr)
+            {
+                if (!hasCompleted)
+                    return false;
+                frame.result->setFirst(takeCompleted());
+            }
+            frame.state = 31;
+            if (frame.node->second() != nullptr)
+                descend({LoweringFrameKind::Expression, frame.node->second()});
+            return true;
+        }
+        if (frame.state == 31)
+        {
+            if (frame.node->second() != nullptr)
+            {
+                if (!hasCompleted)
+                    return false;
+                frame.result->setSecond(takeCompleted());
+            }
+            frame.state = 32;
+            if (frame.node->third() != nullptr)
+            {
+                LoweringFrame child{LoweringFrameKind::Expression, frame.node->third()};
+                child.loadLValue = false;
+                descend(std::move(child));
+            }
+            return true;
+        }
+        if (frame.state == 32)
+        {
+            if (frame.node->third() != nullptr)
+            {
+                if (!hasCompleted)
+                    return false;
+                frame.result->setThird(takeCompleted());
+            }
+            frame.state = 33;
+            if (!frame.node->children().empty())
+                descend({LoweringFrameKind::Block, frame.node->children().front()});
+            return true;
+        }
+        if (frame.state == 33)
+        {
+            if (!frame.node->children().empty())
+            {
+                if (!hasCompleted)
+                    return false;
+                frame.result->addChild(takeCompleted());
+            }
+            const bool failed =
+                (!frame.node->children().empty() && frame.result->children().front() == nullptr) ||
+                (frame.node->first() != nullptr && frame.result->first() == nullptr) ||
+                (frame.node->second() != nullptr && frame.result->second() == nullptr) ||
+                (frame.node->third() != nullptr && frame.result->third() == nullptr);
+            finish(failed ? nullptr : frame.result);
+            return true;
+        }
+
+        if (frame.state == 40 && hasCompleted)
+        {
+            HirNode* value = takeCompleted();
+            if (value == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            frame.result->setFirst(value);
+            frame.result->setType(value->type());
+            finish(frame.result);
+            return true;
+        }
+        if (frame.state == 50 && hasCompleted)
+        {
+            frame.result->setFirst(takeCompleted());
+            finish(frame.result->first() == nullptr ? nullptr : frame.result);
+            return true;
+        }
+        return false;
+    }
+
+    bool lowerExpressionFrame(
+        LoweringFrame& frame,
+        std::vector<LoweringFrame>& frames,
+        HirNode*& completed,
+        bool& hasCompleted)
+    {
+        auto takeCompleted = [&]()
+        {
+            HirNode* result = completed;
+            completed = nullptr;
+            hasCompleted = false;
+            return result;
+        };
+        auto finish = [&](HirNode* result)
+        {
+            frames.pop_back();
+            completed = result;
+            hasCompleted = true;
+        };
+        auto descend = [&](LoweringFrame child)
+        {
+            hasCompleted = false;
+            frames.push_back(std::move(child));
+        };
+
+        if (frame.state == 0)
+        {
+            if (frame.node == nullptr)
+            {
+                fail("null expression reached HIR builder");
+                finish(nullptr);
+                return true;
+            }
+            frame.info = expressionInfo(frame.node);
+            if (frame.info == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            if (!sema::isUsableValueCategory(frame.info->category))
+            {
+                fail("NS3020: moved-from expression reached HIR lowering");
+                finish(nullptr);
+                return true;
+            }
+            if (sema::isPlaceCategory(frame.info->category))
+            {
+                frame.state = 1;
+                descend({LoweringFrameKind::Address, frame.node});
+                return true;
+            }
+            if (frame.info->symbol != nullptr &&
+                frame.info->symbol->kind() == sema::SymbolKind::EnumMember)
+            {
+                HirNode* constant = arena_.make(HirNodeKind::Constant, frame.node->range());
+                constant->setType(frame.info->type);
+                constant->setConstant(frame.info->constantValue);
+                constant->setSymbol(frame.info->symbol);
+                finish(constant);
+                return true;
+            }
+
+            switch (frame.node->kind())
+            {
+                case ast::AstNodeKind::IntegerLiteralExpression:
+                case ast::AstNodeKind::FloatingLiteralExpression:
+                case ast::AstNodeKind::CharacterLiteralExpression:
+                case ast::AstNodeKind::StringLiteralExpression:
+                case ast::AstNodeKind::BooleanLiteralExpression:
+                case ast::AstNodeKind::NullLiteralExpression:
+                case ast::AstNodeKind::SizeofTypeExpression:
+                case ast::AstNodeKind::SizeofExpression:
+                case ast::AstNodeKind::AlignofTypeExpression:
+                case ast::AstNodeKind::AlignofExpression:
+                case ast::AstNodeKind::OffsetofExpression:
+                {
+                    if (!frame.info->isConstant)
+                    {
+                        fail("constant HIR expression has no semantic constant value");
+                        finish(nullptr);
+                        return true;
+                    }
+                    HirNode* constant = arena_.make(HirNodeKind::Constant, frame.node->range());
+                    constant->setType(frame.info->type);
+                    constant->setConstant(frame.info->constantValue);
+                    finish(constant);
+                    return true;
+                }
+                case ast::AstNodeKind::IdentifierExpression:
+                    fail("non-lvalue identifier reached HIR without enum-member or call context");
+                    finish(nullptr);
+                    return true;
+                case ast::AstNodeKind::UnaryExpression:
+                case ast::AstNodeKind::PostfixExpression:
+                    if (frame.node->tokenKind() == lexer::TokenKind::Amp)
+                    {
+                        frame.kind = LoweringFrameKind::Address;
+                        frame.node = frame.node->first();
+                        frame.state = 0;
+                        return true;
+                    }
+                    if (frame.node->tokenKind() == lexer::TokenKind::PlusPlus ||
+                        frame.node->tokenKind() == lexer::TokenKind::MinusMinus)
+                    {
+                        frame.state = 10;
+                        descend({LoweringFrameKind::Address, frame.node->first()});
+                    }
+                    else
+                    {
+                        frame.state = 11;
+                        LoweringFrame child{
+                            LoweringFrameKind::ConvertedOperand, frame.node->first()};
+                        child.owner = frame.node;
+                        child.operandIndex = 0;
+                        descend(std::move(child));
+                    }
+                    return true;
+                case ast::AstNodeKind::BinaryExpression:
+                {
+                    frame.state = 20;
+                    LoweringFrame child{
+                        LoweringFrameKind::ConvertedOperand, frame.node->first()};
+                    child.owner = frame.node;
+                    child.operandIndex = 0;
+                    descend(std::move(child));
+                    return true;
+                }
+                case ast::AstNodeKind::ConditionalExpression:
+                    frame.state = 30;
+                    descend({LoweringFrameKind::Expression, frame.node->first()});
+                    return true;
+                case ast::AstNodeKind::AssignmentExpression:
+                    frame.state = 40;
+                    descend({LoweringFrameKind::Address, frame.node->first()});
+                    return true;
+                case ast::AstNodeKind::CallExpression:
+                {
+                    const sema::ExpressionInfo* calleeInfo = expressionInfo(frame.node->first());
+                    if (calleeInfo == nullptr || calleeInfo->symbol == nullptr)
+                    {
+                        fail("call expression has no resolved function symbol");
+                        finish(nullptr);
+                        return true;
+                    }
+                    frame.result = arena_.make(HirNodeKind::Call, frame.node->range());
+                    frame.result->setType(frame.info->type);
+                    frame.result->setSymbol(calleeInfo->symbol);
+                    frame.state = 50;
+                    if (frame.node->children().empty())
+                    {
+                        finish(frame.result);
+                        return true;
+                    }
+                    LoweringFrame child{
+                        LoweringFrameKind::ConvertedOperand, frame.node->children().front()};
+                    child.owner = frame.node;
+                    child.operandIndex = 0;
+                    descend(std::move(child));
+                    return true;
+                }
+                case ast::AstNodeKind::MemberExpression:
+                case ast::AstNodeKind::PointerMemberExpression:
+                    if (!sema::isPlaceCategory(frame.info->category))
+                    {
+                        frame.state = 60;
+                        descend({LoweringFrameKind::Expression, frame.node->first()});
+                    }
+                    else
+                    {
+                        fail("lvalue member unexpectedly bypassed generic HIR lvalue lowering");
+                        finish(nullptr);
+                    }
+                    return true;
+                case ast::AstNodeKind::CastExpression:
+                    frame.kind = LoweringFrameKind::ConvertedOperand;
+                    frame.owner = frame.node;
+                    frame.node = frame.node->first();
+                    frame.operandIndex = 0;
+                    frame.state = 0;
+                    return true;
+                case ast::AstNodeKind::NewExpression:
+                    frame.result = arena_.make(HirNodeKind::Allocation, frame.node->range());
+                    frame.result->setType(frame.info->type);
+                    frame.result->setOperationType(frame.info->type->elementType());
+                    frame.result->setArrayForm(frame.node->flag());
+                    if (frame.node->first() == nullptr)
+                    {
+                        finish(frame.result);
+                    }
+                    else
+                    {
+                        frame.state = 70;
+                        descend({LoweringFrameKind::Expression, frame.node->first()});
+                    }
+                    return true;
+                case ast::AstNodeKind::DeleteExpression:
+                    frame.result = arena_.make(HirNodeKind::Deallocation, frame.node->range());
+                    frame.result->setType(frame.info->type);
+                    frame.result->setArrayForm(frame.node->flag());
+                    frame.state = 71;
+                    descend({LoweringFrameKind::Expression, frame.node->first()});
+                    return true;
+                case ast::AstNodeKind::StackallocExpression:
+                    frame.result = arena_.make(HirNodeKind::StackAllocation, frame.node->range());
+                    frame.result->setType(frame.info->type);
+                    frame.result->setOperationType(frame.info->type->elementType());
+                    frame.state = 72;
+                    descend({LoweringFrameKind::Expression, frame.node->first()});
+                    return true;
+                default:
+                    fail("unsupported expression AST node while building HIR");
+                    finish(nullptr);
+                    return true;
+            }
+        }
+
+        if (frame.state == 1 && hasCompleted)
+        {
+            HirNode* address = takeCompleted();
+            if (address == nullptr || !frame.loadLValue)
+            {
+                finish(address);
+                return true;
+            }
+            HirNode* load = arena_.make(HirNodeKind::Load, frame.node->range());
+            load->setType(frame.info->type);
+            load->setFirst(address);
+            finish(load);
+            return true;
+        }
+        if ((frame.state == 10 || frame.state == 11) && hasCompleted)
+        {
+            HirNode* operand = takeCompleted();
+            const sema::ResolvedOperatorInfo* resolved = operatorInfo(frame.node);
+            if (operand == nullptr || resolved == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* result = arena_.make(
+                frame.state == 10 ? HirNodeKind::Increment : HirNodeKind::Unary,
+                frame.node->range());
+            result->setType(frame.info->type);
+            result->setOperationType(resolved->operationType);
+            result->setOperation(frame.node->tokenKind());
+            if (frame.state == 10)
+                result->setPostfix(frame.node->kind() == ast::AstNodeKind::PostfixExpression);
+            result->setFirst(operand);
+            finish(result);
+            return true;
+        }
+
+        if (frame.state == 20 && hasCompleted)
+        {
+            frame.first = takeCompleted();
+            frame.state = 21;
+            LoweringFrame child{
+                LoweringFrameKind::ConvertedOperand, frame.node->second()};
+            child.owner = frame.node;
+            child.operandIndex = 1;
+            descend(std::move(child));
+            return true;
+        }
+        if (frame.state == 21 && hasCompleted)
+        {
+            frame.second = takeCompleted();
+            const sema::ResolvedOperatorInfo* resolved = operatorInfo(frame.node);
+            if (frame.first == nullptr || frame.second == nullptr || resolved == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* binary = arena_.make(HirNodeKind::Binary, frame.node->range());
+            binary->setType(frame.info->type);
+            binary->setOperationType(resolved->operationType);
+            binary->setOperation(frame.node->tokenKind());
+            binary->setFirst(frame.first);
+            binary->setSecond(frame.second);
+            finish(binary);
+            return true;
+        }
+
+        if (frame.state == 30 && hasCompleted)
+        {
+            frame.result = takeCompleted();
+            frame.state = 31;
+            LoweringFrame child{
+                LoweringFrameKind::ConvertedOperand, frame.node->second()};
+            child.owner = frame.node;
+            child.operandIndex = 1;
+            descend(std::move(child));
+            return true;
+        }
+        if (frame.state == 31 && hasCompleted)
+        {
+            frame.first = takeCompleted();
+            frame.state = 32;
+            LoweringFrame child{
+                LoweringFrameKind::ConvertedOperand, frame.node->third()};
+            child.owner = frame.node;
+            child.operandIndex = 2;
+            descend(std::move(child));
+            return true;
+        }
+        if (frame.state == 32 && hasCompleted)
+        {
+            frame.second = takeCompleted();
+            if (frame.result == nullptr || frame.first == nullptr || frame.second == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* conditional = arena_.make(HirNodeKind::Conditional, frame.node->range());
+            conditional->setType(frame.info->type);
+            conditional->setFirst(frame.result);
+            conditional->setSecond(frame.first);
+            conditional->setThird(frame.second);
+            finish(conditional);
+            return true;
+        }
+
+        if (frame.state == 40 && hasCompleted)
+        {
+            frame.first = takeCompleted();
+            if (frame.first == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            frame.state = frame.node->tokenKind() == lexer::TokenKind::Equal ? 41 : 42;
+            LoweringFrame child{
+                LoweringFrameKind::ConvertedOperand, frame.node->second()};
+            child.owner = frame.node;
+            child.operandIndex = 1;
+            descend(std::move(child));
+            return true;
+        }
+        if ((frame.state == 41 || frame.state == 42) && hasCompleted)
+        {
+            HirNode* right = takeCompleted();
+            if (frame.state == 41)
+            {
+                if (right == nullptr)
+                {
+                    finish(nullptr);
+                    return true;
+                }
+                HirNode* store = arena_.make(HirNodeKind::Store, frame.node->range());
+                store->setType(frame.info->type);
+                store->setFirst(frame.first);
+                store->setSecond(right);
+                finish(store);
+                return true;
+            }
+            const sema::ResolvedOperatorInfo* resolved = operatorInfo(frame.node);
+            if (right == nullptr || resolved == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* compound = arena_.make(
+                HirNodeKind::CompoundAssignment, frame.node->range());
+            compound->setType(frame.info->type);
+            compound->setOperationType(resolved->operationType);
+            compound->setOperation(resolved->tokenKind);
+            compound->setFirst(frame.first);
+            compound->setSecond(right);
+            const sema::ConversionInfo* read = operandConversion(
+                frame.node, frame.node->first());
+            if (read != nullptr)
+                compound->setReadConversionKind(read->kind);
+            const sema::ConversionInfo* result = resultConversion(frame.node);
+            if (result != nullptr)
+                compound->setResultConversionKind(result->kind);
+            finish(compound);
+            return true;
+        }
+
+        if (frame.state == 50 && hasCompleted)
+        {
+            HirNode* argument = takeCompleted();
+            if (argument == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            frame.result->addChild(argument);
+            ++frame.index;
+            if (frame.index == frame.node->children().size())
+            {
+                finish(frame.result);
+                return true;
+            }
+            LoweringFrame child{
+                LoweringFrameKind::ConvertedOperand, frame.node->children()[frame.index]};
+            child.owner = frame.node;
+            child.operandIndex = static_cast<int>(frame.index);
+            descend(std::move(child));
+            return true;
+        }
+
+        if (frame.state == 60 && hasCompleted)
+        {
+            HirNode* base = takeCompleted();
+            if (base == nullptr || frame.info->symbol == nullptr)
+            {
+                fail("rvalue member access has no resolved field");
+                finish(nullptr);
+                return true;
+            }
+            HirNode* extract = arena_.make(HirNodeKind::ExtractField, frame.node->range());
+            extract->setType(frame.info->type);
+            extract->setSymbol(frame.info->symbol);
+            if (frame.info->symbol->hasFieldOffset())
+                extract->setOffset(frame.info->symbol->fieldOffset());
+            extract->setFirst(base);
+            finish(extract);
+            return true;
+        }
+
+        if ((frame.state == 70 || frame.state == 71 || frame.state == 72) && hasCompleted)
+        {
+            frame.result->setFirst(takeCompleted());
+            finish(frame.result->first() == nullptr ? nullptr : frame.result);
+            return true;
+        }
+        return false;
+    }
+
+    bool lowerAddressFrame(
+        LoweringFrame& frame,
+        std::vector<LoweringFrame>& frames,
+        HirNode*& completed,
+        bool& hasCompleted)
+    {
+        auto takeCompleted = [&]()
+        {
+            HirNode* result = completed;
+            completed = nullptr;
+            hasCompleted = false;
+            return result;
+        };
+        auto finish = [&](HirNode* result)
+        {
+            frames.pop_back();
+            completed = result;
+            hasCompleted = true;
+        };
+        auto descend = [&](LoweringFrame child)
+        {
+            hasCompleted = false;
+            frames.push_back(std::move(child));
+        };
+
+        if (frame.state == 0)
+        {
+            frame.info = expressionInfo(frame.node);
+            if (frame.info == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            switch (frame.node->kind())
+            {
+                case ast::AstNodeKind::IdentifierExpression:
+                {
+                    if (frame.info->symbol == nullptr)
+                    {
+                        fail("addressable identifier has no resolved symbol");
+                        finish(nullptr);
+                        return true;
+                    }
+                    HirNode* address = arena_.make(
+                        HirNodeKind::SymbolAddress, frame.node->range());
+                    address->setType(types_.pointerTo(frame.info->type));
+                    address->setSymbol(frame.info->symbol);
+                    finish(address);
+                    return true;
+                }
+                case ast::AstNodeKind::UnaryExpression:
+                    if (frame.node->tokenKind() == lexer::TokenKind::Star)
+                    {
+                        frame.state = 10;
+                        descend({LoweringFrameKind::Expression, frame.node->first()});
+                        return true;
+                    }
+                    break;
+                case ast::AstNodeKind::IndexExpression:
+                {
+                    const sema::ExpressionInfo* baseInfo = expressionInfo(frame.node->first());
+                    if (baseInfo == nullptr)
+                    {
+                        finish(nullptr);
+                        return true;
+                    }
+                    frame.dimensionType = baseInfo->type;
+                    frame.state = 20;
+                    descend({
+                        baseInfo->type->kind() == sema::TypeKind::Pointer ||
+                            baseInfo->type->kind() == sema::TypeKind::StringLiteral
+                            ? LoweringFrameKind::Expression : LoweringFrameKind::Address,
+                        frame.node->first()});
+                    return true;
+                }
+                case ast::AstNodeKind::MemberExpression:
+                case ast::AstNodeKind::PointerMemberExpression:
+                    if (frame.info->symbol == nullptr ||
+                        frame.info->symbol->kind() != sema::SymbolKind::Field)
+                    {
+                        fail("addressable member expression has no resolved field symbol");
+                        finish(nullptr);
+                        return true;
+                    }
+                    frame.state = 30;
+                    descend({
+                        frame.node->kind() == ast::AstNodeKind::PointerMemberExpression
+                            ? LoweringFrameKind::Expression : LoweringFrameKind::Address,
+                        frame.node->first()});
+                    return true;
+                default:
+                    break;
+            }
+            fail("expression classified as lvalue has no HIR address lowering");
+            finish(nullptr);
+            return true;
+        }
+
+        if (frame.state == 10 && hasCompleted)
+        {
+            HirNode* pointer = takeCompleted();
+            if (pointer == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* address = arena_.make(
+                HirNodeKind::DereferenceAddress, frame.node->range());
+            address->setType(pointer->type());
+            address->setFirst(pointer);
+            finish(address);
+            return true;
+        }
+
+        if (frame.state == 20 && hasCompleted)
+        {
+            frame.result = takeCompleted();
+            const std::size_t indexCount = !frame.node->children().empty()
+                ? frame.node->children().size() : frame.node->second() != nullptr ? 1U : 0U;
+            if (frame.result == nullptr || indexCount == 0)
+            {
+                finish(nullptr);
+                return true;
+            }
+            frame.state = 21;
+            ast::AstNode* indexSyntax = !frame.node->children().empty()
+                ? frame.node->children().front() : frame.node->second();
+            descend({LoweringFrameKind::Expression, indexSyntax});
+            return true;
+        }
+        if (frame.state == 21 && hasCompleted)
+        {
+            HirNode* index = takeCompleted();
+            if (index == nullptr || frame.dimensionType == nullptr ||
+                (frame.dimensionType->kind() != sema::TypeKind::Array &&
+                 frame.dimensionType->kind() != sema::TypeKind::Pointer &&
+                 frame.dimensionType->kind() != sema::TypeKind::StringLiteral))
+            {
+                finish(nullptr);
+                return true;
+            }
+            sema::Type* elementType =
+                frame.dimensionType->kind() == sema::TypeKind::StringLiteral
+                    ? frame.info->type : frame.dimensionType->elementType();
+            HirNode* address = arena_.make(HirNodeKind::IndexAddress, frame.node->range());
+            address->setType(types_.pointerTo(elementType));
+            address->setOperationType(frame.dimensionType);
+            address->setRequiresBoundsCheck(
+                frame.dimensionType->kind() == sema::TypeKind::Array ||
+                frame.dimensionType->kind() == sema::TypeKind::StringLiteral);
+            address->setFirst(frame.result);
+            address->setSecond(index);
+            frame.result = address;
+            frame.dimensionType = elementType;
+            ++frame.index;
+            const std::size_t indexCount = !frame.node->children().empty()
+                ? frame.node->children().size() : 1U;
+            if (frame.index == indexCount)
+            {
+                finish(frame.result);
+                return true;
+            }
+            ast::AstNode* indexSyntax = frame.node->children()[frame.index];
+            descend({LoweringFrameKind::Expression, indexSyntax});
+            return true;
+        }
+
+        if (frame.state == 30 && hasCompleted)
+        {
+            HirNode* base = takeCompleted();
+            if (base == nullptr)
+            {
+                finish(nullptr);
+                return true;
+            }
+            HirNode* address = arena_.make(HirNodeKind::FieldAddress, frame.node->range());
+            address->setType(types_.pointerTo(frame.info->type));
+            address->setSymbol(frame.info->symbol);
+            if (frame.info->symbol->hasFieldOffset())
+                address->setOffset(frame.info->symbol->fieldOffset());
+            address->setFirst(base);
+            finish(address);
+            return true;
+        }
+        return false;
+    }
+
+    const sema::ExpressionInfo* expressionInfo(const ast::AstNode* node)
+    {
+        const sema::ExpressionInfo* info = semanticModel_.get(node);
+        if (info == nullptr || info->type == nullptr || info->type->kind() == sema::TypeKind::Error)
+        {
+            fail("HIR builder could not find valid semantic expression information");
+            return nullptr;
+        }
+        return info;
+    }
+
+    sema::Symbol* boundSymbol(const ast::AstNode* node)
+    {
+        sema::Symbol* symbol = semanticModel_.symbol(node);
+        if (symbol == nullptr)
+            fail("HIR builder could not find the symbol bound to a declaration");
+        return symbol;
+    }
+
+    const sema::ResolvedOperatorInfo* operatorInfo(const ast::AstNode* node)
+    {
+        const sema::ResolvedOperatorInfo* info = semanticModel_.getOperator(node);
+        if (info == nullptr)
+            fail("HIR builder could not find resolved operator information");
+        return info;
+    }
+
+    const sema::ConversionInfo* operandConversion(
+        const ast::AstNode* owner,
+        const ast::AstNode* operand) const noexcept
+    {
+        for (const sema::ConversionInfo& conversion : semanticModel_.conversions(owner))
+        {
+            if (conversion.role == sema::ConversionRole::Operand && conversion.operand == operand)
+                return &conversion;
+        }
+        return nullptr;
+    }
+
+    const sema::ConversionInfo* resultConversion(const ast::AstNode* owner) const noexcept
+    {
+        for (const sema::ConversionInfo& conversion : semanticModel_.conversions(owner))
+        {
+            if (conversion.role == sema::ConversionRole::Result)
+                return &conversion;
+        }
+        return nullptr;
+    }
+
+    HirNode* wrapConversion(
+        SourceRange range,
+        HirNode* value,
+        const sema::ConversionInfo& conversion)
+    {
+        if (value == nullptr || conversion.destinationType == nullptr)
+            return fail("invalid semantic conversion while building HIR");
+        if (conversion.sourceType != nullptr && value->type() != conversion.sourceType)
+        {
+            return fail(
+                "semantic conversion source type does not match lowered HIR operand type");
+        }
+        HirNode* result = arena_.make(HirNodeKind::Conversion, range);
+        result->setType(conversion.destinationType);
+        result->setConversionKind(conversion.kind);
+        result->setFirst(value);
+        return result;
+    }
+
+    HirNode* fail(std::string message)
+    {
+        if (error_.empty())
+            error_ = std::move(message);
+        return nullptr;
+    }
+
+    HirArena& arena_;
+    sema::TypeContext& types_;
+    const sema::SemanticModel& semanticModel_;
+    std::string& error_;
+    std::vector<LoweringFrame> frames_;
+};
+}
+
 HirBuilder::HirBuilder(
     HirArena& arena,
     sema::TypeContext& types,
@@ -25,6 +1399,7 @@ HirNode* HirBuilder::build(ast::AstNode* compilationUnit)
         return fail("HIR builder requires a CompilationUnit AST root");
     }
 
+    IterativeHirLowering lowering(arena_, types_, semanticModel_, error_);
     HirNode* root = arena_.make(HirNodeKind::CompilationUnit, compilationUnit->range());
     for (ast::AstNode* declaration : compilationUnit->children())
     {
@@ -32,7 +1407,7 @@ HirNode* HirBuilder::build(ast::AstNode* compilationUnit)
         {
             for (ast::AstNode* child : declaration->children())
             {
-                HirNode* lowered = lowerFunction(child);
+                HirNode* lowered = lowering.lowerFunction(child);
                 if (lowered == nullptr)
                 {
                     return nullptr;
@@ -42,7 +1417,7 @@ HirNode* HirBuilder::build(ast::AstNode* compilationUnit)
             continue;
         }
 
-        HirNode* lowered = lowerGlobal(declaration);
+        HirNode* lowered = lowering.lowerGlobal(declaration);
         if (lowered == nullptr)
         {
             return nullptr;
@@ -64,701 +1439,53 @@ const std::string& HirBuilder::error() const noexcept
 
 HirNode* HirBuilder::lowerGlobal(ast::AstNode* node)
 {
-    switch (node->kind())
-    {
-        case ast::AstNodeKind::StructDeclaration:
-            return lowerStruct(node);
-        case ast::AstNodeKind::EnumDeclaration:
-            return lowerEnum(node);
-        case ast::AstNodeKind::FunctionDeclaration:
-            return lowerFunction(node);
-        case ast::AstNodeKind::GlobalVariableDeclaration:
-            return lowerGlobalVariable(node);
-        default:
-            return fail("unsupported global AST node while building HIR");
-    }
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerGlobal(node);
 }
 
 HirNode* HirBuilder::lowerStruct(ast::AstNode* node)
 {
-    sema::Symbol* symbol = boundSymbol(node);
-    if (symbol == nullptr)
-    {
-        return nullptr;
-    }
-
-    HirNode* result = arena_.make(HirNodeKind::StructDeclaration, node->range());
-    result->setSymbol(symbol);
-    result->setType(symbol->type());
-
-    for (ast::AstNode* fieldNode : node->children())
-    {
-        sema::Symbol* field = boundSymbol(fieldNode);
-        if (field == nullptr)
-        {
-            return nullptr;
-        }
-        HirNode* fieldHir = arena_.make(HirNodeKind::FieldDeclaration, fieldNode->range());
-        fieldHir->setSymbol(field);
-        fieldHir->setType(field->type());
-        if (field->hasFieldOffset())
-        {
-            fieldHir->setOffset(field->fieldOffset());
-        }
-        result->addChild(fieldHir);
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerStruct(node);
 }
 
 HirNode* HirBuilder::lowerEnum(ast::AstNode* node)
 {
-    sema::Symbol* symbol = boundSymbol(node);
-    if (symbol == nullptr)
-    {
-        return nullptr;
-    }
-
-    HirNode* result = arena_.make(HirNodeKind::EnumDeclaration, node->range());
-    result->setSymbol(symbol);
-    result->setType(symbol->type());
-
-    for (ast::AstNode* memberNode : node->children())
-    {
-        sema::Symbol* member = boundSymbol(memberNode);
-        if (member == nullptr)
-        {
-            return nullptr;
-        }
-        HirNode* memberHir = arena_.make(HirNodeKind::EnumMemberDeclaration, memberNode->range());
-        memberHir->setSymbol(member);
-        memberHir->setType(member->type());
-        memberHir->setConstant(member->constantValue());
-        result->addChild(memberHir);
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerEnum(node);
 }
 
 HirNode* HirBuilder::lowerFunction(ast::AstNode* node)
 {
-    sema::Symbol* symbol = boundSymbol(node);
-    if (symbol == nullptr)
-    {
-        return nullptr;
-    }
-
-    HirNode* result = arena_.make(HirNodeKind::FunctionDeclaration, node->range());
-    result->setSymbol(symbol);
-    result->setType(symbol->type());
-
-    const std::vector<sema::Type*>& parameterTypes = symbol->type()->parameterTypes();
-    for (std::size_t index = 0; index < node->children().size(); ++index)
-    {
-        ast::AstNode* parameterNode = node->children()[index];
-        sema::Symbol* parameter = semanticModel_.symbol(parameterNode);
-        if (parameter == nullptr && node->first() != nullptr)
-        {
-            return nullptr;
-        }
-        HirNode* parameterHir = arena_.make(HirNodeKind::ParameterDeclaration, parameterNode->range());
-        parameterHir->setSymbol(parameter);
-        parameterHir->setType(parameter != nullptr ? parameter->type() : parameterTypes[index]);
-        result->addChild(parameterHir);
-    }
-
-    if (node->first() != nullptr)
-    {
-        HirNode* body = lowerBlock(node->first());
-        if (body == nullptr)
-        {
-            return nullptr;
-        }
-        result->setFirst(body);
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerFunction(node);
 }
 
 HirNode* HirBuilder::lowerGlobalVariable(ast::AstNode* node)
 {
-    sema::Symbol* symbol = boundSymbol(node);
-    if (symbol == nullptr)
-    {
-        return nullptr;
-    }
-
-    HirNode* result = arena_.make(HirNodeKind::GlobalVariableDeclaration, node->range());
-    result->setSymbol(symbol);
-    result->setType(symbol->type());
-    if (node->first() != nullptr)
-    {
-        HirNode* initializer = lowerConvertedOperand(node, node->first());
-        if (initializer == nullptr)
-        {
-            return nullptr;
-        }
-        result->setFirst(initializer);
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerGlobalVariable(node);
 }
 
 HirNode* HirBuilder::lowerBlock(ast::AstNode* node)
 {
-    HirNode* result = arena_.make(HirNodeKind::Block, node->range());
-    for (ast::AstNode* statement : node->children())
-    {
-        HirNode* lowered = lowerStatement(statement);
-        if (lowered == nullptr)
-        {
-            return nullptr;
-        }
-        result->addChild(lowered);
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerBlock(node);
 }
 
 HirNode* HirBuilder::lowerStatement(ast::AstNode* node)
 {
-    switch (node->kind())
-    {
-        case ast::AstNodeKind::BlockStatement:
-            return lowerBlock(node);
-
-        case ast::AstNodeKind::VariableDeclarationStatement:
-            return lowerLocalVariable(node);
-
-        case ast::AstNodeKind::IfStatement:
-        {
-            HirNode* result = arena_.make(HirNodeKind::If, node->range());
-            result->setFirst(lowerExpression(node->first()));
-            result->setSecond(lowerBlock(node->second()));
-            if (node->third() != nullptr)
-            {
-                result->setThird(
-                    node->third()->kind() == ast::AstNodeKind::BlockStatement
-                        ? lowerBlock(node->third())
-                        : lowerStatement(node->third()));
-            }
-            return result->first() == nullptr || result->second() == nullptr ? nullptr : result;
-        }
-
-        case ast::AstNodeKind::WhileStatement:
-        {
-            HirNode* result = arena_.make(HirNodeKind::While, node->range());
-            result->setFirst(lowerExpression(node->first()));
-            result->setSecond(lowerBlock(node->second()));
-            return result->first() == nullptr || result->second() == nullptr ? nullptr : result;
-        }
-
-        case ast::AstNodeKind::ForStatement:
-        {
-            HirNode* result = arena_.make(HirNodeKind::For, node->range());
-            if (node->first() != nullptr)
-            {
-                if (node->first()->kind() == ast::AstNodeKind::BlockStatement)
-                {
-                    result->setFirst(lowerBlock(node->first()));
-                }
-                else
-                {
-                    result->setFirst(
-                        node->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement
-                            ? lowerLocalVariable(node->first())
-                            : lowerExpression(node->first(), false));
-                }
-            }
-            if (node->second() != nullptr)
-            {
-                result->setSecond(lowerExpression(node->second()));
-            }
-            if (node->third() != nullptr)
-            {
-                result->setThird(lowerExpression(node->third(), false));
-            }
-            if (!node->children().empty())
-            {
-                result->addChild(lowerBlock(node->children().front()));
-            }
-            if ((!node->children().empty() && result->children().front() == nullptr) ||
-                (node->first() != nullptr && result->first() == nullptr) ||
-                (node->second() != nullptr && result->second() == nullptr) ||
-                (node->third() != nullptr && result->third() == nullptr))
-            {
-                return nullptr;
-            }
-            return result;
-        }
-
-        case ast::AstNodeKind::BreakStatement:
-            return arena_.make(HirNodeKind::Break, node->range());
-
-        case ast::AstNodeKind::ContinueStatement:
-            return arena_.make(HirNodeKind::Continue, node->range());
-
-        case ast::AstNodeKind::ReturnStatement:
-        {
-            HirNode* result = arena_.make(HirNodeKind::Return, node->range());
-            if (node->first() != nullptr)
-            {
-                result->setFirst(lowerConvertedOperand(node, node->first()));
-                if (result->first() == nullptr)
-                {
-                    return nullptr;
-                }
-                result->setType(result->first()->type());
-            }
-            else
-            {
-                result->setType(types_.builtin(sema::TypeKind::Void));
-            }
-            return result;
-        }
-
-        case ast::AstNodeKind::ExpressionStatement:
-        {
-            HirNode* result = arena_.make(HirNodeKind::ExpressionStatement, node->range());
-            result->setFirst(lowerExpression(node->first(), false));
-            return result->first() == nullptr ? nullptr : result;
-        }
-
-        case ast::AstNodeKind::StaticAssertStatement:
-            return arena_.make(HirNodeKind::Block, node->range());
-
-        default:
-            return fail("unsupported statement AST node while building HIR");
-    }
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerStatement(node);
 }
 
 HirNode* HirBuilder::lowerLocalVariable(ast::AstNode* node)
 {
-    sema::Symbol* symbol = boundSymbol(node);
-    if (symbol == nullptr)
-    {
-        return nullptr;
-    }
-
-    HirNode* result = arena_.make(HirNodeKind::LocalVariableDeclaration, node->range());
-    result->setSymbol(symbol);
-    result->setType(symbol->type());
-    if (node->first() != nullptr)
-    {
-        result->setFirst(lowerConvertedOperand(node, node->first()));
-        if (result->first() == nullptr)
-        {
-            return nullptr;
-        }
-    }
-    return result;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerLocalVariable(node);
 }
 
 HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
 {
-    if (node == nullptr)
-    {
-        return fail("null expression reached HIR builder");
-    }
-
-    const sema::ExpressionInfo* info = expressionInfo(node);
-    if (info == nullptr)
-    {
-        return nullptr;
-    }
-
-    if (!sema::isUsableValueCategory(info->category))
-    {
-        return fail("NS3020: moved-from expression reached HIR lowering");
-    }
-
-    if (sema::isPlaceCategory(info->category))
-    {
-        HirNode* address = lowerAddress(node);
-        if (address == nullptr || !loadLValue)
-        {
-            return address;
-        }
-
-        HirNode* load = arena_.make(HirNodeKind::Load, node->range());
-        load->setType(info->type);
-        load->setFirst(address);
-        return load;
-    }
-
-    if (info->symbol != nullptr && info->symbol->kind() == sema::SymbolKind::EnumMember)
-    {
-        HirNode* constant = arena_.make(HirNodeKind::Constant, node->range());
-        constant->setType(info->type);
-        constant->setConstant(info->constantValue);
-        constant->setSymbol(info->symbol);
-        return constant;
-    }
-
-    switch (node->kind())
-    {
-        case ast::AstNodeKind::IntegerLiteralExpression:
-        case ast::AstNodeKind::FloatingLiteralExpression:
-        case ast::AstNodeKind::CharacterLiteralExpression:
-        case ast::AstNodeKind::StringLiteralExpression:
-        case ast::AstNodeKind::BooleanLiteralExpression:
-        case ast::AstNodeKind::NullLiteralExpression:
-        case ast::AstNodeKind::SizeofTypeExpression:
-        case ast::AstNodeKind::SizeofExpression:
-        case ast::AstNodeKind::AlignofTypeExpression:
-        case ast::AstNodeKind::AlignofExpression:
-        case ast::AstNodeKind::OffsetofExpression:
-        {
-            if (!info->isConstant)
-            {
-                return fail("constant HIR expression has no semantic constant value");
-            }
-            HirNode* constant = arena_.make(HirNodeKind::Constant, node->range());
-            constant->setType(info->type);
-            constant->setConstant(info->constantValue);
-            return constant;
-        }
-
-        case ast::AstNodeKind::IdentifierExpression:
-            return fail("non-lvalue identifier reached HIR without enum-member or call context");
-
-        case ast::AstNodeKind::UnaryExpression:
-        case ast::AstNodeKind::PostfixExpression:
-        {
-            if (node->tokenKind() == lexer::TokenKind::Amp)
-            {
-                return lowerAddress(node->first());
-            }
-
-            if (node->tokenKind() == lexer::TokenKind::PlusPlus ||
-                node->tokenKind() == lexer::TokenKind::MinusMinus)
-            {
-                HirNode* address = lowerAddress(node->first());
-                const sema::ResolvedOperatorInfo* resolved = operatorInfo(node);
-                if (address == nullptr || resolved == nullptr)
-                {
-                    return nullptr;
-                }
-                HirNode* increment = arena_.make(HirNodeKind::Increment, node->range());
-                increment->setType(info->type);
-                increment->setOperationType(resolved->operationType);
-                increment->setOperation(node->tokenKind());
-                increment->setPostfix(node->kind() == ast::AstNodeKind::PostfixExpression);
-                increment->setFirst(address);
-                return increment;
-            }
-
-            HirNode* operand = lowerConvertedOperand(node, node->first(), 0);
-            const sema::ResolvedOperatorInfo* resolved = operatorInfo(node);
-            if (operand == nullptr || resolved == nullptr)
-            {
-                return nullptr;
-            }
-            HirNode* unary = arena_.make(HirNodeKind::Unary, node->range());
-            unary->setType(info->type);
-            unary->setOperationType(resolved->operationType);
-            unary->setOperation(node->tokenKind());
-            unary->setFirst(operand);
-            return unary;
-        }
-
-        case ast::AstNodeKind::BinaryExpression:
-        {
-            HirNode* left = lowerConvertedOperand(node, node->first(), 0);
-            HirNode* right = lowerConvertedOperand(node, node->second(), 1);
-            const sema::ResolvedOperatorInfo* resolved = operatorInfo(node);
-            if (left == nullptr || right == nullptr || resolved == nullptr)
-            {
-                return nullptr;
-            }
-            HirNode* binary = arena_.make(HirNodeKind::Binary, node->range());
-            binary->setType(info->type);
-            binary->setOperationType(resolved->operationType);
-            binary->setOperation(node->tokenKind());
-            binary->setFirst(left);
-            binary->setSecond(right);
-            return binary;
-        }
-
-        case ast::AstNodeKind::ConditionalExpression:
-        {
-            HirNode* condition = lowerExpression(node->first());
-            HirNode* whenTrue = lowerConvertedOperand(node, node->second(), 1);
-            HirNode* whenFalse = lowerConvertedOperand(node, node->third(), 2);
-            if (condition == nullptr || whenTrue == nullptr || whenFalse == nullptr)
-            {
-                return nullptr;
-            }
-            HirNode* conditional = arena_.make(HirNodeKind::Conditional, node->range());
-            conditional->setType(info->type);
-            conditional->setFirst(condition);
-            conditional->setSecond(whenTrue);
-            conditional->setThird(whenFalse);
-            return conditional;
-        }
-
-        case ast::AstNodeKind::AssignmentExpression:
-        {
-            HirNode* address = lowerAddress(node->first());
-            if (address == nullptr)
-            {
-                return nullptr;
-            }
-
-            if (node->tokenKind() == lexer::TokenKind::Equal)
-            {
-                HirNode* value = lowerConvertedOperand(node, node->second(), 1);
-                if (value == nullptr)
-                {
-                    return nullptr;
-                }
-                HirNode* store = arena_.make(HirNodeKind::Store, node->range());
-                store->setType(info->type);
-                store->setFirst(address);
-                store->setSecond(value);
-                return store;
-            }
-
-            HirNode* right = lowerConvertedOperand(node, node->second(), 1);
-            const sema::ResolvedOperatorInfo* resolved = operatorInfo(node);
-            if (right == nullptr || resolved == nullptr)
-            {
-                return nullptr;
-            }
-
-            HirNode* compound = arena_.make(HirNodeKind::CompoundAssignment, node->range());
-            compound->setType(info->type);
-            compound->setOperationType(resolved->operationType);
-            compound->setOperation(resolved->tokenKind);
-            compound->setFirst(address);
-            compound->setSecond(right);
-
-            const sema::ConversionInfo* read = operandConversion(node, node->first());
-            if (read != nullptr)
-            {
-                compound->setReadConversionKind(read->kind);
-            }
-            const sema::ConversionInfo* result = resultConversion(node);
-            if (result != nullptr)
-            {
-                compound->setResultConversionKind(result->kind);
-            }
-            return compound;
-        }
-
-        case ast::AstNodeKind::CallExpression:
-        {
-            const sema::ExpressionInfo* calleeInfo = expressionInfo(node->first());
-            if (calleeInfo == nullptr || calleeInfo->symbol == nullptr)
-            {
-                return fail("call expression has no resolved function symbol");
-            }
-            HirNode* call = arena_.make(HirNodeKind::Call, node->range());
-            call->setType(info->type);
-            call->setSymbol(calleeInfo->symbol);
-            for (std::size_t index = 0; index < node->children().size(); ++index)
-            {
-                HirNode* argument = lowerConvertedOperand(
-                    node,
-                    node->children()[index],
-                    static_cast<int>(index));
-                if (argument == nullptr)
-                {
-                    return nullptr;
-                }
-                call->addChild(argument);
-            }
-            return call;
-        }
-
-        case ast::AstNodeKind::MemberExpression:
-        case ast::AstNodeKind::PointerMemberExpression:
-        {
-            if (!sema::isPlaceCategory(info->category))
-            {
-                HirNode* base = lowerExpression(node->first());
-                if (base == nullptr || info->symbol == nullptr)
-                {
-                    return fail("rvalue member access has no resolved field");
-                }
-                HirNode* extract = arena_.make(HirNodeKind::ExtractField, node->range());
-                extract->setType(info->type);
-                extract->setSymbol(info->symbol);
-                if (info->symbol->hasFieldOffset())
-                {
-                    extract->setOffset(info->symbol->fieldOffset());
-                }
-                extract->setFirst(base);
-                return extract;
-            }
-            return fail("lvalue member unexpectedly bypassed generic HIR lvalue lowering");
-        }
-
-        case ast::AstNodeKind::CastExpression:
-            return lowerConvertedOperand(node, node->first(), 0);
-
-        case ast::AstNodeKind::NewExpression:
-        {
-            HirNode* allocation = arena_.make(HirNodeKind::Allocation, node->range());
-            allocation->setType(info->type);
-            allocation->setOperationType(info->type->elementType());
-            allocation->setArrayForm(node->flag());
-            if (node->first() != nullptr)
-            {
-                allocation->setFirst(lowerExpression(node->first()));
-                if (allocation->first() == nullptr)
-                {
-                    return nullptr;
-                }
-            }
-            return allocation;
-        }
-
-        case ast::AstNodeKind::DeleteExpression:
-        {
-            HirNode* deallocation = arena_.make(HirNodeKind::Deallocation, node->range());
-            deallocation->setType(info->type);
-            deallocation->setArrayForm(node->flag());
-            deallocation->setFirst(lowerExpression(node->first()));
-            return deallocation->first() == nullptr ? nullptr : deallocation;
-        }
-
-        case ast::AstNodeKind::StackallocExpression:
-        {
-            HirNode* allocation = arena_.make(HirNodeKind::StackAllocation, node->range());
-            allocation->setType(info->type);
-            allocation->setOperationType(info->type->elementType());
-            allocation->setFirst(lowerExpression(node->first()));
-            return allocation->first() == nullptr ? nullptr : allocation;
-        }
-
-        default:
-            return fail("unsupported expression AST node while building HIR");
-    }
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_)
+        .lowerExpression(node, loadLValue);
 }
 
 HirNode* HirBuilder::lowerAddress(ast::AstNode* node)
 {
-    const sema::ExpressionInfo* info = expressionInfo(node);
-    if (info == nullptr)
-    {
-        return nullptr;
-    }
-
-    switch (node->kind())
-    {
-        case ast::AstNodeKind::IdentifierExpression:
-        {
-            if (info->symbol == nullptr)
-            {
-                return fail("addressable identifier has no resolved symbol");
-            }
-            HirNode* address = arena_.make(HirNodeKind::SymbolAddress, node->range());
-            address->setType(types_.pointerTo(info->type));
-            address->setSymbol(info->symbol);
-            return address;
-        }
-
-        case ast::AstNodeKind::UnaryExpression:
-            if (node->tokenKind() == lexer::TokenKind::Star)
-            {
-                HirNode* pointer = lowerExpression(node->first());
-                if (pointer == nullptr)
-                {
-                    return nullptr;
-                }
-                HirNode* address = arena_.make(HirNodeKind::DereferenceAddress, node->range());
-                address->setType(pointer->type());
-                address->setFirst(pointer);
-                return address;
-            }
-            break;
-
-        case ast::AstNodeKind::IndexExpression:
-        {
-            const sema::ExpressionInfo* baseInfo = expressionInfo(node->first());
-            if (baseInfo == nullptr)
-            {
-                return nullptr;
-            }
-
-            std::vector<ast::AstNode*> indices;
-            if (!node->children().empty())
-                indices.assign(node->children().begin(), node->children().end());
-            else if (node->second() != nullptr)
-                indices.push_back(node->second());
-
-            HirNode* base = nullptr;
-            if (baseInfo->type->kind() == sema::TypeKind::Pointer ||
-                baseInfo->type->kind() == sema::TypeKind::StringLiteral)
-            {
-                base = lowerExpression(node->first());
-            }
-            else
-            {
-                base = lowerAddress(node->first());
-            }
-
-            if (base == nullptr || indices.empty())
-            {
-                return nullptr;
-            }
-
-            sema::Type* dimensionType = baseInfo->type;
-            HirNode* address = nullptr;
-            for (ast::AstNode* indexSyntax : indices)
-            {
-                HirNode* index = lowerExpression(indexSyntax);
-                if (index == nullptr || dimensionType == nullptr ||
-                    (dimensionType->kind() != sema::TypeKind::Array &&
-                     dimensionType->kind() != sema::TypeKind::Pointer &&
-                     dimensionType->kind() != sema::TypeKind::StringLiteral))
-                {
-                    return nullptr;
-                }
-                sema::Type* elementType = dimensionType->kind() == sema::TypeKind::StringLiteral
-                    ? info->type : dimensionType->elementType();
-                address = arena_.make(HirNodeKind::IndexAddress, node->range());
-                address->setType(types_.pointerTo(elementType));
-                address->setOperationType(dimensionType);
-                address->setRequiresBoundsCheck(
-                    dimensionType->kind() == sema::TypeKind::Array ||
-                    dimensionType->kind() == sema::TypeKind::StringLiteral);
-                address->setFirst(base);
-                address->setSecond(index);
-                base = address;
-                dimensionType = elementType;
-            }
-            return address;
-        }
-
-        case ast::AstNodeKind::MemberExpression:
-        case ast::AstNodeKind::PointerMemberExpression:
-        {
-            if (info->symbol == nullptr || info->symbol->kind() != sema::SymbolKind::Field)
-            {
-                return fail("addressable member expression has no resolved field symbol");
-            }
-
-            HirNode* base = node->kind() == ast::AstNodeKind::PointerMemberExpression
-                ? lowerExpression(node->first())
-                : lowerAddress(node->first());
-            if (base == nullptr)
-            {
-                return nullptr;
-            }
-
-            HirNode* address = arena_.make(HirNodeKind::FieldAddress, node->range());
-            address->setType(types_.pointerTo(info->type));
-            address->setSymbol(info->symbol);
-            if (info->symbol->hasFieldOffset())
-            {
-                address->setOffset(info->symbol->fieldOffset());
-            }
-            address->setFirst(base);
-            return address;
-        }
-
-        default:
-            break;
-    }
-
-    return fail("expression classified as lvalue has no HIR address lowering");
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_).lowerAddress(node);
 }
 
 HirNode* HirBuilder::lowerConvertedOperand(
@@ -766,29 +1493,8 @@ HirNode* HirBuilder::lowerConvertedOperand(
     ast::AstNode* operand,
     int operandIndex)
 {
-    HirNode* value = lowerExpression(operand);
-    if (value == nullptr)
-    {
-        return nullptr;
-    }
-
-    for (const sema::ConversionInfo& conversion : semanticModel_.conversions(owner))
-    {
-        if (conversion.role == sema::ConversionRole::Result || conversion.operand != operand)
-        {
-            continue;
-        }
-        if (operandIndex >= 0 && conversion.operandIndex >= 0 && conversion.operandIndex != operandIndex)
-        {
-            continue;
-        }
-        value = wrapConversion(owner->range(), value, conversion);
-        if (value == nullptr)
-        {
-            return nullptr;
-        }
-    }
-    return value;
+    return IterativeHirLowering(arena_, types_, semanticModel_, error_)
+        .lowerConvertedOperand(owner, operand, operandIndex);
 }
 
 HirNode* HirBuilder::wrapConversion(

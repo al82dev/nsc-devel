@@ -1,10 +1,17 @@
 #include "nativesharp/Frontend/FrontendCompilation.h"
+#include "nativesharp/AST/AstNode.h"
+#include "nativesharp/AST/AstNodeKind.h"
+#include "nativesharp/HIR/HirArena.h"
+#include "nativesharp/HIR/HirBuilder.h"
 #include "nativesharp/HIR/HirNode.h"
 #include "nativesharp/HIR/HirNodeKind.h"
 #include "nativesharp/HIR/HirDumper.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Sema/ConversionKind.h"
+#include "nativesharp/Sema/SemanticModel.h"
 #include "nativesharp/Sema/Symbol.h"
+#include "nativesharp/Sema/SymbolKind.h"
+#include "nativesharp/Sema/TypeContext.h"
 #include "nativesharp/Sema/TypeKind.h"
 #include "../support/TestContext.h"
 
@@ -171,6 +178,61 @@ void testDeepHirDump(nativesharp::tests::TestContext& tests)
     tests.expect(orderOutput.str() == expected,
         "iterative base HIR dumping preserves first/second/third/children order and labels");
 }
+
+/// Isolates HirBuilder from parser/Sema and proves deep block lowering uses bounded host stack.
+void testDeepHirBuilder(nativesharp::tests::TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    using nativesharp::ast::AstNode;
+    using nativesharp::ast::AstNodeKind;
+    using nativesharp::hir::HirArena;
+    using nativesharp::hir::HirBuilder;
+    using nativesharp::sema::SemanticModel;
+    using nativesharp::sema::Symbol;
+    using nativesharp::sema::SymbolKind;
+    using nativesharp::sema::TypeContext;
+
+    std::vector<std::unique_ptr<AstNode>> syntax;
+    syntax.reserve(nestingDepth + 2U);
+    syntax.push_back(std::make_unique<AstNode>(
+        AstNodeKind::CompilationUnit, nativesharp::SourceRange{}));
+    syntax.push_back(std::make_unique<AstNode>(
+        AstNodeKind::FunctionDeclaration, nativesharp::SourceRange{}));
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<AstNode>(
+            AstNodeKind::BlockStatement, nativesharp::SourceRange{}));
+    }
+    syntax.front()->addChild(syntax[1].get());
+    syntax[1]->setFirst(syntax[2].get());
+    for (std::size_t index = 0; index + 1U < nestingDepth; ++index)
+        syntax[index + 2U]->addChild(syntax[index + 3U].get());
+
+    TypeContext types;
+    SemanticModel semanticModel;
+    Symbol function(
+        SymbolKind::Function,
+        "Deep",
+        types.functionType(types.builtin(TypeKind::Void), {}),
+        syntax[1].get());
+    semanticModel.bindSymbol(syntax[1].get(), &function);
+    HirArena arena;
+    HirBuilder builder(arena, types, semanticModel);
+    const HirNode* root = builder.build(syntax.front().get());
+    tests.expect(root != nullptr && builder.succeeded(),
+        "a 32768-level block AST lowers without process-stack recursion");
+
+    const HirNode* current = root != nullptr && !root->children().empty()
+        ? root->children().front()->first() : nullptr;
+    std::size_t loweredDepth = 0;
+    while (current != nullptr)
+    {
+        ++loweredDepth;
+        current = current->children().empty() ? nullptr : current->children().front();
+    }
+    tests.expect(loweredDepth == nestingDepth,
+        "deep iterative HirBuilder lowering preserves every nested block and its order");
+}
 }
 
 int main()
@@ -188,6 +250,11 @@ int main()
     if (focusValue == "hir-base-dump-depth")
     {
         testDeepHirDump(tests);
+        return tests.result();
+    }
+    if (focusValue == "hir-builder-depth")
+    {
+        testDeepHirBuilder(tests);
         return tests.result();
     }
 
