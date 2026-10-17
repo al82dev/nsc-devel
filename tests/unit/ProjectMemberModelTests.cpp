@@ -563,6 +563,44 @@ void testDeepMethodBodyScan(TestContext& tests, const std::filesystem::path& roo
     tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
         "member binding scans a 16,384-segment method expression without using the native stack");
 }
+
+void testDeepInvalidThisContextScan(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeepInvalidThisContextScan";
+    writeProject(directory, "DeepInvalidThisContextScan");
+    constexpr std::size_t depth = 16384;
+    std::string source = "int F() { return Root";
+    for (std::size_t index = 0; index < depth; ++index) source += ".Part";
+    source += "(this, this); }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(
+        directory / "DeepInvalidThisContextScan.nsproj", error);
+    tests.expect(!ok && error.empty(),
+        "invalid-this scanning rejects a deep procedural expression as a semantic member error");
+
+    std::size_t invalidThisCount = 0;
+    std::uint32_t previousOffset = 0;
+    bool exactMessages = true;
+    bool sourceOrder = true;
+    for (const nativesharp::diagnostics::Diagnostic& diagnostic :
+         compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.id() != DiagnosticId::InvalidMemberAccess) continue;
+        exactMessages = exactMessages &&
+            diagnostic.message() == "'this' is available only inside an instance method";
+        const std::uint32_t offset = diagnostic.location().offset();
+        if (invalidThisCount != 0) sourceOrder = sourceOrder && previousOffset < offset;
+        previousOffset = offset;
+        ++invalidThisCount;
+    }
+    tests.expect(invalidThisCount == 2 && exactMessages,
+        "deep invalid-this scanning preserves both exact InvalidMemberAccess diagnostics");
+    tests.expect(sourceOrder,
+        "deep invalid-this scanning preserves source-order diagnostic publication");
+}
 }
 
 int main()
@@ -582,6 +620,7 @@ int main()
     testBodyDiagnostics(tests, root);
     testNestedTypesAreNotMembers(tests, root);
     testDeepMethodBodyScan(tests, root);
+    testDeepInvalidThisContextScan(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

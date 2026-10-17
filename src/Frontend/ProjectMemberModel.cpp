@@ -3839,34 +3839,37 @@ void ProjectMemberModel::scanInvalidThisContexts(
     const ast::AstNode* node,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (node == nullptr)
+    std::vector<const ast::AstNode*> work;
+    work.push_back(node);
+    while (!work.empty())
     {
-        return;
-    }
+        node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
 
-    if (node->kind() == ast::AstNodeKind::MethodDeclaration ||
-        node->kind() == ast::AstNodeKind::ConstructorDeclaration ||
-        node->kind() == ast::AstNodeKind::DestructorDeclaration)
-    {
-        return;
-    }
+        if (node->kind() == ast::AstNodeKind::MethodDeclaration ||
+            node->kind() == ast::AstNodeKind::ConstructorDeclaration ||
+            node->kind() == ast::AstNodeKind::DestructorDeclaration)
+        {
+            continue;
+        }
 
-    if (node->kind() == ast::AstNodeKind::ThisExpression)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidMemberAccess,
-            diagnostics::DiagnosticSeverity::Error,
-            node->range(),
-            "'this' is available only inside an instance method");
-        return;
-    }
+        if (node->kind() == ast::AstNodeKind::ThisExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidMemberAccess,
+                diagnostics::DiagnosticSeverity::Error,
+                node->range(),
+                "'this' is available only inside an instance method");
+            continue;
+        }
 
-    scanInvalidThisContexts(node->first(), diagnostics);
-    scanInvalidThisContexts(node->second(), diagnostics);
-    scanInvalidThisContexts(node->third(), diagnostics);
-    for (const ast::AstNode* child : node->children())
-    {
-        scanInvalidThisContexts(child, diagnostics);
+        const std::span<ast::AstNode* const> children = node->children();
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            work.push_back(*iterator);
+        work.push_back(node->third());
+        work.push_back(node->second());
+        work.push_back(node->first());
     }
 }
 
