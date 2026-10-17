@@ -380,6 +380,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCallableResultMerger.cpp
     src/Frontend/ProjectCallableWaveReducer.cpp
     src/Frontend/ProjectCallableWaveScheduler.cpp
+    src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp

@@ -55,7 +55,8 @@
 Fecha: 2026-10-17.
 
 1. `nsc_namespace_function_llvm_tests`: PASS 10/10, exit 0.
-2. `nsc_project_oop_lowering_tests --precise-incremental-invalidation`: PASS 13/13, exit 0.
+2. `nsc_project_oop_lowering_tests` con
+   `NSC_PROJECT_OOP_LOWERING_FOCUS=precise-incremental-invalidation`: PASS 13/13, exit 0.
 3. La segunda prueba conserva el contrato L05: una edición de cuerpo produce un miss y la repetición
    restaura todos los objetos.
 4. `nsc` Release compila y pasa su contrato de runtime host estático.

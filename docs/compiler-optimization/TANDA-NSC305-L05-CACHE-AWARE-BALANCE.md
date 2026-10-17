@@ -80,9 +80,9 @@ la salida observable, o si la solución requiere tocar cualquiera de los compone
   de que todas las unidades terminan correctamente. Un hit de objeto no reemplaza el costo histórico
   con el costo barato de una lectura de caché.
 - Las claves de objeto, la validación COFF, los modelos MIR y el contenido de NSMETA no se cambiaron.
-- El binario de prueba conserva su ejecución completa habitual. El selector
-  `--precise-incremental-invalidation` sólo permite ejecutar el caso focal sin depender de pruebas
-  históricas de enlace ajenas a L05.
+- El binario de prueba conserva `int main()` y su ejecución completa habitual. La variable
+  `NSC_PROJECT_OOP_LOWERING_FOCUS=precise-incremental-invalidation` sólo permite ejecutar el caso
+  focal sin depender de pruebas históricas de enlace ajenas a L05.
 
 ## 7. Evidencia focal
 
@@ -90,8 +90,9 @@ Fecha: 2026-10-17. Rama: `development`. Base de la tanda: `4f5750930`.
 
 1. `cmake --build A:\nsc-devel\build-test-infrastructure --target
    nsc_project_oop_lowering_tests --config Release --parallel 16`: PASS.
-2. `A:\nsc-devel\build-test-infrastructure\tests\nsc_project_oop_lowering_tests.exe
-   --precise-incremental-invalidation`, con `TEMP` y `TMP` en `A:\temp`: `PASS: 13 checks`, exit 0.
+2. `A:\nsc-devel\build-test-infrastructure\tests\nsc_project_oop_lowering_tests.exe`, con
+   `NSC_PROJECT_OOP_LOWERING_FOCUS=precise-incremental-invalidation` y `TEMP`/`TMP` en `A:\temp`:
+   `PASS: 13 checks`, exit 0.
 3. El caso focal prueba explícitamente:
    - plan frío idéntico al balance LPT determinista;
    - clave topológica idéntica entre revisiones que sólo cambian un cuerpo;

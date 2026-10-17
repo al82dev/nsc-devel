@@ -16,6 +16,7 @@
 
 #include "../support/TestContext.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -907,7 +908,7 @@ public class Work
 }
 }
 
-int main(int argc, char** argv)
+int main()
 {
     TestContext tests;
     const std::filesystem::path root =
@@ -916,8 +917,13 @@ int main(int argc, char** argv)
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root);
 
-    const bool preciseIncrementalOnly = argc == 2 &&
-        std::string_view(argv[1]) == "--precise-incremental-invalidation";
+    char* focus = nullptr;
+    std::size_t focusLength = 0;
+    const int focusError = _dupenv_s(
+        &focus, &focusLength, "NSC_PROJECT_OOP_LOWERING_FOCUS");
+    const bool preciseIncrementalOnly = focusError == 0 && focus != nullptr &&
+        std::string_view(focus) == "precise-incremental-invalidation";
+    std::free(focus);
     if (preciseIncrementalOnly)
     {
         testPreciseIncrementalInvalidation(tests, root);
