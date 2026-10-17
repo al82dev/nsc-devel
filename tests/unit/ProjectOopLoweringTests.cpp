@@ -124,6 +124,52 @@ struct ProjectOopHirModelTestAccess final
         if (model.functions_.empty()) return nullptr;
         return std::move(model.functions_.front().body);
     }
+
+    static bool stackClassLocalUsesAreSafe(
+        const ProjectOopHirNode* node,
+        const ProjectOopHirNode* declaration,
+        std::size_t localOrdinal)
+    {
+        return ProjectOopHirModel::stackClassLocalUsesAreSafe(
+            node, declaration, localOrdinal);
+    }
+
+    static void collectLocalDeclarations(
+        ProjectOopHirNode* node,
+        std::vector<ProjectOopHirNode*>& declarations)
+    {
+        ProjectOopHirModel::collectLocalDeclarations(node, declarations);
+    }
+
+    static const ProjectOopHirNode* firstUnpromotedObjectConstruction(
+        const ProjectOopHirNode* node)
+    {
+        return ProjectOopHirModel::firstUnpromotedObjectConstruction(node);
+    }
+
+    static void scanParallelOrdinals(
+        const ProjectOopHirNode* node,
+        std::size_t localFloor,
+        std::size_t cleanupFloor,
+        std::size_t& localCount,
+        std::size_t& cleanupCount,
+        std::size_t& regionCount)
+    {
+        ProjectOopHirModel::scanParallelOrdinals(
+            node, localFloor, cleanupFloor, localCount, cleanupCount, regionCount);
+    }
+
+    static void applyParallelOrdinalOffsets(
+        ProjectOopHirNode* node,
+        std::size_t localFloor,
+        std::size_t cleanupFloor,
+        std::size_t localOffset,
+        std::size_t cleanupOffset,
+        std::size_t regionOffset)
+    {
+        ProjectOopHirModel::applyParallelOrdinalOffsets(
+            node, localFloor, cleanupFloor, localOffset, cleanupOffset, regionOffset);
+    }
 };
 }
 
@@ -1889,6 +1935,108 @@ void testDeepHirDump(TestContext& tests)
     auto body = nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(model);
     destroyHirTreeIteratively(body);
 }
+
+void testDeepHirCoordinatorWalker(TestContext& tests, std::string_view walker)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    auto* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto child = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        child->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        cursor->children.push_back(std::move(child));
+        cursor = cursor->children.front().get();
+    }
+
+    cursor->kind = nativesharp::frontend::ProjectOopHirNodeKind::OwnedTemporaryBorrow;
+    cursor->localOrdinal = 100U;
+    cursor->cleanupRegionOrdinal = 200U;
+    cursor->hirRegionOrdinal = 5U;
+    cursor->exceptionTargetRegionOrdinal = 6U;
+    auto declaration = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    declaration->kind = nativesharp::frontend::ProjectOopHirNodeKind::LocalDeclaration;
+    declaration->localOrdinal = 77U;
+    auto* declarationPointer = declaration.get();
+    auto construction = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    construction->kind = nativesharp::frontend::ProjectOopHirNodeKind::ObjectConstruction;
+    auto* constructionPointer = construction.get();
+    declaration->children.push_back(std::move(construction));
+    cursor->children.push_back(std::move(declaration));
+
+    if (walker == "collect")
+    {
+        auto secondDeclaration = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        secondDeclaration->kind =
+            nativesharp::frontend::ProjectOopHirNodeKind::LocalDeclaration;
+        auto* secondDeclarationPointer = secondDeclaration.get();
+        root->children.push_back(std::move(secondDeclaration));
+        std::vector<nativesharp::frontend::ProjectOopHirNode*> declarations;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectLocalDeclarations(
+            root.get(), declarations);
+        tests.expect(declarations.size() == 2U && declarations[0] == declarationPointer &&
+                declarations[1] == secondDeclarationPointer,
+            "deep HIR declaration collection preserves preorder without process recursion");
+    }
+    else if (walker == "uses")
+    {
+        tests.expect(
+            nativesharp::frontend::ProjectOopHirModelTestAccess::stackClassLocalUsesAreSafe(
+                root.get(), declarationPointer, 77U),
+            "deep HIR stack-promotion use proof completes without process recursion");
+
+        auto assignment = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        assignment->kind = nativesharp::frontend::ProjectOopHirNodeKind::Assignment;
+        auto fieldAddress = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        fieldAddress->kind = nativesharp::frontend::ProjectOopHirNodeKind::FieldAddress;
+        auto localValue = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        localValue->kind = nativesharp::frontend::ProjectOopHirNodeKind::LocalValue;
+        localValue->localOrdinal = 77U;
+        fieldAddress->children.push_back(std::move(localValue));
+        assignment->children.push_back(std::move(fieldAddress));
+        tests.expect(
+            nativesharp::frontend::ProjectOopHirModelTestAccess::stackClassLocalUsesAreSafe(
+                assignment.get(), declarationPointer, 77U),
+            "iterative stack-promotion proof preserves direct field-store safety");
+        assignment->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        tests.expect(
+            !nativesharp::frontend::ProjectOopHirModelTestAccess::stackClassLocalUsesAreSafe(
+                assignment.get(), declarationPointer, 77U),
+            "iterative stack-promotion proof still rejects an escaping field address");
+        destroyHirTreeIteratively(assignment);
+    }
+    else if (walker == "allocation")
+    {
+        auto laterConstruction = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        laterConstruction->kind =
+            nativesharp::frontend::ProjectOopHirNodeKind::ObjectConstruction;
+        root->children.push_back(std::move(laterConstruction));
+        tests.expect(
+            nativesharp::frontend::ProjectOopHirModelTestAccess::firstUnpromotedObjectConstruction(
+                root.get()) == constructionPointer,
+            "deep HIR allocation search preserves first-preorder result");
+    }
+    else if (walker == "scan")
+    {
+        std::size_t localCount = 0;
+        std::size_t cleanupCount = 0;
+        std::size_t regionCount = 0;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::scanParallelOrdinals(
+            root.get(), 90U, 190U, localCount, cleanupCount, regionCount);
+        tests.expect(localCount == 11U && cleanupCount == 11U && regionCount == 6U,
+            "deep HIR ordinal scan preserves synthetic maxima");
+    }
+    else if (walker == "apply")
+    {
+        nativesharp::frontend::ProjectOopHirModelTestAccess::applyParallelOrdinalOffsets(
+            root.get(), 90U, 190U, 3U, 4U, 7U);
+        tests.expect(cursor->localOrdinal == 103U && cursor->cleanupRegionOrdinal == 204U &&
+                cursor->hirRegionOrdinal == 12U && cursor->exceptionTargetRegionOrdinal == 13U,
+            "deep HIR ordinal rebasing preserves all offsets");
+    }
+    destroyHirTreeIteratively(root);
+}
 }
 
 int main()
@@ -1963,6 +2111,11 @@ int main()
     else if (focusValue == "hir-dump-depth")
     {
         testDeepHirDump(tests);
+    }
+    else if (focusValue.starts_with("hir-coordinator-walker-"))
+    {
+        testDeepHirCoordinatorWalker(
+            tests, focusValue.substr(std::string_view("hir-coordinator-walker-").size()));
     }
     else
     {

@@ -139,76 +139,105 @@ std::string typeSuffix(const ClassMemberSymbol& member)
     }
     return result;
 }
+}
 
 // Item 323 deliberately proves only uses that cannot expose the address of the containing class.
 // Reading a field copies its value. A FieldAddress is equally safe only while it is the direct
 // destination of a store; every other appearance of the local is conservatively an escape.
-bool stackClassLocalUsesAreSafe(
+bool ProjectOopHirModel::stackClassLocalUsesAreSafe(
     const ProjectOopHirNode* node,
     const ProjectOopHirNode* declaration,
     std::size_t localOrdinal,
-    const ProjectOopHirNode* parent = nullptr,
-    const ProjectOopHirNode* grandparent = nullptr,
-    std::size_t childIndex = 0,
-    std::size_t parentChildIndex = 0)
+    const ProjectOopHirNode* parent,
+    const ProjectOopHirNode* grandparent,
+    std::size_t childIndex,
+    std::size_t parentChildIndex)
 {
-    if (node == nullptr) return true;
-    if (node != declaration && node->localOrdinal == localOrdinal)
+    struct Frame final
     {
-        const bool copiedField = node->kind == ProjectOopHirNodeKind::LocalValue &&
-            parent != nullptr && parent->kind == ProjectOopHirNodeKind::FieldValue &&
-            childIndex == 0;
-        const bool directFieldStore = node->kind == ProjectOopHirNodeKind::LocalValue &&
-            parent != nullptr && parent->kind == ProjectOopHirNodeKind::FieldAddress &&
-            childIndex == 0 && grandparent != nullptr && parentChildIndex == 0 &&
-            (grandparent->kind == ProjectOopHirNodeKind::Assignment ||
-             grandparent->kind == ProjectOopHirNodeKind::CompoundStore);
-        if (!copiedField && !directFieldStore) return false;
-    }
-    for (std::size_t index = 0; index < node->children.size(); ++index)
+        const ProjectOopHirNode* node = nullptr;
+        const ProjectOopHirNode* parent = nullptr;
+        const ProjectOopHirNode* grandparent = nullptr;
+        std::size_t childIndex = 0;
+        std::size_t parentChildIndex = 0;
+    };
+
+    std::vector<Frame> stack;
+    stack.push_back(Frame{node, parent, grandparent, childIndex, parentChildIndex});
+    while (!stack.empty())
     {
-        if (!stackClassLocalUsesAreSafe(
-                node->children[index].get(), declaration, localOrdinal,
-                node, parent, index, childIndex))
+        const Frame frame = stack.back();
+        stack.pop_back();
+        if (frame.node == nullptr) continue;
+        if (frame.node != declaration && frame.node->localOrdinal == localOrdinal)
         {
-            return false;
+            const bool copiedField = frame.node->kind == ProjectOopHirNodeKind::LocalValue &&
+                frame.parent != nullptr &&
+                frame.parent->kind == ProjectOopHirNodeKind::FieldValue &&
+                frame.childIndex == 0;
+            const bool directFieldStore =
+                frame.node->kind == ProjectOopHirNodeKind::LocalValue &&
+                frame.parent != nullptr &&
+                frame.parent->kind == ProjectOopHirNodeKind::FieldAddress &&
+                frame.childIndex == 0 && frame.grandparent != nullptr &&
+                frame.parentChildIndex == 0 &&
+                (frame.grandparent->kind == ProjectOopHirNodeKind::Assignment ||
+                 frame.grandparent->kind == ProjectOopHirNodeKind::CompoundStore);
+            if (!copiedField && !directFieldStore) return false;
+        }
+        for (std::size_t index = frame.node->children.size(); index > 0; --index)
+        {
+            stack.push_back(Frame{
+                frame.node->children[index - 1U].get(),
+                frame.node,
+                frame.parent,
+                index - 1U,
+                frame.childIndex});
         }
     }
     return true;
 }
 
-void collectLocalDeclarations(
+void ProjectOopHirModel::collectLocalDeclarations(
     ProjectOopHirNode* node,
     std::vector<ProjectOopHirNode*>& declarations)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopHirNodeKind::LocalDeclaration)
-        declarations.push_back(node);
-    for (auto& child : node->children)
-        collectLocalDeclarations(child.get(), declarations);
+    std::vector<ProjectOopHirNode*> stack;
+    stack.push_back(node);
+    while (!stack.empty())
+    {
+        ProjectOopHirNode* current = stack.back();
+        stack.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind == ProjectOopHirNodeKind::LocalDeclaration)
+            declarations.push_back(current);
+        for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
+            stack.push_back(child->get());
+    }
 }
 
-const ProjectOopHirNode* firstUnpromotedObjectConstruction(
-    const ProjectOopHirNode* node) noexcept
+const ProjectOopHirNode* ProjectOopHirModel::firstUnpromotedObjectConstruction(
+    const ProjectOopHirNode* node)
 {
-    if (node == nullptr) return nullptr;
-    if (node->kind == ProjectOopHirNodeKind::ObjectConstruction &&
-        !node->stackPromotedObject)
+    std::vector<const ProjectOopHirNode*> stack;
+    stack.push_back(node);
+    while (!stack.empty())
     {
-        return node;
-    }
-    for (const auto& child : node->children)
-    {
-        if (const ProjectOopHirNode* found =
-                firstUnpromotedObjectConstruction(child.get()))
+        const ProjectOopHirNode* current = stack.back();
+        stack.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind == ProjectOopHirNodeKind::ObjectConstruction &&
+            !current->stackPromotedObject)
         {
-            return found;
+            return current;
         }
+        for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
+            stack.push_back(child->get());
     }
     return nullptr;
 }
 
-void scanParallelOrdinals(
+void ProjectOopHirModel::scanParallelOrdinals(
     const ProjectOopHirNode* node,
     std::size_t localFloor,
     std::size_t cleanupFloor,
@@ -216,23 +245,33 @@ void scanParallelOrdinals(
     std::size_t& cleanupCount,
     std::size_t& regionCount)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+    std::vector<const ProjectOopHirNode*> stack;
+    stack.push_back(node);
+    while (!stack.empty())
     {
-        if (node->localOrdinal.has_value() && *node->localOrdinal >= localFloor)
-            localCount = std::max(localCount, *node->localOrdinal - localFloor + 1U);
-        if (node->cleanupRegionOrdinal.has_value() && *node->cleanupRegionOrdinal >= cleanupFloor)
-            cleanupCount = std::max(
-                cleanupCount, *node->cleanupRegionOrdinal - cleanupFloor + 1U);
+        const ProjectOopHirNode* current = stack.back();
+        stack.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+        {
+            if (current->localOrdinal.has_value() && *current->localOrdinal >= localFloor)
+                localCount = std::max(
+                    localCount, *current->localOrdinal - localFloor + 1U);
+            if (current->cleanupRegionOrdinal.has_value() &&
+                *current->cleanupRegionOrdinal >= cleanupFloor)
+            {
+                cleanupCount = std::max(
+                    cleanupCount, *current->cleanupRegionOrdinal - cleanupFloor + 1U);
+            }
+        }
+        if (current->hirRegionOrdinal.has_value())
+            regionCount = std::max(regionCount, *current->hirRegionOrdinal + 1U);
+        for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
+            stack.push_back(child->get());
     }
-    if (node->hirRegionOrdinal.has_value())
-        regionCount = std::max(regionCount, *node->hirRegionOrdinal + 1U);
-    for (const std::unique_ptr<ProjectOopHirNode>& child : node->children)
-        scanParallelOrdinals(
-            child.get(), localFloor, cleanupFloor, localCount, cleanupCount, regionCount);
 }
 
-void applyParallelOrdinalOffsets(
+void ProjectOopHirModel::applyParallelOrdinalOffsets(
     ProjectOopHirNode* node,
     std::size_t localFloor,
     std::size_t cleanupFloor,
@@ -240,23 +279,31 @@ void applyParallelOrdinalOffsets(
     std::size_t cleanupOffset,
     std::size_t regionOffset)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+    std::vector<ProjectOopHirNode*> stack;
+    stack.push_back(node);
+    while (!stack.empty())
     {
-        if (node->localOrdinal.has_value() && *node->localOrdinal >= localFloor)
-            *node->localOrdinal += localOffset;
-        if (node->cleanupRegionOrdinal.has_value() && *node->cleanupRegionOrdinal >= cleanupFloor)
-            *node->cleanupRegionOrdinal += cleanupOffset;
+        ProjectOopHirNode* current = stack.back();
+        stack.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+        {
+            if (current->localOrdinal.has_value() && *current->localOrdinal >= localFloor)
+                *current->localOrdinal += localOffset;
+            if (current->cleanupRegionOrdinal.has_value() &&
+                *current->cleanupRegionOrdinal >= cleanupFloor)
+            {
+                *current->cleanupRegionOrdinal += cleanupOffset;
+            }
+        }
+        if (current->hirRegionOrdinal.has_value())
+            *current->hirRegionOrdinal += regionOffset;
+        if (current->exceptionTargetRegionOrdinal.has_value())
+            *current->exceptionTargetRegionOrdinal += regionOffset;
+        for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
+            stack.push_back(child->get());
     }
-    if (node->hirRegionOrdinal.has_value()) *node->hirRegionOrdinal += regionOffset;
-    if (node->exceptionTargetRegionOrdinal.has_value())
-        *node->exceptionTargetRegionOrdinal += regionOffset;
-    for (const std::unique_ptr<ProjectOopHirNode>& child : node->children)
-        applyParallelOrdinalOffsets(
-            child.get(), localFloor, cleanupFloor, localOffset, cleanupOffset, regionOffset);
 }
-}
-
 const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
 {
     switch (kind)

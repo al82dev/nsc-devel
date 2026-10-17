@@ -826,6 +826,34 @@ private:
         std::optional<std::size_t> memberFilter,
         const ProjectOopHirModel* lookupSource);
 
+    static bool stackClassLocalUsesAreSafe(
+        const ProjectOopHirNode* node,
+        const ProjectOopHirNode* declaration,
+        std::size_t localOrdinal,
+        const ProjectOopHirNode* parent = nullptr,
+        const ProjectOopHirNode* grandparent = nullptr,
+        std::size_t childIndex = 0,
+        std::size_t parentChildIndex = 0);
+    static void collectLocalDeclarations(
+        ProjectOopHirNode* node,
+        std::vector<ProjectOopHirNode*>& declarations);
+    static const ProjectOopHirNode* firstUnpromotedObjectConstruction(
+        const ProjectOopHirNode* node);
+    static void scanParallelOrdinals(
+        const ProjectOopHirNode* node,
+        std::size_t localFloor,
+        std::size_t cleanupFloor,
+        std::size_t& localCount,
+        std::size_t& cleanupCount,
+        std::size_t& regionCount);
+    static void applyParallelOrdinalOffsets(
+        ProjectOopHirNode* node,
+        std::size_t localFloor,
+        std::size_t cleanupFloor,
+        std::size_t localOffset,
+        std::size_t cleanupOffset,
+        std::size_t regionOffset);
+
     std::unique_ptr<ProjectOopHirNode> lowerBlock(
         const ast::AstNode* block,
         std::size_t memberOrdinal,
