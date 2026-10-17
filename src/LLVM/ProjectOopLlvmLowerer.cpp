@@ -2772,11 +2772,190 @@ private:
             field, global, error);
     }
 
+    // INSTRUMENTATION CODE: generated-program runtime trace.
+    //
+    // This is deliberately gated by Full debug information rather than -O0. Optimization and
+    // diagnostics are independent contracts: a Release -O0 binary must not acquire tracing code,
+    // while a Debug build remains traceable at any optimization level. The sink uses only static
+    // strings, stack storage and direct Win32 calls; it must not allocate from the heap whose
+    // corruption it is intended to diagnose.
+    bool ensureRuntimeDebugTrace(std::string& error)
+    {
+        if (debugInformation_ != DebugInformationKind::Full || runtimeDebugTraceFunction_ != nullptr)
+            return true;
+
+        LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+
+        LLVMTypeRef traceParameters[] = {i32, ptr, i32};
+        runtimeDebugTraceFunctionType_ = LLVMFunctionType(voidType, traceParameters, 3, 0);
+        runtimeDebugTraceFunction_ = LLVMAddFunction(
+            module_, "__nsc_runtime_debug_trace", runtimeDebugTraceFunctionType_);
+        if (runtimeDebugTraceFunction_ == nullptr)
+            return fail(error, "INSTRUMENTATION CODE could not declare the runtime Debug trace sink");
+        LLVMSetLinkage(runtimeDebugTraceFunction_, LLVMInternalLinkage);
+        applyFunctionAttribute(runtimeDebugTraceFunction_, "nounwind");
+
+        runtimeDebugTraceFlags_ = LLVMAddGlobal(
+            module_, i32, "__nsc_runtime_debug_trace_flags");
+        if (runtimeDebugTraceFlags_ == nullptr)
+            return fail(error, "INSTRUMENTATION CODE could not declare the runtime Debug trace flags");
+        // Bit 0: callable entry. Bit 1: allocation/deallocation. Set to zero to park the trace
+        // without deleting it after the heap defect has been isolated.
+        LLVMSetInitializer(runtimeDebugTraceFlags_, LLVMConstInt(i32, 3U, 0));
+        LLVMSetLinkage(runtimeDebugTraceFlags_, LLVMPrivateLinkage);
+
+        LLVMValueRef path = cStringGlobal(
+            "A:\\temp\\nsc-runtime-debug-trace.log", "runtime_debug_trace_path");
+        if (path == nullptr)
+            return fail(error, "INSTRUMENTATION CODE could not materialize the runtime Debug trace path");
+
+        LLVMTypeRef createFileParameters[] = {ptr, i32, i32, ptr, i32, i32, ptr};
+        LLVMTypeRef createFileType = LLVMFunctionType(ptr, createFileParameters, 7, 0);
+        LLVMValueRef createFile = LLVMGetNamedFunction(module_, "CreateFileA");
+        if (createFile == nullptr) createFile = LLVMAddFunction(module_, "CreateFileA", createFileType);
+        else if (LLVMGlobalGetValueType(createFile) != createFileType)
+            return fail(error, "INSTRUMENTATION CODE found an incompatible CreateFileA declaration");
+        functions_.try_emplace(
+            "CreateFileA", FunctionInfo{createFile, createFileType, nullptr});
+
+        LLVMTypeRef writeFileParameters[] = {ptr, ptr, i32, ptr, ptr};
+        LLVMTypeRef writeFileType = LLVMFunctionType(i32, writeFileParameters, 5, 0);
+        LLVMValueRef writeFile = LLVMGetNamedFunction(module_, "WriteFile");
+        if (writeFile == nullptr) writeFile = LLVMAddFunction(module_, "WriteFile", writeFileType);
+        else if (LLVMGlobalGetValueType(writeFile) != writeFileType)
+            return fail(error, "INSTRUMENTATION CODE found an incompatible WriteFile declaration");
+        functions_.try_emplace(
+            "WriteFile", FunctionInfo{writeFile, writeFileType, nullptr});
+
+        LLVMTypeRef closeHandleParameters[] = {ptr};
+        LLVMTypeRef closeHandleType = LLVMFunctionType(i32, closeHandleParameters, 1, 0);
+        LLVMValueRef closeHandle = LLVMGetNamedFunction(module_, "CloseHandle");
+        if (closeHandle == nullptr) closeHandle = LLVMAddFunction(module_, "CloseHandle", closeHandleType);
+        else if (LLVMGlobalGetValueType(closeHandle) != closeHandleType)
+            return fail(error, "INSTRUMENTATION CODE found an incompatible CloseHandle declaration");
+        functions_.try_emplace(
+            "CloseHandle", FunctionInfo{closeHandle, closeHandleType, nullptr});
+
+        LLVMBuilderRef traceBuilder = LLVMCreateBuilderInContext(context_);
+        if (traceBuilder == nullptr)
+            return fail(error, "INSTRUMENTATION CODE could not create the runtime Debug trace builder");
+
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
+            context_, runtimeDebugTraceFunction_, "entry");
+        LLVMBasicBlockRef open = LLVMAppendBasicBlockInContext(
+            context_, runtimeDebugTraceFunction_, "open");
+        LLVMBasicBlockRef write = LLVMAppendBasicBlockInContext(
+            context_, runtimeDebugTraceFunction_, "write");
+        LLVMBasicBlockRef done = LLVMAppendBasicBlockInContext(
+            context_, runtimeDebugTraceFunction_, "done");
+
+        LLVMPositionBuilderAtEnd(traceBuilder, entry);
+        LLVMValueRef written = LLVMBuildAlloca(traceBuilder, i32, "written");
+        LLVMValueRef flags = LLVMBuildLoad2(
+            traceBuilder, i32, runtimeDebugTraceFlags_, "trace.flags");
+        LLVMValueRef category = LLVMGetParam(runtimeDebugTraceFunction_, 0);
+        LLVMValueRef selected = LLVMBuildAnd(traceBuilder, flags, category, "trace.selected");
+        LLVMValueRef enabled = LLVMBuildICmp(
+            traceBuilder, LLVMIntNE, selected, LLVMConstInt(i32, 0, 0), "trace.enabled");
+        LLVMBuildCondBr(traceBuilder, enabled, open, done);
+
+        LLVMPositionBuilderAtEnd(traceBuilder, open);
+        // FILE_APPEND_DATA, FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, OPEN_ALWAYS,
+        // FILE_ATTRIBUTE_NORMAL. Opening and closing every record preserves the last completed
+        // record when the process terminates with heap corruption.
+        LLVMValueRef createArguments[] = {
+            path,
+            LLVMConstInt(i32, 0x00000004U, 0),
+            LLVMConstInt(i32, 0x00000007U, 0),
+            LLVMConstNull(ptr),
+            LLVMConstInt(i32, 4U, 0),
+            LLVMConstInt(i32, 0x00000080U, 0),
+            LLVMConstNull(ptr)};
+        LLVMValueRef handle = LLVMBuildCall2(
+            traceBuilder, createFileType, createFile, createArguments, 7, "trace.file");
+        LLVMValueRef handleBits = LLVMBuildPtrToInt(traceBuilder, handle, i64, "trace.file.bits");
+        LLVMValueRef nonNull = LLVMBuildICmp(
+            traceBuilder, LLVMIntNE, handleBits, LLVMConstInt(i64, 0, 0), "trace.file.nonnull");
+        LLVMValueRef notInvalid = LLVMBuildICmp(
+            traceBuilder, LLVMIntNE, handleBits, LLVMConstInt(i64, ~std::uint64_t{0}, 0),
+            "trace.file.valid");
+        LLVMValueRef valid = LLVMBuildAnd(traceBuilder, nonNull, notInvalid, "trace.file.usable");
+        LLVMBuildCondBr(traceBuilder, valid, write, done);
+
+        LLVMPositionBuilderAtEnd(traceBuilder, write);
+        LLVMValueRef writeArguments[] = {
+            handle,
+            LLVMGetParam(runtimeDebugTraceFunction_, 1),
+            LLVMGetParam(runtimeDebugTraceFunction_, 2),
+            written,
+            LLVMConstNull(ptr)};
+        LLVMBuildCall2(traceBuilder, writeFileType, writeFile, writeArguments, 5, "trace.wrote");
+        LLVMValueRef closeArguments[] = {handle};
+        LLVMBuildCall2(traceBuilder, closeHandleType, closeHandle, closeArguments, 1, "trace.closed");
+        LLVMBuildBr(traceBuilder, done);
+
+        LLVMPositionBuilderAtEnd(traceBuilder, done);
+        LLVMBuildRetVoid(traceBuilder);
+        LLVMDisposeBuilder(traceBuilder);
+        return true;
+    }
+
+    bool emitRuntimeDebugTrace(
+        std::uint32_t category,
+        std::string_view text,
+        std::string& error)
+    {
+        if (debugInformation_ != DebugInformationKind::Full) return true;
+        if (!ensureRuntimeDebugTrace(error)) return false;
+        LLVMValueRef message = cStringGlobal(text, "runtime_debug_trace_message");
+        if (message == nullptr)
+            return fail(error, "INSTRUMENTATION CODE could not materialize a runtime Debug trace record");
+        LLVMValueRef arguments[] = {
+            LLVMConstInt(LLVMInt32TypeInContext(context_), category, 0),
+            message,
+            LLVMConstInt(LLVMInt32TypeInContext(context_), text.size(), 0)};
+        return buildNoUnwindCall(
+                   runtimeDebugTraceFunctionType_, runtimeDebugTraceFunction_, arguments, 3, "") != nullptr;
+    }
+
+    std::string runtimeDebugCallableRecord(
+        const frontend::ProjectOopMirFunction& function,
+        std::string_view event) const
+    {
+        std::string kind = function.constructor
+            ? (function.isStatic ? "static-constructor" : "constructor")
+            : function.destructor
+                ? "destructor"
+                : function.isLambda
+                    ? "lambda"
+                    : function.namespaceFunctionOrdinal.has_value()
+                        ? "namespace-function"
+                        : function.isStatic ? "static-method" : "instance-method";
+        std::string owner = "<namespace>";
+        if (!function.namespaceFunctionOrdinal.has_value() &&
+            function.declaringTypeOrdinal < nameLookup_.namedTypes().size())
+        {
+            owner = nameLookup_.namedTypes()[function.declaringTypeOrdinal]
+                .identity.fullyQualifiedName();
+        }
+        const std::string& callable = function.debugDisplayName.empty()
+            ? function.mangledName
+            : function.debugDisplayName;
+        return "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=" + std::string(event) +
+            "|kind=" + kind +
+            "|class=" + owner + "|function=" + callable + "|symbol=" +
+            function.mangledName + "\r\n";
+    }
+
     bool declareRuntime(std::string& error)
     {
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        if (!ensureRuntimeDebugTrace(error)) return false;
         LLVMTypeRef trapParams[] = {i32};
         trapFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), trapParams, 1, 0);
         trapFunction_ = LLVMAddFunction(module_, kTrapFunctionName, trapFunctionType_);
@@ -2796,11 +2975,73 @@ private:
 
         LLVMTypeRef allocParams[] = {i64};
         allocationFunctionType_ = LLVMFunctionType(ptr, allocParams, 1, 0);
-        allocationFunction_ = LLVMAddFunction(module_, kAllocationFunctionName, allocationFunctionType_);
+        LLVMValueRef runtimeAllocationFunction = LLVMAddFunction(
+            module_, kAllocationFunctionName, allocationFunctionType_);
+        allocationFunction_ = runtimeAllocationFunction;
 
         LLVMTypeRef freeParams[] = {ptr};
         deallocationFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), freeParams, 1, 0);
-        deallocationFunction_ = LLVMAddFunction(module_, kDeallocationFunctionName, deallocationFunctionType_);
+        LLVMValueRef runtimeDeallocationFunction = LLVMAddFunction(
+            module_, kDeallocationFunctionName, deallocationFunctionType_);
+        deallocationFunction_ = runtimeDeallocationFunction;
+
+        if (debugInformation_ == DebugInformationKind::Full)
+        {
+            constexpr std::string_view allocationRecordText =
+                "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=ALLOCATE|allocator=runtime\r\n";
+            constexpr std::string_view deallocationRecordText =
+                "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=FREE-BEGIN|allocator=runtime\r\n";
+            LLVMValueRef allocationRecord = cStringGlobal(
+                allocationRecordText,
+                "runtime_debug_allocate");
+            LLVMValueRef deallocationRecord = cStringGlobal(
+                deallocationRecordText,
+                "runtime_debug_free");
+            if (allocationRecord == nullptr || deallocationRecord == nullptr)
+                return fail(error, "INSTRUMENTATION CODE could not materialize allocator records");
+
+            LLVMValueRef allocationWrapper = LLVMAddFunction(
+                module_, "__nsc_runtime_debug_alloc", allocationFunctionType_);
+            LLVMSetLinkage(allocationWrapper, LLVMInternalLinkage);
+            applyFunctionAttribute(allocationWrapper, "nounwind");
+            LLVMBasicBlockRef allocationEntry = LLVMAppendBasicBlockInContext(
+                context_, allocationWrapper, "entry");
+            LLVMPositionBuilderAtEnd(builder_, allocationEntry);
+            LLVMValueRef allocationArguments[] = {LLVMGetParam(allocationWrapper, 0)};
+            LLVMValueRef allocated = LLVMBuildCall2(
+                builder_, allocationFunctionType_, runtimeAllocationFunction,
+                allocationArguments, 1, "memory");
+            LLVMValueRef allocationTraceArguments[] = {
+                LLVMConstInt(i32, 2U, 0),
+                allocationRecord,
+                LLVMConstInt(i32, allocationRecordText.size(), 0)};
+            LLVMBuildCall2(
+                builder_, runtimeDebugTraceFunctionType_, runtimeDebugTraceFunction_,
+                allocationTraceArguments, 3, "");
+            LLVMBuildRet(builder_, allocated);
+            allocationFunction_ = allocationWrapper;
+
+            LLVMValueRef deallocationWrapper = LLVMAddFunction(
+                module_, "__nsc_runtime_debug_free", deallocationFunctionType_);
+            LLVMSetLinkage(deallocationWrapper, LLVMInternalLinkage);
+            applyFunctionAttribute(deallocationWrapper, "nounwind");
+            LLVMBasicBlockRef deallocationEntry = LLVMAppendBasicBlockInContext(
+                context_, deallocationWrapper, "entry");
+            LLVMPositionBuilderAtEnd(builder_, deallocationEntry);
+            LLVMValueRef deallocationTraceArguments[] = {
+                LLVMConstInt(i32, 2U, 0),
+                deallocationRecord,
+                LLVMConstInt(i32, deallocationRecordText.size(), 0)};
+            LLVMBuildCall2(
+                builder_, runtimeDebugTraceFunctionType_, runtimeDebugTraceFunction_,
+                deallocationTraceArguments, 3, "");
+            LLVMValueRef deallocationArguments[] = {LLVMGetParam(deallocationWrapper, 0)};
+            LLVMBuildCall2(
+                builder_, deallocationFunctionType_, runtimeDeallocationFunction,
+                deallocationArguments, 1, "");
+            LLVMBuildRetVoid(builder_);
+            deallocationFunction_ = deallocationWrapper;
+        }
 
         // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI
         // void(void* context, void* ptr); the default thunk ignores context and forwards to
@@ -5650,6 +5891,8 @@ private:
         LLVMBasicBlockRef entry = appendBlock("entry");
         LLVMPositionBuilderAtEnd(builder_, entry);
         constructionThisOverride_ = nullptr;
+        if (!emitRuntimeDebugTrace(1U, runtimeDebugCallableRecord(function, "ENTER"), error))
+            return false;
         const bool sretReturn = function.abi.returnPassing ==
             frontend::ProjectOopMirAbiPassing::Indirect;
         if (function.isStatic)
@@ -5840,6 +6083,9 @@ private:
             if (function.constructor || function.returnTypeKey == "builtin:void")
             {
                 releaseOwnedCaptureCells();
+                if (!emitRuntimeDebugTrace(
+                        1U, runtimeDebugCallableRecord(function, "EXIT"), error))
+                    return false;
                 LLVMBuildRetVoid(builder_);
             }
             else
@@ -7263,6 +7509,9 @@ private:
             if (isReturn)
             {
                 releaseOwnedCaptureCells();
+                if (!emitRuntimeDebugTrace(
+                        1U, runtimeDebugCallableRecord(*currentMirFunction_, "EXIT"), error))
+                    return false;
                 if (returnValue == nullptr) LLVMBuildRetVoid(builder_);
                 else emitAbiReturn(returnValue);
             }
@@ -7350,6 +7599,12 @@ private:
             releaseOwnedCaptureCells();
             if (returnValue == nullptr)
             {
+                if (!emitRuntimeDebugTrace(
+                        1U, runtimeDebugCallableRecord(*currentMirFunction_, "EXIT"), error))
+                {
+                    restoreState();
+                    return false;
+                }
                 LLVMBuildRetVoid(builder_);
             }
             else
@@ -7364,6 +7619,12 @@ private:
                 }
                 LLVMValueRef loaded = LLVMBuildLoad2(
                     builder_, returnType, returnStorage_, "eh.return.value");
+                if (!emitRuntimeDebugTrace(
+                        1U, runtimeDebugCallableRecord(*currentMirFunction_, "EXIT"), error))
+                {
+                    restoreState();
+                    return false;
+                }
                 emitAbiReturn(loaded);
             }
         }
@@ -21865,6 +22126,10 @@ private:
     LLVMTypeRef allocationFunctionType_ = nullptr;
     LLVMValueRef deallocationFunction_ = nullptr;
     LLVMTypeRef deallocationFunctionType_ = nullptr;
+    // INSTRUMENTATION CODE: generated only for DebugInformationKind::Full modules.
+    LLVMValueRef runtimeDebugTraceFunction_ = nullptr;
+    LLVMTypeRef runtimeDebugTraceFunctionType_ = nullptr;
+    LLVMValueRef runtimeDebugTraceFlags_ = nullptr;
     // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI void(void* context, void* ptr);
     // the default thunk ignores context and forwards to __nativesharp_free.
     LLVMValueRef allocatorFreeThunkFunction_ = nullptr;
