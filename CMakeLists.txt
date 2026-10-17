@@ -382,6 +382,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCallableWaveScheduler.cpp
     src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp
     src/Frontend/Bodies/BodyScopeAndFlow.cpp
+    src/Frontend/Bodies/ExpressionAnalyzer.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
