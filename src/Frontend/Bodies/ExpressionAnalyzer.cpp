@@ -78,18 +78,12 @@ const ProjectMethodBodyModel::ExpressionResult* ProjectMethodBodyModel::cachedEx
     {
         return nullptr;
     }
-    const auto found = std::ranges::find_if(
-        iterativeExpressionAnalysis_->results,
-        [&](const ExpressionAnalysisCacheEntry& entry)
-        {
-            return entry.request.syntax == request.syntax &&
-                entry.request.allowMethodGroup == request.allowMethodGroup &&
-                entry.request.allowEvent == request.allowEvent &&
-                entry.request.allowMove == request.allowMove &&
-                entry.request.allowConstructorPropertyWrite ==
-                    request.allowConstructorPropertyWrite;
-        });
-    return found == iterativeExpressionAnalysis_->results.end() ? nullptr : &found->result;
+    const auto found = iterativeExpressionAnalysis_->resultIndex.find(
+        ExpressionAnalysisCacheKey{request.syntax, request.optionMask()});
+    return found == iterativeExpressionAnalysis_->resultIndex.end() ||
+            found->second >= iterativeExpressionAnalysis_->results.size()
+        ? nullptr
+        : &iterativeExpressionAnalysis_->results[found->second].result;
 }
 
 void ProjectMethodBodyModel::appendIterativeExpressionChildren(
@@ -193,6 +187,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     diagnostics::DiagnosticEngine& diagnostics)
 {
     IterativeExpressionAnalysis analysis;
+    analysis.results.reserve(64);
+    analysis.resultIndex.reserve(64);
     std::vector<ExpressionAnalysisFrame> work;
     work.push_back(ExpressionAnalysisFrame{request, false});
     iterativeExpressionAnalysis_ = &analysis;
@@ -231,7 +227,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             frame.request.allowEvent,
             frame.request.allowMove,
             frame.request.allowConstructorPropertyWrite);
+        const std::size_t resultIndex = analysis.results.size();
         analysis.results.push_back(ExpressionAnalysisCacheEntry{frame.request, std::move(result)});
+        analysis.resultIndex.emplace(
+            ExpressionAnalysisCacheKey{
+                frame.request.syntax,
+                frame.request.optionMask()},
+            resultIndex);
     }
 
     const ExpressionResult* result = cachedExpressionResult(request);

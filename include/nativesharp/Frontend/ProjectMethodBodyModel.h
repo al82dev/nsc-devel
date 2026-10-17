@@ -1738,6 +1738,36 @@ private:
         bool allowEvent = false;
         bool allowMove = false;
         bool allowConstructorPropertyWrite = false;
+
+        std::uint8_t optionMask() const noexcept
+        {
+            return static_cast<std::uint8_t>(
+                (allowMethodGroup ? 1U : 0U) |
+                (allowEvent ? 2U : 0U) |
+                (allowMove ? 4U : 0U) |
+                (allowConstructorPropertyWrite ? 8U : 0U));
+        }
+    };
+
+    struct ExpressionAnalysisCacheKey final
+    {
+        const ast::AstNode* syntax = nullptr;
+        std::uint8_t optionMask = 0;
+
+        bool operator==(const ExpressionAnalysisCacheKey&) const noexcept = default;
+    };
+
+    struct ExpressionAnalysisCacheKeyHash final
+    {
+        std::size_t operator()(const ExpressionAnalysisCacheKey& key) const noexcept
+        {
+            const std::size_t syntaxHash = std::hash<const ast::AstNode*>{}(key.syntax);
+            return syntaxHash ^ (
+                static_cast<std::size_t>(key.optionMask) +
+                std::size_t{0x9e3779b9U} +
+                (syntaxHash << 6U) +
+                (syntaxHash >> 2U));
+        }
     };
 
     struct ExpressionAnalysisCacheEntry final
@@ -1755,6 +1785,10 @@ private:
     struct IterativeExpressionAnalysis final
     {
         std::vector<ExpressionAnalysisCacheEntry> results;
+        std::unordered_map<
+            ExpressionAnalysisCacheKey,
+            std::size_t,
+            ExpressionAnalysisCacheKeyHash> resultIndex;
     };
 
     struct LoopContext final
