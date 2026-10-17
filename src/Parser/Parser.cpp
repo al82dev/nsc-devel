@@ -10573,24 +10573,70 @@ ast::AstNode* Parser::parseAggregateInitializer()
 
 bool Parser::statementAlwaysDiverges(const ast::AstNode* statement) const
 {
-    if (statement == nullptr) return false;
-    switch (statement->kind())
+    enum class WorkKind
     {
+        Evaluate,
+        ContinueIf
+    };
+    struct Work final
+    {
+        WorkKind kind = WorkKind::Evaluate;
+        const ast::AstNode* node = nullptr;
+    };
+
+    std::vector<Work> work{{WorkKind::Evaluate, statement}};
+    std::vector<bool> values;
+    while (!work.empty())
+    {
+        const Work current = work.back();
+        work.pop_back();
+        if (current.kind == WorkKind::ContinueIf)
+        {
+            const bool thenDiverges = values.back();
+            values.pop_back();
+            if (!thenDiverges)
+            {
+                values.push_back(false);
+                continue;
+            }
+            work.push_back({WorkKind::Evaluate, current.node->third()});
+            continue;
+        }
+
+        if (current.node == nullptr)
+        {
+            values.push_back(false);
+            continue;
+        }
+        switch (current.node->kind())
+        {
         case ast::AstNodeKind::ReturnStatement:
         case ast::AstNodeKind::ThrowStatement:
         case ast::AstNodeKind::BreakStatement:
         case ast::AstNodeKind::ContinueStatement:
-            return true;
+            values.push_back(true);
+            break;
         case ast::AstNodeKind::BlockStatement:
-            return !statement->children().empty() &&
-                statementAlwaysDiverges(statement->children().back());
+            if (current.node->children().empty())
+                values.push_back(false);
+            else
+                work.push_back({WorkKind::Evaluate, current.node->children().back()});
+            break;
         case ast::AstNodeKind::IfStatement:
-            return statement->second() != nullptr && statement->third() != nullptr &&
-                statementAlwaysDiverges(statement->second()) &&
-                statementAlwaysDiverges(statement->third());
+            if (current.node->second() == nullptr || current.node->third() == nullptr)
+            {
+                values.push_back(false);
+                break;
+            }
+            work.push_back({WorkKind::ContinueIf, current.node});
+            work.push_back({WorkKind::Evaluate, current.node->second()});
+            break;
         default:
-            return false;
+            values.push_back(false);
+            break;
+        }
     }
+    return !values.empty() && values.back();
 }
 
 ast::AstNode* Parser::parseConditionalPatternStatement()

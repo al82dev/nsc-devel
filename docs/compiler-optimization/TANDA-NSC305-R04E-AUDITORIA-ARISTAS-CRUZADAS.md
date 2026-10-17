@@ -85,7 +85,9 @@ Evidencia:
 
 ## Obligaciones restantes
 
-- R04E3: sustituir la recursión interna de `statementAlwaysDiverges` por recorrido explícito; la
-  prueba de 2,048 niveles pasa, pero la política de rutas estructurales exige eliminar la recursión.
+- R04E3: terminado. Al elevar el contrafactual de 2,048 a 16,384 ramas, la implementación
+  recursiva terminó en `0xC00000FD`. Un worklist explícito conserva evaluación de block-last,
+  requisitos de ambas ramas y cortocircuito de la rama `then`; el mismo caso pasa dentro de
+  `PASS: 113 checks`.
 - R04E4: reproducir y clasificar el overflow posterior en `members`; no pertenece a syntax-parse y
   no puede ocultarse bajo el cierre del parser.

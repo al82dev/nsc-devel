@@ -1412,7 +1412,7 @@ class ConditionalPatternShape {
 
 void testDeepLetElseDivergenceParser(TestContext& tests)
 {
-    constexpr std::size_t depth = 2048;
+    constexpr std::size_t depth = 16384;
     std::string source = "class DeepLetElse { void Run(int source) { "
         "let var value = source else { ";
     source.reserve(source.size() + depth * 36U + 32U);
@@ -1431,7 +1431,7 @@ void testDeepLetElseDivergenceParser(TestContext& tests)
     nativesharp::parser::Parser parser(tokens, arena, diagnostics);
     const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
     tests.expect(root != nullptr && !diagnostics.hasErrors(),
-        "2048 nested divergent if branches validate let-else without host recursion");
+        "16384 nested divergent if branches validate let-else without host recursion");
 }
 
 void testDeepMixedAllStructuredStatementsParser(TestContext& tests)
