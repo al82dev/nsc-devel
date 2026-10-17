@@ -39,6 +39,7 @@ struct CodeUnitTelemetry final
     std::uint64_t fingerprintMicros = 0;
     std::uint64_t lookupMicros = 0;
     std::uint64_t loweringMicros = 0;
+    std::uint64_t targetMicros = 0;
     std::uint64_t optimizationMicros = 0;
     std::uint64_t emissionMicros = 0;
     std::uint64_t verificationMicros = 0;

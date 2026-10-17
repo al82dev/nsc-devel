@@ -22,6 +22,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <mutex>
 #include <optional>
 #include <system_error>
@@ -108,6 +109,92 @@ public:
 
 private:
     std::chrono::steady_clock::time_point started_;
+};
+
+// INSTRUMENTATION CODE: NSC305-L06. Temporary, file-backed attribution for GUI builds that
+// cannot add --time. Keep this marker until the real-project cold LLVM bottleneck is corrected.
+class ColdLlvmTrace final
+{
+public:
+    ColdLlvmTrace(
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimization,
+        std::size_t moduleCount,
+        bool partitioned,
+        bool preLlvmCache)
+        : output_(R"(A:\temp\nsc-llvm-code-unit-timing.log)",
+              std::ios::binary | std::ios::trunc)
+    {
+        if (!output_) return;
+        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=1\n"
+                << "debug=" << debugInformationKindName(debugInformation)
+                << " optimization=" << llvmOptimizationLevelName(optimization)
+                << " modules=" << moduleCount
+                << " partitioned=" << (partitioned ? 1 : 0)
+                << " pre-llvm-cache=" << (preLlvmCache ? 1 : 0) << '\n';
+        output_.flush();
+    }
+
+    void record(
+        const CodeUnitTelemetry& telemetry,
+        bool hit,
+        bool miss,
+        std::string_view error)
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (!output_) return;
+        std::string oneLineError(error);
+        std::ranges::replace(oneLineError, '\r', ' ');
+        std::ranges::replace(oneLineError, '\n', ' ');
+        output_ << "code-unit " << telemetry.name
+                << " hit=" << (hit ? 1 : 0)
+                << " miss=" << (miss ? 1 : 0)
+                << " miss-reason=" << cacheMissReasonName(telemetry.missReason)
+                << " fingerprint-us=" << telemetry.fingerprintMicros
+                << " lookup-us=" << telemetry.lookupMicros
+                << " lowering-us=" << telemetry.loweringMicros
+                << " target-us=" << telemetry.targetMicros
+                << " optimization-us=" << telemetry.optimizationMicros
+                << " emission-us=" << telemetry.emissionMicros
+                << " verification-us=" << telemetry.verificationMicros
+                << " store-us=" << telemetry.storeMicros;
+        if (!oneLineError.empty()) output_ << " error=" << oneLineError;
+        output_ << '\n';
+        output_.flush();
+    }
+
+private:
+    std::mutex mutex_;
+    std::ofstream output_;
+};
+
+class ColdLlvmTraceScope final
+{
+public:
+    ColdLlvmTraceScope(
+        ColdLlvmTrace& trace,
+        const CodeUnitTelemetry& telemetry,
+        const std::uint8_t& hit,
+        const std::uint8_t& miss,
+        const std::string& error)
+        : trace_(trace), telemetry_(telemetry), hit_(hit), miss_(miss), error_(error)
+    {
+    }
+
+    ~ColdLlvmTraceScope()
+    {
+        trace_.record(telemetry_, hit_ != 0U, miss_ != 0U, error_);
+    }
+
+    ColdLlvmTraceScope(const ColdLlvmTraceScope&) = delete;
+    ColdLlvmTraceScope& operator=(const ColdLlvmTraceScope&) = delete;
+
+private:
+    ColdLlvmTrace& trace_;
+    const CodeUnitTelemetry& telemetry_;
+    const std::uint8_t& hit_;
+    const std::uint8_t& miss_;
+    const std::string& error_;
 };
 
 void appendNodeSourceRanges(
@@ -383,6 +470,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         (cache != nullptr && cache->enabled() && !usePreLlvmCache) ||
         linkTimeOptimization == LinkTimeOptimizationMode::Thin;
 
+    ColdLlvmTrace coldLlvmTrace(
+        debugInformation, optimizationLevel, moduleCount, usePartitions, usePreLlvmCache);
+
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
     std::atomic_size_t completedModules = 0;
@@ -395,6 +485,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 : "NativeSharp.OOP." + partition.units()[ordinal - 1].stableKey;
         CodeUnitTelemetry& telemetry = codeUnitTelemetry[ordinal];
         telemetry.name = moduleName;
+        const ColdLlvmTraceScope coldTraceScope(
+            coldLlvmTrace, telemetry, cacheHits[ordinal], cacheMisses[ordinal],
+            moduleErrors[ordinal]);
         if (cache == nullptr || !cache->enabled())
             telemetry.missReason = CacheMissReason::Disabled;
         const CodeUnitProgress progress(
@@ -463,10 +556,13 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             return;
         }
 
+        const PhaseClock targetSetup;
         std::unique_ptr<LlvmTargetMachine> targetMachine =
             LlvmTargetMachine::createWindowsX64(optimizationLevel, moduleErrors[ordinal]);
-        if (targetMachine == nullptr ||
-            !targetMachine->configureModuleForTarget(*module, moduleErrors[ordinal]))
+        const bool targetConfigured = targetMachine != nullptr &&
+            targetMachine->configureModuleForTarget(*module, moduleErrors[ordinal]);
+        telemetry.targetMicros += targetSetup.elapsedMicros();
+        if (!targetConfigured)
         {
             if (moduleErrors[ordinal].empty())
                 moduleErrors[ordinal] = "target configuration failed";
@@ -607,6 +703,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             const CodeUnitTelemetry& unitTelemetry = codeUnitTelemetry[ordinal + 1];
             const std::uint64_t observed = unitTelemetry.fingerprintMicros +
                 unitTelemetry.lookupMicros + unitTelemetry.loweringMicros +
+                unitTelemetry.targetMicros +
                 unitTelemetry.optimizationMicros + unitTelemetry.emissionMicros +
                 unitTelemetry.verificationMicros + unitTelemetry.storeMicros;
             partition.recordCodeUnitCost(partition.units()[ordinal].ordinal, observed);

@@ -324,6 +324,7 @@ void appendCodeUnitTelemetry(
                << " fingerprint-us=" << unit.fingerprintMicros
                << " lookup-us=" << unit.lookupMicros
                << " lowering-us=" << unit.loweringMicros
+               << " target-us=" << unit.targetMicros
                << " optimization-us=" << unit.optimizationMicros
                << " emission-us=" << unit.emissionMicros
                << " verification-us=" << unit.verificationMicros
