@@ -166,7 +166,7 @@ public class Program
     output.clear();
     error.clear();
     const bool mirPasses = runDriver(mirArguments, output, error) == ExitCode::Success &&
-        output.find("reference-local=true pinned=true") != std::string::npos &&
+        output.find("reference-local=true reference-mutable=true pinned=true") != std::string::npos &&
         output.find("destruction=scope-bound") != std::string::npos &&
         output.find("placement-construct") != std::string::npos;
     tests.expect(mirPasses,
