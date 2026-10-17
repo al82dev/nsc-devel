@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "../../src/Frontend/HIR/HirLoweringSupport.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -32,6 +33,118 @@ namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess final
 {
+    static bool configureAggregateTypes(
+        ProjectNameLookup& nameLookup,
+        ProjectInheritanceModel& inheritanceModel,
+        std::size_t depth,
+        std::vector<std::string>& typeKeys)
+    {
+        typeKeys.reserve(depth);
+        nameLookup.namedTypes_.reserve(depth);
+        for (std::size_t ordinal = 0; ordinal < depth; ++ordinal)
+        {
+            NamedTypeDeclaration declaration{
+                compilation::TypeIdentity(
+                    "AggregateDepth", {}, {}, "S" + std::to_string(ordinal)),
+                NamedTypeDeclarationKind::Struct,
+                NamedTypeAccessibility::Internal,
+                std::nullopt,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0U,
+                0U,
+                FileId{},
+                SourceRange{},
+                nullptr,
+                {}};
+            nameLookup.namedTypes_.push_back(std::move(declaration));
+            typeKeys.push_back(
+                "type:" + nameLookup.namedTypes_.back().identity.key());
+        }
+        nameLookup.built_ = true;
+
+        diagnostics::DiagnosticEngine diagnostics;
+        return inheritanceModel.build(nameLookup, diagnostics);
+    }
+
+    static void configureAggregateLayouts(
+        ProjectObjectLayoutModel& objectLayoutModel,
+        const std::vector<std::string>& typeKeys)
+    {
+        const std::size_t depth = typeKeys.size();
+        objectLayoutModel.structLayouts_.resize(depth);
+        objectLayoutModel.structLayoutIndexByType_.resize(depth);
+        std::uint64_t childSize = 4U;
+        std::uint64_t childAlignment = 4U;
+        for (std::size_t remaining = depth; remaining > 0; --remaining)
+        {
+            const std::size_t ordinal = remaining - 1U;
+            StructValueLayout& layout = objectLayoutModel.structLayouts_[ordinal];
+            layout.typeOrdinal = ordinal;
+            layout.typeKey = typeKeys[ordinal];
+            layout.alignment = 8U;
+            layout.minimumAlignment = 8U;
+            layout.hasExplicitFieldOffsets = true;
+
+            ObjectFieldLayout field;
+            field.memberOrdinal = ordinal;
+            field.offset = 8U;
+            field.size = childSize;
+            field.alignment = childAlignment;
+            field.typeKey = ordinal + 1U < depth
+                ? typeKeys[ordinal + 1U]
+                : "builtin:int";
+            layout.fields.push_back(std::move(field));
+            layout.size = (8U + childSize + 7U) & ~std::uint64_t{7U};
+            childSize = layout.size;
+            childAlignment = layout.alignment;
+            objectLayoutModel.structLayoutIndexByType_[ordinal] = ordinal;
+        }
+        objectLayoutModel.built_ = true;
+    }
+
+    static bool configureAggregateLeafChain(
+        ProjectOopHirModel& model,
+        ProjectNameLookup& nameLookup,
+        ProjectInheritanceModel& inheritanceModel,
+        ProjectObjectLayoutModel& objectLayoutModel,
+        std::size_t depth,
+        std::vector<std::string>& typeKeys)
+    {
+        if (!configureAggregateTypes(nameLookup, inheritanceModel, depth, typeKeys))
+        {
+            return false;
+        }
+        configureAggregateLayouts(objectLayoutModel, typeKeys);
+
+        model.nameLookup_ = &nameLookup;
+        model.inheritanceModel_ = &inheritanceModel;
+        model.objectLayoutModel_ = &objectLayoutModel;
+        return true;
+    }
+
+    static bool appendAggregateLeaves(
+        ProjectOopHirModel& model,
+        const std::string& typeKey,
+        std::uint64_t baseOffset,
+        const ast::AstNode* syntax,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
+        std::string& error)
+    {
+        return model.appendAggregateLeaves(
+            typeKey, baseOffset, syntax, leaves, error);
+    }
+
+    static void setAggregateRootFields(
+        ProjectObjectLayoutModel& objectLayoutModel,
+        std::vector<ObjectFieldLayout> fields)
+    {
+        objectLayoutModel.structLayouts_.front().fields = std::move(fields);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2162,6 +2275,90 @@ void testDeepHirDeconstructionWalk(TestContext& tests)
     tests.expect(!stopped && order == std::vector<std::string>({"a", "b", "c"}),
         "iterative deconstruction traversal stops at the first failing leaf");
 }
+
+void testDeepAggregateLeaves(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 4096;
+    constexpr std::uint64_t initialOffset = 13U;
+
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectInheritanceModel inheritanceModel;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    ProjectOopHirModel model;
+    std::vector<std::string> typeKeys;
+    const bool configured =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAggregateLeafChain(
+            model,
+            nameLookup,
+            inheritanceModel,
+            objectLayoutModel,
+            nestingDepth,
+            typeKeys);
+    tests.expect(configured, "the deep aggregate fixture builds valid name and layout models");
+    if (!configured)
+    {
+        return;
+    }
+
+    nativesharp::ast::AstNode syntax(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{});
+    std::vector<std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>> leaves;
+    std::string error;
+    const bool lowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::appendAggregateLeaves(
+            model,
+            typeKeys.front(),
+            initialOffset,
+            &syntax,
+            leaves,
+            error);
+    tests.expect(lowered && error.empty(),
+        "a 4096-level aggregate leaf chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(leaves.size() == 1U &&
+            leaves.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::AggregateElement &&
+            leaves.front()->typeKey == "builtin:int" &&
+            leaves.front()->integerValue == initialOffset + 8U * nestingDepth &&
+            leaves.front()->syntax == &syntax &&
+            leaves.front()->children.empty(),
+        "deep aggregate flattening preserves the scalar leaf, provenance, and absolute offset");
+
+    leaves.clear();
+    error.clear();
+    const bool arrayLowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::appendAggregateLeaves(
+            model, "builtin:int[3]", initialOffset, &syntax, leaves, error);
+    tests.expect(arrayLowered && error.empty() && leaves.size() == 3U &&
+            leaves[0]->integerValue == initialOffset &&
+            leaves[1]->integerValue == initialOffset + 4U &&
+            leaves[2]->integerValue == initialOffset + 8U,
+        "iterative fixed-array flattening preserves ascending source order and stride");
+
+    nativesharp::frontend::ObjectFieldLayout firstField;
+    firstField.offset = 8U;
+    firstField.typeKey = "builtin:int";
+    nativesharp::frontend::ObjectFieldLayout secondField;
+    secondField.offset = 24U;
+    secondField.typeKey = "builtin:long";
+    std::vector<nativesharp::frontend::ObjectFieldLayout> rootFields;
+    rootFields.push_back(std::move(firstField));
+    rootFields.push_back(std::move(secondField));
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateRootFields(
+        objectLayoutModel, std::move(rootFields));
+    leaves.clear();
+    error.clear();
+    const bool structLowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::appendAggregateLeaves(
+            model, typeKeys.front(), initialOffset, &syntax, leaves, error);
+    tests.expect(structLowered && error.empty() && leaves.size() == 2U &&
+            leaves[0]->typeKey == "builtin:int" &&
+            leaves[0]->integerValue == initialOffset + 8U &&
+            leaves[1]->typeKey == "builtin:long" &&
+            leaves[1]->integerValue == initialOffset + 24U,
+        "iterative struct flattening preserves declared field order and absolute offsets");
+}
 }
 
 int main()
@@ -2249,6 +2446,10 @@ int main()
     else if (focusValue == "hir-deconstruction-walk-depth")
     {
         testDeepHirDeconstructionWalk(tests);
+    }
+    else if (focusValue == "hir-aggregate-leaves-depth")
+    {
+        testDeepAggregateLeaves(tests);
     }
     else
     {

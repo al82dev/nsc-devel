@@ -306,64 +306,70 @@ bool ProjectOopHirModel::appendAggregateLeaves(
     std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
     std::string& error)
 {
-    if (const std::optional<std::string> elementTypeKey =
-            ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
-        elementTypeKey.has_value())
+    std::vector<std::pair<std::string, std::uint64_t>> pending;
+    pending.emplace_back(typeKey, baseOffset);
+    while (!pending.empty())
     {
-        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(typeKey);
-        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr || !count.has_value())
+        auto [currentTypeKey, currentBaseOffset] = std::move(pending.back());
+        pending.pop_back();
+        const std::optional<std::string> elementTypeKey =
+            ProjectMemberModel::fixedArrayElementTypeKey(currentTypeKey);
+        if (elementTypeKey.has_value())
         {
-            error = "C8 cannot expand fixed-array field '" + typeKey + "'";
-            return false;
-        }
-        const std::optional<std::pair<std::uint64_t, std::uint64_t>> stride =
-            objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, *elementTypeKey);
-        if (!stride.has_value() || stride->first == 0)
-        {
-            error = "C8 cannot size fixed-array element '" + *elementTypeKey + "'";
-            return false;
-        }
-        for (std::uint64_t index = 0; index < *count; ++index)
-        {
-            if (!appendAggregateLeaves(
-                    *elementTypeKey, baseOffset + index * stride->first, syntax, leaves, error))
+            const std::optional<std::uint64_t> count =
+                ProjectMemberModel::fixedArrayCount(currentTypeKey);
+            if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr || !count.has_value())
             {
+                error = "C8 cannot expand fixed-array field '" + currentTypeKey + "'";
                 return false;
             }
-        }
-        return true;
-    }
-
-    if (isStructValueType(typeKey))
-    {
-        if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
-        {
-            error = "C8 struct root member requires the object layout model";
-            return false;
-        }
-        const std::optional<std::size_t> typeOrdinal =
-            inheritanceModel_->typeOrdinalForTypeKey(typeKey);
-        const StructValueLayout* layout = typeOrdinal.has_value()
-            ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
-        if (layout == nullptr)
-        {
-            error = "C8 struct root member has no value layout for '" + typeKey + "'";
-            return false;
-        }
-        for (const ObjectFieldLayout& field : layout->fields)
-        {
-            if (!appendAggregateLeaves(
-                    field.typeKey, baseOffset + field.offset, syntax, leaves, error))
+            const auto stride =
+                objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, *elementTypeKey);
+            if (!stride.has_value() || stride->first == 0)
             {
+                error = "C8 cannot size fixed-array element '" + *elementTypeKey + "'";
                 return false;
             }
+            for (std::uint64_t remaining = *count; remaining > 0; --remaining)
+            {
+                pending.emplace_back(
+                    *elementTypeKey,
+                    currentBaseOffset + (remaining - 1U) * stride->first);
+            }
+            continue;
         }
-        return true;
-    }
 
-    auto leaf = makeNode(ProjectOopHirNodeKind::AggregateElement, syntax, typeKey);
-    leaf->integerValue = baseOffset;
-    leaves.push_back(std::move(leaf));
+        if (isStructValueType(currentTypeKey))
+        {
+            if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
+            {
+                error = "C8 struct root member requires the object layout model";
+                return false;
+            }
+            const std::optional<std::size_t> typeOrdinal =
+                inheritanceModel_->typeOrdinalForTypeKey(currentTypeKey);
+            const StructValueLayout* layout = typeOrdinal.has_value()
+                ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+            if (layout == nullptr)
+            {
+                error =
+                    "C8 struct root member has no value layout for '" + currentTypeKey + "'";
+                return false;
+            }
+            for (std::size_t remaining = layout->fields.size(); remaining > 0; --remaining)
+            {
+                const ObjectFieldLayout& field = layout->fields[remaining - 1U];
+                pending.emplace_back(
+                    field.typeKey, currentBaseOffset + field.offset);
+            }
+            continue;
+        }
+
+        auto leaf = makeNode(
+            ProjectOopHirNodeKind::AggregateElement, syntax, currentTypeKey);
+        leaf->integerValue = currentBaseOffset;
+        leaves.push_back(std::move(leaf));
+    }
     return true;
 }
 

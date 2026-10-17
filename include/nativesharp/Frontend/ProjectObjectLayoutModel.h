@@ -21,6 +21,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct ProjectOopHirModelTestAccess;
+
 struct ObjectFieldLayout final
 {
     std::size_t memberOrdinal = 0;
@@ -130,6 +132,8 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     enum class NamedLayoutState
     {
         Unvisited,

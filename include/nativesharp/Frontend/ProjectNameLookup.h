@@ -23,6 +23,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct ProjectOopHirModelTestAccess;
+
 enum class NamedTypeDeclarationKind
 {
     Class,
@@ -220,6 +222,8 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     struct LookupEnvironment;
 
     struct PendingTypeDeclaration final
