@@ -887,6 +887,22 @@ private:
         bool addressContext,
         std::string& error);
 
+    // Lowers an expression statement through an explicit completion frame so
+    // returning from the child expression does not require a native call frame.
+    std::unique_ptr<ProjectOopHirNode> lowerExpressionStatement(
+        const ast::AstNode* statement,
+        std::size_t memberOrdinal,
+        std::string& error);
+
+    // Runs the expression worklist with an optional statement wrapper at its
+    // bottom; a null wrapper preserves the ordinary expression entry point.
+    std::unique_ptr<ProjectOopHirNode> lowerExpressionWithStatementFrame(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const ast::AstNode* expressionStatement,
+        std::string& error);
+
     std::unique_ptr<ProjectOopHirNode> lowerExpressionImpl(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,

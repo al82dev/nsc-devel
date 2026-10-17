@@ -678,17 +678,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
         }
 
         case ast::AstNodeKind::ExpressionStatement:
-        {
-            auto node = makeNode(ProjectOopHirNodeKind::ExpressionStatement, statement, "builtin:void");
-            std::unique_ptr<ProjectOopHirNode> expression = lowerExpression(
-                statement->first(), memberOrdinal, false, error);
-            if (expression == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(expression));
-            return node;
-        }
+            return lowerExpressionStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::InlineAssemblyStatement:
         {

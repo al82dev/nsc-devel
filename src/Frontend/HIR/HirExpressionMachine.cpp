@@ -36,9 +36,38 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     bool addressContext,
     std::string& error)
 {
+    return lowerExpressionWithStatementFrame(
+        expression, memberOrdinal, addressContext, nullptr, error);
+}
+
+// Seeds an expression-statement completion frame and returns the completed HIR
+// wrapper after the child expression has been lowered.
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        statement != nullptr ? statement->first() : nullptr,
+        memberOrdinal,
+        false,
+        statement,
+        error);
+}
+
+// Executes expression lowering with an optional bottom frame that owns the
+// statement continuation. Ordinary expression callers pass no such frame.
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    const ast::AstNode* expressionStatement,
+    std::string& error)
+{
     std::unique_ptr<ProjectOopHirNode> lowered;
     enum class IterativeExpressionKind : std::uint8_t
     {
+        ExpressionStatement,
         OverflowPolicy,
         BuiltinUnary,
         Conversion,
@@ -360,9 +389,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
 
     const std::optional<IterativeExpressionKind> rootKind =
         iterativeKind(expression, addressContext);
-    if (rootKind.has_value())
+    if (rootKind.has_value() || expressionStatement != nullptr)
     {
         std::vector<IterativeExpressionFrame> frames;
+        if (expressionStatement != nullptr)
+        {
+            IterativeExpressionFrame frame;
+            frame.kind = IterativeExpressionKind::ExpressionStatement;
+            frame.syntax = expressionStatement;
+            frames.push_back(std::move(frame));
+        }
         const ast::AstNode* current = expression;
         bool currentAddressContext = addressContext;
         while (true)
@@ -526,11 +562,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 continue;
             }
 
-            lowered = lowerExpression(
-                current, memberOrdinal, currentAddressContext, error);
+            const bool isExpressionStatementRoot =
+                frames.size() == 1u &&
+                frames.back().kind == IterativeExpressionKind::ExpressionStatement;
+            lowered = isExpressionStatementRoot
+                ? lowerExpressionImpl(
+                    current, memberOrdinal, currentAddressContext, error)
+                : lowerExpression(
+                    current, memberOrdinal, currentAddressContext, error);
             if (lowered == nullptr)
             {
-                if (!lastErrorRange_.isValid() && !frames.empty())
+                if (!lastErrorRange_.isValid() && !frames.empty() &&
+                    frames.back().kind != IterativeExpressionKind::ExpressionStatement)
                     lastErrorRange_ = frames.back().syntax->range();
                 break;
             }
@@ -539,6 +582,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             while (!frames.empty())
             {
                 IterativeExpressionFrame& frame = frames.back();
+                if (frame.kind == IterativeExpressionKind::ExpressionStatement)
+                {
+                    auto statement = makeNode(
+                        ProjectOopHirNodeKind::ExpressionStatement,
+                        frame.syntax,
+                        "builtin:void");
+                    statement->children.push_back(std::move(lowered));
+                    lowered = std::move(statement);
+                    frames.pop_back();
+                    continue;
+                }
                 if (frame.kind == IterativeExpressionKind::OverflowPolicy)
                 {
                     auto policy = makeNode(
@@ -1517,12 +1571,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return false;
         }
     };
+    const ProjectOopHirNode* loweredExpression = lowered.get();
+    if (expressionStatement != nullptr && loweredExpression != nullptr &&
+        loweredExpression->kind == ProjectOopHirNodeKind::ExpressionStatement &&
+        loweredExpression->children.size() == 1U)
+    {
+        loweredExpression = loweredExpression->children.front().get();
+    }
     if (lowered != nullptr && effects.allows(sema::Effect::NoHeap) &&
-        directlyAllocatesHeap(lowered->kind))
+        loweredExpression != nullptr && directlyAllocatesHeap(loweredExpression->kind))
     {
         error = "NS3030: noheap callable '" + activeMember->name +
             "' cannot contain direct heap allocation '" +
-            std::string(projectOopHirNodeKindName(lowered->kind)) + "'";
+            std::string(projectOopHirNodeKindName(loweredExpression->kind)) + "'";
         lowered.reset();
     }
     if (lowered != nullptr && effects.allows(sema::Effect::NoHeap))
@@ -1542,16 +1603,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
         }
         if (lowered != nullptr &&
-            (lowered->kind == ProjectOopHirNodeKind::DelegateInvoke ||
-             lowered->kind == ProjectOopHirNodeKind::EventInvoke))
+            loweredExpression != nullptr &&
+            (loweredExpression->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+             loweredExpression->kind == ProjectOopHirNodeKind::EventInvoke))
         {
             error = "NS3030: noheap callable '" + caller.signatureKey +
                 "' cannot invoke an indirect target without a noheap contract";
             lowered.reset();
         }
         if (lowered != nullptr &&
-            (lowered->kind == ProjectOopHirNodeKind::PlacementConstruction ||
-             lowered->kind == ProjectOopHirNodeKind::ValueConstruction))
+            loweredExpression != nullptr &&
+            (loweredExpression->kind == ProjectOopHirNodeKind::PlacementConstruction ||
+             loweredExpression->kind == ProjectOopHirNodeKind::ValueConstruction))
         {
             const ObjectConstructionBinding* binding = constructionBinding(expression);
             if (binding == nullptr || !binding->selectedConstructorMemberOrdinal.has_value() ||
