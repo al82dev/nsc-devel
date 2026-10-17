@@ -1,10 +1,12 @@
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include <algorithm>
 #include <iomanip>
 #include <limits>
+#include <numeric>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
@@ -14,6 +16,13 @@ namespace nativesharp::llvm_backend
 {
 namespace
 {
+struct PartitionCandidate final
+{
+    std::size_t functionOrdinal = 0;
+    std::uint64_t cost = 0;
+    std::string_view stableName;
+};
+
 std::uint64_t saturatedAdd(std::uint64_t left, std::uint64_t right) noexcept
 {
     const std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
@@ -65,13 +74,60 @@ std::uint64_t boundedHistoricalWeight(
         previous / 2U + observed / 2U + ((previous & 1U) + (observed & 1U)) / 2U;
     return blended > cap ? cap : blended;
 }
+
+std::vector<std::size_t> stableCandidateOrder(
+    std::span<const PartitionCandidate> candidates)
+{
+    std::vector<std::size_t> order(candidates.size());
+    std::iota(order.begin(), order.end(), 0U);
+    std::sort(order.begin(), order.end(), [&](std::size_t left, std::size_t right) {
+        if (candidates[left].stableName != candidates[right].stableName)
+            return candidates[left].stableName < candidates[right].stableName;
+        return candidates[left].functionOrdinal < candidates[right].functionOrdinal;
+    });
+    return order;
+}
+
+bool parsePersistentPlan(
+    std::string_view payload,
+    std::size_t expectedUnitCount,
+    std::size_t expectedFunctionCount,
+    std::vector<std::uint64_t>& historicalCosts,
+    std::vector<std::size_t>& assignments)
+{
+    std::istringstream stream{std::string(payload)};
+    std::string magic;
+    std::string unitsLabel;
+    std::string functionsLabel;
+    std::string historyLabel;
+    std::string assignmentsLabel;
+    std::size_t version = 0;
+    std::size_t unitCount = 0;
+    std::size_t functionCount = 0;
+    if (!(stream >> magic >> version >> unitsLabel >> unitCount >>
+            functionsLabel >> functionCount >> historyLabel) ||
+        magic != "NSCPARTITION" || version != 1U || unitsLabel != "units" ||
+        functionsLabel != "functions" || historyLabel != "history" ||
+        unitCount != expectedUnitCount || functionCount != expectedFunctionCount)
+        return false;
+    historicalCosts.resize(unitCount);
+    for (std::uint64_t& cost : historicalCosts)
+        if (!(stream >> cost)) return false;
+    if (!(stream >> assignmentsLabel) || assignmentsLabel != "assignments") return false;
+    assignments.resize(functionCount);
+    for (std::size_t& assignment : assignments)
+        if (!(stream >> assignment) || assignment >= unitCount) return false;
+    std::string trailing;
+    return !(stream >> trailing);
+}
 }
 
 bool ProjectOopCodePartition::build(
     const frontend::ProjectOopMirModel& mirModel,
     std::size_t requestedUnitCount,
     std::string& error,
-    ProjectOopCodePartitionPolicy policy)
+    ProjectOopCodePartitionPolicy policy,
+    std::string_view cachedPlan)
 {
     error.clear();
     if (built_)
@@ -85,22 +141,15 @@ bool ProjectOopCodePartition::build(
         return false;
     }
 
-    struct Candidate final
-    {
-        std::size_t functionOrdinal = 0;
-        std::uint64_t cost = 0;
-        std::string_view stableName;
-    };
-
     const std::span<const frontend::ProjectOopMirFunction> functions = mirModel.functions();
     unitByFunction_.resize(functions.size());
-    std::vector<Candidate> candidates;
+    std::vector<PartitionCandidate> candidates;
     candidates.reserve(functions.size());
     for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
     {
         const frontend::ProjectOopMirFunction& function = functions[ordinal];
         if (function.isImportedC || function.isImportedNative) continue;
-        candidates.push_back(Candidate{
+        candidates.push_back(PartitionCandidate{
             ordinal,
             std::max<std::uint64_t>(1, nodeCost(function.body.get())),
             function.mangledName});
@@ -118,35 +167,15 @@ bool ProjectOopCodePartition::build(
     for (std::size_t ordinal = 0; ordinal < unitCount; ++ordinal)
         units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, 0, {}, {}});
 
-    if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
+    const auto assignBalanced = [&]()
     {
-        // Identity hashing keeps a body-only edit in the same bucket. Empty buckets are omitted
-        // without renumbering surviving keys, so unrelated object-cache identities stay stable.
-        std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
-            if (left.stableName != right.stableName) return left.stableName < right.stableName;
-            return left.functionOrdinal < right.functionOrdinal;
-        });
-        for (const Candidate& candidate : candidates)
-        {
-            const std::size_t bucket = static_cast<std::size_t>(
-                stableNameHash(candidate.stableName) % unitCount);
-            units_[bucket].estimatedCost = saturatedAdd(units_[bucket].estimatedCost, candidate.cost);
-            units_[bucket].functionOrdinals.push_back(candidate.functionOrdinal);
-        }
-        std::erase_if(units_, [](const ProjectOopCodeUnit& unit) {
-            return unit.functionOrdinals.empty();
-        });
-    }
-    else
-    {
-        // Longest-processing-time partitioning gives useful balance while remaining fully stable:
-        // cost, physical name and original ordinal are all canonical MIR properties.
-        std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+        std::sort(candidates.begin(), candidates.end(), [](const PartitionCandidate& left,
+                                                           const PartitionCandidate& right) {
             if (left.cost != right.cost) return left.cost > right.cost;
             if (left.stableName != right.stableName) return left.stableName < right.stableName;
             return left.functionOrdinal < right.functionOrdinal;
         });
-        for (const Candidate& candidate : candidates)
+        for (const PartitionCandidate& candidate : candidates)
         {
             const auto selected = std::min_element(
                 units_.begin(), units_.end(), [](const ProjectOopCodeUnit& left,
@@ -158,6 +187,75 @@ bool ProjectOopCodePartition::build(
             selected->estimatedCost = saturatedAdd(selected->estimatedCost, candidate.cost);
             selected->functionOrdinals.push_back(candidate.functionOrdinal);
         }
+    };
+
+    bool restoredCacheAwarePlan = false;
+
+    if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
+    {
+        // Identity hashing keeps a body-only edit in the same bucket. Empty buckets are omitted
+        // without renumbering surviving keys, so unrelated object-cache identities stay stable.
+        std::sort(candidates.begin(), candidates.end(), [](const PartitionCandidate& left,
+                                                           const PartitionCandidate& right) {
+            if (left.stableName != right.stableName) return left.stableName < right.stableName;
+            return left.functionOrdinal < right.functionOrdinal;
+        });
+        for (const PartitionCandidate& candidate : candidates)
+        {
+            const std::size_t bucket = static_cast<std::size_t>(
+                stableNameHash(candidate.stableName) % unitCount);
+            units_[bucket].estimatedCost = saturatedAdd(units_[bucket].estimatedCost, candidate.cost);
+            units_[bucket].functionOrdinals.push_back(candidate.functionOrdinal);
+        }
+        std::erase_if(units_, [](const ProjectOopCodeUnit& unit) {
+            return unit.functionOrdinals.empty();
+        });
+    }
+    else if (policy == ProjectOopCodePartitionPolicy::CacheAwareBalanced)
+    {
+        const std::vector<std::size_t> stableOrder = stableCandidateOrder(candidates);
+        persistentFunctionOrdinals_.reserve(stableOrder.size());
+        for (const std::size_t index : stableOrder)
+            persistentFunctionOrdinals_.push_back(candidates[index].functionOrdinal);
+        std::vector<std::uint64_t> historicalCosts;
+        std::vector<std::size_t> assignments;
+        restoredCacheAwarePlan = parsePersistentPlan(
+            cachedPlan, unitCount, candidates.size(), historicalCosts, assignments);
+        if (restoredCacheAwarePlan)
+        {
+            std::vector<std::size_t> functionsPerUnit(unitCount, 0U);
+            for (std::size_t index = 0; index < stableOrder.size(); ++index)
+            {
+                const PartitionCandidate& candidate = candidates[stableOrder[index]];
+                ProjectOopCodeUnit& unit = units_[assignments[index]];
+                unit.estimatedCost = saturatedAdd(unit.estimatedCost, candidate.cost);
+                unit.functionOrdinals.push_back(candidate.functionOrdinal);
+                ++functionsPerUnit[assignments[index]];
+            }
+            if (std::ranges::any_of(functionsPerUnit, [](std::size_t count) { return count == 0U; }))
+            {
+                restoredCacheAwarePlan = false;
+                for (ProjectOopCodeUnit& unit : units_)
+                {
+                    unit.estimatedCost = 0;
+                    unit.functionOrdinals.clear();
+                }
+            }
+            else
+            {
+                for (std::size_t ordinal = 0; ordinal < unitCount; ++ordinal)
+                    units_[ordinal].historicalCost = historicalCosts[ordinal];
+            }
+        }
+        if (!restoredCacheAwarePlan) assignBalanced();
+        persistentUnitCount_ = unitCount;
+        persistentPlanReady_ = true;
+    }
+    else
+    {
+        // Longest-processing-time partitioning gives useful balance while remaining fully stable:
+        // cost, physical name and original ordinal are all canonical MIR properties.
+        assignBalanced();
     }
 
     // NSC305-L01. Blend the observed cost into the bounded historical weight (a capped 1:1 moving
@@ -165,9 +263,13 @@ bool ProjectOopCodePartition::build(
     constexpr std::uint64_t kHistoricalCostCap = std::uint64_t{1} << 24U;
     for (ProjectOopCodeUnit& unit : units_)
     {
-        unit.historicalCost = unit.historicalCost == 0U
-            ? std::min(unit.estimatedCost, kHistoricalCostCap)
-            : boundedHistoricalWeight(unit.historicalCost, unit.estimatedCost, kHistoricalCostCap);
+        if (!restoredCacheAwarePlan)
+        {
+            unit.historicalCost = unit.historicalCost == 0U
+                ? std::min(unit.estimatedCost, kHistoricalCostCap)
+                : boundedHistoricalWeight(
+                    unit.historicalCost, unit.estimatedCost, kHistoricalCostCap);
+        }
     }
 
     for (ProjectOopCodeUnit& unit : units_)
@@ -298,6 +400,37 @@ bool ProjectOopCodePartition::build(
     return true;
 }
 
+std::string ProjectOopCodePartition::persistentPlanKey(
+    const frontend::ProjectOopMirModel& mirModel,
+    std::size_t requestedUnitCount)
+{
+    std::vector<std::pair<std::string_view, std::size_t>> identities;
+    const std::span<const frontend::ProjectOopMirFunction> functions = mirModel.functions();
+    identities.reserve(functions.size());
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        if (functions[ordinal].isImportedC || functions[ordinal].isImportedNative) continue;
+        identities.emplace_back(functions[ordinal].mangledName, ordinal);
+    }
+    std::sort(identities.begin(), identities.end(), [](const auto& left, const auto& right) {
+        if (left.first != right.first) return left.first < right.first;
+        return left.second < right.second;
+    });
+    const std::size_t unitCount = identities.empty() ? 0U : std::min(
+        std::max<std::size_t>(1, requestedUnitCount), identities.size());
+    std::string material = "NSCPARTITIONKEY 1\nunits " + std::to_string(unitCount) +
+        "\nfunctions " + std::to_string(identities.size()) + "\n";
+    for (const auto& [name, ordinal] : identities)
+    {
+        material += std::to_string(name.size()) + ":";
+        material.append(name);
+        material += ":" + std::to_string(ordinal) + "\n";
+    }
+    const auto bytes = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 std::span<const ProjectOopCodeUnit> ProjectOopCodePartition::units() const noexcept
 {
     return units_;
@@ -313,12 +446,40 @@ std::optional<std::size_t> ProjectOopCodePartition::unitForFunction(
 void ProjectOopCodePartition::recordCodeUnitCost(
     std::size_t ordinal, std::uint64_t observedCost) noexcept
 {
-    if (ordinal >= units_.size()) return;
+    const auto found = std::find_if(units_.begin(), units_.end(), [&](const auto& unit) {
+        return unit.ordinal == ordinal;
+    });
+    if (found == units_.end()) return;
     constexpr std::uint64_t kHistoricalCostCap = std::uint64_t{1} << 24U;
-    ProjectOopCodeUnit& unit = units_[ordinal];
+    ProjectOopCodeUnit& unit = *found;
     unit.historicalCost = unit.historicalCost == 0U
         ? std::min(observedCost, kHistoricalCostCap)
         : boundedHistoricalWeight(unit.historicalCost, observedCost, kHistoricalCostCap);
+}
+
+std::string ProjectOopCodePartition::persistentPlanPayload() const
+{
+    if (!built_ || !persistentPlanReady_ || persistentUnitCount_ == 0U) return {};
+    std::vector<std::uint64_t> historicalCosts(persistentUnitCount_, 0U);
+    for (const ProjectOopCodeUnit& unit : units_)
+    {
+        if (unit.ordinal >= historicalCosts.size()) return {};
+        historicalCosts[unit.ordinal] = unit.historicalCost;
+    }
+    std::ostringstream stream;
+    stream << "NSCPARTITION 1\nunits " << persistentUnitCount_ << "\nfunctions " <<
+        persistentFunctionOrdinals_.size() << "\nhistory";
+    for (const std::uint64_t cost : historicalCosts) stream << ' ' << cost;
+    stream << "\nassignments";
+    for (const std::size_t functionOrdinal : persistentFunctionOrdinals_)
+    {
+        if (functionOrdinal >= unitByFunction_.size() ||
+            !unitByFunction_[functionOrdinal].has_value())
+            return {};
+        stream << ' ' << *unitByFunction_[functionOrdinal];
+    }
+    stream << '\n';
+    return stream.str();
 }
 
 std::string ProjectOopCodePartition::dump() const

@@ -207,12 +207,25 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
 
     ProjectOopCodePartition partition;
+    std::string partitionPlanKey;
+    std::string partitionPlanPayload;
+    bool partitionPlanHit = false;
+    if (cache != nullptr && cache->enabled())
+    {
+        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(mirModel, workerCount);
+        if (!cache->restoreCodePartitionPlan(
+                partitionPlanKey, partitionPlanPayload, partitionPlanHit, error))
+            return nullptr;
+    }
+    const ProjectOopCodePartitionPolicy partitionPolicy =
+        cache != nullptr && cache->enabled()
+        ? ProjectOopCodePartitionPolicy::CacheAwareBalanced
+        : linkTimeOptimization == LinkTimeOptimizationMode::Thin
+            ? ProjectOopCodePartitionPolicy::StableIncremental
+            : ProjectOopCodePartitionPolicy::Balanced;
     if (!partition.build(
-            mirModel, workerCount, error,
-            (cache != nullptr && cache->enabled()) ||
-                    linkTimeOptimization == LinkTimeOptimizationMode::Thin
-                ? ProjectOopCodePartitionPolicy::StableIncremental
-                : ProjectOopCodePartitionPolicy::Balanced))
+            mirModel, workerCount, error, partitionPolicy,
+            partitionPlanHit ? partitionPlanPayload : std::string_view{}))
         return nullptr;
     // LLVM can only inline a call while caller and callee coexist in the same module. Until
     // code-unit summary import is available, splitting a full-debug optimized build silently
@@ -519,13 +532,26 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     {
         for (std::size_t ordinal = 0; ordinal < partition.units().size(); ++ordinal)
         {
+            if (cacheHits[ordinal + 1] != 0U) continue;
             const CodeUnitTelemetry& unitTelemetry = codeUnitTelemetry[ordinal + 1];
             const std::uint64_t observed = unitTelemetry.fingerprintMicros +
                 unitTelemetry.lookupMicros + unitTelemetry.loweringMicros +
                 unitTelemetry.optimizationMicros + unitTelemetry.emissionMicros +
                 unitTelemetry.verificationMicros + unitTelemetry.storeMicros;
-            partition.recordCodeUnitCost(ordinal, observed);
+            partition.recordCodeUnitCost(partition.units()[ordinal].ordinal, observed);
         }
+    }
+    if (usePartitions && cache != nullptr && cache->enabled())
+    {
+        partitionPlanPayload = partition.persistentPlanPayload();
+        if (partitionPlanPayload.empty())
+        {
+            error = "cache-aware code partition did not produce a persistent plan";
+            return nullptr;
+        }
+        if (!cache->storeCodePartitionPlan(
+                partitionPlanKey, partitionPlanPayload, error))
+            return nullptr;
     }
     result->codeUnitTelemetry_ = std::move(codeUnitTelemetry);
 

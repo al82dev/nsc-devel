@@ -784,6 +784,35 @@ public class Work
     tests.expect(stableAssignments,
         "body changes preserve every physical function-to-bucket assignment");
 
+    nativesharp::llvm_backend::ProjectOopCodePartition cacheAwareColdPartition;
+    error.clear();
+    const bool cacheAwareColdOk = cacheAwareColdPartition.build(
+        *first.oopMirModel(), 4, error,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::CacheAwareBalanced);
+    const std::string coldPlanPayload = cacheAwareColdPartition.persistentPlanPayload();
+    tests.expect(cacheAwareColdOk && !coldPlanPayload.empty(),
+        "cache-aware cold partition creates a balanced persistent plan (" + error + ")");
+
+    nativesharp::llvm_backend::ProjectOopCodePartition referenceBalancedPartition;
+    error.clear();
+    const bool referenceBalancedOk = referenceBalancedPartition.build(
+        *first.oopMirModel(), 4, error,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::Balanced);
+    tests.expect(referenceBalancedOk &&
+            referenceBalancedPartition.dump() == cacheAwareColdPartition.dump(),
+        "cache-aware cold partition preserves the deterministic LPT balance (" + error + ")");
+
+    nativesharp::llvm_backend::ProjectOopCodePartition invalidPlanFallback;
+    error.clear();
+    const bool invalidFallbackOk = invalidPlanFallback.build(
+        *first.oopMirModel(), 4, error,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::CacheAwareBalanced,
+        "invalid partition payload");
+    tests.expect(invalidFallbackOk &&
+            invalidPlanFallback.dump() == cacheAwareColdPartition.dump(),
+        "an invalid private plan falls back to the same deterministic cold balance (" +
+            error + ")");
+
     nativesharp::llvm_backend::CompilationArtifactCache cache;
     cache.setRoot(root / "incremental-object-cache");
     cache.setToolchainIdentity("precise-invalidation-test");
@@ -798,6 +827,48 @@ public class Work
             firstBundle->cacheMissCount() == firstBundle->objectFiles().size(),
         "cold incremental build emits and stores every code unit (" + error + ")");
     if (firstBundle == nullptr) return;
+
+    const std::string planKey =
+        nativesharp::llvm_backend::ProjectOopCodePartition::persistentPlanKey(
+            *first.oopMirModel(), 4);
+    const std::string changedPlanKey =
+        nativesharp::llvm_backend::ProjectOopCodePartition::persistentPlanKey(
+            *changed.oopMirModel(), 4);
+    tests.expect(planKey == changedPlanKey,
+        "a body-only edit preserves the private code-partition topology key");
+    std::string restoredPlanPayload;
+    bool restoredPlanHit = false;
+    error.clear();
+    const bool restoredPlanOk = cache.restoreCodePartitionPlan(
+        planKey, restoredPlanPayload, restoredPlanHit, error);
+    tests.expect(restoredPlanOk && restoredPlanHit && !restoredPlanPayload.empty(),
+        "cold generation atomically publishes its private code-partition plan (" + error + ")");
+
+    nativesharp::llvm_backend::ProjectOopCodePartition restoredChangedPartition;
+    changedError.clear();
+    const bool restoredChangedOk = restoredChangedPartition.build(
+        *changed.oopMirModel(), 4, changedError,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::CacheAwareBalanced,
+        restoredPlanPayload);
+    bool restoredAssignments = restoredChangedOk;
+    std::unordered_map<std::string, std::size_t> cacheAwareBuckets;
+    for (std::size_t ordinal = 0; ordinal < firstFunctions.size(); ++ordinal)
+    {
+        const auto bucket = cacheAwareColdPartition.unitForFunction(ordinal);
+        if (bucket.has_value())
+            cacheAwareBuckets.emplace(firstFunctions[ordinal].mangledName, *bucket);
+    }
+    for (std::size_t ordinal = 0;
+        restoredAssignments && ordinal < changedFunctions.size(); ++ordinal)
+    {
+        const auto bucket = restoredChangedPartition.unitForFunction(ordinal);
+        const auto expected = cacheAwareBuckets.find(changedFunctions[ordinal].mangledName);
+        restoredAssignments = bucket.has_value() && expected != cacheAwareBuckets.end() &&
+            *bucket == expected->second;
+    }
+    tests.expect(restoredAssignments,
+        "a body-only edit restores the exact cold-balanced function-to-unit plan (" +
+            changedError + ")");
 
     changedError.clear();
     auto changedBundle = generator.generate(
@@ -820,10 +891,23 @@ public class Work
             repeatedBundle->cacheHitCount() == repeatedBundle->objectFiles().size(),
         "unchanged incremental rebuild restores every unit after the precise miss (" +
             changedError + ")");
+
+    std::size_t evictedEntries = 0;
+    std::uintmax_t evictedBytes = 0;
+    error.clear();
+    const bool pruneOk = cache.prune(0, evictedEntries, evictedBytes, error);
+    std::string prunedPlanPayload;
+    bool prunedPlanHit = true;
+    const bool prunedPlanRestoreOk = cache.restoreCodePartitionPlan(
+        planKey, prunedPlanPayload, prunedPlanHit, error);
+    tests.expect(pruneOk && evictedEntries != 0U && evictedBytes != 0U &&
+            prunedPlanRestoreOk && !prunedPlanHit,
+        "the artifact-cache byte budget evicts private partition plans with objects (" +
+            error + ")");
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     TestContext tests;
     const std::filesystem::path root =
@@ -832,11 +916,20 @@ int main()
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root);
 
-    testEndToEndOopLowering(tests, root);
-    testDeallocationContract(tests, root);
-    testAggregateCallableBoundary(tests, root);
-    testNarrowSignedEnumNameLowering(tests, root);
-    testPreciseIncrementalInvalidation(tests, root);
+    const bool preciseIncrementalOnly = argc == 2 &&
+        std::string_view(argv[1]) == "--precise-incremental-invalidation";
+    if (preciseIncrementalOnly)
+    {
+        testPreciseIncrementalInvalidation(tests, root);
+    }
+    else
+    {
+        testEndToEndOopLowering(tests, root);
+        testDeallocationContract(tests, root);
+        testAggregateCallableBoundary(tests, root);
+        testNarrowSignedEnumNameLowering(tests, root);
+        testPreciseIncrementalInvalidation(tests, root);
+    }
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

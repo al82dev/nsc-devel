@@ -63,6 +63,19 @@ public:
         const std::filesystem::path& source,
         std::string& error) const;
 
+    // NSC305-L05. Restores/stores the private cache-aware LLVM partition plan. The payload is
+    // integrity checked and atomically published, but remains an internal rebuildable artifact.
+    bool restoreCodePartitionPlan(
+        std::string_view key,
+        std::string& payload,
+        bool& hit,
+        std::string& error) const;
+
+    bool storeCodePartitionPlan(
+        std::string_view key,
+        std::string_view payload,
+        std::string& error) const;
+
     bool prune(
         std::uintmax_t maximumBytes,
         std::size_t& evictedEntries,
