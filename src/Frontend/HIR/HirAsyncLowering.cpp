@@ -11,6 +11,23 @@
 
 namespace nativesharp::frontend
 {
+void ProjectOopHirModel::assignYieldStates(
+    ProjectOopHirNode* root,
+    std::size_t& nextYieldState)
+{
+    std::vector<ProjectOopHirNode*> pending;
+    if (root != nullptr) pending.push_back(root);
+    while (!pending.empty())
+    {
+        ProjectOopHirNode* node = pending.back();
+        pending.pop_back();
+        if (node->kind == ProjectOopHirNodeKind::YieldValue)
+            node->integerValue = ++nextYieldState;
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            if (*child != nullptr) pending.push_back(child->get());
+    }
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     std::unique_ptr<ProjectOopHirNode> body,
     std::size_t selfParameterOrdinal,
@@ -377,14 +394,7 @@ ProjectOopHirModel::splitGeneratorFunction(
     // NS304-T06-F03: number the yields 1..N (the state set after each yield; 0 is the entry state)
     // and append the terminal `return false` after the last yield.
     std::size_t nextYieldState = 0;
-    const auto assignStates = [&](const auto& self, ProjectOopHirNode* node) -> void
-    {
-        if (node == nullptr) return;
-        if (node->kind == ProjectOopHirNodeKind::YieldValue)
-            node->integerValue = ++nextYieldState;
-        for (auto& child : node->children) self(self, child.get());
-    };
-    assignStates(assignStates, moveNext->body.get());
+    assignYieldStates(moveNext->body.get(), nextYieldState);
     auto wrapped = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
     wrapped->children.push_back(std::move(moveNext->body));
     auto retFalse = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:bool");
@@ -502,14 +512,7 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     // NS304-T07-F02: number the yields 1..N (state after each yield) and append the terminal
     // `return false` (no more items), exactly like splitGeneratorFunction.
     std::size_t nextYieldState = 0;
-    const auto assignStates = [&](const auto& self, ProjectOopHirNode* node) -> void
-    {
-        if (node == nullptr) return;
-        if (node->kind == ProjectOopHirNodeKind::YieldValue)
-            node->integerValue = ++nextYieldState;
-        for (auto& child : node->children) self(self, child.get());
-    };
-    assignStates(assignStates, function.body.get());
+    assignYieldStates(function.body.get(), nextYieldState);
     auto wrapped = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
     wrapped->children.push_back(std::move(function.body));
     auto retFalse = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:bool");

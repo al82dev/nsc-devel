@@ -930,6 +930,7 @@ private:
         std::string_view futureKey,
         std::string& error,
         bool topLevel = true);
+    void assignYieldStates(ProjectOopHirNode* root, std::size_t& nextYieldState);
 
     // NS304-T05-F03: splits an async function into a lazy constructor (function.body becomes
     // `return default(future:<T>)`) and a poll function (returned; runs the body and stores the

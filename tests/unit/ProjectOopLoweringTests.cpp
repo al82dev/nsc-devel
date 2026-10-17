@@ -39,6 +39,14 @@ struct ProjectOopHirModelTestAccess final
     {
         return model.lowerDefaultArgument(syntax, parameterTypeKey, error);
     }
+
+    static void assignYieldStates(
+        ProjectOopHirModel& model,
+        ProjectOopHirNode* root,
+        std::size_t& nextYieldState)
+    {
+        model.assignYieldStates(root, nextYieldState);
+    }
 };
 }
 
@@ -1088,6 +1096,59 @@ void testDeepOptionalDefaultHir(TestContext& tests, const std::filesystem::path&
     tests.expect(unaryCount == 1U,
         "the permitted -1 default preserves exactly one unary HIR node at its call site");
 }
+
+void testDeepYieldStateAssignment(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    nativesharp::frontend::ProjectOopHirNode* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto yield = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        yield->kind = nativesharp::frontend::ProjectOopHirNodeKind::YieldValue;
+        cursor->children.push_back(std::move(yield));
+        if (index + 1U != nestingDepth)
+        {
+            auto block = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+            block->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+            cursor->children.push_back(std::move(block));
+            cursor = cursor->children.back().get();
+        }
+    }
+
+    ProjectOopHirModel model;
+    std::size_t nextYieldState = 0;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::assignYieldStates(
+        model, root.get(), nextYieldState);
+    tests.expect(nextYieldState == nestingDepth,
+        "iterative async yield numbering reaches all 32768 nested blocks");
+
+    bool ordered = true;
+    cursor = root.get();
+    for (std::size_t expected = 1; expected <= nestingDepth; ++expected)
+    {
+        ordered = ordered && !cursor->children.empty() &&
+            cursor->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::YieldValue &&
+            cursor->children.front()->integerValue == expected;
+        if (expected != nestingDepth)
+        {
+            ordered = ordered && cursor->children.size() == 2U;
+            cursor = cursor->children.back().get();
+        }
+    }
+    tests.expect(ordered,
+        "iterative async yield numbering preserves recursive preorder exactly");
+
+    while (root != nullptr)
+    {
+        std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> next;
+        if (root->children.size() == 2U) next = std::move(root->children.back());
+        root->children.clear();
+        root = std::move(next);
+    }
+}
 }
 
 int main()
@@ -1115,6 +1176,10 @@ int main()
     {
         testDeepOptionalDefaultHir(tests, root);
     }
+    else if (focusValue == "hir-async-yield-state-depth")
+    {
+        testDeepYieldStateAssignment(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1124,6 +1189,7 @@ int main()
         testPreciseIncrementalInvalidation(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testDeepOptionalDefaultHir(tests, root);
+        testDeepYieldStateAssignment(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
