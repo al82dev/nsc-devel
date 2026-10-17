@@ -56,6 +56,24 @@ struct ProjectOopHirModelTestAccess final
     {
         model.rewriteGeneratorThrows(root, errorTypeKey, iteratorKey);
     }
+
+    static std::unique_ptr<ProjectOopHirNode> rewriteAsyncPollReturns(
+        ProjectOopHirModel& model,
+        std::unique_ptr<ProjectOopHirNode> body,
+        std::size_t selfParameterOrdinal,
+        std::string_view resultTypeKey,
+        std::string_view futureKey,
+        std::string& error,
+        bool topLevel)
+    {
+        return model.rewriteAsyncPollReturns(
+            std::move(body),
+            selfParameterOrdinal,
+            resultTypeKey,
+            futureKey,
+            error,
+            topLevel);
+    }
 };
 }
 
@@ -1204,6 +1222,141 @@ void testDeepGeneratorThrowRewrite(TestContext& tests)
     tests.expect(removedDepth == nestingDepth,
         "the deep generator throw fixture retains every enclosing block");
 }
+
+void destroyHirTreeIteratively(
+    std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>& root)
+{
+    std::vector<std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>> pending;
+    if (root != nullptr) pending.push_back(std::move(root));
+    while (!pending.empty())
+    {
+        auto node = std::move(pending.back());
+        pending.pop_back();
+        for (auto& child : node->children)
+            if (child != nullptr) pending.push_back(std::move(child));
+        node->children.clear();
+    }
+}
+
+void testDeepAsyncPollReturnRewrite(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    auto* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto block = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        block->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        cursor->children.push_back(std::move(block));
+        cursor = cursor->children.front().get();
+    }
+    auto returning = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    returning->kind = nativesharp::frontend::ProjectOopHirNodeKind::Return;
+    returning->cleanupRegionOrdinals = {7U, 11U};
+    returning->cleanupContinuationKind =
+        nativesharp::frontend::MethodCleanupContinuationKind::Return;
+    auto payload = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    payload->kind = nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant;
+    payload->typeKey = "builtin:int";
+    payload->integerValue = 42U;
+    returning->children.push_back(std::move(payload));
+    cursor->children.push_back(std::move(returning));
+
+    ProjectOopHirModel model;
+    std::string error;
+    root = nativesharp::frontend::ProjectOopHirModelTestAccess::rewriteAsyncPollReturns(
+        model,
+        std::move(root),
+        3U,
+        "builtin:int",
+        "future:builtin:int",
+        error,
+        true);
+    tests.expect(root != nullptr && error.empty(),
+        "a 32768-level async poll return rewrites without process-stack recursion (" + error + ")");
+
+    cursor = root.get();
+    bool enclosingBlocksPreserved = cursor != nullptr;
+    for (std::size_t index = 0; index < nestingDepth && enclosingBlocksPreserved; ++index)
+    {
+        enclosingBlocksPreserved = !cursor->children.empty() &&
+            cursor->children.front() != nullptr &&
+            cursor->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        if (enclosingBlocksPreserved) cursor = cursor->children.front().get();
+    }
+    tests.expect(enclosingBlocksPreserved && cursor != nullptr &&
+            cursor->children.size() == 1U &&
+            cursor->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+            cursor->children.front()->children.size() == 3U &&
+            cursor->children.front()->children.back()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Return &&
+            cursor->children.front()->children.back()->cleanupRegionOrdinals ==
+                std::vector<std::size_t>({7U, 11U}) &&
+            cursor->children.front()->children.back()->cleanupContinuationKind ==
+                nativesharp::frontend::MethodCleanupContinuationKind::Return,
+        "iterative async poll return rewrite preserves every block and cleanup continuation");
+
+    tests.expect(root != nullptr && root->children.size() == 2U &&
+            root->children.back()->kind == nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+            root->children.back()->children.size() == 3U &&
+            root->children.back()->children.back()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Return,
+        "top-level fallthrough still appends exactly one implicit ready return");
+    destroyHirTreeIteratively(root);
+
+    auto throwRoot = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    throwRoot->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    cursor = throwRoot.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto block = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        block->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        cursor->children.push_back(std::move(block));
+        cursor = cursor->children.front().get();
+    }
+    auto throwing = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    throwing->kind = nativesharp::frontend::ProjectOopHirNodeKind::Throw;
+    throwing->cleanupRegionOrdinals = {13U};
+    throwing->cleanupContinuationKind =
+        nativesharp::frontend::MethodCleanupContinuationKind::Exception;
+    auto errorPayload = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    errorPayload->kind = nativesharp::frontend::ProjectOopHirNodeKind::NullConstant;
+    errorPayload->typeKey = "type:Deep.Error";
+    throwing->children.push_back(std::move(errorPayload));
+    cursor->children.push_back(std::move(throwing));
+
+    error.clear();
+    throwRoot = nativesharp::frontend::ProjectOopHirModelTestAccess::rewriteAsyncPollReturns(
+        model,
+        std::move(throwRoot),
+        3U,
+        "builtin:int",
+        "future:builtin:int",
+        error,
+        false);
+    tests.expect(throwRoot != nullptr && error.empty(),
+        "a 32768-level async poll throw rewrites without process-stack recursion (" + error + ")");
+
+    cursor = throwRoot.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+        cursor = cursor->children.front().get();
+    const auto* errorBlock = cursor->children.front().get();
+    tests.expect(errorBlock->kind == nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+            errorBlock->children.size() == 3U &&
+            errorBlock->children[0]->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Assignment &&
+            errorBlock->children[0]->children[0]->memberOrdinal == 4U &&
+            errorBlock->children[0]->children[1]->typeKey == "type:Deep.Error" &&
+            errorBlock->children[1]->children[1]->integerValue == (~0ULL - 1ULL) &&
+            errorBlock->children[2]->cleanupRegionOrdinals == std::vector<std::size_t>({13U}) &&
+            errorBlock->children[2]->cleanupContinuationKind ==
+                nativesharp::frontend::MethodCleanupContinuationKind::Exception,
+        "iterative async poll throw rewrite preserves error field, state -2, payload, and cleanup");
+    destroyHirTreeIteratively(throwRoot);
+}
 }
 
 int main()
@@ -1239,6 +1392,10 @@ int main()
     {
         testDeepGeneratorThrowRewrite(tests);
     }
+    else if (focusValue == "hir-async-poll-return-depth")
+    {
+        testDeepAsyncPollReturnRewrite(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1250,6 +1407,7 @@ int main()
         testDeepOptionalDefaultHir(tests, root);
         testDeepYieldStateAssignment(tests);
         testDeepGeneratorThrowRewrite(tests);
+        testDeepAsyncPollReturnRewrite(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

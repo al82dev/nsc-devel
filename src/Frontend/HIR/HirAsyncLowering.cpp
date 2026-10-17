@@ -110,59 +110,66 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     {
         return nullptr;
     }
-    if (body->kind == ProjectOopHirNodeKind::Throw)
+
+    (void)error;
+    const auto rewriteThrow = [&](std::unique_ptr<ProjectOopHirNode> throwing)
+        -> std::unique_ptr<ProjectOopHirNode>
     {
         // NS304-T05-F07: `throw E;` becomes a future error, not a native unwind:
         // { self->error = E; self->state = -2 (error); return; }
-        auto block = makeNode(ProjectOopHirNodeKind::Block, body->syntax, "builtin:void");
+        auto block = makeNode(ProjectOopHirNodeKind::Block, throwing->syntax, "builtin:void");
         const auto selfParameter = [&]() -> std::unique_ptr<ProjectOopHirNode>
         {
             auto self = makeNode(
-                ProjectOopHirNodeKind::ParameterValue, body->syntax, std::string(futureKey) + "*");
+                ProjectOopHirNodeKind::ParameterValue,
+                throwing->syntax,
+                std::string(futureKey) + "*");
             self->parameterOrdinal = selfParameterOrdinal;
             return self;
         };
 
         auto errorField = makeNode(
-            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax,
-            body->children.empty() ? std::string{} : body->children[0]->typeKey);
+            ProjectOopHirNodeKind::FutureFieldAddress, throwing->syntax,
+            throwing->children.empty() ? std::string{} : throwing->children[0]->typeKey);
         errorField->memberOrdinal = 4; // error (pollFn is index 3)
         errorField->elementTypeKey = std::string(futureKey);
         errorField->children.push_back(selfParameter());
 
-        std::unique_ptr<ProjectOopHirNode> errorValue = !body->children.empty()
-            ? std::move(body->children[0])
-            : makeNode(ProjectOopHirNodeKind::NullConstant, body->syntax, errorField->typeKey);
+        std::unique_ptr<ProjectOopHirNode> errorValue = !throwing->children.empty()
+            ? std::move(throwing->children[0])
+            : makeNode(ProjectOopHirNodeKind::NullConstant, throwing->syntax, errorField->typeKey);
         auto errorStore = makeNode(
-            ProjectOopHirNodeKind::Assignment, body->syntax, errorField->typeKey);
+            ProjectOopHirNodeKind::Assignment, throwing->syntax, errorField->typeKey);
         errorStore->operation = lexer::TokenKind::Equal;
         errorStore->children.push_back(std::move(errorField));
         errorStore->children.push_back(std::move(errorValue));
         block->children.push_back(std::move(errorStore));
 
         auto stateField = makeNode(
-            ProjectOopHirNodeKind::FutureFieldAddress, body->syntax, "builtin:int");
+            ProjectOopHirNodeKind::FutureFieldAddress, throwing->syntax, "builtin:int");
         stateField->memberOrdinal = 0; // state
         stateField->elementTypeKey = std::string(futureKey);
         stateField->children.push_back(selfParameter());
-        auto errored = makeNode(ProjectOopHirNodeKind::IntegerConstant, body->syntax, "builtin:int");
+        auto errored = makeNode(
+            ProjectOopHirNodeKind::IntegerConstant, throwing->syntax, "builtin:int");
         errored->integerValue = ~0ULL - 1ULL; // error = -2 (uniform; ready = -1, resume 1..N)
         auto stateStore = makeNode(
-            ProjectOopHirNodeKind::Assignment, body->syntax, "builtin:int");
+            ProjectOopHirNodeKind::Assignment, throwing->syntax, "builtin:int");
         stateStore->operation = lexer::TokenKind::Equal;
         stateStore->children.push_back(std::move(stateField));
         stateStore->children.push_back(std::move(errored));
         block->children.push_back(std::move(stateStore));
 
         auto synthesizedReturn = makeNode(
-            ProjectOopHirNodeKind::Return, body->syntax, "builtin:void");
+            ProjectOopHirNodeKind::Return, throwing->syntax, "builtin:void");
         // NS304-T17-F09: the throw's synthesized `return;` must carry the throw's cleanup regions
         // (owned locals + finally), exactly like rewriteReturn, so they run once on the error path.
-        synthesizedReturn->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
-        synthesizedReturn->cleanupContinuationKind = body->cleanupContinuationKind;
+        synthesizedReturn->cleanupRegionOrdinals = throwing->cleanupRegionOrdinals;
+        synthesizedReturn->cleanupContinuationKind = throwing->cleanupContinuationKind;
         block->children.push_back(std::move(synthesizedReturn));
         return block;
-    }
+    };
+
     const auto rewriteReturn = [&](std::unique_ptr<ProjectOopHirNode> ret)
         -> std::unique_ptr<ProjectOopHirNode>
     {
@@ -217,33 +224,57 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         return block;
     };
 
-    if (body->kind == ProjectOopHirNodeKind::Return)
-    {
-        return rewriteReturn(std::move(body));
-    }
-    if (body->kind == ProjectOopHirNodeKind::YieldValue)
+    const auto rewriteYield = [&](std::unique_ptr<ProjectOopHirNode> yielding)
+        -> std::unique_ptr<ProjectOopHirNode>
     {
         // NS304-T07-F02: `yield return v;` in the async-generator poll -> AsyncYieldValue(v). The
         // poll stores the item + the demand future's result/state; integerValue is the resume state.
-        auto node = makeNode(ProjectOopHirNodeKind::AsyncYieldValue, body->syntax, "builtin:void");
-        node->integerValue = body->integerValue;
+        auto node = makeNode(
+            ProjectOopHirNodeKind::AsyncYieldValue, yielding->syntax, "builtin:void");
+        node->integerValue = yielding->integerValue;
         // NS304-T07-F05: the cancellation path must run the same finally/defer as the terminal
         // return, so carry the yield's cleanup regions.
-        node->cleanupRegionOrdinals = body->cleanupRegionOrdinals;
-        node->cleanupContinuationKind = body->cleanupContinuationKind;
-        if (!body->children.empty() && body->children[0] != nullptr)
-            node->children.push_back(std::move(body->children[0]));
+        node->cleanupRegionOrdinals = yielding->cleanupRegionOrdinals;
+        node->cleanupContinuationKind = yielding->cleanupContinuationKind;
+        if (!yielding->children.empty() && yielding->children[0] != nullptr)
+            node->children.push_back(std::move(yielding->children[0]));
         return node;
-    }
-    for (auto& child : body->children)
+    };
+
+    // H02B3: transform terminal nodes through stable owning slots. Replacing a unique_ptr does not
+    // invalidate sibling slots, and reverse pushes preserve the old recursive left-to-right order.
+    std::vector<std::unique_ptr<ProjectOopHirNode>*> pending;
+    pending.push_back(&body);
+    while (!pending.empty())
     {
-        child = rewriteAsyncPollReturns(
-            std::move(child), selfParameterOrdinal, resultTypeKey, futureKey, error, false);
-        if (child == nullptr)
+        auto* slot = pending.back();
+        pending.pop_back();
+        if (*slot == nullptr)
         {
             return nullptr;
         }
+
+        ProjectOopHirNode* node = slot->get();
+        if (node->kind == ProjectOopHirNodeKind::Throw)
+        {
+            *slot = rewriteThrow(std::move(*slot));
+            continue;
+        }
+        if (node->kind == ProjectOopHirNodeKind::Return)
+        {
+            *slot = rewriteReturn(std::move(*slot));
+            continue;
+        }
+        if (node->kind == ProjectOopHirNodeKind::YieldValue)
+        {
+            *slot = rewriteYield(std::move(*slot));
+            continue;
+        }
+
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            pending.push_back(&*child);
     }
+
     // NS304-T07-F06: a TOP-LEVEL body that falls off the end (implicit return) still parks the
     // ready state (state = -1); without it a blocking await polls forever. Nested blocks (e.g. the
     // finally body) must not get the terminal. A rewritten Throw/Return already ends in a Block
