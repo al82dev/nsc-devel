@@ -3725,58 +3725,81 @@ void ProjectMemberModel::scanMethodBody(
     std::size_t methodMemberOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (node == nullptr)
+    enum class WorkKind : std::uint8_t
     {
-        return;
-    }
+        Visit,
+        CompleteThisMember
+    };
+    struct WorkItem final
+    {
+        WorkKind kind = WorkKind::Visit;
+        const ast::AstNode* node = nullptr;
+    };
 
-    if (node->kind() == ast::AstNodeKind::ThisExpression)
+    std::vector<WorkItem> work;
+    work.push_back(WorkItem{WorkKind::Visit, node});
+    while (!work.empty())
     {
-        bodyBindings_.push_back(MemberBodyBinding{
-            MemberBodyBindingKind::ThisReference,
-            node,
-            typeOrdinal,
-            methodMemberOrdinal,
-            {},
-            {}});
-        return;
-    }
+        const WorkItem item = work.back();
+        work.pop_back();
+        node = item.node;
+        if (node == nullptr) continue;
 
-    if (node->kind() == ast::AstNodeKind::MemberExpression &&
-        node->first() != nullptr &&
-        node->first()->kind() == ast::AstNodeKind::ThisExpression)
-    {
-        scanMethodBody(node->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
-        const std::span<const std::size_t> directCandidates = findMembers(typeOrdinal, node->text());
-        std::vector<std::size_t> candidates(directCandidates.begin(), directCandidates.end());
-        if (candidates.empty())
+        if (item.kind == WorkKind::CompleteThisMember)
         {
-            for (const std::size_t ordinal : findMembers(typeOrdinal, "get_" + node->text()))
+            const std::span<const std::size_t> directCandidates =
+                findMembers(typeOrdinal, node->text());
+            std::vector<std::size_t> candidates(
+                directCandidates.begin(), directCandidates.end());
+            if (candidates.empty())
             {
-                if (ordinal < members_.size() && members_[ordinal].isPropertyAccessor &&
-                    members_[ordinal].isGetter)
+                for (const std::size_t ordinal : findMembers(typeOrdinal, "get_" + node->text()))
                 {
-                    candidates.push_back(ordinal);
+                    if (ordinal < members_.size() && members_[ordinal].isPropertyAccessor &&
+                        members_[ordinal].isGetter)
+                    {
+                        candidates.push_back(ordinal);
+                    }
                 }
             }
+            if (candidates.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownMember,
+                    diagnostics::DiagnosticSeverity::Error,
+                    node->range(),
+                    "class has no instance member named '" + node->text() + "'");
+            }
+            bodyBindings_.push_back(MemberBodyBinding{
+                MemberBodyBindingKind::ThisMemberAccess,
+                node,
+                typeOrdinal,
+                methodMemberOrdinal,
+                node->text(),
+                std::move(candidates)});
+            continue;
         }
-        if (candidates.empty())
+
+        if (node->kind() == ast::AstNodeKind::ThisExpression)
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::UnknownMember,
-                diagnostics::DiagnosticSeverity::Error,
-                node->range(),
-                "class has no instance member named '" + node->text() + "'");
+            bodyBindings_.push_back(MemberBodyBinding{
+                MemberBodyBindingKind::ThisReference,
+                node,
+                typeOrdinal,
+                methodMemberOrdinal,
+                {},
+                {}});
+            continue;
         }
-        bodyBindings_.push_back(MemberBodyBinding{
-            MemberBodyBindingKind::ThisMemberAccess,
-            node,
-            typeOrdinal,
-            methodMemberOrdinal,
-            node->text(),
-            std::move(candidates)});
-        return;
-    }
+
+        if (node->kind() == ast::AstNodeKind::MemberExpression &&
+            node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::ThisExpression)
+        {
+            work.push_back(WorkItem{WorkKind::CompleteThisMember, node});
+            work.push_back(WorkItem{WorkKind::Visit, node->first()});
+            continue;
+        }
 
     // IDs 80/83. `this->x`. Este rechazo estaba escrito contra PointerMemberExpression, el nodo
     // propio que el parser construia para `->` antes de que `p->x` pasara a construirse como
@@ -3787,28 +3810,28 @@ void ProjectMemberModel::scanMethodBody(
     // generico: no dice "no es un puntero", dice QUE ESCRIBIR en su lugar. Lo unico que cambia es
     // la forma que se reconoce: un acceso a miembro sobre el `*` SINTETIZADO que el parser marca
     // (auxiliaryText "arrow"), sobre `this`.
-    if (node->kind() == ast::AstNodeKind::MemberExpression &&
-        node->first() != nullptr &&
-        node->first()->kind() == ast::AstNodeKind::UnaryExpression &&
-        node->first()->auxiliaryText() == "arrow" &&
-        node->first()->first() != nullptr &&
-        node->first()->first()->kind() == ast::AstNodeKind::ThisExpression)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidMemberAccess,
-            diagnostics::DiagnosticSeverity::Error,
-            node->range(),
-            "'this' is a class reference; use '.' rather than '->' for member lookup");
-        scanMethodBody(node->first()->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
-        return;
-    }
+        if (node->kind() == ast::AstNodeKind::MemberExpression &&
+            node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::UnaryExpression &&
+            node->first()->auxiliaryText() == "arrow" &&
+            node->first()->first() != nullptr &&
+            node->first()->first()->kind() == ast::AstNodeKind::ThisExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidMemberAccess,
+                diagnostics::DiagnosticSeverity::Error,
+                node->range(),
+                "'this' is a class reference; use '.' rather than '->' for member lookup");
+            work.push_back(WorkItem{WorkKind::Visit, node->first()->first()});
+            continue;
+        }
 
-    scanMethodBody(node->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
-    scanMethodBody(node->second(), typeOrdinal, methodMemberOrdinal, diagnostics);
-    scanMethodBody(node->third(), typeOrdinal, methodMemberOrdinal, diagnostics);
-    for (const ast::AstNode* child : node->children())
-    {
-        scanMethodBody(child, typeOrdinal, methodMemberOrdinal, diagnostics);
+        const std::span<ast::AstNode* const> children = node->children();
+        for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+            work.push_back(WorkItem{WorkKind::Visit, *iterator});
+        work.push_back(WorkItem{WorkKind::Visit, node->third()});
+        work.push_back(WorkItem{WorkKind::Visit, node->second()});
+        work.push_back(WorkItem{WorkKind::Visit, node->first()});
     }
 }
 

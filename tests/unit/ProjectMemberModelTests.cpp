@@ -545,6 +545,24 @@ void testNestedTypesAreNotMembers(TestContext& tests, const std::filesystem::pat
     tests.expect(model.membersOfType(*item).size() == 2,
         "the nested struct owns its own field and method");
 }
+
+void testDeepMethodBodyScan(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeepMethodBodyScan";
+    writeProject(directory, "DeepMethodBodyScan");
+    constexpr std::size_t depth = 16384;
+    std::string source = "class Box { int Run() { return Root";
+    for (std::size_t index = 0; index < depth; ++index) source += ".Part";
+    source += "(); } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(
+        directory / "DeepMethodBodyScan.nsproj", error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "member binding scans a 16,384-segment method expression without using the native stack");
+}
 }
 
 int main()
@@ -563,6 +581,7 @@ int main()
     testInitialOverloadLookup(tests, root);
     testBodyDiagnostics(tests, root);
     testNestedTypesAreNotMembers(tests, root);
+    testDeepMethodBodyScan(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();
