@@ -10892,16 +10892,28 @@ public:
     ast::AstNode* parse()
     {
         work_.push_back({WorkKind::ParseControl, 0});
+        execute();
+        return values_.empty() ? nullptr : values_.back();
+    }
+
+    ast::AstNode* parseCatchClause()
+    {
+        work_.push_back({WorkKind::ParseStandaloneCatch, 0});
+        execute();
+        return values_.empty() ? nullptr : values_.back();
+    }
+
+private:
+    void execute()
+    {
         while (!work_.empty())
         {
             const Work current = work_.back();
             work_.pop_back();
             dispatch(current);
         }
-        return values_.empty() ? nullptr : values_.back();
     }
 
-private:
     enum class WorkKind
     {
         ParseControl,
@@ -10909,6 +10921,8 @@ private:
         ParseWhile,
         ParseDoWhile,
         ParseFor,
+        ParseTry,
+        ParseStandaloneCatch,
         ParseSwitch,
         ParseMatch,
         ParseEmbedded,
@@ -10921,6 +10935,11 @@ private:
         FinishWhile,
         FinishDoWhile,
         FinishFor,
+        ContinueTry,
+        FinishTryBlock,
+        FinishCatchBlock,
+        FinishFinallyBlock,
+        FinishStandaloneCatch,
         ContinueSwitch,
         ContinueSwitchSection,
         AppendSwitchStatement,
@@ -10945,6 +10964,19 @@ private:
         ast::AstNode* conditionDeclaration = nullptr;
         ast::AstNode* node = nullptr;
         ast::AstNode* section = nullptr;
+    };
+    struct TryParseState final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t pendingCatchBeginIndex = 0;
+        ast::AstNode* node = nullptr;
+        ast::AstNode* pendingCatch = nullptr;
+        bool hasFinally = false;
+    };
+    struct StandaloneCatchParseState final
+    {
+        std::size_t beginIndex = 0;
+        ast::AstNode* clause = nullptr;
     };
     struct MatchArm final
     {
@@ -10985,7 +11017,7 @@ private:
     {
         return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
             parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
-            parser_.at(TokenKind::KwSwitch) ||
+            parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
     }
 
@@ -11021,6 +11053,8 @@ private:
         case WorkKind::ParseWhile: parseWhile(); break;
         case WorkKind::ParseDoWhile: parseDoWhile(); break;
         case WorkKind::ParseFor: parseFor(); break;
+        case WorkKind::ParseTry: parseTry(); break;
+        case WorkKind::ParseStandaloneCatch: parseStandaloneCatch(); break;
         case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseMatch: parseMatch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
@@ -11033,6 +11067,11 @@ private:
         case WorkKind::FinishWhile: finishWhile(current.stateIndex); break;
         case WorkKind::FinishDoWhile: finishDoWhile(current.stateIndex); break;
         case WorkKind::FinishFor: finishFor(current.stateIndex); break;
+        case WorkKind::ContinueTry: continueTry(current.stateIndex); break;
+        case WorkKind::FinishTryBlock: finishTryBlock(current.stateIndex); break;
+        case WorkKind::FinishCatchBlock: finishCatchBlock(current.stateIndex); break;
+        case WorkKind::FinishFinallyBlock: finishFinallyBlock(current.stateIndex); break;
+        case WorkKind::FinishStandaloneCatch: finishStandaloneCatch(current.stateIndex); break;
         case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
         case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
         case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
@@ -11047,6 +11086,7 @@ private:
         else if (ordinaryWhileAtCursor()) work_.push_back({WorkKind::ParseWhile, 0});
         else if (parser_.at(TokenKind::KwDo)) work_.push_back({WorkKind::ParseDoWhile, 0});
         else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
+        else if (parser_.at(TokenKind::KwTry)) work_.push_back({WorkKind::ParseTry, 0});
         else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else if (parser_.startsParenthesizedBlock("match"))
             work_.push_back({WorkKind::ParseMatch, 0});
@@ -11105,6 +11145,161 @@ private:
         }
         work_.push_back({WorkKind::FinishFor, index});
         work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void parseTry()
+    {
+        const std::size_t index = tryStates_.size();
+        tryStates_.push_back({parser_.index_});
+        TryParseState& state = tryStates_.back();
+        parser_.consume();
+        state.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::TryStatement,
+            parser_.tokenRangeFrom(state.beginIndex));
+        work_.push_back({WorkKind::ContinueTry, index});
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            work_.push_back({WorkKind::FinishTryBlock, index});
+            work_.push_back({WorkKind::ParseBlock, 0});
+        }
+        else
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after try");
+        }
+    }
+
+    ast::AstNode* parseCatchHeader()
+    {
+        const std::size_t beginIndex = parser_.index_;
+        parser_.consume();
+        ast::AstNode* clause = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::CatchClause,
+            parser_.tokenRangeFrom(beginIndex));
+        if (parser_.consumeIf(TokenKind::LeftParen))
+        {
+            if (parser_.canStartTypeAt(parser_.index_))
+                clause->setTypeSyntax(parser_.parseType());
+            else
+                parser_.expect(TokenKind::Identifier, "exception type");
+            if (parser_.at(TokenKind::Identifier))
+                clause->setText(std::string(parser_.consume().lexeme()));
+            parser_.expect(TokenKind::RightParen, "')' after catch declaration");
+        }
+        else
+        {
+            clause->setFlag(true);
+        }
+        if (parser_.atContextualKeyword("when"))
+        {
+            parser_.consume();
+            parser_.expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
+            clause->setSecond(parser_.parseExpression());
+            parser_.expect(TokenKind::RightParen, "')' after catch filter expression");
+        }
+        return clause;
+    }
+
+    void continueTry(std::size_t index)
+    {
+        TryParseState& state = tryStates_[index];
+        if (parser_.at(TokenKind::KwCatch))
+        {
+            state.pendingCatchBeginIndex = parser_.index_;
+            state.pendingCatch = parseCatchHeader();
+            work_.push_back({WorkKind::ContinueTry, index});
+            if (parser_.at(TokenKind::LeftBrace))
+            {
+                work_.push_back({WorkKind::FinishCatchBlock, index});
+                work_.push_back({WorkKind::ParseBlock, 0});
+            }
+            else
+            {
+                parser_.expect(TokenKind::LeftBrace, "'{' after catch");
+                state.pendingCatch->setRange(
+                    parser_.tokenRangeFrom(state.pendingCatchBeginIndex));
+                state.node->addChild(state.pendingCatch);
+                state.pendingCatch = nullptr;
+            }
+            return;
+        }
+        if (parser_.consumeIf(TokenKind::KwFinally))
+        {
+            state.hasFinally = true;
+            if (parser_.at(TokenKind::LeftBrace))
+            {
+                work_.push_back({WorkKind::FinishFinallyBlock, index});
+                work_.push_back({WorkKind::ParseBlock, 0});
+            }
+            else
+            {
+                parser_.expect(TokenKind::LeftBrace, "'{' after finally");
+                values_.push_back(finishTry(state));
+            }
+            return;
+        }
+        values_.push_back(finishTry(state));
+    }
+
+    void finishTryBlock(std::size_t index)
+    {
+        tryStates_[index].node->setFirst(popValue());
+    }
+
+    void finishCatchBlock(std::size_t index)
+    {
+        TryParseState& state = tryStates_[index];
+        state.pendingCatch->setFirst(popValue());
+        state.pendingCatch->setRange(parser_.tokenRangeFrom(state.pendingCatchBeginIndex));
+        state.node->addChild(state.pendingCatch);
+        state.pendingCatch = nullptr;
+    }
+
+    void finishFinallyBlock(std::size_t index)
+    {
+        TryParseState& state = tryStates_[index];
+        state.node->setSecond(popValue());
+        values_.push_back(finishTry(state));
+    }
+
+    ast::AstNode* finishTry(TryParseState& state)
+    {
+        if (state.node->children().empty() && !state.hasFinally)
+        {
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                parser_.current().range(),
+                "expected 'catch' or 'finally' after try block");
+        }
+        state.node->setRange(parser_.tokenRangeFrom(state.beginIndex));
+        return state.node;
+    }
+
+    void parseStandaloneCatch()
+    {
+        const std::size_t index = standaloneCatchStates_.size();
+        const std::size_t beginIndex = parser_.index_;
+        standaloneCatchStates_.push_back({beginIndex, parseCatchHeader()});
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            work_.push_back({WorkKind::FinishStandaloneCatch, index});
+            work_.push_back({WorkKind::ParseBlock, 0});
+        }
+        else
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after catch");
+            StandaloneCatchParseState& state = standaloneCatchStates_[index];
+            state.clause->setRange(parser_.tokenRangeFrom(state.beginIndex));
+            values_.push_back(state.clause);
+        }
+    }
+
+    void finishStandaloneCatch(std::size_t index)
+    {
+        StandaloneCatchParseState& state = standaloneCatchStates_[index];
+        state.clause->setFirst(popValue());
+        state.clause->setRange(parser_.tokenRangeFrom(state.beginIndex));
+        values_.push_back(state.clause);
     }
 
     void parseSwitch()
@@ -11967,6 +12162,8 @@ private:
     std::vector<WhileParseState> whileStates_;
     std::vector<DoWhileParseState> doWhileStates_;
     std::vector<ForParseState> forStates_;
+    std::vector<TryParseState> tryStates_;
+    std::vector<StandaloneCatchParseState> standaloneCatchStates_;
     std::vector<SwitchParseState> switchStates_;
     std::vector<MatchParseState> matchStates_;
     std::vector<BlockParseState> blockStates_;
@@ -14467,114 +14664,12 @@ ast::AstNode* Parser::parseDeferStatement()
 
 ast::AstNode* Parser::parseTryStatement()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-
-    ast::AstNode* tryBlock = nullptr;
-    if (at(TokenKind::LeftBrace))
-    {
-        tryBlock = parseBlock();
-    }
-    else
-    {
-        expect(TokenKind::LeftBrace, "'{' after try");
-    }
-
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::TryStatement,
-        tokenRangeFrom(beginIndex));
-    node->setFirst(tryBlock);
-
-    while (at(TokenKind::KwCatch))
-    {
-        node->addChild(parseCatchClause());
-    }
-
-    bool hasFinally = false;
-    if (consumeIf(TokenKind::KwFinally))
-    {
-        hasFinally = true;
-        ast::AstNode* finallyBlock = nullptr;
-        if (at(TokenKind::LeftBrace))
-        {
-            finallyBlock = parseBlock();
-        }
-        else
-        {
-            expect(TokenKind::LeftBrace, "'{' after finally");
-        }
-        node->setSecond(finallyBlock);
-    }
-
-    // A protected block is not a complete try statement on its own. Report the missing handler
-    // without consuming the following token so normal statement recovery remains in control.
-    if (node->children().empty() && !hasFinally)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "expected 'catch' or 'finally' after try block");
-    }
-
-    node->setRange(tokenRangeFrom(beginIndex));
-    return node;
+    return parseStructuredControlStatement();
 }
 
 ast::AstNode* Parser::parseCatchClause()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-
-    ast::AstNode* clause = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::CatchClause,
-        tokenRangeFrom(beginIndex));
-
-    if (consumeIf(TokenKind::LeftParen))
-    {
-        if (canStartTypeAt(index_))
-        {
-            clause->setTypeSyntax(parseType());
-        }
-        else
-        {
-            expect(TokenKind::Identifier, "exception type");
-        }
-
-        // The exception name is optional. `catch(Type)` observes only the dynamic type while
-        // `catch(Type value)` additionally introduces a local in the catch scope.
-        if (at(TokenKind::Identifier))
-            clause->setText(std::string(consume().lexeme()));
-
-        expect(TokenKind::RightParen, "')' after catch declaration");
-    }
-    else
-    {
-        clause->setFlag(true);
-    }
-
-    // Catch filters are contextual so existing identifiers named `when` remain
-    // source-compatible outside this exact position. Keep the predicate separate from the
-    // handler body: first() is the body and second() is the optional boolean filter.
-    if (atContextualKeyword("when"))
-    {
-        consume();
-        expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
-        clause->setSecond(parseExpression());
-        expect(TokenKind::RightParen, "')' after catch filter expression");
-    }
-
-    if (at(TokenKind::LeftBrace))
-    {
-        clause->setFirst(parseBlock());
-    }
-    else
-    {
-        expect(TokenKind::LeftBrace, "'{' after catch");
-    }
-
-    clause->setRange(tokenRangeFrom(beginIndex));
-    return clause;
+    return StructuredControlParser(*this).parseCatchClause();
 }
 
 ast::AstNode* Parser::parseThrowStatement()

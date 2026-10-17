@@ -956,6 +956,107 @@ class MatchDiagnostics {
         "statement match preserves unreachable, empty, and missing-body diagnostic order");
 }
 
+void testDeepNestedTryCatchParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    const auto parses = [](std::string name, std::string source)
+    {
+        nativesharp::source::SourceManager sources;
+        const nativesharp::FileId fileId = sources.addBuffer(std::move(name), std::move(source));
+        const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+        nativesharp::lexer::Lexer lexer(*file, diagnostics);
+        const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+        nativesharp::ast::AstArena arena;
+        nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+        return parser.parseCompilationUnit() != nullptr && !diagnostics.hasErrors();
+    };
+
+    std::string tryFinally = "class DeepTryParser { int Run(int value) { ";
+    tryFinally.reserve(tryFinally.size() + depth * 20U + 64U);
+    for (std::size_t index = 0; index < depth; ++index) tryFinally += "try { ";
+    tryFinally += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) tryFinally += "} finally { } ";
+    tryFinally += "return value; } }\n";
+
+    std::string catches = "class DeepCatchParser { int Run(int value) { ";
+    catches.reserve(catches.size() + depth * 16U + 64U);
+    for (std::size_t index = 0; index < depth; ++index) catches += "try { } catch { ";
+    catches += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) catches += "} ";
+    catches += "return value; } }\n";
+
+    tests.expect(parses("DeepTryParser.ns", std::move(tryFinally)) &&
+            parses("DeepCatchParser.ns", std::move(catches)),
+        "1024 nested try/finally and catch bodies parse through heap-backed continuations");
+}
+
+void testTryCatchFinallyParserContracts(TestContext& tests)
+{
+    const std::string source = R"ns(
+class TryShape {
+    void Run() {
+        try { First(); }
+        catch (int one) when (one != 0) { Second(); }
+        catch { Third(); }
+        finally { Fourth(); }
+    }
+}
+)ns";
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("TryShape.ns", source);
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+
+    const nativesharp::ast::AstNode* tryNode = nullptr;
+    std::vector<const nativesharp::ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const nativesharp::ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::TryStatement)
+        {
+            tryNode = node;
+            break;
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    tests.expect(tryNode != nullptr && tryNode->first() != nullptr &&
+            tryNode->second() != nullptr && tryNode->children().size() == 2U &&
+            tryNode->children()[0]->kind() == nativesharp::ast::AstNodeKind::CatchClause &&
+            tryNode->children()[0]->typeSyntax() != nullptr &&
+            tryNode->children()[0]->typeSyntax()->baseName() == "int" &&
+            tryNode->children()[0]->text() == "one" &&
+            tryNode->children()[0]->second() != nullptr &&
+            tryNode->children()[1]->flag() && !diagnostics.hasErrors(),
+        "try migration preserves protected/finally slots, catch order, declaration, filter, and catch-all");
+
+    nativesharp::source::SourceManager invalidSources;
+    const nativesharp::FileId invalidId = invalidSources.addBuffer(
+        "TryMissingHandler.ns", "class Missing { void Run() { try { Work(); } } }");
+    const nativesharp::source::SourceFile* invalidFile = invalidSources.getFile(invalidId);
+    nativesharp::diagnostics::DiagnosticEngine invalidDiagnostics;
+    nativesharp::lexer::Lexer invalidLexer(*invalidFile, invalidDiagnostics);
+    const std::vector<nativesharp::lexer::Token> invalidTokens = invalidLexer.lexAll();
+    nativesharp::ast::AstArena invalidArena;
+    nativesharp::parser::Parser invalidParser(invalidTokens, invalidArena, invalidDiagnostics);
+    const nativesharp::ast::AstNode* invalidRoot = invalidParser.parseCompilationUnit();
+    const auto& invalidItems = invalidDiagnostics.diagnostics();
+    tests.expect(invalidRoot != nullptr && invalidItems.size() == 1U &&
+            invalidItems[0].id() == DiagnosticId::ExpectedToken &&
+            invalidItems[0].message() == "expected 'catch' or 'finally' after try block",
+        "try migration preserves the exact missing-handler diagnostic and recovery");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1289,6 +1390,8 @@ int main()
     testDeepNestedMatchParser(tests);
     testMatchStatementLoweringShape(tests);
     testMatchStatementDiagnosticOrder(tests);
+    testDeepNestedTryCatchParser(tests);
+    testTryCatchFinallyParserContracts(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
