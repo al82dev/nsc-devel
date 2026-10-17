@@ -107,6 +107,75 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             lastErrorRange_ = builtinUnaryFrames.back()->range();
         }
     }
+    else if (!addressContext && expression != nullptr &&
+        expression->kind() == ast::AstNodeKind::ConditionalExpression &&
+        coreBinding(expression) == nullptr && callBinding(expression) == nullptr &&
+        delegateBinding(expression) == nullptr && lambdaBinding(expression) == nullptr)
+    {
+        struct ConditionalFrame final
+        {
+            const ast::AstNode* syntax = nullptr;
+            std::unique_ptr<ProjectOopHirNode> condition;
+            std::unique_ptr<ProjectOopHirNode> whenTrue;
+            std::uint8_t stage = 0;
+        };
+        const auto isConditional = [&](const ast::AstNode* syntax) noexcept
+        {
+            return syntax != nullptr &&
+                syntax->kind() == ast::AstNodeKind::ConditionalExpression &&
+                coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
+                delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr;
+        };
+
+        std::vector<ConditionalFrame> frames;
+        const ast::AstNode* current = expression;
+        while (true)
+        {
+            if (isConditional(current))
+            {
+                frames.push_back(ConditionalFrame{current, nullptr, nullptr, 0});
+                current = current->first();
+                continue;
+            }
+
+            lowered = lowerExpression(current, memberOrdinal, false, error);
+            if (lowered == nullptr)
+            {
+                if (!lastErrorRange_.isValid() && !frames.empty())
+                    lastErrorRange_ = frames.back().syntax->range();
+                break;
+            }
+
+            bool descend = false;
+            while (!frames.empty())
+            {
+                ConditionalFrame& frame = frames.back();
+                if (frame.stage == 0U)
+                {
+                    frame.condition = std::move(lowered);
+                    frame.stage = 1U;
+                    current = frame.syntax->second();
+                    descend = true;
+                    break;
+                }
+                if (frame.stage == 1U)
+                {
+                    frame.whenTrue = std::move(lowered);
+                    frame.stage = 2U;
+                    current = frame.syntax->third();
+                    descend = true;
+                    break;
+                }
+                lowered = buildConditionalExpression(
+                    frame.syntax,
+                    std::move(frame.condition),
+                    std::move(frame.whenTrue),
+                    std::move(lowered));
+                frames.pop_back();
+            }
+            if (!descend) break;
+        }
+    }
     else if (expression != nullptr && expression->kind() == ast::AstNodeKind::BinaryExpression &&
         coreBinding(expression) == nullptr && callBinding(expression) == nullptr &&
         delegateBinding(expression) == nullptr && lambdaBinding(expression) == nullptr)
@@ -256,6 +325,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         lastErrorRange_ = expression->range();
     }
     return lowered;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildConditionalExpression(
+    const ast::AstNode* expression,
+    std::unique_ptr<ProjectOopHirNode> condition,
+    std::unique_ptr<ProjectOopHirNode> whenTrue,
+    std::unique_ptr<ProjectOopHirNode> whenFalse)
+{
+    const MethodExpressionTypeBinding* typeBinding = expressionType(expression);
+    const MethodDelegateBinding* stage42Delegate = delegateBinding(expression);
+    const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
+        stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
+    auto node = makeNode(ProjectOopHirNodeKind::Conditional, expression, resultType);
+    const auto convertBranch = [&](std::unique_ptr<ProjectOopHirNode>& branch,
+                                   const ast::AstNode* syntax)
+    {
+        if (branch->typeKey == resultType) return;
+        const MethodExpressionTypeBinding* binding = expressionType(syntax);
+        const ProjectImplicitConversion conversion = ProjectTypeConversion::classifyImplicit(
+            branch->typeKey,
+            resultType,
+            binding != nullptr ? binding->integerConstant : std::nullopt);
+        if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+            branch = wrapImplicitConversion(std::move(branch), conversion, syntax);
+    };
+    convertBranch(whenTrue, expression->second());
+    convertBranch(whenFalse, expression->third());
+    node->children.push_back(std::move(condition));
+    node->children.push_back(std::move(whenTrue));
+    node->children.push_back(std::move(whenFalse));
+    return node;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpression(
@@ -1453,42 +1553,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 error = "a conditional expression produces a value, not addressable storage";
                 return nullptr;
             }
-            auto node = makeNode(ProjectOopHirNodeKind::Conditional, expression, resultType);
             auto condition = lowerExpression(expression->first(), memberOrdinal, false, error);
             if (condition == nullptr) return nullptr;
             auto whenTrue = lowerExpression(expression->second(), memberOrdinal, false, error);
             if (whenTrue == nullptr) return nullptr;
             auto whenFalse = lowerExpression(expression->third(), memberOrdinal, false, error);
             if (whenFalse == nullptr) return nullptr;
-
-            // Both branches have to arrive at the phi AS THE RESULT TYPE. The front end already
-            // decided that type -- the common numeric type when the branches differ -- but
-            // deciding it is not the same as producing it: without these conversions, `n > 0 ? anInt
-            // : aLong` lowers to a phi whose result is `i64` and whose first incoming value is
-            // still `i32`, and the LLVM verifier rejects the module with "PHI node operands are not
-            // the same type as the result". Same treatment the binary operators give their operands
-            // once commonNumericType has spoken.
-            const auto convertBranch = [&](std::unique_ptr<ProjectOopHirNode>& branch,
-                                           const ast::AstNode* syntax)
-            {
-                if (branch->typeKey == resultType) return;
-                const MethodExpressionTypeBinding* binding = expressionType(syntax);
-                const ProjectImplicitConversion conversion = ProjectTypeConversion::classifyImplicit(
-                    branch->typeKey,
-                    resultType,
-                    binding != nullptr ? binding->integerConstant : std::nullopt);
-                if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
-                {
-                    branch = wrapImplicitConversion(std::move(branch), conversion, syntax);
-                }
-            };
-            convertBranch(whenTrue, expression->second());
-            convertBranch(whenFalse, expression->third());
-
-            node->children.push_back(std::move(condition));
-            node->children.push_back(std::move(whenTrue));
-            node->children.push_back(std::move(whenFalse));
-            return node;
+            return buildConditionalExpression(
+                expression,
+                std::move(condition),
+                std::move(whenTrue),
+                std::move(whenFalse));
         }
 
         case ast::AstNodeKind::BinaryExpression:

@@ -866,6 +866,12 @@ private:
         std::unique_ptr<ProjectOopHirNode> left,
         std::unique_ptr<ProjectOopHirNode> right);
 
+    std::unique_ptr<ProjectOopHirNode> buildConditionalExpression(
+        const ast::AstNode* expression,
+        std::unique_ptr<ProjectOopHirNode> condition,
+        std::unique_ptr<ProjectOopHirNode> whenTrue,
+        std::unique_ptr<ProjectOopHirNode> whenFalse);
+
     std::unique_ptr<ProjectOopHirNode> lowerBoundCall(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
