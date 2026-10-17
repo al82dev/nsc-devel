@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .catalog import expand_variants, refresh_run_variants
+from .catalog import CanonicalCatalog, expand_variants, refresh_run_variants
 from .configuration import BuilderConfig
 from .execution import retry_variants
 from .models import CaseOutcome, CaseRecord, PreparationFailure, RunVariant
