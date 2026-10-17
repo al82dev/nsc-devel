@@ -125,6 +125,15 @@ struct ProjectOopHirModelTestAccess final
         return std::move(model.functions_.front().body);
     }
 
+    static void setDumperFieldInitializer(
+        ProjectOopHirModel& model,
+        std::unique_ptr<ProjectOopHirNode> value)
+    {
+        ProjectOopHirFieldInitializer initializer;
+        initializer.value = std::move(value);
+        model.fieldInitializers_.push_back(std::move(initializer));
+    }
+
     static bool stackClassLocalUsesAreSafe(
         const ProjectOopHirNode* node,
         const ProjectOopHirNode* declaration,
@@ -2037,6 +2046,33 @@ void testDeepHirCoordinatorWalker(TestContext& tests, std::string_view walker)
     }
     destroyHirTreeIteratively(root);
 }
+
+void testDeepHirModelDestruction(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    const auto makeDeepTree = []
+    {
+        auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        auto* cursor = root.get();
+        for (std::size_t index = 0; index < nestingDepth; ++index)
+        {
+            auto child = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+            child->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+            cursor->children.push_back(std::move(child));
+            cursor = cursor->children.front().get();
+        }
+        return root;
+    };
+
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setDumperBody(
+        model, makeDeepTree());
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setDumperFieldInitializer(
+        model, makeDeepTree());
+    tests.expect(true,
+        "32768-level HIR function and field roots reach model destruction without extraction");
+}
 }
 
 int main()
@@ -2116,6 +2152,10 @@ int main()
     {
         testDeepHirCoordinatorWalker(
             tests, focusValue.substr(std::string_view("hir-coordinator-walker-").size()));
+    }
+    else if (focusValue == "hir-model-destruction-depth")
+    {
+        testDeepHirModelDestruction(tests);
     }
     else
     {

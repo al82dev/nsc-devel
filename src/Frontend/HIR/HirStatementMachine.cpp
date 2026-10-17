@@ -35,24 +35,6 @@ struct StaticAssertConstant final
     bool booleanValue = false;
 };
 
-void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root)
-{
-    if (root == nullptr) return;
-    std::vector<ProjectOopHirNode*> pending;
-    pending.push_back(root.release());
-    while (!pending.empty())
-    {
-        ProjectOopHirNode* current = pending.back();
-        pending.pop_back();
-        for (std::unique_ptr<ProjectOopHirNode>& child : current->children)
-        {
-            if (child != nullptr) pending.push_back(child.release());
-        }
-        current->children.clear();
-        delete current;
-    }
-}
-
 std::optional<unsigned> staticAssertIntegerWidth(std::string_view typeKey) noexcept
 {
     if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") return 8U;

@@ -1,10 +1,18 @@
-#include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "HirLoweringSupport.h"
 
 // Public model facade extracted by H01B1. The build implementation lives in
 // HirBuildCoordinator.cpp; lowering components are split by the remaining H01 slices.
 
 namespace nativesharp::frontend
 {
+ProjectOopHirModel::~ProjectOopHirModel()
+{
+    for (ProjectOopHirFunction& function : functions_)
+        destroyHirTreeIteratively(function.body);
+    for (ProjectOopHirFieldInitializer& initializer : fieldInitializers_)
+        destroyHirTreeIteratively(initializer.value);
+}
+
 bool ProjectOopHirModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,

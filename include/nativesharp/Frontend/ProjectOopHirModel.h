@@ -782,6 +782,8 @@ struct ProjectOopHirFunction final
 class ProjectOopHirModel final
 {
 public:
+    ~ProjectOopHirModel();
+
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
