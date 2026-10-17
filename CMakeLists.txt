@@ -386,6 +386,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/CallAnalyzer.cpp
     src/Frontend/Bodies/MemberAccessAnalyzer.cpp
     src/Frontend/Bodies/AssignmentAnalyzer.cpp
+    src/Frontend/Bodies/ConstructionAnalyzer.cpp
+    src/Frontend/Bodies/PatternAnalyzer.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
