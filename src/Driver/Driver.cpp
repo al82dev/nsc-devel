@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/Driver.h"
+#include "CompilerInvocation.h"
 #include "nativesharp/Driver/ProjectCommands.h"
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
@@ -138,22 +139,6 @@ using target::BuiltinLayoutKind;
 constexpr char kTemporaryDefaultGenericsTracePath[] =
     R"(A:\temp\nsc-generics-trace.log)";
 #endif // INSTRUMENTATION CODE
-
-bool parseBoundedDecimal(
-    std::string_view text, std::size_t maximum, std::size_t& value) noexcept
-{
-    if (text.empty()) return false;
-    std::size_t parsed = 0;
-    for (const unsigned char ch : text)
-    {
-        if (std::isdigit(ch) == 0) return false;
-        const std::size_t digit = static_cast<std::size_t>(ch - '0');
-        if (parsed > (maximum - digit) / 10U) return false;
-        parsed = parsed * 10U + digit;
-    }
-    value = parsed;
-    return true;
-}
 
 struct DriverExecutionScope final
 {
@@ -3939,6 +3924,30 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
 }
 } // namespace
 
+#if 0 // INSTRUMENTATION CODE: exact file-open effects for the parked CLI parser.
+ExitCode openCompilerGenericsTrace(
+    const std::filesystem::path& path,
+    std::string_view displayPath,
+    bool automatic,
+    std::ostream& error)
+{
+    const std::filesystem::path tracePath = automatic
+        ? std::filesystem::path(kTemporaryDefaultGenericsTracePath)
+        : path;
+    if (activeExecutionScope != nullptr && activeExecutionScope->openGenericsTrace(tracePath))
+        return ExitCode::Success;
+    if (automatic)
+    {
+        error << "nsc: error: could not open temporary generics trace file '"
+              << kTemporaryDefaultGenericsTracePath << "'\n";
+        return ExitCode::CompilationError;
+    }
+    error << "nsc: error: could not open generics trace file '"
+          << displayPath << "'\n";
+    return ExitCode::CommandLineError;
+}
+#endif // INSTRUMENTATION CODE
+
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
     CompilerConsoleArguments consoleArguments =
@@ -3980,937 +3989,124 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return ExitCode::Success;
     }
 
-    llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
-    bool optimizationLevelSeen = false;
-    std::optional<CompilationProfile> compilationProfile;
-    bool compilationProfileSeen = false;
-    bool optimizationBudgetSeen = false;
-    bool jobCountSeen = false;
-    bool reservedCoresSeen = false;
-    bool artifactCacheSeen = false;
-    bool artifactCacheDisabled = false;
-    bool artifactCacheMaximumSeen = false;
-#if 0 // INSTRUMENTATION CODE
-    bool genericsTraceSeen = false;
-#endif // INSTRUMENTATION CODE
-    std::uintmax_t artifactCacheMaximumBytes = 0;
-    bool libraryReferenceRootSeen = false;
-    bool genericInstantiationDepthSeen = false;
-    bool genericInstantiationCountSeen = false;
-    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
-        llvm_backend::LinkTimeOptimizationMode::None;
-    bool linkTimeOptimizationSeen = false;
-    bool incrementalLink = false;
-    llvm_backend::FloatingPointMode floatingPointMode = llvm_backend::FloatingPointMode::Precise;
-    bool floatingPointModeSeen = false;
-    llvm_backend::FmaContractPolicy fmaContractPolicy = llvm_backend::FmaContractPolicy::Off;
-    bool fmaContractPolicySeen = false;
-    llvm_backend::FloatingPointRoundingMode floatingPointRoundingMode =
-        llvm_backend::FloatingPointRoundingMode::Dynamic;
-    bool floatingPointRoundingModeSeen = false;
-    llvm_backend::FloatingPointDenormalMode floatingPointDenormalMode =
-        llvm_backend::FloatingPointDenormalMode::Preserve;
-    bool floatingPointDenormalModeSeen = false;
-    llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
-    bool debugInformationSeen = false;
-    std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
-    linker::WindowsExecutableSubsystem subsystem = linker::WindowsExecutableSubsystem::Console;
-    bool subsystemSeen = false;
-    std::vector<std::string_view> normalizedArguments;
-    normalizedArguments.reserve(arguments.size());
-    std::string projectConfiguredOutput;
-    // Interop Foundation: external .lib inputs for the link. Extracted here (like
-    // -O) so every positional action keeps its exact shape; consumed by the
-    // exe/dll emission paths.
-    std::vector<std::filesystem::path> extraLinkLibraries;
+    CompilerInvocation invocation;
+    const ExitCode invocationResult = parseCompilerInvocation(
+        arguments, executionScope.projectLoader, invocation, error);
 
-    for (std::size_t argumentIndex = 0; argumentIndex < arguments.size(); ++argumentIndex)
+    executionScope.reportTiming = invocation.reportTiming;
+    executionScope.reportProgress = invocation.reportProgress;
+    executionScope.progressFormat = invocation.progressFormat;
+    executionScope.projectLoadOptions = invocation.projectLoadOptions;
+    if (invocation.timeoutMilliseconds.has_value())
     {
-        const std::string_view argument = arguments[argumentIndex];
-        const std::string foldedArgument = foldedName(std::string(argument));
-        if (argument == "--time")
-        {
-            executionScope.reportTiming = true;
-            continue;
-        }
-        if (argument == "--progress")
-        {
-            executionScope.reportProgress = true;
-            continue;
-        }
-        if (argument.starts_with("--progress="))
-        {
-            executionScope.reportProgress = true;
-            const std::string_view value =
-                argument.substr(std::string_view("--progress=").size());
-            if (!parseProgressFormat(value, executionScope.progressFormat))
-            {
-                error << "nsc: error: " << compilerText(
-                    "unsupported progress format '",
-                    "formato de progreso no compatible '")
-                      << value << compilerText("'; expected text or json\n",
-                                               "'; se esperaba text o json\n");
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-        if (argument.starts_with("--progress-format="))
-        {
-            const std::string_view value =
-                argument.substr(std::string_view("--progress-format=").size());
-            if (!parseProgressFormat(value, executionScope.progressFormat))
-            {
-                error << "nsc: error: " << compilerText(
-                    "unsupported progress format '",
-                    "formato de progreso no compatible '")
-                      << value << compilerText("'; expected text or json\n",
-                                               "'; se esperaba text o json\n");
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-#if 0 // INSTRUMENTATION CODE: optional --generics-trace parser.
-        if (argument == "--generics-trace" || argument.starts_with("--generics-trace="))
-        {
-            if (genericsTraceSeen)
-            {
-                error << "nsc: error: duplicate --generics-trace option\n";
-                return ExitCode::CommandLineError;
-            }
-            genericsTraceSeen = true;
-            std::string_view value;
-            if (argument == "--generics-trace")
-            {
-                if (argumentIndex + 1U >= arguments.size())
-                {
-                    error << "nsc: error: --generics-trace requires a file path\n";
-                    return ExitCode::CommandLineError;
-                }
-                value = arguments[++argumentIndex];
-            }
-            else
-            {
-                value = argument.substr(std::string_view("--generics-trace=").size());
-            }
-            if (value.empty())
-            {
-                error << "nsc: error: --generics-trace requires a non-empty file path\n";
-                return ExitCode::CommandLineError;
-            }
-            if (!executionScope.openGenericsTrace(std::filesystem::path(value)))
-            {
-                error << "nsc: error: could not open generics trace file '"
-                      << value << "'\n";
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-#endif // INSTRUMENTATION CODE
-        if (argument == "--llvm-pass-trace")
-        {
-            continue;
-        }
-        if (argument == "--incremental-link")
-        {
-            incrementalLink = true;
-            continue;
-        }
-        if (argument == "-flto")
-        {
-            if (linkTimeOptimizationSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate link-time optimization mode\n",
-                    "el modo de optimización en tiempo de enlace está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            linkTimeOptimizationSeen = true;
-            linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Full;
-            continue;
-        }
-        if (argument.starts_with("-flto="))
-        {
-            if (linkTimeOptimizationSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate link-time optimization mode\n",
-                    "el modo de optimización en tiempo de enlace está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            linkTimeOptimizationSeen = true;
-            if (argument == "-flto=thin")
-                linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Thin;
-            else if (argument == "-flto=full")
-                linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Full;
-            else
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported link-time optimization mode '",
-                             "modo de optimización en tiempo de enlace no compatible '")
-                      << argument << compilerText(
-                             "'; expected -flto, -flto=full, or -flto=thin\n",
-                             "'; se esperaba -flto, -flto=full o -flto=thin\n");
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-        static constexpr std::string_view floatingPointModePrefix = "--fp-mode=";
-        if (argument.starts_with(floatingPointModePrefix))
-        {
-            if (floatingPointModeSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate floating-point mode\n", "el modo de punto flotante está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointModeSeen = true;
-            const std::optional<llvm_backend::FloatingPointMode> parsed =
-                llvm_backend::parseFloatingPointMode(argument.substr(floatingPointModePrefix.size()));
-            if (!parsed.has_value())
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported floating-point mode '",
-                             "modo de punto flotante no compatible '")
-                      << argument << compilerText(
-                             "'; expected --fp-mode=strict, precise, fast, or deterministic\n",
-                             "'; se esperaba --fp-mode=strict, precise, fast o deterministic\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointMode = *parsed;
-            continue;
-        }
-        static constexpr std::string_view fmaContractPrefix = "--fp-contract=";
-        if (argument.starts_with(fmaContractPrefix))
-        {
-            if (fmaContractPolicySeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate FMA contraction policy\n", "la política de contracción FMA está repetida\n");
-                return ExitCode::CommandLineError;
-            }
-            fmaContractPolicySeen = true;
-            const std::optional<llvm_backend::FmaContractPolicy> parsed =
-                llvm_backend::parseFmaContractPolicy(argument.substr(fmaContractPrefix.size()));
-            if (!parsed.has_value())
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported FMA contraction policy '",
-                             "política de contracción FMA no compatible '")
-                      << argument << compilerText(
-                             "'; expected --fp-contract=off, on, or fast\n",
-                             "'; se esperaba --fp-contract=off, on o fast\n");
-                return ExitCode::CommandLineError;
-            }
-            fmaContractPolicy = *parsed;
-            continue;
-        }
-        static constexpr std::string_view floatingPointRoundingPrefix = "--fp-rounding=";
-        if (argument.starts_with(floatingPointRoundingPrefix))
-        {
-            if (floatingPointRoundingModeSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate floating-point rounding mode\n",
-                    "el modo de redondeo de punto flotante está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointRoundingModeSeen = true;
-            const std::optional<llvm_backend::FloatingPointRoundingMode> parsed =
-                llvm_backend::parseFloatingPointRoundingMode(
-                    argument.substr(floatingPointRoundingPrefix.size()));
-            if (!parsed.has_value())
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported floating-point rounding mode '",
-                             "modo de redondeo de punto flotante no compatible '")
-                      << argument << compilerText(
-                             "'; expected --fp-rounding=dynamic, nearest-even, toward-zero, upward, or downward\n",
-                             "'; se esperaba --fp-rounding=dynamic, nearest-even, toward-zero, upward o downward\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointRoundingMode = *parsed;
-            continue;
-        }
-        static constexpr std::string_view floatingPointDenormalPrefix = "--fp-denormal=";
-        if (argument.starts_with(floatingPointDenormalPrefix))
-        {
-            if (floatingPointDenormalModeSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate floating-point denormal mode\n",
-                    "el modo de desnormalizados de punto flotante está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointDenormalModeSeen = true;
-            const std::optional<llvm_backend::FloatingPointDenormalMode> parsed =
-                llvm_backend::parseFloatingPointDenormalMode(
-                    argument.substr(floatingPointDenormalPrefix.size()));
-            if (!parsed.has_value())
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported floating-point denormal mode '",
-                             "modo de desnormalizados de punto flotante no compatible '")
-                      << argument << compilerText(
-                             "'; expected --fp-denormal=preserve, ftz, daz, or ftz-daz\n",
-                             "'; se esperaba --fp-denormal=preserve, ftz, daz o ftz-daz\n");
-                return ExitCode::CommandLineError;
-            }
-            floatingPointDenormalMode = *parsed;
-            continue;
-        }
-        static constexpr std::string_view compilationProfilePrefix = "--profile=";
-        if (argument.starts_with(compilationProfilePrefix))
-        {
-            if (compilationProfileSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate compilation profile\n", "el perfil de compilación está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            compilationProfileSeen = true;
-            compilationProfile = parseCompilationProfile(
-                argument.substr(compilationProfilePrefix.size()));
-            if (!compilationProfile.has_value())
-            {
-                error << "nsc: error: " << compilerText(
-                             "unsupported compilation profile '",
-                             "perfil de compilación no compatible '")
-                      << argument << compilerText(
-                             "'; expected --profile=debug or --profile=release\n",
-                             "'; se esperaba --profile=debug o --profile=release\n");
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-        if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
-        {
-            if (jobCountSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate compilation job count\n", "el número de trabajos de compilación está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            jobCountSeen = true;
-            std::string_view value;
-            if (argument == "-j")
-            {
-                if (argumentIndex + 1U >= arguments.size())
-                {
-                    error << "nsc: error: " << compilerText(
-                        "-j requires a job count from 1 through 1024\n",
-                        "-j requiere un número de trabajos entre 1 y 1024\n");
-                    return ExitCode::CommandLineError;
-                }
-                value = arguments[++argumentIndex];
-            }
-            else
-            {
-                value = argument.substr(2);
-            }
-            std::size_t jobs = 0;
-            if (!parseBoundedDecimal(value, kMaximumCompilationJobs, jobs) || jobs == 0)
-            {
-                error << "nsc: error: " << compilerText(
-                    "compilation job count must be between 1 and 1024\n",
-                    "el número de trabajos de compilación debe estar entre 1 y 1024\n");
-                return ExitCode::CommandLineError;
-            }
-            jobPolicy.setRequestedJobs(jobs);
-            continue;
-        }
-        static constexpr std::string_view reservedCoresPrefix = "--reserve-cores=";
-        if (argument.starts_with(reservedCoresPrefix))
-        {
-            if (reservedCoresSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate reserved-core count\n", "el número de núcleos reservados está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            reservedCoresSeen = true;
-            const std::string_view value = argument.substr(reservedCoresPrefix.size());
-            std::size_t reserved = 0;
-            if (!parseBoundedDecimal(value, kMaximumCompilationJobs - 1U, reserved))
-            {
-                error << "nsc: error: " << compilerText(
-                    "reserved-core count must be between 0 and 1023\n",
-                    "el número de núcleos reservados debe estar entre 0 y 1023\n");
-                return ExitCode::CommandLineError;
-            }
-            jobPolicy.setReservedCores(reserved);
-            continue;
-        }
-        if (argument == "--no-artifact-cache")
-        {
-            if (artifactCacheDisabled || artifactCacheSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "conflicting artifact-cache policy\n",
-                    "la política de caché de artefactos tiene opciones incompatibles\n");
-                return ExitCode::CommandLineError;
-            }
-            artifactCacheDisabled = true;
-            continue;
-        }
-        static constexpr std::string_view artifactCachePrefix = "--artifact-cache=";
-        if (argument.starts_with(artifactCachePrefix))
-        {
-            if (artifactCacheSeen || artifactCacheDisabled)
-            {
-                error << "nsc: error: " << compilerText(
-                    "conflicting artifact-cache policy\n",
-                    "la política de caché de artefactos tiene opciones incompatibles\n");
-                return ExitCode::CommandLineError;
-            }
-            artifactCacheSeen = true;
-            const std::string_view value = argument.substr(artifactCachePrefix.size());
-            const std::filesystem::path cachePath{std::string(value)};
-            if (value.empty() || !cachePath.is_absolute())
-            {
-                error << "nsc: error: " << compilerText(
-                             "artifact cache requires an absolute directory: '",
-                             "la caché de artefactos requiere un directorio absoluto: '")
-                      << value << "'\n";
-                return ExitCode::CommandLineError;
-            }
-            artifactCache.setRoot(cachePath);
-            continue;
-        }
-        static constexpr std::string_view artifactCacheMaximumPrefix =
-            "--artifact-cache-max-mb=";
-        if (argument.starts_with(artifactCacheMaximumPrefix))
-        {
-            if (artifactCacheMaximumSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate artifact-cache size limit\n",
-                    "el límite de tamaño de la caché de artefactos está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            artifactCacheMaximumSeen = true;
-            std::size_t maximumMiB = 0;
-            if (!parseBoundedDecimal(
-                    argument.substr(artifactCacheMaximumPrefix.size()),
-                    1024U * 1024U, maximumMiB))
-            {
-                error << "nsc: error: " << compilerText(
-                    "artifact-cache size limit must be between 0 and 1048576 MiB\n",
-                    "el límite de la caché debe estar entre 0 y 1048576 MiB\n");
-                return ExitCode::CommandLineError;
-            }
-            artifactCacheMaximumBytes =
-                static_cast<std::uintmax_t>(maximumMiB) * 1024U * 1024U;
-            continue;
-        }
-        static constexpr std::string_view libraryReferenceRootOption = "--library-reference-root";
-        static constexpr std::string_view libraryReferenceRootPrefix = "--library-reference-root=";
-        if (argument == libraryReferenceRootOption || argument.starts_with(libraryReferenceRootPrefix))
-        {
-            if (libraryReferenceRootSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate library-reference root\n", "la raíz de referencias de bibliotecas está repetida\n");
-                return ExitCode::CommandLineError;
-            }
-            libraryReferenceRootSeen = true;
-            std::string_view value;
-            if (argument == libraryReferenceRootOption)
-            {
-                if (argumentIndex + 1U >= arguments.size())
-                {
-                    error << "nsc: error: " << compilerText(
-                        "--library-reference-root requires an absolute directory\n",
-                        "--library-reference-root requiere un directorio absoluto\n");
-                    return ExitCode::CommandLineError;
-                }
-                value = arguments[++argumentIndex];
-            }
-            else
-            {
-                value = argument.substr(libraryReferenceRootPrefix.size());
-            }
-            const std::filesystem::path root{std::string(value)};
-            if (value.empty() || !root.is_absolute())
-            {
-                error << "nsc: error: " << compilerText(
-                             "library-reference root requires an absolute directory: '",
-                             "la raíz de referencias de bibliotecas requiere un directorio absoluto: '")
-                      << value << "'\n";
-                return ExitCode::CommandLineError;
-            }
-            executionScope.projectLoadOptions.libraryReferenceRoot = root.lexically_normal();
-            continue;
-        }
-        static constexpr std::string_view genericDepthPrefix = "--generic-depth-limit=";
-        if (argument.starts_with(genericDepthPrefix))
-        {
-            if (genericInstantiationDepthSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate generic instantiation depth limit\n",
-                    "el límite de profundidad de instanciación genérica está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            genericInstantiationDepthSeen = true;
-            std::size_t depth = 0;
-            if (!parseBoundedDecimal(
-                    argument.substr(genericDepthPrefix.size()),
-                    compilation::MaximumGenericInstantiationDepth, depth) || depth == 0)
-            {
-                error << "nsc: error: " << compilerText(
-                    "generic instantiation depth limit must be between 1 and 4096\n",
-                    "el límite de profundidad de instanciación genérica debe estar entre 1 y 4096\n");
-                return ExitCode::CommandLineError;
-            }
-            executionScope.projectLoadOptions.genericInstantiationDepth = depth;
-            continue;
-        }
-        static constexpr std::string_view genericCountPrefix = "--generic-instantiation-limit=";
-        if (argument.starts_with(genericCountPrefix))
-        {
-            if (genericInstantiationCountSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate generic instantiation count limit\n",
-                    "el límite de cantidad de instanciaciones genéricas está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            genericInstantiationCountSeen = true;
-            std::size_t count = 0;
-            if (!parseBoundedDecimal(
-                    argument.substr(genericCountPrefix.size()),
-                    compilation::MaximumGenericInstantiationCount, count) || count == 0)
-            {
-                error << "nsc: error: " << compilerText(
-                    "generic instantiation count limit must be between 1 and 1048576\n",
-                    "el límite de cantidad de instanciaciones genéricas debe estar entre 1 y 1048576\n");
-                return ExitCode::CommandLineError;
-            }
-            executionScope.projectLoadOptions.genericInstantiationCount = count;
-            continue;
-        }
-        static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
-        if (argument.starts_with(timeoutPrefix))
-        {
-            const std::string_view value = argument.substr(timeoutPrefix.size());
-            std::uint64_t milliseconds = 0;
-            if (value.empty() || value.size() > 8U ||
-                !std::ranges::all_of(value, [](unsigned char ch) { return std::isdigit(ch) != 0; }))
-            {
-                error << "nsc: error: " << compilerText(
-                    "malformed timeout; expected --timeout-ms=1..86400000\n",
-                    "tiempo límite mal formado; se esperaba --timeout-ms=1..86400000\n");
-                return ExitCode::CommandLineError;
-            }
-            for (char ch : value) milliseconds = milliseconds * 10U + static_cast<unsigned>(ch - '0');
-            if (milliseconds == 0 || milliseconds > 86400000U)
-            {
-                error << "nsc: error: " << compilerText(
-                    "timeout must be between 1 and 86400000 milliseconds\n",
-                    "el tiempo límite debe estar entre 1 y 86400000 milisegundos\n");
-                return ExitCode::CommandLineError;
-            }
-            executionScope.deadline = executionScope.started + std::chrono::milliseconds(milliseconds);
-            continue;
-        }
-        static constexpr std::string_view o2BudgetPrefix = "--o2-budget-ms=";
-        if (argument.starts_with(o2BudgetPrefix))
-        {
-            if (optimizationBudgetSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate O2 optimization budget\n", "el presupuesto de optimización O2 está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            optimizationBudgetSeen = true;
-            const std::string_view value = argument.substr(o2BudgetPrefix.size());
-            std::uint64_t milliseconds = 0;
-            if (value.empty() || value.size() > 8U ||
-                !std::ranges::all_of(value, [](unsigned char ch) { return std::isdigit(ch) != 0; }))
-            {
-                error << "nsc: error: malformed O2 budget; expected --o2-budget-ms=1..86400000\n";
-                return ExitCode::CommandLineError;
-            }
-            for (char ch : value) milliseconds = milliseconds * 10U + static_cast<unsigned>(ch - '0');
-            if (milliseconds == 0 || milliseconds > 86400000U)
-            {
-                error << "nsc: error: O2 budget must be between 1 and 86400000 milliseconds\n";
-                return ExitCode::CommandLineError;
-            }
-            executionScope.o2Budget.setBudgetMilliseconds(milliseconds);
-            continue;
-        }
-        if (foldedArgument.starts_with("/subsystem:"))
-        {
-            if (subsystemSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate executable subsystem\n", "el subsistema del ejecutable está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            subsystemSeen = true;
-            if (foldedArgument == "/subsystem:console")
-            {
-                subsystem = linker::WindowsExecutableSubsystem::Console;
-            }
-            else if (foldedArgument == "/subsystem:windows")
-            {
-                subsystem = linker::WindowsExecutableSubsystem::Windows;
-            }
-            else
-            {
-                error << "nsc: error: unsupported executable subsystem '" << argument
-                      << "'; expected /subsystem:console or /subsystem:windows\n";
-                return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-        if (argument == "--link-lib")
-        {
-            if (argumentIndex + 1 >= arguments.size())
-            {
-                error << "nsc: error: " << compilerText(
-                    "--link-lib requires a library file path\n",
-                    "--link-lib requiere la ruta de un archivo de biblioteca\n");
-                return ExitCode::CommandLineError;
-            }
-            extraLinkLibraries.emplace_back(std::string(arguments[++argumentIndex]));
-            continue;
-        }
-        static constexpr std::string_view debugPrefixMapOption = "-fdebug-prefix-map=";
-        if (argument.starts_with(debugPrefixMapOption))
-        {
-            const std::string_view mapping = argument.substr(debugPrefixMapOption.size());
-            const std::size_t separator = mapping.find('=');
-            if (separator == std::string_view::npos || separator == 0 || separator + 1 == mapping.size())
-            {
-                error << "nsc: error: malformed debug prefix map '" << argument
-                      << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
-                return ExitCode::CommandLineError;
-            }
-            std::filesystem::path sourcePrefix(std::string(mapping.substr(0, separator)));
-            if (!sourcePrefix.is_absolute())
-            {
-                error << "nsc: error: debug prefix map source must be absolute: '"
-                      << mapping.substr(0, separator) << "'\n";
-                return ExitCode::CommandLineError;
-            }
-            debugPrefixMaps.push_back(llvm_backend::DebugPrefixMap{
-                std::move(sourcePrefix),
-                std::filesystem::path(std::string(mapping.substr(separator + 1)))});
-            continue;
-        }
-        if (argument.starts_with("-fdebug-prefix-map"))
-        {
-            error << "nsc: error: malformed debug prefix map '" << argument
-                  << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
-            return ExitCode::CommandLineError;
-        }
-        if (argument.size() == 3 && argument[0] == '-' && argument[1] == 'O')
-        {
-            if (optimizationLevelSeen)
-            {
-                error << "nsc: error: " << compilerText(
-                    "duplicate LLVM optimization level\n", "el nivel de optimización LLVM está repetido\n");
-                return ExitCode::CommandLineError;
-            }
-            optimizationLevelSeen = true;
-            switch (argument[2])
-            {
-                case '0': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0; break;
-                case '1': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O1; break;
-                case '2': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2; break;
-                case '3': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3; break;
-                default:
-                    error << "nsc: error: " << compilerText(
-                                 "unsupported LLVM optimization level '",
-                                 "nivel de optimización LLVM no compatible '")
-                          << argument << "'\n";
-                    return ExitCode::CommandLineError;
-            }
-            continue;
-        }
-        if (argument == "-g0")
-        {
-            debugInformation = llvm_backend::DebugInformationKind::None;
-            debugInformationSeen = true;
-            continue;
-        }
-        if (argument == "-gline-tables-only")
-        {
-            debugInformation = llvm_backend::DebugInformationKind::LineTablesOnly;
-            debugInformationSeen = true;
-            continue;
-        }
-        if (argument == "-g")
-        {
-            debugInformation = llvm_backend::DebugInformationKind::Full;
-            debugInformationSeen = true;
-            continue;
-        }
-        if (argument.starts_with("-g"))
-        {
-            error << "nsc: error: unsupported debug information option '" << argument
-                  << "'; expected -g0, -gline-tables-only or -g\n";
-            return ExitCode::CommandLineError;
-        }
-        if (argument.size() >= 2 && argument[0] == '-' && argument[1] == 'O')
-        {
-            error << "nsc: error: unsupported LLVM optimization level '" << argument << "'\n";
-            return ExitCode::CommandLineError;
-        }
-        normalizedArguments.push_back(argument);
+        executionScope.deadline = executionScope.started +
+            std::chrono::milliseconds(*invocation.timeoutMilliseconds);
     }
-
-    if (artifactCacheDisabled && artifactCacheMaximumSeen)
+    if (invocation.optimizationBudgetMilliseconds.has_value())
     {
-        error << "nsc: error: " << compilerText(
-            "conflicting artifact-cache policy\n",
-            "la política de caché de artefactos tiene opciones incompatibles\n");
-        return ExitCode::CommandLineError;
+        executionScope.o2Budget.setBudgetMilliseconds(
+            *invocation.optimizationBudgetMilliseconds);
     }
+    if (invocation.requestedJobs.has_value())
+        jobPolicy.setRequestedJobs(*invocation.requestedJobs);
+    if (invocation.reservedCores.has_value())
+        jobPolicy.setReservedCores(*invocation.reservedCores);
+    if (invocationResult != ExitCode::Success) return invocationResult;
 
-    const auto isProjectBuildAction = [](std::string_view action)
+    floatingPointModeScope.set(invocation.floatingPointMode);
+    floatingPointModeScope.setFmaContractPolicy(invocation.fmaContractPolicy);
+    floatingPointModeScope.setRoundingMode(invocation.floatingPointRoundingMode);
+    floatingPointModeScope.setDenormalMode(invocation.floatingPointDenormalMode);
+
+    if (invocation.floatingPointModeSeen)
     {
-        return action == "--emit-project-oop-obj" ||
-            action == "--emit-project-oop-exe" ||
-            action == "--emit-project-oop-lib" ||
-            action == "--emit-project-oop-dll";
-    };
-    const bool projectBuildAction = normalizedArguments.size() >= 2U &&
-        isProjectBuildAction(normalizedArguments[0]);
-    const bool projectSettingsAction = normalizedArguments.size() >= 2U &&
-        std::filesystem::path(std::string(normalizedArguments[1])).extension() == ".nsproj";
-#if 0 // INSTRUMENTATION CODE: automatic A:\temp trace remains preserved but disabled.
-    if (projectSettingsAction && !genericsTraceSeen)
-    {
-        if (!executionScope.openGenericsTrace(kTemporaryDefaultGenericsTracePath))
-        {
-            error << "nsc: error: could not open temporary generics trace file '"
-                  << kTemporaryDefaultGenericsTracePath << "'\n";
-            return ExitCode::CompilationError;
-        }
+        output << "floating-point-mode: "
+               << llvm_backend::floatingPointModeName(invocation.floatingPointMode)
+               << '\n';
     }
-#endif // INSTRUMENTATION CODE
-    if (projectSettingsAction)
+    if (invocation.fmaContractPolicySeen)
     {
-        std::string settingsError;
-        const std::optional<compilation::ProjectBuildSettings> projectSettings =
-            executionScope.projectLoader.loadBuildSettings(
-                std::filesystem::path(std::string(normalizedArguments[1])), settingsError);
-        if (!projectSettings.has_value())
-        {
-            error << "nsc: error: " << settingsError << '\n';
-            return ExitCode::CompilationError;
-        }
-        if (!optimizationLevelSeen && !compilationProfileSeen &&
-            projectSettings->optimizationLevel.has_value())
-        {
-            switch (*projectSettings->optimizationLevel)
-            {
-                case 0U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0; break;
-                case 1U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O1; break;
-                case 2U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2; break;
-                case 3U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3; break;
-                default: break;
-            }
-            optimizationLevelSeen = true;
-        }
-        if (!jobCountSeen && projectSettings->compilerJobs.has_value())
-        {
-            jobPolicy.setRequestedJobs(*projectSettings->compilerJobs);
-        }
-        if (!libraryReferenceRootSeen && projectSettings->libraryReferenceRoot.has_value())
-        {
-            executionScope.projectLoadOptions.libraryReferenceRoot =
-                projectSettings->libraryReferenceRoot->lexically_normal();
-        }
-        else if (!libraryReferenceRootSeen &&
-                 !executionScope.projectLoadOptions.libraryReferenceRoot.has_value())
-        {
-            char* environmentRoot = nullptr;
-            std::size_t environmentRootLength = 0;
-            if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
-                environmentRoot != nullptr && *environmentRoot != '\0')
-            {
-                const std::filesystem::path root{environmentRoot};
-                if (root.is_absolute())
-                    executionScope.projectLoadOptions.libraryReferenceFallbackRoot =
-                        root.lexically_normal();
-            }
-            std::free(environmentRoot);
-        }
-        if (!genericInstantiationDepthSeen &&
-            projectSettings->genericInstantiationDepth.has_value())
-        {
-            executionScope.projectLoadOptions.genericInstantiationDepth =
-                projectSettings->genericInstantiationDepth;
-        }
-        if (!genericInstantiationCountSeen &&
-            projectSettings->genericInstantiationCount.has_value())
-        {
-            executionScope.projectLoadOptions.genericInstantiationCount =
-                projectSettings->genericInstantiationCount;
-        }
-        if (projectBuildAction && normalizedArguments.size() == 2U &&
-            projectSettings->outputPath.has_value())
-        {
-            std::error_code directoryError;
-            const std::filesystem::path parent = projectSettings->outputPath->parent_path();
-            if (!parent.empty())
-            {
-                std::filesystem::create_directories(parent, directoryError);
-            }
-            if (directoryError)
-            {
-                error << "nsc: error: cannot create project OutputPath directory '"
-                      << parent.string() << "': " << directoryError.message() << '\n';
-                return ExitCode::CompilationError;
-            }
-            projectConfiguredOutput = projectSettings->outputPath->string();
-            normalizedArguments.push_back("-o");
-            normalizedArguments.push_back(projectConfiguredOutput);
-        }
+        output << "fma-contract-policy: "
+               << llvm_backend::fmaContractPolicyName(invocation.fmaContractPolicy)
+               << '\n';
     }
-
-    const CompilationProfileSettings profileSettings = resolveCompilationProfile(
-        compilationProfile,
-        optimizationLevelSeen
-            ? std::optional<llvm_backend::LlvmOptimizationLevel>{optimizationLevel}
-            : std::nullopt,
-        debugInformationSeen
-            ? std::optional<llvm_backend::DebugInformationKind>{debugInformation}
-            : std::nullopt);
-    optimizationLevel = profileSettings.optimizationLevel;
-    debugInformation = profileSettings.debugInformation;
-    floatingPointModeScope.set(floatingPointMode);
-    if (!fmaContractPolicySeen && floatingPointMode == llvm_backend::FloatingPointMode::Fast)
-        fmaContractPolicy = llvm_backend::FmaContractPolicy::Fast;
-    floatingPointModeScope.setFmaContractPolicy(fmaContractPolicy);
-    if (!floatingPointRoundingModeSeen &&
-        (floatingPointMode == llvm_backend::FloatingPointMode::Deterministic ||
-         floatingPointMode == llvm_backend::FloatingPointMode::Strict))
-        floatingPointRoundingMode = llvm_backend::FloatingPointRoundingMode::NearestEven;
-    floatingPointModeScope.setRoundingMode(floatingPointRoundingMode);
-    floatingPointModeScope.setDenormalMode(floatingPointDenormalMode);
-
-    if (floatingPointModeSeen)
-        output << "floating-point-mode: " << llvm_backend::floatingPointModeName(floatingPointMode) << '\n';
-    if (fmaContractPolicySeen)
-        output << "fma-contract-policy: " << llvm_backend::fmaContractPolicyName(fmaContractPolicy) << '\n';
-    if (floatingPointRoundingModeSeen)
+    if (invocation.floatingPointRoundingModeSeen)
+    {
         output << "floating-point-rounding: "
-               << llvm_backend::floatingPointRoundingModeName(floatingPointRoundingMode) << '\n';
-    if (floatingPointDenormalModeSeen)
+               << llvm_backend::floatingPointRoundingModeName(
+                      invocation.floatingPointRoundingMode)
+               << '\n';
+    }
+    if (invocation.floatingPointDenormalModeSeen)
+    {
         output << "floating-point-denormal: "
-               << llvm_backend::floatingPointDenormalModeName(floatingPointDenormalMode) << '\n';
+               << llvm_backend::floatingPointDenormalModeName(
+                      invocation.floatingPointDenormalMode)
+               << '\n';
+    }
 
-    if (normalizedArguments.empty())
+    if (invocation.arguments.empty())
     {
         error << "nsc: error: compilation options require an action or input file\n";
         return ExitCode::CommandLineError;
     }
 
-    const std::span<const std::string_view> args(normalizedArguments);
+    const ExitCode validationResult =
+        validateCompilerInvocation(invocation, error);
+    if (validationResult != ExitCode::Success) return validationResult;
 
-    const bool executableInvocation =
-        (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-') ||
-        (args.size() == 4 && args[2] == "-o" &&
-            (args[0] == "--emit-exe" || args[0] == "--emit-project-oop-exe"));
-    const bool debugCapableInvocation = args.size() == 4 && args[2] == "-o" &&
-        (args[0] == "--emit-project-oop-obj" || args[0] == "--emit-project-oop-exe" ||
-         args[0] == "--emit-project-oop-lib" || args[0] == "--emit-project-oop-dll");
-    const bool artifactCacheCapableInvocation = args.size() == 4 && args[2] == "-o" &&
-        (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
-         args[0] == "--emit-project-oop-dll");
-    const bool linkTimeOptimizationCapableInvocation = args.size() == 4 && args[2] == "-o" &&
-        (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
-         args[0] == "--emit-project-oop-dll");
-    const bool incrementalLinkCapableInvocation = args.size() == 4 && args[2] == "-o" &&
-        args[0] == "--emit-project-oop-exe";
-    if (subsystemSeen && !executableInvocation)
-    {
-        error << "nsc: error: /subsystem is only valid when emitting an executable\n";
-        return ExitCode::CommandLineError;
-    }
-    if (debugInformationSeen && !debugCapableInvocation)
-    {
-        error << "nsc: error: debug information is currently supported when emitting "
-                 "a project OOP object, executable, static library, or DLL\n";
-        return ExitCode::CommandLineError;
-    }
-    if (!debugPrefixMaps.empty() && !debugCapableInvocation)
-    {
-        error << "nsc: error: debug prefix maps are currently supported when emitting "
-                 "a project OOP object, executable, static library, or DLL\n";
-        return ExitCode::CommandLineError;
-    }
-    if (compilationProfileSeen && !debugCapableInvocation)
-    {
-        error << "nsc: error: compilation profiles are supported when emitting a project OOP "
-                 "object, executable, static library, or DLL\n";
-        return ExitCode::CommandLineError;
-    }
-    if ((artifactCacheSeen || artifactCacheDisabled || artifactCacheMaximumSeen) &&
-        !artifactCacheCapableInvocation)
-    {
-        error << "nsc: error: artifact-cache options are supported when emitting a project "
-                 "OOP executable, static library, or DLL\n";
-        return ExitCode::CommandLineError;
-    }
-    bool defaultArtifactCache = false;
-    if (artifactCacheCapableInvocation && !artifactCacheSeen && !artifactCacheDisabled)
-    {
-        std::error_code pathError;
-        const std::filesystem::path projectFile =
-            std::filesystem::absolute(std::filesystem::path{args[1]}, pathError);
-        if (pathError)
-        {
-            error << "nsc: error: cannot resolve project path for artifact cache: "
-                  << pathError.message() << '\n';
-            return ExitCode::CommandLineError;
-        }
-        artifactCache.setRoot(
-            llvm_backend::defaultProjectArtifactCacheRoot(projectFile));
-        defaultArtifactCache = true;
-        if (!artifactCacheMaximumSeen)
-            artifactCacheMaximumBytes = 2ULL * 1024ULL * 1024ULL * 1024ULL;
-    }
-    if (artifactCacheMaximumSeen || defaultArtifactCache)
+    if (invocation.artifactCacheRoot.has_value())
+        artifactCache.setRoot(*invocation.artifactCacheRoot);
+    if (invocation.artifactCacheMaximumSeen || invocation.defaultArtifactCache)
     {
         std::size_t evictedEntries = 0;
         std::uintmax_t evictedBytes = 0;
         std::string pruneError;
         if (!artifactCache.prune(
-                artifactCacheMaximumBytes, evictedEntries, evictedBytes, pruneError))
+                invocation.artifactCacheMaximumBytes,
+                evictedEntries,
+                evictedBytes,
+                pruneError))
         {
-            error << "nsc: error: artifact-cache eviction failed: " << pruneError << '\n';
+            error << "nsc: error: artifact-cache eviction failed: "
+                  << pruneError << '\n';
             return ExitCode::CompilationError;
         }
         output << "artifact-cache-evicted-entries: " << evictedEntries << '\n'
                << "artifact-cache-evicted-bytes: " << evictedBytes << '\n';
     }
-    if (linkTimeOptimizationSeen && !linkTimeOptimizationCapableInvocation)
-    {
-        error << "nsc: error: -flto is supported when emitting a project OOP executable, "
-                 "static library, or DLL\n";
-        return ExitCode::CommandLineError;
-    }
-    if (incrementalLink && !incrementalLinkCapableInvocation)
-    {
-        error << "nsc: error: --incremental-link is supported when emitting a project OOP executable\n";
-        return ExitCode::CommandLineError;
-    }
 
-    if (compilationProfile.has_value())
+    const ExitCode linkValidationResult =
+        validateCompilerLinkOptions(invocation, error);
+    if (linkValidationResult != ExitCode::Success) return linkValidationResult;
+
+    if (invocation.compilationProfile.has_value())
     {
-        output << "compilation-profile: " << compilationProfileName(*compilationProfile) << '\n'
+        output << "compilation-profile: "
+               << compilationProfileName(*invocation.compilationProfile) << '\n'
                << "profile-optimization: "
-               << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+               << llvm_backend::llvmOptimizationLevelName(
+                      invocation.optimizationLevel)
+               << '\n'
                << "profile-debug-information: "
-               << llvm_backend::debugInformationKindName(debugInformation) << '\n';
+               << llvm_backend::debugInformationKindName(
+                      invocation.debugInformation)
+               << '\n';
     }
 
+    const llvm_backend::LlvmOptimizationLevel optimizationLevel =
+        invocation.optimizationLevel;
+    const llvm_backend::DebugInformationKind debugInformation =
+        invocation.debugInformation;
+    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps =
+        invocation.debugPrefixMaps;
+    const llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
+        invocation.linkTimeOptimization;
+    const bool incrementalLink = invocation.incrementalLink;
+    const linker::WindowsExecutableSubsystem subsystem = invocation.subsystem;
+    const std::vector<std::filesystem::path>& extraLinkLibraries =
+        invocation.extraLinkLibraries;
+    const std::span<const std::string_view> args(invocation.arguments);
     if (args.size() == 1)
     {
         const std::string_view argument = args.front();

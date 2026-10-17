@@ -679,6 +679,8 @@ add_library(nsc_driver STATIC
     src/Driver/CompilationTelemetry.cpp
     src/Driver/CompilationGraphScheduler.cpp
     src/Driver/CompilerConsole.cpp
+    src/Driver/CompilerInvocation.cpp
+    src/Driver/CompilerOptionParser.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
     src/Driver/DeprecationPolicy.cpp
