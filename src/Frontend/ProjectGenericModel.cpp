@@ -115,6 +115,39 @@ std::string genericUnitDetail(const ProjectSyntaxUnit& unit)
         " precompiled=" + (unit.isPrecompiled() ? "1" : "0");
 }
 
+std::string compactTraceText(std::string_view value)
+{
+    constexpr std::size_t maximumLength = 64U;
+    std::string result;
+    result.reserve(std::min(value.size(), maximumLength) + 3U);
+    for (const char character : value.substr(0, maximumLength))
+    {
+        result.push_back(
+            character == '\r' || character == '\n' || character == '\t' ? ' ' : character);
+    }
+    if (value.size() > maximumLength) result += "...";
+    return result;
+}
+
+std::string genericNodeDetail(const ProjectSyntaxUnit& unit, const ast::AstNode& node)
+{
+    return genericUnitDetail(unit) +
+        " kind=" + std::string(ast::astNodeKindName(node.kind())) +
+        " begin=" + std::to_string(node.range().begin().offset()) +
+        " end=" + std::to_string(node.range().end().offset()) +
+        " text=" + compactTraceText(node.text());
+}
+
+std::string genericTypeDetail(const ast::TypeSyntax& syntax)
+{
+    return "type=" + compactTraceText(syntax.baseName()) +
+        " begin=" + std::to_string(syntax.range().begin().offset()) +
+        " end=" + std::to_string(syntax.range().end().offset()) +
+        " arguments=" + std::to_string(syntax.typeArguments().size()) +
+        " modifiers=" + std::to_string(syntax.modifiers().size()) +
+        " function=" + (syntax.isFunction() ? "1" : "0");
+}
+
 bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
 {
     if (node == nullptr || node->genericParameters().empty()) return false;
@@ -1521,6 +1554,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     bool& ownershipConflict)
 {
     if (source == nullptr) return nullptr;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.clone-alias-type", genericTypeDetail(*source));
 
     ast::TypeSyntax* result = nullptr;
     const auto substitution = substitutions.find(source->baseName());
@@ -3902,6 +3937,9 @@ void ProjectGenericModel::processNode(
         insideTemplate = frame.insideTemplate;
         if (node == nullptr) continue;
 
+        const GenericWorkProgress nodeProgress(
+            telemetry_, "generics.root-demand-node", genericNodeDetail(unit, *node));
+
     std::string currentNamespace;
     GenericLookupScope currentScope;
     prepareNodeScope(unit, node, namespaceName, scope, currentNamespace, currentScope);
@@ -4306,6 +4344,8 @@ bool ProjectGenericModel::processTypeSyntax(
     std::string* /*outSpecializationKey*/)
 {
     if (syntax == nullptr) return true;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.process-type-syntax", genericTypeDetail(*syntax));
     std::string constType;
     std::string constValue;
     if (decodeConstGenericArgument(syntax, constType, constValue)) return true;
@@ -4416,6 +4456,8 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
     const GenericLookupScope& scope)
 {
     if (expression == nullptr) return nullptr;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.infer-expression-type", genericNodeDetail(unit, *expression));
     const auto builtin = [&](lexer::TokenKind kind, std::string name)
     {
         return unit.arena().make<ast::TypeSyntax>(expression->range(), kind, std::move(name));
@@ -4598,6 +4640,9 @@ bool ProjectGenericModel::inferTypeArguments(
     std::unordered_map<std::string, ast::TypeSyntax*>& inferred)
 {
     if (pattern == nullptr || actual == nullptr) return false;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.infer-type-arguments",
+        "pattern-" + genericTypeDetail(*pattern) + " actual-" + genericTypeDetail(*actual));
     if (actual->modifiers().size() < pattern->modifiers().size()) return false;
     const std::size_t modifierPrefix = actual->modifiers().size() - pattern->modifiers().size();
     for (std::size_t index = 0; index < pattern->modifiers().size(); ++index)
@@ -4981,6 +5026,10 @@ bool ProjectGenericModel::applyExpectedTypeToExpression(
     if (expression == nullptr || expectedType == nullptr ||
         inferenceDepth > DefaultMaximumInstantiationDepth)
         return false;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.apply-expected-type",
+        genericNodeDetail(unit, *expression) + " expected-" + genericTypeDetail(*expectedType) +
+            " depth=" + std::to_string(inferenceDepth));
 
     if (expression->kind() == ast::AstNodeKind::CallExpression)
     {
@@ -5124,6 +5173,9 @@ bool ProjectGenericModel::inferGenericCall(
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
         !call->typeSyntaxes().empty()) return true;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.infer-generic-call",
+        genericNodeDetail(unit, *call) + " depth=" + std::to_string(inferenceDepth));
     if (inferenceDepth > DefaultMaximumInstantiationDepth)
     {
         if (reportFailure)
@@ -5507,6 +5559,8 @@ bool ProjectGenericModel::processGenericCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression) return false;
+    const GenericWorkProgress progress(
+        telemetry_, "generics.process-generic-call", genericNodeDetail(unit, *call));
     for (ast::TypeSyntax* argument : call->typeSyntaxes())
     {
         if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;

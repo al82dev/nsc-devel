@@ -158,3 +158,51 @@ Después del `0xC00000FD` se conserva el archivo completo. No se modifica códig
 4. la secuencia de especializaciones abiertas que la precede.
 
 L05 y todo trabajo posterior permanecen detenidos.
+
+## Enmienda de alcance tras la primera traza externa
+
+### Evidencia recibida
+
+- Archivo: `A:\temp\nsc-generics-trace.log` de la máquina externa, entregado mediante su carpeta
+  compartida.
+- Build registrado: `5dd8b3267f4e5336`.
+- Tamaño: 31,438 bytes; 309 líneas.
+- SHA-256: `8B768108A03AA19BCD59BC5C03EDDF067B1DDED4436E609C1FFE6705C7B607C3`.
+- `generics.dependency-discovery` terminó para sus 43 unidades.
+- `generics.root-demand-discovery` terminó sus primeras 12 unidades.
+- La línea 308 abrió la unidad `NativeSharpDirectX`, `project=7`, `source=0`,
+  `precompiled=1`.
+- Falta su evento de cierre. El proceso terminó dentro de su llamada a `processNode`.
+
+### SCOPE LOCK de la segunda instrumentación
+
+| Dimensión | Alcance autorizado |
+|---|---|
+| Entrada exacta | La unidad precompilada `NativeSharpDirectX` durante `root-demand-discovery`. |
+| Operación fallida demostrada | `ProjectGenericModel::processNode` no regresa para esa unidad. |
+| Invariante violado | Cada unidad iniciada debe producir su cierre antes de avanzar a la siguiente. |
+| Causa interna | Todavía no demostrada: puede estar en el nodo, scope, tipo, clonación o inferencia. |
+| Cambio autorizado | Breadcrumbs temporales de entrada/salida, sin modificar decisiones semánticas. |
+| Símbolos candidatos | Rutas recursivas alcanzables desde `processNode`; lista posterior. |
+| Archivos autorizados | `src/Frontend/ProjectGenericModel.cpp`, este expediente y el handover. |
+| Archivos protegidos | Parser, metadata, ABI, NSMETA, límites, stack, Builder, GUI y consumidores. |
+| Criterio inmediato | La siguiente traza identifica el nodo y la función recursiva abierta al caer. |
+| Criterio causal | Una secuencia repetida o anidada demuestra la cadena exacta que debe eliminarse. |
+
+Los símbolos candidatos son `processNode`, `cloneAliasType`, `processTypeSyntax`,
+`inferExpressionType`, `inferTypeArguments`, `applyExpectedTypeToExpression`,
+`inferGenericCall` y `processGenericCall`.
+
+No se implementará todavía una corrección semántica. La unidad identifica dónde observar, pero no
+demuestra por sí sola cuál de las rutas internas es responsable.
+
+### Validación de los breadcrumbs internos
+
+- Build focal previo al commit: `d31382d1c86f78ed`.
+- Construcción exclusiva de `nsc`: PASS; contrato estático del runtime host: PASS.
+- `generics-32 -j 16 --progress`, sin argumento de traza: PASS, 32/32, exit 0.
+- Archivo automático: 2,133 líneas y 279,709 bytes.
+- Nodos de `root-demand-discovery`: 526 aperturas y 526 cierres.
+- Eventos de `cloneAliasType`: 454, balanceados durante la salida normal.
+- Último evento: cierre de `generics.type-demand-waves`.
+- El detalle no apareció en la consola.
