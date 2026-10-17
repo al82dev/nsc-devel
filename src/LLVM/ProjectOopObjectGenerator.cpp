@@ -274,6 +274,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::vector<std::string> cacheKeys(moduleCount);
     if (usePreLlvmCache)
     {
+        const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
         std::vector<std::size_t> allFunctionOrdinals(mirModel.functions().size());
         for (std::size_t ordinal = 0; ordinal < allFunctionOrdinals.size(); ++ordinal)
             allFunctionOrdinals[ordinal] = ordinal;
@@ -298,7 +299,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             }
             const PhaseClock fingerprint;
             cacheKeys[moduleOrdinal] = cache->inputObjectKey(
-                projectOopMirCacheIdentity(mirModel, definitions, declarations),
+                identityIndex.identity(definitions, declarations),
                 "windows-x64-msvc", codeGenerationPolicy,
                 optimizationLevel, debugInformation);
             codeUnitTelemetry[moduleOrdinal].fingerprintMicros += fingerprint.elapsedMicros();

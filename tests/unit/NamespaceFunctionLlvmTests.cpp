@@ -104,8 +104,9 @@ int main()
         std::vector<std::size_t> ordinals(mir.functions().size());
         for (std::size_t index = 0; index < ordinals.size(); ++index) ordinals[index] = index;
         const std::string identity = projectOopMirCacheIdentity(mir, ordinals, ordinals);
-        tests.expect(!identity.empty(),
-            "cache identity serializes namespace function and call ordinals");
+        const ProjectOopMirCacheIdentityIndex identityIndex(mir);
+        tests.expect(!identity.empty() && identity == identityIndex.identity(ordinals, ordinals),
+            "cache identity index preserves namespace function and call ordinals");
     }
 
     std::filesystem::remove_all(root, ignored);
