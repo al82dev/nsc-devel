@@ -364,7 +364,7 @@ private:
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseEmbeddedStatementBlock();
     ast::AstNode* parseIfStatement();
-    void parseIfHeaderAndBody(IfParseState& state);
+    void parseIfHeader(IfParseState& state);
     ast::AstNode* lowerIfStatement(const IfParseState& state, ast::AstNode* elseNode);
     ast::AstNode* parseWhileStatement();
     ast::AstNode* parseDoWhileStatement();
