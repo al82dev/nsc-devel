@@ -36,8 +36,48 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     bool addressContext,
     std::string& error)
 {
-    std::unique_ptr<ProjectOopHirNode> lowered =
-        lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
+    std::vector<const ast::AstNode*> builtinUnaryFrames;
+    const ast::AstNode* unaryLeaf = expression;
+    while (unaryLeaf != nullptr && unaryLeaf->kind() == ast::AstNodeKind::UnaryExpression &&
+        unaryLeaf->tokenKind() != lexer::TokenKind::Amp &&
+        unaryLeaf->tokenKind() != lexer::TokenKind::Star &&
+        unaryLeaf->tokenKind() != lexer::TokenKind::PlusPlus &&
+        unaryLeaf->tokenKind() != lexer::TokenKind::MinusMinus &&
+        callBinding(unaryLeaf) == nullptr && delegateBinding(unaryLeaf) == nullptr &&
+        lambdaBinding(unaryLeaf) == nullptr)
+    {
+        builtinUnaryFrames.push_back(unaryLeaf);
+        unaryLeaf = unaryLeaf->first();
+    }
+
+    std::unique_ptr<ProjectOopHirNode> lowered;
+    if (!builtinUnaryFrames.empty())
+    {
+        lowered = lowerExpression(unaryLeaf, memberOrdinal, false, error);
+        if (lowered != nullptr)
+        {
+            for (auto frame = builtinUnaryFrames.rbegin();
+                 frame != builtinUnaryFrames.rend(); ++frame)
+            {
+                const MethodExpressionTypeBinding* frameType = expressionType(*frame);
+                const MethodDelegateBinding* frameDelegate = delegateBinding(*frame);
+                const std::string resultType = frameType != nullptr ? frameType->typeKey :
+                    frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                auto unary = makeNode(ProjectOopHirNodeKind::Unary, *frame, resultType);
+                unary->operation = (*frame)->tokenKind();
+                unary->children.push_back(std::move(lowered));
+                lowered = std::move(unary);
+            }
+        }
+        else if (!lastErrorRange_.isValid() && !builtinUnaryFrames.empty())
+        {
+            lastErrorRange_ = builtinUnaryFrames.back()->range();
+        }
+    }
+    else
+    {
+        lowered = lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
+    }
     const ClassMemberSymbol* activeMember = memberModel_ != nullptr &&
             memberOrdinal < memberModel_->members().size()
         ? &memberModel_->members()[memberOrdinal]
