@@ -5498,6 +5498,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_driver_tests tests/unit/DriverTests.cpp)
     target_link_libraries(nsc_driver_tests PRIVATE nsc_driver nsc_frontend nsc_target)
     target_compile_features(nsc_driver_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_driver_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
 

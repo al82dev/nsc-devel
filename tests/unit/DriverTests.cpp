@@ -73,6 +73,8 @@ int main()
             "help documents compiler job and reserved-core controls");
         tests.expect(output.str().find("--progress") != std::string::npos,
             "help documents streaming compilation progress");
+        tests.expect(output.str().find("--generics-trace=<file>") != std::string::npos,
+            "help documents the crash-surviving generics trace file");
         tests.expect(output.str().find("--library-reference-root") != std::string::npos,
             "help documents configuration-specific LibraryReference resolution");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
@@ -784,6 +786,32 @@ int main()
         tests.expect(report.find("timing total_ms=") == std::string::npos,
             "--progress does not enable the end-of-process timing report");
         tests.expect(error.str().empty(), "streaming project progress keeps stderr empty");
+    }
+    {
+        const std::filesystem::path tracePath =
+            std::filesystem::path(NSC_BINARY_DIR) / "nsc-generics-trace.log";
+        std::error_code removeError;
+        std::filesystem::remove(tracePath, removeError);
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string path = oopProjectPath.string();
+        const std::string traceArgument = "--generics-trace=" + tracePath.string();
+        const std::vector<std::string_view> arguments = {
+            "--check-project-oop-mir", path, traceArgument, "-j2"};
+        const ExitCode code = runDriver(arguments, output, error);
+        std::ifstream traceStream(tracePath, std::ios::binary);
+        std::ostringstream traceContents;
+        traceContents << traceStream.rdbuf();
+        const std::string trace = traceContents.str();
+        tests.expect(code == ExitCode::Success &&
+                trace.find("nsc-generics-trace version=1 build=") == 0U &&
+                trace.find("-- NSC: generics.visibility\n") != std::string::npos &&
+                trace.find("-- NSC: generics.visibility finished (") != std::string::npos,
+            "--generics-trace writes and flushes ordered detailed checkpoints to its file");
+        tests.expect(output.str().find("generics.visibility") == std::string::npos,
+            "--generics-trace does not add detailed checkpoints to normal console output");
+        tests.expect(error.str().empty(), "generics trace keeps stderr empty");
+        std::filesystem::remove(tracePath, removeError);
     }
 
     {

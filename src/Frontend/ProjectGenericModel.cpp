@@ -70,6 +70,51 @@ private:
     std::chrono::steady_clock::time_point started_;
 };
 
+// Live progress has a different lifetime from timing telemetry: its opening event must be flushed
+// before the risky operation starts, while its closing event is deliberately absent if the process
+// dies inside that operation. This makes the last unmatched line a causal breadcrumb instead of a
+// summary that is emitted only after a successful build.
+class GenericWorkProgress final
+{
+public:
+    GenericWorkProgress(
+        GenericTelemetry& telemetry,
+        std::string_view phase,
+        std::string detail,
+        std::size_t current = 1,
+        std::size_t total = 1)
+        : telemetry_(&telemetry), phase_(phase), detail_(std::move(detail)),
+          current_(current), total_(total)
+    {
+        telemetry_->reportProgress(
+            basic::CompilationEventKind::WorkStarted, phase_, detail_, current_, total_);
+    }
+
+    ~GenericWorkProgress()
+    {
+        telemetry_->reportProgress(
+            basic::CompilationEventKind::WorkFinished, phase_, detail_, current_, total_);
+    }
+
+    GenericWorkProgress(const GenericWorkProgress&) = delete;
+    GenericWorkProgress& operator=(const GenericWorkProgress&) = delete;
+
+private:
+    GenericTelemetry* telemetry_;
+    std::string_view phase_;
+    std::string detail_;
+    std::size_t current_;
+    std::size_t total_;
+};
+
+std::string genericUnitDetail(const ProjectSyntaxUnit& unit)
+{
+    return "module=" + std::string(unit.moduleName()) +
+        " project=" + std::to_string(unit.projectOrdinal()) +
+        " source=" + std::to_string(unit.sourceOrdinal()) +
+        " precompiled=" + (unit.isPrecompiled() ? "1" : "0");
+}
+
 bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
 {
     if (node == nullptr || node->genericParameters().empty()) return false;
@@ -651,9 +696,13 @@ bool ProjectGenericModel::build(
     // specialization identity and would leave aliases inside template bodies until after cloning.
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.alias-expansion");
-        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
         {
+            const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            const GenericWorkProgress progress(
+                telemetry_, "generics.alias-expansion.unit", genericUnitDetail(*unitPtr),
+                unitIndex + 1U, units.size());
             expandAliasesInNode(
                 *unitPtr, unitPtr->syntaxTree(), "", GenericLookupScope{}, diagnostics);
         }
@@ -722,9 +771,13 @@ bool ProjectGenericModel::build(
 
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.template-collection");
-        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
         {
+            const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            const GenericWorkProgress progress(
+                telemetry_, "generics.template-collection.unit", genericUnitDetail(*unitPtr),
+                unitIndex + 1U, units.size());
             ProjectSyntaxUnit& unit = *unitPtr;
             collectTemplates(unit, unit.syntaxTree(), nullptr, "", "", false, diagnostics);
         }
@@ -812,9 +865,13 @@ bool ProjectGenericModel::build(
     // verifier can prove that a same-module edge was not silently dropped.
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.dependency-discovery");
-        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
         {
+            const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            const GenericWorkProgress progress(
+                telemetry_, "generics.dependency-discovery.unit", genericUnitDetail(*unitPtr),
+                unitIndex + 1U, units.size());
             discoverTemplateDependencies(
                 *unitPtr, unitPtr->syntaxTree(), "", "", GenericLookupScope{});
         }
@@ -927,9 +984,13 @@ bool ProjectGenericModel::build(
 
     {
         const GenericTelemetry::Scope phase(telemetry_, "generics.root-demand-discovery");
-        for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+        for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
         {
+            const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+            const GenericWorkProgress progress(
+                telemetry_, "generics.root-demand-discovery.unit", genericUnitDetail(*unitPtr),
+                unitIndex + 1U, units.size());
             ProjectSyntaxUnit& unit = *unitPtr;
             processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
         }
@@ -3979,9 +4040,15 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
+    std::size_t demandIndex = 0;
     for (BodyTypeSpecializationDemand& demand : wave)
     {
+        ++demandIndex;
         if (demand.unit == nullptr || demand.syntax == nullptr) continue;
+        const GenericWorkProgress progress(
+            telemetry_, "generics.body-type-demand",
+            demand.stableKey + " type=" + demand.syntax->baseName(),
+            demandIndex, wave.size());
         // The body-type demand is already the collected form (ReadOnlySpan<T>/Span<T>); materialize
         // it directly (do not re-collect) so the rest-capture Sema sees a materialized Span.
         TypeResolution resolution = resolveTypeTemplate(
@@ -4007,11 +4074,18 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
 bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    std::size_t waveIndex = 0;
     while (!bodyTypeSpecializationDemands_.empty())
     {
         std::vector<BodyTypeSpecializationDemand> wave;
         wave.swap(bodyTypeSpecializationDemands_);
         bodyTypeDemandKeys_.clear();
+        ++waveIndex;
+        const GenericWorkProgress progress(
+            telemetry_, "generics.body-type-wave",
+            "wave=" + std::to_string(waveIndex) +
+                " demands=" + std::to_string(wave.size()),
+            wave.size(), wave.size());
         if (!processBodyTypeDemandWave(wave, diagnostics)) return false;
     }
     return !diagnostics.hasErrors();
@@ -4072,10 +4146,17 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
 bool ProjectGenericModel::executeTypeDemandWaves(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    std::size_t waveIndex = 0;
     while (!typeSpecializationDemands_.empty())
     {
         std::vector<GenericTypeDemand> wave;
         wave.swap(typeSpecializationDemands_);
+        ++waveIndex;
+        const GenericWorkProgress waveProgress(
+            telemetry_, "generics.type-demand-wave",
+            "wave=" + std::to_string(waveIndex) +
+                " demands=" + std::to_string(wave.size()),
+            wave.size(), wave.size());
         // NSC305-G09. Deterministic wave: sort by the stable key (project | namespace | offset) so
         // the materialization order does not depend on discovery order.
         std::ranges::sort(wave, {}, &GenericTypeDemand::stableKey);
@@ -4092,10 +4173,16 @@ bool ProjectGenericModel::executeTypeDemandWaves(
         };
         std::vector<ReservedDemand> reserved;
         reserved.reserve(wave.size());
+        std::size_t reserveIndex = 0;
         for (GenericTypeDemand& demand : wave)
         {
+            ++reserveIndex;
             if (demand.unit == nullptr || demand.state == nullptr || demand.target == nullptr)
                 continue;
+            const GenericWorkProgress reserveProgress(
+                telemetry_, "generics.type-demand-reserve",
+                demand.state->record.canonicalKey + " site=" + demand.stableKey,
+                reserveIndex, wave.size());
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
             currentInstantiationNamespace_ = demand.context.namespaceName;
             currentInstantiationRange_ = demand.context.range;
@@ -4118,6 +4205,9 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             SpecializationProduct* preClonedProduct) -> std::string
         {
             GenericTypeDemand& demand = *reservedDemand.demand;
+            const GenericWorkProgress applyProgress(
+                telemetry_, "generics.type-demand-apply",
+                reservedDemand.key + " site=" + demand.stableKey);
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
             currentInstantiationNamespace_ = demand.context.namespaceName;
             currentInstantiationRange_ = demand.context.range;
@@ -4167,6 +4257,10 @@ bool ProjectGenericModel::executeTypeDemandWaves(
                             if (reservedDemand.ordinal == std::numeric_limits<std::size_t>::max())
                                 continue;
                             GenericTypeDemand& demand = *reservedDemand.demand;
+                            const GenericWorkProgress cloneProgress(
+                                telemetry_, "generics.type-demand-clone",
+                                reservedDemand.key + " site=" + demand.stableKey,
+                                index + 1U, reserved.size());
                             products[index] = cloneTypeSpecializationProduct(
                                 *demand.state, demand.target->typeArguments(),
                                 reservedDemand.specializedName, reservedDemand.callerContext);
@@ -6207,6 +6301,9 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
 {
     SpecializationContext callerContext;
     callerContext.save(*this);
+    const GenericWorkProgress progress(
+        telemetry_, "generics.type-specialization",
+        state.record.canonicalKey + " arguments=" + std::to_string(arguments.size()));
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -6305,6 +6402,9 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
 {
     SpecializationContext callerContext;
     callerContext.save(*this);
+    const GenericWorkProgress progress(
+        telemetry_, "generics.method-specialization",
+        state.record.canonicalKey + " arguments=" + std::to_string(arguments.size()));
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;

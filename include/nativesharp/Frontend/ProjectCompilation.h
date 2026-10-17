@@ -62,6 +62,9 @@ public:
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
     void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
+    // Detailed, high-volume diagnostics are routed separately so normal --progress output keeps
+    // its stable concise contract. The driver currently uses this for --generics-trace=<file>.
+    void setDetailedProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
@@ -153,6 +156,7 @@ private:
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(const basic::CompilationEvent&)> progressSink_;
+    std::function<void(const basic::CompilationEvent&)> detailedProgressSink_;
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::size_t compilationJobs_ = 1;
     CompilationStageTracker stageTracker_;

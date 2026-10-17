@@ -83,3 +83,9 @@ y confirmar que el proceso publica `generics finished` sin `0xC00000FD`.
 La auditoría posterior encontró y corrigió por separado el desbalance causal de las pre-reservas de
 una onda. Véase `TANDA-CORRECTIVA-NSC305-G09-BUDGET-WAVE.md` para la reproducción contrafactual,
 el cambio y su evidencia focal. El gate externo permanece sin cambios.
+
+El usuario reconstruyó posteriormente hasta los últimos cambios y el escenario externo volvió a
+terminar dentro de `generics` con `0xC00000FD`. La tanda ya no atribuye ese fallo a la rama paralela:
+la auditoría demostró que `-j` no llama `ProjectGenericModel::setParallelismWorkers` en producción.
+La nueva evidencia y el rastro persistente requerido para aislar la causa restante se documentan en
+`TANDA-CORRECTIVA-NSC305-GENERICS-TRACE.md`.

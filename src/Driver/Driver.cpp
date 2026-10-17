@@ -199,6 +199,22 @@ struct DriverExecutionScope final
         output << renderCompilationEvent(event, progressFormat) << '\n';
         output.flush();
     }
+    bool openGenericsTrace(const std::filesystem::path& path)
+    {
+        genericsTrace.open(path, std::ios::binary | std::ios::trunc);
+        if (!genericsTrace) return false;
+        genericsTrace << "nsc-generics-trace version=1 build=" << kCompilerBuildId << '\n';
+        genericsTrace.flush();
+        return static_cast<bool>(genericsTrace);
+    }
+    void writeDetailedProgress(const basic::CompilationEvent& event)
+    {
+        const std::lock_guard<std::mutex> lock(genericsTraceMutex);
+        if (!genericsTrace) return;
+        genericsTrace << ++genericsTraceSequence << '\t'
+                      << renderCompilationEvent(event, ProgressFormat::Text) << '\n';
+        genericsTrace.flush();
+    }
     void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
     {
         if (!reportTiming) return;
@@ -213,6 +229,9 @@ struct DriverExecutionScope final
     std::ostream& error;
     std::chrono::steady_clock::time_point started;
     std::mutex progressMutex;
+    std::mutex genericsTraceMutex;
+    std::ofstream genericsTrace;
+    std::uint64_t genericsTraceSequence = 0;
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<PhaseTiming> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
@@ -326,6 +345,14 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
         compilation.setProgressSink([scope](const basic::CompilationEvent& event) {
             scope->writeProgress(event);
         });
+    }
+    if (activeExecutionScope != nullptr && activeExecutionScope->genericsTrace)
+    {
+        DriverExecutionScope* const scope = activeExecutionScope;
+        compilation.setDetailedProgressSink(
+            [scope](const basic::CompilationEvent& event) {
+                scope->writeDetailedProgress(event);
+            });
     }
 }
 
@@ -3949,6 +3976,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
     bool artifactCacheMaximumSeen = false;
+    bool genericsTraceSeen = false;
     std::uintmax_t artifactCacheMaximumBytes = 0;
     bool libraryReferenceRootSeen = false;
     bool genericInstantiationDepthSeen = false;
@@ -4021,6 +4049,41 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                     "formato de progreso no compatible '")
                       << value << compilerText("'; expected text or json\n",
                                                "'; se esperaba text o json\n");
+                return ExitCode::CommandLineError;
+            }
+            continue;
+        }
+        if (argument == "--generics-trace" || argument.starts_with("--generics-trace="))
+        {
+            if (genericsTraceSeen)
+            {
+                error << "nsc: error: duplicate --generics-trace option\n";
+                return ExitCode::CommandLineError;
+            }
+            genericsTraceSeen = true;
+            std::string_view value;
+            if (argument == "--generics-trace")
+            {
+                if (argumentIndex + 1U >= arguments.size())
+                {
+                    error << "nsc: error: --generics-trace requires a file path\n";
+                    return ExitCode::CommandLineError;
+                }
+                value = arguments[++argumentIndex];
+            }
+            else
+            {
+                value = argument.substr(std::string_view("--generics-trace=").size());
+            }
+            if (value.empty())
+            {
+                error << "nsc: error: --generics-trace requires a non-empty file path\n";
+                return ExitCode::CommandLineError;
+            }
+            if (!executionScope.openGenericsTrace(std::filesystem::path(value)))
+            {
+                error << "nsc: error: could not open generics trace file '"
+                      << value << "'\n";
                 return ExitCode::CommandLineError;
             }
             continue;
@@ -5937,6 +6000,8 @@ void Driver::printHelp(std::ostream &output)
               "by default; --progress enables the same stream on diagnostic commands.\n"
            << "--progress=json emits one stable JSON event per line; "
               "--progress-format=text|json selects the renderer.\n"
+           << "--generics-trace=<file> flushes detailed generics checkpoints directly to a file "
+              "without adding them to console progress.\n"
            << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
            << "--language en|es selects human-readable console messages; --no-banner suppresses "

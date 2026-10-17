@@ -54,6 +54,12 @@ void ProjectCompilation::setProgressSink(
     progressSink_ = std::move(sink);
 }
 
+void ProjectCompilation::setDetailedProgressSink(
+    std::function<void(const basic::CompilationEvent&)> sink)
+{
+    detailedProgressSink_ = std::move(sink);
+}
+
 bool ProjectCompilation::cancellationRequested(std::string& loadError, std::string_view nextPhase) const
 {
     if (!cancellationCheck_ || !cancellationCheck_()) return false;
@@ -580,6 +586,7 @@ bool ProjectCompilation::compileProjectGenerics(
     // diagnostics, dumps or emitted artifacts.
     GenericTelemetry& telemetry = genericModel_->telemetry();
     telemetry.timingSink = phaseTimingSink_;
+    telemetry.progressSink = detailedProgressSink_;
     telemetry.enabled = static_cast<bool>(phaseTimingSink_);
     telemetry.detailed = telemetry.enabled;
     telemetry.ownUnits = units_.size();
