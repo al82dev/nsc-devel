@@ -5,6 +5,25 @@
 
 namespace nativesharp::frontend
 {
+ProjectOopHirNode::~ProjectOopHirNode()
+{
+    std::vector<std::unique_ptr<ProjectOopHirNode>> pending;
+    pending.swap(children);
+    while (!pending.empty())
+    {
+        std::unique_ptr<ProjectOopHirNode> current = std::move(pending.back());
+        pending.pop_back();
+        if (current == nullptr) continue;
+        std::size_t childCount = 0;
+        for (const std::unique_ptr<ProjectOopHirNode>& child : current->children)
+            if (child != nullptr) ++childCount;
+        pending.reserve(pending.size() + childCount);
+        for (std::unique_ptr<ProjectOopHirNode>& child : current->children)
+            if (child != nullptr) pending.push_back(std::move(child));
+        current->children.clear();
+    }
+}
+
 ProjectOopHirModel::~ProjectOopHirModel()
 {
     for (ProjectOopHirFunction& function : functions_)

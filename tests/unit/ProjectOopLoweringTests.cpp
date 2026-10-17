@@ -2214,6 +2214,24 @@ void testDeepHirModelDestruction(TestContext& tests)
         "32768-level HIR function and field roots reach model destruction without extraction");
 }
 
+void testDeepHirNodeDestruction(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    auto* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto child = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        child->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        cursor->children.push_back(std::move(child));
+        cursor = cursor->children.front().get();
+    }
+    root.reset();
+    tests.expect(true,
+        "a 32768-level standalone HIR temporary is destroyed without process-stack recursion");
+}
+
 void testDeepHirDeconstructionWalk(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2560,6 +2578,10 @@ int main()
     else if (focusValue == "hir-model-destruction-depth")
     {
         testDeepHirModelDestruction(tests);
+    }
+    else if (focusValue == "hir-node-destruction-depth")
+    {
+        testDeepHirNodeDestruction(tests);
     }
     else if (focusValue == "hir-deconstruction-walk-depth")
     {

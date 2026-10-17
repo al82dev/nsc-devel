@@ -547,6 +547,8 @@ enum class ProjectCollectionSegmentKind : std::uint8_t
 
 struct ProjectOopHirNode final
 {
+    ~ProjectOopHirNode();
+
     ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::Block;
     const ast::AstNode* syntax = nullptr;
     std::string typeKey;
