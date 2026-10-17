@@ -184,6 +184,7 @@ std::string genericInferenceScaleSource()
 {
     constexpr std::size_t fanout = 32;
     constexpr std::size_t depth = 16;
+    constexpr std::size_t fieldScopeDepth = 6000;
     std::string source =
         "namespace Suite\n"
         "{\n"
@@ -201,6 +202,12 @@ std::string genericInferenceScaleSource()
         else
             source += "Layer" + std::to_string(index + 1) + "<T> Next; }\n";
     }
+    source += "    public class DeepFieldScope\n    {\n";
+    for (std::size_t index = 0; index < fieldScopeDepth; ++index)
+    {
+        source += "        public int Field" + std::to_string(index) + ";\n";
+    }
+    source += "    }\n";
     source += "    public class Program\n    {\n";
     for (std::size_t index = 0; index < fanout; ++index)
     {

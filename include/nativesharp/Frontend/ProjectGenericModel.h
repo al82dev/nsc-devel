@@ -576,15 +576,37 @@ private:
         // adding a binding is O(1). Lookup walks newest-to-oldest, which preserves shadowing.
         struct ValueBinding final
         {
+            ValueBinding(
+                std::string bindingName,
+                const ast::TypeSyntax* bindingType,
+                std::shared_ptr<ValueBinding> bindingParent)
+                : name(std::move(bindingName)), type(bindingType), parent(std::move(bindingParent))
+            {
+            }
+
+            ~ValueBinding() noexcept
+            {
+                // A persistent scope can contain thousands of fields.  Letting shared_ptr destroy
+                // the unique tail recursively consumes one native stack frame per binding.  Peel
+                // that tail here so each node is destroyed with an empty parent and teardown stays
+                // iterative; stop as soon as an ancestor is still shared by another scope.
+                while (parent && parent.use_count() == 1)
+                {
+                    std::shared_ptr<ValueBinding> ancestor = std::move(parent);
+                    parent = std::move(ancestor->parent);
+                    ancestor->parent.reset();
+                }
+            }
+
             std::string name;
             const ast::TypeSyntax* type = nullptr;
-            std::shared_ptr<const ValueBinding> parent;
+            std::shared_ptr<ValueBinding> parent;
         };
-        std::shared_ptr<const ValueBinding> valueTypes;
+        std::shared_ptr<ValueBinding> valueTypes;
         void addValueType(std::string name, const ast::TypeSyntax* type)
         {
             valueTypes = std::make_shared<ValueBinding>(
-                ValueBinding{std::move(name), type, std::move(valueTypes)});
+                std::move(name), type, std::move(valueTypes));
         }
         const ast::TypeSyntax* findValueType(std::string_view name) const noexcept
         {

@@ -206,3 +206,76 @@ demuestra por sí sola cuál de las rutas internas es responsable.
 - Eventos de `cloneAliasType`: 454, balanceados durante la salida normal.
 - Último evento: cierre de `generics.type-demand-waves`.
 - El detalle no apareció en la consola.
+
+## Enmienda causal tras la segunda traza externa
+
+### Evidencia recibida
+
+- Archivo local: `A:\temp\nsc-generics-trace.log`.
+- Build registrado: `15c0a46663615bda`.
+- Tamaño: 25,631,805 bytes; 183,659 líneas.
+- SHA-256: `F633706F0230DDD7EE3F81817849A2E2D22270A04F941A588BE8CC075577AC96`.
+- La unidad abierta al caer vuelve a ser `NativeSharpDirectX`, `project=7`, `source=0`,
+  `precompiled=1`.
+- Sus 43,299 eventos `generics.root-demand-node` tienen exactamente 43,299 cierres.
+- `cloneAliasType`, `processTypeSyntax`, `inferExpressionType`, `inferGenericCall` y
+  `applyExpectedTypeToExpression` también están balanceados.
+- El último nodo, un `BlockStatement` con rango `820922..820925`, cerró correctamente.
+- No se emitió el cierre de la unidad: el proceso murió después del último nodo y antes de que
+  `processNode` regresara.
+- La clase `D3d11Constants` aporta 5,813 `FieldDeclaration` y 11,670 nodos descendientes después
+  de preparar su alcance.
+
+### Cadena causal demostrada
+
+El commit `c4d9ef53b` convirtió `GenericLookupScope::valueTypes` en una lista persistente enlazada
+mediante `std::shared_ptr<const ValueBinding>`. La copia y la inserción pasaron a O(1), pero la
+liberación del último propietario quedó delegada a la destrucción recursiva implícita de
+`shared_ptr`: destruir un `ValueBinding` destruye su `parent`, que destruye al siguiente, y así
+sucesivamente.
+
+`prepareNodeScope` registra todos los campos de una clase en esa cadena. En la unidad externa, el
+alcance de `D3d11Constants` conserva 5,813 enlaces y se comparte entre sus descendientes. Después
+de cerrar el último nodo desaparece el último propietario de la cola única; su liberación intenta
+usar miles de marcos nativos y Windows termina `nsc` con `0xC00000FD`. Esto explica simultáneamente
+que todos los trabajos internos estén balanceados y que falte únicamente el cierre de la unidad.
+
+### SCOPE LOCK de la corrección causal
+
+| Dimensión | Alcance autorizado |
+|---|---|
+| Entrada exacta | Liberación del alcance de `D3d11Constants` después del último nodo de la unidad precompilada. |
+| Operación fallida | Destrucción recursiva de la cola única `ValueBinding::parent`. |
+| Invariante violado | El tamaño de un alcance léxico no puede consumir profundidad de pila nativa al liberarse. |
+| Símbolo responsable | `ProjectGenericModel::GenericLookupScope::ValueBinding`. |
+| Archivo funcional | `include/nativesharp/Frontend/ProjectGenericModel.h`. |
+| Cambio mínimo | Desacoplar y destruir iterativamente la cola única; detenerse ante el primer ancestro todavía compartido. |
+| Comportamiento preservado | Inserción O(1), copia O(1), orden newest-to-oldest, sombreado, tipos encontrados, sintaxis, diagnósticos, ABI y NSMETA. |
+| Archivos protegidos | Parser, metadata, ABI, NSMETA, límites, stack, Builder, GUI, consumidores y L05. |
+| Pruebas | Build focal de `nsc`, contrato de runtime estático y pruebas O0 focales de genéricos. |
+| Acciones prohibidas | Aumentar stack, reducir datos, retirar campos, cambiar resolución, abrir L05, baseline, instalación o despliegue. |
+| Criterio de terminación | La liberación profunda se verifica sin recursión, las pruebas focales pasan y el escenario externo deja de producir `0xC00000FD`. |
+
+La regresión focal reutiliza el caso nocturno de escala `TF-FRONT-168`. Su fuente conserva el
+fan-out genérico existente y añade una clase con 6,000 campos ordinarios: supera los 5,813 enlaces
+observados externamente sin crear 6,000 especializaciones ni modificar un contrato de lenguaje.
+
+### Validación local de la corrección
+
+- Construcción focal de `nsc`: PASS.
+- Contrato de runtime estático de `nsc.exe`: PASS.
+- Build hash del binario focal: `772c9eea8a11311a`.
+- `TF-FRONT-168` Debug, único caso ejecutado: PASS, exit 0, 1,582,469 microsegundos.
+- La fuente del caso contiene la clase de 6,000 campos y alcanza `MethodBodies`; por tanto, la
+  liberación profunda terminó y el modelo genérico siguió siendo consumible.
+- `generics-32`, `--emit-project-oop-obj`, `-O0`, `-j 16`: PASS, exit 0.
+- El objeto COFF AMD64 se emitió y verificó; `generics` terminó en 21 ms.
+- Un intento separado de producir el ejecutable recorrió correctamente todo el compilador hasta
+  `executable-build`, pero no pudo enlazar porque `nslink.exe` no está disponible por nombre en el
+  `PATH` de esta máquina. No se usó una ruta absoluta ni un linker sustituto y ese intento no se
+  presenta como prueba ejecutable.
+
+La instrumentación automática y los breadcrumbs permanecen temporalmente activos en este commit.
+Se retirarán únicamente después de que el mismo escenario externo confirme que ya no termina con
+`0xC00000FD`; así, cualquier fallo posterior conservará evidencia causal en vez de volver a dejar
+solamente `-- NSC: generics`.
