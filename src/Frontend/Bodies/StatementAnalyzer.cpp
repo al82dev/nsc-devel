@@ -31,6 +31,7 @@
 #include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -138,7 +139,119 @@ void ProjectMethodBodyModel::analyzeBlock(
         std::optional<OwnershipFlowSnapshot> restoreAfterExit;
     };
 
-    std::vector<BlockFrame> frames;
+    enum class IfStage
+    {
+        Start,
+        AfterThen,
+        AfterElse
+    };
+
+    struct IfFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t scopeOrdinal = 0;
+        IfStage stage = IfStage::Start;
+        OwnershipFlowSnapshot thenEntry;
+        OwnershipFlowSnapshot elseEntry;
+        OwnershipFlowSnapshot thenState;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    enum class LoopStage
+    {
+        Start,
+        AfterBody
+    };
+
+    struct LoopFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t scopeOrdinal = 0;
+        LoopStage stage = LoopStage::Start;
+        bool isDoWhile = false;
+        bool conditionAlwaysTrue = false;
+        OwnershipFlowSnapshot loopEntry;
+        std::size_t localCountAtBodyEntry = 0;
+        const ClassMemberSymbol* loopMethod = nullptr;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    enum class ForStage
+    {
+        Start,
+        AfterBody
+    };
+
+    struct ForFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t parentScopeOrdinal = 0;
+        ForStage stage = ForStage::Start;
+        std::size_t forScope = 0;
+        std::size_t breakCleanupDepth = 0;
+        bool conditionAlwaysTrue = false;
+        OwnershipFlowSnapshot loopEntry;
+        std::size_t localCountAtBodyEntry = 0;
+        const ClassMemberSymbol* loopMethod = nullptr;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    enum class ForeachStage
+    {
+        Start,
+        AfterCandidate
+    };
+
+    struct ForeachFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t parentScopeOrdinal = 0;
+        ForeachStage stage = ForeachStage::Start;
+        std::optional<ForeachAnalysisState> state;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    enum class UsingStage
+    {
+        Start,
+        AfterBody
+    };
+
+    struct UsingFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t parentScopeOrdinal = 0;
+        UsingStage stage = UsingStage::Start;
+        std::optional<UsingAnalysisState> state;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    enum class SwitchStage
+    {
+        Start,
+        NextSection,
+        AfterSection
+    };
+
+    struct SwitchFrame final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t scopeOrdinal = 0;
+        SwitchStage stage = SwitchStage::Start;
+        std::optional<SwitchAnalysisState> state;
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit;
+    };
+
+    using StatementFrame =
+        std::variant<
+            BlockFrame,
+            IfFrame,
+            LoopFrame,
+            ForFrame,
+            ForeachFrame,
+            UsingFrame,
+            SwitchFrame>;
+    std::vector<StatementFrame> frames;
     frames.reserve(16);
     const auto pushBlock = [&](const ast::AstNode* nestedBlock,
                                std::size_t parentScope,
@@ -172,7 +285,7 @@ void ProjectMethodBodyModel::analyzeBlock(
             deferCaptureStack_.push_back(std::move(context));
         }
 
-        frames.push_back(BlockFrame{
+        frames.emplace_back(BlockFrame{
             nestedBlock,
             activeScope,
             0,
@@ -184,7 +297,757 @@ void ProjectMethodBodyModel::analyzeBlock(
     pushBlock(block, scopeOrdinal, createNestedScope);
     while (!frames.empty())
     {
-        BlockFrame& frame = frames.back();
+        if (IfFrame* ifFrame = std::get_if<IfFrame>(&frames.back()); ifFrame != nullptr)
+        {
+            if (ifFrame->stage == IfStage::Start)
+            {
+                const ExpressionResult condition = analyzeExpression(
+                    ifFrame->statement->first(),
+                    methodMemberOrdinal,
+                    ifFrame->scopeOrdinal,
+                    diagnostics);
+                if (condition.valid &&
+                    condition.typeKey != "builtin:bool" &&
+                    condition.typeKey != "builtin:never")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCondition,
+                        diagnostics::DiagnosticSeverity::Error,
+                        ifFrame->statement->first()->range(),
+                        "if condition must have type bool");
+                }
+
+                const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+                ifFrame->thenEntry = branchEntry;
+                ifFrame->elseEntry = branchEntry;
+                if (const auto flow = conditionFlowBySyntax_.find(ifFrame->statement->first());
+                    flow != conditionFlowBySyntax_.end())
+                {
+                    ifFrame->thenEntry = flow->second.whenTrue;
+                    ifFrame->elseEntry = flow->second.whenFalse;
+                }
+
+                const ast::AstNode* const thenSyntax = ifFrame->statement->second();
+                const std::size_t branchScope = ifFrame->scopeOrdinal;
+                const OwnershipFlowSnapshot thenEntry = ifFrame->thenEntry;
+                ifFrame->stage = IfStage::AfterThen;
+                restoreOwnershipFlow(thenEntry);
+                if (thenSyntax != nullptr)
+                {
+                    pushBlock(thenSyntax, branchScope, true);
+                }
+                continue;
+            }
+
+            if (ifFrame->stage == IfStage::AfterThen)
+            {
+                ifFrame->thenState = captureOwnershipFlow();
+                const ast::AstNode* const elseSyntax = ifFrame->statement->third();
+                const std::size_t branchScope = ifFrame->scopeOrdinal;
+                const OwnershipFlowSnapshot elseEntry = ifFrame->elseEntry;
+                ifFrame->stage = IfStage::AfterElse;
+                restoreOwnershipFlow(elseEntry);
+                if (elseSyntax == nullptr)
+                {
+                    continue;
+                }
+                if (elseSyntax->kind() == ast::AstNodeKind::IfStatement)
+                {
+                    frames.emplace_back(IfFrame{
+                        elseSyntax,
+                        branchScope,
+                        IfStage::Start,
+                        {},
+                        {},
+                        {},
+                        std::nullopt});
+                }
+                else
+                {
+                    pushBlock(elseSyntax, branchScope, true);
+                }
+                continue;
+            }
+
+            const OwnershipFlowSnapshot elseState = captureOwnershipFlow();
+            const OwnershipFlowSnapshot thenState = std::move(ifFrame->thenState);
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(ifFrame->restoreAfterExit);
+            frames.pop_back();
+            commitBranchJoin(thenState, elseState);
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        if (LoopFrame* loopFrame = std::get_if<LoopFrame>(&frames.back()); loopFrame != nullptr)
+        {
+            const auto analyzeLoopCondition = [&]
+            {
+                const ExpressionResult condition = analyzeExpression(
+                    loopFrame->statement->first(),
+                    methodMemberOrdinal,
+                    loopFrame->scopeOrdinal,
+                    diagnostics);
+                if (condition.valid &&
+                    condition.typeKey != "builtin:bool" &&
+                    condition.typeKey != "builtin:never")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCondition,
+                        diagnostics::DiagnosticSeverity::Error,
+                        loopFrame->statement->first()->range(),
+                        loopFrame->isDoWhile
+                            ? "do-while condition must have type bool"
+                            : "while condition must have type bool");
+                }
+            };
+
+            if (loopFrame->stage == LoopStage::Start)
+            {
+                loopFrame->isDoWhile =
+                    loopFrame->statement->kind() == ast::AstNodeKind::DoWhileStatement;
+                loopFrame->conditionAlwaysTrue =
+                    loopFrame->statement->first() != nullptr &&
+                    loopFrame->statement->first()->kind() ==
+                        ast::AstNodeKind::BooleanLiteralExpression &&
+                    loopFrame->statement->first()->tokenKind() == lexer::TokenKind::KwTrue;
+                if (!loopFrame->isDoWhile)
+                {
+                    analyzeLoopCondition();
+                }
+
+                loopFrame->loopEntry = captureOwnershipFlow();
+                loopFrame->localCountAtBodyEntry = locals_.size();
+                loopFrame->loopMethod = methodSymbol(methodMemberOrdinal);
+                loopStack_.push_back(LoopContext{
+                    loopFrame->scopeOrdinal,
+                    activeCleanupRegions_.size(),
+                    activeCleanupRegions_.size(),
+                    {},
+                    {},
+                    false,
+                    nullptr,
+                    {},
+                    false,
+                    {}});
+
+                const ast::AstNode* const body = loopFrame->statement->second();
+                const std::size_t loopScope = loopFrame->scopeOrdinal;
+                loopFrame->stage = LoopStage::AfterBody;
+                if (body != nullptr)
+                {
+                    pushBlock(body, loopScope, true);
+                }
+                continue;
+            }
+
+            const ast::AstNode* const statement = loopFrame->statement;
+            const bool isDoWhile = loopFrame->isDoWhile;
+            const bool conditionAlwaysTrue = loopFrame->conditionAlwaysTrue;
+            const OwnershipFlowSnapshot& loopEntry = loopFrame->loopEntry;
+            const std::size_t localCountAtBodyEntry = loopFrame->localCountAtBodyEntry;
+            const ClassMemberSymbol* const loopMethod = loopFrame->loopMethod;
+            const OwnershipFlowSnapshot fallthroughState = captureOwnershipFlow();
+            LoopContext loopContext = std::move(loopStack_.back());
+            loopStack_.pop_back();
+
+            std::vector<OwnershipFlowSnapshot> backEdgeStates =
+                std::move(loopContext.continueStates);
+            if (fallthroughState.reachable)
+            {
+                backEdgeStates.push_back(fallthroughState);
+            }
+            OwnershipFlowSnapshot noBackEdge;
+            noBackEdge.reachable = false;
+            const OwnershipFlowSnapshot backEdgeState =
+                joinOwnershipFlows(noBackEdge, backEdgeStates);
+
+            OwnershipFlowSnapshot afterCondition;
+            afterCondition.reachable = false;
+            if (isDoWhile)
+            {
+                if (backEdgeState.reachable)
+                {
+                    restoreOwnershipFlow(backEdgeState);
+                    analyzeLoopCondition();
+                    afterCondition = captureOwnershipFlow();
+                }
+                else
+                {
+                    const OwnershipFlowSnapshot terminated = captureOwnershipFlow();
+                    OwnershipFlowSnapshot probe = backEdgeState;
+                    probe.reachable = true;
+                    restoreOwnershipFlow(probe);
+                    analyzeLoopCondition();
+                    restoreOwnershipFlow(terminated);
+                }
+            }
+
+            if (backEdgeState.reachable)
+            {
+                for (std::size_t localOrdinal = 0;
+                     localOrdinal < localCountAtBodyEntry;
+                     ++localOrdinal)
+                {
+                    if (localOrdinal >= locals_.size() ||
+                        (!locals_[localOrdinal].isRaii && !locals_[localOrdinal].isMoveOnly))
+                    {
+                        continue;
+                    }
+                    const bool aliveAtEntry = !snapshotLocalHasAnyFlag(
+                        loopEntry,
+                        localOrdinal,
+                        kLocalMoved | kLocalMaybeMoved);
+                    const bool movedAtBackEdge = snapshotLocalHasAnyFlag(
+                        backEdgeState,
+                        localOrdinal,
+                        kLocalMoved | kLocalMaybeMoved);
+                    if (aliveAtEntry && movedAtBackEdge)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            statement->range(),
+                            "RAII owner '" + locals_[localOrdinal].name +
+                                "' may remain moved across a while-loop back-edge; "
+                                "reinitialize it before the next iteration");
+                    }
+                }
+                if (loopMethod != nullptr)
+                {
+                    for (std::size_t parameterOrdinal = 0;
+                         parameterOrdinal < loopMethod->parameters.size();
+                         ++parameterOrdinal)
+                    {
+                        if (loopMethod->parameters[parameterOrdinal].ownership !=
+                            sema::OwnershipKind::Owned)
+                        {
+                            continue;
+                        }
+                        const bool aliveAtEntry = !snapshotParameterHasAnyFlag(
+                            loopEntry,
+                            parameterOrdinal,
+                            kParameterMoved | kParameterMaybeMoved);
+                        const bool movedAtBackEdge = snapshotParameterHasAnyFlag(
+                            backEdgeState,
+                            parameterOrdinal,
+                            kParameterMoved | kParameterMaybeMoved);
+                        if (aliveAtEntry && movedAtBackEdge)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                statement->range(),
+                                "owned parameter '" +
+                                    loopMethod->parameters[parameterOrdinal].name +
+                                    "' may remain moved across a while-loop back-edge; "
+                                    "transfer it only on an exiting path");
+                        }
+                    }
+                }
+                std::unordered_set<std::string> entryPartial = loopEntry.partiallyMovedPlaces;
+                entryPartial.insert(
+                    loopEntry.maybePartiallyMovedPlaces.begin(),
+                    loopEntry.maybePartiallyMovedPlaces.end());
+                std::unordered_set<std::string> backPartial =
+                    backEdgeState.partiallyMovedPlaces;
+                backPartial.insert(
+                    backEdgeState.maybePartiallyMovedPlaces.begin(),
+                    backEdgeState.maybePartiallyMovedPlaces.end());
+                for (const std::string& place : backPartial)
+                {
+                    if (entryPartial.contains(place)) continue;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->range(),
+                        "field path '" + place +
+                            "' may remain moved across a while-loop back-edge; "
+                            "reinitialize it before the next iteration");
+                }
+            }
+
+            OwnershipFlowSnapshot postLoop;
+            if (isDoWhile)
+            {
+                postLoop.reachable = false;
+                postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
+                if (afterCondition.reachable)
+                {
+                    postLoop = joinOwnershipFlow(postLoop, afterCondition);
+                }
+            }
+            else
+            {
+                postLoop.reachable = false;
+                if (!conditionAlwaysTrue) postLoop = loopEntry;
+                postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
+                if (!conditionAlwaysTrue && backEdgeState.reachable)
+                {
+                    postLoop = joinOwnershipFlow(postLoop, backEdgeState);
+                }
+            }
+            if (isDoWhile && conditionAlwaysTrue)
+            {
+                OwnershipFlowSnapshot onlyBreaks;
+                onlyBreaks.reachable = false;
+                postLoop = joinOwnershipFlows(onlyBreaks, loopContext.breakStates);
+            }
+
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(loopFrame->restoreAfterExit);
+            frames.pop_back();
+            restoreOwnershipFlow(postLoop);
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        if (ForFrame* forFrame = std::get_if<ForFrame>(&frames.back()); forFrame != nullptr)
+        {
+            if (forFrame->stage == ForStage::Start)
+            {
+                forFrame->forScope = createScope(
+                    MethodScopeKind::For,
+                    methodMemberOrdinal,
+                    forFrame->parentScopeOrdinal);
+                forFrame->breakCleanupDepth = activeCleanupRegions_.size();
+
+                if (forFrame->statement->first() != nullptr)
+                {
+                    if (forFrame->statement->first()->kind() ==
+                        ast::AstNodeKind::VariableDeclarationStatement)
+                    {
+                        analyzeVariable(
+                            forFrame->statement->first(),
+                            methodMemberOrdinal,
+                            forFrame->forScope,
+                            diagnostics);
+                    }
+                    else if (forFrame->statement->first()->kind() ==
+                        ast::AstNodeKind::BlockStatement)
+                    {
+                        if (forFrame->statement->first()->auxiliaryText() == "declaration-list")
+                        {
+                            analyzeBlock(
+                                forFrame->statement->first(),
+                                methodMemberOrdinal,
+                                forFrame->forScope,
+                                false,
+                                diagnostics);
+                        }
+                        else
+                        {
+                            for (const ast::AstNode* expressionStatement :
+                                 forFrame->statement->first()->children())
+                            {
+                                if (expressionStatement != nullptr &&
+                                    expressionStatement->first() != nullptr)
+                                {
+                                    analyzeExpression(
+                                        expressionStatement->first(),
+                                        methodMemberOrdinal,
+                                        forFrame->forScope,
+                                        diagnostics);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        analyzeExpression(
+                            forFrame->statement->first(),
+                            methodMemberOrdinal,
+                            forFrame->forScope,
+                            diagnostics);
+                    }
+                }
+
+                forFrame->conditionAlwaysTrue = forFrame->statement->second() == nullptr ||
+                    (forFrame->statement->second()->kind() ==
+                         ast::AstNodeKind::BooleanLiteralExpression &&
+                     forFrame->statement->second()->tokenKind() == lexer::TokenKind::KwTrue);
+                if (forFrame->statement->second() != nullptr)
+                {
+                    const ExpressionResult condition = analyzeExpression(
+                        forFrame->statement->second(),
+                        methodMemberOrdinal,
+                        forFrame->forScope,
+                        diagnostics);
+                    if (condition.valid &&
+                        condition.typeKey != "builtin:bool" &&
+                        condition.typeKey != "builtin:never")
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidCondition,
+                            diagnostics::DiagnosticSeverity::Error,
+                            forFrame->statement->second()->range(),
+                            "for condition must have type bool");
+                    }
+                }
+
+                forFrame->loopEntry = captureOwnershipFlow();
+                forFrame->localCountAtBodyEntry = locals_.size();
+                forFrame->loopMethod = methodSymbol(methodMemberOrdinal);
+                const std::size_t continueCleanupDepth = activeCleanupRegions_.size();
+                loopStack_.push_back(LoopContext{
+                    forFrame->forScope,
+                    forFrame->breakCleanupDepth,
+                    continueCleanupDepth,
+                    {},
+                    {},
+                    false,
+                    nullptr,
+                    {},
+                    false,
+                    {}});
+
+                const ast::AstNode* const body = forFrame->statement->children().empty()
+                    ? nullptr
+                    : forFrame->statement->children().front();
+                const std::size_t forScope = forFrame->forScope;
+                forFrame->stage = ForStage::AfterBody;
+                if (body != nullptr)
+                {
+                    pushBlock(body, forScope, true);
+                }
+                continue;
+            }
+
+            const ast::AstNode* const statement = forFrame->statement;
+            const std::size_t forScope = forFrame->forScope;
+            const std::size_t breakCleanupDepth = forFrame->breakCleanupDepth;
+            const bool conditionAlwaysTrue = forFrame->conditionAlwaysTrue;
+            const OwnershipFlowSnapshot& loopEntry = forFrame->loopEntry;
+            const std::size_t localCountAtBodyEntry = forFrame->localCountAtBodyEntry;
+            const ClassMemberSymbol* const loopMethod = forFrame->loopMethod;
+            const OwnershipFlowSnapshot bodyFallthroughState = captureOwnershipFlow();
+            LoopContext loopContext = std::move(loopStack_.back());
+            loopStack_.pop_back();
+
+            std::vector<OwnershipFlowSnapshot> updateEntryStates =
+                std::move(loopContext.continueStates);
+            if (bodyFallthroughState.reachable)
+            {
+                updateEntryStates.push_back(bodyFallthroughState);
+            }
+            OwnershipFlowSnapshot noUpdateEntry;
+            noUpdateEntry.reachable = false;
+            OwnershipFlowSnapshot backEdgeState =
+                joinOwnershipFlows(noUpdateEntry, updateEntryStates);
+
+            if (backEdgeState.reachable && statement->third() != nullptr)
+            {
+                restoreOwnershipFlow(backEdgeState);
+                if (statement->third()->kind() == ast::AstNodeKind::BlockStatement)
+                {
+                    for (const ast::AstNode* expressionStatement :
+                         statement->third()->children())
+                    {
+                        if (expressionStatement != nullptr &&
+                            expressionStatement->first() != nullptr)
+                        {
+                            analyzeExpression(
+                                expressionStatement->first(),
+                                methodMemberOrdinal,
+                                forScope,
+                                diagnostics);
+                        }
+                    }
+                }
+                else
+                {
+                    analyzeExpression(
+                        statement->third(), methodMemberOrdinal, forScope, diagnostics);
+                }
+                backEdgeState = captureOwnershipFlow();
+            }
+
+            if (backEdgeState.reachable)
+            {
+                for (std::size_t localOrdinal = 0;
+                     localOrdinal < localCountAtBodyEntry;
+                     ++localOrdinal)
+                {
+                    if (localOrdinal >= locals_.size() ||
+                        (!locals_[localOrdinal].isRaii && !locals_[localOrdinal].isMoveOnly))
+                    {
+                        continue;
+                    }
+                    const bool aliveAtEntry = !snapshotLocalHasAnyFlag(
+                        loopEntry,
+                        localOrdinal,
+                        kLocalMoved | kLocalMaybeMoved);
+                    const bool movedAtBackEdge = snapshotLocalHasAnyFlag(
+                        backEdgeState,
+                        localOrdinal,
+                        kLocalMoved | kLocalMaybeMoved);
+                    if (aliveAtEntry && movedAtBackEdge)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            statement->range(),
+                            "RAII owner '" + locals_[localOrdinal].name +
+                                "' may remain moved across a for-loop back-edge; "
+                                "reinitialize it before the next iteration");
+                    }
+                }
+                if (loopMethod != nullptr)
+                {
+                    for (std::size_t parameterOrdinal = 0;
+                         parameterOrdinal < loopMethod->parameters.size();
+                         ++parameterOrdinal)
+                    {
+                        if (loopMethod->parameters[parameterOrdinal].ownership !=
+                            sema::OwnershipKind::Owned)
+                        {
+                            continue;
+                        }
+                        const bool aliveAtEntry = !snapshotParameterHasAnyFlag(
+                            loopEntry,
+                            parameterOrdinal,
+                            kParameterMoved | kParameterMaybeMoved);
+                        const bool movedAtBackEdge = snapshotParameterHasAnyFlag(
+                            backEdgeState,
+                            parameterOrdinal,
+                            kParameterMoved | kParameterMaybeMoved);
+                        if (aliveAtEntry && movedAtBackEdge)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                statement->range(),
+                                "owned parameter '" +
+                                    loopMethod->parameters[parameterOrdinal].name +
+                                    "' may remain moved across a for-loop back-edge; "
+                                    "transfer it only on an exiting path");
+                        }
+                    }
+                }
+                std::unordered_set<std::string> entryPartial = loopEntry.partiallyMovedPlaces;
+                entryPartial.insert(
+                    loopEntry.maybePartiallyMovedPlaces.begin(),
+                    loopEntry.maybePartiallyMovedPlaces.end());
+                std::unordered_set<std::string> backPartial =
+                    backEdgeState.partiallyMovedPlaces;
+                backPartial.insert(
+                    backEdgeState.maybePartiallyMovedPlaces.begin(),
+                    backEdgeState.maybePartiallyMovedPlaces.end());
+                for (const std::string& place : backPartial)
+                {
+                    if (entryPartial.contains(place)) continue;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->range(),
+                        "field path '" + place +
+                            "' may remain moved across a for-loop back-edge; "
+                            "reinitialize it before the next iteration");
+                }
+            }
+
+            OwnershipFlowSnapshot postLoop;
+            postLoop.reachable = false;
+            if (!conditionAlwaysTrue) postLoop = loopEntry;
+            postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
+            if (!conditionAlwaysTrue && backEdgeState.reachable)
+            {
+                postLoop = joinOwnershipFlow(postLoop, backEdgeState);
+            }
+            restoreOwnershipFlow(postLoop);
+
+            for (std::size_t index = activeCleanupRegions_.size();
+                 index > breakCleanupDepth;
+                 --index)
+            {
+                recordNormalCleanupContinuation(
+                    activeCleanupRegions_[index - 1],
+                    statement,
+                    methodMemberOrdinal,
+                    forScope);
+            }
+            activeCleanupRegions_.resize(breakCleanupDepth);
+
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(forFrame->restoreAfterExit);
+            frames.pop_back();
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        if (ForeachFrame* foreachFrame =
+                std::get_if<ForeachFrame>(&frames.back());
+            foreachFrame != nullptr)
+        {
+            if (foreachFrame->stage == ForeachStage::Start)
+            {
+                foreachFrame->state = beginForeach(
+                    foreachFrame->statement,
+                    methodMemberOrdinal,
+                    foreachFrame->parentScopeOrdinal,
+                    diagnostics);
+                if (!foreachFrame->state.has_value())
+                {
+                    std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                        std::move(foreachFrame->restoreAfterExit);
+                    frames.pop_back();
+                    if (restoreAfterExit.has_value())
+                    {
+                        restoreOwnershipFlow(*restoreAfterExit);
+                    }
+                    continue;
+                }
+
+                const ast::AstNode* const candidate =
+                    foreachFrame->state->chosenCandidate;
+                const std::size_t foreachScope =
+                    foreachFrame->state->foreachScope;
+                foreachFrame->stage = ForeachStage::AfterCandidate;
+                if (candidate != nullptr)
+                {
+                    pushBlock(candidate, foreachScope, true);
+                }
+                continue;
+            }
+
+            const ForeachAnalysisState state = std::move(*foreachFrame->state);
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(foreachFrame->restoreAfterExit);
+            frames.pop_back();
+            finishForeach(state, methodMemberOrdinal);
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        if (UsingFrame* usingFrame = std::get_if<UsingFrame>(&frames.back());
+            usingFrame != nullptr)
+        {
+            if (usingFrame->stage == UsingStage::Start)
+            {
+                usingFrame->state = beginUsing(
+                    usingFrame->statement,
+                    methodMemberOrdinal,
+                    usingFrame->parentScopeOrdinal,
+                    diagnostics);
+                if (!usingFrame->state.has_value())
+                {
+                    std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                        std::move(usingFrame->restoreAfterExit);
+                    frames.pop_back();
+                    if (restoreAfterExit.has_value())
+                    {
+                        restoreOwnershipFlow(*restoreAfterExit);
+                    }
+                    continue;
+                }
+
+                const ast::AstNode* const body = usingFrame->state->body;
+                const std::size_t usingScope = usingFrame->state->usingScope;
+                usingFrame->stage = UsingStage::AfterBody;
+                if (body != nullptr)
+                {
+                    pushBlock(body, usingScope, false);
+                }
+                continue;
+            }
+
+            const UsingAnalysisState state = std::move(*usingFrame->state);
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(usingFrame->restoreAfterExit);
+            frames.pop_back();
+            finishUsing(state);
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        if (SwitchFrame* switchFrame = std::get_if<SwitchFrame>(&frames.back());
+            switchFrame != nullptr)
+        {
+            if (switchFrame->stage == SwitchStage::Start)
+            {
+                switchFrame->state = beginSwitch(
+                    switchFrame->statement,
+                    methodMemberOrdinal,
+                    switchFrame->scopeOrdinal,
+                    diagnostics);
+                if (!switchFrame->state.has_value())
+                {
+                    std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                        std::move(switchFrame->restoreAfterExit);
+                    frames.pop_back();
+                    if (restoreAfterExit.has_value())
+                    {
+                        restoreOwnershipFlow(*restoreAfterExit);
+                    }
+                    continue;
+                }
+                switchFrame->stage = SwitchStage::NextSection;
+                continue;
+            }
+
+            if (switchFrame->stage == SwitchStage::AfterSection)
+            {
+                OwnershipFlowSnapshot exitState = captureOwnershipFlow();
+                if (exitState.reachable)
+                {
+                    switchFrame->state->sectionExitStates.push_back(std::move(exitState));
+                }
+                switchFrame->stage = SwitchStage::NextSection;
+                continue;
+            }
+
+            const ast::AstNode* section = nullptr;
+            while (switchFrame->state->nextChild <
+                switchFrame->statement->children().size())
+            {
+                const ast::AstNode* candidate = switchFrame->statement->children()[
+                    switchFrame->state->nextChild++];
+                if (candidate != nullptr &&
+                    candidate->kind() == ast::AstNodeKind::SwitchSection)
+                {
+                    section = candidate;
+                    break;
+                }
+            }
+            if (section != nullptr)
+            {
+                const OwnershipFlowSnapshot switchEntry =
+                    switchFrame->state->switchEntry;
+                const std::size_t switchScope = switchFrame->scopeOrdinal;
+                switchFrame->stage = SwitchStage::AfterSection;
+                restoreOwnershipFlow(switchEntry);
+                pushBlock(section, switchScope, true);
+                continue;
+            }
+
+            SwitchAnalysisState state = std::move(*switchFrame->state);
+            std::optional<OwnershipFlowSnapshot> restoreAfterExit =
+                std::move(switchFrame->restoreAfterExit);
+            frames.pop_back();
+            finishSwitch(std::move(state));
+            if (restoreAfterExit.has_value())
+            {
+                restoreOwnershipFlow(*restoreAfterExit);
+            }
+            continue;
+        }
+
+        BlockFrame& frame = std::get<BlockFrame>(frames.back());
         if (frame.nextStatement < frame.block->children().size())
         {
             const ast::AstNode* statement = frame.block->children()[frame.nextStatement++];
@@ -210,6 +1073,91 @@ void ProjectMethodBodyModel::analyzeBlock(
                 OwnershipFlowSnapshot probeState = *restoreAfterStatement;
                 probeState.reachable = true;
                 restoreOwnershipFlow(probeState);
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::IfStatement)
+            {
+                const std::size_t branchScope = frame.activeScope;
+                frames.emplace_back(IfFrame{
+                    statement,
+                    branchScope,
+                    IfStage::Start,
+                    {},
+                    {},
+                    {},
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr &&
+                (statement->kind() == ast::AstNodeKind::WhileStatement ||
+                 statement->kind() == ast::AstNodeKind::DoWhileStatement))
+            {
+                const std::size_t loopScope = frame.activeScope;
+                frames.emplace_back(LoopFrame{
+                    statement,
+                    loopScope,
+                    LoopStage::Start,
+                    false,
+                    false,
+                    {},
+                    0,
+                    nullptr,
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForStatement)
+            {
+                const std::size_t parentScope = frame.activeScope;
+                frames.emplace_back(ForFrame{
+                    statement,
+                    parentScope,
+                    ForStage::Start,
+                    0,
+                    0,
+                    false,
+                    {},
+                    0,
+                    nullptr,
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::ForeachStatement)
+            {
+                const std::size_t parentScope = frame.activeScope;
+                frames.emplace_back(ForeachFrame{
+                    statement,
+                    parentScope,
+                    ForeachStage::Start,
+                    std::nullopt,
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::UsingStatement)
+            {
+                const std::size_t parentScope = frame.activeScope;
+                frames.emplace_back(UsingFrame{
+                    statement,
+                    parentScope,
+                    UsingStage::Start,
+                    std::nullopt,
+                    std::move(restoreAfterStatement)});
+                continue;
+            }
+
+            if (statement != nullptr && statement->kind() == ast::AstNodeKind::SwitchStatement)
+            {
+                const std::size_t switchScope = frame.activeScope;
+                frames.emplace_back(SwitchFrame{
+                    statement,
+                    switchScope,
+                    SwitchStage::Start,
+                    std::nullopt,
+                    std::move(restoreAfterStatement)});
+                continue;
             }
 
             if (statement != nullptr && statement->kind() == ast::AstNodeKind::BlockStatement)
@@ -693,58 +1641,81 @@ void ProjectMethodBodyModel::analyzeStatement(
         }
         case ast::AstNodeKind::IfStatement:
         {
-            const ExpressionResult condition = analyzeExpression(
-                statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            if (condition.valid &&
-                condition.typeKey != "builtin:bool" &&
-                condition.typeKey != "builtin:never")
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidCondition,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->first()->range(),
-                    "if condition must have type bool");
-            }
-
             // CC1-200. Este case ya hacia lo correcto a mano; ahora lo hace a traves de las dos
             // funciones compartidas. El cambio no altera su comportamiento -- es literalmente el
             // mismo capture / restore(entry) / analizar / capture / restore(join) -- y ese es el
             // punto: `?:`, `&&` y `||` estaban rotos porque tenian que ACORDARSE de repetir este
-            // patron, y no se acordaron. Reescribirlo aqui es lo que demuestra que la pieza
-            // compartida es equivalente a la version que ya era correcta.
-            const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
-            OwnershipFlowSnapshot thenEntry = branchEntry;
-            OwnershipFlowSnapshot elseEntry = branchEntry;
-            if (const auto flow = conditionFlowBySyntax_.find(statement->first());
-                flow != conditionFlowBySyntax_.end())
+            // patron, y no se acordaron. La cadena `else if` conserva ese orden, pero guarda cada
+            // thenState en heap y deshace los joins de adentro hacia afuera; no vuelve a invocar
+            // analyzeStatement sobre si misma.
+            const ast::AstNode* currentIf = statement;
+            std::vector<OwnershipFlowSnapshot> thenStates;
+            while (currentIf != nullptr)
             {
-                thenEntry = flow->second.whenTrue;
-                elseEntry = flow->second.whenFalse;
-            }
-            const OwnershipFlowSnapshot thenState = analyzeBranchState(
-                thenEntry,
-                [&]
+                const ExpressionResult condition = analyzeExpression(
+                    currentIf->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                if (condition.valid &&
+                    condition.typeKey != "builtin:bool" &&
+                    condition.typeKey != "builtin:never")
                 {
-                    analyzeBlock(
-                        statement->second(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-                });
-            const OwnershipFlowSnapshot elseState = analyzeBranchState(
-                elseEntry,
-                [&]
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCondition,
+                        diagnostics::DiagnosticSeverity::Error,
+                        currentIf->first()->range(),
+                        "if condition must have type bool");
+                }
+
+                const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+                OwnershipFlowSnapshot thenEntry = branchEntry;
+                OwnershipFlowSnapshot elseEntry = branchEntry;
+                if (const auto flow = conditionFlowBySyntax_.find(currentIf->first());
+                    flow != conditionFlowBySyntax_.end())
                 {
-                    if (statement->third() == nullptr) return;
-                    if (statement->third()->kind() == ast::AstNodeKind::IfStatement)
-                    {
-                        analyzeStatement(
-                            statement->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                    }
-                    else
+                    thenEntry = flow->second.whenTrue;
+                    elseEntry = flow->second.whenFalse;
+                }
+                thenStates.push_back(analyzeBranchState(
+                    thenEntry,
+                    [&]
                     {
                         analyzeBlock(
-                            statement->third(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-                    }
-                });
-            commitBranchJoin(thenState, elseState);
+                            currentIf->second(),
+                            methodMemberOrdinal,
+                            scopeOrdinal,
+                            true,
+                            diagnostics);
+                    }));
+
+                const ast::AstNode* const elseSyntax = currentIf->third();
+                if (elseSyntax != nullptr &&
+                    elseSyntax->kind() == ast::AstNodeKind::IfStatement)
+                {
+                    restoreOwnershipFlow(elseEntry);
+                    currentIf = elseSyntax;
+                    continue;
+                }
+
+                OwnershipFlowSnapshot elseState = analyzeBranchState(
+                    elseEntry,
+                    [&]
+                    {
+                        if (elseSyntax != nullptr)
+                        {
+                            analyzeBlock(
+                                elseSyntax,
+                                methodMemberOrdinal,
+                                scopeOrdinal,
+                                true,
+                                diagnostics);
+                        }
+                    });
+                for (std::size_t index = thenStates.size(); index > 0; --index)
+                {
+                    commitBranchJoin(thenStates[index - 1], elseState);
+                    elseState = captureOwnershipFlow();
+                }
+                break;
+            }
             break;
         }
         // CC1-210/CC1-211/CC1-212. Los dos bucles COMPARTEN este case, pero ya NO comparten su
@@ -1410,7 +2381,8 @@ std::size_t ProjectMethodBodyModel::addUsingLocal(
     return localOrdinal;
 }
 
-void ProjectMethodBodyModel::analyzeUsing(
+std::optional<ProjectMethodBodyModel::UsingAnalysisState>
+ProjectMethodBodyModel::beginUsing(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
@@ -1419,7 +2391,7 @@ void ProjectMethodBodyModel::analyzeUsing(
     if (statement == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr ||
         inheritanceModel_ == nullptr || interfaceModel_ == nullptr)
     {
-        return;
+        return std::nullopt;
     }
 
     const std::size_t usingScope = createScope(
@@ -1462,11 +2434,7 @@ void ProjectMethodBodyModel::analyzeUsing(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "NativeSharp.Core.IDisposable must be declared as an interface before using semantics can be used");
-        if (statement->second() != nullptr)
-        {
-            analyzeBlock(statement->second(), methodMemberOrdinal, usingScope, false, diagnostics);
-        }
-        return;
+        return UsingAnalysisState{statement->second(), usingScope, false};
     }
 
     const std::optional<std::size_t> disposeContract = disposableContractMemberOrdinal(*disposableOrdinal);
@@ -1477,11 +2445,7 @@ void ProjectMethodBodyModel::analyzeUsing(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "NativeSharp.Core.IDisposable must declare exactly one instance 'void Dispose()' contract");
-        if (statement->second() != nullptr)
-        {
-            analyzeBlock(statement->second(), methodMemberOrdinal, usingScope, false, diagnostics);
-        }
-        return;
+        return UsingAnalysisState{statement->second(), usingScope, false};
     }
 
     const std::optional<std::size_t> resourceTypeOrdinal =
@@ -1530,20 +2494,12 @@ void ProjectMethodBodyModel::analyzeUsing(
             statement->range(),
             "using resource type '" + resourceTypeKey +
                 "' must implement NativeSharp.Core.IDisposable and provide instance void Dispose()");
-        if (statement->second() != nullptr)
-        {
-            analyzeBlock(statement->second(), methodMemberOrdinal, usingScope, false, diagnostics);
-        }
-        return;
+        return UsingAnalysisState{statement->second(), usingScope, false};
     }
 
     if (localOrdinal == static_cast<std::size_t>(-1) || !resourceTypeOrdinal.has_value())
     {
-        if (statement->second() != nullptr)
-        {
-            analyzeBlock(statement->second(), methodMemberOrdinal, usingScope, false, diagnostics);
-        }
-        return;
+        return UsingAnalysisState{statement->second(), usingScope, false};
     }
 
     MethodUsingBinding binding;
@@ -1573,11 +2529,28 @@ void ProjectMethodBodyModel::analyzeUsing(
         cleanupRegionOrdinal, statement, methodMemberOrdinal, usingScope);
 
     activeCleanupRegions_.push_back(cleanupRegionOrdinal);
-    if (statement->second() != nullptr)
+    return UsingAnalysisState{statement->second(), usingScope, true};
+}
+
+void ProjectMethodBodyModel::finishUsing(const UsingAnalysisState& state)
+{
+    if (state.cleanupRegionActive) activeCleanupRegions_.pop_back();
+}
+
+void ProjectMethodBodyModel::analyzeUsing(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<UsingAnalysisState> state = beginUsing(
+        statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (!state.has_value()) return;
+    if (state->body != nullptr)
     {
-        analyzeBlock(statement->second(), methodMemberOrdinal, usingScope, false, diagnostics);
+        analyzeBlock(state->body, methodMemberOrdinal, state->usingScope, false, diagnostics);
     }
-    activeCleanupRegions_.pop_back();
+    finishUsing(*state);
 }
 
 void ProjectMethodBodyModel::analyzeTry(
@@ -3224,7 +4197,8 @@ void ProjectMethodBodyModel::analyzeFor(
 // checking, ownership-flow join, break/continue support) runs completely unmodified. foreach gets
 // full loop semantics for free, with zero duplicated logic -- exactly like the HIR/MIR/LLVM
 // layers below it, which likewise need no foreach-specific lowering code at all.
-void ProjectMethodBodyModel::analyzeForeach(
+std::optional<ProjectMethodBodyModel::ForeachAnalysisState>
+ProjectMethodBodyModel::beginForeach(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
@@ -3245,7 +4219,7 @@ void ProjectMethodBodyModel::analyzeForeach(
 
     if (statement->first() == nullptr)
     {
-        return;
+        return std::nullopt;
     }
 
     // P0.2 of the closure review (STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md): decide
@@ -3312,7 +4286,7 @@ void ProjectMethodBodyModel::analyzeForeach(
     analyzeVariable(statement->first(), methodMemberOrdinal, foreachScope, diagnostics);
     if (locals_.size() != localCountBeforeSource + 1)
     {
-        return;
+        return std::nullopt;
     }
 
     const std::string sourceTypeKey = locals_.back().typeKey;
@@ -3341,6 +4315,7 @@ void ProjectMethodBodyModel::analyzeForeach(
     else if (isSpan && statement->children().size() > 1U)
         chosenCandidate = const_cast<ast::AstNode*>(statement->children()[1]);
     else chosenCandidate = const_cast<ast::AstNode*>(statement->third());
+    bool iterationBorrowActive = false;
     if (chosenCandidate != nullptr)
     {
         const bool lendingIteration =
@@ -3355,6 +4330,7 @@ void ProjectMethodBodyModel::analyzeForeach(
             activeIterationBorrows_.push_back(ActiveIterationBorrow{
                 *borrowedSourcePlace,
                 statement->auxiliaryText() == "foreach:ref-mut"});
+            iterationBorrowActive = true;
         }
         // Everything past this point is ordinary VariableDeclarationStatement/WhileStatement
         // analysis -- including, for the enumerator-mode candidate, the
@@ -3363,9 +4339,21 @@ void ProjectMethodBodyModel::analyzeForeach(
         // missing one of these members (or having them with the wrong signature/shape) is
         // reported by the ordinary "no accessible member" / argument-mismatch diagnostics --
         // foreach needs no bespoke "does this type support foreach" pre-check.
-        analyzeBlock(chosenCandidate, methodMemberOrdinal, foreachScope, true, diagnostics);
-        if (borrowedSourcePlace.has_value()) activeIterationBorrows_.pop_back();
     }
+
+    return ForeachAnalysisState{
+        statement,
+        chosenCandidate,
+        foreachScope,
+        foreachCleanupDepth,
+        iterationBorrowActive};
+}
+
+void ProjectMethodBodyModel::finishForeach(
+    const ForeachAnalysisState& state,
+    std::size_t methodMemberOrdinal)
+{
+    if (state.iterationBorrowActive) activeIterationBorrows_.pop_back();
 
     // Teardown for the synthesized foreach source's OWN cleanup region, mirroring analyzeFor's end-of-forScope
     // teardown (see the last lines of analyzeFor above). This is genuinely new: before the P0.2
@@ -3381,12 +4369,36 @@ void ProjectMethodBodyModel::analyzeForeach(
     // never actually enters/exits for real (foreach's own scope was never wired to do so) --
     // surfacing as "Stage 45.10 structured exit references an inactive cleanup region" in
     // ProjectOopLlvmLowerer, discovered while writing the regression test for this exact fix.
-    for (std::size_t index = activeCleanupRegions_.size(); index > foreachCleanupDepth; --index)
+    for (std::size_t index = activeCleanupRegions_.size(); index > state.cleanupDepth; --index)
     {
         recordNormalCleanupContinuation(
-            activeCleanupRegions_[index - 1], statement, methodMemberOrdinal, foreachScope);
+            activeCleanupRegions_[index - 1],
+            state.statement,
+            methodMemberOrdinal,
+            state.foreachScope);
     }
-    activeCleanupRegions_.resize(foreachCleanupDepth);
+    activeCleanupRegions_.resize(state.cleanupDepth);
+}
+
+void ProjectMethodBodyModel::analyzeForeach(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<ForeachAnalysisState> state = beginForeach(
+        statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (!state.has_value()) return;
+    if (state->chosenCandidate != nullptr)
+    {
+        analyzeBlock(
+            state->chosenCandidate,
+            methodMemberOrdinal,
+            state->foreachScope,
+            true,
+            diagnostics);
+    }
+    finishForeach(*state, methodMemberOrdinal);
 }
 
 void ProjectMethodBodyModel::analyzeReturn(
@@ -4328,13 +5340,14 @@ std::string ProjectMethodBodyModel::ConstantMemberResolver::resolveTypeKey(
 //
 // A switch pushes a LoopContext with isSwitch set, so `break` leaves the switch while `continue`
 // walks past it to the enclosing loop. See analyzeLoopExit.
-void ProjectMethodBodyModel::analyzeSwitch(
+std::optional<ProjectMethodBodyModel::SwitchAnalysisState>
+ProjectMethodBodyModel::beginSwitch(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (statement == nullptr) return;
+    if (statement == nullptr) return std::nullopt;
 
     const ExpressionResult governing = analyzeExpression(
         statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -4484,18 +5497,18 @@ void ProjectMethodBodyModel::analyzeSwitch(
         false,
         {}});
 
-    std::vector<OwnershipFlowSnapshot> sectionExitStates;
-    for (const ast::AstNode* section : statement->children())
-    {
-        if (section == nullptr || section->kind() != ast::AstNodeKind::SwitchSection) continue;
-        restoreOwnershipFlow(switchEntry);
-        analyzeBlock(section, methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-        const OwnershipFlowSnapshot exitState = captureOwnershipFlow();
-        if (exitState.reachable)
-        {
-            sectionExitStates.push_back(exitState);
-        }
-    }
+    return SwitchAnalysisState{
+        statement,
+        scopeOrdinal,
+        std::move(binding),
+        switchEntry,
+        {},
+        0,
+        defaultLabel != nullptr};
+}
+
+void ProjectMethodBodyModel::finishSwitch(SwitchAnalysisState&& state)
+{
 
     LoopContext switchContext = std::move(loopStack_.back());
     loopStack_.pop_back();
@@ -4503,22 +5516,45 @@ void ProjectMethodBodyModel::analyzeSwitch(
     // Control reaches the statement after the switch three ways: off the end of a section, through
     // a `break`, or -- only when there is no `default` -- by matching nothing at all.
     std::vector<OwnershipFlowSnapshot> exitStates = std::move(switchContext.breakStates);
-    for (OwnershipFlowSnapshot& state : sectionExitStates)
+    for (OwnershipFlowSnapshot& sectionState : state.sectionExitStates)
     {
-        exitStates.push_back(std::move(state));
+        exitStates.push_back(std::move(sectionState));
     }
     OwnershipFlowSnapshot seed;
-    if (defaultLabel != nullptr)
+    if (state.hasDefault)
     {
         seed.reachable = false;
     }
     else
     {
-        seed = switchEntry;
+        seed = state.switchEntry;
     }
     restoreOwnershipFlow(joinOwnershipFlows(seed, exitStates));
 
-    switchBindings_.push_back(std::move(binding));
+    switchBindings_.push_back(std::move(state.binding));
+}
+
+void ProjectMethodBodyModel::analyzeSwitch(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::optional<SwitchAnalysisState> state = beginSwitch(
+        statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (!state.has_value()) return;
+    for (const ast::AstNode* section : statement->children())
+    {
+        if (section == nullptr || section->kind() != ast::AstNodeKind::SwitchSection) continue;
+        restoreOwnershipFlow(state->switchEntry);
+        analyzeBlock(section, methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+        OwnershipFlowSnapshot exitState = captureOwnershipFlow();
+        if (exitState.reachable)
+        {
+            state->sectionExitStates.push_back(std::move(exitState));
+        }
+    }
+    finishSwitch(std::move(*state));
 }
 
 bool ProjectMethodBodyModel::analyzeLoopExit(

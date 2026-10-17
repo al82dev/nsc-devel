@@ -101,3 +101,28 @@ temporales, builds y evidencia de esta tanda permanecieron en A:.
 La familia de statements queda separada físicamente; bloques léxicos y patrones deconstruction ya
 usan memoria explícita y cuentan con regresión profunda. La continuación B08F es obligatoria antes
 de afirmar que el dispatcher completo de statements es iterativo.
+
+## B08F — checkpoint de continuaciones estructurales
+
+El worklist de `analyzeBlock` ya incorpora frames explícitos para:
+
+- cadenas `if`/`else if` y sus joins de ownership;
+- `while` y `do while`, incluidos estados de `break`, `continue` y back-edge;
+- `for`, su scope propio, update, cleanup y back-edge;
+- `foreach`, separado internamente en preparación y finalización para mantener activo el préstamo
+  de iteración durante el candidato sintetizado;
+- `using`, separado en preparación/finalización para conservar exactamente la vida del cleanup;
+- `switch`, con preparación única de etiquetas y continuación explícita por sección.
+
+Las regresiones profundas añadidas cubren 512 `else if`, 256 `if`, 256 `while`, 128 `for`, 192
+`foreach`, 256 `using` y 256 `switch`. El gate focal alcanza `PASS: 85 checks`; `nsc.exe` vuelve a
+construirse y conserva el contrato de host runtime estático.
+
+La prueba exploratoria de 256 `foreach` no llegó a `method-bodies`: el último evento completado fue
+`syntax-lex` y el proceso terminó con `0xC00000FD` durante `syntax-parse`. El caso semántico queda en
+192 para probar la ruta que sí alcanza el binder, y el límite de parser se conserva como pendiente
+explícito; no se atribuye falsamente al binder ni se considera resuelto.
+
+Este es un checkpoint, no el cierre de B08F. `try`/`catch`/`finally` todavía requiere su frame de
+continuación y la auditoría final debe demostrar que ninguna ruta estructural normal vuelve a
+entrar síncronamente a `analyzeBlock`.

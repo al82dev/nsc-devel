@@ -551,6 +551,181 @@ void testDeepNestedBlocks(TestContext& tests, const std::filesystem::path& root)
         "deep lexical traversal preserves every nested block scope");
 }
 
+void testDeepElseIfChain(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 512;
+    const std::filesystem::path directory = root / "DeepElseIfChain";
+    writeProject(directory, "DeepElseIfChain");
+
+    std::string source = "class DeepElseIf { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        if (index != 0) source += "else ";
+        source += "if (value == " + std::to_string(index) + ") { return value; } ";
+    }
+    source += "else { return value; } } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepElseIfChain.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "512 else-if branches bind through iterative branch joins");
+}
+
+void testDeepNestedControlBodies(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedControlBodies";
+    writeProject(directory, "DeepNestedControlBodies");
+
+    std::string source = "class DeepControl { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "if (value >= 0) { ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedControlBodies.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested control bodies preserve method-body flow without host-stack failure");
+}
+
+void testDeepNestedLoops(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedLoops";
+    writeProject(directory, "DeepNestedLoops");
+
+    std::string source = "class DeepLoops { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "while (value > 0) { ";
+    source += "value = 0; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedLoops.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested while bodies bind without host-stack failure");
+}
+
+void testDeepNestedForLoops(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 128;
+    const std::filesystem::path directory = root / "DeepNestedForLoops";
+    writeProject(directory, "DeepNestedForLoops");
+
+    std::string source = "class DeepFor { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "for (int counter" + std::to_string(index) + " = 0; counter" +
+            std::to_string(index) + " < 1; counter" + std::to_string(index) +
+            " = counter" + std::to_string(index) + " + 1) { ";
+    }
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedForLoops.nsproj", error);
+    std::string detail = error;
+    if (!compilation.diagnostics().diagnostics().empty())
+    {
+        detail += compilation.diagnostics().diagnostics().front().message();
+    }
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "128 nested for bodies bind without host-stack failure: " + detail);
+}
+
+void testDeepNestedForeachLoops(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 192;
+    const std::filesystem::path directory = root / "DeepNestedForeachLoops";
+    writeProject(directory, "DeepNestedForeachLoops");
+
+    std::string source = "class DeepForeach { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "foreach (int item" + std::to_string(index) + " in 0..1) { ";
+    }
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedForeachLoops.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "192 nested foreach bodies bind without host-stack failure");
+}
+
+void testDeepNestedUsingStatements(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedUsingStatements";
+    writeProject(directory, "DeepNestedUsingStatements");
+
+    std::string source =
+        "namespace NativeSharp.Core { public interface IDisposable { void Dispose(); } } "
+        "class Resource : NativeSharp.Core.IDisposable { public void Dispose() { } } "
+        "class DeepUsing { void Run(Resource input) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "using (Resource resource" + std::to_string(index) + " = input) { ";
+    }
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "} }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedUsingStatements.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested using bodies bind without host-stack failure");
+}
+
+void testDeepNestedSwitchStatements(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t depth = 256;
+    const std::filesystem::path directory = root / "DeepNestedSwitchStatements";
+    writeProject(directory, "DeepNestedSwitchStatements");
+
+    std::string source = "class DeepSwitch { int Run(int value) { ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "switch (value) { case 0: ";
+    }
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "break; default: break; } ";
+    }
+    source += "return value; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedSwitchStatements.nsproj", error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "256 nested switch statements bind without host-stack failure");
+}
+
 void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path alpha = root / "QualifiedAlpha";
@@ -827,6 +1002,13 @@ int main()
     testLongLogicalChains(tests, root);
     testDeepNestedValueExpression(tests, root);
     testDeepNestedBlocks(tests, root);
+    testDeepElseIfChain(tests, root);
+    testDeepNestedControlBodies(tests, root);
+    testDeepNestedLoops(tests, root);
+    testDeepNestedForLoops(tests, root);
+    testDeepNestedForeachLoops(tests, root);
+    testDeepNestedUsingStatements(tests, root);
+    testDeepNestedSwitchStatements(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
     testDenseOwnershipSnapshots(tests, root);
     testDeterministicCallableWaves(tests, root);

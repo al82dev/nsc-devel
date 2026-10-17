@@ -1928,11 +1928,43 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    struct ForeachAnalysisState final
+    {
+        const ast::AstNode* statement = nullptr;
+        const ast::AstNode* chosenCandidate = nullptr;
+        std::size_t foreachScope = 0;
+        std::size_t cleanupDepth = 0;
+        bool iterationBorrowActive = false;
+    };
+    std::optional<ForeachAnalysisState> beginForeach(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finishForeach(
+        const ForeachAnalysisState& state,
+        std::size_t methodMemberOrdinal);
     void analyzeForeach(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    struct SwitchAnalysisState final
+    {
+        const ast::AstNode* statement = nullptr;
+        std::size_t scopeOrdinal = 0;
+        MethodSwitchBinding binding;
+        OwnershipFlowSnapshot switchEntry;
+        std::vector<OwnershipFlowSnapshot> sectionExitStates;
+        std::size_t nextChild = 0;
+        bool hasDefault = false;
+    };
+    std::optional<SwitchAnalysisState> beginSwitch(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finishSwitch(SwitchAnalysisState&& state);
     void analyzeSwitch(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
@@ -2002,6 +2034,18 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    struct UsingAnalysisState final
+    {
+        const ast::AstNode* body = nullptr;
+        std::size_t usingScope = 0;
+        bool cleanupRegionActive = false;
+    };
+    std::optional<UsingAnalysisState> beginUsing(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finishUsing(const UsingAnalysisState& state);
     void analyzeUsing(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
