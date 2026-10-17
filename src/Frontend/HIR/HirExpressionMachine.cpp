@@ -44,6 +44,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Conversion,
         BuiltinBinary,
         Conditional,
+        CoreMember,
         InstanceField,
         NullConditionalField,
     };
@@ -115,6 +116,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         {
             return IterativeExpressionKind::Conditional;
         }
+        if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
+             syntax->kind() == ast::AstNodeKind::MemberExpression) &&
+            syntax->first() != nullptr)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ArrayLength ||
+                 core->kind == MethodCoreOperationKind::StringLength) && !address)
+            {
+                return IterativeExpressionKind::CoreMember;
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::IteratorCurrent)
+            {
+                const bool itemByReference = core->resultTypeKey.starts_with("ref:") ||
+                    core->resultTypeKey.starts_with("refmut:");
+                if (!address || itemByReference)
+                    return IterativeExpressionKind::CoreMember;
+            }
+        }
         if (!address && syntax->kind() == ast::AstNodeKind::NullConditionalMemberExpression &&
             accessorGetterBinding(syntax) == nullptr)
         {
@@ -176,8 +196,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
-                else if (*currentKind == IterativeExpressionKind::NullConditionalField)
-                    current = current->first();
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -267,6 +285,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     conversion->children.push_back(std::move(lowered));
                     lowered = std::move(conversion);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CoreMember)
+                {
+                    const MethodCoreBinding& core = *coreBinding(frame.syntax);
+                    ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::IteratorCurrent;
+                    if (core.kind == MethodCoreOperationKind::ArrayLength)
+                        nodeKind = ProjectOopHirNodeKind::ArrayLength;
+                    else if (core.kind == MethodCoreOperationKind::StringLength)
+                        nodeKind = ProjectOopHirNodeKind::StringLength;
+                    auto member = makeNode(nodeKind, frame.syntax, core.resultTypeKey);
+                    member->elementTypeKey = core.elementTypeKey;
+                    member->children.push_back(std::move(lowered));
+                    lowered = std::move(member);
                     frames.pop_back();
                     continue;
                 }
