@@ -36,109 +36,82 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     bool addressContext,
     std::string& error)
 {
-    std::vector<const ast::AstNode*> overflowPolicyFrames;
-    const ast::AstNode* overflowPolicyLeaf = expression;
-    while (overflowPolicyLeaf != nullptr &&
-        overflowPolicyLeaf->kind() == ast::AstNodeKind::OverflowPolicyExpression &&
-        callBinding(overflowPolicyLeaf) == nullptr &&
-        delegateBinding(overflowPolicyLeaf) == nullptr &&
-        lambdaBinding(overflowPolicyLeaf) == nullptr)
-    {
-        overflowPolicyFrames.push_back(overflowPolicyLeaf);
-        overflowPolicyLeaf = overflowPolicyLeaf->first();
-    }
-
-    std::vector<const ast::AstNode*> builtinUnaryFrames;
-    const ast::AstNode* unaryLeaf = expression;
-    while (overflowPolicyFrames.empty() && unaryLeaf != nullptr &&
-        unaryLeaf->kind() == ast::AstNodeKind::UnaryExpression &&
-        unaryLeaf->tokenKind() != lexer::TokenKind::Amp &&
-        unaryLeaf->tokenKind() != lexer::TokenKind::Star &&
-        unaryLeaf->tokenKind() != lexer::TokenKind::PlusPlus &&
-        unaryLeaf->tokenKind() != lexer::TokenKind::MinusMinus &&
-        callBinding(unaryLeaf) == nullptr && delegateBinding(unaryLeaf) == nullptr &&
-        lambdaBinding(unaryLeaf) == nullptr)
-    {
-        builtinUnaryFrames.push_back(unaryLeaf);
-        unaryLeaf = unaryLeaf->first();
-    }
-
     std::unique_ptr<ProjectOopHirNode> lowered;
-    if (!overflowPolicyFrames.empty())
+    enum class IterativeExpressionKind : std::uint8_t
     {
-        lowered = lowerExpression(overflowPolicyLeaf, memberOrdinal, addressContext, error);
-        if (lowered != nullptr)
-        {
-            for (auto frame = overflowPolicyFrames.rbegin();
-                 frame != overflowPolicyFrames.rend(); ++frame)
-            {
-                auto policy = makeNode(
-                    ProjectOopHirNodeKind::OverflowPolicy, *frame, lowered->typeKey);
-                policy->stringValue = (*frame)->auxiliaryText();
-                policy->children.push_back(std::move(lowered));
-                lowered = std::move(policy);
-            }
-        }
-        else if (!lastErrorRange_.isValid())
-        {
-            lastErrorRange_ = overflowPolicyFrames.back()->range();
-        }
-    }
-    else if (!builtinUnaryFrames.empty())
+        OverflowPolicy,
+        BuiltinUnary,
+        BuiltinBinary,
+        Conditional,
+    };
+    struct IterativeExpressionFrame final
     {
-        lowered = lowerExpression(unaryLeaf, memberOrdinal, false, error);
-        if (lowered != nullptr)
-        {
-            for (auto frame = builtinUnaryFrames.rbegin();
-                 frame != builtinUnaryFrames.rend(); ++frame)
-            {
-                const MethodExpressionTypeBinding* frameType = expressionType(*frame);
-                const MethodDelegateBinding* frameDelegate = delegateBinding(*frame);
-                const std::string resultType = frameType != nullptr ? frameType->typeKey :
-                    frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
-                auto unary = makeNode(ProjectOopHirNodeKind::Unary, *frame, resultType);
-                unary->operation = (*frame)->tokenKind();
-                unary->children.push_back(std::move(lowered));
-                lowered = std::move(unary);
-            }
-        }
-        else if (!lastErrorRange_.isValid() && !builtinUnaryFrames.empty())
-        {
-            lastErrorRange_ = builtinUnaryFrames.back()->range();
-        }
-    }
-    else if (!addressContext && expression != nullptr &&
-        expression->kind() == ast::AstNodeKind::ConditionalExpression &&
-        coreBinding(expression) == nullptr && callBinding(expression) == nullptr &&
-        delegateBinding(expression) == nullptr && lambdaBinding(expression) == nullptr)
+        IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
+        const ast::AstNode* syntax = nullptr;
+        bool addressContext = false;
+        std::uint8_t stage = 0;
+        std::unique_ptr<ProjectOopHirNode> first;
+        std::unique_ptr<ProjectOopHirNode> second;
+    };
+    const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
+        -> std::optional<IterativeExpressionKind>
     {
-        struct ConditionalFrame final
+        if (syntax == nullptr) return std::nullopt;
+        if (syntax->kind() == ast::AstNodeKind::OverflowPolicyExpression &&
+            callBinding(syntax) == nullptr && delegateBinding(syntax) == nullptr &&
+            lambdaBinding(syntax) == nullptr)
         {
-            const ast::AstNode* syntax = nullptr;
-            std::unique_ptr<ProjectOopHirNode> condition;
-            std::unique_ptr<ProjectOopHirNode> whenTrue;
-            std::uint8_t stage = 0;
-        };
-        const auto isConditional = [&](const ast::AstNode* syntax) noexcept
+            return IterativeExpressionKind::OverflowPolicy;
+        }
+        if (syntax->kind() == ast::AstNodeKind::UnaryExpression &&
+            syntax->tokenKind() != lexer::TokenKind::Amp &&
+            syntax->tokenKind() != lexer::TokenKind::Star &&
+            syntax->tokenKind() != lexer::TokenKind::PlusPlus &&
+            syntax->tokenKind() != lexer::TokenKind::MinusMinus &&
+            callBinding(syntax) == nullptr && delegateBinding(syntax) == nullptr &&
+            lambdaBinding(syntax) == nullptr)
         {
-            return syntax != nullptr &&
-                syntax->kind() == ast::AstNodeKind::ConditionalExpression &&
-                coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
-                delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr;
-        };
+            return IterativeExpressionKind::BuiltinUnary;
+        }
+        if (syntax->kind() == ast::AstNodeKind::BinaryExpression &&
+            coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
+            delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr)
+        {
+            return IterativeExpressionKind::BuiltinBinary;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::ConditionalExpression &&
+            coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
+            delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr)
+        {
+            return IterativeExpressionKind::Conditional;
+        }
+        return std::nullopt;
+    };
 
-        std::vector<ConditionalFrame> frames;
+    const std::optional<IterativeExpressionKind> rootKind =
+        iterativeKind(expression, addressContext);
+    if (rootKind.has_value())
+    {
+        std::vector<IterativeExpressionFrame> frames;
         const ast::AstNode* current = expression;
+        bool currentAddressContext = addressContext;
         while (true)
         {
-            if (isConditional(current))
+            const std::optional<IterativeExpressionKind> currentKind =
+                iterativeKind(current, currentAddressContext);
+            if (currentKind.has_value())
             {
-                frames.push_back(ConditionalFrame{current, nullptr, nullptr, 0});
+                frames.push_back(IterativeExpressionFrame{
+                    *currentKind, current, currentAddressContext, 0U, nullptr, nullptr});
                 current = current->first();
+                currentAddressContext = *currentKind == IterativeExpressionKind::OverflowPolicy
+                    ? currentAddressContext
+                    : false;
                 continue;
             }
 
-            lowered = lowerExpression(current, memberOrdinal, false, error);
+            lowered = lowerExpression(
+                current, memberOrdinal, currentAddressContext, error);
             if (lowered == nullptr)
             {
                 if (!lastErrorRange_.isValid() && !frames.empty())
@@ -149,86 +122,78 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             bool descend = false;
             while (!frames.empty())
             {
-                ConditionalFrame& frame = frames.back();
+                IterativeExpressionFrame& frame = frames.back();
+                if (frame.kind == IterativeExpressionKind::OverflowPolicy)
+                {
+                    auto policy = makeNode(
+                        ProjectOopHirNodeKind::OverflowPolicy,
+                        frame.syntax,
+                        lowered->typeKey);
+                    policy->stringValue = frame.syntax->auxiliaryText();
+                    policy->children.push_back(std::move(lowered));
+                    lowered = std::move(policy);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::BuiltinUnary)
+                {
+                    const MethodExpressionTypeBinding* frameType =
+                        expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate =
+                        delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    auto unary = makeNode(
+                        ProjectOopHirNodeKind::Unary, frame.syntax, resultType);
+                    unary->operation = frame.syntax->tokenKind();
+                    unary->children.push_back(std::move(lowered));
+                    lowered = std::move(unary);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::BuiltinBinary)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    lowered = buildBuiltinBinaryExpression(
+                        frame.syntax, std::move(frame.first), std::move(lowered));
+                    frames.pop_back();
+                    continue;
+                }
                 if (frame.stage == 0U)
                 {
-                    frame.condition = std::move(lowered);
+                    frame.first = std::move(lowered);
                     frame.stage = 1U;
                     current = frame.syntax->second();
+                    currentAddressContext = false;
                     descend = true;
                     break;
                 }
                 if (frame.stage == 1U)
                 {
-                    frame.whenTrue = std::move(lowered);
+                    frame.second = std::move(lowered);
                     frame.stage = 2U;
                     current = frame.syntax->third();
+                    currentAddressContext = false;
                     descend = true;
                     break;
                 }
                 lowered = buildConditionalExpression(
                     frame.syntax,
-                    std::move(frame.condition),
-                    std::move(frame.whenTrue),
+                    std::move(frame.first),
+                    std::move(frame.second),
                     std::move(lowered));
                 frames.pop_back();
             }
             if (!descend) break;
-        }
-    }
-    else if (expression != nullptr && expression->kind() == ast::AstNodeKind::BinaryExpression &&
-        coreBinding(expression) == nullptr && callBinding(expression) == nullptr &&
-        delegateBinding(expression) == nullptr && lambdaBinding(expression) == nullptr)
-    {
-        struct BuiltinBinaryFrame final
-        {
-            const ast::AstNode* syntax = nullptr;
-            std::unique_ptr<ProjectOopHirNode> left;
-            bool leftReady = false;
-        };
-        const auto isBuiltinBinary = [&](const ast::AstNode* syntax) noexcept
-        {
-            return syntax != nullptr && syntax->kind() == ast::AstNodeKind::BinaryExpression &&
-                coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
-                delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr;
-        };
-
-        std::vector<BuiltinBinaryFrame> frames;
-        const ast::AstNode* current = expression;
-        while (true)
-        {
-            if (isBuiltinBinary(current))
-            {
-                frames.push_back(BuiltinBinaryFrame{current, nullptr, false});
-                current = current->first();
-                continue;
-            }
-
-            lowered = lowerExpression(current, memberOrdinal, false, error);
-            if (lowered == nullptr)
-            {
-                if (!lastErrorRange_.isValid() && !frames.empty())
-                    lastErrorRange_ = frames.back().syntax->range();
-                break;
-            }
-
-            bool descendRight = false;
-            while (!frames.empty())
-            {
-                BuiltinBinaryFrame& frame = frames.back();
-                if (!frame.leftReady)
-                {
-                    frame.left = std::move(lowered);
-                    frame.leftReady = true;
-                    current = frame.syntax->second();
-                    descendRight = true;
-                    break;
-                }
-                lowered = buildBuiltinBinaryExpression(
-                    frame.syntax, std::move(frame.left), std::move(lowered));
-                frames.pop_back();
-            }
-            if (!descendRight) break;
         }
     }
     else

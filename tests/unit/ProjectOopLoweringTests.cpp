@@ -1619,6 +1619,105 @@ void testDeepConditionalExpressionLowering(TestContext& tests)
         "iterative conditional lowering preserves condition, both branches, and common type");
     destroyHirTreeIteratively(lowered);
 }
+
+void testDeepMixedExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth * 2U + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        if (index % 3U == 0U)
+        {
+            syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                nativesharp::ast::AstNodeKind::UnaryExpression,
+                nativesharp::SourceRange{}));
+            syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::Minus);
+            syntax.back()->setFirst(current);
+            current = syntax.back().get();
+            continue;
+        }
+        if (index % 3U == 1U)
+        {
+            syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+                nativesharp::SourceRange{}));
+            syntax.back()->setIntegerValue(index + 2U);
+            nativesharp::ast::AstNode* right = syntax.back().get();
+            syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                nativesharp::ast::AstNodeKind::BinaryExpression,
+                nativesharp::SourceRange{}));
+            syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::Plus);
+            syntax.back()->setFirst(current);
+            syntax.back()->setSecond(right);
+            current = syntax.back().get();
+            continue;
+        }
+
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        nativesharp::ast::AstNode* condition = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setIntegerValue(index + 2U);
+        nativesharp::ast::AstNode* whenTrue = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::ConditionalExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setFirst(condition);
+        syntax.back()->setSecond(whenTrue);
+        syntax.back()->setThird(current);
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding binding;
+    binding.typeKey = "builtin:int";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+        model, current, syntax, binding, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level mixed expression lowers without process-stack recursion (" +
+            error + ")");
+
+    std::size_t observedDepth = 0;
+    auto* cursor = lowered.get();
+    while (cursor != nullptr && observedDepth < nestingDepth)
+    {
+        const std::size_t sourceIndex = nestingDepth - observedDepth - 1U;
+        if (sourceIndex % 3U == 0U)
+        {
+            if (cursor->kind != nativesharp::frontend::ProjectOopHirNodeKind::Unary ||
+                cursor->children.size() != 1U) break;
+            cursor = cursor->children[0].get();
+        }
+        else if (sourceIndex % 3U == 1U)
+        {
+            if (cursor->kind != nativesharp::frontend::ProjectOopHirNodeKind::Binary ||
+                cursor->children.size() != 2U) break;
+            cursor = cursor->children[0].get();
+        }
+        else
+        {
+            if (cursor->kind != nativesharp::frontend::ProjectOopHirNodeKind::Conditional ||
+                cursor->children.size() != 3U) break;
+            cursor = cursor->children[2].get();
+        }
+        ++observedDepth;
+    }
+    tests.expect(observedDepth == nestingDepth && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant,
+        "iterative mixed lowering preserves every family transition and its literal leaf");
+    destroyHirTreeIteratively(lowered);
+}
 }
 
 int main()
@@ -1678,6 +1777,10 @@ int main()
     {
         testDeepConditionalExpressionLowering(tests);
     }
+    else if (focusValue == "hir-mixed-depth")
+    {
+        testDeepMixedExpressionLowering(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1695,6 +1798,7 @@ int main()
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);
+        testDeepMixedExpressionLowering(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
