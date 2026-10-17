@@ -38,32 +38,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBlock(
     return result;
 }
 
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDeconstructionSource(
-    const ast::AstNode* bindingSyntax,
-    const ast::AstNode* sourceSyntax,
-    std::size_t memberOrdinal,
-    std::string& error)
-{
-    const MethodDeconstructionBinding* binding = methodBodyModel_ != nullptr
-        ? methodBodyModel_->deconstructionBinding(bindingSyntax) : nullptr;
-    if (binding == nullptr)
-    {
-        error = "T02-F03 deconstruction has no semantic source binding";
-        return nullptr;
-    }
-    if (!binding->selectedMemberOrdinal.has_value())
-        return lowerExpression(sourceSyntax, memberOrdinal, false, error);
-
-    auto receiver = lowerReceiver(
-        sourceSyntax, binding->sourceTypeKey, memberOrdinal, error);
-    if (receiver == nullptr) return nullptr;
-    auto call = makeNode(
-        ProjectOopHirNodeKind::InstanceCall, sourceSyntax, binding->tupleTypeKey);
-    call->memberOrdinal = *binding->selectedMemberOrdinal;
-    call->children.push_back(std::move(receiver));
-    return call;
-}
-
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
     const ast::AstNode* receiverSyntax,
     std::string_view receiverTypeKey,
