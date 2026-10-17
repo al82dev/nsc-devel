@@ -10,6 +10,7 @@
 
 #include <iomanip>
 #include <ostream>
+#include <vector>
 
 namespace nativesharp::hir
 {
@@ -84,88 +85,115 @@ void HirDumper::dump(const HirNode* node, std::ostream& output) const
 }
 
 void HirDumper::dumpNode(
-    const HirNode* node,
+    const HirNode* root,
     std::ostream& output,
     int depth,
     const char* edge) const
 {
-    if (node == nullptr)
+    struct DumpFrame final
     {
-        return;
+        const HirNode* node = nullptr;
+        int depth = 0;
+        const char* edge = "";
+    };
+    std::vector<DumpFrame> pending;
+    if (root != nullptr)
+    {
+        pending.push_back(DumpFrame{root, depth, edge});
     }
-
-    for (int index = 0; index < depth; ++index)
+    while (!pending.empty())
     {
-        output << "  ";
-    }
+        const DumpFrame frame = pending.back();
+        pending.pop_back();
+        const HirNode* node = frame.node;
 
-    output << edge << hirNodeKindName(node->kind());
-    if (node->symbol() != nullptr)
-    {
-        output << " symbol=" << sema::symbolKindName(node->symbol()->kind())
-               << ':' << node->symbol()->name();
-        if (node->symbol()->isConst())
+        for (int index = 0; index < frame.depth; ++index)
         {
-            output << " const";
+            output << "  ";
         }
-        if (node->symbol()->isExternC())
-        {
-            output << " extern-C";
-        }
-    }
-    if (node->type() != nullptr)
-    {
-        output << " type=" << node->type()->displayName();
-    }
-    if (node->operationType() != nullptr)
-    {
-        output << " operation-type=" << node->operationType()->displayName();
-    }
-    if (node->operation() != lexer::TokenKind::Invalid)
-    {
-        output << " op=" << lexer::tokenKindName(node->operation());
-    }
-    if (node->hasConstant())
-    {
-        output << " constant=";
-        dumpConstant(node->constant(), output);
-    }
-    if (node->hasConversion())
-    {
-        output << " conversion=" << sema::ToString(node->conversionKind());
-    }
-    if (node->hasReadConversion())
-    {
-        output << " read-conversion=" << sema::ToString(node->readConversionKind());
-    }
-    if (node->hasResultConversion())
-    {
-        output << " result-conversion=" << sema::ToString(node->resultConversionKind());
-    }
-    if (node->requiresBoundsCheck())
-    {
-        output << " bounds-check";
-    }
-    if (node->arrayForm())
-    {
-        output << " array-form";
-    }
-    if (node->postfix())
-    {
-        output << " postfix";
-    }
-    if (node->hasOffset())
-    {
-        output << " offset=" << node->offset();
-    }
-    output << '\n';
 
-    dumpNode(node->first(), output, depth + 1, "first: ");
-    dumpNode(node->second(), output, depth + 1, "second: ");
-    dumpNode(node->third(), output, depth + 1, "third: ");
-    for (const HirNode* child : node->children())
-    {
-        dumpNode(child, output, depth + 1, "child: ");
+        output << frame.edge << hirNodeKindName(node->kind());
+        if (node->symbol() != nullptr)
+        {
+            output << " symbol=" << sema::symbolKindName(node->symbol()->kind())
+                   << ':' << node->symbol()->name();
+            if (node->symbol()->isConst())
+            {
+                output << " const";
+            }
+            if (node->symbol()->isExternC())
+            {
+                output << " extern-C";
+            }
+        }
+        if (node->type() != nullptr)
+        {
+            output << " type=" << node->type()->displayName();
+        }
+        if (node->operationType() != nullptr)
+        {
+            output << " operation-type=" << node->operationType()->displayName();
+        }
+        if (node->operation() != lexer::TokenKind::Invalid)
+        {
+            output << " op=" << lexer::tokenKindName(node->operation());
+        }
+        if (node->hasConstant())
+        {
+            output << " constant=";
+            dumpConstant(node->constant(), output);
+        }
+        if (node->hasConversion())
+        {
+            output << " conversion=" << sema::ToString(node->conversionKind());
+        }
+        if (node->hasReadConversion())
+        {
+            output << " read-conversion=" << sema::ToString(node->readConversionKind());
+        }
+        if (node->hasResultConversion())
+        {
+            output << " result-conversion=" << sema::ToString(node->resultConversionKind());
+        }
+        if (node->requiresBoundsCheck())
+        {
+            output << " bounds-check";
+        }
+        if (node->arrayForm())
+        {
+            output << " array-form";
+        }
+        if (node->postfix())
+        {
+            output << " postfix";
+        }
+        if (node->hasOffset())
+        {
+            output << " offset=" << node->offset();
+        }
+        output << '\n';
+
+        const int childDepth = frame.depth + 1;
+        const auto& children = node->children();
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+        {
+            if (*child != nullptr)
+            {
+                pending.push_back(DumpFrame{*child, childDepth, "child: "});
+            }
+        }
+        if (node->third() != nullptr)
+        {
+            pending.push_back(DumpFrame{node->third(), childDepth, "third: "});
+        }
+        if (node->second() != nullptr)
+        {
+            pending.push_back(DumpFrame{node->second(), childDepth, "second: "});
+        }
+        if (node->first() != nullptr)
+        {
+            pending.push_back(DumpFrame{node->first(), childDepth, "first: "});
+        }
     }
 }
 }

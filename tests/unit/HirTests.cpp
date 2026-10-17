@@ -1,15 +1,22 @@
 #include "nativesharp/Frontend/FrontendCompilation.h"
 #include "nativesharp/HIR/HirNode.h"
 #include "nativesharp/HIR/HirNodeKind.h"
+#include "nativesharp/HIR/HirDumper.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Sema/ConversionKind.h"
 #include "nativesharp/Sema/Symbol.h"
 #include "nativesharp/Sema/TypeKind.h"
 #include "../support/TestContext.h"
 
+#include <cstdlib>
 #include <filesystem>
+#include <memory>
+#include <ostream>
+#include <sstream>
+#include <streambuf>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using nativesharp::frontend::FrontendCompilation;
 using nativesharp::hir::HirNode;
@@ -85,12 +92,104 @@ bool compile(std::string_view source, FrontendCompilation& compilation)
         std::string(source),
         false);
 }
+
+class CountingStreamBuffer final : public std::streambuf
+{
+public:
+    /// Returns the number of newline characters accepted by the stream.
+    std::size_t lineCount() const noexcept
+    {
+        return lineCount_;
+    }
+
+protected:
+    /// Counts an individual character without retaining output bytes.
+    int_type overflow(int_type character) override
+    {
+        if (!traits_type::eq_int_type(character, traits_type::eof()) &&
+            traits_type::to_char_type(character) == '\n')
+        {
+            ++lineCount_;
+        }
+        return character;
+    }
+
+    /// Counts newline characters in a block without retaining output bytes.
+    std::streamsize xsputn(const char* text, std::streamsize count) override
+    {
+        for (std::streamsize index = 0; index < count; ++index)
+        {
+            if (text[index] == '\n')
+            {
+                ++lineCount_;
+            }
+        }
+        return count;
+    }
+
+private:
+    std::size_t lineCount_ = 0;
+};
+
+/// Proves that base HIR dumping preserves preorder while using bounded process stack.
+void testDeepHirDump(nativesharp::tests::TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 8192;
+    std::vector<std::unique_ptr<HirNode>> nodes;
+    nodes.reserve(nestingDepth + 1U);
+    for (std::size_t index = 0; index <= nestingDepth; ++index)
+        nodes.push_back(std::make_unique<HirNode>(HirNodeKind::Block, nativesharp::SourceRange{}));
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+        nodes[index]->setFirst(nodes[index + 1U].get());
+
+    CountingStreamBuffer buffer;
+    std::ostream output(&buffer);
+    nativesharp::hir::HirDumper{}.dump(nodes.front().get(), output);
+    tests.expect(buffer.lineCount() == nestingDepth + 1U,
+        "an 8192-level base HIR tree dumps in preorder without process-stack recursion");
+
+    HirNode orderRoot(HirNodeKind::Block, nativesharp::SourceRange{});
+    HirNode first(HirNodeKind::Constant, nativesharp::SourceRange{});
+    HirNode second(HirNodeKind::Return, nativesharp::SourceRange{});
+    HirNode third(HirNodeKind::Unary, nativesharp::SourceRange{});
+    HirNode childOne(HirNodeKind::While, nativesharp::SourceRange{});
+    HirNode childTwo(HirNodeKind::For, nativesharp::SourceRange{});
+    orderRoot.setFirst(&first);
+    orderRoot.setSecond(&second);
+    orderRoot.setThird(&third);
+    orderRoot.addChild(&childOne);
+    orderRoot.addChild(&childTwo);
+    std::ostringstream orderOutput;
+    nativesharp::hir::HirDumper{}.dump(&orderRoot, orderOutput);
+    const std::string expected =
+        "Block\n"
+        "  first: Constant\n"
+        "  second: Return\n"
+        "  third: Unary\n"
+        "  child: While\n"
+        "  child: For\n";
+    tests.expect(orderOutput.str() == expected,
+        "iterative base HIR dumping preserves first/second/third/children order and labels");
+}
 }
 
 int main()
 {
     using nativesharp::tests::TestContext;
     TestContext tests;
+
+    char* focus = nullptr;
+    std::size_t focusLength = 0;
+    const int focusError = _dupenv_s(&focus, &focusLength, "NSC_HIR_TEST_FOCUS");
+    const std::string focusValue = focusError == 0 && focus != nullptr
+        ? std::string(focus)
+        : std::string{};
+    std::free(focus);
+    if (focusValue == "hir-base-dump-depth")
+    {
+        testDeepHirDump(tests);
+        return tests.result();
+    }
 
     {
         FrontendCompilation compilation;
