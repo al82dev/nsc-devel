@@ -48,6 +48,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         NullCoalescingAssignment,
         ResultPropagation,
         Destruction,
+        StackAllocation,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -167,6 +168,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                  ProjectTypeConversion::isNativeArray(operandType->typeKey));
             if (operandType != nullptr && validDeleteArray)
                 return IterativeExpressionKind::Destruction;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::StackallocExpression &&
+            syntax->first() != nullptr)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr && core->kind == MethodCoreOperationKind::StackAllocation)
+                return IterativeExpressionKind::StackAllocation;
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -388,6 +396,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                             : directElement &&
                                 (isReferenceType(frame.operandType->typeKey) || nativeString);
                     }
+                }
+                else if (*currentKind == IterativeExpressionKind::StackAllocation)
+                {
+                    frame.core = coreBinding(current);
                 }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -1153,6 +1165,60 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     destruction->storageOwnership = sema::OwnershipKind::Borrowed;
                     destruction->children.push_back(std::move(lowered));
                     lowered = std::move(destruction);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StackAllocation)
+                {
+                    constexpr std::uint64_t kMaximumStackallocBytes = std::uint64_t{1} << 20;
+                    if (lowered->kind == ProjectOopHirNodeKind::IntegerConstant)
+                    {
+                        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+                        {
+                            error = "CC1 stackalloc requires the object layout model to size it";
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+                            objectLayoutModel_->valueLayoutForTypeKey(
+                                *nameLookup_, frame.core->elementTypeKey);
+                        if (!elementLayout.has_value())
+                        {
+                            error = "stackalloc cannot size '" + frame.core->elementTypeKey +
+                                "': it has no value layout";
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        const std::uint64_t elementSize = elementLayout->first;
+                        const std::uint64_t elements = lowered->integerValue;
+                        if (elementSize != 0 &&
+                            elements > kMaximumStackallocBytes / elementSize)
+                        {
+                            error = "stackalloc of " + std::to_string(elements) + " x " +
+                                std::to_string(elementSize) + " bytes does not fit on the stack; "
+                                "the default reserve is " +
+                                std::to_string(kMaximumStackallocBytes) +
+                                " bytes -- allocate it on the heap instead";
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                    }
+                    auto allocation = makeNode(
+                        ProjectOopHirNodeKind::StackAllocation,
+                        frame.syntax,
+                        frame.core->resultTypeKey);
+                    allocation->elementTypeKey = frame.core->elementTypeKey;
+                    allocation->children.push_back(std::move(lowered));
+                    lowered = std::move(allocation);
                     frames.pop_back();
                     continue;
                 }
