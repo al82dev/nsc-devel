@@ -51,8 +51,11 @@ bool replaceFileAtomically(
     std::string& error)
 {
 #if defined(_WIN32)
-    if (::MoveFileExW(temporary.c_str(), destination.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0)
+    // Cache entries are rebuildable and authenticated on every restore. Keep the rename atomic,
+    // but do not force every parallel object and metadata publication through a volume-wide
+    // durability barrier. A power-loss partial publication remains a safe miss because metadata
+    // is published last and restore verifies both size and SHA-256 before copying any object.
+    if (::MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
         return true;
     const unsigned long failure = ::GetLastError();
     std::error_code ignored;
