@@ -861,6 +861,11 @@ private:
         bool addressContext,
         std::string& error);
 
+    std::unique_ptr<ProjectOopHirNode> buildBuiltinBinaryExpression(
+        const ast::AstNode* expression,
+        std::unique_ptr<ProjectOopHirNode> left,
+        std::unique_ptr<ProjectOopHirNode> right);
+
     std::unique_ptr<ProjectOopHirNode> lowerBoundCall(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,

@@ -107,6 +107,61 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             lastErrorRange_ = builtinUnaryFrames.back()->range();
         }
     }
+    else if (expression != nullptr && expression->kind() == ast::AstNodeKind::BinaryExpression &&
+        coreBinding(expression) == nullptr && callBinding(expression) == nullptr &&
+        delegateBinding(expression) == nullptr && lambdaBinding(expression) == nullptr)
+    {
+        struct BuiltinBinaryFrame final
+        {
+            const ast::AstNode* syntax = nullptr;
+            std::unique_ptr<ProjectOopHirNode> left;
+            bool leftReady = false;
+        };
+        const auto isBuiltinBinary = [&](const ast::AstNode* syntax) noexcept
+        {
+            return syntax != nullptr && syntax->kind() == ast::AstNodeKind::BinaryExpression &&
+                coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
+                delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr;
+        };
+
+        std::vector<BuiltinBinaryFrame> frames;
+        const ast::AstNode* current = expression;
+        while (true)
+        {
+            if (isBuiltinBinary(current))
+            {
+                frames.push_back(BuiltinBinaryFrame{current, nullptr, false});
+                current = current->first();
+                continue;
+            }
+
+            lowered = lowerExpression(current, memberOrdinal, false, error);
+            if (lowered == nullptr)
+            {
+                if (!lastErrorRange_.isValid() && !frames.empty())
+                    lastErrorRange_ = frames.back().syntax->range();
+                break;
+            }
+
+            bool descendRight = false;
+            while (!frames.empty())
+            {
+                BuiltinBinaryFrame& frame = frames.back();
+                if (!frame.leftReady)
+                {
+                    frame.left = std::move(lowered);
+                    frame.leftReady = true;
+                    current = frame.syntax->second();
+                    descendRight = true;
+                    break;
+                }
+                lowered = buildBuiltinBinaryExpression(
+                    frame.syntax, std::move(frame.left), std::move(lowered));
+                frames.pop_back();
+            }
+            if (!descendRight) break;
+        }
+    }
     else
     {
         lowered = lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
@@ -201,6 +256,95 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         lastErrorRange_ = expression->range();
     }
     return lowered;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpression(
+    const ast::AstNode* expression,
+    std::unique_ptr<ProjectOopHirNode> left,
+    std::unique_ptr<ProjectOopHirNode> right)
+{
+    const MethodExpressionTypeBinding* typeBinding = expressionType(expression);
+    const MethodDelegateBinding* stage42Delegate = delegateBinding(expression);
+    const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
+        stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
+    auto node = makeNode(ProjectOopHirNodeKind::Binary, expression, resultType);
+    node->operation = expression->tokenKind();
+    node->booleanValue = typeBinding != nullptr && typeBinding->flowRuntimeCheckElided;
+
+    const auto isEnumTypeKey = [&](std::string_view typeKey) noexcept
+    {
+        if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+        const std::string_view identity = typeKey.substr(5);
+        return std::any_of(
+            nameLookup_->namedTypes().begin(),
+            nameLookup_->namedTypes().end(),
+            [&](const NamedTypeDeclaration& type)
+            {
+                return type.kind == NamedTypeDeclarationKind::Enum &&
+                    type.identity.key() == identity;
+            });
+    };
+    const auto isZeroIntegerLiteral = [](const ast::AstNode* syntax) noexcept
+    {
+        return syntax != nullptr &&
+            syntax->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+            syntax->integerValue() == 0;
+    };
+    if (expression->tokenKind() == lexer::TokenKind::EqualEqual ||
+        expression->tokenKind() == lexer::TokenKind::BangEqual)
+    {
+        if (isEnumTypeKey(left->typeKey) && isZeroIntegerLiteral(expression->second()))
+        {
+            auto converted = makeNode(
+                ProjectOopHirNodeKind::Conversion, expression->second(), left->typeKey);
+            converted->children.push_back(std::move(right));
+            right = std::move(converted);
+        }
+        else if (isEnumTypeKey(right->typeKey) && isZeroIntegerLiteral(expression->first()))
+        {
+            auto converted = makeNode(
+                ProjectOopHirNodeKind::Conversion, expression->first(), right->typeKey);
+            converted->children.push_back(std::move(left));
+            left = std::move(converted);
+        }
+    }
+    std::optional<std::string> numericOperandType;
+    if (ProjectTypeConversion::isNumeric(resultType))
+    {
+        numericOperandType = resultType;
+    }
+    else if (isComparison(expression->tokenKind()) &&
+        ProjectTypeConversion::isNumeric(left->typeKey) &&
+        ProjectTypeConversion::isNumeric(right->typeKey))
+    {
+        const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
+        const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
+        numericOperandType = ProjectTypeConversion::commonNumericType(
+            left->typeKey,
+            right->typeKey,
+            leftType != nullptr ? leftType->integerConstant : std::nullopt,
+            rightType != nullptr ? rightType->integerConstant : std::nullopt);
+    }
+    if (numericOperandType.has_value())
+    {
+        const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
+        const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
+        const ProjectImplicitConversion leftConversion = ProjectTypeConversion::classifyImplicit(
+            left->typeKey,
+            *numericOperandType,
+            leftType != nullptr ? leftType->integerConstant : std::nullopt);
+        const ProjectImplicitConversion rightConversion = ProjectTypeConversion::classifyImplicit(
+            right->typeKey,
+            *numericOperandType,
+            rightType != nullptr ? rightType->integerConstant : std::nullopt);
+        if (leftConversion.exists() && leftConversion.kind != ProjectConversionKind::Identity)
+            left = wrapImplicitConversion(std::move(left), leftConversion, expression->first());
+        if (rightConversion.exists() && rightConversion.kind != ProjectConversionKind::Identity)
+            right = wrapImplicitConversion(std::move(right), rightConversion, expression->second());
+    }
+    node->children.push_back(std::move(left));
+    node->children.push_back(std::move(right));
+    return node;
 }
 
 
@@ -1448,99 +1592,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 return lowerResolvedCall(operatorCall, {expression->first(), expression->second()});
             }
-            auto node = makeNode(ProjectOopHirNodeKind::Binary, expression, resultType);
-            node->operation = expression->tokenKind();
-            node->booleanValue = typeBinding != nullptr && typeBinding->flowRuntimeCheckElided;
             auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
             auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
-            if (left == nullptr || right == nullptr)
-            {
-                return nullptr;
-            }
-
-            // The semantic model admits exactly one implicit integer-to-enum form: literal zero
-            // in ==/!=. Materialize that decision as the same Conversion node an explicit enum
-            // cast uses. This matters for byte/short/long-backed enums: leaving the zero as i32
-            // would make the LLVM comparison operands disagree even though the frontend accepted
-            // them.
-            const auto isEnumTypeKey = [&](std::string_view typeKey) noexcept
-            {
-                if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-                const std::string_view identity = typeKey.substr(5);
-                return std::any_of(
-                    nameLookup_->namedTypes().begin(),
-                    nameLookup_->namedTypes().end(),
-                    [&](const NamedTypeDeclaration& type)
-                    {
-                        return type.kind == NamedTypeDeclarationKind::Enum &&
-                            type.identity.key() == identity;
-                    });
-            };
-            const auto isZeroIntegerLiteral = [](const ast::AstNode* syntax) noexcept
-            {
-                return syntax != nullptr &&
-                    syntax->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
-                    syntax->integerValue() == 0;
-            };
-            if (expression->tokenKind() == lexer::TokenKind::EqualEqual ||
-                expression->tokenKind() == lexer::TokenKind::BangEqual)
-            {
-                if (isEnumTypeKey(left->typeKey) && isZeroIntegerLiteral(expression->second()))
-                {
-                    auto converted = makeNode(
-                        ProjectOopHirNodeKind::Conversion, expression->second(), left->typeKey);
-                    converted->children.push_back(std::move(right));
-                    right = std::move(converted);
-                }
-                else if (isEnumTypeKey(right->typeKey) && isZeroIntegerLiteral(expression->first()))
-                {
-                    auto converted = makeNode(
-                        ProjectOopHirNodeKind::Conversion, expression->first(), right->typeKey);
-                    converted->children.push_back(std::move(left));
-                    left = std::move(converted);
-                }
-            }
-            std::optional<std::string> numericOperandType;
-            if (ProjectTypeConversion::isNumeric(resultType))
-            {
-                numericOperandType = resultType;
-            }
-            else if (isComparison(expression->tokenKind()) &&
-                ProjectTypeConversion::isNumeric(left->typeKey) &&
-                ProjectTypeConversion::isNumeric(right->typeKey))
-            {
-                const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
-                const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
-                numericOperandType = ProjectTypeConversion::commonNumericType(
-                    left->typeKey,
-                    right->typeKey,
-                    leftType != nullptr ? leftType->integerConstant : std::nullopt,
-                    rightType != nullptr ? rightType->integerConstant : std::nullopt);
-            }
-            if (numericOperandType.has_value())
-            {
-                const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
-                const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
-                const ProjectImplicitConversion leftConversion = ProjectTypeConversion::classifyImplicit(
-                    left->typeKey,
-                    *numericOperandType,
-                    leftType != nullptr ? leftType->integerConstant : std::nullopt);
-                const ProjectImplicitConversion rightConversion = ProjectTypeConversion::classifyImplicit(
-                    right->typeKey,
-                    *numericOperandType,
-                    rightType != nullptr ? rightType->integerConstant : std::nullopt);
-                if (leftConversion.exists() && leftConversion.kind != ProjectConversionKind::Identity)
-                {
-                    left = wrapImplicitConversion(std::move(left), leftConversion, expression->first());
-                }
-                if (rightConversion.exists() && rightConversion.kind != ProjectConversionKind::Identity)
-                {
-                    right = wrapImplicitConversion(std::move(right), rightConversion, expression->second());
-                }
-            }
-            node->children.push_back(std::move(left));
-            node->children.push_back(std::move(right));
-            return node;
+            if (left == nullptr || right == nullptr) return nullptr;
+            return buildBuiltinBinaryExpression(
+                expression, std::move(left), std::move(right));
         }
 
         case ast::AstNodeKind::IndexExpression:

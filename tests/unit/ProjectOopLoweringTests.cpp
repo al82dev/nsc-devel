@@ -1503,6 +1503,61 @@ void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
         "iterative overflow-policy lowering preserves every policy and its literal leaf");
     destroyHirTreeIteratively(lowered);
 }
+
+void testDeepBuiltinBinaryExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth * 2U + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setIntegerValue(index + 2U);
+        nativesharp::ast::AstNode* right = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BinaryExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::Plus);
+        syntax.back()->setFirst(current);
+        syntax.back()->setSecond(right);
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding binding;
+    binding.typeKey = "builtin:int";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerExpression(
+        model, current, syntax, binding, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level builtin binary expression lowers without process-stack recursion (" +
+            error + ")");
+
+    std::size_t observedDepth = 0;
+    bool rightOperandsPreserved = true;
+    auto* cursor = lowered.get();
+    while (cursor != nullptr &&
+        cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::Binary)
+    {
+        rightOperandsPreserved = rightOperandsPreserved && cursor->children.size() == 2U &&
+            cursor->children[1]->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+            cursor->operation == nativesharp::lexer::TokenKind::Plus;
+        ++observedDepth;
+        cursor = cursor->children.empty() ? nullptr : cursor->children.front().get();
+    }
+    tests.expect(observedDepth == nestingDepth && rightOperandsPreserved && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant,
+        "iterative builtin binary lowering preserves postorder, both operands, and every operator");
+    destroyHirTreeIteratively(lowered);
+}
 }
 
 int main()
@@ -1554,6 +1609,10 @@ int main()
     {
         testDeepOverflowPolicyExpressionLowering(tests);
     }
+    else if (focusValue == "hir-builtin-binary-depth")
+    {
+        testDeepBuiltinBinaryExpressionLowering(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1569,6 +1628,7 @@ int main()
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepOverflowPolicyExpressionLowering(tests);
+        testDeepBuiltinBinaryExpressionLowering(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
