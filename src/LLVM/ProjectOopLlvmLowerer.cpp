@@ -2801,9 +2801,9 @@ private:
             module_, i32, "__nsc_runtime_debug_trace_flags");
         if (runtimeDebugTraceFlags_ == nullptr)
             return fail(error, "INSTRUMENTATION CODE could not declare the runtime Debug trace flags");
-        // Bit 0: callable entry. Bit 1: allocation/deallocation. Set to zero to park the trace
-        // without deleting it after the heap defect has been isolated.
-        LLVMSetInitializer(runtimeDebugTraceFlags_, LLVMConstInt(i32, 3U, 0));
+        // Bit 0: callable entry. Bit 1: allocation/deallocation. Bit 2: field stores. Set to zero
+        // to park the trace without deleting it after the heap defect has been isolated.
+        LLVMSetInitializer(runtimeDebugTraceFlags_, LLVMConstInt(i32, 7U, 0));
         LLVMSetLinkage(runtimeDebugTraceFlags_, LLVMPrivateLinkage);
 
         LLVMValueRef path = internStringLiteral(
@@ -2905,6 +2905,48 @@ private:
             "|kind=" + kind +
             "|class=" + owner + "|function=" + callable + "|symbol=" +
             function.mangledName + "\r\n";
+    }
+
+    std::string runtimeDebugFieldStoreRecord(
+        const frontend::ProjectOopMirNode& store,
+        std::string_view event) const
+    {
+        if (store.children.empty() || store.children.front() == nullptr ||
+            memberModel_ == nullptr || currentMirFunction_ == nullptr)
+        {
+            return {};
+        }
+        const frontend::ProjectOopMirNode& target = *store.children.front();
+        if ((target.kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
+             target.kind != frontend::ProjectOopMirNodeKind::BitFieldAddress &&
+             target.kind != frontend::ProjectOopMirNodeKind::StaticFieldAddress) ||
+            !target.memberOrdinal.has_value() ||
+            *target.memberOrdinal >= memberModel_->members().size())
+        {
+            return {};
+        }
+
+        const frontend::ClassMemberSymbol& field =
+            memberModel_->members()[*target.memberOrdinal];
+        std::string owner = "<unknown>";
+        if (field.declaringTypeOrdinal < nameLookup_.namedTypes().size())
+        {
+            owner = nameLookup_.namedTypes()[field.declaringTypeOrdinal]
+                .identity.fullyQualifiedName();
+        }
+        const char* storage = target.kind == frontend::ProjectOopMirNodeKind::StaticFieldAddress
+            ? "static"
+            : target.kind == frontend::ProjectOopMirNodeKind::BitFieldAddress
+                ? "bit-field"
+                : "instance";
+        const std::string& callable = currentMirFunction_->debugDisplayName.empty()
+            ? currentMirFunction_->mangledName
+            : currentMirFunction_->debugDisplayName;
+        return "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=" + std::string(event) +
+            "|storage=" + storage + "|class=" + owner + "|field=" + field.name +
+            "|member-ordinal=" + std::to_string(*target.memberOrdinal) +
+            "|offset=" + std::to_string(target.immediate) + "|type=" + store.typeKey +
+            "|function=" + callable + "|symbol=" + currentMirFunction_->mangledName + "\r\n";
     }
 
     bool declareRuntime(std::string& error)
@@ -11860,6 +11902,14 @@ private:
                 }
                 if (frame.phase == 0)
                 {
+                    const std::string fieldRecord =
+                        runtimeDebugFieldStoreRecord(*current, "FIELD-STORE-BEGIN");
+                    if (!fieldRecord.empty() &&
+                        !emitRuntimeDebugTrace(4U, fieldRecord, error))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
                     frames.push_back({current, 1, nullptr, 0});
                     frames.push_back({current->children[0].get(), 0, nullptr});
                     continue;
@@ -11876,7 +11926,18 @@ private:
                 LLVMValueRef value = values.back();
                 values.pop_back();
                 if (value == nullptr) { values.push_back(nullptr); continue; }
-                values.push_back(storeFromParts(current, frame.lhs, value, error));
+                LLVMValueRef stored = storeFromParts(current, frame.lhs, value, error);
+                if (stored != nullptr)
+                {
+                    const std::string fieldRecord =
+                        runtimeDebugFieldStoreRecord(*current, "FIELD-STORE-END");
+                    if (!fieldRecord.empty() &&
+                        !emitRuntimeDebugTrace(4U, fieldRecord, error))
+                    {
+                        stored = nullptr;
+                    }
+                }
+                values.push_back(stored);
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::TupleDeconstruct)

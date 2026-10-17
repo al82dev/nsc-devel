@@ -195,6 +195,55 @@ del runtime. Evidencia dirigida con build hash `090a5a160deff166`:
   `CreateFileA` ni `WriteFile` introducidos por la instrumentación.
 - Control `-O0 -g0`: cero coincidencias de etiqueta, ruta o símbolos de instrumentación.
 
+## Segunda evidencia externa: frontera dentro de la construcción
+
+Las tres trazas recibidas el 2026-10-16 corrigen y estrechan la hipótesis anterior:
+
+- `nsc-method-bodies-trace.log` termina correctamente: 443 `CALLABLE-BEGIN`, 443 `CALLABLE-END`,
+  tres ondas completas, inicializadores de campos, post-análisis, resúmenes de escape y `BUILD-END`.
+  Por tanto, esa compilación del juego no cayó en `method-bodies`; esta traza no corresponde al
+  desbordamiento de pila observado al intentar reconstruir otra biblioteca.
+- `nsc-runtime-debug-trace.log` conserva una pila perfectamente anidada al terminar:
+  `Program.Main` -> `Al82Dev.MyGame.MyGame()` -> `Al82Dev.MyGame.MyGame(bool)`.
+- Dentro de esa pila terminan por completo los constructores y los métodos `Initialize`,
+  `ClearBucketSlots` y `ClearHashCodeSlots` de dos campos `Dictionary`: uno
+  `Dictionary<string,string>` y otro `Dictionary<string,byte>`.
+- No aparece ningún `FREE-BEGIN`.
+- `al82dev-startup-checkpoint.log` conserva solamente
+  `010 program.before-game-constructor`; no alcanza el primer checkpoint explícito del cuerpo,
+  `100 constructor.enter`.
+
+Esto descarta como causa inmediata la reserva bruta del objeto y demuestra que el código generado sí
+entra a ambos constructores de `MyGame`. La atribución previa a un constructor base precompilado o a
+NSMETA no queda demostrada. La frontera causal pendiente es la inicialización implícita de campos, la
+escritura posterior al segundo inicializador o la transición a la primera sentencia explícita.
+
+### Ampliación autorizada del SCOPE LOCK
+
+Se añade una tercera categoría a la máscara privada del módulo Debug: bit 2 para escrituras de campo.
+Cada nodo MIR `Store` cuyo destino directo sea `FieldAddress`, `BitFieldAddress` o
+`StaticFieldAddress` emite:
+
+1. `FIELD-STORE-BEGIN` antes de evaluar la dirección y el valor;
+2. `FIELD-STORE-END` después de completar la escritura y cualquier reemplazo/destrucción exigida.
+
+Cada registro identifica almacenamiento, clase, campo, ordinal de miembro, desplazamiento, tipo y
+callable activo. No se agrega información a NSMETA, no se modifica layout, no se inspecciona ni edita el
+consumidor y no se cambia la semántica de los stores. El propósito de la siguiente ejecución externa es
+distinguir exactamente entre fallo durante el inicializador, durante la escritura o después del campo.
+
+### Evidencia focal de la ampliación
+
+- `cmake --build build-clang --target nsc --parallel 16`: PASS.
+- Build hash del compilador: `3344bc918a51b8c5`.
+- Fixture existente `tests/bug_triage/b5_ctor_owned_field_array`, emisión O0 Full Debug a objeto: PASS
+  incluido el verificador LLVM.
+- El objeto Full Debug contiene `FIELD-STORE-BEGIN`, `FIELD-STORE-END`, `field=items` y la etiqueta
+  estable `NSC RUNTIME DEBUG INSTRUMENTATION CODE`.
+- La misma fixture emitida con `-O0 -g0`: PASS incluido el verificador LLVM; cero coincidencias de
+  cualquiera de esas cadenas de instrumentación.
+- Los objetos focales quedaron fuera del repositorio, bajo `A:\temp`.
+
 ## Validación pendiente y bloqueo de esta máquina
 
 No se afirma todavía que el archivo físico haya sido escrito por un ejecutable. La construcción focal de un
