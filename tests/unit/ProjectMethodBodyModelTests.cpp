@@ -1125,6 +1125,180 @@ void testUsingParserRecoveryContract(TestContext& tests)
         "malformed using recovery preserves the following return statement");
 }
 
+void testDeepNestedDeferParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class DeepDeferParser { void Run() { ";
+    source.reserve(source.size() + depth * 12U + 16U);
+    for (std::size_t index = 0; index < depth; ++index) source += "defer [] { ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "} }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("DeepDeferParser.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    std::size_t deferCount = 0;
+    std::vector<const nativesharp::ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const nativesharp::ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->auxiliaryText() == "defer-lowered") ++deferCount;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    tests.expect(root != nullptr && deferCount == depth && !diagnostics.hasErrors(),
+        "1024 nested defer bodies preserve every lowering through heap-backed continuations");
+}
+
+void testDeferParserContracts(TestContext& tests)
+{
+    const auto parse = [](std::string name, std::string source,
+                           nativesharp::source::SourceManager& sources,
+                           nativesharp::diagnostics::DiagnosticEngine& diagnostics,
+                           nativesharp::ast::AstArena& arena)
+    {
+        const nativesharp::FileId fileId = sources.addBuffer(std::move(name), std::move(source));
+        const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+        nativesharp::lexer::Lexer lexer(*file, diagnostics);
+        const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+        nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+        return parser.parseCompilationUnit();
+    };
+
+    nativesharp::source::SourceManager shapeSources;
+    nativesharp::diagnostics::DiagnosticEngine shapeDiagnostics;
+    nativesharp::ast::AstArena shapeArena;
+    const nativesharp::ast::AstNode* shapeRoot = parse(
+        "DeferShape.ns",
+        "class DeferShape { void Run(int first, int second) { "
+        "defer [ref first, move second] { first = second; } Work(); } }",
+        shapeSources, shapeDiagnostics, shapeArena);
+    const nativesharp::ast::AstNode* lowered = nullptr;
+    bool outerMoveCapture = false;
+    std::vector<const nativesharp::ast::AstNode*> shapePending{shapeRoot};
+    while (!shapePending.empty())
+    {
+        const nativesharp::ast::AstNode* node = shapePending.back();
+        shapePending.pop_back();
+        if (node == nullptr) continue;
+        if (node->auxiliaryText() == "defer-lowered") lowered = node;
+        if (node->auxiliaryText() == "local:defer-value-capture" &&
+            node->text().starts_with("__nsc_defer_capture_"))
+            outerMoveCapture = true;
+        shapePending.push_back(node->first());
+        shapePending.push_back(node->second());
+        shapePending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children())
+            shapePending.push_back(child);
+    }
+    const nativesharp::ast::AstNode* cleanup = lowered != nullptr ? lowered->second() : nullptr;
+    const nativesharp::ast::AstNode* boundary = cleanup != nullptr && !cleanup->children().empty()
+        ? cleanup->children().back() : nullptr;
+    tests.expect(outerMoveCapture && lowered != nullptr && cleanup != nullptr &&
+            cleanup->children().size() == 3U && cleanup->children()[0]->text() == "first" &&
+            cleanup->children()[0]->auxiliaryText() == "local:ref" &&
+            cleanup->children()[1]->text() == "second" &&
+            cleanup->children()[1]->auxiliaryText() == "local:defer-value-capture" &&
+            boundary != nullptr && boundary->text() == "first,second" &&
+            !shapeDiagnostics.hasErrors(),
+        "defer migration preserves ref/move captures, source order, and capture boundary");
+
+    nativesharp::source::SourceManager lifoSources;
+    nativesharp::diagnostics::DiagnosticEngine lifoDiagnostics;
+    nativesharp::ast::AstArena lifoArena;
+    const nativesharp::ast::AstNode* lifoRoot = parse(
+        "DeferLifo.ns",
+        "class DeferLifo { void Run() { defer [] { First(); } "
+        "defer [] { Second(); } Work(); } }",
+        lifoSources, lifoDiagnostics, lifoArena);
+    bool nestedLifo = false;
+    std::vector<const nativesharp::ast::AstNode*> lifoPending{lifoRoot};
+    while (!lifoPending.empty())
+    {
+        const nativesharp::ast::AstNode* node = lifoPending.back();
+        lifoPending.pop_back();
+        if (node == nullptr) continue;
+        if (node->auxiliaryText() == "defer-lowered" && node->first() != nullptr &&
+            node->first()->children().size() == 1U &&
+            node->first()->children()[0]->auxiliaryText() == "defer-lowered")
+        {
+            const nativesharp::ast::AstNode* inner = node->first()->children()[0];
+            nestedLifo = inner->first() != nullptr && inner->first()->children().size() == 1U;
+        }
+        lifoPending.push_back(node->first());
+        lifoPending.push_back(node->second());
+        lifoPending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) lifoPending.push_back(child);
+    }
+    tests.expect(nestedLifo && !lifoDiagnostics.hasErrors(),
+        "consecutive defer statements retain nested protected regions in LIFO order");
+
+    nativesharp::source::SourceManager scopeSources;
+    nativesharp::diagnostics::DiagnosticEngine scopeDiagnostics;
+    nativesharp::ast::AstArena scopeArena;
+    const nativesharp::ast::AstNode* scopeRoot = parse(
+        "DeferScope.ns",
+        "class DeferScope { void Run() { { defer [] { Inner(); } Work(); } After(); } }",
+        scopeSources, scopeDiagnostics, scopeArena);
+    bool lexicalBoundary = false;
+    std::vector<const nativesharp::ast::AstNode*> scopePending{scopeRoot};
+    while (!scopePending.empty())
+    {
+        const nativesharp::ast::AstNode* node = scopePending.back();
+        scopePending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::BlockStatement &&
+            node->children().size() == 2U &&
+            node->children()[0]->kind() == nativesharp::ast::AstNodeKind::BlockStatement &&
+            node->children()[0]->children().size() == 1U &&
+            node->children()[0]->children()[0]->auxiliaryText() == "defer-lowered" &&
+            node->children()[1]->kind() == nativesharp::ast::AstNodeKind::ExpressionStatement)
+            lexicalBoundary = true;
+        scopePending.push_back(node->first());
+        scopePending.push_back(node->second());
+        scopePending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children())
+            scopePending.push_back(child);
+    }
+    tests.expect(lexicalBoundary && !scopeDiagnostics.hasErrors(),
+        "nested defer protects only the statements in its lexical block");
+
+    nativesharp::source::SourceManager recoverySources;
+    nativesharp::diagnostics::DiagnosticEngine recoveryDiagnostics;
+    nativesharp::ast::AstArena recoveryArena;
+    const nativesharp::ast::AstNode* recoveryRoot = parse(
+        "DeferRecovery.ns",
+        "class DeferRecovery { int Run() { defer [ref] { Cleanup(); } return 7; } }",
+        recoverySources, recoveryDiagnostics, recoveryArena);
+    bool recoveredReturn = false;
+    std::vector<const nativesharp::ast::AstNode*> recoveryPending{recoveryRoot};
+    while (!recoveryPending.empty())
+    {
+        const nativesharp::ast::AstNode* node = recoveryPending.back();
+        recoveryPending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::ReturnStatement)
+            recoveredReturn = true;
+        recoveryPending.push_back(node->first());
+        recoveryPending.push_back(node->second());
+        recoveryPending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children())
+            recoveryPending.push_back(child);
+    }
+    tests.expect(recoveredReturn && recoveryDiagnostics.hasErrors(),
+        "malformed defer capture preserves the following return and parser progress");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1462,6 +1636,8 @@ int main()
     testTryCatchFinallyParserContracts(tests);
     testDeepNestedUsingParser(tests);
     testUsingParserRecoveryContract(tests);
+    testDeepNestedDeferParser(tests);
+    testDeferParserContracts(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);

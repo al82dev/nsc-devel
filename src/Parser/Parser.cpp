@@ -10924,6 +10924,7 @@ private:
         ParseTry,
         ParseStandaloneCatch,
         ParseUsing,
+        ParseDefer,
         ParseSwitch,
         ParseMatch,
         ParseEmbedded,
@@ -10942,6 +10943,7 @@ private:
         FinishFinallyBlock,
         FinishStandaloneCatch,
         FinishUsing,
+        FinishDefer,
         ContinueSwitch,
         ContinueSwitchSection,
         AppendSwitchStatement,
@@ -10985,6 +10987,19 @@ private:
         std::size_t beginIndex = 0;
         ast::AstNode* node = nullptr;
     };
+    struct DeferCapture final
+    {
+        bool byReference = false;
+        bool receiver = false;
+        std::string name;
+        SourceRange range;
+    };
+    struct DeferParseState final
+    {
+        std::size_t beginIndex = 0;
+        SourceRange deferRange;
+        std::vector<DeferCapture> captures;
+    };
     struct MatchArm final
     {
         Pattern pattern;
@@ -11025,6 +11040,7 @@ private:
         return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
             parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
             parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
+            parser_.atContextualKeyword("defer") ||
             parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
     }
@@ -11064,6 +11080,7 @@ private:
         case WorkKind::ParseTry: parseTry(); break;
         case WorkKind::ParseStandaloneCatch: parseStandaloneCatch(); break;
         case WorkKind::ParseUsing: parseUsing(); break;
+        case WorkKind::ParseDefer: parseDefer(); break;
         case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseMatch: parseMatch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
@@ -11082,6 +11099,7 @@ private:
         case WorkKind::FinishFinallyBlock: finishFinallyBlock(current.stateIndex); break;
         case WorkKind::FinishStandaloneCatch: finishStandaloneCatch(current.stateIndex); break;
         case WorkKind::FinishUsing: finishUsing(current.stateIndex, popValue()); break;
+        case WorkKind::FinishDefer: finishDefer(current.stateIndex, popValue()); break;
         case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
         case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
         case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
@@ -11098,6 +11116,8 @@ private:
         else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
         else if (parser_.at(TokenKind::KwTry)) work_.push_back({WorkKind::ParseTry, 0});
         else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
+        else if (parser_.atContextualKeyword("defer"))
+            work_.push_back({WorkKind::ParseDefer, 0});
         else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else if (parser_.startsParenthesizedBlock("match"))
             work_.push_back({WorkKind::ParseMatch, 0});
@@ -11362,6 +11382,163 @@ private:
         state.node->setSecond(body);
         state.node->setRange(parser_.tokenRangeFrom(state.beginIndex));
         values_.push_back(state.node);
+    }
+
+    void parseDefer()
+    {
+        const std::size_t index = deferStates_.size();
+        deferStates_.push_back({parser_.index_, parser_.current().range(), {}});
+        DeferParseState& state = deferStates_.back();
+        parser_.consume();
+        std::unordered_set<std::string> names;
+
+        parser_.expect(TokenKind::LeftBracket, "'[' after defer");
+        if (!parser_.at(TokenKind::RightBracket))
+        {
+            while (true)
+            {
+                bool byReference = false;
+                if (parser_.atContextualKeyword("ref"))
+                {
+                    byReference = true;
+                    parser_.consume();
+                }
+                else if (parser_.at(TokenKind::KwMove) || parser_.atContextualKeyword("move"))
+                {
+                    parser_.consume();
+                }
+                else
+                {
+                    parser_.diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedToken,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parser_.current().range(),
+                        "defer capture requires explicit 'ref' or 'move'");
+                }
+
+                DeferCapture capture;
+                capture.byReference = byReference;
+                capture.range = parser_.current().range();
+                if (parser_.at(TokenKind::KwThis))
+                {
+                    capture.receiver = true;
+                    capture.name = "this";
+                    parser_.consume();
+                    if (!byReference)
+                    {
+                        parser_.diagnostics_.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            capture.range,
+                            "defer can capture this only by reference");
+                    }
+                }
+                else if (parser_.at(TokenKind::Identifier))
+                {
+                    capture.name = std::string(parser_.consume().lexeme());
+                }
+                else
+                {
+                    parser_.expect(TokenKind::Identifier, "defer capture name");
+                    capture.name = "__invalid_defer_capture";
+                }
+
+                if (!names.insert(capture.name).second)
+                {
+                    parser_.diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        capture.range,
+                        "duplicate defer capture '" + capture.name + "'");
+                }
+                state.captures.push_back(std::move(capture));
+                if (!parser_.consumeIf(TokenKind::Comma)) break;
+            }
+        }
+        parser_.expect(TokenKind::RightBracket, "']' after defer captures");
+
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            work_.push_back({WorkKind::FinishDefer, index});
+            work_.push_back({WorkKind::ParseBlock, 0});
+        }
+        else
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after defer capture list");
+            ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, state.deferRange);
+            finishDefer(index, body);
+        }
+    }
+
+    void finishDefer(std::size_t index, ast::AstNode* body)
+    {
+        DeferParseState& state = deferStates_[index];
+        std::string allowedNames;
+        for (std::size_t captureIndex = 0; captureIndex < state.captures.size(); ++captureIndex)
+        {
+            if (captureIndex != 0) allowedNames.push_back(',');
+            allowedNames += state.captures[captureIndex].name;
+        }
+        body->setAuxiliaryText("defer-capture-boundary");
+        body->setText(std::move(allowedNames));
+
+        const std::size_t deferOrdinal = parser_.nextDeferTemporary_++;
+        const auto varType = [&](SourceRange range)
+        {
+            return parser_.arena_.make<ast::TypeSyntax>(
+                range, TokenKind::KwVar, std::string("var"));
+        };
+        const auto moveExpression = [&](SourceRange range, std::string name)
+        {
+            ast::AstNode* move = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MoveExpression, range);
+            move->setFirst(parser_.makeIdentifierExpression(range, std::move(name)));
+            move->setAuxiliaryText("defer-value-capture");
+            return move;
+        };
+
+        ast::AstNode* registration = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, state.deferRange);
+        registration->setAuxiliaryText("defer-registration");
+        ast::AstNode* cleanup = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, body->range());
+
+        for (const DeferCapture& capture : state.captures)
+        {
+            if (capture.receiver) continue;
+            const std::string hidden = "__nsc_defer_capture_" +
+                std::to_string(deferOrdinal) + "_" + capture.name;
+            if (!capture.byReference)
+            {
+                ast::AstNode* outer = parser_.makeVariableDeclaration(
+                    varType(capture.range), hidden,
+                    moveExpression(capture.range, capture.name), false);
+                outer->setAuxiliaryText("local:defer-value-capture");
+                registration->addChild(outer);
+            }
+
+            ast::AstNode* innerInitializer = capture.byReference
+                ? parser_.makeIdentifierExpression(capture.range, capture.name)
+                : moveExpression(capture.range, hidden);
+            ast::AstNode* inner = parser_.makeVariableDeclaration(
+                varType(capture.range), capture.name, innerInitializer, false);
+            inner->setAuxiliaryText(
+                capture.byReference ? "local:ref" : "local:defer-value-capture");
+            cleanup->addChild(inner);
+        }
+        cleanup->addChild(body);
+
+        ast::AstNode* protectedBlock = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, state.deferRange);
+        ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::TryStatement, parser_.tokenRangeFrom(state.beginIndex));
+        lowered->setFirst(protectedBlock);
+        lowered->setSecond(cleanup);
+        lowered->setAuxiliaryText("defer-lowered");
+        registration->addChild(lowered);
+        registration->setRange(parser_.tokenRangeFrom(state.beginIndex));
+        values_.push_back(registration);
     }
 
     void parseSwitch()
@@ -12227,6 +12404,7 @@ private:
     std::vector<TryParseState> tryStates_;
     std::vector<StandaloneCatchParseState> standaloneCatchStates_;
     std::vector<UsingParseState> usingStates_;
+    std::vector<DeferParseState> deferStates_;
     std::vector<SwitchParseState> switchStates_;
     std::vector<MatchParseState> matchStates_;
     std::vector<BlockParseState> blockStates_;
@@ -14573,156 +14751,7 @@ ast::AstNode* Parser::parseReturnStatement()
 
 ast::AstNode* Parser::parseDeferStatement()
 {
-    const std::size_t beginIndex = index_;
-    const SourceRange deferRange = consume().range();
-
-    struct Capture final
-    {
-        bool byReference = false;
-        bool receiver = false;
-        std::string name;
-        SourceRange range;
-    };
-    std::vector<Capture> captures;
-    std::unordered_set<std::string> names;
-
-    expect(TokenKind::LeftBracket, "'[' after defer");
-    if (!at(TokenKind::RightBracket))
-    {
-        while (true)
-        {
-            bool byReference = false;
-            if (atContextualKeyword("ref"))
-            {
-                byReference = true;
-                consume();
-            }
-            else if (at(TokenKind::KwMove) || atContextualKeyword("move"))
-            {
-                consume();
-            }
-            else
-            {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::ExpectedToken,
-                    diagnostics::DiagnosticSeverity::Error,
-                    current().range(),
-                    "defer capture requires explicit 'ref' or 'move'");
-            }
-
-            Capture capture;
-            capture.byReference = byReference;
-            capture.range = current().range();
-            if (at(TokenKind::KwThis))
-            {
-                capture.receiver = true;
-                capture.name = "this";
-                consume();
-                if (!byReference)
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        capture.range,
-                        "defer can capture this only by reference");
-                }
-            }
-            else if (at(TokenKind::Identifier))
-            {
-                capture.name = std::string(consume().lexeme());
-            }
-            else
-            {
-                expect(TokenKind::Identifier, "defer capture name");
-                capture.name = "__invalid_defer_capture";
-            }
-
-            if (!names.insert(capture.name).second)
-            {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::DuplicateSymbol,
-                    diagnostics::DiagnosticSeverity::Error,
-                    capture.range,
-                    "duplicate defer capture '" + capture.name + "'");
-            }
-            captures.push_back(std::move(capture));
-            if (!consumeIf(TokenKind::Comma)) break;
-        }
-    }
-    expect(TokenKind::RightBracket, "']' after defer captures");
-
-    ast::AstNode* body = nullptr;
-    if (at(TokenKind::LeftBrace)) body = parseBlock();
-    else
-    {
-        expect(TokenKind::LeftBrace, "'{' after defer capture list");
-        body = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, deferRange);
-    }
-
-    std::string allowedNames;
-    for (std::size_t index = 0; index < captures.size(); ++index)
-    {
-        if (index != 0) allowedNames.push_back(',');
-        allowedNames += captures[index].name;
-    }
-    body->setAuxiliaryText("defer-capture-boundary");
-    body->setText(std::move(allowedNames));
-
-    const std::size_t deferOrdinal = nextDeferTemporary_++;
-    const auto varType = [&](SourceRange range)
-    {
-        return arena_.make<ast::TypeSyntax>(range, TokenKind::KwVar, std::string("var"));
-    };
-    const auto moveExpression = [&](SourceRange range, std::string name)
-    {
-        ast::AstNode* move = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::MoveExpression, range);
-        move->setFirst(makeIdentifierExpression(range, std::move(name)));
-        move->setAuxiliaryText("defer-value-capture");
-        return move;
-    };
-
-    ast::AstNode* registration = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BlockStatement, deferRange);
-    registration->setAuxiliaryText("defer-registration");
-    ast::AstNode* cleanup = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BlockStatement, body->range());
-
-    for (const Capture& capture : captures)
-    {
-        if (capture.receiver) continue;
-        const std::string hidden = "__nsc_defer_capture_" +
-            std::to_string(deferOrdinal) + "_" + capture.name;
-        if (!capture.byReference)
-        {
-            ast::AstNode* outer = makeVariableDeclaration(
-                varType(capture.range), hidden,
-                moveExpression(capture.range, capture.name), false);
-            outer->setAuxiliaryText("local:defer-value-capture");
-            registration->addChild(outer);
-        }
-
-        ast::AstNode* innerInitializer = capture.byReference
-            ? makeIdentifierExpression(capture.range, capture.name)
-            : moveExpression(capture.range, hidden);
-        ast::AstNode* inner = makeVariableDeclaration(
-            varType(capture.range), capture.name, innerInitializer, false);
-        inner->setAuxiliaryText(
-            capture.byReference ? "local:ref" : "local:defer-value-capture");
-        cleanup->addChild(inner);
-    }
-    cleanup->addChild(body);
-
-    ast::AstNode* protectedBlock = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BlockStatement, deferRange);
-    ast::AstNode* lowered = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::TryStatement, tokenRangeFrom(beginIndex));
-    lowered->setFirst(protectedBlock);
-    lowered->setSecond(cleanup);
-    lowered->setAuxiliaryText("defer-lowered");
-    registration->addChild(lowered);
-    registration->setRange(tokenRangeFrom(beginIndex));
-    return registration;
+    return parseStructuredControlStatement();
 }
 
 ast::AstNode* Parser::parseTryStatement()
