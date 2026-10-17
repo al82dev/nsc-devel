@@ -2786,7 +2786,6 @@ private:
 
         LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
 
         LLVMTypeRef traceParameters[] = {i32, ptr, i32};
@@ -2807,37 +2806,25 @@ private:
         LLVMSetInitializer(runtimeDebugTraceFlags_, LLVMConstInt(i32, 3U, 0));
         LLVMSetLinkage(runtimeDebugTraceFlags_, LLVMPrivateLinkage);
 
-        LLVMValueRef path = cStringGlobal(
-            "A:\\temp\\nsc-runtime-debug-trace.log", "runtime_debug_trace_path");
+        LLVMValueRef path = internStringLiteral(
+            "A:\\temp\\nsc-runtime-debug-trace.log", error);
         if (path == nullptr)
             return fail(error, "INSTRUMENTATION CODE could not materialize the runtime Debug trace path");
 
-        LLVMTypeRef createFileParameters[] = {ptr, i32, i32, ptr, i32, i32, ptr};
-        LLVMTypeRef createFileType = LLVMFunctionType(ptr, createFileParameters, 7, 0);
-        LLVMValueRef createFile = LLVMGetNamedFunction(module_, "CreateFileA");
-        if (createFile == nullptr) createFile = LLVMAddFunction(module_, "CreateFileA", createFileType);
-        else if (LLVMGlobalGetValueType(createFile) != createFileType)
-            return fail(error, "INSTRUMENTATION CODE found an incompatible CreateFileA declaration");
-        functions_.try_emplace(
-            "CreateFileA", FunctionInfo{createFile, createFileType, nullptr});
-
-        LLVMTypeRef writeFileParameters[] = {ptr, ptr, i32, ptr, ptr};
-        LLVMTypeRef writeFileType = LLVMFunctionType(i32, writeFileParameters, 5, 0);
-        LLVMValueRef writeFile = LLVMGetNamedFunction(module_, "WriteFile");
-        if (writeFile == nullptr) writeFile = LLVMAddFunction(module_, "WriteFile", writeFileType);
-        else if (LLVMGlobalGetValueType(writeFile) != writeFileType)
-            return fail(error, "INSTRUMENTATION CODE found an incompatible WriteFile declaration");
-        functions_.try_emplace(
-            "WriteFile", FunctionInfo{writeFile, writeFileType, nullptr});
-
-        LLVMTypeRef closeHandleParameters[] = {ptr};
-        LLVMTypeRef closeHandleType = LLVMFunctionType(i32, closeHandleParameters, 1, 0);
-        LLVMValueRef closeHandle = LLVMGetNamedFunction(module_, "CloseHandle");
-        if (closeHandle == nullptr) closeHandle = LLVMAddFunction(module_, "CloseHandle", closeHandleType);
-        else if (LLVMGlobalGetValueType(closeHandle) != closeHandleType)
-            return fail(error, "INSTRUMENTATION CODE found an incompatible CloseHandle declaration");
-        functions_.try_emplace(
-            "CloseHandle", FunctionInfo{closeHandle, closeHandleType, nullptr});
+        LLVMTypeRef appendParameters[] = {ptr, ptr};
+        fileAppendAllTextFunctionType_ = LLVMFunctionType(voidType, appendParameters, 2, 0);
+        fileAppendAllTextFunction_ = LLVMGetNamedFunction(
+            module_, kFileAppendAllTextFunctionName);
+        if (fileAppendAllTextFunction_ == nullptr)
+        {
+            fileAppendAllTextFunction_ = LLVMAddFunction(
+                module_, kFileAppendAllTextFunctionName, fileAppendAllTextFunctionType_);
+        }
+        else if (LLVMGlobalGetValueType(fileAppendAllTextFunction_) !=
+                 fileAppendAllTextFunctionType_)
+        {
+            return fail(error, "INSTRUMENTATION CODE found an incompatible runtime append hook");
+        }
 
         LLVMBuilderRef traceBuilder = LLVMCreateBuilderInContext(context_);
         if (traceBuilder == nullptr)
@@ -2845,56 +2832,26 @@ private:
 
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
             context_, runtimeDebugTraceFunction_, "entry");
-        LLVMBasicBlockRef open = LLVMAppendBasicBlockInContext(
-            context_, runtimeDebugTraceFunction_, "open");
         LLVMBasicBlockRef write = LLVMAppendBasicBlockInContext(
             context_, runtimeDebugTraceFunction_, "write");
         LLVMBasicBlockRef done = LLVMAppendBasicBlockInContext(
             context_, runtimeDebugTraceFunction_, "done");
 
         LLVMPositionBuilderAtEnd(traceBuilder, entry);
-        LLVMValueRef written = LLVMBuildAlloca(traceBuilder, i32, "written");
         LLVMValueRef flags = LLVMBuildLoad2(
             traceBuilder, i32, runtimeDebugTraceFlags_, "trace.flags");
         LLVMValueRef category = LLVMGetParam(runtimeDebugTraceFunction_, 0);
         LLVMValueRef selected = LLVMBuildAnd(traceBuilder, flags, category, "trace.selected");
         LLVMValueRef enabled = LLVMBuildICmp(
             traceBuilder, LLVMIntNE, selected, LLVMConstInt(i32, 0, 0), "trace.enabled");
-        LLVMBuildCondBr(traceBuilder, enabled, open, done);
-
-        LLVMPositionBuilderAtEnd(traceBuilder, open);
-        // FILE_APPEND_DATA, FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, OPEN_ALWAYS,
-        // FILE_ATTRIBUTE_NORMAL. Opening and closing every record preserves the last completed
-        // record when the process terminates with heap corruption.
-        LLVMValueRef createArguments[] = {
-            path,
-            LLVMConstInt(i32, 0x00000004U, 0),
-            LLVMConstInt(i32, 0x00000007U, 0),
-            LLVMConstNull(ptr),
-            LLVMConstInt(i32, 4U, 0),
-            LLVMConstInt(i32, 0x00000080U, 0),
-            LLVMConstNull(ptr)};
-        LLVMValueRef handle = LLVMBuildCall2(
-            traceBuilder, createFileType, createFile, createArguments, 7, "trace.file");
-        LLVMValueRef handleBits = LLVMBuildPtrToInt(traceBuilder, handle, i64, "trace.file.bits");
-        LLVMValueRef nonNull = LLVMBuildICmp(
-            traceBuilder, LLVMIntNE, handleBits, LLVMConstInt(i64, 0, 0), "trace.file.nonnull");
-        LLVMValueRef notInvalid = LLVMBuildICmp(
-            traceBuilder, LLVMIntNE, handleBits, LLVMConstInt(i64, ~std::uint64_t{0}, 0),
-            "trace.file.valid");
-        LLVMValueRef valid = LLVMBuildAnd(traceBuilder, nonNull, notInvalid, "trace.file.usable");
-        LLVMBuildCondBr(traceBuilder, valid, write, done);
+        LLVMBuildCondBr(traceBuilder, enabled, write, done);
 
         LLVMPositionBuilderAtEnd(traceBuilder, write);
-        LLVMValueRef writeArguments[] = {
-            handle,
-            LLVMGetParam(runtimeDebugTraceFunction_, 1),
-            LLVMGetParam(runtimeDebugTraceFunction_, 2),
-            written,
-            LLVMConstNull(ptr)};
-        LLVMBuildCall2(traceBuilder, writeFileType, writeFile, writeArguments, 5, "trace.wrote");
-        LLVMValueRef closeArguments[] = {handle};
-        LLVMBuildCall2(traceBuilder, closeHandleType, closeHandle, closeArguments, 1, "trace.closed");
+        LLVMValueRef appendArguments[] = {
+            path, LLVMGetParam(runtimeDebugTraceFunction_, 1)};
+        LLVMBuildCall2(
+            traceBuilder, fileAppendAllTextFunctionType_, fileAppendAllTextFunction_,
+            appendArguments, 2, "");
         LLVMBuildBr(traceBuilder, done);
 
         LLVMPositionBuilderAtEnd(traceBuilder, done);
@@ -2910,7 +2867,7 @@ private:
     {
         if (debugInformation_ != DebugInformationKind::Full) return true;
         if (!ensureRuntimeDebugTrace(error)) return false;
-        LLVMValueRef message = cStringGlobal(text, "runtime_debug_trace_message");
+        LLVMValueRef message = internStringLiteral(text, error);
         if (message == nullptr)
             return fail(error, "INSTRUMENTATION CODE could not materialize a runtime Debug trace record");
         LLVMValueRef arguments[] = {
@@ -2991,12 +2948,12 @@ private:
                 "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=ALLOCATE|allocator=runtime\r\n";
             constexpr std::string_view deallocationRecordText =
                 "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=FREE-BEGIN|allocator=runtime\r\n";
-            LLVMValueRef allocationRecord = cStringGlobal(
+            LLVMValueRef allocationRecord = internStringLiteral(
                 allocationRecordText,
-                "runtime_debug_allocate");
-            LLVMValueRef deallocationRecord = cStringGlobal(
+                error);
+            LLVMValueRef deallocationRecord = internStringLiteral(
                 deallocationRecordText,
-                "runtime_debug_free");
+                error);
             if (allocationRecord == nullptr || deallocationRecord == nullptr)
                 return fail(error, "INSTRUMENTATION CODE could not materialize allocator records");
 
@@ -3191,10 +3148,13 @@ private:
         fileWriteAllTextFunction_ = LLVMAddFunction(
             module_, kFileWriteAllTextFunctionName, fileWriteAllTextFunctionType_);
         LLVMTypeRef fileAppendAllTextParams[] = {ptr, ptr};
-        fileAppendAllTextFunctionType_ = LLVMFunctionType(
-            LLVMVoidTypeInContext(context_), fileAppendAllTextParams, 2, 0);
-        fileAppendAllTextFunction_ = LLVMAddFunction(
-            module_, kFileAppendAllTextFunctionName, fileAppendAllTextFunctionType_);
+        if (fileAppendAllTextFunction_ == nullptr)
+        {
+            fileAppendAllTextFunctionType_ = LLVMFunctionType(
+                LLVMVoidTypeInContext(context_), fileAppendAllTextParams, 2, 0);
+            fileAppendAllTextFunction_ = LLVMAddFunction(
+                module_, kFileAppendAllTextFunctionName, fileAppendAllTextFunctionType_);
+        }
 
         // Stage 53.4 "Filesystem/Paths (cierre)". DirectoryDelete: one string pointer (a path),
         // void return -- same shape as FileDelete/DirectoryCreate above. PathGetFullPath: one

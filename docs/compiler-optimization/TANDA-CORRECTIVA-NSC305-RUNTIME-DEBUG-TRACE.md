@@ -95,8 +95,10 @@ La instrumentación tiene dos compuertas:
 El lowerer genera automáticamente eventos para todas las funciones MIR; no se editan manualmente cientos
 de clases. Cada registro incluye una etiqueta estable independiente del defecto, evento, clase/tipo,
 callable y clase de callable. El sink usa strings estáticos, `CreateFileA`, `WriteFile` y `CloseHandle`;
-no usa el heap que está bajo investigación. La ruta se abre en append por evento para que el prefijo ya
-escrito sobreviva a una terminación anormal.
+no usa el heap que está bajo investigación. Esas APIs pertenecen exclusivamente al módulo separado
+`NativeSharp.Runtime.Win32`; el módulo del usuario sólo referencia el hook interno
+`__nativesharp_file_append_all_text`. La ruta se abre en append por evento para que el prefijo ya escrito
+sobreviva a una terminación anormal.
 
 ```dot
 digraph runtime_debug_trace {
@@ -131,17 +133,18 @@ recompilar y ejecutar de nuevo el consumidor afectado.
 La instrumentación reside únicamente en `ProjectOopLlvmLowerer.cpp` y queda marcada mediante comentarios,
 símbolos y registros que contienen `INSTRUMENTATION CODE`.
 
-- `__nsc_runtime_debug_trace` abre el archivo fijo en modo append, escribe un registro y cierra el handle.
+- `__nsc_runtime_debug_trace` filtra la categoría y entrega path/registro como strings estáticos al hook
+  interno `__nativesharp_file_append_all_text`, que abre el archivo fijo en modo append, escribe y cierra.
 - `__nsc_runtime_debug_trace_flags` es una máscara privada por módulo: bit 0 para callables y bit 1 para
   memoria. Su valor diagnóstico inicial es `3`.
 - Cada función MIR genera `ENTER` al comenzar su bloque de entrada.
 - `EXIT` se genera después de los cleanups y de liberar capture cells, inmediatamente antes del retorno
   real. No se etiqueta como salida un `yield`, una suspensión ni una expresión divergente.
 - Las rutas del allocator y deallocator estándar quedan envueltas con `ALLOCATE` y `FREE-BEGIN`.
-- El sink no reserva memoria del heap: usa strings globales estáticos y almacenamiento de pila para el
-  resultado de `WriteFile`.
-- Las declaraciones de `CreateFileA`, `WriteFile` y `CloseHandle` se registran en el catálogo existente de
-  funciones para reutilizar una declaración compatible y no producir símbolos duplicados.
+- El sink no reserva memoria del heap: usa strings NativeSharp globales estáticos; el hook del runtime usa
+  almacenamiento de pila para terminar la ruta y recibir el resultado de `WriteFile`.
+- El módulo del usuario no recibe declaraciones de `CreateFileA`, `WriteFile` ni `CloseHandle` por causa de
+  esta instrumentación. Esto preserva exactamente cualquier firma de import declarada por sus bindings.
 
 La traza del juego que el usuario está agregando manualmente es evidencia complementaria y debe conservar
 otro archivo o etiqueta. No sustituye ni se mezcla con el prefijo automático
@@ -165,9 +168,32 @@ Revisión base examinada: `82ab25f3336523935be9b415b4cb113baeaed02d`.
    - Máquina: `0x8664`; 7 secciones; debug information `none`.
    - Coincidencias de etiqueta, ruta y símbolos `__nsc_runtime_debug_*`: cero.
 4. Prueba contrafactual de imports mediante un proyecto temporal fuera del repositorio: PASS para
-   declaraciones de usuario de `CreateFileA` y `CloseHandle`; no aparecieron sufijos duplicados. El lenguaje
-   rechaza una declaración de usuario de `WriteFile` porque ese nombre está reservado por el toolchain, no
-   por un defecto introducido en esta tanda.
+   llamadas reales a `CloseHandle(long)` y `CloseHandle(void*)`. Ambos objetos Full Debug pasaron el
+   verificador LLVM y la verificación COFF.
+
+## Corrección causal posterior: colisión de firma CloseHandle
+
+Una compilación externa Full Debug demostró que el diseño inicial de imports compartidos era incorrecto:
+
+```text
+Call parameter type does not match function signature
+call i32 @CloseHandle(i64 ...)
+```
+
+La instrumentación había insertado `CloseHandle(ptr)` en `functions_`. Cuando el binding del consumidor
+declaró `CloseHandle(long)`, `declareFunctions` reutilizó por nombre la entrada anterior y descartó su firma
+física `i64`; el verificador rechazó después la llamada. La causa fue exclusivamente la instrumentación, no
+el juego, la biblioteca ni NSMETA.
+
+La corrección elimina del módulo usuario los tres imports Win32 del sink y delega la escritura al hook interno
+del runtime. Evidencia dirigida con build hash `090a5a160deff166`:
+
+- `nsc` focal: PASS; contrato de host runtime estático: PASS.
+- Repro Full Debug que invoca `CloseHandle(long)`: PASS hasta COFF.
+- Repro Full Debug que invoca `CloseHandle(void*)`: PASS hasta COFF.
+- El objeto contiene su propio `CloseHandle` y `__nativesharp_file_append_all_text`; no contiene
+  `CreateFileA` ni `WriteFile` introducidos por la instrumentación.
+- Control `-O0 -g0`: cero coincidencias de etiqueta, ruta o símbolos de instrumentación.
 
 ## Validación pendiente y bloqueo de esta máquina
 
