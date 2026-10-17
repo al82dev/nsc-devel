@@ -36,8 +36,8 @@
 ## Estado
 
 R04E cerrado. Las aristas cruzadas del parser están cubiertas por las pruebas focales. El
-desbordamiento que sobrevivió pertenece a `ProjectMemberModel`, se transfirió a B09 y no se
-cuenta como una reentrada pendiente de `syntax-parse`.
+desbordamiento que sobrevivió pertenece a `ProjectNamespaceFunctionModel`, se transfirió a B09 y
+no se cuenta como una reentrada pendiente de `syntax-parse`.
 
 ## R04E1 — ordinary control / `foreach`
 
@@ -117,36 +117,46 @@ familia de statements.
 
 ### Productor y símbolo responsable
 
-`ProjectCompilation::compileProjectMembers` construye `ProjectMemberModel`. Al final de
-`ProjectMemberModel::build`, cada método con cuerpo se entrega a
-`ProjectMemberModel::scanMethodBody`. Ese walker se llama recursivamente para `first`, `second`,
-`third` y cada elemento de `children`; la profundidad del stack nativo crece con la profundidad
-del AST del método.
+La instrumentación crash-surviving colocó fronteras alrededor de los productores internos de
+`ProjectCompilation::compileProjectMembers`. El último checkpoint confirmado fue
+`namespaceFunctions.build.before`. Antes de él terminaron `ProjectMemberModel::build`, el plan de
+inicialización de módulos y el binding de miembros precompilados. Nunca se alcanzó
+`namespaceFunctions.build.after`.
 
-La prueba contrafactual descarta `scanInvalidThisContexts` como causa de esta reproducción:
-ese segundo walker se ejecuta después y retorna inmediatamente al encontrar un
-`MethodDeclaration`, `ConstructorDeclaration` o `DestructorDeclaration`; no desciende al cuerpo
-profundo que activa el fallo.
+Dentro de `ProjectNamespaceFunctionModel::build`, las lambdas `walkScope` y `walkNode` forman una
+recursión mutua. `walkNode` desciende recursivamente por `first`, `second`, `third` y `children`, y
+`walkScope` vuelve a entrar a `walkNode` o a sí misma al recorrer namespaces. El cuerpo profundo
+del método llega a esa ruta aunque no declare funciones de namespace.
+
+La prueba contrafactual convirtió temporalmente `ProjectMemberModel::scanMethodBody` a pila
+explícita. El fallo permaneció y la traza demostró que ese modelo terminaba. Ese cambio fue
+retirado por no pertenecer a la primera causa. Los walkers recursivos detectados en
+`ProjectMemberModel` se conservan como B10 con reproducciones independientes; no se mezclan con
+la corrección de B09.
 
 Cadena causal:
 
 ```text
 1,024 controles ya parseados
   -> ProjectCompilation::compileProjectMembers
-  -> ProjectMemberModel::build
-  -> ProjectMemberModel::scanMethodBody
-  -> recursión proporcional a la profundidad del AST
+  -> ProjectMemberModel::build termina
+  -> ProjectNamespaceFunctionModel::build
+  -> walkScope / walkNode
+  -> recursión mutua proporcional a la profundidad del AST
   -> agotamiento del stack nativo en members
 ```
 
 ### Transferencia sin hueco
 
-Se abre B09 bajo el dueño real `ProjectMemberModel`:
+Se abre B09 bajo el dueño real `ProjectNamespaceFunctionModel`:
 
-- B09A convierte `scanMethodBody` a un recorrido iterativo preservando exactamente el orden
-  preorden, los early returns, `bodyBindings_` y el orden de diagnósticos;
-- B09B obtiene una reproducción independiente para `scanInvalidThisContexts` y elimina su
-  recursión sin mezclarla causalmente con B09A.
+- B09A convierte la máquina mutualmente recursiva `walkScope`/`walkNode` a un recorrido iterativo
+  preservando exactamente ambientes, namespaces, orden y bindings;
+- B09B obtiene una reproducción independiente para `expressionName`, cuya recursión pertenece a
+  cadenas de miembros y no participa en el fixture de controles profundos.
+
+Se abre B10 para que los walkers recursivos observados en `ProjectMemberModel` no desaparezcan del
+inventario. B10 exige evidencia roja propia antes de modificar cada símbolo.
 
 R04 y R04E pueden cerrarse porque la obligación pendiente dejó de pertenecer al parser y conserva
 un dueño, reproducción, criterio de corrección y siguiente acción explícitos.
