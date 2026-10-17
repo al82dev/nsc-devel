@@ -1,0 +1,11 @@
+#pragma once
+
+#include <string_view>
+
+namespace nativesharp::llvm_backend
+{
+// Generated from the source boundary that can change MIR, LLVM lowering, target policy or COFF
+// emission. Unlike the executable build id, this identity is stable across rebuilds whose codegen
+// producer is byte-for-byte unchanged.
+inline constexpr std::string_view kCodegenCacheIdentity = "@NSC_CODEGEN_CACHE_IDENTITY@";
+}

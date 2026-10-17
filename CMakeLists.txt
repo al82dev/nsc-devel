@@ -145,6 +145,43 @@ message(STATUS
     "NativeSharp compiler line: ${NSC_COMPILER_RELEASE_VERSION}; "
     "stable identity: ${NSC_COMPILER_VERSION_BASE}+build.<timestamp>.<id>")
 
+# NSC305-C06. Object-cache compatibility is not the identity of one nsc.exe build. The executable
+# id intentionally changes on every construction, while this digest changes only when the source
+# boundary capable of changing MIR, LLVM lowering, target policy or COFF emission changes. The
+# object key still adds LLVM version, target, policy, optimization/debug mode and exact MIR/IR.
+set(NSC_CODEGEN_IDENTITY_TEMPLATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/LLVM/CodegenIdentity.h.in")
+set(NSC_GENERATED_CODEGEN_IDENTITY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/LLVM/CodegenIdentity.h")
+file(GLOB_RECURSE NSC_CODEGEN_IDENTITY_INPUTS CONFIGURE_DEPENDS LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/AST/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/AST/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Language/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Language/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Frontend/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Frontend/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Target/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Target/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/LLVM/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/LLVM/*")
+list(SORT NSC_CODEGEN_IDENTITY_INPUTS)
+set(NSC_CODEGEN_IDENTITY_MATERIAL "NSC-CODEGEN-CACHE-IDENTITY 1\n")
+foreach(NSC_CODEGEN_IDENTITY_INPUT IN LISTS NSC_CODEGEN_IDENTITY_INPUTS)
+    file(SHA256 "${NSC_CODEGEN_IDENTITY_INPUT}" NSC_CODEGEN_IDENTITY_INPUT_SHA256)
+    file(RELATIVE_PATH NSC_CODEGEN_IDENTITY_RELATIVE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${NSC_CODEGEN_IDENTITY_INPUT}")
+    file(TO_CMAKE_PATH "${NSC_CODEGEN_IDENTITY_RELATIVE}" NSC_CODEGEN_IDENTITY_RELATIVE)
+    string(APPEND NSC_CODEGEN_IDENTITY_MATERIAL
+        "${NSC_CODEGEN_IDENTITY_RELATIVE} ${NSC_CODEGEN_IDENTITY_INPUT_SHA256}\n")
+endforeach()
+string(SHA256 NSC_CODEGEN_CACHE_IDENTITY "${NSC_CODEGEN_IDENTITY_MATERIAL}")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/LLVM")
+configure_file(
+    "${NSC_CODEGEN_IDENTITY_TEMPLATE}"
+    "${NSC_GENERATED_CODEGEN_IDENTITY_HEADER}"
+    @ONLY)
+message(STATUS "NativeSharp codegen cache identity: ${NSC_CODEGEN_CACHE_IDENTITY}")
+
 # Organizacion explicita de la salida del build, dentro de ${CMAKE_BINARY_DIR} (el directorio
 # que le pasas a "cmake -B"), no en otro lado y no por accidente de donde CMake decida ponerla
 # por defecto:

@@ -419,7 +419,7 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
         nativesharp::llvm_backend::ProjectOopObjectGenerator objectGenerator;
         nativesharp::llvm_backend::CompilationArtifactCache artifactCache;
         artifactCache.setRoot(directory / "object-cache");
-        artifactCache.setToolchainIdentity("project-oop-lowering-test");
+        artifactCache.setCodegenIdentity("project-oop-lowering-test");
         nativesharp::llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
         std::string objectGenerationError;
         auto objectBundle = objectGenerator.generate(
@@ -816,7 +816,7 @@ public class Work
 
     nativesharp::llvm_backend::CompilationArtifactCache cache;
     cache.setRoot(root / "incremental-object-cache");
-    cache.setToolchainIdentity("precise-invalidation-test");
+    cache.setCodegenIdentity("precise-invalidation-test");
     nativesharp::llvm_backend::CompilationArtifactCacheScope cacheScope(cache);
     nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
     error.clear();

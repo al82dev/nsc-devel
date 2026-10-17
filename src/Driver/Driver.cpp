@@ -73,6 +73,7 @@
 #include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/LLVM/CodegenIdentity.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -3962,7 +3963,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     CompilationJobPolicy jobPolicy;
     CompilationJobPolicyScope jobPolicyScope(jobPolicy);
     llvm_backend::CompilationArtifactCache artifactCache;
-    artifactCache.setToolchainIdentity(std::string(kCompilerBuildId));
+    artifactCache.setCodegenIdentity(std::string(llvm_backend::kCodegenCacheIdentity));
     llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
     llvm_backend::FloatingPointModeScope floatingPointModeScope;
     DriverExecutionScope* previousScope = activeExecutionScope;

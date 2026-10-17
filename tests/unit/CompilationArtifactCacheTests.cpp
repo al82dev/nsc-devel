@@ -1,7 +1,9 @@
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/LLVM/CodegenIdentity.h"
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -43,7 +45,13 @@ int main()
 
     CompilationArtifactCache cache;
     cache.setRoot(root / "cache");
-    cache.setToolchainIdentity("toolchain-A");
+    tests.expect(nativesharp::llvm_backend::kCodegenCacheIdentity.size() == 64 &&
+            std::ranges::all_of(nativesharp::llvm_backend::kCodegenCacheIdentity, [](char value)
+            {
+                return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f');
+            }),
+        "generated codegen identity is one canonical SHA-256");
+    cache.setCodegenIdentity("codegen-A");
     const std::string key = cache.objectKey(
         "define i32 @main() { ret i32 0 }", "x86_64-pc-windows-msvc",
         "e-m:w-p270:32:32", "fp=precise;lto=none", LlvmOptimizationLevel::O2,
@@ -70,13 +78,13 @@ int main()
             DebugInformationKind::Full),
         "debug policy participates in invalidation");
 
-    CompilationArtifactCache otherToolchain = cache;
-    otherToolchain.setToolchainIdentity("toolchain-B");
-    tests.expect(key != otherToolchain.objectKey(
+    CompilationArtifactCache otherCodegen = cache;
+    otherCodegen.setCodegenIdentity("codegen-B");
+    tests.expect(key != otherCodegen.objectKey(
             "define i32 @main() { ret i32 0 }", "x86_64-pc-windows-msvc",
             "e-m:w-p270:32:32", "fp=precise;lto=none", LlvmOptimizationLevel::O2,
             DebugInformationKind::None),
-        "compiler build identity participates in invalidation");
+        "semantic codegen identity participates in invalidation");
 
     tests.expect(key != cache.objectKey(
             "define i32 @main() { ret i32 0 }", "x86_64-pc-windows-msvc",
@@ -171,8 +179,8 @@ int main()
         tests.expect(nativesharp::llvm_backend::activeCompilationArtifactCache() == &cache,
             "invocation scope publishes the selected cache");
         {
-            CompilationArtifactCacheScope nested(otherToolchain);
-            tests.expect(nativesharp::llvm_backend::activeCompilationArtifactCache() == &otherToolchain,
+            CompilationArtifactCacheScope nested(otherCodegen);
+            tests.expect(nativesharp::llvm_backend::activeCompilationArtifactCache() == &otherCodegen,
                 "nested compiler invocations receive isolated cache policy");
         }
         tests.expect(nativesharp::llvm_backend::activeCompilationArtifactCache() == &cache,

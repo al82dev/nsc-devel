@@ -31,7 +31,7 @@ class CompilationArtifactCache final
 {
 public:
     void setRoot(std::filesystem::path root);
-    void setToolchainIdentity(std::string identity);
+    void setCodegenIdentity(std::string identity);
 
     bool enabled() const noexcept;
     const std::filesystem::path& root() const noexcept;
@@ -84,7 +84,7 @@ public:
 
 private:
     std::filesystem::path root_;
-    std::string toolchainIdentity_;
+    std::string codegenIdentity_;
 };
 
 class CompilationArtifactCacheScope final

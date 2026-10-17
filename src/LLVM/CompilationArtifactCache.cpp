@@ -415,9 +415,9 @@ void CompilationArtifactCache::setRoot(std::filesystem::path root)
     root_ = std::move(root).lexically_normal();
 }
 
-void CompilationArtifactCache::setToolchainIdentity(std::string identity)
+void CompilationArtifactCache::setCodegenIdentity(std::string identity)
 {
-    toolchainIdentity_ = std::move(identity);
+    codegenIdentity_ = std::move(identity);
 }
 
 bool CompilationArtifactCache::enabled() const noexcept
@@ -439,8 +439,8 @@ std::string CompilationArtifactCache::objectKey(
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJKEY 3\n";
-    material += "toolchain " + toolchainIdentity_ + "\n";
+    std::string material = "NSCOBJKEY 4\n";
+    material += "codegen " + codegenIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetTriple) + "\n";
     material += "layout " + std::string(dataLayout) + "\n";
@@ -465,8 +465,8 @@ std::string CompilationArtifactCache::inputObjectKey(
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJINPUTKEY 3\n";
-    material += "toolchain " + toolchainIdentity_ + "\n";
+    std::string material = "NSCOBJINPUTKEY 4\n";
+    material += "codegen " + codegenIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetIdentity) + "\n";
     material += "codegen " + std::string(codeGenerationPolicy) + "\n";
