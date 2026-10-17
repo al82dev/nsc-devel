@@ -651,7 +651,7 @@ void testDeepNestedForLoops(TestContext& tests, const std::filesystem::path& roo
 
 void testDeepNestedForeachLoops(TestContext& tests, const std::filesystem::path& root)
 {
-    constexpr std::size_t depth = 192;
+    constexpr std::size_t depth = 256;
     const std::filesystem::path directory = root / "DeepNestedForeachLoops";
     writeProject(directory, "DeepNestedForeachLoops");
 
@@ -670,7 +670,7 @@ void testDeepNestedForeachLoops(TestContext& tests, const std::filesystem::path&
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "DeepNestedForeachLoops.nsproj", error);
     tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
-        "192 nested foreach bodies bind without host-stack failure");
+        "256 nested foreach bodies bind without host-stack failure");
 }
 
 void testDeepNestedUsingStatements(TestContext& tests, const std::filesystem::path& root)

@@ -9306,6 +9306,32 @@ ast::AstNode* Parser::parseParameter()
     return parameter;
 }
 
+void Parser::appendParsedStatement(ast::AstNode*& destination, ast::AstNode* statement)
+{
+    if (statement == nullptr) return;
+    if (statement->kind() == ast::AstNodeKind::BlockStatement &&
+        statement->auxiliaryText() == "defer-registration")
+    {
+        ast::AstNode* generatedTry = nullptr;
+        for (ast::AstNode* generated : statement->children())
+        {
+            destination->addChild(generated);
+            if (generated != nullptr && generated->kind() == ast::AstNodeKind::TryStatement)
+                generatedTry = generated;
+        }
+        if (generatedTry != nullptr && generatedTry->first() != nullptr)
+            destination = generatedTry->first();
+        return;
+    }
+    if (statement->kind() == ast::AstNodeKind::BlockStatement &&
+        statement->auxiliaryText() == "conditional-pattern-inline")
+    {
+        for (ast::AstNode* child : statement->children()) destination->addChild(child);
+        return;
+    }
+    destination->addChild(statement);
+}
+
 ast::AstNode* Parser::parseBlock()
 {
     const std::size_t beginIndex = index_;
@@ -9321,31 +9347,7 @@ ast::AstNode* Parser::parseBlock()
     {
         const std::size_t before = index_;
         ast::AstNode* statement = parseStatement();
-        if (statement != nullptr)
-        {
-            if (statement->kind() == ast::AstNodeKind::BlockStatement &&
-                statement->auxiliaryText() == "defer-registration")
-            {
-                ast::AstNode* generatedTry = nullptr;
-                for (ast::AstNode* generated : statement->children())
-                {
-                    destination->addChild(generated);
-                    if (generated != nullptr && generated->kind() == ast::AstNodeKind::TryStatement)
-                        generatedTry = generated;
-                }
-                if (generatedTry != nullptr && generatedTry->first() != nullptr)
-                    destination = generatedTry->first();
-            }
-            else if (statement->kind() == ast::AstNodeKind::BlockStatement &&
-                statement->auxiliaryText() == "conditional-pattern-inline")
-            {
-                for (ast::AstNode* child : statement->children()) destination->addChild(child);
-            }
-            else
-            {
-                destination->addChild(statement);
-            }
-        }
+        appendParsedStatement(destination, statement);
         if (index_ == before)
         {
             consume();
@@ -13135,22 +13137,22 @@ ast::AstNode* Parser::makeVariableDeclaration(
     return node;
 }
 
-ast::AstNode* Parser::parseForeachStatement()
+bool Parser::parseForeachHeader(ForeachParseState& state)
 {
-    const std::size_t beginIndex = index_;
+    state.beginIndex = index_;
     // Reserve the identity before parsing the body so a nested foreach receives a different
     // namespace without changing the names already chosen for its enclosing loop.
-    const std::string temporaryPrefix =
+    state.temporaryPrefix =
         "$__foreach_" + std::to_string(nextMatchTemporary_++);
-    const std::string sourceName = temporaryPrefix + "_source";
-    const std::string indexName = temporaryPrefix + "_index";
-    const std::string enumeratorName = temporaryPrefix + "_enumerator";
-    const std::string rangeBeginName = temporaryPrefix + "_range_begin";
-    const std::string rangeEndName = temporaryPrefix + "_range_end";
-    const std::string rangeStepName = temporaryPrefix + "_range_step";
-    const std::string rangeCursorName = temporaryPrefix + "_range_cursor";
-    const std::string elementTemporaryName = temporaryPrefix + "_element";
-    const std::string patternTemporaryPrefix = temporaryPrefix + "_pattern";
+    state.sourceName = state.temporaryPrefix + "_source";
+    state.indexName = state.temporaryPrefix + "_index";
+    state.enumeratorName = state.temporaryPrefix + "_enumerator";
+    state.rangeBeginName = state.temporaryPrefix + "_range_begin";
+    state.rangeEndName = state.temporaryPrefix + "_range_end";
+    state.rangeStepName = state.temporaryPrefix + "_range_step";
+    state.rangeCursorName = state.temporaryPrefix + "_range_cursor";
+    state.elementTemporaryName = state.temporaryPrefix + "_element";
+    state.patternTemporaryPrefix = state.temporaryPrefix + "_pattern";
     consume(); // foreach
     expect(TokenKind::LeftParen, "'('");
 
@@ -13164,14 +13166,13 @@ ast::AstNode* Parser::parseForeachStatement()
     // `ref`/`mut` stay contextual. The synthesized declaration below then
     // travels through the ordinary reference-local pipeline, so addressability, exact type,
     // lifetime, exclusivity and LLVM pointer lowering are shared with source ref locals.
-    const bool elementByReference = atContextualKeyword("ref");
-    bool elementMutableReference = false;
-    if (elementByReference)
+    state.elementByReference = atContextualKeyword("ref");
+    if (state.elementByReference)
     {
         consume();
         if (atContextualKeyword("mut"))
         {
-            elementMutableReference = true;
+            state.elementMutableReference = true;
             consume();
         }
     }
@@ -13192,8 +13193,8 @@ ast::AstNode* Parser::parseForeachStatement()
     // 'var'", since `const` is consumed by nothing here and parseType()/the `var` check both
     // reject it) rather than a silently-ignored no-op -- an honest failure instead of a false
     // promise.
-    const bool elementIsRaii = consumeIf(TokenKind::KwRaii);
-    if (elementByReference && elementIsRaii)
+    state.elementIsRaii = consumeIf(TokenKind::KwRaii);
+    if (state.elementByReference && state.elementIsRaii)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
@@ -13201,34 +13202,32 @@ ast::AstNode* Parser::parseForeachStatement()
             current().range(),
             "a foreach reference binding aliases source storage and cannot also be raii");
     }
-    ast::TypeSyntax* elementType;
     if (at(TokenKind::KwVar))
     {
         const lexer::Token& varToken = consume();
-        elementType = arena_.make<ast::TypeSyntax>(varToken.range(), TokenKind::KwVar, std::string("var"));
+        state.elementType =
+            arena_.make<ast::TypeSyntax>(varToken.range(), TokenKind::KwVar, std::string("var"));
     }
     else
     {
-        elementType = parseType();
+        state.elementType = parseType();
     }
 
-    const bool elementDeconstruction = at(TokenKind::LeftParen);
-    Pattern elementPattern;
-    std::string elementName;
-    if (elementDeconstruction)
+    state.elementDeconstruction = at(TokenKind::LeftParen);
+    if (state.elementDeconstruction)
     {
-        elementPattern = parsePattern(true);
-        elementName = elementTemporaryName;
+        state.elementPattern = parsePattern(true);
+        state.elementName = state.elementTemporaryName;
     }
     else if (!at(TokenKind::Identifier))
     {
         expect(TokenKind::Identifier, "foreach element name");
         synchronizeStatement();
-        return nullptr;
+        return false;
     }
     else
     {
-        elementName = std::string(consume().lexeme());
+        state.elementName = std::string(consume().lexeme());
     }
 
     expect(TokenKind::KwIn, "'in'");
@@ -13245,18 +13244,111 @@ ast::AstNode* Parser::parseForeachStatement()
     // analysis path. This is the same "parse-time desugaring, decide later once types are known"
     // philosophy the array-vs-enumerator candidate split already uses, applied one layer earlier.
     const std::size_t collectionStart = index_;
-    ast::AstNode* collection = parseExpression();
+    state.collection = parseExpression();
     const std::size_t collectionEnd = index_;
     index_ = collectionStart;
-    ast::AstNode* collectionProbe = parseExpression();
+    state.collectionProbe = parseExpression();
     index_ = collectionEnd;
     expect(TokenKind::RightParen, "')'");
+    return true;
+}
 
-    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (body == nullptr)
+ast::AstNode* Parser::parseForeachStatement()
+{
+    ForeachParseState root;
+    if (!parseForeachHeader(root)) return nullptr;
+
+    struct ForeachFrame final
+    {
+        ForeachParseState state;
+        std::size_t bodyBeginIndex = 0;
+        ast::AstNode* block = nullptr;
+        ast::AstNode* destination = nullptr;
+    };
+
+    std::vector<ForeachFrame> frames;
+    const auto pushBody = [&](ForeachParseState&& state)
+    {
+        ForeachFrame frame;
+        frame.state = std::move(state);
+        frame.bodyBeginIndex = index_;
+        expect(TokenKind::LeftBrace, "'{' after foreach clause");
+        frame.block = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            tokenRangeFrom(frame.bodyBeginIndex));
+        frame.destination = frame.block;
+        frames.push_back(std::move(frame));
+    };
+
+    if (!at(TokenKind::LeftBrace))
     {
         expect(TokenKind::LeftBrace, "'{' after foreach clause");
+        return lowerForeachStatement(std::move(root), nullptr);
     }
+    pushBody(std::move(root));
+
+    while (!frames.empty())
+    {
+        if (at(TokenKind::RightBrace) || at(TokenKind::EndOfFile))
+        {
+            expect(TokenKind::RightBrace, "'}'");
+            ForeachFrame completed = std::move(frames.back());
+            frames.pop_back();
+            completed.block->setRange(tokenRangeFrom(completed.bodyBeginIndex));
+            ast::AstNode* statement = lowerForeachStatement(
+                std::move(completed.state), completed.block);
+            if (frames.empty()) return statement;
+            appendParsedStatement(frames.back().destination, statement);
+            continue;
+        }
+
+        const std::size_t before = index_;
+        if (at(TokenKind::KwForeach))
+        {
+            ForeachParseState nested;
+            if (parseForeachHeader(nested))
+            {
+                if (at(TokenKind::LeftBrace))
+                {
+                    pushBody(std::move(nested));
+                    continue;
+                }
+                expect(TokenKind::LeftBrace, "'{' after foreach clause");
+                appendParsedStatement(
+                    frames.back().destination,
+                    lowerForeachStatement(std::move(nested), nullptr));
+            }
+        }
+        else
+        {
+            appendParsedStatement(frames.back().destination, parseStatement());
+        }
+        if (index_ == before) consume();
+    }
+
+    return nullptr;
+}
+
+ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body)
+{
+    const std::size_t beginIndex = state.beginIndex;
+    const std::string& sourceName = state.sourceName;
+    const std::string& indexName = state.indexName;
+    const std::string& enumeratorName = state.enumeratorName;
+    const std::string& rangeBeginName = state.rangeBeginName;
+    const std::string& rangeEndName = state.rangeEndName;
+    const std::string& rangeStepName = state.rangeStepName;
+    const std::string& rangeCursorName = state.rangeCursorName;
+    const std::string& patternTemporaryPrefix = state.patternTemporaryPrefix;
+    const bool elementByReference = state.elementByReference;
+    const bool elementMutableReference = state.elementMutableReference;
+    const bool elementIsRaii = state.elementIsRaii;
+    ast::TypeSyntax* elementType = state.elementType;
+    const bool elementDeconstruction = state.elementDeconstruction;
+    const Pattern& elementPattern = state.elementPattern;
+    const std::string& elementName = state.elementName;
+    ast::AstNode* collection = state.collection;
+    ast::AstNode* collectionProbe = state.collectionProbe;
 
     const SourceRange range = tokenRangeFrom(beginIndex);
     auto varMarker = [&]() -> ast::TypeSyntax*

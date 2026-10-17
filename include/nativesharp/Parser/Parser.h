@@ -289,6 +289,29 @@ private:
         std::vector<std::string> fieldNames;
         std::vector<Pattern> children;
     };
+    struct ForeachParseState final
+    {
+        std::size_t beginIndex = 0;
+        std::string temporaryPrefix;
+        std::string sourceName;
+        std::string indexName;
+        std::string enumeratorName;
+        std::string rangeBeginName;
+        std::string rangeEndName;
+        std::string rangeStepName;
+        std::string rangeCursorName;
+        std::string elementTemporaryName;
+        std::string patternTemporaryPrefix;
+        bool elementByReference = false;
+        bool elementMutableReference = false;
+        bool elementIsRaii = false;
+        ast::TypeSyntax* elementType = nullptr;
+        bool elementDeconstruction = false;
+        Pattern elementPattern;
+        std::string elementName;
+        ast::AstNode* collection = nullptr;
+        ast::AstNode* collectionProbe = nullptr;
+    };
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     Pattern parsePattern(bool implicitBinding);
     Pattern parseAndPattern(bool implicitBinding);
@@ -354,6 +377,9 @@ private:
     bool atSwitchLabel() const noexcept;
     ast::AstNode* parseForStatement();
     ast::AstNode* parseForeachStatement();
+    bool parseForeachHeader(ForeachParseState& state);
+    ast::AstNode* lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body);
+    void appendParsedStatement(ast::AstNode*& destination, ast::AstNode* statement);
     ast::AstNode* makeIdentifierExpression(const SourceRange& range, std::string name);
     ast::AstNode* makeIntegerLiteralExpression(const SourceRange& range, std::uint64_t value);
     ast::AstNode* makeMemberExpression(ast::AstNode* receiver, std::string memberName);
