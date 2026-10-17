@@ -34,9 +34,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1370,21 +1373,30 @@ public:
             return false;
         }
 
-        if (!declareRuntime(error) || !declareStaticFields(error, !partitioned_ || ownsModuleGlobals_) ||
-            !declareFunctions(error) ||
-            !declareTypeInitializers(error, !partitioned_ || ownsModuleGlobals_) ||
-            !declareDestructionEntries(error) ||
-            !declareValueDropEntries(error) ||
-            !emitDispatchMetadata(error, !partitioned_ || ownsModuleGlobals_) ||
-            !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
+        if (!tracePhase("declare-runtime", [&] { return declareRuntime(error); }) ||
+            !tracePhase("declare-static-fields", [&] {
+                return declareStaticFields(error, !partitioned_ || ownsModuleGlobals_); }) ||
+            !tracePhase("declare-functions", [&] { return declareFunctions(error); }) ||
+            !tracePhase("declare-type-initializers", [&] {
+                return declareTypeInitializers(error, !partitioned_ || ownsModuleGlobals_); }) ||
+            !tracePhase("declare-destruction", [&] { return declareDestructionEntries(error); }) ||
+            !tracePhase("declare-value-drop", [&] { return declareValueDropEntries(error); }) ||
+            !tracePhase("dispatch-metadata", [&] {
+                return emitDispatchMetadata(error, !partitioned_ || ownsModuleGlobals_); }) ||
+            !tracePhase("rtti-helpers", [&] { return defineRttiHelpers(error); }) ||
+            !tracePhase("typed-catch-filters", [&] { return defineTypedCatchFilters(error); }) ||
             ((!partitioned_ || ownsModuleGlobals_) &&
-             (!defineTypeInitializers(error) || !defineStaticFieldAccessors(error))) ||
-            !defineCallbackGuardThunks(error, !partitioned_ || ownsModuleGlobals_) ||
-            !defineFunctions(error) ||
-            !defineStaticLocalDestructors(error) ||
+             (!tracePhase("define-type-initializers", [&] { return defineTypeInitializers(error); }) ||
+              !tracePhase("define-static-accessors", [&] { return defineStaticFieldAccessors(error); }))) ||
+            !tracePhase("callback-thunks", [&] {
+                return defineCallbackGuardThunks(error, !partitioned_ || ownsModuleGlobals_); }) ||
+            !tracePhase("define-functions", [&] { return defineFunctions(error); }) ||
+            !tracePhase("static-local-destructors", [&] {
+                return defineStaticLocalDestructors(error); }) ||
             ((!partitioned_ || ownsModuleGlobals_) &&
-             (!defineCAbiWrappers(error) || !defineValueDropEntries(error) ||
-              !defineDestructionEntries(error))))
+             (!tracePhase("c-abi-wrappers", [&] { return defineCAbiWrappers(error); }) ||
+              !tracePhase("value-drop", [&] { return defineValueDropEntries(error); }) ||
+              !tracePhase("destruction", [&] { return defineDestructionEntries(error); }))))
         {
             dispose();
             return false;
@@ -1432,6 +1444,30 @@ public:
     }
 
 private:
+    template <typename Callback>
+    bool tracePhase(std::string_view phase, Callback&& callback)
+    {
+        // INSTRUMENTATION CODE: NSC305-L06G. File-backed because the real compiler is launched
+        // by a GUI. Remove only after the remaining coordinator cost has a measured owner.
+        const auto started = std::chrono::steady_clock::now();
+        const bool result = callback();
+        const std::uint64_t elapsed = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count());
+        std::call_once(loweringTraceReset_, [] {
+            std::ofstream clear(R"(A:\temp\nsc-llvm-lowering-phases.log)",
+                std::ios::binary | std::ios::trunc);
+            if (clear) clear << "NSC305-L06G LLVM LOWERING PHASE INSTRUMENTATION version=1\n";
+        });
+        const std::lock_guard<std::mutex> lock(loweringTraceMutex_);
+        std::ofstream output(R"(A:\temp\nsc-llvm-lowering-phases.log)",
+            std::ios::binary | std::ios::app);
+        if (output)
+            output << "module=" << moduleName_ << " phase=" << phase
+                   << " us=" << elapsed << " ok=" << (result ? 1 : 0) << '\n';
+        return result;
+    }
+
     struct FunctionInfo final
     {
         LLVMValueRef function = nullptr;
@@ -4196,8 +4232,7 @@ private:
             if (mirFunctions[functionOrdinal].isTransportedInlineBody &&
                 (functionOrdinal >= reachableDefinitions_.size() ||
                  reachableDefinitions_[functionOrdinal] == 0U)) continue;
-            if (partitioned_ && !ownsModuleGlobals_ &&
-                restrictFunctionDeclarations_ &&
+            if (partitioned_ && restrictFunctionDeclarations_ &&
                 !functionDeclarations_[functionOrdinal]) continue;
             const frontend::ProjectOopMirFunction& function = mirFunctions[functionOrdinal];
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect
@@ -22323,6 +22358,8 @@ private:
     std::vector<bool> functionDeclarations_;
     bool restrictFunctionDeclarations_ = false;
     std::vector<std::uint8_t> staticFieldDeclarations_;
+    inline static std::once_flag loweringTraceReset_;
+    inline static std::mutex loweringTraceMutex_;
     std::string moduleName_;
     std::optional<std::size_t> invalidFunctionOrdinal_;
     LLVMContextRef context_ = nullptr;

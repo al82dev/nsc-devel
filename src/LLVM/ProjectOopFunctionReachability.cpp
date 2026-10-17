@@ -256,6 +256,15 @@ std::vector<std::size_t> projectOopCoordinatorFunctionDeclarations(
             continue;
         scanNode(initializer.value.get());
     }
+    for (const frontend::ProjectOopMirDispatchTable& table : mirModel.dispatchTables())
+    {
+        if (table.isImported) continue;
+        for (const std::string& callee : table.slotCalleeNames) addName(callee);
+        for (const std::string& callee : table.destructorCalleeNames) addName(callee);
+        for (const frontend::ProjectOopMirDispatchTable::InterfaceTable& interfaceTable :
+             table.interfaceTables)
+            for (const std::string& callee : interfaceTable.calleeNames) addName(callee);
+    }
 
     std::vector<std::size_t> ordinals;
     ordinals.reserve(functions.size());
