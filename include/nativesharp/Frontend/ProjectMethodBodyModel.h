@@ -44,6 +44,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct ProjectOopHirModelTestAccess;
+
 class ProjectGenericConstraintModel;
 class ProjectGenericModel;
 class ProjectReferenceEscapeEvaluator;
@@ -1541,6 +1543,7 @@ struct NamespaceFunctionCallBinding final
 
 class ProjectMethodBodyModel final
 {
+    friend struct ProjectOopHirModelTestAccess;
     friend class ProjectReferenceEscapeEvaluator;
     friend class ProjectCallableResultMerger;
     friend class ProjectCallableWaveReducer;

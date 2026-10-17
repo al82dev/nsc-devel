@@ -145,6 +145,47 @@ struct ProjectOopHirModelTestAccess final
         objectLayoutModel.structLayouts_.front().fields = std::move(fields);
     }
 
+    static void configureAggregateElementBindings(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const std::vector<ast::AstNode*>& aggregates,
+        const ast::AstNode* literal,
+        const std::vector<std::string>& typeKeys,
+        const MethodExpressionTypeBinding& literalType)
+    {
+        methodBodyModel.aggregateInitializerBindings_.reserve(aggregates.size());
+        for (std::size_t ordinal = 0; ordinal < aggregates.size(); ++ordinal)
+        {
+            MethodAggregateInitializerEntryBinding entry;
+            entry.syntax = ordinal + 1U < aggregates.size()
+                ? aggregates[ordinal + 1U]
+                : literal;
+            entry.targetElementOrdinals.push_back(0U);
+
+            MethodAggregateInitializerBinding binding;
+            binding.syntax = aggregates[ordinal];
+            binding.targetTypeKey = typeKeys[ordinal];
+            binding.entries.push_back(std::move(entry));
+            methodBodyModel.aggregateInitializerBindingBySyntax_[aggregates[ordinal]] =
+                methodBodyModel.aggregateInitializerBindings_.size();
+            methodBodyModel.aggregateInitializerBindings_.push_back(std::move(binding));
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        model.expressionTypeBySyntax_[literal] = &literalType;
+    }
+
+    static bool appendAggregateElements(
+        ProjectOopHirModel& model,
+        const ast::AstNode* syntax,
+        const std::string& targetTypeKey,
+        std::uint64_t baseOffset,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& elements,
+        std::string& error)
+    {
+        return model.appendAggregateElements(
+            syntax, targetTypeKey, baseOffset, 0U, elements, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2359,6 +2400,83 @@ void testDeepAggregateLeaves(TestContext& tests)
             leaves[1]->integerValue == initialOffset + 24U,
         "iterative struct flattening preserves declared field order and absolute offsets");
 }
+
+void testDeepAggregateElements(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 4096;
+    constexpr std::uint64_t initialOffset = 17U;
+
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectInheritanceModel inheritanceModel;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    std::vector<std::string> typeKeys;
+    const bool configured =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAggregateLeafChain(
+            model,
+            nameLookup,
+            inheritanceModel,
+            objectLayoutModel,
+            nestingDepth,
+            typeKeys);
+    tests.expect(configured, "the deep aggregate element fixture builds valid semantic models");
+    if (!configured)
+    {
+        return;
+    }
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(7U);
+    auto* literal = syntax.back().get();
+    auto* current = literal;
+    std::vector<nativesharp::ast::AstNode*> aggregates(nestingDepth);
+    for (std::size_t remaining = nestingDepth; remaining > 0; --remaining)
+    {
+        const std::size_t ordinal = remaining - 1U;
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::AggregateInitializerExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->addChild(current);
+        current = syntax.back().get();
+        aggregates[ordinal] = current;
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding literalType;
+    literalType.syntax = literal;
+    literalType.typeKey = "builtin:int";
+    nativesharp::frontend::ProjectOopHirModelTestAccess::configureAggregateElementBindings(
+        model, methodBodyModel, aggregates, literal, typeKeys, literalType);
+
+    std::vector<std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>> elements;
+    std::string error;
+    const bool lowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::appendAggregateElements(
+            model,
+            aggregates.front(),
+            typeKeys.front(),
+            initialOffset,
+            elements,
+            error);
+    tests.expect(lowered && error.empty(),
+        "a 4096-level aggregate initializer lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(elements.size() == 1U &&
+            elements.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::AggregateElement &&
+            elements.front()->typeKey == "builtin:int" &&
+            elements.front()->integerValue == initialOffset + 8U * nestingDepth &&
+            elements.front()->syntax == literal &&
+            elements.front()->children.size() == 1U &&
+            elements.front()->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+            elements.front()->children.front()->integerValue == 7U,
+        "deep aggregate lowering preserves the leaf value, provenance, and absolute offset");
+}
 }
 
 int main()
@@ -2450,6 +2568,10 @@ int main()
     else if (focusValue == "hir-aggregate-leaves-depth")
     {
         testDeepAggregateLeaves(tests);
+    }
+    else if (focusValue == "hir-aggregate-elements-depth")
+    {
+        testDeepAggregateElements(tests);
     }
     else
     {

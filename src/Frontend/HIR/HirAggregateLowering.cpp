@@ -56,139 +56,183 @@ bool ProjectOopHirModel::appendAggregateElements(
         std::uint64_t storageAlignment = 1;
         bool volatileAccess = false;
     };
-    std::vector<AggregateSlot> slots;
-    if (const std::optional<std::vector<std::string>> tupleElements =
-            ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey);
-        tupleElements.has_value())
+    struct AggregateFrame final
     {
-        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+        const ast::AstNode* syntax = nullptr;
+        std::string targetTypeKey;
+        std::uint64_t baseOffset = 0;
+        std::vector<AggregateSlot> slots;
+        const MethodAggregateInitializerBinding* binding = nullptr;
+        std::size_t entryIndex = 0;
+        bool initialized = false;
+    };
+
+    AggregateFrame root;
+    root.syntax = syntax;
+    root.targetTypeKey = targetTypeKey;
+    root.baseOffset = baseOffset;
+    std::vector<AggregateFrame> pending;
+    pending.push_back(std::move(root));
+    while (!pending.empty())
+    {
+        AggregateFrame& frame = pending.back();
+        if (!frame.initialized)
         {
-            error = "tuple initializer requires the object layout model";
-            return false;
-        }
-        const std::optional<language::AggregateLayout> layout =
-            objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, targetTypeKey);
-        if (!layout.has_value() || layout->offsets.size() != tupleElements->size())
-        {
-            error = "tuple initializer has no structural layout for '" + targetTypeKey + "'";
-            return false;
-        }
-        for (std::size_t index = 0; index < tupleElements->size(); ++index)
-        {
-            const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
-                objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, (*tupleElements)[index]);
-            if (!elementLayout.has_value())
+            if (const auto tupleElements =
+                    ProjectTypeConversion::tupleElementTypeKeys(frame.targetTypeKey);
+                tupleElements.has_value())
             {
-                error = "tuple initializer cannot size element " + std::to_string(index);
+                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+                {
+                    error = "tuple initializer requires the object layout model";
+                    return false;
+                }
+                const auto layout = objectLayoutModel_->tupleLayoutForTypeKey(
+                    *nameLookup_, frame.targetTypeKey);
+                if (!layout.has_value() || layout->offsets.size() != tupleElements->size())
+                {
+                    error = "tuple initializer has no structural layout for '" +
+                        frame.targetTypeKey + "'";
+                    return false;
+                }
+                for (std::size_t index = 0; index < tupleElements->size(); ++index)
+                {
+                    const auto elementLayout = objectLayoutModel_->valueLayoutForTypeKey(
+                        *nameLookup_, (*tupleElements)[index]);
+                    if (!elementLayout.has_value())
+                    {
+                        error = "tuple initializer cannot size element " +
+                            std::to_string(index);
+                        return false;
+                    }
+                    frame.slots.push_back(AggregateSlot{
+                        (*tupleElements)[index],
+                        static_cast<std::uint64_t>(layout->offsets[index]),
+                        std::nullopt,
+                        std::nullopt,
+                        0,
+                        elementLayout->second,
+                        false});
+                }
+            }
+            else if (const auto elementTypeKey =
+                    ProjectMemberModel::fixedArrayElementTypeKey(frame.targetTypeKey);
+                elementTypeKey.has_value())
+            {
+                const auto count = ProjectMemberModel::fixedArrayCount(frame.targetTypeKey);
+                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+                {
+                    error = "C7 aggregate initializer requires the object layout model";
+                    return false;
+                }
+                const auto layout = objectLayoutModel_->valueLayoutForTypeKey(
+                    *nameLookup_, *elementTypeKey);
+                if (!count.has_value() || !layout.has_value() || layout->first == 0)
+                {
+                    error = "C7 aggregate initializer cannot size the element type of '" +
+                        frame.targetTypeKey + "'";
+                    return false;
+                }
+                for (std::uint64_t index = 0; index < *count; ++index)
+                {
+                    frame.slots.push_back(AggregateSlot{
+                        *elementTypeKey,
+                        index * layout->first,
+                        std::nullopt,
+                        std::nullopt,
+                        0,
+                        layout->second,
+                        false});
+                }
+            }
+            else
+            {
+                if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
+                {
+                    error = "C7 aggregate initializer requires the object layout model";
+                    return false;
+                }
+                const auto typeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(frame.targetTypeKey);
+                const StructValueLayout* layout = typeOrdinal.has_value()
+                    ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+                if (layout == nullptr)
+                {
+                    error = "C7 aggregate initializer has no value layout for '" +
+                        frame.targetTypeKey + "'";
+                    return false;
+                }
+                for (const ObjectFieldLayout& field : layout->fields)
+                {
+                    const ClassMemberSymbol* member = memberModel_ != nullptr &&
+                            field.memberOrdinal < memberModel_->members().size()
+                        ? &memberModel_->members()[field.memberOrdinal] : nullptr;
+                    if (member != nullptr && member->isUnnamedBitField) continue;
+                    frame.slots.push_back(AggregateSlot{
+                        field.typeKey,
+                        field.offset,
+                        field.bitOffset,
+                        field.bitWidth,
+                        field.bitWidth.has_value() ? field.size : 0,
+                        field.alignment,
+                        member != nullptr && member->isVolatile});
+                    if (layout->isUnion) break;
+                }
+            }
+
+            frame.binding = methodBodyModel_ != nullptr
+                ? methodBodyModel_->aggregateInitializerBinding(frame.syntax) : nullptr;
+            if (frame.binding == nullptr ||
+                frame.binding->entries.size() != frame.syntax->children().size())
+            {
+                error = "T01-F05 aggregate initializer has no semantic element mapping";
                 return false;
             }
-            slots.push_back(AggregateSlot{
-                (*tupleElements)[index],
-                static_cast<std::uint64_t>(layout->offsets[index]),
-                std::nullopt, std::nullopt, 0, elementLayout->second, false});
-        }
-    }
-    else if (const std::optional<std::string> elementTypeKey =
-            ProjectMemberModel::fixedArrayElementTypeKey(targetTypeKey);
-        elementTypeKey.has_value())
-    {
-        const std::optional<std::uint64_t> count =
-            ProjectMemberModel::fixedArrayCount(targetTypeKey);
-        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
-        {
-            error = "C7 aggregate initializer requires the object layout model";
-            return false;
-        }
-        const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
-            objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, *elementTypeKey);
-        if (!count.has_value() || !layout.has_value() || layout->first == 0)
-        {
-            error = "C7 aggregate initializer cannot size the element type of '" + targetTypeKey + "'";
-            return false;
-        }
-        for (std::uint64_t index = 0; index < *count; ++index)
-        {
-            slots.push_back(AggregateSlot{
-                *elementTypeKey, index * layout->first, std::nullopt, std::nullopt, 0,
-                layout->second, false});
-        }
-    }
-    else
-    {
-        if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
-        {
-            error = "C7 aggregate initializer requires the object layout model";
-            return false;
-        }
-        const std::optional<std::size_t> typeOrdinal =
-            inheritanceModel_->typeOrdinalForTypeKey(targetTypeKey);
-        const StructValueLayout* layout = typeOrdinal.has_value()
-            ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
-        if (layout == nullptr)
-        {
-            error = "C7 aggregate initializer has no value layout for '" + targetTypeKey + "'";
-            return false;
-        }
-        for (const ObjectFieldLayout& field : layout->fields)
-        {
-            const ClassMemberSymbol* member = memberModel_ != nullptr &&
-                    field.memberOrdinal < memberModel_->members().size()
-                ? &memberModel_->members()[field.memberOrdinal] : nullptr;
-            if (member != nullptr && member->isUnnamedBitField) continue;
-            slots.push_back(AggregateSlot{
-                field.typeKey,
-                field.offset,
-                field.bitOffset,
-                field.bitWidth,
-                field.bitWidth.has_value() ? field.size : 0,
-                field.alignment,
-                member != nullptr && member->isVolatile});
-            // A union takes exactly one initializer, for its first member -- the same rule C has,
-            // and the same one bindAggregateInitializer enforced.
-            if (layout->isUnion) break;
-        }
-    }
-
-    const MethodAggregateInitializerBinding* binding = methodBodyModel_ != nullptr
-        ? methodBodyModel_->aggregateInitializerBinding(syntax) : nullptr;
-    if (binding == nullptr || binding->entries.size() != syntax->children().size())
-    {
-        error = "T01-F05 aggregate initializer has no semantic element mapping";
-        return false;
-    }
-
-    if (syntax->kind() == ast::AstNodeKind::WithExpression)
-    {
-        if (syntax->first() == nullptr)
-        {
-            error = "T01-F07 with expression has no source value";
-            return false;
-        }
-        auto source = lowerExpression(syntax->first(), memberOrdinal, false, error);
-        if (source == nullptr) return false;
-        auto spread = makeNode(ProjectOopHirNodeKind::AggregateSpread, syntax, targetTypeKey);
-        spread->children.push_back(std::move(source));
-        for (const AggregateSlot& target : slots)
-        {
-            if (target.bitWidth.has_value())
+            if (frame.syntax->kind() == ast::AstNodeKind::WithExpression)
             {
-                error = "T01-F07 with expressions over bit fields require explicit copy semantics";
-                return false;
+                if (frame.syntax->first() == nullptr)
+                {
+                    error = "T01-F07 with expression has no source value";
+                    return false;
+                }
+                auto source = lowerExpression(
+                    frame.syntax->first(), memberOrdinal, false, error);
+                if (source == nullptr) return false;
+                auto spread = makeNode(
+                    ProjectOopHirNodeKind::AggregateSpread,
+                    frame.syntax,
+                    frame.targetTypeKey);
+                spread->children.push_back(std::move(source));
+                for (const AggregateSlot& target : frame.slots)
+                {
+                    if (target.bitWidth.has_value())
+                    {
+                        error =
+                            "T01-F07 with expressions over bit fields require explicit copy semantics";
+                        return false;
+                    }
+                    auto descriptor = makeNode(
+                        ProjectOopHirNodeKind::AggregateElement,
+                        frame.syntax,
+                        target.typeKey);
+                    descriptor->integerValue = frame.baseOffset + target.offset;
+                    descriptor->secondaryIntegerValue = target.offset;
+                    descriptor->bitStorageAlignment = target.storageAlignment;
+                    descriptor->volatileAccess = target.volatileAccess;
+                    spread->children.push_back(std::move(descriptor));
+                }
+                elements.push_back(std::move(spread));
             }
-            auto descriptor = makeNode(
-                ProjectOopHirNodeKind::AggregateElement, syntax, target.typeKey);
-            descriptor->integerValue = baseOffset + target.offset;
-            descriptor->secondaryIntegerValue = target.offset;
-            descriptor->bitStorageAlignment = target.storageAlignment;
-            descriptor->volatileAccess = target.volatileAccess;
-            spread->children.push_back(std::move(descriptor));
+            frame.initialized = true;
         }
-        elements.push_back(std::move(spread));
-    }
 
-    for (std::size_t index = 0; index < binding->entries.size(); ++index)
-    {
-        const MethodAggregateInitializerEntryBinding& entry = binding->entries[index];
+        if (frame.entryIndex >= frame.binding->entries.size())
+        {
+            pending.pop_back();
+            continue;
+        }
+        const MethodAggregateInitializerEntryBinding& entry =
+            frame.binding->entries[frame.entryIndex++];
         const ast::AstNode* element = entry.syntax;
         if (entry.spread)
         {
@@ -207,24 +251,27 @@ bool ProjectOopHirModel::appendAggregateElements(
             auto source = lowerExpression(
                 sourceSyntax, memberOrdinal, entry.moveSpread, error);
             if (source == nullptr) return false;
-            auto spread = makeNode(ProjectOopHirNodeKind::AggregateSpread, element, targetTypeKey);
+            auto spread = makeNode(
+                ProjectOopHirNodeKind::AggregateSpread,
+                element,
+                frame.targetTypeKey);
             spread->booleanValue = entry.moveSpread;
             spread->localOrdinal = entry.moveSourceLocalOrdinal;
             spread->parameterOrdinal = entry.moveSourceParameterOrdinal;
             spread->children.push_back(std::move(source));
             for (const std::size_t targetOrdinal : entry.targetElementOrdinals)
             {
-                if (targetOrdinal >= slots.size())
+                if (targetOrdinal >= frame.slots.size())
                 {
                     error = "T01-F05 aggregate spread target is out of range";
                     return false;
                 }
-                const AggregateSlot& target = slots[targetOrdinal];
+                const AggregateSlot& target = frame.slots[targetOrdinal];
                 auto descriptor = makeNode(
                     ProjectOopHirNodeKind::AggregateElement,
                     element,
                     target.typeKey);
-                descriptor->integerValue = baseOffset + target.offset;
+                descriptor->integerValue = frame.baseOffset + target.offset;
                 descriptor->secondaryIntegerValue = target.offset;
                 descriptor->bitOffset = target.bitOffset;
                 descriptor->bitWidth = target.bitWidth;
@@ -242,21 +289,21 @@ bool ProjectOopHirModel::appendAggregateElements(
             continue;
         }
         if (entry.targetElementOrdinals.size() != 1U ||
-            entry.targetElementOrdinals.front() >= slots.size())
+            entry.targetElementOrdinals.front() >= frame.slots.size())
         {
             error = "T01-F05 aggregate value has no unique target element";
             return false;
         }
-        const AggregateSlot& target = slots[entry.targetElementOrdinals.front()];
+        const AggregateSlot& target = frame.slots[entry.targetElementOrdinals.front()];
         const std::string& slotTypeKey = target.typeKey;
-        const std::uint64_t slotOffset = baseOffset + target.offset;
+        const std::uint64_t slotOffset = frame.baseOffset + target.offset;
         if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
         {
-            if (!appendAggregateElements(
-                    element, slotTypeKey, slotOffset, memberOrdinal, elements, error))
-            {
-                return false;
-            }
+            AggregateFrame child;
+            child.syntax = element;
+            child.targetTypeKey = slotTypeKey;
+            child.baseOffset = slotOffset;
+            pending.push_back(std::move(child));
             continue;
         }
         auto value = lowerExpression(element, memberOrdinal, false, error);
