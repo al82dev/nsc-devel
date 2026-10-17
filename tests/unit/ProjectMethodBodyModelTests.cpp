@@ -1299,6 +1299,34 @@ void testDeferParserContracts(TestContext& tests)
         "malformed defer capture preserves the following return and parser progress");
 }
 
+void testDeepMixedStructuredForeachParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class DeepMixedParser { void Run() { ";
+    source.reserve(source.size() + depth * 30U + 16U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        if ((index & 1U) == 0U)
+            source += "if (true) { ";
+        else
+            source += "foreach (int item" + std::to_string(index) + " in 0..1) { ";
+    }
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "} }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("DeepMixedParser.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "1024 alternating ordinary-if and foreach bodies parse without cross-machine recursion");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1638,6 +1666,7 @@ int main()
     testUsingParserRecoveryContract(tests);
     testDeepNestedDeferParser(tests);
     testDeferParserContracts(tests);
+    testDeepMixedStructuredForeachParser(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);

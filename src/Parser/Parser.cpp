@@ -10925,6 +10925,7 @@ private:
         ParseStandaloneCatch,
         ParseUsing,
         ParseDefer,
+        ParseForeach,
         ParseSwitch,
         ParseMatch,
         ParseEmbedded,
@@ -10944,6 +10945,7 @@ private:
         FinishStandaloneCatch,
         FinishUsing,
         FinishDefer,
+        FinishForeach,
         ContinueSwitch,
         ContinueSwitchSection,
         AppendSwitchStatement,
@@ -11041,6 +11043,7 @@ private:
             parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
             parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
             parser_.atContextualKeyword("defer") ||
+            parser_.at(TokenKind::KwForeach) ||
             parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
     }
@@ -11081,6 +11084,7 @@ private:
         case WorkKind::ParseStandaloneCatch: parseStandaloneCatch(); break;
         case WorkKind::ParseUsing: parseUsing(); break;
         case WorkKind::ParseDefer: parseDefer(); break;
+        case WorkKind::ParseForeach: parseForeach(); break;
         case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseMatch: parseMatch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
@@ -11100,6 +11104,7 @@ private:
         case WorkKind::FinishStandaloneCatch: finishStandaloneCatch(current.stateIndex); break;
         case WorkKind::FinishUsing: finishUsing(current.stateIndex, popValue()); break;
         case WorkKind::FinishDefer: finishDefer(current.stateIndex, popValue()); break;
+        case WorkKind::FinishForeach: finishForeach(current.stateIndex, popValue()); break;
         case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
         case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
         case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
@@ -11118,6 +11123,8 @@ private:
         else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
         else if (parser_.atContextualKeyword("defer"))
             work_.push_back({WorkKind::ParseDefer, 0});
+        else if (parser_.at(TokenKind::KwForeach))
+            work_.push_back({WorkKind::ParseForeach, 0});
         else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else if (parser_.startsParenthesizedBlock("match"))
             work_.push_back({WorkKind::ParseMatch, 0});
@@ -11539,6 +11546,32 @@ private:
         registration->addChild(lowered);
         registration->setRange(parser_.tokenRangeFrom(state.beginIndex));
         values_.push_back(registration);
+    }
+
+    void parseForeach()
+    {
+        const std::size_t index = foreachStates_.size();
+        foreachStates_.emplace_back();
+        if (!parser_.parseForeachHeader(foreachStates_.back()))
+        {
+            values_.push_back(nullptr);
+            return;
+        }
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after foreach clause");
+            values_.push_back(parser_.lowerForeachStatement(
+                std::move(foreachStates_[index]), nullptr));
+            return;
+        }
+        work_.push_back({WorkKind::FinishForeach, index});
+        work_.push_back({WorkKind::ParseBlock, 0});
+    }
+
+    void finishForeach(std::size_t index, ast::AstNode* body)
+    {
+        values_.push_back(parser_.lowerForeachStatement(
+            std::move(foreachStates_[index]), body));
     }
 
     void parseSwitch()
@@ -12405,6 +12438,7 @@ private:
     std::vector<StandaloneCatchParseState> standaloneCatchStates_;
     std::vector<UsingParseState> usingStates_;
     std::vector<DeferParseState> deferStates_;
+    std::vector<ForeachParseState> foreachStates_;
     std::vector<SwitchParseState> switchStates_;
     std::vector<MatchParseState> matchStates_;
     std::vector<BlockParseState> blockStates_;
@@ -14278,78 +14312,7 @@ bool Parser::parseForeachHeader(ForeachParseState& state)
 
 ast::AstNode* Parser::parseForeachStatement()
 {
-    ForeachParseState root;
-    if (!parseForeachHeader(root)) return nullptr;
-
-    struct ForeachFrame final
-    {
-        ForeachParseState state;
-        std::size_t bodyBeginIndex = 0;
-        ast::AstNode* block = nullptr;
-        ast::AstNode* destination = nullptr;
-    };
-
-    std::vector<ForeachFrame> frames;
-    const auto pushBody = [&](ForeachParseState&& state)
-    {
-        ForeachFrame frame;
-        frame.state = std::move(state);
-        frame.bodyBeginIndex = index_;
-        expect(TokenKind::LeftBrace, "'{' after foreach clause");
-        frame.block = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement,
-            tokenRangeFrom(frame.bodyBeginIndex));
-        frame.destination = frame.block;
-        frames.push_back(std::move(frame));
-    };
-
-    if (!at(TokenKind::LeftBrace))
-    {
-        expect(TokenKind::LeftBrace, "'{' after foreach clause");
-        return lowerForeachStatement(std::move(root), nullptr);
-    }
-    pushBody(std::move(root));
-
-    while (!frames.empty())
-    {
-        if (at(TokenKind::RightBrace) || at(TokenKind::EndOfFile))
-        {
-            expect(TokenKind::RightBrace, "'}'");
-            ForeachFrame completed = std::move(frames.back());
-            frames.pop_back();
-            completed.block->setRange(tokenRangeFrom(completed.bodyBeginIndex));
-            ast::AstNode* statement = lowerForeachStatement(
-                std::move(completed.state), completed.block);
-            if (frames.empty()) return statement;
-            appendParsedStatement(frames.back().destination, statement);
-            continue;
-        }
-
-        const std::size_t before = index_;
-        if (at(TokenKind::KwForeach))
-        {
-            ForeachParseState nested;
-            if (parseForeachHeader(nested))
-            {
-                if (at(TokenKind::LeftBrace))
-                {
-                    pushBody(std::move(nested));
-                    continue;
-                }
-                expect(TokenKind::LeftBrace, "'{' after foreach clause");
-                appendParsedStatement(
-                    frames.back().destination,
-                    lowerForeachStatement(std::move(nested), nullptr));
-            }
-        }
-        else
-        {
-            appendParsedStatement(frames.back().destination, parseStatement());
-        }
-        if (index_ == before) consume();
-    }
-
-    return nullptr;
+    return parseStructuredControlStatement();
 }
 
 ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body)
