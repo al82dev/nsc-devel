@@ -437,6 +437,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectObjectLayoutModelDumper.cpp
     src/Frontend/ProjectMetaprogrammingModel.cpp
     src/Frontend/HIR/HirBuildCoordinator.cpp
+    src/Frontend/HIR/HirFunctionLowerer.cpp
     src/Frontend/HIR/HirModelFacade.cpp
     src/Frontend/HIR/HirBindingIndex.cpp
     src/Frontend/ProjectOopHirModelDumper.cpp
