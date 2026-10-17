@@ -871,6 +871,91 @@ void testDeepNestedSwitchParser(TestContext& tests)
         "4096 nested switch sections parse through heap-backed continuations");
 }
 
+void testDeepNestedMatchParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class DeepMatchParser { int Run(int value) { ";
+    source.reserve(source.size() + depth * 28U + 64U);
+    for (std::size_t index = 0; index < depth; ++index)
+        source += "match (value) { _ => { ";
+    source += "value = value + 1; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} } ";
+    source += "return value; } }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "DeepNestedMatchParser.ns",
+        std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "1024 nested statement match arms parse through heap-backed continuations");
+}
+
+void testMatchStatementLoweringShape(TestContext& tests)
+{
+    const std::string source = R"ns(
+class MatchShape {
+    int Run(int value) {
+        match (value) { A => { First(); }, _ => { Second(); } }
+        return value;
+    }
+}
+)ns";
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("MatchStatementShape.ns", source);
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    std::ostringstream dump;
+    nativesharp::ast::AstDumper{}.dump(root, dump);
+    const std::string tree = dump.str();
+    tests.expect(root != nullptr && !diagnostics.hasErrors() &&
+            tree.find("$__nsc_match_0") != std::string::npos &&
+            tree.find("match-coverage:v1:A;*") != std::string::npos &&
+            tree.find("First") < tree.find("Second"),
+        "statement match retains temporary, coverage, and source-ordered arm lowering");
+}
+
+void testMatchStatementDiagnosticOrder(TestContext& tests)
+{
+    const std::string source = R"ns(
+class MatchDiagnostics {
+    int Run(int value) {
+        match (value) { _ => { }, A => { } }
+        match (value) { }
+        match (value) { A => value; }
+        return value;
+    }
+}
+)ns";
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("MatchDiagnostics.ns", source);
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    const auto& items = diagnostics.diagnostics();
+    tests.expect(root != nullptr && items.size() == 3U &&
+            items[0].message() ==
+                "match arm is unreachable after a catch-all wildcard or binding arm" &&
+            items[1].message() == "a match statement requires at least one arm" &&
+            items[2].message() == "a match arm requires a block body",
+        "statement match preserves unreachable, empty, and missing-body diagnostic order");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1201,6 +1286,9 @@ int main()
     testDeepNestedUsingStatements(tests, root);
     testDeepNestedSwitchStatements(tests, root);
     testDeepNestedSwitchParser(tests);
+    testDeepNestedMatchParser(tests);
+    testMatchStatementLoweringShape(tests);
+    testMatchStatementDiagnosticOrder(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
