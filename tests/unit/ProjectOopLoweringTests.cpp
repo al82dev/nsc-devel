@@ -919,6 +919,77 @@ public class Work
         "the artifact-cache byte budget evicts private partition plans with objects (" +
             error + ")");
 }
+
+void testPartitionStaticFieldReachability(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "PartitionStaticFieldReachability";
+    writeProject(directory, "PartitionStaticFieldReachability");
+    writeFile(directory / "Fields.ns", R"NS(
+class Catalog
+{
+    public static int Used = 41;
+    public static int Unused = 99;
+    public static int Read() { return Used; }
+    public static int Other() { return Unused; }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool built = compilation.compileProjectOopMir(
+        directory / "PartitionStaticFieldReachability.nsproj", error);
+    tests.expect(built && compilation.oopMirModel() != nullptr,
+        "static-field reachability fixture compiles through MIR (" + error + ")");
+    if (!built || compilation.oopMirModel() == nullptr) return;
+
+    const ProjectOopMirModel& mir = *compilation.oopMirModel();
+    nativesharp::llvm_backend::ProjectOopCodePartition partition;
+    tests.expect(partition.build(mir, 2, error),
+        "static-field reachability fixture partitions into code units (" + error + ")");
+
+    std::optional<std::size_t> readOrdinal;
+    for (std::size_t ordinal = 0; ordinal < mir.functions().size(); ++ordinal)
+        if (mir.functions()[ordinal].mangledName.find("Catalog__Read") != std::string::npos)
+            readOrdinal = ordinal;
+    const auto readUnit = readOrdinal.has_value()
+        ? partition.unitForFunction(*readOrdinal) : std::nullopt;
+    tests.expect(readUnit.has_value(), "Catalog.Read belongs to one stable code unit");
+    if (!readUnit.has_value() || *readUnit >= partition.units().size()) return;
+
+    const auto findField = [&](std::string_view name)
+        -> const nativesharp::frontend::ProjectOopMirStaticField*
+    {
+        for (const auto& field : mir.staticFields())
+            if (field.name == name) return &field;
+        return nullptr;
+    };
+    const auto* used = findField("Used");
+    const auto* unused = findField("Unused");
+    tests.expect(used != nullptr && unused != nullptr,
+        "fixture exposes distinct used and unused static fields in MIR");
+    if (used == nullptr || unused == nullptr) return;
+
+    const auto& unit = partition.units()[*readUnit];
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(nativesharp::llvm_backend::ProjectOopLlvmLoweringRequest::partition(
+        *compilation.nameLookup(), *compilation.memberModel(), mir,
+        compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+        unit.functionOrdinals, false, "PartitionStaticFieldReachability.read", {},
+        unit.declarationOrdinals));
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "the Read code unit lowers with its reachable static-field closure (" +
+            lowerer.error() + ")");
+    if (module == nullptr) return;
+    std::string verificationError;
+    tests.expect(module->verify(verificationError),
+        "the pruned static-field code unit remains verifier-clean (" + verificationError + ")");
+    const std::string ir = module->text();
+    tests.expect(ir.find(used->storageSymbol) != std::string::npos &&
+            ir.find(unused->storageSymbol) == std::string::npos &&
+            ir.find(unused->accessorName) == std::string::npos,
+        "a code unit declares the static field it reads and omits the unrelated field");
+}
 }
 
 int main()
@@ -948,6 +1019,7 @@ int main()
         testAggregateCallableBoundary(tests, root);
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
+        testPartitionStaticFieldReachability(tests, root);
     }
 
     std::filesystem::remove_all(root, cleanupError);

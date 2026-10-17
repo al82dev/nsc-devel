@@ -1326,6 +1326,8 @@ public:
           functionDefinitions_(mirModel.functions().size(), false),
           functionDeclarations_(mirModel.functions().size(), false),
           restrictFunctionDeclarations_(!declarationOrdinals.empty()),
+          staticFieldDeclarations_(projectOopStaticFieldDeclarationMask(
+              mirModel, functionOrdinals, partitioned, ownsModuleGlobals)),
           moduleName_(moduleName)
     {
         for (const std::size_t ordinal : functionOrdinals)
@@ -3663,8 +3665,12 @@ private:
 
     bool declareStaticFields(std::string& error, bool defineStorage)
     {
-        for (const frontend::ProjectOopMirStaticField& field : mirModel_.staticFields())
+        const std::span<const frontend::ProjectOopMirStaticField> fields = mirModel_.staticFields();
+        for (std::size_t fieldOrdinal = 0; fieldOrdinal < fields.size(); ++fieldOrdinal)
         {
+            if (fieldOrdinal >= staticFieldDeclarations_.size() ||
+                staticFieldDeclarations_[fieldOrdinal] == 0U) continue;
+            const frontend::ProjectOopMirStaticField& field = fields[fieldOrdinal];
             LLVMTypeRef type = llvmType(field.typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             {
@@ -3765,8 +3771,12 @@ private:
 
     bool defineStaticFieldAccessors(std::string& error)
     {
-        for (const frontend::ProjectOopMirStaticField& field : mirModel_.staticFields())
+        const std::span<const frontend::ProjectOopMirStaticField> fields = mirModel_.staticFields();
+        for (std::size_t fieldOrdinal = 0; fieldOrdinal < fields.size(); ++fieldOrdinal)
         {
+            if (fieldOrdinal >= staticFieldDeclarations_.size() ||
+                staticFieldDeclarations_[fieldOrdinal] == 0U) continue;
+            const frontend::ProjectOopMirStaticField& field = fields[fieldOrdinal];
             if (field.isConst || field.isImported) continue;
             const auto accessorFound = staticFieldAccessorFunctions_.find(field.memberOrdinal);
             const auto globalFound = staticFieldGlobals_.find(field.memberOrdinal);
@@ -22312,6 +22322,7 @@ private:
     std::vector<bool> functionDefinitions_;
     std::vector<bool> functionDeclarations_;
     bool restrictFunctionDeclarations_ = false;
+    std::vector<std::uint8_t> staticFieldDeclarations_;
     std::string moduleName_;
     std::optional<std::size_t> invalidFunctionOrdinal_;
     LLVMContextRef context_ = nullptr;

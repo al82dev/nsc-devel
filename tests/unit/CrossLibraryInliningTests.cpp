@@ -192,13 +192,14 @@ using CrossLibrary;
 
 class Program
 {
+    public static int Seed = Arithmetic.Boundary(2);
+
     public static int Main()
     {
         Cell cell = new Cell(38);
         int required = Arithmetic.Required(cell.Read());
         int preferred = Arithmetic.Preferred(1);
-        int boundary = Arithmetic.Boundary(2);
-        return required == 39 && preferred == 3 && boundary == 5 ? 0 : 1;
+        return required == 39 && preferred == 3 && Seed == 5 ? 0 : 1;
     }
 }
 )NS");

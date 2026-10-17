@@ -406,6 +406,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " readonly=" << (field.isReadonly ? "true" : "false")
                << " volatile=" << (field.isVolatile ? "true" : "false")
                << " const=" << (field.isConst ? "true" : "false")
+               << " imported=" << (field.isImported ? "true" : "false")
                << " constant=" << (field.hasConstantInitializer ? "true" : "false");
         if (field.hasConstantInitializer)
         {

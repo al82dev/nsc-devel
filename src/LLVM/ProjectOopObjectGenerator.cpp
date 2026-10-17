@@ -128,7 +128,7 @@ public:
               std::ios::binary | std::ios::trunc)
     {
         if (!output_) return;
-        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=2\n"
+        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=3\n"
                 << "debug=" << debugInformationKindName(debugInformation)
                 << " optimization=" << llvmOptimizationLevelName(optimization)
                 << " modules=" << moduleCount
@@ -158,6 +158,9 @@ public:
                 << " hit=" << (hit ? 1 : 0)
                 << " miss=" << (miss ? 1 : 0)
                 << " miss-reason=" << cacheMissReasonName(telemetry.missReason)
+                << " definitions=" << telemetry.definitionCount
+                << " declarations=" << telemetry.declarationCount
+                << " static-fields=" << telemetry.staticFieldCount
                 << " fingerprint-us=" << telemetry.fingerprintMicros
                 << " lookup-us=" << telemetry.lookupMicros
                 << " lowering-us=" << telemetry.loweringMicros
@@ -388,6 +391,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         return nullptr;
     const std::vector<std::uint8_t> reachableDefinitions =
         projectOopReachableDefinitionMask(mirModel);
+    const std::vector<std::size_t> coordinatorFunctionDeclarations =
+        projectOopCoordinatorFunctionDeclarations(mirModel);
     // LLVM can only inline a call while caller and callee coexist in the same module. Until
     // code-unit summary import is available, splitting a full-debug optimized build silently
     // removes its CodeView/PDB inline scopes. More importantly, splitting any build containing a
@@ -473,7 +478,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             }
             else if (moduleOrdinal == 0)
             {
-                declarations = allFunctionOrdinals;
+                declarations = coordinatorFunctionDeclarations;
             }
             else
             {
@@ -519,6 +524,29 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 : "NativeSharp.OOP." + partition.units()[ordinal - 1].stableKey;
         CodeUnitTelemetry& telemetry = codeUnitTelemetry[ordinal];
         telemetry.name = moduleName;
+        if (!usePartitions)
+        {
+            telemetry.definitionCount = mirModel.functions().size();
+            telemetry.declarationCount = mirModel.functions().size();
+        }
+        else if (ordinal == 0)
+        {
+            telemetry.declarationCount = coordinatorFunctionDeclarations.size();
+        }
+        else
+        {
+            const ProjectOopCodeUnit& unit = partition.units()[ordinal - 1];
+            telemetry.definitionCount = unit.functionOrdinals.size();
+            telemetry.declarationCount = unit.declarationOrdinals.size();
+        }
+        const std::span<const std::size_t> telemetryDefinitions = !usePartitions || ordinal == 0
+            ? std::span<const std::size_t>{}
+            : std::span<const std::size_t>(partition.units()[ordinal - 1].functionOrdinals);
+        const std::vector<std::uint8_t> selectedStaticFields =
+            projectOopStaticFieldDeclarationMask(
+                mirModel, telemetryDefinitions, usePartitions, usePartitions && ordinal == 0);
+        telemetry.staticFieldCount = static_cast<std::size_t>(std::count(
+            selectedStaticFields.begin(), selectedStaticFields.end(), std::uint8_t{1U}));
         const ColdLlvmTraceScope coldTraceScope(
             coldLlvmTrace, telemetry, cacheHits[ordinal], cacheMisses[ordinal],
             moduleErrors[ordinal]);
@@ -571,7 +599,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         {
             module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-                optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps));
+                optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps,
+                coordinatorFunctionDeclarations));
         }
         else
         {
