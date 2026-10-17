@@ -44,6 +44,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Conversion,
         BuiltinBinary,
         Conditional,
+        NullCoalescing,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -125,6 +126,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr)
         {
             return IterativeExpressionKind::Conditional;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::NullCoalescingExpression &&
+            syntax->first() != nullptr && syntax->second() != nullptr)
+        {
+            return IterativeExpressionKind::NullCoalescing;
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -871,6 +877,66 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     lowered = buildBuiltinBinaryExpression(
                         frame.syntax, std::move(frame.first), std::move(lowered));
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NullCoalescing)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const MethodExpressionTypeBinding* frameType =
+                        expressionType(frame.syntax);
+                    const MethodDelegateBinding* frameDelegate =
+                        delegateBinding(frame.syntax);
+                    const std::string resultType = frameType != nullptr
+                        ? frameType->typeKey
+                        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+                    const MethodExpressionTypeBinding* rhsType =
+                        expressionType(frame.syntax->second());
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        lowered->typeKey,
+                        resultType,
+                        rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                    if (!conversion.exists())
+                    {
+                        error = "T01-F03 null-coalescing RHS cannot convert from '" +
+                            lowered->typeKey + "' to '" + resultType + "'";
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    if (conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered), conversion, frame.syntax->second());
+                    }
+                    const MethodOptionalCarrierBinding* optional =
+                        optionalCarrierBinding(frame.syntax);
+                    auto coalescing = makeNode(
+                        optional != nullptr
+                            ? ProjectOopHirNodeKind::OptionalCoalescing
+                            : ProjectOopHirNodeKind::NullCoalescing,
+                        frame.syntax,
+                        resultType);
+                    if (optional != nullptr)
+                    {
+                        coalescing->elementTypeKey = optional->carrierTypeKey;
+                        coalescing->memberOrdinal = optional->hasValueMemberOrdinal;
+                        coalescing->secondaryMemberOrdinal =
+                            optional->uncheckedValueMemberOrdinal;
+                    }
+                    coalescing->children.push_back(std::move(frame.first));
+                    coalescing->children.push_back(std::move(lowered));
+                    lowered = std::move(coalescing);
                     frames.pop_back();
                     continue;
                 }
