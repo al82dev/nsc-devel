@@ -2,6 +2,7 @@
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,5 +40,46 @@ inline void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root)
             if (child != nullptr) pending.push_back(std::move(child));
         current->children.clear();
     }
+}
+
+struct HirTuplePatternFrame final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::string typeKey;
+    std::uint64_t byteOffset = 0;
+};
+
+template<typename ExpandTuple, typename VisitLeaf>
+bool visitHirTuplePatternLeaves(
+    const ast::AstNode* syntax,
+    std::string typeKey,
+    std::uint64_t byteOffset,
+    ExpandTuple&& expandTuple,
+    VisitLeaf&& visitLeaf)
+{
+    std::vector<HirTuplePatternFrame> pending;
+    pending.push_back(HirTuplePatternFrame{syntax, std::move(typeKey), byteOffset});
+    while (!pending.empty())
+    {
+        HirTuplePatternFrame current = std::move(pending.back());
+        pending.pop_back();
+        if (current.syntax == nullptr) return false;
+        if (current.syntax->kind() != ast::AstNodeKind::TupleExpression)
+        {
+            if (!visitLeaf(current.syntax, current.typeKey, current.byteOffset)) return false;
+            continue;
+        }
+
+        std::vector<HirTuplePatternFrame> children;
+        if (!expandTuple(
+                current.syntax, current.typeKey, current.byteOffset, children))
+        {
+            return false;
+        }
+        pending.reserve(pending.size() + children.size());
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+            pending.push_back(std::move(*child));
+    }
+    return true;
 }
 }

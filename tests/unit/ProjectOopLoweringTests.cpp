@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "../../src/Frontend/HIR/HirLoweringSupport.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
@@ -1328,21 +1329,6 @@ void testDeepGeneratorThrowRewrite(TestContext& tests)
         "the deep generator throw fixture retains every enclosing block");
 }
 
-void destroyHirTreeIteratively(
-    std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>& root)
-{
-    std::vector<std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>> pending;
-    if (root != nullptr) pending.push_back(std::move(root));
-    while (!pending.empty())
-    {
-        auto node = std::move(pending.back());
-        pending.pop_back();
-        for (auto& child : node->children)
-            if (child != nullptr) pending.push_back(std::move(child));
-        node->children.clear();
-    }
-}
-
 void testDeepAsyncPollReturnRewrite(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2073,6 +2059,109 @@ void testDeepHirModelDestruction(TestContext& tests)
     tests.expect(true,
         "32768-level HIR function and field roots reach model destruction without extraction");
 }
+
+void testDeepHirDeconstructionWalk(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setText("leaf");
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::TupleExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->addChild(current);
+        current = syntax.back().get();
+    }
+
+    std::size_t expanded = 0;
+    std::size_t leaves = 0;
+    std::uint64_t observedOffset = 0;
+    const auto expand = [&] (
+        const nativesharp::ast::AstNode* tuple,
+        const std::string& typeKey,
+        std::uint64_t byteOffset,
+        std::vector<nativesharp::frontend::HirTuplePatternFrame>& children)
+    {
+        ++expanded;
+        children.push_back(nativesharp::frontend::HirTuplePatternFrame{
+            tuple->children().front(), typeKey, byteOffset + 1U});
+        return true;
+    };
+    const auto visit = [&] (
+        const nativesharp::ast::AstNode*,
+        const std::string&,
+        std::uint64_t byteOffset)
+    {
+        ++leaves;
+        observedOffset = byteOffset;
+        return true;
+    };
+    const bool ok = nativesharp::frontend::visitHirTuplePatternLeaves(
+        current, "synthetic:tuple", 0, expand, visit);
+    tests.expect(ok && expanded == nestingDepth && leaves == 1U &&
+            observedOffset == nestingDepth,
+        "a 32768-level deconstruction pattern preserves preorder, type, and accumulated offset");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> branchSyntax;
+    const auto makeBranchNode = [&] (nativesharp::ast::AstNodeKind kind, std::string text = {})
+    {
+        branchSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        branchSyntax.back()->setText(std::move(text));
+        return branchSyntax.back().get();
+    };
+    auto* branchRoot = makeBranchNode(nativesharp::ast::AstNodeKind::TupleExpression);
+    auto* left = makeBranchNode(nativesharp::ast::AstNodeKind::TupleExpression);
+    auto* right = makeBranchNode(nativesharp::ast::AstNodeKind::TupleExpression);
+    left->addChild(makeBranchNode(
+        nativesharp::ast::AstNodeKind::IdentifierExpression, "a"));
+    left->addChild(makeBranchNode(
+        nativesharp::ast::AstNodeKind::IdentifierExpression, "b"));
+    right->addChild(makeBranchNode(
+        nativesharp::ast::AstNodeKind::IdentifierExpression, "c"));
+    right->addChild(makeBranchNode(
+        nativesharp::ast::AstNodeKind::IdentifierExpression, "d"));
+    branchRoot->addChild(left);
+    branchRoot->addChild(right);
+    const auto expandBranch = [] (
+        const nativesharp::ast::AstNode* tuple,
+        const std::string& typeKey,
+        std::uint64_t byteOffset,
+        std::vector<nativesharp::frontend::HirTuplePatternFrame>& children)
+    {
+        for (std::size_t index = 0; index < tuple->children().size(); ++index)
+            children.push_back(nativesharp::frontend::HirTuplePatternFrame{
+                tuple->children()[index], typeKey, byteOffset + index});
+        return true;
+    };
+    std::vector<std::string> order;
+    const bool branchOk = nativesharp::frontend::visitHirTuplePatternLeaves(
+        branchRoot, "synthetic:branch", 0, expandBranch,
+        [&] (const nativesharp::ast::AstNode* leaf, const std::string&, std::uint64_t)
+        {
+            order.push_back(leaf->text());
+            return true;
+        });
+    tests.expect(branchOk && order == std::vector<std::string>({"a", "b", "c", "d"}),
+        "iterative deconstruction traversal preserves left-to-right leaf order");
+
+    order.clear();
+    const bool stopped = nativesharp::frontend::visitHirTuplePatternLeaves(
+        branchRoot, "synthetic:branch", 0, expandBranch,
+        [&] (const nativesharp::ast::AstNode* leaf, const std::string&, std::uint64_t)
+        {
+            order.push_back(leaf->text());
+            return leaf->text() != "c";
+        });
+    tests.expect(!stopped && order == std::vector<std::string>({"a", "b", "c"}),
+        "iterative deconstruction traversal stops at the first failing leaf");
+}
 }
 
 int main()
@@ -2156,6 +2245,10 @@ int main()
     else if (focusValue == "hir-model-destruction-depth")
     {
         testDeepHirModelDestruction(tests);
+    }
+    else if (focusValue == "hir-deconstruction-walk-depth")
+    {
+        testDeepHirDeconstructionWalk(tests);
     }
     else
     {

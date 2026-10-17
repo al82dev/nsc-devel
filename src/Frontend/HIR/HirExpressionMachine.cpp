@@ -2089,32 +2089,36 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(
                     ProjectOopHirNodeKind::TupleDeconstruct, expression, binding->tupleTypeKey);
                 node->children.push_back(std::move(source));
-                std::function<bool(const ast::AstNode*, const std::string&, std::uint64_t)>
-                    appendTarget;
-                appendTarget = [&](const ast::AstNode* targetSyntax,
-                                   const std::string& sourceTypeKey,
-                                   std::uint64_t byteOffset) -> bool
+                const auto expandTargetTuple = [&] (
+                    const ast::AstNode* targetSyntax,
+                    const std::string& sourceTypeKey,
+                    std::uint64_t byteOffset,
+                    std::vector<HirTuplePatternFrame>& children) -> bool
                 {
-                    if (targetSyntax == nullptr) return false;
-                    if (targetSyntax->kind() == ast::AstNodeKind::TupleExpression)
+                    const std::optional<std::vector<std::string>> nestedElements =
+                        ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+                    const std::optional<language::AggregateLayout> nestedLayout =
+                        objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, sourceTypeKey);
+                    if (!nestedElements.has_value() || !nestedLayout.has_value() ||
+                        nestedElements->size() != targetSyntax->children().size() ||
+                        nestedLayout->offsets.size() != nestedElements->size())
                     {
-                        const std::optional<std::vector<std::string>> nestedElements =
-                            ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
-                        const std::optional<language::AggregateLayout> nestedLayout =
-                            objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, sourceTypeKey);
-                        if (!nestedElements.has_value() || !nestedLayout.has_value() ||
-                            nestedElements->size() != targetSyntax->children().size() ||
-                            nestedLayout->offsets.size() != nestedElements->size())
-                        {
-                            error = "T02-F03 nested assignment target lost its tuple layout";
-                            return false;
-                        }
-                        for (std::size_t index = 0; index < nestedElements->size(); ++index)
-                            if (!appendTarget(
-                                    targetSyntax->children()[index], (*nestedElements)[index],
-                                    byteOffset + nestedLayout->offsets[index])) return false;
-                        return true;
+                        error = "T02-F03 nested assignment target lost its tuple layout";
+                        return false;
                     }
+                    children.reserve(nestedElements->size());
+                    for (std::size_t index = 0; index < nestedElements->size(); ++index)
+                        children.push_back(HirTuplePatternFrame{
+                            targetSyntax->children()[index],
+                            (*nestedElements)[index],
+                            byteOffset + nestedLayout->offsets[index]});
+                    return true;
+                };
+                const auto appendTargetLeaf = [&] (
+                    const ast::AstNode* targetSyntax,
+                    const std::string& sourceTypeKey,
+                    std::uint64_t byteOffset) -> bool
+                {
                     if (targetSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
                         targetSyntax->text() == "_") return true;
                     const MethodExpressionTypeBinding* targetType = expressionType(targetSyntax);
@@ -2143,7 +2147,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     node->children.push_back(std::move(element));
                     return true;
                 };
-                if (!appendTarget(expression->first(), binding->tupleTypeKey, 0)) return nullptr;
+                if (!visitHirTuplePatternLeaves(
+                        expression->first(),
+                        binding->tupleTypeKey,
+                        0,
+                        expandTargetTuple,
+                        appendTargetLeaf))
+                {
+                    return nullptr;
+                }
                 return node;
             }
 

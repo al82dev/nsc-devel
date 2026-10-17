@@ -602,31 +602,36 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto deconstruct = makeNode(
                 ProjectOopHirNodeKind::TupleDeconstruct, statement, binding->tupleTypeKey);
             deconstruct->children.push_back(std::move(source));
-            std::function<bool(const ast::AstNode*, const std::string&, std::uint64_t)>
-                appendBinding;
-            appendBinding = [&](const ast::AstNode* bindingSyntax, const std::string& typeKey,
-                                std::uint64_t byteOffset) -> bool
+            const auto expandBindingTuple = [&] (
+                const ast::AstNode* bindingSyntax,
+                const std::string& typeKey,
+                std::uint64_t byteOffset,
+                std::vector<HirTuplePatternFrame>& children) -> bool
             {
-                if (bindingSyntax == nullptr) return false;
-                if (bindingSyntax->kind() == ast::AstNodeKind::TupleExpression)
+                const std::optional<std::vector<std::string>> nestedElements =
+                    ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+                const std::optional<language::AggregateLayout> nestedLayout =
+                    objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, typeKey);
+                if (!nestedElements.has_value() || !nestedLayout.has_value() ||
+                    nestedElements->size() != bindingSyntax->children().size() ||
+                    nestedLayout->offsets.size() != nestedElements->size())
                 {
-                    const std::optional<std::vector<std::string>> nestedElements =
-                        ProjectTypeConversion::tupleElementTypeKeys(typeKey);
-                    const std::optional<language::AggregateLayout> nestedLayout =
-                        objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, typeKey);
-                    if (!nestedElements.has_value() || !nestedLayout.has_value() ||
-                        nestedElements->size() != bindingSyntax->children().size() ||
-                        nestedLayout->offsets.size() != nestedElements->size())
-                    {
-                        error = "T02-F03 nested declaration pattern lost its tuple layout";
-                        return false;
-                    }
-                    for (std::size_t index = 0; index < nestedElements->size(); ++index)
-                        if (!appendBinding(
-                                bindingSyntax->children()[index], (*nestedElements)[index],
-                                byteOffset + nestedLayout->offsets[index])) return false;
-                    return true;
+                    error = "T02-F03 nested declaration pattern lost its tuple layout";
+                    return false;
                 }
+                children.reserve(nestedElements->size());
+                for (std::size_t index = 0; index < nestedElements->size(); ++index)
+                    children.push_back(HirTuplePatternFrame{
+                        bindingSyntax->children()[index],
+                        (*nestedElements)[index],
+                        byteOffset + nestedLayout->offsets[index]});
+                return true;
+            };
+            const auto appendBindingLeaf = [&] (
+                const ast::AstNode* bindingSyntax,
+                const std::string& typeKey,
+                std::uint64_t byteOffset) -> bool
+            {
                 if (bindingSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
                     bindingSyntax->text() == "_") return true;
                 const MethodLocalSymbol* local = localSymbol(bindingSyntax);
@@ -658,9 +663,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             };
             for (std::size_t index = 0; index < statement->children().size(); ++index)
             {
-                if (!appendBinding(
-                        statement->children()[index], (*elements)[index],
-                        static_cast<std::uint64_t>(layout->offsets[index]))) return nullptr;
+                if (!visitHirTuplePatternLeaves(
+                        statement->children()[index],
+                        (*elements)[index],
+                        static_cast<std::uint64_t>(layout->offsets[index]),
+                        expandBindingTuple,
+                        appendBindingLeaf))
+                {
+                    return nullptr;
+                }
             }
             block->children.push_back(std::move(deconstruct));
             return block;
