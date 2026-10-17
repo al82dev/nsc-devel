@@ -1001,6 +1001,10 @@ private:
         const ast::AstNode* statement,
         std::size_t memberOrdinal,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDestructionExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         const ast::AstNode* syntax,
         std::string_view parameterTypeKey,
