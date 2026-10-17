@@ -45,6 +45,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         BuiltinBinary,
         Conditional,
         CoreMember,
+        CoreIndex,
         InstanceField,
         NullConditionalField,
         RangeSlice,
@@ -57,8 +58,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         std::uint8_t stage = 0;
         std::unique_ptr<ProjectOopHirNode> first;
         std::unique_ptr<ProjectOopHirNode> second;
+        std::vector<const ast::AstNode*> operandSyntaxes;
+        std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
         const MethodRangeSliceBinding* rangeBinding = nullptr;
+        const MethodCoreBinding* core = nullptr;
         bool materializeReceiverTemporary = false;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
@@ -163,6 +167,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return IterativeExpressionKind::RangeSlice;
             }
         }
+        if (syntax->kind() == ast::AstNodeKind::IndexExpression ||
+            syntax->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            const bool ordinaryElement = core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ArrayElement ||
+                 core->kind == MethodCoreOperationKind::RangeArrayElement ||
+                 core->kind == MethodCoreOperationKind::StringElement);
+            const bool nullConditionalElement = core != nullptr &&
+                core->kind == MethodCoreOperationKind::NullConditionalArrayElement;
+            const bool validAddress =
+                !(core != nullptr && core->kind == MethodCoreOperationKind::StringElement && address) &&
+                !(nullConditionalElement && address);
+            const ast::AstNode* firstIndex = !syntax->children().empty()
+                ? syntax->children().front() : syntax->second();
+            const auto validIndexSyntax = [](const ast::AstNode* index) noexcept
+            {
+                return index != nullptr &&
+                    (index->kind() != ast::AstNodeKind::FromEndExpression ||
+                     index->first() != nullptr);
+            };
+            const bool validIndices = syntax->children().empty()
+                ? validIndexSyntax(firstIndex)
+                : std::all_of(
+                    syntax->children().begin(), syntax->children().end(), validIndexSyntax);
+            if ((ordinaryElement || nullConditionalElement) && validAddress &&
+                syntax->first() != nullptr && validIndices)
+            {
+                return IterativeExpressionKind::CoreIndex;
+            }
+        }
         if (syntax->kind() == ast::AstNodeKind::MemberExpression &&
             coreBinding(syntax) == nullptr && accessorGetterBinding(syntax) == nullptr &&
             callBinding(syntax) == nullptr &&
@@ -196,9 +231,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 iterativeKind(current, currentAddressContext);
             if (currentKind.has_value())
             {
-                IterativeExpressionFrame frame{
-                    *currentKind, current, currentAddressContext, 0U,
-                    nullptr, nullptr, nullptr, nullptr, false};
+                IterativeExpressionFrame frame;
+                frame.kind = *currentKind;
+                frame.syntax = current;
+                frame.addressContext = currentAddressContext;
                 if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
@@ -217,11 +253,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         isStructValueType(frame.rangeBinding->receiverTypeKey) &&
                         !isNaturallyAddressable(frame.rangeBinding->receiverSyntax);
                 }
+                else if (*currentKind == IterativeExpressionKind::CoreIndex)
+                {
+                    frame.core = coreBinding(current);
+                    if (frame.core->kind == MethodCoreOperationKind::NullConditionalArrayElement)
+                    {
+                        frame.operandSyntaxes.push_back(!current->children().empty()
+                            ? current->children().front() : current->second());
+                    }
+                    else if (!current->children().empty())
+                    {
+                        frame.operandSyntaxes.assign(
+                            current->children().begin(), current->children().end());
+                    }
+                    else
+                    {
+                        frame.operandSyntaxes.push_back(current->second());
+                    }
+                    frame.operands.reserve(frame.operandSyntaxes.size());
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::RangeSlice)
                     current = frames.back().rangeBinding->receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::CoreIndex)
+                    current = current->first();
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -332,6 +389,78 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     member->elementTypeKey = core.elementTypeKey;
                     member->children.push_back(std::move(lowered));
                     lowered = std::move(member);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CoreIndex)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        const ast::AstNode* syntax = frame.operandSyntaxes.front();
+                        current = syntax->kind() == ast::AstNodeKind::FromEndExpression
+                            ? syntax->first() : syntax;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    frame.operands.push_back(std::move(lowered));
+                    if (frame.operands.size() < frame.operandSyntaxes.size())
+                    {
+                        const ast::AstNode* syntax =
+                            frame.operandSyntaxes[frame.operands.size()];
+                        current = syntax->kind() == ast::AstNodeKind::FromEndExpression
+                            ? syntax->first() : syntax;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+
+                    const MethodCoreBinding& core = *frame.core;
+                    if (core.kind == MethodCoreOperationKind::NullConditionalArrayElement)
+                    {
+                        auto element = makeNode(
+                            ProjectOopHirNodeKind::NullConditionalArrayLoad,
+                            frame.syntax,
+                            core.resultTypeKey);
+                        element->elementTypeKey = core.elementTypeKey;
+                        element->children.push_back(std::move(frame.first));
+                        element->children.push_back(std::move(frame.operands.front()));
+                        lowered = std::move(element);
+                        frames.pop_back();
+                        continue;
+                    }
+
+                    ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::StringElementValue;
+                    if (core.kind == MethodCoreOperationKind::ArrayElement)
+                    {
+                        nodeKind = frame.addressContext
+                            ? ProjectOopHirNodeKind::ArrayElementAddress
+                            : ProjectOopHirNodeKind::ArrayElementValue;
+                    }
+                    else if (core.kind == MethodCoreOperationKind::RangeArrayElement)
+                    {
+                        nodeKind = frame.addressContext
+                            ? ProjectOopHirNodeKind::RangeArrayElementAddress
+                            : ProjectOopHirNodeKind::RangeArrayElementValue;
+                    }
+                    auto element = makeNode(nodeKind, frame.syntax, core.resultTypeKey);
+                    element->elementTypeKey = core.elementTypeKey;
+                    element->nativeArrayRank = core.kind == MethodCoreOperationKind::RangeArrayElement
+                        ? frame.operandSyntaxes.size() : 1U;
+                    element->children.push_back(std::move(frame.first));
+                    for (std::size_t dimension = 0;
+                        dimension < frame.operandSyntaxes.size(); ++dimension)
+                    {
+                        const bool fromEnd = frame.operandSyntaxes[dimension]->kind() ==
+                            ast::AstNodeKind::FromEndExpression;
+                        if (dimension == 0U) element->booleanValue = fromEnd;
+                        if (fromEnd && dimension < 64U)
+                            element->integerValue |= (std::uint64_t{1} << dimension);
+                        element->children.push_back(std::move(frame.operands[dimension]));
+                    }
+                    lowered = std::move(element);
                     frames.pop_back();
                     continue;
                 }
