@@ -2567,64 +2567,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return lowerDestructionExpression(expression, memberOrdinal, error);
         case ast::AstNodeKind::TypeTestExpression:
         case ast::AstNodeKind::SafeCastExpression:
-        {
-            const MethodRuntimeTypeBinding* binding = runtimeTypeBinding(expression);
-            if (binding == nullptr)
-            {
-                error = "Stage 39 runtime type operation lost its semantic binding";
-                return nullptr;
-            }
-            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
-            if (operand == nullptr)
-            {
-                return nullptr;
-            }
-            auto node = makeNode(
-                binding->kind == MethodRuntimeTypeOperationKind::TypeTest
-                    ? ProjectOopHirNodeKind::RuntimeTypeTest
-                    : ProjectOopHirNodeKind::SafeReferenceCast,
-                expression,
-                resultType);
-            node->targetTypeOrdinal = binding->targetTypeOrdinal;
-            node->targetIsInterface = binding->targetIsInterface;
-            node->children.push_back(std::move(operand));
-            return node;
-        }
-
         case ast::AstNodeKind::CastExpression:
-        {
-            const MethodRuntimeTypeBinding* runtimeBinding = runtimeTypeBinding(expression);
-            if (runtimeBinding != nullptr &&
-                runtimeBinding->kind == MethodRuntimeTypeOperationKind::CheckedCast)
-            {
-                auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
-                if (operand == nullptr)
-                {
-                    return nullptr;
-                }
-                auto node = makeNode(ProjectOopHirNodeKind::CheckedReferenceCast, expression, resultType);
-                node->targetTypeOrdinal = runtimeBinding->targetTypeOrdinal;
-                node->targetIsInterface = runtimeBinding->targetIsInterface;
-                node->children.push_back(std::move(operand));
-                return node;
-            }
-            const MethodCallBinding* conversionCall = callBinding(expression);
-            if (conversionCall != nullptr && conversionCall->resolution == MethodCallResolutionKind::Resolved &&
-                conversionCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
-                *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
-                memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion)
-            {
-                return lowerResolvedCall(conversionCall, {expression->first()});
-            }
-            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
-            if (operand == nullptr)
-            {
-                return nullptr;
-            }
-            auto node = makeNode(ProjectOopHirNodeKind::Conversion, expression, resultType);
-            node->children.push_back(std::move(operand));
-            return node;
-        }
+            return lowerConversionExpression(
+                expression, memberOrdinal, addressContext, error, typeBinding, resultType);
 
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::SizeofExpression:

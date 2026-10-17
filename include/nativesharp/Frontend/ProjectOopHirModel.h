@@ -882,6 +882,14 @@ private:
         bool addressContext,
         std::string& error);
 
+    std::unique_ptr<ProjectOopHirNode> lowerConversionExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error,
+        const MethodExpressionTypeBinding* typeBinding,
+        std::string_view resultType);
+
     std::unique_ptr<ProjectOopHirNode> lowerArrayConstructionExpression(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,

@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -140,5 +141,78 @@ ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
     }
     return ProjectTypeConversion::classifyImplicit(
         sourceTypeKey, targetTypeKey, integerConstant, isReferenceType(targetTypeKey));
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConversionExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error,
+    const MethodExpressionTypeBinding* typeBinding,
+    std::string_view resultType)
+{
+    if (expression->kind() == ast::AstNodeKind::TypeTestExpression ||
+        expression->kind() == ast::AstNodeKind::SafeCastExpression)
+    {
+        const MethodRuntimeTypeBinding* binding = runtimeTypeBinding(expression);
+        if (binding == nullptr)
+        {
+            error = "Stage 39 runtime type operation lost its semantic binding";
+            return nullptr;
+        }
+        auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+        if (operand == nullptr)
+        {
+            return nullptr;
+        }
+        auto node = makeNode(
+            binding->kind == MethodRuntimeTypeOperationKind::TypeTest
+                ? ProjectOopHirNodeKind::RuntimeTypeTest
+                : ProjectOopHirNodeKind::SafeReferenceCast,
+            expression,
+            std::string(resultType));
+        node->targetTypeOrdinal = binding->targetTypeOrdinal;
+        node->targetIsInterface = binding->targetIsInterface;
+        node->children.push_back(std::move(operand));
+        return node;
+    }
+
+    const MethodRuntimeTypeBinding* runtimeBinding = runtimeTypeBinding(expression);
+    if (runtimeBinding != nullptr &&
+        runtimeBinding->kind == MethodRuntimeTypeOperationKind::CheckedCast)
+    {
+        auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+        if (operand == nullptr)
+        {
+            return nullptr;
+        }
+        auto node = makeNode(
+            ProjectOopHirNodeKind::CheckedReferenceCast, expression, std::string(resultType));
+        node->targetTypeOrdinal = runtimeBinding->targetTypeOrdinal;
+        node->targetIsInterface = runtimeBinding->targetIsInterface;
+        node->children.push_back(std::move(operand));
+        return node;
+    }
+    const MethodCallBinding* conversionCall = callBinding(expression);
+    if (conversionCall != nullptr &&
+        conversionCall->resolution == MethodCallResolutionKind::Resolved &&
+        conversionCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+        *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
+        memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion)
+    {
+        const std::vector<const ast::AstNode*> arguments{expression->first()};
+        return lowerBoundCall(
+            expression, memberOrdinal, addressContext, error, typeBinding, conversionCall,
+            arguments);
+    }
+    auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+    if (operand == nullptr)
+    {
+        return nullptr;
+    }
+    auto node = makeNode(
+        ProjectOopHirNodeKind::Conversion, expression, std::string(resultType));
+    node->children.push_back(std::move(operand));
+    return node;
 }
 }
