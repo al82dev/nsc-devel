@@ -50,6 +50,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Destruction,
         StackAllocation,
         StorageUnary,
+        MoveProjection,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -73,6 +74,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         const MethodVariableArrayIndexBinding* variableArrayIndex = nullptr;
         const MethodResultPropagationBinding* resultPropagation = nullptr;
         const MethodStructuredExitBinding* structuredExit = nullptr;
+        const MethodMoveBinding* move = nullptr;
         const MethodExpressionTypeBinding* operandType = nullptr;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
@@ -207,6 +209,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             {
                 return IterativeExpressionKind::StorageUnary;
             }
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::MoveExpression)
+        {
+            const MethodMoveBinding* move = moveBinding(syntax);
+            const bool directProjection = move != nullptr &&
+                (move->sourceIsArrayElement || move->sourceIsOwnedField) &&
+                syntax->first() != nullptr;
+            const bool iteratorProjection = move != nullptr && move->sourceIsIteratorCurrent &&
+                syntax->first() != nullptr && syntax->first()->first() != nullptr;
+            if (directProjection || iteratorProjection)
+                return IterativeExpressionKind::MoveProjection;
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -433,6 +446,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 {
                     frame.core = coreBinding(current);
                 }
+                else if (*currentKind == IterativeExpressionKind::MoveProjection)
+                {
+                    frame.move = moveBinding(current);
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
@@ -443,6 +460,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     current = current->first();
                 else if (*currentKind == IterativeExpressionKind::ResultPropagation)
                     current = frames.back().resultPropagation->operandSyntax;
+                else if (*currentKind == IterativeExpressionKind::MoveProjection &&
+                    !frames.back().move->sourceIsArrayElement &&
+                    !frames.back().move->sourceIsOwnedField &&
+                    frames.back().move->sourceIsIteratorCurrent)
+                    current = current->first()->first();
                 else
                     current = current->first();
                 if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -474,6 +496,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 {
                     currentAddressContext =
                         frames.back().syntax->tokenKind() != lexer::TokenKind::Star;
+                }
+                else if (*currentKind == IterativeExpressionKind::MoveProjection)
+                {
+                    currentAddressContext = true;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -1330,6 +1356,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         load->children.push_back(std::move(lowered));
                         lowered = std::move(load);
                     }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::MoveProjection)
+                {
+                    const ProjectOopHirNodeKind kind = frame.move->sourceIsArrayElement
+                        ? ProjectOopHirNodeKind::MoveArrayElement
+                        : frame.move->sourceIsOwnedField
+                            ? ProjectOopHirNodeKind::MoveOwnedField
+                            : ProjectOopHirNodeKind::MoveIteratorCurrent;
+                    auto move = makeNode(kind, frame.syntax, frame.move->typeKey);
+                    move->booleanValue = frame.move->clearSourceStorage;
+                    move->children.push_back(std::move(lowered));
+                    lowered = std::move(move);
                     frames.pop_back();
                     continue;
                 }
