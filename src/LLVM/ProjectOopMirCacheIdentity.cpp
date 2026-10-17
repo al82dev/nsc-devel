@@ -2,11 +2,13 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
 #include <bit>
 #include <charconv>
 #include <type_traits>
+#include <unordered_set>
 
 namespace nativesharp::llvm_backend
 {
@@ -435,5 +437,47 @@ std::string projectOopMirCacheIdentity(
 {
     return ProjectOopMirCacheIdentityIndex(model).identity(
         definitionOrdinals, declarationOrdinals);
+}
+
+std::string projectOopLineTableSourceIdentity(
+    const source::SourceManager& sourceManager,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const SourceRange> ranges)
+{
+    IdentityWriter output;
+    output.text("NativeSharp.ProjectOopLineTableSourceIdentity.v1");
+    output.scalar(debugPrefixMaps.size());
+    for (const DebugPrefixMap& map : debugPrefixMaps)
+    {
+        output.text(map.sourcePrefix.lexically_normal().generic_string());
+        output.text(map.replacementPrefix.lexically_normal().generic_string());
+    }
+
+    std::unordered_set<std::uint32_t> uniqueFileIds;
+    output.scalar(ranges.size());
+    for (const SourceRange range : ranges)
+    {
+        output.scalar(range.isValid());
+        if (!range.isValid()) continue;
+        output.scalar(range.begin().fileId().value());
+        output.scalar(range.begin().offset());
+        output.scalar(range.end().offset());
+        uniqueFileIds.insert(range.begin().fileId().value());
+    }
+
+    std::vector<std::uint32_t> fileIds(uniqueFileIds.begin(), uniqueFileIds.end());
+    std::ranges::sort(fileIds);
+    output.scalar(fileIds.size());
+    for (const std::uint32_t fileId : fileIds)
+    {
+        output.scalar(fileId);
+        const source::SourceFile* sourceFile = sourceManager.getFile(FileId(fileId));
+        output.scalar(sourceFile != nullptr);
+        if (sourceFile == nullptr) continue;
+        output.text(sourceFile->path().lexically_normal().generic_string());
+        output.scalar(sourceFile->buffer().size());
+        output.text(identityDigest(sourceFile->buffer()));
+    }
+    return output.take();
 }
 }

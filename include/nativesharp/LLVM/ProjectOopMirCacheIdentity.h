@@ -1,5 +1,8 @@
 #pragma once
 
+#include "nativesharp/Basic/SourceRange.h"
+#include "nativesharp/LLVM/DebugPrefixMap.h"
+
 #include <cstddef>
 #include <span>
 #include <string>
@@ -8,6 +11,11 @@
 namespace nativesharp::frontend
 {
 class ProjectOopMirModel;
+}
+
+namespace nativesharp::source
+{
+class SourceManager;
 }
 
 namespace nativesharp::llvm_backend
@@ -32,4 +40,9 @@ std::string projectOopMirCacheIdentity(
     const frontend::ProjectOopMirModel& model,
     std::span<const std::size_t> definitionOrdinals,
     std::span<const std::size_t> declarationOrdinals);
+
+std::string projectOopLineTableSourceIdentity(
+    const source::SourceManager& sourceManager,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const SourceRange> ranges);
 }

@@ -1,5 +1,7 @@
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CodegenIdentity.h"
+#include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include "../support/TestContext.h"
 
@@ -14,6 +16,9 @@
 
 namespace
 {
+using nativesharp::FileId;
+using nativesharp::SourceLocation;
+using nativesharp::SourceRange;
 using nativesharp::llvm_backend::CompilationArtifactCache;
 using nativesharp::llvm_backend::CompilationArtifactCacheScope;
 using nativesharp::llvm_backend::DebugInformationKind;
@@ -47,6 +52,54 @@ int main()
             std::filesystem::path{"A:/work/Game/Game.nsproj"}) ==
             std::filesystem::path{"A:/work/Game/obj/nativesharp/artifact-cache"},
         "project cache root follows the deterministic obj/nativesharp convention");
+
+    nativesharp::source::SourceManager debugSources;
+    const FileId debugFile = debugSources.addBuffer(
+        "A:/source/game.ns", "first line\nsecond line\n");
+    const std::vector<SourceRange> debugRanges = {
+        SourceRange(SourceLocation(debugFile, 0), SourceLocation(debugFile, 10))};
+    const std::string lineTableIdentity =
+        nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+            debugSources, {}, debugRanges);
+    tests.expect(lineTableIdentity ==
+            nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+                debugSources, {}, debugRanges),
+        "identical line-table sources and ranges produce one identity");
+
+    nativesharp::source::SourceManager changedContents;
+    const FileId changedContentsFile = changedContents.addBuffer(
+        "A:/source/game.ns", "first line\nchanged line\n");
+    const std::vector<SourceRange> changedContentsRanges = {
+        SourceRange(SourceLocation(changedContentsFile, 0),
+            SourceLocation(changedContentsFile, 10))};
+    tests.expect(lineTableIdentity !=
+            nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+                changedContents, {}, changedContentsRanges),
+        "source content invalidates a line-table object identity");
+
+    nativesharp::source::SourceManager changedPath;
+    const FileId changedPathFile = changedPath.addBuffer(
+        "A:/relocated/game.ns", "first line\nsecond line\n");
+    const std::vector<SourceRange> changedPathRanges = {
+        SourceRange(SourceLocation(changedPathFile, 0), SourceLocation(changedPathFile, 10))};
+    tests.expect(lineTableIdentity !=
+            nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+                changedPath, {}, changedPathRanges),
+        "source path invalidates a line-table object identity");
+
+    const std::vector<SourceRange> changedRanges = {
+        SourceRange(SourceLocation(debugFile, 1), SourceLocation(debugFile, 10))};
+    tests.expect(lineTableIdentity !=
+            nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+                debugSources, {}, changedRanges),
+        "source offsets invalidate a line-table object identity");
+
+    const std::vector<nativesharp::llvm_backend::DebugPrefixMap> prefixMaps = {{
+        std::filesystem::path{"A:/source"}, std::filesystem::path{"S:/mapped"}}};
+    tests.expect(lineTableIdentity !=
+            nativesharp::llvm_backend::projectOopLineTableSourceIdentity(
+                debugSources, prefixMaps, debugRanges),
+        "debug prefix maps invalidate a line-table object identity");
 
     CompilationArtifactCache cache;
     cache.setRoot(root / "cache");

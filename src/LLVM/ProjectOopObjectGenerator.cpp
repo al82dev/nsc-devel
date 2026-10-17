@@ -5,6 +5,8 @@
 #include "nativesharp/Basic/Sha256.h"
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -107,6 +109,60 @@ public:
 private:
     std::chrono::steady_clock::time_point started_;
 };
+
+void appendNodeSourceRanges(
+    const frontend::ProjectOopMirNode* root,
+    std::vector<SourceRange>& ranges)
+{
+    std::vector<const frontend::ProjectOopMirNode*> work;
+    work.push_back(root);
+    while (!work.empty())
+    {
+        const frontend::ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->syntax != nullptr) ranges.push_back(node->syntax->range());
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
+std::vector<SourceRange> collectLineTableSourceRanges(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel)
+{
+    std::vector<SourceRange> ranges;
+    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
+        ranges.push_back(type.range);
+    for (const frontend::ClassMemberSymbol& member : memberModel.members())
+        ranges.push_back(member.range);
+    for (const frontend::ProjectOopMirStaticField& field : mirModel.staticFields())
+        ranges.push_back(field.sourceRange);
+    for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel.fieldInitializers())
+        appendNodeSourceRanges(initializer.value.get(), ranges);
+    for (const frontend::ProjectOopMirFunction& function : mirModel.functions())
+    {
+        appendNodeSourceRanges(function.body.get(), ranges);
+        for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+            appendNodeSourceRanges(cleanup.action, ranges);
+        for (const frontend::ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
+            appendNodeSourceRanges(exit.node, ranges);
+    }
+    return ranges;
+}
+
+std::string combineLineTableCacheIdentity(
+    std::string mirIdentity,
+    std::string_view sourceIdentity)
+{
+    std::string combined = "NativeSharp.ProjectOopLineTableObjectIdentity.v1\n";
+    combined += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
+    combined += mirIdentity;
+    combined += "source-size " + std::to_string(sourceIdentity.size()) + "\n";
+    combined += sourceIdentity;
+    return combined;
+}
 
 }
 
@@ -269,12 +325,20 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const std::string codeGenerationPolicy =
         codeGenerationPolicyIdentity(linkTimeOptimization);
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
-        debugInformation == DebugInformationKind::None &&
+        debugInformation != DebugInformationKind::Full &&
         linkTimeOptimization != LinkTimeOptimizationMode::Thin;
     std::vector<std::string> cacheKeys(moduleCount);
     if (usePreLlvmCache)
     {
         const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
+        std::string lineTableSourceIdentity;
+        if (debugInformation == DebugInformationKind::LineTablesOnly)
+        {
+            const std::vector<SourceRange> sourceRanges =
+                collectLineTableSourceRanges(nameLookup, memberModel, mirModel);
+            lineTableSourceIdentity = projectOopLineTableSourceIdentity(
+                sourceManager, debugPrefixMaps, sourceRanges);
+        }
         std::vector<std::size_t> allFunctionOrdinals(mirModel.functions().size());
         for (std::size_t ordinal = 0; ordinal < allFunctionOrdinals.size(); ++ordinal)
             allFunctionOrdinals[ordinal] = ordinal;
@@ -298,8 +362,14 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 declarations = unit.declarationOrdinals;
             }
             const PhaseClock fingerprint;
+            std::string moduleIdentity = identityIndex.identity(definitions, declarations);
+            if (debugInformation == DebugInformationKind::LineTablesOnly)
+            {
+                moduleIdentity = combineLineTableCacheIdentity(
+                    std::move(moduleIdentity), lineTableSourceIdentity);
+            }
             cacheKeys[moduleOrdinal] = cache->inputObjectKey(
-                identityIndex.identity(definitions, declarations),
+                moduleIdentity,
                 "windows-x64-msvc", codeGenerationPolicy,
                 optimizationLevel, debugInformation);
             codeUnitTelemetry[moduleOrdinal].fingerprintMicros += fingerprint.elapsedMicros();
