@@ -35,6 +35,24 @@ struct StaticAssertConstant final
     bool booleanValue = false;
 };
 
+void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root)
+{
+    if (root == nullptr) return;
+    std::vector<ProjectOopHirNode*> pending;
+    pending.push_back(root.release());
+    while (!pending.empty())
+    {
+        ProjectOopHirNode* current = pending.back();
+        pending.pop_back();
+        for (std::unique_ptr<ProjectOopHirNode>& child : current->children)
+        {
+            if (child != nullptr) pending.push_back(child.release());
+        }
+        current->children.clear();
+        delete current;
+    }
+}
+
 std::optional<unsigned> staticAssertIntegerWidth(std::string_view typeKey) noexcept
 {
     if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") return 8U;
@@ -100,225 +118,289 @@ std::optional<StaticAssertConstant> evaluateStaticAssertConstant(const ProjectOo
         result.typeKey = "builtin:bool";
         return std::optional<StaticAssertConstant>(std::move(result));
     };
-
-    switch (node.kind)
+    const auto convert = [&](const ProjectOopHirNode& expression,
+                             const StaticAssertConstant& value)
+        -> std::optional<StaticAssertConstant>
     {
-        case ProjectOopHirNodeKind::IntegerConstant:
-            return integer(node.integerValue, node.typeKey);
-        case ProjectOopHirNodeKind::FloatingConstant:
-            return floating(node.floatingValue, node.typeKey);
-        case ProjectOopHirNodeKind::BooleanConstant:
-            return boolean(node.booleanValue);
-        case ProjectOopHirNodeKind::Conversion:
+        if (expression.typeKey == "builtin:bool")
+            return value.kind == StaticAssertConstantKind::Boolean
+                ? boolean(value.booleanValue) : std::nullopt;
+        if (expression.typeKey == "builtin:float" || expression.typeKey == "builtin:double")
         {
-            if (node.children.size() != 1U) return std::nullopt;
-            const std::optional<StaticAssertConstant> value =
-                evaluateStaticAssertConstant(*node.children.front());
-            if (!value.has_value()) return std::nullopt;
-            if (node.typeKey == "builtin:bool")
-                return value->kind == StaticAssertConstantKind::Boolean
-                    ? boolean(value->booleanValue) : std::nullopt;
-            if (node.typeKey == "builtin:float" || node.typeKey == "builtin:double")
-            {
-                if (value->kind == StaticAssertConstantKind::Floating)
-                    return floating(
-                        node.typeKey == "builtin:float"
-                            ? static_cast<double>(static_cast<float>(value->floatingValue))
-                            : value->floatingValue,
-                        node.typeKey);
-                if (value->kind != StaticAssertConstantKind::Integer) return std::nullopt;
-                const double converted = staticAssertSignedInteger(value->typeKey)
-                    ? static_cast<double>(staticAssertSignedValue(value->integerValue, value->typeKey))
-                    : static_cast<double>(value->integerValue);
+            if (value.kind == StaticAssertConstantKind::Floating)
                 return floating(
-                    node.typeKey == "builtin:float"
-                        ? static_cast<double>(static_cast<float>(converted)) : converted,
-                    node.typeKey);
-            }
-            if (!staticAssertIntegerWidth(node.typeKey).has_value()) return std::nullopt;
-            if (value->kind == StaticAssertConstantKind::Integer)
-                return integer(value->integerValue, node.typeKey);
-            if (value->kind != StaticAssertConstantKind::Floating ||
-                !std::isfinite(value->floatingValue)) return std::nullopt;
-            const long double converted = std::trunc(static_cast<long double>(value->floatingValue));
-            if (staticAssertSignedInteger(node.typeKey))
-            {
-                const unsigned width = *staticAssertIntegerWidth(node.typeKey);
-                const long double minimum = width == 64U
-                    ? static_cast<long double>(std::numeric_limits<std::int64_t>::min())
-                    : -static_cast<long double>(std::uint64_t{1} << (width - 1U));
-                const long double maximum = width == 64U
-                    ? static_cast<long double>(std::numeric_limits<std::int64_t>::max())
-                    : static_cast<long double>((std::uint64_t{1} << (width - 1U)) - 1U);
-                if (converted < minimum || converted > maximum) return std::nullopt;
-                return integer(
-                    std::bit_cast<std::uint64_t>(static_cast<std::int64_t>(converted)), node.typeKey);
-            }
-            const unsigned width = *staticAssertIntegerWidth(node.typeKey);
+                    expression.typeKey == "builtin:float"
+                        ? static_cast<double>(static_cast<float>(value.floatingValue))
+                        : value.floatingValue,
+                    expression.typeKey);
+            if (value.kind != StaticAssertConstantKind::Integer) return std::nullopt;
+            const double converted = staticAssertSignedInteger(value.typeKey)
+                ? static_cast<double>(staticAssertSignedValue(value.integerValue, value.typeKey))
+                : static_cast<double>(value.integerValue);
+            return floating(
+                expression.typeKey == "builtin:float"
+                    ? static_cast<double>(static_cast<float>(converted)) : converted,
+                expression.typeKey);
+        }
+        if (!staticAssertIntegerWidth(expression.typeKey).has_value()) return std::nullopt;
+        if (value.kind == StaticAssertConstantKind::Integer)
+            return integer(value.integerValue, expression.typeKey);
+        if (value.kind != StaticAssertConstantKind::Floating ||
+            !std::isfinite(value.floatingValue)) return std::nullopt;
+        const long double converted = std::trunc(static_cast<long double>(value.floatingValue));
+        if (staticAssertSignedInteger(expression.typeKey))
+        {
+            const unsigned width = *staticAssertIntegerWidth(expression.typeKey);
+            const long double minimum = width == 64U
+                ? static_cast<long double>(std::numeric_limits<std::int64_t>::min())
+                : -static_cast<long double>(std::uint64_t{1} << (width - 1U));
             const long double maximum = width == 64U
-                ? static_cast<long double>(std::numeric_limits<std::uint64_t>::max())
-                : static_cast<long double>(staticAssertMask(width));
-            if (converted < 0.0L || converted > maximum) return std::nullopt;
-            return integer(static_cast<std::uint64_t>(converted), node.typeKey);
+                ? static_cast<long double>(std::numeric_limits<std::int64_t>::max())
+                : static_cast<long double>((std::uint64_t{1} << (width - 1U)) - 1U);
+            if (converted < minimum || converted > maximum) return std::nullopt;
+            return integer(
+                std::bit_cast<std::uint64_t>(static_cast<std::int64_t>(converted)),
+                expression.typeKey);
         }
-        case ProjectOopHirNodeKind::Unary:
+        const unsigned width = *staticAssertIntegerWidth(expression.typeKey);
+        const long double maximum = width == 64U
+            ? static_cast<long double>(std::numeric_limits<std::uint64_t>::max())
+            : static_cast<long double>(staticAssertMask(width));
+        if (converted < 0.0L || converted > maximum) return std::nullopt;
+        return integer(static_cast<std::uint64_t>(converted), expression.typeKey);
+    };
+    const auto applyUnary = [&](const ProjectOopHirNode& expression,
+                                const StaticAssertConstant& value)
+        -> std::optional<StaticAssertConstant>
+    {
+        switch (expression.operation)
         {
-            if (node.children.size() != 1U) return std::nullopt;
-            const std::optional<StaticAssertConstant> value =
-                evaluateStaticAssertConstant(*node.children.front());
-            if (!value.has_value()) return std::nullopt;
-            switch (node.operation)
-            {
-                case lexer::TokenKind::Plus:
-                    return value;
-                case lexer::TokenKind::Minus:
-                    if (value->kind == StaticAssertConstantKind::Floating)
-                        return floating(-value->floatingValue, node.typeKey);
-                    if (value->kind == StaticAssertConstantKind::Integer)
-                        return integer(std::uint64_t{0} - value->integerValue, node.typeKey);
-                    return std::nullopt;
-                case lexer::TokenKind::Tilde:
-                    return value->kind == StaticAssertConstantKind::Integer
-                        ? integer(~value->integerValue, node.typeKey) : std::nullopt;
-                case lexer::TokenKind::Bang:
-                    return value->kind == StaticAssertConstantKind::Boolean
-                        ? boolean(!value->booleanValue) : std::nullopt;
-                default:
-                    return std::nullopt;
-            }
-        }
-        case ProjectOopHirNodeKind::Binary:
-        {
-            if (node.children.size() != 2U) return std::nullopt;
-            const std::optional<StaticAssertConstant> left =
-                evaluateStaticAssertConstant(*node.children[0]);
-            if (!left.has_value()) return std::nullopt;
-            if (node.operation == lexer::TokenKind::AmpAmp)
-            {
-                if (left->kind != StaticAssertConstantKind::Boolean) return std::nullopt;
-                if (!left->booleanValue) return boolean(false);
-            }
-            if (node.operation == lexer::TokenKind::PipePipe)
-            {
-                if (left->kind != StaticAssertConstantKind::Boolean) return std::nullopt;
-                if (left->booleanValue) return boolean(true);
-            }
-            const std::optional<StaticAssertConstant> right =
-                evaluateStaticAssertConstant(*node.children[1]);
-            if (!right.has_value()) return std::nullopt;
-            if (node.operation == lexer::TokenKind::AmpAmp || node.operation == lexer::TokenKind::PipePipe)
-            {
-                if (right->kind != StaticAssertConstantKind::Boolean) return std::nullopt;
-                return boolean(right->booleanValue);
-            }
-
-            const bool floatingOperands = left->kind == StaticAssertConstantKind::Floating &&
-                right->kind == StaticAssertConstantKind::Floating;
-            const bool integerOperands = left->kind == StaticAssertConstantKind::Integer &&
-                right->kind == StaticAssertConstantKind::Integer;
-            const bool booleanOperands = left->kind == StaticAssertConstantKind::Boolean &&
-                right->kind == StaticAssertConstantKind::Boolean;
-            if (node.operation == lexer::TokenKind::EqualEqual ||
-                node.operation == lexer::TokenKind::BangEqual)
-            {
-                bool equal = false;
-                if (floatingOperands) equal = left->floatingValue == right->floatingValue;
-                else if (integerOperands) equal = left->integerValue == right->integerValue;
-                else if (booleanOperands) equal = left->booleanValue == right->booleanValue;
-                else return std::nullopt;
-                return boolean(node.operation == lexer::TokenKind::EqualEqual ? equal : !equal);
-            }
-            if (floatingOperands)
-            {
-                switch (node.operation)
-                {
-                    case lexer::TokenKind::Less: return boolean(left->floatingValue < right->floatingValue);
-                    case lexer::TokenKind::LessEqual: return boolean(left->floatingValue <= right->floatingValue);
-                    case lexer::TokenKind::Greater: return boolean(left->floatingValue > right->floatingValue);
-                    case lexer::TokenKind::GreaterEqual: return boolean(left->floatingValue >= right->floatingValue);
-                    case lexer::TokenKind::Plus: return floating(left->floatingValue + right->floatingValue, node.typeKey);
-                    case lexer::TokenKind::Minus: return floating(left->floatingValue - right->floatingValue, node.typeKey);
-                    case lexer::TokenKind::Star: return floating(left->floatingValue * right->floatingValue, node.typeKey);
-                    case lexer::TokenKind::Slash: return floating(left->floatingValue / right->floatingValue, node.typeKey);
-                    case lexer::TokenKind::Percent: return floating(std::fmod(left->floatingValue, right->floatingValue), node.typeKey);
-                    default: return std::nullopt;
-                }
-            }
-            if (!integerOperands) return std::nullopt;
-            const unsigned width = staticAssertIntegerWidth(left->typeKey).value_or(64U);
-            const bool signedOperands = staticAssertSignedInteger(left->typeKey);
-            const std::int64_t signedLeft = staticAssertSignedValue(left->integerValue, left->typeKey);
-            const std::int64_t signedRight = staticAssertSignedValue(right->integerValue, right->typeKey);
-            switch (node.operation)
-            {
-                case lexer::TokenKind::Less:
-                    return boolean(signedOperands ? signedLeft < signedRight
-                                                  : left->integerValue < right->integerValue);
-                case lexer::TokenKind::LessEqual:
-                    return boolean(signedOperands ? signedLeft <= signedRight
-                                                  : left->integerValue <= right->integerValue);
-                case lexer::TokenKind::Greater:
-                    return boolean(signedOperands ? signedLeft > signedRight
-                                                  : left->integerValue > right->integerValue);
-                case lexer::TokenKind::GreaterEqual:
-                    return boolean(signedOperands ? signedLeft >= signedRight
-                                                  : left->integerValue >= right->integerValue);
-                case lexer::TokenKind::Plus:
-                    return integer(left->integerValue + right->integerValue, node.typeKey);
-                case lexer::TokenKind::Minus:
-                    return integer(left->integerValue - right->integerValue, node.typeKey);
-                case lexer::TokenKind::Star:
-                    return integer(left->integerValue * right->integerValue, node.typeKey);
-                case lexer::TokenKind::Amp:
-                    return integer(left->integerValue & right->integerValue, node.typeKey);
-                case lexer::TokenKind::Pipe:
-                    return integer(left->integerValue | right->integerValue, node.typeKey);
-                case lexer::TokenKind::Caret:
-                    return integer(left->integerValue ^ right->integerValue, node.typeKey);
-                case lexer::TokenKind::LessLess:
-                    if (right->integerValue >= width) return std::nullopt;
-                    return integer(left->integerValue << right->integerValue, node.typeKey);
-                case lexer::TokenKind::GreaterGreater:
-                    if (right->integerValue >= width) return std::nullopt;
-                    return signedOperands
-                        ? integer(
-                            std::bit_cast<std::uint64_t>(signedLeft >> right->integerValue), node.typeKey)
-                        : integer(left->integerValue >> right->integerValue, node.typeKey);
-                case lexer::TokenKind::Slash:
-                case lexer::TokenKind::Percent:
-                    if (right->integerValue == 0U) return std::nullopt;
-                    if (!signedOperands)
-                        return integer(
-                            node.operation == lexer::TokenKind::Slash
-                                ? left->integerValue / right->integerValue
-                                : left->integerValue % right->integerValue,
-                            node.typeKey);
-                    if (signedLeft == std::numeric_limits<std::int64_t>::min() && signedRight == -1)
-                        return integer(
-                            node.operation == lexer::TokenKind::Slash
-                                ? left->integerValue : std::uint64_t{0},
-                            node.typeKey);
-                    return integer(
-                        std::bit_cast<std::uint64_t>(
-                            node.operation == lexer::TokenKind::Slash
-                                ? signedLeft / signedRight : signedLeft % signedRight),
-                        node.typeKey);
-                default:
-                    return std::nullopt;
-            }
-        }
-        case ProjectOopHirNodeKind::Conditional:
-        {
-            if (node.children.size() != 3U) return std::nullopt;
-            const std::optional<StaticAssertConstant> condition =
-                evaluateStaticAssertConstant(*node.children[0]);
-            if (!condition.has_value() || condition->kind != StaticAssertConstantKind::Boolean)
+            case lexer::TokenKind::Plus:
+                return value;
+            case lexer::TokenKind::Minus:
+                if (value.kind == StaticAssertConstantKind::Floating)
+                    return floating(-value.floatingValue, expression.typeKey);
+                if (value.kind == StaticAssertConstantKind::Integer)
+                    return integer(std::uint64_t{0} - value.integerValue, expression.typeKey);
                 return std::nullopt;
-            return evaluateStaticAssertConstant(
-                *node.children[condition->booleanValue ? 1U : 2U]);
+            case lexer::TokenKind::Tilde:
+                return value.kind == StaticAssertConstantKind::Integer
+                    ? integer(~value.integerValue, expression.typeKey) : std::nullopt;
+            case lexer::TokenKind::Bang:
+                return value.kind == StaticAssertConstantKind::Boolean
+                    ? boolean(!value.booleanValue) : std::nullopt;
+            default:
+                return std::nullopt;
         }
-        default:
-            return std::nullopt;
+    };
+    const auto applyBinary = [&](const ProjectOopHirNode& expression,
+                                 const StaticAssertConstant& left,
+                                 const StaticAssertConstant& right)
+        -> std::optional<StaticAssertConstant>
+    {
+        if (expression.operation == lexer::TokenKind::AmpAmp ||
+            expression.operation == lexer::TokenKind::PipePipe)
+        {
+            return right.kind == StaticAssertConstantKind::Boolean
+                ? boolean(right.booleanValue) : std::nullopt;
+        }
+        const bool floatingOperands = left.kind == StaticAssertConstantKind::Floating &&
+            right.kind == StaticAssertConstantKind::Floating;
+        const bool integerOperands = left.kind == StaticAssertConstantKind::Integer &&
+            right.kind == StaticAssertConstantKind::Integer;
+        const bool booleanOperands = left.kind == StaticAssertConstantKind::Boolean &&
+            right.kind == StaticAssertConstantKind::Boolean;
+        if (expression.operation == lexer::TokenKind::EqualEqual ||
+            expression.operation == lexer::TokenKind::BangEqual)
+        {
+            bool equal = false;
+            if (floatingOperands) equal = left.floatingValue == right.floatingValue;
+            else if (integerOperands) equal = left.integerValue == right.integerValue;
+            else if (booleanOperands) equal = left.booleanValue == right.booleanValue;
+            else return std::nullopt;
+            return boolean(expression.operation == lexer::TokenKind::EqualEqual ? equal : !equal);
+        }
+        if (floatingOperands)
+        {
+            switch (expression.operation)
+            {
+                case lexer::TokenKind::Less: return boolean(left.floatingValue < right.floatingValue);
+                case lexer::TokenKind::LessEqual: return boolean(left.floatingValue <= right.floatingValue);
+                case lexer::TokenKind::Greater: return boolean(left.floatingValue > right.floatingValue);
+                case lexer::TokenKind::GreaterEqual: return boolean(left.floatingValue >= right.floatingValue);
+                case lexer::TokenKind::Plus: return floating(left.floatingValue + right.floatingValue, expression.typeKey);
+                case lexer::TokenKind::Minus: return floating(left.floatingValue - right.floatingValue, expression.typeKey);
+                case lexer::TokenKind::Star: return floating(left.floatingValue * right.floatingValue, expression.typeKey);
+                case lexer::TokenKind::Slash: return floating(left.floatingValue / right.floatingValue, expression.typeKey);
+                case lexer::TokenKind::Percent: return floating(std::fmod(left.floatingValue, right.floatingValue), expression.typeKey);
+                default: return std::nullopt;
+            }
+        }
+        if (!integerOperands) return std::nullopt;
+        const unsigned width = staticAssertIntegerWidth(left.typeKey).value_or(64U);
+        const bool signedOperands = staticAssertSignedInteger(left.typeKey);
+        const std::int64_t signedLeft = staticAssertSignedValue(left.integerValue, left.typeKey);
+        const std::int64_t signedRight = staticAssertSignedValue(right.integerValue, right.typeKey);
+        switch (expression.operation)
+        {
+            case lexer::TokenKind::Less:
+                return boolean(signedOperands ? signedLeft < signedRight
+                                              : left.integerValue < right.integerValue);
+            case lexer::TokenKind::LessEqual:
+                return boolean(signedOperands ? signedLeft <= signedRight
+                                              : left.integerValue <= right.integerValue);
+            case lexer::TokenKind::Greater:
+                return boolean(signedOperands ? signedLeft > signedRight
+                                              : left.integerValue > right.integerValue);
+            case lexer::TokenKind::GreaterEqual:
+                return boolean(signedOperands ? signedLeft >= signedRight
+                                              : left.integerValue >= right.integerValue);
+            case lexer::TokenKind::Plus:
+                return integer(left.integerValue + right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Minus:
+                return integer(left.integerValue - right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Star:
+                return integer(left.integerValue * right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Amp:
+                return integer(left.integerValue & right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Pipe:
+                return integer(left.integerValue | right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Caret:
+                return integer(left.integerValue ^ right.integerValue, expression.typeKey);
+            case lexer::TokenKind::LessLess:
+                if (right.integerValue >= width) return std::nullopt;
+                return integer(left.integerValue << right.integerValue, expression.typeKey);
+            case lexer::TokenKind::GreaterGreater:
+                if (right.integerValue >= width) return std::nullopt;
+                return signedOperands
+                    ? integer(
+                        std::bit_cast<std::uint64_t>(signedLeft >> right.integerValue),
+                        expression.typeKey)
+                    : integer(left.integerValue >> right.integerValue, expression.typeKey);
+            case lexer::TokenKind::Slash:
+            case lexer::TokenKind::Percent:
+                if (right.integerValue == 0U) return std::nullopt;
+                if (!signedOperands)
+                    return integer(
+                        expression.operation == lexer::TokenKind::Slash
+                            ? left.integerValue / right.integerValue
+                            : left.integerValue % right.integerValue,
+                        expression.typeKey);
+                if (signedLeft == std::numeric_limits<std::int64_t>::min() && signedRight == -1)
+                    return integer(
+                        expression.operation == lexer::TokenKind::Slash
+                            ? left.integerValue : std::uint64_t{0},
+                        expression.typeKey);
+                return integer(
+                    std::bit_cast<std::uint64_t>(
+                        expression.operation == lexer::TokenKind::Slash
+                            ? signedLeft / signedRight : signedLeft % signedRight),
+                    expression.typeKey);
+            default:
+                return std::nullopt;
+        }
+    };
+
+    struct EvaluationFrame final
+    {
+        const ProjectOopHirNode* expression = nullptr;
+        std::uint8_t stage = 0;
+        std::optional<StaticAssertConstant> first;
+    };
+    std::vector<EvaluationFrame> frames;
+    const ProjectOopHirNode* current = &node;
+    std::optional<StaticAssertConstant> value;
+    while (true)
+    {
+        switch (current->kind)
+        {
+            case ProjectOopHirNodeKind::IntegerConstant:
+                value = integer(current->integerValue, current->typeKey);
+                break;
+            case ProjectOopHirNodeKind::FloatingConstant:
+                value = floating(current->floatingValue, current->typeKey);
+                break;
+            case ProjectOopHirNodeKind::BooleanConstant:
+                value = boolean(current->booleanValue);
+                break;
+            case ProjectOopHirNodeKind::Conversion:
+            case ProjectOopHirNodeKind::Unary:
+                if (current->children.size() != 1U) return std::nullopt;
+                frames.push_back(EvaluationFrame{current, 0U, std::nullopt});
+                current = current->children[0].get();
+                continue;
+            case ProjectOopHirNodeKind::Binary:
+                if (current->children.size() != 2U) return std::nullopt;
+                frames.push_back(EvaluationFrame{current, 0U, std::nullopt});
+                current = current->children[0].get();
+                continue;
+            case ProjectOopHirNodeKind::Conditional:
+                if (current->children.size() != 3U) return std::nullopt;
+                frames.push_back(EvaluationFrame{current, 0U, std::nullopt});
+                current = current->children[0].get();
+                continue;
+            default:
+                return std::nullopt;
+        }
+
+        while (true)
+        {
+            if (!value.has_value()) return std::nullopt;
+            if (frames.empty()) return value;
+            EvaluationFrame& frame = frames.back();
+            if (frame.expression->kind == ProjectOopHirNodeKind::Conversion)
+            {
+                value = convert(*frame.expression, *value);
+                frames.pop_back();
+                continue;
+            }
+            if (frame.expression->kind == ProjectOopHirNodeKind::Unary)
+            {
+                value = applyUnary(*frame.expression, *value);
+                frames.pop_back();
+                continue;
+            }
+            if (frame.expression->kind == ProjectOopHirNodeKind::Conditional)
+            {
+                if (frame.stage == 0U)
+                {
+                    if (value->kind != StaticAssertConstantKind::Boolean)
+                        return std::nullopt;
+                    const std::size_t selected = value->booleanValue ? 1U : 2U;
+                    frame.stage = 1U;
+                    current = frame.expression->children[selected].get();
+                    break;
+                }
+                frames.pop_back();
+                continue;
+            }
+            if (frame.stage == 0U)
+            {
+                if (frame.expression->operation == lexer::TokenKind::AmpAmp ||
+                    frame.expression->operation == lexer::TokenKind::PipePipe)
+                {
+                    if (value->kind != StaticAssertConstantKind::Boolean)
+                        return std::nullopt;
+                    const bool shortCircuits =
+                        (frame.expression->operation == lexer::TokenKind::AmpAmp &&
+                         !value->booleanValue) ||
+                        (frame.expression->operation == lexer::TokenKind::PipePipe &&
+                         value->booleanValue);
+                    if (shortCircuits)
+                    {
+                        value = boolean(value->booleanValue);
+                        frames.pop_back();
+                        continue;
+                    }
+                }
+                frame.first = std::move(value);
+                frame.stage = 1U;
+                current = frame.expression->children[1].get();
+                break;
+            }
+            value = applyBinary(*frame.expression, *frame.first, *value);
+            frames.pop_back();
+        }
     }
 }
 
@@ -696,15 +778,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 evaluateStaticAssertConstant(*condition);
             if (!value.has_value() || value->kind != StaticAssertConstantKind::Boolean)
             {
+                destroyHirTreeIteratively(condition);
                 error = "static_assert condition is not a compile-time bool constant";
                 return nullptr;
             }
             if (!value->booleanValue)
             {
+                destroyHirTreeIteratively(condition);
                 error = "static assertion failed";
                 if (!statement->text().empty()) error += ": " + statement->text();
                 return nullptr;
             }
+            destroyHirTreeIteratively(condition);
             return makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
         }
 

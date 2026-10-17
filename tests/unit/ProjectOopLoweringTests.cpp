@@ -95,6 +95,17 @@ struct ProjectOopHirModelTestAccess final
         for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &binding;
         return model.lowerExpression(root, 0U, false, error);
     }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerStatement(
+        ProjectOopHirModel& model,
+        const ast::AstNode* statement,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const MethodExpressionTypeBinding& binding,
+        std::string& error)
+    {
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &binding;
+        return model.lowerStatement(statement, 0U, error);
+    }
 };
 }
 
@@ -1718,6 +1729,116 @@ void testDeepMixedExpressionLowering(TestContext& tests)
         "iterative mixed lowering preserves every family transition and its literal leaf");
     destroyHirTreeIteratively(lowered);
 }
+
+void testDeepStaticAssertEvaluation(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth * 2U + 2U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        if (index % 2U == 0U)
+        {
+            syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                nativesharp::ast::AstNodeKind::UnaryExpression,
+                nativesharp::SourceRange{}));
+            syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::Bang);
+            syntax.back()->setFirst(current);
+            current = syntax.back().get();
+            continue;
+        }
+
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        nativesharp::ast::AstNode* condition = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::KwFalse);
+        nativesharp::ast::AstNode* whenFalse = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::ConditionalExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setFirst(condition);
+        syntax.back()->setSecond(current);
+        syntax.back()->setThird(whenFalse);
+        current = syntax.back().get();
+    }
+    auto statement = std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::StaticAssertStatement,
+        nativesharp::SourceRange{});
+    statement->setFirst(current);
+
+    nativesharp::frontend::MethodExpressionTypeBinding binding;
+    binding.typeKey = "builtin:bool";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerStatement(
+        model, statement.get(), syntax, binding, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level static_assert constant evaluates without process-stack recursion (" +
+            error + ")");
+    tests.expect(lowered != nullptr &&
+            lowered->kind == nativesharp::frontend::ProjectOopHirNodeKind::Block,
+        "deep static_assert preserves the successful empty-block lowering contract");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testStaticAssertShortCircuitEvaluation(TestContext& tests)
+{
+    const auto evaluate = [&](nativesharp::lexer::TokenKind operation,
+                              nativesharp::lexer::TokenKind leftToken,
+                              std::string expectedError)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(leftToken);
+        nativesharp::ast::AstNode* left = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::NullLiteralExpression,
+            nativesharp::SourceRange{}));
+        nativesharp::ast::AstNode* invalidIfVisited = syntax.back().get();
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BinaryExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(operation);
+        syntax.back()->setFirst(left);
+        syntax.back()->setSecond(invalidIfVisited);
+        nativesharp::ast::AstNode* expression = syntax.back().get();
+        auto statement = std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::StaticAssertStatement,
+            nativesharp::SourceRange{});
+        statement->setFirst(expression);
+
+        nativesharp::frontend::MethodExpressionTypeBinding binding;
+        binding.typeKey = "builtin:bool";
+        ProjectOopHirModel model;
+        std::string error;
+        auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerStatement(
+            model, statement.get(), syntax, binding, error);
+        tests.expect(error == expectedError,
+            "static_assert preserves short-circuit selection without evaluating the unused operand");
+        destroyHirTreeIteratively(lowered);
+    };
+
+    evaluate(
+        nativesharp::lexer::TokenKind::AmpAmp,
+        nativesharp::lexer::TokenKind::KwFalse,
+        "static assertion failed");
+    evaluate(
+        nativesharp::lexer::TokenKind::PipePipe,
+        nativesharp::lexer::TokenKind::KwTrue,
+        "");
+}
 }
 
 int main()
@@ -1781,6 +1902,14 @@ int main()
     {
         testDeepMixedExpressionLowering(tests);
     }
+    else if (focusValue == "hir-static-assert-depth")
+    {
+        testDeepStaticAssertEvaluation(tests);
+    }
+    else if (focusValue == "hir-static-assert-short-circuit")
+    {
+        testStaticAssertShortCircuitEvaluation(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1799,6 +1928,8 @@ int main()
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);
         testDeepMixedExpressionLowering(tests);
+        testDeepStaticAssertEvaluation(tests);
+        testStaticAssertShortCircuitEvaluation(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
