@@ -74,6 +74,16 @@ struct ProjectOopHirModelTestAccess final
             error,
             topLevel);
     }
+
+    static std::vector<std::size_t> collectAwaitedMemberOrdinals(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const ast::AstNode* callSyntax,
+        const MethodCallBinding& binding)
+    {
+        model.callBySyntax_[callSyntax] = &binding;
+        return model.collectAwaitedMemberOrdinals(root);
+    }
 };
 }
 
@@ -1357,6 +1367,39 @@ void testDeepAsyncPollReturnRewrite(TestContext& tests)
         "iterative async poll throw rewrite preserves error field, state -2, payload, and cleanup");
     destroyHirTreeIteratively(throwRoot);
 }
+
+void testDeepAsyncAwaitScan(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 2U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{}));
+    nativesharp::ast::AstNode* callSyntax = syntax.back().get();
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::AwaitExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setFirst(callSyntax);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::UnaryExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setFirst(current);
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodCallBinding binding;
+    binding.selectedMemberOrdinal = 17U;
+    ProjectOopHirModel model;
+    const auto ordinals =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectAwaitedMemberOrdinals(
+            model, current, callSyntax, binding);
+    tests.expect(ordinals == std::vector<std::size_t>({17U}),
+        "iterative async await scan reaches a bound await through 32768 AST levels");
+}
 }
 
 int main()
@@ -1396,6 +1439,10 @@ int main()
     {
         testDeepAsyncPollReturnRewrite(tests);
     }
+    else if (focusValue == "hir-async-await-scan-depth")
+    {
+        testDeepAsyncAwaitScan(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1408,6 +1455,7 @@ int main()
         testDeepYieldStateAssignment(tests);
         testDeepGeneratorThrowRewrite(tests);
         testDeepAsyncPollReturnRewrite(tests);
+        testDeepAsyncAwaitScan(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

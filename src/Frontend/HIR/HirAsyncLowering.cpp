@@ -735,6 +735,33 @@ std::vector<std::unique_ptr<ProjectOopHirFunction>> ProjectOopHirModel::splitAsy
     return result;
 }
 
+std::vector<std::size_t> ProjectOopHirModel::collectAwaitedMemberOrdinals(
+    const ast::AstNode* root) const
+{
+    std::vector<std::size_t> result;
+    std::vector<const ast::AstNode*> pending;
+    pending.push_back(root);
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == ast::AstNodeKind::AwaitExpression)
+        {
+            const MethodCallBinding* awaitedBinding = callBinding(node->first());
+            if (awaitedBinding != nullptr && awaitedBinding->selectedMemberOrdinal.has_value())
+                result.push_back(*awaitedBinding->selectedMemberOrdinal);
+            continue;
+        }
+        const auto children = node->children();
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+            pending.push_back(*child);
+        pending.push_back(node->second());
+        pending.push_back(node->first());
+    }
+    return result;
+}
+
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
     const ast::AstNode* expression,
@@ -775,34 +802,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
     // (transitively awaits a suspend-capable future), which the caller cannot complete
     // synchronously. A producer that only awaits synchronously-completing futures never
     // suspends and is safe to await.
-    std::unordered_set<std::size_t> visitedSuspendMembers;
-    const auto canSuspend = [&](const auto& self, std::size_t memberIdx) -> bool
+    const auto canSuspend = [&](std::size_t rootMemberOrdinal) -> bool
     {
-        if (!visitedSuspendMembers.insert(memberIdx).second) return false;
-        if (memberIdx >= memberModel_->members().size()) return false;
-        const ClassMemberSymbol& awaitedMember = memberModel_->members()[memberIdx];
-        if (awaitedMember.syntax == nullptr) return false;
-        const auto scan = [&](const auto& scanSelf, const ast::AstNode* node) -> bool
+        std::unordered_set<std::size_t> visitedSuspendMembers;
+        std::vector<std::size_t> pendingMembers = {rootMemberOrdinal};
+        while (!pendingMembers.empty())
         {
-            if (node == nullptr) return false;
-            if (node->kind() == ast::AstNodeKind::AwaitExpression)
-            {
-                const MethodCallBinding* awaitedBinding = callBinding(node->first());
-                if (awaitedBinding != nullptr &&
-                    awaitedBinding->selectedMemberOrdinal.has_value() &&
-                    *awaitedBinding->selectedMemberOrdinal < memberModel_->members().size())
-                    return self(self, *awaitedBinding->selectedMemberOrdinal);
-                return false;
-            }
-            if (scanSelf(scanSelf, node->first())) return true;
-            if (scanSelf(scanSelf, node->second())) return true;
-            for (const ast::AstNode* child : node->children())
-                if (scanSelf(scanSelf, child)) return true;
-            return false;
-        };
-        return scan(scan, awaitedMember.syntax->first());
+            const std::size_t memberIdx = pendingMembers.back();
+            pendingMembers.pop_back();
+            if (!visitedSuspendMembers.insert(memberIdx).second) continue;
+            if (memberIdx >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& awaitedMember = memberModel_->members()[memberIdx];
+            if (awaitedMember.syntax == nullptr) continue;
+            const auto awaitedOrdinals =
+                collectAwaitedMemberOrdinals(awaitedMember.syntax->first());
+            for (auto awaited = awaitedOrdinals.rbegin(); awaited != awaitedOrdinals.rend(); ++awaited)
+                if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
+        }
+        return false;
     };
-    if (canSuspend(canSuspend, *binding->selectedMemberOrdinal))
+    if (canSuspend(*binding->selectedMemberOrdinal))
     {
         error = "await on an async function that can suspend requires the state machine "
                 "lowering (NS304-T05-F03)";

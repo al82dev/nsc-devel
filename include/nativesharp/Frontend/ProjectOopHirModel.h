@@ -930,6 +930,7 @@ private:
         std::string_view futureKey,
         std::string& error,
         bool topLevel = true);
+    std::vector<std::size_t> collectAwaitedMemberOrdinals(const ast::AstNode* root) const;
     void assignYieldStates(ProjectOopHirNode* root, std::size_t& nextYieldState);
     void rewriteGeneratorThrows(
         ProjectOopHirNode* root,
