@@ -6079,7 +6079,15 @@ std::size_t ProjectGenericModel::reserveTypeDemand(
             budgetError);
         return std::numeric_limits<std::size_t>::max();
     }
-    return reserveTypeSpecialization(state, key, specializedName, identities);
+    const std::size_t ordinal =
+        reserveTypeSpecialization(state, key, specializedName, identities);
+    // A wave reservation consumes the monotonic instantiation count and validates the demand's
+    // logical depth, but it is not a recursive call frame. Keeping every sibling on activeStack()
+    // makes nested method materialization see the wave breadth as causal depth and makes the
+    // forward execute order pop unrelated siblings. The planner's Building slot prevents a
+    // recursive type demand from reserving the same key again.
+    instantiationBudget_.leave();
+    return ordinal;
 }
 
 // NSC305-G09. Rewrites the target syntax after a specialization resolves (shared by the hit and the
@@ -6172,7 +6180,6 @@ std::string ProjectGenericModel::executeTypeDemand(
             currentInstantiationNamespace_ = callerContext.namespaceName;
             currentInstantiationRange_ = callerContext.range;
             currentOverloadGroup_ = callerContext.overloadGroup;
-            instantiationBudget_.leave();
             return {};
         }
     }
@@ -6185,10 +6192,8 @@ std::string ProjectGenericModel::executeTypeDemand(
         currentInstantiationNamespace_ = callerContext.namespaceName;
         currentInstantiationRange_ = callerContext.range;
         currentOverloadGroup_ = callerContext.overloadGroup;
-        instantiationBudget_.leave();
         return {};
     }
-    instantiationBudget_.leave();
 
     rewriteSpecializedSyntax(syntax, state.record, key, specializedName);
     return specializedName;

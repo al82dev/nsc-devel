@@ -215,6 +215,33 @@ std::string genericInferenceScaleSource()
     return source;
 }
 
+std::string genericWaveBudgetSource()
+{
+    std::string source =
+        "namespace Suite\n"
+        "{\n"
+        "    public class Algorithms\n"
+        "    {\n"
+        "        public static T Identity<T>(T value) { return value; }\n"
+        "    }\n";
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        source += "    public struct Box" + std::to_string(index) +
+            "<T> { public int Read() { return Algorithms.Identity<int>(0); } }\n";
+    }
+    source += "    public class Program\n    {\n";
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        source += "        public Box" + std::to_string(index) + "<int> Field" +
+            std::to_string(index) + ";\n";
+    }
+    source +=
+        "        public static int Run() { return 0; }\n"
+        "    }\n"
+        "}\n";
+    return source;
+}
+
 const GenericSpecializationRecord* specializationNamed(
     const ProjectGenericModel& model,
     std::string_view name)
@@ -648,6 +675,35 @@ void genericInferenceOracle(TestContext& context, std::size_t variant)
             "the first pack beyond the public expansion limit must be rejected");
         context.expect(!error.empty() || rejected.diagnostics().errorCount() != 0,
             "the first pack beyond the public expansion limit must retain causal diagnostics");
+    }
+    else if (variant == 7)
+    {
+        TemporaryProject waveBudgetFixture(
+            "front-21-7-wave-budget",
+            genericWaveBudgetSource());
+        ProjectCompilation waveBudgetCompilation;
+        waveBudgetCompilation.setCompilationJobs(4);
+        nativesharp::compilation::ProjectLoadOptions waveBudgetOptions;
+        waveBudgetOptions.genericInstantiationDepth = 4U;
+        waveBudgetCompilation.setProjectLoadOptions(std::move(waveBudgetOptions));
+        std::string waveBudgetError;
+        const bool waveBudgetCompleted = compileTo(
+            waveBudgetCompilation,
+            ProjectStage::Generics,
+            waveBudgetFixture.projectFile(),
+            waveBudgetError);
+        context.expect(waveBudgetCompleted,
+            "sibling wave reservations must not consume causal depth while a specialization "
+            "materializes a nested generic method; " +
+                projectFailureEvidence(waveBudgetCompilation, waveBudgetError));
+        if (waveBudgetCompleted && waveBudgetCompilation.genericModel() != nullptr)
+        {
+            const GenericInstantiationReport report =
+                waveBudgetCompilation.genericModel()->instantiationReport();
+            context.expect(report.maximumDepth == 4U &&
+                    report.maximumObservedDepth <= report.maximumDepth,
+                "nested generic work must remain inside the configured logical depth budget");
+        }
     }
 }
 

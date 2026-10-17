@@ -79,3 +79,7 @@ Estas pruebas demuestran el cierre de las carreras y del fanout sin límite enco
 demuestran todavía que el proyecto externo original esté reparado, porque sus fuentes y su conjunto
 de metadata no están disponibles en esta máquina. Ese último gate debe comparar el nuevo build hash
 y confirmar que el proceso publica `generics finished` sin `0xC00000FD`.
+
+La auditoría posterior encontró y corrigió por separado el desbalance causal de las pre-reservas de
+una onda. Véase `TANDA-CORRECTIVA-NSC305-G09-BUDGET-WAVE.md` para la reproducción contrafactual,
+el cambio y su evidencia focal. El gate externo permanece sin cambios.
