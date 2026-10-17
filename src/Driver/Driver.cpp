@@ -133,10 +133,10 @@ namespace
 {
 using target::BuiltinLayoutKind;
 
-// Temporary crash instrumentation for the active NSC 3.0.5 generics investigation.
-// Remove this default after the external STATUS_STACK_OVERFLOW has been corrected.
+#if 0 // INSTRUMENTATION CODE: enable only for an explicitly authorized diagnostic build.
 constexpr char kTemporaryDefaultGenericsTracePath[] =
     R"(A:\temp\nsc-generics-trace.log)";
+#endif // INSTRUMENTATION CODE
 
 bool parseBoundedDecimal(
     std::string_view text, std::size_t maximum, std::size_t& value) noexcept
@@ -204,6 +204,7 @@ struct DriverExecutionScope final
         output << renderCompilationEvent(event, progressFormat) << '\n';
         output.flush();
     }
+#if 0 // INSTRUMENTATION CODE: file-backed generics breadcrumbs.
     bool openGenericsTrace(const std::filesystem::path& path)
     {
         genericsTrace.open(path, std::ios::binary | std::ios::trunc);
@@ -220,6 +221,7 @@ struct DriverExecutionScope final
                       << renderCompilationEvent(event, ProgressFormat::Text) << '\n';
         genericsTrace.flush();
     }
+#endif // INSTRUMENTATION CODE
     void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
     {
         if (!reportTiming) return;
@@ -234,9 +236,11 @@ struct DriverExecutionScope final
     std::ostream& error;
     std::chrono::steady_clock::time_point started;
     std::mutex progressMutex;
+#if 0 // INSTRUMENTATION CODE
     std::mutex genericsTraceMutex;
     std::ofstream genericsTrace;
     std::uint64_t genericsTraceSequence = 0;
+#endif // INSTRUMENTATION CODE
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<PhaseTiming> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
@@ -351,6 +355,7 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
             scope->writeProgress(event);
         });
     }
+#if 0 // INSTRUMENTATION CODE: connect detailed breadcrumbs only in a diagnostic build.
     if (activeExecutionScope != nullptr && activeExecutionScope->genericsTrace)
     {
         DriverExecutionScope* const scope = activeExecutionScope;
@@ -359,6 +364,7 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
                 scope->writeDetailedProgress(event);
             });
     }
+#endif // INSTRUMENTATION CODE
 }
 
 std::size_t effectiveCompilationJobs() noexcept
@@ -3981,7 +3987,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
     bool artifactCacheMaximumSeen = false;
+#if 0 // INSTRUMENTATION CODE
     bool genericsTraceSeen = false;
+#endif // INSTRUMENTATION CODE
     std::uintmax_t artifactCacheMaximumBytes = 0;
     bool libraryReferenceRootSeen = false;
     bool genericInstantiationDepthSeen = false;
@@ -4058,6 +4066,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             continue;
         }
+#if 0 // INSTRUMENTATION CODE: optional --generics-trace parser.
         if (argument == "--generics-trace" || argument.starts_with("--generics-trace="))
         {
             if (genericsTraceSeen)
@@ -4093,6 +4102,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             continue;
         }
+#endif // INSTRUMENTATION CODE
         if (argument == "--llvm-pass-trace")
         {
             continue;
@@ -4655,6 +4665,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         isProjectBuildAction(normalizedArguments[0]);
     const bool projectSettingsAction = normalizedArguments.size() >= 2U &&
         std::filesystem::path(std::string(normalizedArguments[1])).extension() == ".nsproj";
+#if 0 // INSTRUMENTATION CODE: automatic A:\temp trace remains preserved but disabled.
     if (projectSettingsAction && !genericsTraceSeen)
     {
         if (!executionScope.openGenericsTrace(kTemporaryDefaultGenericsTracePath))
@@ -4664,6 +4675,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             return ExitCode::CompilationError;
         }
     }
+#endif // INSTRUMENTATION CODE
     if (projectSettingsAction)
     {
         std::string settingsError;
@@ -6014,9 +6026,11 @@ void Driver::printHelp(std::ostream &output)
               "by default; --progress enables the same stream on diagnostic commands.\n"
            << "--progress=json emits one stable JSON event per line; "
               "--progress-format=text|json selects the renderer.\n"
+#if 0 // INSTRUMENTATION CODE
            << "--generics-trace=<file> overrides the temporary default "
               "A:\\temp\\nsc-generics-trace.log and keeps detailed checkpoints out of console "
               "progress.\n"
+#endif // INSTRUMENTATION CODE
            << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
            << "--language en|es selects human-readable console messages; --no-banner suppresses "

@@ -73,8 +73,10 @@ int main()
             "help documents compiler job and reserved-core controls");
         tests.expect(output.str().find("--progress") != std::string::npos,
             "help documents streaming compilation progress");
+#if 0 // INSTRUMENTATION CODE: trace option is disabled in normal builds.
         tests.expect(output.str().find("--generics-trace=<file>") != std::string::npos,
             "help documents the crash-surviving generics trace file");
+#endif // INSTRUMENTATION CODE
         tests.expect(output.str().find("--library-reference-root") != std::string::npos,
             "help documents configuration-specific LibraryReference resolution");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
@@ -787,6 +789,7 @@ int main()
             "--progress does not enable the end-of-process timing report");
         tests.expect(error.str().empty(), "streaming project progress keeps stderr empty");
     }
+#if 0 // INSTRUMENTATION CODE: file-backed generics trace regression.
     {
         const std::filesystem::path tracePath =
             std::filesystem::path(NSC_BINARY_DIR) / "nsc-generics-trace.log";
@@ -813,6 +816,7 @@ int main()
         tests.expect(error.str().empty(), "generics trace keeps stderr empty");
         std::filesystem::remove(tracePath, removeError);
     }
+#endif // INSTRUMENTATION CODE
 
     {
         std::ostringstream output;

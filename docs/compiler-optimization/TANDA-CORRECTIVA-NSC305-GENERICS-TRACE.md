@@ -279,3 +279,49 @@ La instrumentación automática y los breadcrumbs permanecen temporalmente activ
 Se retirarán únicamente después de que el mismo escenario externo confirme que ya no termina con
 `0xC00000FD`; así, cualquier fallo posterior conservará evidencia causal en vez de volver a dejar
 solamente `-- NSC: generics`.
+
+## Enmienda después de la validación externa del compilador
+
+### Evidencia recibida
+
+- El escenario externo dejó de terminar con `0xC00000FD` durante `generics`.
+- La compilación O0 terminó correctamente en 115.3 segundos.
+- La ejecución completa del proceso de build terminó en 1 minuto con 55 segundos.
+- Esta evidencia valida la corrección del desbordamiento de pila del proceso compilador para el
+  escenario observado; no valida todavía el comportamiento del ejecutable producido.
+- El ejecutable generado inició y terminó 1.9 segundos después con `3221226356`, equivalente a
+  `0xC0000374` (`STATUS_HEAP_CORRUPTION`). Éste es un fallo posterior y permanece abierto.
+
+### SCOPE LOCK de conservación y desactivación
+
+| Dimensión | Alcance autorizado |
+|---|---|
+| Instrucción vigente | No retirar la instrumentación; conservarla comentada y con una etiqueta genérica fácil de localizar. |
+| Etiqueta canónica | `INSTRUMENTATION CODE`. |
+| Estado normal | Desactivada mediante bloques de preprocesador; no abre archivos, no registra eventos detallados y no construye strings diagnósticos. |
+| Código conservado | Opción del driver, sink persistente, breadcrumbs de `ProjectGenericModel`, soporte de `ProjectCompilation` y pruebas focales. |
+| Comportamiento preservado | Compilación, diagnósticos, orden, artefactos, ABI, NSMETA y progreso normal de consola. |
+| Archivos funcionales | Sólo los siete archivos que ya contenían la instrumentación. |
+| Acciones prohibidas | Borrar la instrumentación, asociar su etiqueta al defecto actual, modificar consumidores, ejecutar baseline, instalar o desplegar. |
+| Criterio inmediato | `nsc` compila; las pruebas focales anteriores siguen pasando; una búsqueda localiza todos los bloques mediante la etiqueta. |
+
+La etiqueta no menciona el desbordamiento de pila ni la corrupción de heap. Su propósito es que la
+instrumentación pueda localizarse y reactivarse de forma deliberada en una compilación diagnóstica
+futura, sin permanecer activa ni añadir costo de formato o I/O a las compilaciones normales.
+
+### Validación focal del estado desactivado
+
+- Toolchain resuelto por nombre desde el `PATH`: CMake 4.4.2, Ninja 1.13.2 y LLVM/Clang 23.1.0.
+- Construcción exclusiva del target `nsc`: PASS.
+- Contrato de runtime estático de `nsc.exe`: PASS.
+- Build hash verificado: `d4a820272ce87738`.
+- La ayuda normal no publica `--generics-trace` mientras la instrumentación está desactivada.
+- `generics-32`, `--emit-project-oop-obj`, `-O0`, `-j 16`, `--progress`: PASS, exit 0.
+- La fase `generics` terminó en 6 ms y el objeto COFF AMD64 fue emitido y verificado.
+- El timestamp del rastro preexistente `A:\temp\nsc-generics-trace.log` permaneció inmutable.
+- El target `nsc_driver_tests` no existe en la configuración actual de `build-clang`, que fue
+  generada sin los targets unitarios. No se reconfiguró el build y no se presenta esa prueba como
+  ejecutada.
+
+El `0xC0000374` del ejecutable producido no se atribuye a esta instrumentación. Se tratará como una
+regresión funcional independiente del código emitido y deberá tener su propio expediente causal.

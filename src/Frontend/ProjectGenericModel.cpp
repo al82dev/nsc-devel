@@ -70,6 +70,7 @@ private:
     std::chrono::steady_clock::time_point started_;
 };
 
+#if 0 // INSTRUMENTATION CODE: preserved diagnostic breadcrumbs; disabled in normal builds.
 // Live progress has a different lifetime from timing telemetry: its opening event must be flushed
 // before the risky operation starts, while its closing event is deliberately absent if the process
 // dies inside that operation. This makes the last unmatched line a causal breadcrumb instead of a
@@ -147,6 +148,7 @@ std::string genericTypeDetail(const ast::TypeSyntax& syntax)
         " modifiers=" + std::to_string(syntax.modifiers().size()) +
         " function=" + (syntax.isFunction() ? "1" : "0");
 }
+#endif // INSTRUMENTATION CODE
 
 bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
 {
@@ -733,9 +735,11 @@ bool ProjectGenericModel::build(
         {
             const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress progress(
                 telemetry_, "generics.alias-expansion.unit", genericUnitDetail(*unitPtr),
                 unitIndex + 1U, units.size());
+#endif // INSTRUMENTATION CODE
             expandAliasesInNode(
                 *unitPtr, unitPtr->syntaxTree(), "", GenericLookupScope{}, diagnostics);
         }
@@ -808,9 +812,11 @@ bool ProjectGenericModel::build(
         {
             const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress progress(
                 telemetry_, "generics.template-collection.unit", genericUnitDetail(*unitPtr),
                 unitIndex + 1U, units.size());
+#endif // INSTRUMENTATION CODE
             ProjectSyntaxUnit& unit = *unitPtr;
             collectTemplates(unit, unit.syntaxTree(), nullptr, "", "", false, diagnostics);
         }
@@ -902,9 +908,11 @@ bool ProjectGenericModel::build(
         {
             const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress progress(
                 telemetry_, "generics.dependency-discovery.unit", genericUnitDetail(*unitPtr),
                 unitIndex + 1U, units.size());
+#endif // INSTRUMENTATION CODE
             discoverTemplateDependencies(
                 *unitPtr, unitPtr->syntaxTree(), "", "", GenericLookupScope{});
         }
@@ -1021,9 +1029,11 @@ bool ProjectGenericModel::build(
         {
             const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];
             if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress progress(
                 telemetry_, "generics.root-demand-discovery.unit", genericUnitDetail(*unitPtr),
                 unitIndex + 1U, units.size());
+#endif // INSTRUMENTATION CODE
             ProjectSyntaxUnit& unit = *unitPtr;
             processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
         }
@@ -1554,8 +1564,10 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     bool& ownershipConflict)
 {
     if (source == nullptr) return nullptr;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.clone-alias-type", genericTypeDetail(*source));
+#endif // INSTRUMENTATION CODE
 
     ast::TypeSyntax* result = nullptr;
     const auto substitution = substitutions.find(source->baseName());
@@ -3937,8 +3949,10 @@ void ProjectGenericModel::processNode(
         insideTemplate = frame.insideTemplate;
         if (node == nullptr) continue;
 
+#if 0 // INSTRUMENTATION CODE
         const GenericWorkProgress nodeProgress(
             telemetry_, "generics.root-demand-node", genericNodeDetail(unit, *node));
+#endif // INSTRUMENTATION CODE
 
     std::string currentNamespace;
     GenericLookupScope currentScope;
@@ -4078,15 +4092,21 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     std::ranges::sort(wave, {}, &BodyTypeSpecializationDemand::stableKey);
+#if 0 // INSTRUMENTATION CODE
     std::size_t demandIndex = 0;
+#endif // INSTRUMENTATION CODE
     for (BodyTypeSpecializationDemand& demand : wave)
     {
+#if 0 // INSTRUMENTATION CODE
         ++demandIndex;
+#endif // INSTRUMENTATION CODE
         if (demand.unit == nullptr || demand.syntax == nullptr) continue;
+#if 0 // INSTRUMENTATION CODE
         const GenericWorkProgress progress(
             telemetry_, "generics.body-type-demand",
             demand.stableKey + " type=" + demand.syntax->baseName(),
             demandIndex, wave.size());
+#endif // INSTRUMENTATION CODE
         // The body-type demand is already the collected form (ReadOnlySpan<T>/Span<T>); materialize
         // it directly (do not re-collect) so the rest-capture Sema sees a materialized Span.
         TypeResolution resolution = resolveTypeTemplate(
@@ -4112,18 +4132,22 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
 bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+#if 0 // INSTRUMENTATION CODE
     std::size_t waveIndex = 0;
+#endif // INSTRUMENTATION CODE
     while (!bodyTypeSpecializationDemands_.empty())
     {
         std::vector<BodyTypeSpecializationDemand> wave;
         wave.swap(bodyTypeSpecializationDemands_);
         bodyTypeDemandKeys_.clear();
+#if 0 // INSTRUMENTATION CODE
         ++waveIndex;
         const GenericWorkProgress progress(
             telemetry_, "generics.body-type-wave",
             "wave=" + std::to_string(waveIndex) +
                 " demands=" + std::to_string(wave.size()),
             wave.size(), wave.size());
+#endif // INSTRUMENTATION CODE
         if (!processBodyTypeDemandWave(wave, diagnostics)) return false;
     }
     return !diagnostics.hasErrors();
@@ -4184,17 +4208,21 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
 bool ProjectGenericModel::executeTypeDemandWaves(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+#if 0 // INSTRUMENTATION CODE
     std::size_t waveIndex = 0;
+#endif // INSTRUMENTATION CODE
     while (!typeSpecializationDemands_.empty())
     {
         std::vector<GenericTypeDemand> wave;
         wave.swap(typeSpecializationDemands_);
+#if 0 // INSTRUMENTATION CODE
         ++waveIndex;
         const GenericWorkProgress waveProgress(
             telemetry_, "generics.type-demand-wave",
             "wave=" + std::to_string(waveIndex) +
                 " demands=" + std::to_string(wave.size()),
             wave.size(), wave.size());
+#endif // INSTRUMENTATION CODE
         // NSC305-G09. Deterministic wave: sort by the stable key (project | namespace | offset) so
         // the materialization order does not depend on discovery order.
         std::ranges::sort(wave, {}, &GenericTypeDemand::stableKey);
@@ -4211,16 +4239,22 @@ bool ProjectGenericModel::executeTypeDemandWaves(
         };
         std::vector<ReservedDemand> reserved;
         reserved.reserve(wave.size());
+#if 0 // INSTRUMENTATION CODE
         std::size_t reserveIndex = 0;
+#endif // INSTRUMENTATION CODE
         for (GenericTypeDemand& demand : wave)
         {
+#if 0 // INSTRUMENTATION CODE
             ++reserveIndex;
+#endif // INSTRUMENTATION CODE
             if (demand.unit == nullptr || demand.state == nullptr || demand.target == nullptr)
                 continue;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress reserveProgress(
                 telemetry_, "generics.type-demand-reserve",
                 demand.state->record.canonicalKey + " site=" + demand.stableKey,
                 reserveIndex, wave.size());
+#endif // INSTRUMENTATION CODE
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
             currentInstantiationNamespace_ = demand.context.namespaceName;
             currentInstantiationRange_ = demand.context.range;
@@ -4243,9 +4277,11 @@ bool ProjectGenericModel::executeTypeDemandWaves(
             SpecializationProduct* preClonedProduct) -> std::string
         {
             GenericTypeDemand& demand = *reservedDemand.demand;
+#if 0 // INSTRUMENTATION CODE
             const GenericWorkProgress applyProgress(
                 telemetry_, "generics.type-demand-apply",
                 reservedDemand.key + " site=" + demand.stableKey);
+#endif // INSTRUMENTATION CODE
             currentInstantiationProjectOrdinal_ = demand.context.projectOrdinal;
             currentInstantiationNamespace_ = demand.context.namespaceName;
             currentInstantiationRange_ = demand.context.range;
@@ -4295,10 +4331,12 @@ bool ProjectGenericModel::executeTypeDemandWaves(
                             if (reservedDemand.ordinal == std::numeric_limits<std::size_t>::max())
                                 continue;
                             GenericTypeDemand& demand = *reservedDemand.demand;
+#if 0 // INSTRUMENTATION CODE
                             const GenericWorkProgress cloneProgress(
                                 telemetry_, "generics.type-demand-clone",
                                 reservedDemand.key + " site=" + demand.stableKey,
                                 index + 1U, reserved.size());
+#endif // INSTRUMENTATION CODE
                             products[index] = cloneTypeSpecializationProduct(
                                 *demand.state, demand.target->typeArguments(),
                                 reservedDemand.specializedName, reservedDemand.callerContext);
@@ -4344,8 +4382,10 @@ bool ProjectGenericModel::processTypeSyntax(
     std::string* /*outSpecializationKey*/)
 {
     if (syntax == nullptr) return true;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.process-type-syntax", genericTypeDetail(*syntax));
+#endif // INSTRUMENTATION CODE
     std::string constType;
     std::string constValue;
     if (decodeConstGenericArgument(syntax, constType, constValue)) return true;
@@ -4456,8 +4496,10 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
     const GenericLookupScope& scope)
 {
     if (expression == nullptr) return nullptr;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.infer-expression-type", genericNodeDetail(unit, *expression));
+#endif // INSTRUMENTATION CODE
     const auto builtin = [&](lexer::TokenKind kind, std::string name)
     {
         return unit.arena().make<ast::TypeSyntax>(expression->range(), kind, std::move(name));
@@ -4640,9 +4682,11 @@ bool ProjectGenericModel::inferTypeArguments(
     std::unordered_map<std::string, ast::TypeSyntax*>& inferred)
 {
     if (pattern == nullptr || actual == nullptr) return false;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.infer-type-arguments",
         "pattern-" + genericTypeDetail(*pattern) + " actual-" + genericTypeDetail(*actual));
+#endif // INSTRUMENTATION CODE
     if (actual->modifiers().size() < pattern->modifiers().size()) return false;
     const std::size_t modifierPrefix = actual->modifiers().size() - pattern->modifiers().size();
     for (std::size_t index = 0; index < pattern->modifiers().size(); ++index)
@@ -5026,10 +5070,12 @@ bool ProjectGenericModel::applyExpectedTypeToExpression(
     if (expression == nullptr || expectedType == nullptr ||
         inferenceDepth > DefaultMaximumInstantiationDepth)
         return false;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.apply-expected-type",
         genericNodeDetail(unit, *expression) + " expected-" + genericTypeDetail(*expectedType) +
             " depth=" + std::to_string(inferenceDepth));
+#endif // INSTRUMENTATION CODE
 
     if (expression->kind() == ast::AstNodeKind::CallExpression)
     {
@@ -5173,9 +5219,11 @@ bool ProjectGenericModel::inferGenericCall(
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
         !call->typeSyntaxes().empty()) return true;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.infer-generic-call",
         genericNodeDetail(unit, *call) + " depth=" + std::to_string(inferenceDepth));
+#endif // INSTRUMENTATION CODE
     if (inferenceDepth > DefaultMaximumInstantiationDepth)
     {
         if (reportFailure)
@@ -5559,8 +5607,10 @@ bool ProjectGenericModel::processGenericCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression) return false;
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.process-generic-call", genericNodeDetail(unit, *call));
+#endif // INSTRUMENTATION CODE
     for (ast::TypeSyntax* argument : call->typeSyntaxes())
     {
         if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
@@ -6355,9 +6405,11 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
 {
     SpecializationContext callerContext;
     callerContext.save(*this);
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.type-specialization",
         state.record.canonicalKey + " arguments=" + std::to_string(arguments.size()));
+#endif // INSTRUMENTATION CODE
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -6456,9 +6508,11 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
 {
     SpecializationContext callerContext;
     callerContext.save(*this);
+#if 0 // INSTRUMENTATION CODE
     const GenericWorkProgress progress(
         telemetry_, "generics.method-specialization",
         state.record.canonicalKey + " arguments=" + std::to_string(arguments.size()));
+#endif // INSTRUMENTATION CODE
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;

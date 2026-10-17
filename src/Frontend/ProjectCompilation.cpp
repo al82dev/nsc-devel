@@ -54,11 +54,13 @@ void ProjectCompilation::setProgressSink(
     progressSink_ = std::move(sink);
 }
 
+#if 0 // INSTRUMENTATION CODE: detailed generics trace support.
 void ProjectCompilation::setDetailedProgressSink(
     std::function<void(const basic::CompilationEvent&)> sink)
 {
     detailedProgressSink_ = std::move(sink);
 }
+#endif // INSTRUMENTATION CODE
 
 bool ProjectCompilation::cancellationRequested(std::string& loadError, std::string_view nextPhase) const
 {
@@ -586,7 +588,9 @@ bool ProjectCompilation::compileProjectGenerics(
     // diagnostics, dumps or emitted artifacts.
     GenericTelemetry& telemetry = genericModel_->telemetry();
     telemetry.timingSink = phaseTimingSink_;
+#if 0 // INSTRUMENTATION CODE
     telemetry.progressSink = detailedProgressSink_;
+#endif // INSTRUMENTATION CODE
     telemetry.enabled = static_cast<bool>(phaseTimingSink_);
     telemetry.detailed = telemetry.enabled;
     telemetry.ownUnits = units_.size();

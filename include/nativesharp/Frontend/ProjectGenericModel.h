@@ -3,7 +3,9 @@
 #include "nativesharp/Frontend/QualifiedNameLadder.h"
 
 #include "nativesharp/AST/AstNode.h"
+#if 0 // INSTRUMENTATION CODE: detailed generics trace support.
 #include "nativesharp/Basic/CompilationEvent.h"
+#endif // INSTRUMENTATION CODE
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
@@ -210,14 +212,18 @@ struct GenericInstantiationReport final
 struct GenericTelemetry final
 {
     using TimingSink = std::function<void(std::string_view, std::chrono::nanoseconds)>;
+#if 0 // INSTRUMENTATION CODE
     using ProgressSink = std::function<void(const basic::CompilationEvent&)>;
+#endif // INSTRUMENTATION CODE
 
     bool enabled = false;
     bool detailed = false;
     TimingSink timingSink;
+#if 0 // INSTRUMENTATION CODE
     // Live, crash-surviving breadcrumbs are independent from timing collection. The driver sink
     // serializes concurrent worker events and flushes every rendered line before returning.
     ProgressSink progressSink;
+#endif // INSTRUMENTATION CODE
 
     // Sub-phase wall times accumulated by name. A sub-phase may span more than one lexical
     // scope (for example `generics.template-index`); times for the same name are summed.
@@ -260,6 +266,7 @@ struct GenericTelemetry final
         if (timingSink) timingSink(name, elapsed);
     }
 
+#if 0 // INSTRUMENTATION CODE
     void reportProgress(
         basic::CompilationEventKind kind,
         std::string_view phase,
@@ -271,6 +278,7 @@ struct GenericTelemetry final
         if (progressSink)
             progressSink({kind, phase, detail, current, total, duration});
     }
+#endif // INSTRUMENTATION CODE
 
     void noteResolutionQuery(std::size_t candidates)
     {
@@ -332,6 +340,7 @@ struct GenericTelemetry final
     class Scope final
     {
     public:
+#if 0 // INSTRUMENTATION CODE: progress-aware scope retained for diagnostic builds.
         Scope(GenericTelemetry& telemetry, std::string_view name)
             : telemetry_(&telemetry), name_(name),
               started_(telemetry.enabled || telemetry.progressSink
@@ -350,6 +359,21 @@ struct GenericTelemetry final
             telemetry_->reportProgress(
                 basic::CompilationEventKind::PhaseFinished, name_, {}, 0, 0, elapsed);
         }
+#else
+        Scope(GenericTelemetry& telemetry, std::string_view name)
+            : telemetry_(&telemetry), name_(name),
+              started_(telemetry.enabled ? std::chrono::steady_clock::now()
+                                         : std::chrono::steady_clock::time_point{})
+        {
+        }
+        ~Scope()
+        {
+            if (!telemetry_->enabled) return;
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started_);
+            telemetry_->recordSubPhase(name_, elapsed);
+        }
+#endif // INSTRUMENTATION CODE
         Scope(const Scope&) = delete;
         Scope& operator=(const Scope&) = delete;
 
