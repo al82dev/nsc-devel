@@ -1136,4 +1136,111 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerObjectConstructionEx
     }
     return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
 }
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::TupleExpression:
+        case ast::AstNodeKind::AggregateInitializerExpression:
+        case ast::AstNodeKind::WithExpression:
+        {
+            const MethodExpressionTypeBinding* targetType = expressionType(expression);
+            if (targetType == nullptr)
+            {
+                error = "aggregate/with initializer has no bound target type";
+                return nullptr;
+            }
+            auto node = makeNode(
+                ProjectOopHirNodeKind::AggregateInitializer, expression, targetType->typeKey);
+            if (!appendAggregateElements(expression, targetType->typeKey, 0, memberOrdinal, node->children, error))
+            {
+                return nullptr;
+            }
+            return node;
+        }
+
+        // CC1 fase 4A -- `sizeof`. Las dos formas llegan aqui como una CONSTANTE y nada mas: MIR y
+        // LLVM no necesitan enterarse de que en el fuente habia un `sizeof`.
+        //
+        // El operando de `sizeof(expression)` NO se baja. Es lo que hace que un efecto secundario
+        // escrito dentro de el no llegue a ejecutarse: no hay nodo que lo represente. El modelo
+        // semantico ya se encargo de que tampoco altere el estado de flujo.
+        //
+        // El tamano se lo pregunta a `valueLayoutForTypeKey`, que es el MISMO servicio del que
+        // salen el stride de un arreglo y el offset de un campo. Ni una tabla de tamanos nueva:
+        // esa es toda la diferencia entre cerrar el hueco y crear una segunda regla de tamano que
+        // pueda divergir de la primera.
+        case ast::AstNodeKind::SizeofTypeExpression:
+        case ast::AstNodeKind::SizeofExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::AlignofExpression:
+        {
+            const MethodCoreBinding* binding = coreBinding(expression);
+            if (binding == nullptr ||
+                (binding->kind != MethodCoreOperationKind::SizeofConstant &&
+                 binding->kind != MethodCoreOperationKind::AlignofConstant))
+            {
+                error = "layout query reached OOP lowering without its resolved measured type";
+                return nullptr;
+            }
+            if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+            {
+                error = "layout query requires the object layout model";
+                return nullptr;
+            }
+            const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+                objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, binding->elementTypeKey);
+            if (!layout.has_value())
+            {
+                error = (binding->kind == MethodCoreOperationKind::AlignofConstant ? "alignof" : "sizeof") +
+                    std::string(" cannot measure '") + binding->elementTypeKey + "': it has no value layout";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");
+            node->integerValue = binding->kind == MethodCoreOperationKind::AlignofConstant
+                ? layout->second
+                : layout->first;
+            return node;
+        }
+
+        case ast::AstNodeKind::OffsetofExpression:
+        {
+            const MethodCoreBinding* binding = coreBinding(expression);
+            if (binding == nullptr || binding->kind != MethodCoreOperationKind::OffsetofConstant ||
+                !binding->implicitFieldMemberOrdinal.has_value())
+            {
+                error = "offsetof reached OOP lowering without its resolved field";
+                return nullptr;
+            }
+            if (objectLayoutModel_ == nullptr)
+            {
+                error = "offsetof requires the object layout model";
+                return nullptr;
+            }
+            const ObjectFieldLayout* field = objectLayoutModel_->fieldLayoutForMember(
+                *binding->implicitFieldMemberOrdinal);
+            if (field == nullptr)
+            {
+                error = "offsetof cannot find the canonical layout for field '" +
+                    expression->text() + "'";
+                return nullptr;
+            }
+            if (field->bitWidth.has_value())
+            {
+                error = "offsetof cannot be applied to a bit-field";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");
+            node->integerValue = field->offset;
+            return node;
+        }
+        default:
+            error = "non-aggregate/layout expression reached HIR aggregate lowering";
+            return nullptr;
+    }
+}
 }
