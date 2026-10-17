@@ -35,7 +35,9 @@
 
 ## Estado
 
-En curso.
+R04E cerrado. Las aristas cruzadas del parser están cubiertas por las pruebas focales. El
+desbordamiento que sobrevivió pertenece a `ProjectMemberModel`, se transfirió a B09 y no se
+cuenta como una reentrada pendiente de `syntax-parse`.
 
 ## R04E1 — ordinary control / `foreach`
 
@@ -89,5 +91,62 @@ Evidencia:
   recursiva terminó en `0xC00000FD`. Un worklist explícito conserva evaluación de block-last,
   requisitos de ambas ramas y cortocircuito de la rama `then`; el mismo caso pasa dentro de
   `PASS: 113 checks`.
-- R04E4: reproducir y clasificar el overflow posterior en `members`; no pertenece a syntax-parse y
-  no puede ocultarse bajo el cierre del parser.
+- R04E4: terminado. El overflow posterior pertenece a `members`; no pertenece a syntax-parse y
+  no se ocultó bajo el cierre del parser. Su corrección queda abierta explícitamente en B09.
+
+## R04E4 — transferencia causal del overflow de `members`
+
+### Reproducción
+
+El fixture conservado
+`A:\temp\nativesharp_stage27_project_method_body_tests\DeepMixedR04BControl` contiene 1,024
+controles mixtos dentro de un único cuerpo de método. Ejecutado con el `nsc.exe` focal de
+`A:\nsc-devel\build-test-infrastructure\bin`, `-O0`, `-j 1` y `--progress`, produjo esta frontera:
+
+```text
+syntax-parse finished (1 ms)
+generics finished (3 ms)
+names finished (2 ms)
+-- NSC: members
+EXIT_CODE=-1073741571
+```
+
+`-1073741571` corresponde a `0xC00000FD` (`STATUS_STACK_OVERFLOW`). La fase parser termina antes
+del fallo; por tanto, el resultado no puede atribuirse a R04 ni utilizarse para reabrir una
+familia de statements.
+
+### Productor y símbolo responsable
+
+`ProjectCompilation::compileProjectMembers` construye `ProjectMemberModel`. Al final de
+`ProjectMemberModel::build`, cada método con cuerpo se entrega a
+`ProjectMemberModel::scanMethodBody`. Ese walker se llama recursivamente para `first`, `second`,
+`third` y cada elemento de `children`; la profundidad del stack nativo crece con la profundidad
+del AST del método.
+
+La prueba contrafactual descarta `scanInvalidThisContexts` como causa de esta reproducción:
+ese segundo walker se ejecuta después y retorna inmediatamente al encontrar un
+`MethodDeclaration`, `ConstructorDeclaration` o `DestructorDeclaration`; no desciende al cuerpo
+profundo que activa el fallo.
+
+Cadena causal:
+
+```text
+1,024 controles ya parseados
+  -> ProjectCompilation::compileProjectMembers
+  -> ProjectMemberModel::build
+  -> ProjectMemberModel::scanMethodBody
+  -> recursión proporcional a la profundidad del AST
+  -> agotamiento del stack nativo en members
+```
+
+### Transferencia sin hueco
+
+Se abre B09 bajo el dueño real `ProjectMemberModel`:
+
+- B09A convierte `scanMethodBody` a un recorrido iterativo preservando exactamente el orden
+  preorden, los early returns, `bodyBindings_` y el orden de diagnósticos;
+- B09B obtiene una reproducción independiente para `scanInvalidThisContexts` y elimina su
+  recursión sin mezclarla causalmente con B09A.
+
+R04 y R04E pueden cerrarse porque la obligación pendiente dejó de pertenecer al parser y conserva
+un dueño, reproducción, criterio de corrección y siguiente acción explícitos.
