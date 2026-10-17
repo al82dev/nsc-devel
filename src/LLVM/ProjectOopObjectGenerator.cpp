@@ -121,17 +121,24 @@ public:
         LlvmOptimizationLevel optimization,
         std::size_t moduleCount,
         bool partitioned,
-        bool preLlvmCache)
+        bool preLlvmCache,
+        CachePruneTelemetry pruneTelemetry)
         : output_(R"(A:\temp\nsc-llvm-code-unit-timing.log)",
               std::ios::binary | std::ios::trunc)
     {
         if (!output_) return;
-        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=1\n"
+        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=2\n"
                 << "debug=" << debugInformationKindName(debugInformation)
                 << " optimization=" << llvmOptimizationLevelName(optimization)
                 << " modules=" << moduleCount
                 << " partitioned=" << (partitioned ? 1 : 0)
-                << " pre-llvm-cache=" << (preLlvmCache ? 1 : 0) << '\n';
+                << " pre-llvm-cache=" << (preLlvmCache ? 1 : 0)
+                << " prune-performed=" << (pruneTelemetry.performed ? 1 : 0)
+                << " prune-us=" << pruneTelemetry.elapsedMicros
+                << " prune-entries=" << pruneTelemetry.inspectedEntries
+                << " prune-bytes=" << pruneTelemetry.inspectedBytes
+                << " prune-evicted-entries=" << pruneTelemetry.evictedEntries
+                << " prune-evicted-bytes=" << pruneTelemetry.evictedBytes << '\n';
         output_.flush();
     }
 
@@ -471,7 +478,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         linkTimeOptimization == LinkTimeOptimizationMode::Thin;
 
     ColdLlvmTrace coldLlvmTrace(
-        debugInformation, optimizationLevel, moduleCount, usePartitions, usePreLlvmCache);
+        debugInformation, optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
+        cache != nullptr ? cache->lastPruneTelemetry() : CachePruneTelemetry{});
 
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.

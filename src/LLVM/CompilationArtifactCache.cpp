@@ -34,6 +34,31 @@ namespace
 thread_local const CompilationArtifactCache* activeCache = nullptr;
 std::atomic<unsigned long long> temporaryOrdinal = 0;
 
+class CachePruneMeasurement final
+{
+public:
+    explicit CachePruneMeasurement(CachePruneTelemetry& telemetry)
+        : telemetry_(telemetry), started_(std::chrono::steady_clock::now())
+    {
+        telemetry_ = CachePruneTelemetry{};
+        telemetry_.performed = true;
+    }
+
+    ~CachePruneMeasurement()
+    {
+        telemetry_.elapsedMicros = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started_).count());
+    }
+
+    CachePruneMeasurement(const CachePruneMeasurement&) = delete;
+    CachePruneMeasurement& operator=(const CachePruneMeasurement&) = delete;
+
+private:
+    CachePruneTelemetry& telemetry_;
+    std::chrono::steady_clock::time_point started_;
+};
+
 std::filesystem::path temporarySibling(const std::filesystem::path& destination)
 {
 #if defined(_WIN32)
@@ -741,6 +766,7 @@ bool CompilationArtifactCache::prune(
     std::uintmax_t& evictedBytes,
     std::string& error) const
 {
+    const CachePruneMeasurement measurement(lastPruneTelemetry_);
     evictedEntries = 0;
     evictedBytes = 0;
     error.clear();
@@ -750,6 +776,8 @@ bool CompilationArtifactCache::prune(
     if (!collectPrunableEntries(root_ / "objects", ".obj", entries, totalBytes, error) ||
         !collectPrunableEntries(root_ / "partitions", ".plan", entries, totalBytes, error))
         return false;
+    lastPruneTelemetry_.inspectedEntries = entries.size();
+    lastPruneTelemetry_.inspectedBytes = totalBytes;
     std::ranges::sort(entries, [](const CachePruneEntry& left, const CachePruneEntry& right) {
         if (left.publication != right.publication) return left.publication < right.publication;
         return left.key < right.key;
@@ -784,8 +812,15 @@ bool CompilationArtifactCache::prune(
         totalBytes = currentSize > totalBytes ? 0 : totalBytes - currentSize;
         ++evictedEntries;
         evictedBytes += currentSize;
+        lastPruneTelemetry_.evictedEntries = evictedEntries;
+        lastPruneTelemetry_.evictedBytes = evictedBytes;
     }
     return true;
+}
+
+const CachePruneTelemetry& CompilationArtifactCache::lastPruneTelemetry() const noexcept
+{
+    return lastPruneTelemetry_;
 }
 
 CompilationArtifactCacheScope::CompilationArtifactCacheScope(

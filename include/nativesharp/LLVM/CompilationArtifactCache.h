@@ -30,6 +30,16 @@ const char* cacheMissReasonName(CacheMissReason reason) noexcept;
 std::filesystem::path defaultProjectArtifactCacheRoot(
     const std::filesystem::path& projectFile);
 
+struct CachePruneTelemetry final
+{
+    bool performed = false;
+    std::uint64_t elapsedMicros = 0;
+    std::size_t inspectedEntries = 0;
+    std::uintmax_t inspectedBytes = 0;
+    std::size_t evictedEntries = 0;
+    std::uintmax_t evictedBytes = 0;
+};
+
 class CompilationArtifactCache final
 {
 public:
@@ -85,9 +95,12 @@ public:
         std::uintmax_t& evictedBytes,
         std::string& error) const;
 
+    const CachePruneTelemetry& lastPruneTelemetry() const noexcept;
+
 private:
     std::filesystem::path root_;
     std::string codegenIdentity_;
+    mutable CachePruneTelemetry lastPruneTelemetry_;
 };
 
 class CompilationArtifactCacheScope final
