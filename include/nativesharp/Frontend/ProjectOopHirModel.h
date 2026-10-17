@@ -987,6 +987,9 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,
         bool hasOwnedTemporary);
+    void applyStructuredExitBinding(
+        ProjectOopHirNode& node,
+        const ast::AstNode* syntax) const;
     std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         const ast::AstNode* syntax,
         std::string_view parameterTypeKey,

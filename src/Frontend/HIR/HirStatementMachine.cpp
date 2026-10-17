@@ -347,22 +347,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
 
     const auto attachStructuredExit = [&](ProjectOopHirNode& node)
     {
-        const MethodStructuredExitBinding* binding = structuredExitBinding(statement);
-        if (binding == nullptr) return;
-        node.cleanupRegionOrdinals = binding->cleanupRegionOrdinals;
-        node.targetScopeOrdinal = binding->targetScopeOrdinal;
-        switch (binding->kind)
-        {
-            case MethodStructuredExitKind::Return:
-                node.cleanupContinuationKind = MethodCleanupContinuationKind::Return;
-                break;
-            case MethodStructuredExitKind::Break:
-                node.cleanupContinuationKind = MethodCleanupContinuationKind::Break;
-                break;
-            case MethodStructuredExitKind::Continue:
-                node.cleanupContinuationKind = MethodCleanupContinuationKind::Continue;
-                break;
-        }
+        applyStructuredExitBinding(node, statement);
     };
 
     switch (statement->kind())

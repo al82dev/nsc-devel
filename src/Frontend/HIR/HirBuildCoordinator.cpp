@@ -1888,17 +1888,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFreshOwnedTemporaryBo
     return temporary;
 }
 
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFullExpressionCleanup(
-    std::unique_ptr<ProjectOopHirNode> value,
-    const ast::AstNode* syntax,
-    bool hasOwnedTemporary)
-{
-    if (!hasOwnedTemporary) return value;
-    auto fullExpression = makeNode(ProjectOopHirNodeKind::FullExpressionCleanup, syntax, value->typeKey);
-    fullExpression->children.push_back(std::move(value));
-    return fullExpression;
-}
-
 ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
     std::string_view sourceTypeKey,
     std::string_view targetTypeKey,
