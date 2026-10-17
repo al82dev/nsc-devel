@@ -275,10 +275,31 @@ std::string receiverSourceSpelling(const ast::AstNode* receiver)
 {
     if (receiver == nullptr) return {};
     if (receiver->kind() == ast::AstNodeKind::IdentifierExpression) return receiver->text();
-    if (receiver->kind() != ast::AstNodeKind::MemberExpression) return {};
-    const std::string prefix = receiverSourceSpelling(receiver->first());
-    if (prefix.empty()) return {};
-    return prefix + "." + receiver->text();
+    std::vector<std::string_view> members;
+    std::size_t resultSize = 0;
+    const ast::AstNode* current = receiver;
+    while (current != nullptr && current->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        members.push_back(current->text());
+        resultSize += current->text().size() + 1U;
+        current = current->first();
+    }
+    if (current == nullptr || current->kind() != ast::AstNodeKind::IdentifierExpression ||
+        current->text().empty())
+    {
+        return {};
+    }
+
+    resultSize += current->text().size();
+    std::string result;
+    result.reserve(resultSize);
+    result.append(current->text());
+    for (auto iterator = members.rbegin(); iterator != members.rend(); ++iterator)
+    {
+        result.push_back('.');
+        result.append(*iterator);
+    }
+    return result;
 }
 
 // La escritura fuente COMPLETA de una plantilla: `N1.C`, `a3.A.Inner`. El registro guarda el

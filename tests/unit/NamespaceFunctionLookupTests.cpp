@@ -71,7 +71,7 @@ void testDeepExpressionName(
         "<Project><PropertyGroup><Name>DeepExpressionName</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
 
-    constexpr std::size_t depth = 2048;
+    constexpr std::size_t depth = 16384;
     std::string source = "class Box { int Run() { return Root";
     for (std::size_t index = 0; index < depth; ++index)
     {
@@ -82,11 +82,11 @@ void testDeepExpressionName(
 
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
-    const bool ok = compilation.compileProjectMembers(
+    const bool ok = compilation.compileProjectGenerics(
         directory / "DeepExpressionName.nsproj",
         error);
     tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
-        "namespace lookup reconstructs a 2,048-segment name without using the native stack");
+        "generic lookup reconstructs a 16,384-segment name without using the native stack");
 }
 }
 
