@@ -390,6 +390,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/PatternAnalyzer.cpp
     src/Frontend/Bodies/OwnershipAnalyzer.cpp
     src/Frontend/Bodies/EscapeAnalyzer.cpp
+    src/Frontend/Bodies/StatementAnalyzer.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
