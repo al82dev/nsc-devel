@@ -47,6 +47,15 @@ struct ProjectOopHirModelTestAccess final
     {
         model.assignYieldStates(root, nextYieldState);
     }
+
+    static void rewriteGeneratorThrows(
+        ProjectOopHirModel& model,
+        ProjectOopHirNode* root,
+        std::string_view errorTypeKey,
+        std::string_view iteratorKey)
+    {
+        model.rewriteGeneratorThrows(root, errorTypeKey, iteratorKey);
+    }
 };
 }
 
@@ -1149,6 +1158,52 @@ void testDeepYieldStateAssignment(TestContext& tests)
         root = std::move(next);
     }
 }
+
+void testDeepGeneratorThrowRewrite(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    auto root = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    root->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+    auto* cursor = root.get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        auto block = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+        block->kind = nativesharp::frontend::ProjectOopHirNodeKind::Block;
+        cursor->children.push_back(std::move(block));
+        cursor = cursor->children.front().get();
+    }
+    auto throwing = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    throwing->kind = nativesharp::frontend::ProjectOopHirNodeKind::Throw;
+    auto payload = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    payload->kind = nativesharp::frontend::ProjectOopHirNodeKind::NullConstant;
+    payload->typeKey = "type:Deep.Error";
+    throwing->children.push_back(std::move(payload));
+    cursor->children.push_back(std::move(throwing));
+
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::rewriteGeneratorThrows(
+        model, root.get(), "type:Deep.Error", "iterator:builtin:int:type:Deep.Error");
+    tests.expect(cursor->children.size() == 1U &&
+            cursor->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+            cursor->children.front()->children.size() == 3U &&
+            cursor->children.front()->children.back()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Return,
+        "iterative generator throw rewrite reaches and replaces a node at depth 32768");
+
+    std::size_t removedDepth = 0;
+    while (root != nullptr && root->children.size() == 1U &&
+        root->children.front()->kind == nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+        root->children.front()->children.size() == 1U)
+    {
+        auto next = std::move(root->children.front());
+        root->children.clear();
+        root = std::move(next);
+        ++removedDepth;
+    }
+    tests.expect(removedDepth == nestingDepth,
+        "the deep generator throw fixture retains every enclosing block");
+}
 }
 
 int main()
@@ -1180,6 +1235,10 @@ int main()
     {
         testDeepYieldStateAssignment(tests);
     }
+    else if (focusValue == "hir-generator-throw-depth")
+    {
+        testDeepGeneratorThrowRewrite(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -1190,6 +1249,7 @@ int main()
         testPartitionStaticFieldReachability(tests, root);
         testDeepOptionalDefaultHir(tests, root);
         testDeepYieldStateAssignment(tests);
+        testDeepGeneratorThrowRewrite(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

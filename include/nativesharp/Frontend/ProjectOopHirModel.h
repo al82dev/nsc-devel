@@ -931,6 +931,10 @@ private:
         std::string& error,
         bool topLevel = true);
     void assignYieldStates(ProjectOopHirNode* root, std::size_t& nextYieldState);
+    void rewriteGeneratorThrows(
+        ProjectOopHirNode* root,
+        std::string_view errorTypeKey,
+        std::string_view iteratorKey);
 
     // NS304-T05-F03: splits an async function into a lazy constructor (function.body becomes
     // `return default(future:<T>)`) and a poll function (returned; runs the body and stores the

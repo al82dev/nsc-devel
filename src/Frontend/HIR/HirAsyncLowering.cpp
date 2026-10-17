@@ -28,6 +28,76 @@ void ProjectOopHirModel::assignYieldStates(
     }
 }
 
+void ProjectOopHirModel::rewriteGeneratorThrows(
+    ProjectOopHirNode* root,
+    std::string_view errorTypeKey,
+    std::string_view iteratorKey)
+{
+    std::vector<std::unique_ptr<ProjectOopHirNode>*> pending;
+    if (root != nullptr)
+        for (auto child = root->children.rbegin(); child != root->children.rend(); ++child)
+            pending.push_back(&*child);
+    while (!pending.empty())
+    {
+        std::unique_ptr<ProjectOopHirNode>* slot = pending.back();
+        pending.pop_back();
+        if (*slot == nullptr) continue;
+        ProjectOopHirNode* child = slot->get();
+        if (child->kind == ProjectOopHirNodeKind::Throw)
+        {
+            auto block = makeNode(ProjectOopHirNodeKind::Block, child->syntax, "builtin:void");
+            auto errorField = makeNode(
+                ProjectOopHirNodeKind::FutureFieldAddress, child->syntax,
+                std::string(errorTypeKey));
+            errorField->memberOrdinal = 5;
+            errorField->elementTypeKey = iteratorKey;
+            auto selfAddress = makeNode(
+                ProjectOopHirNodeKind::ParameterValue, child->syntax,
+                std::string(iteratorKey) + "*");
+            selfAddress->parameterOrdinal = 0;
+            errorField->children.push_back(std::move(selfAddress));
+            auto errorStore = makeNode(
+                ProjectOopHirNodeKind::Assignment, child->syntax, std::string(errorTypeKey));
+            errorStore->operation = lexer::TokenKind::Equal;
+            errorStore->children.push_back(std::move(errorField));
+            errorStore->children.push_back(!child->children.empty()
+                ? std::move(child->children[0])
+                : makeNode(ProjectOopHirNodeKind::NullConstant, child->syntax,
+                    std::string(errorTypeKey)));
+            block->children.push_back(std::move(errorStore));
+            auto stateField = makeNode(
+                ProjectOopHirNodeKind::FutureFieldAddress, child->syntax, "builtin:int");
+            stateField->memberOrdinal = 0;
+            stateField->elementTypeKey = iteratorKey;
+            auto stateSelf = makeNode(
+                ProjectOopHirNodeKind::ParameterValue, child->syntax,
+                std::string(iteratorKey) + "*");
+            stateSelf->parameterOrdinal = 0;
+            stateField->children.push_back(std::move(stateSelf));
+            auto errored = makeNode(
+                ProjectOopHirNodeKind::IntegerConstant, child->syntax, "builtin:int");
+            errored->integerValue = ~0ULL - 1ULL;
+            auto stateStore = makeNode(
+                ProjectOopHirNodeKind::Assignment, child->syntax, "builtin:int");
+            stateStore->operation = lexer::TokenKind::Equal;
+            stateStore->children.push_back(std::move(stateField));
+            stateStore->children.push_back(std::move(errored));
+            block->children.push_back(std::move(stateStore));
+            auto retFalse = makeNode(
+                ProjectOopHirNodeKind::Return, child->syntax, "builtin:bool");
+            auto falseValue = makeNode(
+                ProjectOopHirNodeKind::BooleanConstant, child->syntax, "builtin:bool");
+            falseValue->booleanValue = false;
+            retFalse->children.push_back(std::move(falseValue));
+            block->children.push_back(std::move(retFalse));
+            *slot = std::move(block);
+            continue;
+        }
+        for (auto nested = child->children.rbegin(); nested != child->children.rend(); ++nested)
+            pending.push_back(&*nested);
+    }
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
     std::unique_ptr<ProjectOopHirNode> body,
     std::size_t selfParameterOrdinal,
@@ -334,61 +404,7 @@ ProjectOopHirModel::splitGeneratorFunction(
     const std::optional<std::string_view> errorType = language::iteratorErrorTypeKey(iteratorKey);
     if (errorType.has_value())
     {
-        const auto rewriteThrows = [&](const auto& self, ProjectOopHirNode* node) -> void
-        {
-            if (node == nullptr) return;
-            for (auto& child : node->children)
-            {
-                if (child != nullptr && child->kind == ProjectOopHirNodeKind::Throw)
-                {
-                    auto block = makeNode(ProjectOopHirNodeKind::Block, child->syntax, "builtin:void");
-                    auto errorField = makeNode(
-                        ProjectOopHirNodeKind::FutureFieldAddress, child->syntax, std::string(*errorType));
-                    errorField->memberOrdinal = 5; // error (dropFn is index 4)
-                    errorField->elementTypeKey = iteratorKey;
-                    auto selfAddress = makeNode(
-                        ProjectOopHirNodeKind::ParameterValue, child->syntax, iteratorKey + "*");
-                    selfAddress->parameterOrdinal = 0;
-                    errorField->children.push_back(std::move(selfAddress));
-                    auto errorStore = makeNode(
-                        ProjectOopHirNodeKind::Assignment, child->syntax, std::string(*errorType));
-                    errorStore->operation = lexer::TokenKind::Equal;
-                    errorStore->children.push_back(std::move(errorField));
-                    errorStore->children.push_back(!child->children.empty()
-                        ? std::move(child->children[0])
-                        : makeNode(ProjectOopHirNodeKind::NullConstant, child->syntax, std::string(*errorType)));
-                    block->children.push_back(std::move(errorStore));
-                    auto stateField = makeNode(
-                        ProjectOopHirNodeKind::FutureFieldAddress, child->syntax, "builtin:int");
-                    stateField->memberOrdinal = 0; // state
-                    stateField->elementTypeKey = iteratorKey;
-                    auto stateSelf = makeNode(
-                        ProjectOopHirNodeKind::ParameterValue, child->syntax, iteratorKey + "*");
-                    stateSelf->parameterOrdinal = 0;
-                    stateField->children.push_back(std::move(stateSelf));
-                    auto errored = makeNode(ProjectOopHirNodeKind::IntegerConstant, child->syntax, "builtin:int");
-                    errored->integerValue = ~0ULL - 1ULL; // -2 = error
-                    auto stateStore = makeNode(
-                        ProjectOopHirNodeKind::Assignment, child->syntax, "builtin:int");
-                    stateStore->operation = lexer::TokenKind::Equal;
-                    stateStore->children.push_back(std::move(stateField));
-                    stateStore->children.push_back(std::move(errored));
-                    block->children.push_back(std::move(stateStore));
-                    auto retFalse = makeNode(ProjectOopHirNodeKind::Return, child->syntax, "builtin:bool");
-                    auto falseValue = makeNode(
-                        ProjectOopHirNodeKind::BooleanConstant, child->syntax, "builtin:bool");
-                    falseValue->booleanValue = false;
-                    retFalse->children.push_back(std::move(falseValue));
-                    block->children.push_back(std::move(retFalse));
-                    child = std::move(block);
-                }
-                else if (child != nullptr)
-                {
-                    self(self, child.get());
-                }
-            }
-        };
-        rewriteThrows(rewriteThrows, moveNext->body.get());
+        rewriteGeneratorThrows(moveNext->body.get(), *errorType, iteratorKey);
     }
 
     // NS304-T06-F03: number the yields 1..N (the state set after each yield; 0 is the entry state)
