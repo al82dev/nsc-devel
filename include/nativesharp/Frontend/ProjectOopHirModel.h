@@ -888,6 +888,12 @@ private:
         bool addressContext,
         std::string& error);
 
+    std::unique_ptr<ProjectOopHirNode> lowerObjectConstructionExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+
     // NS304-T05-F03: rewrites every Return node of an async poll body into
     // `self->result = v; self->state = ready; return;`. self is the parameter at
     // `selfParameterOrdinal` (type future:<T>*); resultTypeKey is the awaited inner type T.
