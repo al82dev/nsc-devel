@@ -47,6 +47,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         NullCoalescing,
         NullCoalescingAssignment,
         ResultPropagation,
+        Destruction,
         CoreMember,
         CoreIndex,
         RawIndex,
@@ -70,9 +71,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         const MethodVariableArrayIndexBinding* variableArrayIndex = nullptr;
         const MethodResultPropagationBinding* resultPropagation = nullptr;
         const MethodStructuredExitBinding* structuredExit = nullptr;
+        const MethodExpressionTypeBinding* operandType = nullptr;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
+        bool operandAddressContext = false;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
@@ -152,6 +155,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             {
                 return IterativeExpressionKind::ResultPropagation;
             }
+        }
+        if ((syntax->kind() == ast::AstNodeKind::DeleteExpression ||
+             syntax->kind() == ast::AstNodeKind::DestroyExpression) &&
+            syntax->first() != nullptr)
+        {
+            const MethodExpressionTypeBinding* operandType = expressionType(syntax->first());
+            const bool validDeleteArray = syntax->kind() != ast::AstNodeKind::DeleteExpression ||
+                !syntax->flag() ||
+                (operandType != nullptr &&
+                 ProjectTypeConversion::isNativeArray(operandType->typeKey));
+            if (operandType != nullptr && validDeleteArray)
+                return IterativeExpressionKind::Destruction;
         }
         if ((syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
              syntax->kind() == ast::AstNodeKind::MemberExpression) &&
@@ -357,6 +372,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     frame.resultPropagation = resultPropagationBinding(current);
                     frame.structuredExit = structuredExitBinding(current);
                 }
+                else if (*currentKind == IterativeExpressionKind::Destruction)
+                {
+                    frame.operandType = expressionType(current->first());
+                    const MethodCoreBinding* elementBinding = coreBinding(current->first());
+                    const bool directElement = elementBinding != nullptr &&
+                        (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
+                         elementBinding->kind == MethodCoreOperationKind::RawElement);
+                    if (current->kind() == ast::AstNodeKind::DeleteExpression)
+                    {
+                        const bool nativeString =
+                            frame.operandType->typeKey == "builtin:string";
+                        frame.operandAddressContext = current->flag()
+                            ? directElement
+                            : directElement &&
+                                (isReferenceType(frame.operandType->typeKey) || nativeString);
+                    }
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
@@ -389,6 +421,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (*currentKind == IterativeExpressionKind::NullCoalescingAssignment)
                 {
                     currentAddressContext = true;
+                }
+                else if (*currentKind == IterativeExpressionKind::Destruction)
+                {
+                    currentAddressContext = frames.back().operandAddressContext;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -1056,6 +1092,67 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         MethodCleanupContinuationKind::Return;
                     propagation->children.push_back(std::move(lowered));
                     lowered = std::move(propagation);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::Destruction)
+                {
+                    if (frame.syntax->kind() == ast::AstNodeKind::DeleteExpression)
+                    {
+                        auto deallocation = makeNode(
+                            ProjectOopHirNodeKind::Deallocation,
+                            frame.syntax,
+                            "builtin:void");
+                        deallocation->elementTypeKey = frame.operandType->typeKey;
+                        deallocation->booleanValue = frame.operandAddressContext;
+                        if (frame.syntax->flag())
+                        {
+                            deallocation->dynamicDestruction = false;
+                            deallocation->storageOwnership = frame.operandType->storageOwnership;
+                        }
+                        else
+                        {
+                            const bool rawPointer = frame.operandType->typeKey.ends_with("*");
+                            const bool nativeString =
+                                frame.operandType->typeKey == "builtin:string";
+                            const bool deletable = frame.operandType->typeKey == "builtin:null" ||
+                                isReferenceType(frame.operandType->typeKey) ||
+                                rawPointer || nativeString;
+                            deallocation->dynamicDestruction =
+                                isReferenceType(frame.operandType->typeKey) && !nativeString;
+                            deallocation->valueTypeNoOpDeletion = !deletable;
+                            if (!deallocation->valueTypeNoOpDeletion)
+                            {
+                                deallocation->objectLifetimeOwnership =
+                                    deallocation->dynamicDestruction
+                                        ? sema::OwnershipKind::Owned
+                                        : sema::OwnershipKind::None;
+                                deallocation->storageOwnership = sema::OwnershipKind::Owned;
+                            }
+                        }
+                        deallocation->children.push_back(std::move(lowered));
+                        lowered = std::move(deallocation);
+                        frames.pop_back();
+                        continue;
+                    }
+
+                    bool dynamicDestruction = isReferenceType(frame.operandType->typeKey);
+                    if (!dynamicDestruction && frame.operandType->typeKey.ends_with("*"))
+                    {
+                        const std::string pointee = frame.operandType->typeKey.substr(
+                            0, frame.operandType->typeKey.size() - 1);
+                        dynamicDestruction = isReferenceType(pointee);
+                    }
+                    auto destruction = makeNode(
+                        ProjectOopHirNodeKind::ObjectDestruction,
+                        frame.syntax,
+                        "builtin:void");
+                    destruction->dynamicDestruction = dynamicDestruction;
+                    destruction->elementTypeKey = frame.operandType->typeKey;
+                    destruction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                    destruction->storageOwnership = sema::OwnershipKind::Borrowed;
+                    destruction->children.push_back(std::move(lowered));
+                    lowered = std::move(destruction);
                     frames.pop_back();
                     continue;
                 }
