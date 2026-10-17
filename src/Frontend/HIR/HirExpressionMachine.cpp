@@ -43,6 +43,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         BuiltinUnary,
         Conversion,
         BuiltinBinary,
+        CoreBinary,
         Conditional,
         NullCoalescing,
         NullCoalescingAssignment,
@@ -131,6 +132,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr)
         {
             return IterativeExpressionKind::BuiltinBinary;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::BinaryExpression &&
+            syntax->first() != nullptr && syntax->second() != nullptr)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::StructEquals ||
+                 core->kind == MethodCoreOperationKind::StringConcat ||
+                 core->kind == MethodCoreOperationKind::StringEquals ||
+                 core->kind == MethodCoreOperationKind::PointerArithmetic))
+            {
+                return IterativeExpressionKind::CoreBinary;
+            }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ConditionalExpression &&
             coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
@@ -397,6 +411,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         frame.operandSyntaxes.push_back(current->second());
                     }
                     frame.operands.reserve(frame.operandSyntaxes.size());
+                }
+                else if (*currentKind == IterativeExpressionKind::CoreBinary)
+                {
+                    frame.core = coreBinding(current);
                 }
                 else if (*currentKind == IterativeExpressionKind::RawIndex)
                 {
@@ -1020,6 +1038,75 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     lowered = buildBuiltinBinaryExpression(
                         frame.syntax, std::move(frame.first), std::move(lowered));
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CoreBinary)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    if (frame.core->kind == MethodCoreOperationKind::StructEquals)
+                    {
+                        auto equality = makeNode(
+                            ProjectOopHirNodeKind::AggregateEquals,
+                            frame.syntax,
+                            frame.core->resultTypeKey);
+                        equality->elementTypeKey = frame.core->elementTypeKey;
+                        equality->children.push_back(std::move(frame.first));
+                        equality->children.push_back(std::move(lowered));
+                        equality->argumentCount = equality->children.size();
+                        if (!appendAggregateLeaves(
+                                frame.core->elementTypeKey,
+                                0,
+                                frame.syntax,
+                                equality->children,
+                                error))
+                        {
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        if (frame.syntax->tokenKind() == lexer::TokenKind::BangEqual)
+                        {
+                            auto negated = makeNode(
+                                ProjectOopHirNodeKind::Unary,
+                                frame.syntax,
+                                frame.core->resultTypeKey);
+                            negated->operation = lexer::TokenKind::Bang;
+                            negated->children.push_back(std::move(equality));
+                            lowered = std::move(negated);
+                        }
+                        else
+                        {
+                            lowered = std::move(equality);
+                        }
+                    }
+                    else
+                    {
+                        const ProjectOopHirNodeKind kind =
+                            frame.core->kind == MethodCoreOperationKind::StringConcat
+                                ? ProjectOopHirNodeKind::StringConcat
+                                : frame.core->kind == MethodCoreOperationKind::StringEquals
+                                    ? ProjectOopHirNodeKind::StringEquals
+                                    : ProjectOopHirNodeKind::PointerArithmetic;
+                        auto binary = makeNode(
+                            kind, frame.syntax, frame.core->resultTypeKey);
+                        binary->operation = frame.syntax->tokenKind();
+                        if (frame.core->kind == MethodCoreOperationKind::PointerArithmetic)
+                            binary->elementTypeKey = frame.core->elementTypeKey;
+                        binary->children.push_back(std::move(frame.first));
+                        binary->children.push_back(std::move(lowered));
+                        lowered = std::move(binary);
+                    }
                     frames.pop_back();
                     continue;
                 }
