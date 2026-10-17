@@ -1,6 +1,9 @@
 #include "HirLoweringSupport.h"
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Lexer/TokenKind.h"
+
+#include <algorithm>
 
 namespace nativesharp::frontend
 {
@@ -121,5 +124,194 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
         return node;
     }
     return lowerExpression(receiverSyntax, memberOrdinal, isStructValueType(receiverTypeKey), error);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDefaultArgument(
+    const ast::AstNode* syntax,
+    std::string_view parameterTypeKey,
+    std::string& error)
+{
+    if (syntax == nullptr)
+    {
+        error = "NSC-LIMIT-020 selected optional parameter has no default expression";
+        return nullptr;
+    }
+    const std::string target(parameterTypeKey);
+    switch (syntax->kind())
+    {
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+            if (target == "builtin:float" || target == "builtin:double")
+            {
+                auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
+                value->floatingValue = static_cast<double>(syntax->integerValue());
+                return value;
+            }
+            else
+            {
+                auto value = makeNode(ProjectOopHirNodeKind::IntegerConstant, syntax, target);
+                value->integerValue = syntax->integerValue();
+                return value;
+            }
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
+            value->floatingValue = syntax->floatingValue();
+            return value;
+        }
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::BooleanConstant, syntax, "builtin:bool");
+            value->booleanValue = syntax->tokenKind() == lexer::TokenKind::KwTrue;
+            return value;
+        }
+        case ast::AstNodeKind::StringLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::StringLiteral, syntax, "string-literal");
+            value->stringValue = syntax->text();
+            const ProjectImplicitConversion conversion =
+                classifyImplicit("string-literal", target, std::nullopt);
+            if (!conversion.exists())
+            {
+                error = "NSC-LIMIT-020 string default cannot convert to parameter type '" +
+                    target + "'";
+                return nullptr;
+            }
+            if (conversion.kind != ProjectConversionKind::Identity)
+            {
+                value = wrapImplicitConversion(std::move(value), conversion, syntax);
+            }
+            return value;
+        }
+        case ast::AstNodeKind::NullLiteralExpression:
+            return makeNode(ProjectOopHirNodeKind::NullConstant, syntax, target);
+        case ast::AstNodeKind::UnaryExpression:
+        {
+            auto operand = lowerDefaultArgument(syntax->first(), parameterTypeKey, error);
+            if (operand == nullptr) return nullptr;
+            auto value = makeNode(ProjectOopHirNodeKind::Unary, syntax, target);
+            value->operation = syntax->tokenKind();
+            value->children.push_back(std::move(operand));
+            return value;
+        }
+        default:
+            error = "NSC-LIMIT-020 default argument is not a supported literal constant";
+            return nullptr;
+    }
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitialization(
+    std::size_t fieldMemberOrdinal,
+    std::optional<std::size_t> callerMemberOrdinal,
+    std::string& error)
+{
+    if (memberModel_ == nullptr || inheritanceModel_ == nullptr ||
+        fieldMemberOrdinal >= memberModel_->members().size())
+    {
+        error = "Stage 37 cannot lower an invalid instance field initializer";
+        return nullptr;
+    }
+    const ClassMemberSymbol& field = memberModel_->members()[fieldMemberOrdinal];
+    if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
+        field.syntax->first() == nullptr)
+    {
+        error = "Stage 37 instance initializer helper received a non-instance field";
+        return nullptr;
+    }
+
+    auto target = makeNode(ProjectOopHirNodeKind::FieldAddress, field.syntax, field.declaredTypeKey);
+    target->memberOrdinal = fieldMemberOrdinal;
+    target->volatileAccess = field.isVolatile;
+    target->children.push_back(makeNode(
+        ProjectOopHirNodeKind::ThisValue,
+        field.syntax,
+        inheritanceModel_->typeKeyForOrdinal(field.declaringTypeOrdinal)));
+
+    auto value = lowerExpression(
+        field.syntax->first(), callerMemberOrdinal.value_or(fieldMemberOrdinal), false, error);
+    if (value == nullptr)
+    {
+        return nullptr;
+    }
+    const MethodExpressionTypeBinding* sourceType = expressionType(field.syntax->first());
+    const ProjectImplicitConversion conversion = classifyImplicit(
+        value->typeKey,
+        field.declaredTypeKey,
+        sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+    if (!conversion.exists())
+    {
+        error = "Stage 37 field initializer lost its validated implicit conversion";
+        return nullptr;
+    }
+    if (conversion.kind != ProjectConversionKind::Identity)
+    {
+        value = wrapImplicitConversion(std::move(value), conversion, field.syntax->first());
+    }
+
+    auto assignment = makeNode(ProjectOopHirNodeKind::Assignment, field.syntax, field.declaredTypeKey);
+    assignment->operation = lexer::TokenKind::Equal;
+    assignment->children.push_back(std::move(target));
+    assignment->children.push_back(std::move(value));
+    return assignment;
+}
+
+void ProjectOopHirModel::appendInstanceFieldInitializers(
+    std::size_t typeOrdinal,
+    std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
+    std::string& error,
+    std::optional<std::size_t> callerMemberOrdinal)
+{
+    if (memberModel_ == nullptr)
+    {
+        error = "Stage 37 instance initializer lowering has no member model";
+        return;
+    }
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel_->members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& field = memberModel_->members()[memberOrdinal];
+        if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
+            field.syntax->first() == nullptr)
+        {
+            continue;
+        }
+        auto initializer = lowerInstanceFieldInitialization(
+            memberOrdinal, callerMemberOrdinal, error);
+        if (initializer == nullptr)
+        {
+            return;
+        }
+        output.push_back(std::move(initializer));
+    }
+}
+
+std::vector<std::size_t> ProjectOopHirModel::implicitInitializerTypes(
+    std::size_t targetTypeOrdinal,
+    std::optional<std::size_t> entryConstructorMemberOrdinal) const
+{
+    std::vector<std::size_t> reversePath;
+    if (inheritanceModel_ == nullptr || memberModel_ == nullptr)
+    {
+        return reversePath;
+    }
+
+    std::optional<std::size_t> stopType;
+    if (entryConstructorMemberOrdinal.has_value() &&
+        *entryConstructorMemberOrdinal < memberModel_->members().size())
+    {
+        stopType = memberModel_->members()[*entryConstructorMemberOrdinal].declaringTypeOrdinal;
+    }
+
+    std::optional<std::size_t> current = targetTypeOrdinal;
+    while (current.has_value() && (!stopType.has_value() || *current != *stopType))
+    {
+        reversePath.push_back(*current);
+        current = inheritanceModel_->baseTypeOrdinal(*current);
+    }
+    std::reverse(reversePath.begin(), reversePath.end());
+    return reversePath;
 }
 }
