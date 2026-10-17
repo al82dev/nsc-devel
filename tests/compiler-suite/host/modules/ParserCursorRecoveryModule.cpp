@@ -28,12 +28,16 @@ void testSingleDeclarationAndEofRange(TestContext& context)
 {
     ParserFixture fixture("int value;");
     AstNode* const root = fixture.parse();
+    const nativesharp::SourceRange consumedRange = fixture.parser().tokenRangeFrom(0);
     context.expect(root->children().size() == 1 &&
             root->children()[0]->kind() == AstNodeKind::GlobalVariableDeclaration,
         "TP-PAR-002 one declaration must produce exactly one child");
     context.expect(root->range().begin() == fixture.tokens().front().range().begin() &&
             root->range().end() == fixture.tokens().back().range().end(),
         "TP-PAR-002 unit range must span first token through EOF");
+    context.expect(consumedRange.begin() == fixture.tokens().front().range().begin() &&
+            consumedRange.end() == fixture.tokens()[2].range().end(),
+        "TP-PAR-002 consumed token range must stop at the declaration terminator before EOF");
 }
 
 void testTwoDeclarationOrderAndRanges(TestContext& context)

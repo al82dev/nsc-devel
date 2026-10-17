@@ -305,6 +305,7 @@ add_library(nsc_frontend STATIC
     src/AST/TypeSyntax.cpp
     src/AST/AstDumper.cpp
     src/Parser/Parser.cpp
+    src/Parser/ParserContext.cpp
     src/Sema/OwnershipKind.cpp
     src/Sema/TypeKind.cpp
     src/Sema/Type.cpp
