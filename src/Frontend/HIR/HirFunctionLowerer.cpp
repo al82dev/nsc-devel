@@ -18,14 +18,52 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBlock(
         error = "Stage 34 OOP HIR requires block statement body";
         return nullptr;
     }
-    auto result = makeNode(ProjectOopHirNodeKind::Block, block, "builtin:void");
-    const std::size_t cleanupDepthAtEntry = activeHirCleanupRegions_.size();
-    for (const ast::AstNode* statement : block->children())
+
+    struct BlockFrame final
     {
-        std::unique_ptr<ProjectOopHirNode> lowered = lowerStatement(statement, memberOrdinal, error);
+        const ast::AstNode* syntax = nullptr;
+        std::unique_ptr<ProjectOopHirNode> result;
+        std::size_t cleanupDepthAtEntry = 0;
+        std::size_t statementIndex = 0;
+    };
+    const auto makeFrame = [&](const ast::AstNode* syntax)
+    {
+        BlockFrame frame;
+        frame.syntax = syntax;
+        frame.result = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+        frame.cleanupDepthAtEntry = activeHirCleanupRegions_.size();
+        return frame;
+    };
+
+    const std::size_t rootCleanupDepth = activeHirCleanupRegions_.size();
+    std::vector<BlockFrame> pending;
+    pending.push_back(makeFrame(block));
+    while (!pending.empty())
+    {
+        BlockFrame& frame = pending.back();
+        if (frame.statementIndex >= frame.syntax->children().size())
+        {
+            activeHirCleanupRegions_.resize(frame.cleanupDepthAtEntry);
+            std::unique_ptr<ProjectOopHirNode> completed = std::move(frame.result);
+            pending.pop_back();
+            if (pending.empty()) return completed;
+            pending.back().result->children.push_back(std::move(completed));
+            continue;
+        }
+
+        const ast::AstNode* statement =
+            frame.syntax->children()[frame.statementIndex++];
+        if (statement != nullptr && statement->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            pending.push_back(makeFrame(statement));
+            continue;
+        }
+
+        std::unique_ptr<ProjectOopHirNode> lowered =
+            lowerStatement(statement, memberOrdinal, error);
         if (lowered == nullptr)
         {
-            activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+            activeHirCleanupRegions_.resize(rootCleanupDepth);
             return nullptr;
         }
         if (lowered->kind == ProjectOopHirNodeKind::LocalDeclaration &&
@@ -33,10 +71,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBlock(
         {
             activeHirCleanupRegions_.push_back(*lowered->cleanupRegionOrdinal);
         }
-        result->children.push_back(std::move(lowered));
+        frame.result->children.push_back(std::move(lowered));
     }
-    activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
-    return result;
+    return nullptr;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(

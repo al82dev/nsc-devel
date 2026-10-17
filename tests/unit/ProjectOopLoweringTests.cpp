@@ -186,6 +186,14 @@ struct ProjectOopHirModelTestAccess final
             syntax, targetTypeKey, baseOffset, 0U, elements, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerBlock(
+        ProjectOopHirModel& model,
+        const ast::AstNode* syntax,
+        std::string& error)
+    {
+        return model.lowerBlock(syntax, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2232,6 +2240,45 @@ void testDeepHirNodeDestruction(TestContext& tests)
         "a 32768-level standalone HIR temporary is destroyed without process-stack recursion");
 }
 
+void testDeepHirBlockLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::BlockStatement,
+        nativesharp::SourceRange{}));
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::BlockStatement,
+            nativesharp::SourceRange{}));
+        syntax.back()->addChild(current);
+        current = syntax.back().get();
+    }
+
+    ProjectOopHirModel model;
+    std::string error;
+    std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::lowerBlock(
+            model, current, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level block chain lowers without process-stack recursion (" + error + ")");
+    const auto* cursor = lowered.get();
+    std::size_t observedDepth = 0;
+    while (cursor != nullptr && cursor->children.size() == 1U &&
+        cursor->children.front() != nullptr &&
+        cursor->children.front()->kind ==
+            nativesharp::frontend::ProjectOopHirNodeKind::Block)
+    {
+        cursor = cursor->children.front().get();
+        ++observedDepth;
+    }
+    tests.expect(observedDepth == nestingDepth && cursor != nullptr && cursor->children.empty(),
+        "deep block lowering preserves every block and the empty leaf");
+}
+
 void testDeepHirDeconstructionWalk(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2582,6 +2629,10 @@ int main()
     else if (focusValue == "hir-node-destruction-depth")
     {
         testDeepHirNodeDestruction(tests);
+    }
+    else if (focusValue == "hir-block-depth")
+    {
+        testDeepHirBlockLowering(tests);
     }
     else if (focusValue == "hir-deconstruction-walk-depth")
     {
