@@ -259,6 +259,26 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerFieldExpression(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodNameBinding>& names,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        for (const auto& node : syntax)
+        {
+            model.expressionTypeBySyntax_[node.get()] = &type;
+        }
+        for (const MethodNameBinding& name : names)
+        {
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        }
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static void setRuntimeTypeBinding(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -1822,6 +1842,73 @@ void testDeepConversionExpressionLowering(TestContext& tests)
         "missing runtime binding fails before visiting the conversion operand");
 }
 
+void testDeepClassFieldExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    const std::string nodeType = "type:Deep::Node";
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression,
+        nativesharp::SourceRange{}));
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    names.reserve(nestingDepth);
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::MemberExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setFirst(current);
+        names.emplace_back();
+        names.back().kind = nativesharp::frontend::MethodNameBindingKind::ExplicitObjectField;
+        names.back().syntax = syntax.back().get();
+        names.back().typeKey = nodeType;
+        names.back().candidateMemberOrdinals.push_back(0U);
+        names.back().receiverSyntax = current;
+        names.back().receiverTypeKey = nodeType;
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = nodeType;
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerFieldExpression(
+        model, current, syntax, names, type, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level class-field chain lowers without process-stack recursion (" + error + ")");
+
+    std::size_t observedDepth = 0;
+    bool fieldsPreserved = true;
+    auto* cursor = lowered.get();
+    while (cursor != nullptr &&
+        cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::FieldValue)
+    {
+        fieldsPreserved = fieldsPreserved && cursor->typeKey == nodeType &&
+            cursor->memberOrdinal == 0U && !cursor->volatileAccess &&
+            !cursor->baseReceiver && cursor->children.size() == 1U;
+        ++observedDepth;
+        cursor = cursor->children.empty() ? nullptr : cursor->children.front().get();
+    }
+    tests.expect(observedDepth == nestingDepth && fieldsPreserved && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue,
+        "iterative class-field lowering preserves every field and its this receiver");
+    destroyHirTreeIteratively(lowered);
+
+    ProjectOopHirModel addressModel;
+    std::string addressError;
+    auto address = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerFieldExpression(
+        addressModel, current, syntax, names, type, true, addressError);
+    tests.expect(address != nullptr && addressError.empty() &&
+            address->kind == nativesharp::frontend::ProjectOopHirNodeKind::FieldAddress &&
+            address->children.size() == 1U &&
+            address->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::FieldValue,
+        "address context changes only the outer class field and preserves value receivers");
+    destroyHirTreeIteratively(address);
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2727,6 +2814,10 @@ int main()
     {
         testDeepConversionExpressionLowering(tests);
     }
+    else if (focusValue == "hir-class-field-depth")
+    {
+        testDeepClassFieldExpressionLowering(tests);
+    }
     else if (focusValue == "hir-overflow-policy-depth")
     {
         testDeepOverflowPolicyExpressionLowering(tests);
@@ -2798,6 +2889,7 @@ int main()
         testDeepAsyncPollReturnRewrite(tests);
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
+        testDeepClassFieldExpressionLowering(tests);
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);

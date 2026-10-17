@@ -44,6 +44,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         Conversion,
         BuiltinBinary,
         Conditional,
+        InstanceField,
     };
     struct IterativeExpressionFrame final
     {
@@ -53,6 +54,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         std::uint8_t stage = 0;
         std::unique_ptr<ProjectOopHirNode> first;
         std::unique_ptr<ProjectOopHirNode> second;
+        const MethodNameBinding* fieldBinding = nullptr;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
@@ -111,6 +113,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         {
             return IterativeExpressionKind::Conditional;
         }
+        if (syntax->kind() == ast::AstNodeKind::MemberExpression &&
+            coreBinding(syntax) == nullptr && accessorGetterBinding(syntax) == nullptr &&
+            callBinding(syntax) == nullptr &&
+            namespaceFunctionCallBinding(syntax) == nullptr)
+        {
+            const MethodLambdaValueBinding* lambdaValue = lambdaValueBinding(syntax);
+            const bool activeLambdaValue = currentLambda_ != nullptr && lambdaValue != nullptr &&
+                lambdaValue->lambdaOrdinal == currentLambda_->lambdaOrdinal;
+            const MethodNameBinding* binding = nameBinding(syntax);
+            if (!activeLambdaValue && binding != nullptr &&
+                binding->kind == MethodNameBindingKind::ExplicitObjectField &&
+                binding->receiverSyntax != nullptr && !binding->receiverTypeKey.empty() &&
+                !binding->candidateMemberOrdinals.empty() &&
+                !isStructValueType(binding->receiverTypeKey))
+            {
+                return IterativeExpressionKind::InstanceField;
+            }
+        }
         return std::nullopt;
     };
 
@@ -127,9 +147,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 iterativeKind(current, currentAddressContext);
             if (currentKind.has_value())
             {
-                frames.push_back(IterativeExpressionFrame{
-                    *currentKind, current, currentAddressContext, 0U, nullptr, nullptr});
-                current = current->first();
+                IterativeExpressionFrame frame{
+                    *currentKind, current, currentAddressContext, 0U, nullptr, nullptr, nullptr};
+                if (*currentKind == IterativeExpressionKind::InstanceField)
+                    frame.fieldBinding = nameBinding(current);
+                frames.push_back(std::move(frame));
+                if (*currentKind == IterativeExpressionKind::InstanceField)
+                    current = frames.back().fieldBinding->receiverSyntax;
+                else
+                    current = current->first();
                 currentAddressContext = *currentKind == IterativeExpressionKind::OverflowPolicy
                     ? currentAddressContext
                     : false;
@@ -210,6 +236,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     }
                     conversion->children.push_back(std::move(lowered));
                     lowered = std::move(conversion);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::InstanceField)
+                {
+                    const MethodNameBinding& binding = *frame.fieldBinding;
+                    auto field = makeNode(
+                        frame.addressContext
+                            ? ProjectOopHirNodeKind::FieldAddress
+                            : ProjectOopHirNodeKind::FieldValue,
+                        frame.syntax,
+                        binding.typeKey);
+                    field->memberOrdinal = binding.candidateMemberOrdinals.front();
+                    field->volatileAccess = memberModel_ != nullptr &&
+                        *field->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*field->memberOrdinal].isVolatile;
+                    field->baseReceiver = binding.baseReceiver;
+                    field->children.push_back(std::move(lowered));
+                    lowered = std::move(field);
                     frames.pop_back();
                     continue;
                 }
