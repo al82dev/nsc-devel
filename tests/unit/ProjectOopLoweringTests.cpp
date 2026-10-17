@@ -16,6 +16,7 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -24,6 +25,22 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
+
+namespace nativesharp::frontend
+{
+struct ProjectOopHirModelTestAccess final
+{
+    static std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
+        ProjectOopHirModel& model,
+        const ast::AstNode* syntax,
+        std::string_view parameterTypeKey,
+        std::string& error)
+    {
+        return model.lowerDefaultArgument(syntax, parameterTypeKey, error);
+    }
+};
+}
 
 namespace
 {
@@ -990,6 +1007,87 @@ class Catalog
             ir.find(unused->accessorName) == std::string::npos,
         "a code unit declares the static field it reads and omits the unrelated field");
 }
+
+void testDeepOptionalDefaultHir(TestContext& tests, const std::filesystem::path& root)
+{
+    constexpr std::size_t unaryDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(unaryDepth + 1U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < unaryDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::UnaryExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::Minus);
+        syntax.back()->setFirst(current);
+        current = syntax.back().get();
+    }
+
+    ProjectOopHirModel model;
+    std::string error;
+    std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowered =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::lowerDefaultArgument(
+            model, current, "builtin:int", error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level unary optional default lowers without process-stack recursion (" +
+            error + ")");
+
+    std::size_t observedDepth = 0;
+    const nativesharp::frontend::ProjectOopHirNode* cursor = lowered.get();
+    while (cursor != nullptr &&
+        cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::Unary)
+    {
+        ++observedDepth;
+        cursor = cursor->children.size() == 1U ? cursor->children.front().get() : nullptr;
+    }
+    tests.expect(observedDepth == unaryDepth && cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+            cursor->integerValue == 1U,
+        "the iterative optional-default lowering preserves all 32768 unary nodes and the leaf");
+
+    // Do not let unique_ptr destruction itself become the recursive operation this test excludes.
+    while (lowered != nullptr)
+    {
+        std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> child;
+        if (!lowered->children.empty()) child = std::move(lowered->children.front());
+        lowered->children.clear();
+        lowered = std::move(child);
+    }
+
+    const std::filesystem::path directory = root / "OptionalDefaultSourceContract";
+    writeProject(directory, "OptionalDefaultSourceContract");
+    writeFile(directory / "Main.ns",
+        "namespace Deep; public class Probe { "
+        "public int Value(int input = -1) { return input; } "
+        "public int Run() { return Value(); } }");
+    ProjectCompilation compilation;
+    error.clear();
+    const bool built = compilation.compileProjectOopHir(
+        directory / "OptionalDefaultSourceContract.nsproj", error);
+    tests.expect(built && compilation.oopHirModel() != nullptr,
+        "the language-permitted unary optional default still reaches OOP HIR (" + error + ")");
+    if (!built || compilation.oopHirModel() == nullptr) return;
+
+    std::size_t unaryCount = 0;
+    std::vector<const nativesharp::frontend::ProjectOopHirNode*> pending;
+    for (const auto& function : compilation.oopHirModel()->functions())
+        if (function.body != nullptr) pending.push_back(function.body.get());
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        unaryCount += node->kind == nativesharp::frontend::ProjectOopHirNodeKind::Unary ? 1U : 0U;
+        for (const auto& child : node->children)
+            if (child != nullptr) pending.push_back(child.get());
+    }
+    tests.expect(unaryCount == 1U,
+        "the permitted -1 default preserves exactly one unary HIR node at its call site");
+}
 }
 
 int main()
@@ -1005,12 +1103,17 @@ int main()
     std::size_t focusLength = 0;
     const int focusError = _dupenv_s(
         &focus, &focusLength, "NSC_PROJECT_OOP_LOWERING_FOCUS");
-    const bool preciseIncrementalOnly = focusError == 0 && focus != nullptr &&
-        std::string_view(focus) == "precise-incremental-invalidation";
+    const std::string focusValue = focusError == 0 && focus != nullptr
+        ? std::string(focus)
+        : std::string{};
     std::free(focus);
-    if (preciseIncrementalOnly)
+    if (focusValue == "precise-incremental-invalidation")
     {
         testPreciseIncrementalInvalidation(tests, root);
+    }
+    else if (focusValue == "hir-default-argument-depth")
+    {
+        testDeepOptionalDefaultHir(tests, root);
     }
     else
     {
@@ -1020,6 +1123,7 @@ int main()
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
         testPartitionStaticFieldReachability(tests, root);
+        testDeepOptionalDefaultHir(tests, root);
     }
 
     std::filesystem::remove_all(root, cleanupError);

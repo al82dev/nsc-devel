@@ -4,6 +4,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -111,38 +112,47 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDefaultArgument(
         return nullptr;
     }
     const std::string target(parameterTypeKey);
-    switch (syntax->kind())
+    std::vector<const ast::AstNode*> unaryFrames;
+    const ast::AstNode* current = syntax;
+    while (current != nullptr && current->kind() == ast::AstNodeKind::UnaryExpression)
+    {
+        unaryFrames.push_back(current);
+        current = current->first();
+    }
+    if (current == nullptr)
+    {
+        error = "NSC-LIMIT-020 selected optional parameter has no default expression";
+        return nullptr;
+    }
+
+    std::unique_ptr<ProjectOopHirNode> value;
+    switch (current->kind())
     {
         case ast::AstNodeKind::IntegerLiteralExpression:
         case ast::AstNodeKind::CharacterLiteralExpression:
             if (target == "builtin:float" || target == "builtin:double")
             {
-                auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
-                value->floatingValue = static_cast<double>(syntax->integerValue());
-                return value;
+                value = makeNode(ProjectOopHirNodeKind::FloatingConstant, current, target);
+                value->floatingValue = static_cast<double>(current->integerValue());
             }
             else
             {
-                auto value = makeNode(ProjectOopHirNodeKind::IntegerConstant, syntax, target);
-                value->integerValue = syntax->integerValue();
-                return value;
+                value = makeNode(ProjectOopHirNodeKind::IntegerConstant, current, target);
+                value->integerValue = current->integerValue();
             }
+            break;
         case ast::AstNodeKind::FloatingLiteralExpression:
-        {
-            auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
-            value->floatingValue = syntax->floatingValue();
-            return value;
-        }
+            value = makeNode(ProjectOopHirNodeKind::FloatingConstant, current, target);
+            value->floatingValue = current->floatingValue();
+            break;
         case ast::AstNodeKind::BooleanLiteralExpression:
-        {
-            auto value = makeNode(ProjectOopHirNodeKind::BooleanConstant, syntax, "builtin:bool");
-            value->booleanValue = syntax->tokenKind() == lexer::TokenKind::KwTrue;
-            return value;
-        }
+            value = makeNode(ProjectOopHirNodeKind::BooleanConstant, current, "builtin:bool");
+            value->booleanValue = current->tokenKind() == lexer::TokenKind::KwTrue;
+            break;
         case ast::AstNodeKind::StringLiteralExpression:
         {
-            auto value = makeNode(ProjectOopHirNodeKind::StringLiteral, syntax, "string-literal");
-            value->stringValue = syntax->text();
+            value = makeNode(ProjectOopHirNodeKind::StringLiteral, current, "string-literal");
+            value->stringValue = current->text();
             const ProjectImplicitConversion conversion =
                 classifyImplicit("string-literal", target, std::nullopt);
             if (!conversion.exists())
@@ -153,25 +163,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDefaultArgument(
             }
             if (conversion.kind != ProjectConversionKind::Identity)
             {
-                value = wrapImplicitConversion(std::move(value), conversion, syntax);
+                value = wrapImplicitConversion(std::move(value), conversion, current);
             }
-            return value;
+            break;
         }
         case ast::AstNodeKind::NullLiteralExpression:
-            return makeNode(ProjectOopHirNodeKind::NullConstant, syntax, target);
-        case ast::AstNodeKind::UnaryExpression:
-        {
-            auto operand = lowerDefaultArgument(syntax->first(), parameterTypeKey, error);
-            if (operand == nullptr) return nullptr;
-            auto value = makeNode(ProjectOopHirNodeKind::Unary, syntax, target);
-            value->operation = syntax->tokenKind();
-            value->children.push_back(std::move(operand));
-            return value;
-        }
+            value = makeNode(ProjectOopHirNodeKind::NullConstant, current, target);
+            break;
         default:
             error = "NSC-LIMIT-020 default argument is not a supported literal constant";
             return nullptr;
     }
+
+    for (auto frame = unaryFrames.rbegin(); frame != unaryFrames.rend(); ++frame)
+    {
+        auto unary = makeNode(ProjectOopHirNodeKind::Unary, *frame, target);
+        unary->operation = (*frame)->tokenKind();
+        unary->children.push_back(std::move(value));
+        value = std::move(unary);
+    }
+    return value;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitialization(

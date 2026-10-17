@@ -25,6 +25,7 @@ namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
 class ProjectMetaprogrammingModel;
+struct ProjectOopHirModelTestAccess;
 
 enum class ProjectOopHirNodeKind
 {
@@ -807,6 +808,8 @@ public:
         const ClassMemberSymbol& member);
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     bool buildImpl(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
