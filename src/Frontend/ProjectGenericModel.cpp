@@ -22,7 +22,6 @@
 #include <future>
 #include <iomanip>
 #include <limits>
-#include <mutex>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -1832,8 +1831,69 @@ std::string ProjectGenericModel::closedTypeKeyForTemplate(
 const std::string* ProjectGenericModel::resolvedTypeIdentity(
     const ast::TypeSyntax* syntax) const noexcept
 {
+    return lookupResolvedTypeIdentity(syntax);
+}
+
+const std::string* ProjectGenericModel::lookupResolvedTypeIdentity(
+    const ast::TypeSyntax* syntax) const noexcept
+{
+    if (workerResolvedTypeIdentities_ != nullptr)
+    {
+        const auto local = workerResolvedTypeIdentities_->find(syntax);
+        if (local != workerResolvedTypeIdentities_->end()) return &local->second;
+    }
     const auto found = resolvedTypeIdentityBySyntax_.find(syntax);
     return found == resolvedTypeIdentityBySyntax_.end() ? nullptr : &found->second;
+}
+
+const ProjectGenericModel::DeclaredTypeOrigin* ProjectGenericModel::lookupResolvedTypeOrigin(
+    const ast::TypeSyntax* syntax) const noexcept
+{
+    if (workerResolvedTypeOrigins_ != nullptr)
+    {
+        const auto local = workerResolvedTypeOrigins_->find(syntax);
+        if (local != workerResolvedTypeOrigins_->end()) return &local->second;
+    }
+    const auto found = resolvedTypeOriginBySyntax_.find(syntax);
+    return found == resolvedTypeOriginBySyntax_.end() ? nullptr : &found->second;
+}
+
+std::string* ProjectGenericModel::mutableResolvedTypeIdentity(
+    const ast::TypeSyntax* syntax)
+{
+    if (workerResolvedTypeIdentities_ != nullptr)
+    {
+        const auto local = workerResolvedTypeIdentities_->find(syntax);
+        if (local != workerResolvedTypeIdentities_->end()) return &local->second;
+        const auto shared = resolvedTypeIdentityBySyntax_.find(syntax);
+        if (shared == resolvedTypeIdentityBySyntax_.end()) return nullptr;
+        const auto [inserted, unused] =
+            workerResolvedTypeIdentities_->emplace(syntax, shared->second);
+        (void)unused;
+        return &inserted->second;
+    }
+    const auto found = resolvedTypeIdentityBySyntax_.find(syntax);
+    return found == resolvedTypeIdentityBySyntax_.end() ? nullptr : &found->second;
+}
+
+void ProjectGenericModel::recordResolvedTypeIdentity(
+    const ast::TypeSyntax* syntax,
+    std::string identity)
+{
+    if (workerResolvedTypeIdentities_ != nullptr)
+        (*workerResolvedTypeIdentities_)[syntax] = std::move(identity);
+    else
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(identity);
+}
+
+void ProjectGenericModel::recordResolvedTypeOrigin(
+    const ast::TypeSyntax* syntax,
+    DeclaredTypeOrigin origin)
+{
+    if (workerResolvedTypeOrigins_ != nullptr)
+        (*workerResolvedTypeOrigins_)[syntax] = std::move(origin);
+    else
+        resolvedTypeOriginBySyntax_[syntax] = std::move(origin);
 }
 
 GenericInstantiationReport ProjectGenericModel::instantiationReport() const noexcept
@@ -4085,35 +4145,42 @@ bool ProjectGenericModel::executeTypeDemandWaves(
 
         if (parallelismWorkers_ > 1U && reserved.size() > 1U)
         {
-            // NSC305-G09. Parallel wave: the ordinals were pre-reserved in the sorted order. Each
-            // worker clones on its own thread (outside the mutex); the committer serializes only
-            // the shared writes, so the products still merge deterministically by ordinal.
-            std::mutex executeMutex;
-            std::vector<std::future<std::string>> futures;
-            futures.reserve(reserved.size());
-            for (ReservedDemand& reservedDemand : reserved)
+            // NSC305-G09 corrective. Clone into one private product per stable index with at most
+            // `parallelismWorkers_` tasks. The old loop launched one task per demand, captured its
+            // range variable by reference, and wrote every clone into the shared unit AstArena.
+            // After all workers finish, apply/commit strictly in stable order on the coordinator.
+            std::vector<SpecializationProduct> products(reserved.size());
+            std::atomic<std::size_t> nextIndex{0};
+            const std::size_t workerCount = std::min(parallelismWorkers_, reserved.size());
+            std::vector<std::future<void>> futures;
+            futures.reserve(workerCount);
+            for (std::size_t worker = 0; worker < workerCount; ++worker)
             {
                 futures.push_back(std::async(std::launch::async,
-                    [&]() -> std::string
+                    [&]()
                     {
-                        GenericTypeDemand& demand = *reservedDemand.demand;
-                        SpecializationProduct product;
-                        const bool needsClone =
-                            reservedDemand.ordinal != std::numeric_limits<std::size_t>::max();
-                        if (needsClone)
+                        while (true)
                         {
-                            product = cloneTypeSpecializationProduct(
+                            const std::size_t index = nextIndex.fetch_add(1U);
+                            if (index >= reserved.size()) return;
+                            ReservedDemand& reservedDemand = reserved[index];
+                            if (reservedDemand.ordinal == std::numeric_limits<std::size_t>::max())
+                                continue;
+                            GenericTypeDemand& demand = *reservedDemand.demand;
+                            products[index] = cloneTypeSpecializationProduct(
                                 *demand.state, demand.target->typeArguments(),
                                 reservedDemand.specializedName, reservedDemand.callerContext);
-                            product.ordinal = reservedDemand.ordinal;
+                            products[index].ordinal = reservedDemand.ordinal;
                         }
-                        std::lock_guard<std::mutex> lock(executeMutex);
-                        return applyDemand(reservedDemand, needsClone ? &product : nullptr);
                     }));
             }
-            for (std::future<std::string>& future : futures)
+            for (std::future<void>& future : futures) future.get();
+            for (std::size_t index = 0; index < reserved.size(); ++index)
             {
-                if (future.get().empty())
+                SpecializationProduct* product =
+                    reserved[index].ordinal == std::numeric_limits<std::size_t>::max()
+                    ? nullptr : &products[index];
+                if (applyDemand(reserved[index], product).empty())
                 {
                     currentLogicalDepth_ = 0;
                     return false;
@@ -5843,6 +5910,13 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     const SpecializationContext& callerContext)
 {
     SpecializationProduct product;
+    product.arena = std::make_unique<ast::AstArena>();
+    auto* const previousIdentities = workerResolvedTypeIdentities_;
+    auto* const previousOrigins = workerResolvedTypeOrigins_;
+    const SpecializationContext* const previousContext = workerSpecializationContext_;
+    workerResolvedTypeIdentities_ = &product.resolvedTypeIdentities;
+    workerResolvedTypeOrigins_ = &product.resolvedTypeOrigins;
+    workerSpecializationContext_ = &callerContext;
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     prepareSpecializationSubstitutions(state, arguments, substitutions);
     packMaterializationError_.clear();
@@ -5852,7 +5926,7 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     associatedProjectionErrorRange_ = {};
 
     product.clone = cloneNode(
-        state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
+        *product.arena, state.syntax, substitutions, specializedName, state.record.name);
     product.packError = packMaterializationError_;
     product.packErrorRange = packMaterializationErrorRange_;
     product.associatedError = associatedProjectionError_;
@@ -5863,6 +5937,9 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     activeAssociatedProjections_ = callerContext.associatedProjections;
     associatedProjectionError_ = callerContext.associatedError;
     associatedProjectionErrorRange_ = callerContext.associatedErrorRange;
+    workerResolvedTypeIdentities_ = previousIdentities;
+    workerResolvedTypeOrigins_ = previousOrigins;
+    workerSpecializationContext_ = previousContext;
     return product;
 }
 
@@ -5904,6 +5981,21 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
             product.associatedError.empty() ? product.packError : product.associatedError);
         return false;
     }
+    if (product.clone == nullptr || product.arena == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            callerContext.range,
+            "generic specialization worker produced no clone");
+        return false;
+    }
+    state.unit->arena().absorb(std::move(*product.arena));
+    product.arena.reset();
+    for (auto& [syntax, identity] : product.resolvedTypeIdentities)
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(identity);
+    for (auto& [syntax, origin] : product.resolvedTypeOrigins)
+        resolvedTypeOriginBySyntax_[syntax] = std::move(origin);
     {
         const GenericTelemetry::Scope commit(telemetry_, "generics.rewrite-commit");
         commitTypeSpecialization(
@@ -6453,10 +6545,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGenericShallow(
     {
         result->setOriginNamespace(source->originNamespace().value());
     }
-    if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
-        origin != resolvedTypeOriginBySyntax_.end())
+    if (const DeclaredTypeOrigin* origin = lookupResolvedTypeOrigin(source); origin != nullptr)
     {
-        resolvedTypeOriginBySyntax_[result] = origin->second;
+        recordResolvedTypeOrigin(result, *origin);
     }
     return result;
 }
@@ -6485,12 +6576,12 @@ ast::TypeSyntax* ProjectGenericModel::cloneProjectionType(
         std::vector<std::string> candidates{owner + "." + item};
         if (current != nullptr)
         {
-            if (const auto identity = resolvedTypeIdentityBySyntax_.find(current);
-                identity != resolvedTypeIdentityBySyntax_.end())
+            if (const std::string* identity = lookupResolvedTypeIdentity(current);
+                identity != nullptr)
             {
-                const std::size_t moduleSeparator = identity->second.find("::");
+                const std::size_t moduleSeparator = identity->find("::");
                 if (moduleSeparator != std::string::npos)
-                    candidates.push_back(identity->second.substr(moduleSeparator + 2U) +
+                    candidates.push_back(identity->substr(moduleSeparator + 2U) +
                         "." + item);
             }
         }
@@ -6498,9 +6589,12 @@ ast::TypeSyntax* ProjectGenericModel::cloneProjectionType(
             !current->originNamespace()->empty())
             candidates.push_back(namespaceAppend(
                 *current->originNamespace(), owner) + "." + item);
-        if (!currentInstantiationNamespace_.empty())
+        const std::string_view instantiationNamespace = workerSpecializationContext_ != nullptr
+            ? std::string_view(workerSpecializationContext_->namespaceName)
+            : std::string_view(currentInstantiationNamespace_);
+        if (!instantiationNamespace.empty())
             candidates.push_back(namespaceAppend(
-                currentInstantiationNamespace_, owner) + "." + item);
+                instantiationNamespace, owner) + "." + item);
 
         const ast::TypeSyntax* definition = nullptr;
         std::string selectedKey;
@@ -6816,20 +6910,19 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         // Foo for T in T[] identifies Foo[], not Foo.
         if (substituted)
         {
-            if (auto identity = resolvedTypeIdentityBySyntax_.find(result);
-                identity != resolvedTypeIdentityBySyntax_.end())
+            if (std::string* identity = mutableResolvedTypeIdentity(result); identity != nullptr)
             {
                 if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer)
-                    identity->second.push_back('*');
+                    identity->push_back('*');
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
-                    identity->second += "[]";
+                    *identity += "[]";
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
-                    identity->second += '[' + std::string(
+                    *identity += '[' + std::string(
                         modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
-                    identity->second += "[*]";
+                    *identity += "[*]";
                 else
-                    identity->second += "[fixed]";
+                    *identity += "[fixed]";
             }
         }
     }
@@ -6861,10 +6954,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     if (!substituted)
     {
         result->setRange(source->range());
-        if (const auto identity = resolvedTypeIdentityBySyntax_.find(source);
-            identity != resolvedTypeIdentityBySyntax_.end())
+        if (const std::string* identity = lookupResolvedTypeIdentity(source); identity != nullptr)
         {
-            resolvedTypeIdentityBySyntax_[result] = identity->second;
+            recordResolvedTypeIdentity(result, *identity);
         }
     }
     return result;
@@ -6884,16 +6976,21 @@ void ProjectGenericModel::preserveOrAttachInstantiationOrigin(ast::TypeSyntax* s
     // Dictionary template and the project that declares Texture2D. If the early pass could not
     // select a declaration, retain the historical request-site fallback. Keep the spelling
     // untouched either way: origin is lookup context, never specialization identity.
-    if (const auto origin = resolvedTypeOriginBySyntax_.find(syntax);
-        origin != resolvedTypeOriginBySyntax_.end())
+    if (const DeclaredTypeOrigin* origin = lookupResolvedTypeOrigin(syntax); origin != nullptr)
     {
-        syntax->setOriginProjectOrdinal(origin->second.projectOrdinal);
-        syntax->setOriginNamespace(origin->second.namespaceName);
+        syntax->setOriginProjectOrdinal(origin->projectOrdinal);
+        syntax->setOriginNamespace(origin->namespaceName);
     }
     else
     {
-        syntax->setOriginProjectOrdinal(currentInstantiationProjectOrdinal_);
-        syntax->setOriginNamespace(currentInstantiationNamespace_);
+        const std::size_t projectOrdinal = workerSpecializationContext_ != nullptr
+            ? workerSpecializationContext_->projectOrdinal
+            : currentInstantiationProjectOrdinal_;
+        const std::string& namespaceName = workerSpecializationContext_ != nullptr
+            ? workerSpecializationContext_->namespaceName
+            : currentInstantiationNamespace_;
+        syntax->setOriginProjectOrdinal(projectOrdinal);
+        syntax->setOriginNamespace(namespaceName);
     }
 }
 

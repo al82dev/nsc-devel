@@ -626,8 +626,13 @@ private:
     struct SpecializationProduct final
     {
         std::size_t ordinal = 0;
+        // The worker owns every cloned node until the serial coordinator accepts the product.
+        // AstArena::absorb transfers ownership without changing any published pointer.
+        std::unique_ptr<ast::AstArena> arena;
         ast::AstNode* clone = nullptr;
         std::vector<GenericTypeDemand> childDemands;
+        std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentities;
+        std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOrigins;
         bool success = false;
         // NSC305-G09. Causal clone errors captured on the worker thread, so the serial committer can
         // report them without reading the worker's thread-local state.
@@ -635,14 +640,6 @@ private:
         SourceRange packErrorRange{};
         std::string associatedError;
         SourceRange associatedErrorRange{};
-    };
-
-    // NSC305-G09. The private state of a specialization worker: its own arena (the clone lives here,
-    // so workers do not race on the shared unit arena) and its collected child demands.
-    struct SpecializationWorker final
-    {
-        std::unique_ptr<ast::AstArena> arena;
-        std::vector<GenericTypeDemand> childDemands;
     };
 
     // NSC305-G07. Snapshot of the ten mutable "current instantiation" fields that
@@ -1160,6 +1157,11 @@ private:
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
     std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
+    const std::string* lookupResolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
+    const DeclaredTypeOrigin* lookupResolvedTypeOrigin(const ast::TypeSyntax* syntax) const noexcept;
+    std::string* mutableResolvedTypeIdentity(const ast::TypeSyntax* syntax);
+    void recordResolvedTypeIdentity(const ast::TypeSyntax* syntax, std::string identity);
+    void recordResolvedTypeOrigin(const ast::TypeSyntax* syntax, DeclaredTypeOrigin origin);
     const DeclaredTypeIdentity* resolveDeclaredTypeIdentity(
         const ast::TypeSyntax* syntax,
         std::size_t projectOrdinal,
@@ -1299,6 +1301,14 @@ private:
     // pathologically deep type/expression fails with a clean materialization error instead of
     // overflowing the process stack.
     thread_local static inline std::size_t cloneDepth_ = 0;
+    // NSC305-G09 corrective. Worker clones cannot write the model-wide maps or read the mutable
+    // coordinator context. These pointers redirect clone-local writes into the product and expose
+    // the immutable request context on that worker only.
+    thread_local static inline
+        std::unordered_map<const ast::TypeSyntax*, std::string>* workerResolvedTypeIdentities_ = nullptr;
+    thread_local static inline
+        std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin>* workerResolvedTypeOrigins_ = nullptr;
+    thread_local static inline const SpecializationContext* workerSpecializationContext_ = nullptr;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

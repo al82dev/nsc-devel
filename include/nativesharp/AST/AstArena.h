@@ -14,6 +14,12 @@ public:
     AstArena& operator=(const AstArena&) = delete;
     ~AstArena() noexcept;
 
+    // Transfers ownership of every object allocated by `other` without moving the objects
+    // themselves. Pointers previously returned by `other.make<T>()` therefore remain valid.
+    // This is used by parallel compiler workers: allocation stays private to each worker and the
+    // coordinator absorbs the completed arena before publishing any of its pointers.
+    void absorb(AstArena&& other);
+
     template <typename T, typename... Args>
     T* make(Args&&... args)
     {
