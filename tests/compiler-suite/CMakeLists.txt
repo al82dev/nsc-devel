@@ -492,6 +492,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopHirModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopHirModelDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirBuildCoordinator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirLayoutImporter.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCostExplorer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopMirModelDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilation.cpp"

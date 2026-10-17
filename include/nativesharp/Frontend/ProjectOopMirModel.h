@@ -955,6 +955,13 @@ public:
     void restoreMirFunctions();
 
 private:
+    bool importLayouts(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectOopHirModel& hirModel,
+        std::string& error);
+
     // C2.1 "fixed arrays": size/alignment of one array element, for both the managed
     // (length-prefixed, heap) and the raw (inline storage / raw pointer) element paths -- one
     // answer, so a GEP stride can never disagree with the layout a field was given.
