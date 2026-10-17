@@ -858,6 +858,17 @@ private:
         bool addressContext,
         std::string& error);
 
+    std::unique_ptr<ProjectOopHirNode> lowerBoundCall(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding* binding,
+        const std::vector<const ast::AstNode*>& argumentSyntaxes,
+        std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr,
+        bool nullConditional = false);
+
     // NS304-T05-F03: rewrites every Return node of an async poll body into
     // `self->result = v; self->state = ready; return;`. self is the parameter at
     // `selfParameterOrdinal` (type future:<T>*); resultTypeKey is the awaited inner type T.
