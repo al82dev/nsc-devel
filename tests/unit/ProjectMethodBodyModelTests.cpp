@@ -1327,6 +1327,155 @@ void testDeepMixedStructuredForeachParser(TestContext& tests)
         "1024 alternating ordinary-if and foreach bodies parse without cross-machine recursion");
 }
 
+void testDeepMixedStructuredConditionalPatternParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class DeepConditionalPatternParser { void Run(int source) { ";
+    source.reserve(source.size() + depth * 34U + 16U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        if ((index & 1U) == 0U)
+            source += "if (true) { ";
+        else
+            source += "if (let var item" + std::to_string(index) + " = source) { ";
+    }
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "} }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "DeepConditionalPatternParser.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "1024 alternating ordinary-if and condition-pattern bodies parse without recursion");
+}
+
+void testConditionalPatternParserContracts(TestContext& tests)
+{
+    const std::string source = R"ns(
+class ConditionalPatternShape {
+    void Run(int source) {
+        if (let var first = source) { Use(first); }
+        else if (let var second = source) { Use(second); }
+        while (let var current = source) { break; }
+        let var final = source else { return; };
+    }
+}
+)ns";
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("ConditionalPatternShape.ns", source);
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+
+    std::size_t conditionalTemporaries = 0;
+    std::size_t inlineLetElseBindings = 0;
+    std::size_t loweredWhile = 0;
+    std::vector<const nativesharp::ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const nativesharp::ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::VariableDeclarationStatement &&
+            node->text().starts_with("$__nsc_conditional_pattern_") &&
+            !node->text().ends_with("_matched"))
+            ++conditionalTemporaries;
+        if (node->kind() == nativesharp::ast::AstNodeKind::VariableDeclarationStatement &&
+            node->text() == "final")
+            ++inlineLetElseBindings;
+        if (node->kind() == nativesharp::ast::AstNodeKind::WhileStatement) ++loweredWhile;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "condition-pattern forms parse without diagnostics");
+    tests.expect(conditionalTemporaries == 4U,
+        "condition-pattern forms preserve one source temporary per form");
+    tests.expect(inlineLetElseBindings == 1U,
+        "condition-pattern let-else preserves its flattened binding");
+    tests.expect(loweredWhile == 1U,
+        "condition-pattern while preserves its lowered loop shape");
+}
+
+void testDeepLetElseDivergenceParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 2048;
+    std::string source = "class DeepLetElse { void Run(int source) { "
+        "let var value = source else { ";
+    source.reserve(source.size() + depth * 36U + 32U);
+    for (std::size_t index = 0; index < depth; ++index) source += "if (true) { ";
+    source += "return; ";
+    for (std::size_t index = 0; index < depth; ++index) source += "} else { return; } ";
+    source += "}; } }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("DeepLetElse.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "2048 nested divergent if branches validate let-else without host recursion");
+}
+
+void testDeepMixedAllStructuredStatementsParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class DeepAllStatements { void Run(int source) { ";
+    std::vector<std::string> closers;
+    closers.reserve(depth);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        switch (index % 8U)
+        {
+        case 0U: source += "if (true) { "; closers.emplace_back("} "); break;
+        case 1U:
+            source += "foreach (int item" + std::to_string(index) + " in 0..1) { ";
+            closers.emplace_back("} ");
+            break;
+        case 2U: source += "try { "; closers.emplace_back("} finally { } "); break;
+        case 3U:
+            source += "using (int resource" + std::to_string(index) + " = source) { ";
+            closers.emplace_back("} ");
+            break;
+        case 4U: source += "defer [] { "; closers.emplace_back("} "); break;
+        case 5U: source += "switch (source) { default: "; closers.emplace_back("break; } "); break;
+        case 6U: source += "match (source) { _ => { "; closers.emplace_back("} } "); break;
+        default: source += "while (true) { "; closers.emplace_back("} "); break;
+        }
+    }
+    for (auto closer = closers.rbegin(); closer != closers.rend(); ++closer) source += *closer;
+    source += "} }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("DeepAllStatements.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    tests.expect(root != nullptr && !diagnostics.hasErrors(),
+        "1024 mixed structured statements share one continuation stack without recursion");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1667,6 +1816,10 @@ int main()
     testDeepNestedDeferParser(tests);
     testDeferParserContracts(tests);
     testDeepMixedStructuredForeachParser(tests);
+    testDeepMixedStructuredConditionalPatternParser(tests);
+    testConditionalPatternParserContracts(tests);
+    testDeepLetElseDivergenceParser(tests);
+    testDeepMixedAllStructuredStatementsParser(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);

@@ -10595,248 +10595,7 @@ bool Parser::statementAlwaysDiverges(const ast::AstNode* statement) const
 
 ast::AstNode* Parser::parseConditionalPatternStatement()
 {
-    enum class Form
-    {
-        If,
-        While,
-        LetElse
-    };
-
-    const std::size_t beginIndex = index_;
-    Form form = Form::LetElse;
-    SourceRange featureRange = current().range();
-    if (at(TokenKind::KwIf))
-    {
-        form = Form::If;
-        featureRange = consume().range();
-        expect(TokenKind::LeftParen, "'(' after 'if'");
-        expectContextualKeyword("let", "'let' in conditional pattern");
-    }
-    else if (at(TokenKind::KwWhile))
-    {
-        form = Form::While;
-        featureRange = consume().range();
-        expect(TokenKind::LeftParen, "'(' after 'while'");
-        expectContextualKeyword("let", "'let' in conditional pattern");
-    }
-    else
-    {
-        expectContextualKeyword("let", "'let'");
-    }
-
-    Pattern pattern = parsePattern(false);
-    expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
-    ast::AstNode* sourceExpression = parseAssignmentExpression();
-    if (form != Form::LetElse) expect(TokenKind::RightParen, "')' after conditional pattern");
-
-    const auto collectBindings = [&](const Pattern& root)
-    {
-        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
-        std::function<void(const Pattern&)> visit = [&](const Pattern& currentPattern)
-        {
-            if (currentPattern.kind == PatternKind::Binding)
-            {
-                bindings.emplace_back(currentPattern.name, currentPattern.bindingMode);
-                return;
-            }
-            for (const Pattern& child : currentPattern.children) visit(child);
-        };
-        visit(root);
-        std::ranges::sort(bindings, [](const auto& left, const auto& right)
-        {
-            if (left.first != right.first) return left.first < right.first;
-            return left.second < right.second;
-        });
-        return bindings;
-    };
-    std::function<void(const Pattern&, bool)> validateBindingModes =
-        [&](const Pattern& currentPattern, bool preservesAddress)
-    {
-        if (currentPattern.kind == PatternKind::Binding &&
-            currentPattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                currentPattern.range,
-                "ref/move pattern binding cannot cross a tuple deconstruction or variant "
-                "payload copy; bind the aggregate first");
-        }
-        const bool childPreservesAddress = preservesAddress &&
-            currentPattern.kind != PatternKind::Tuple && currentPattern.kind != PatternKind::Variant;
-        for (const Pattern& child : currentPattern.children)
-            validateBindingModes(child, childPreservesAddress);
-    };
-    std::function<void(const Pattern&)> validateOrBindings = [&](const Pattern& currentPattern)
-    {
-        if (currentPattern.kind == PatternKind::Or && !currentPattern.children.empty())
-        {
-            const auto expected = collectBindings(currentPattern.children.front());
-            bool identical = true;
-            for (std::size_t index = 1; index < currentPattern.children.size(); ++index)
-                identical = identical && collectBindings(currentPattern.children[index]) == expected;
-            if (!identical)
-            {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    currentPattern.range,
-                    "OR-pattern alternatives must bind identical names with identical "
-                    "value/ref/move modes");
-            }
-        }
-        for (const Pattern& child : currentPattern.children) validateOrBindings(child);
-    };
-    validateBindingModes(pattern, true);
-    validateOrBindings(pattern);
-
-    ast::AstNode* successBody = nullptr;
-    ast::AstNode* failureBody = nullptr;
-    if (form == Form::If)
-    {
-        successBody = parseEmbeddedStatementBlock();
-        if (consumeIf(TokenKind::KwElse))
-        {
-            if (at(TokenKind::KwIf))
-            {
-                const bool conditional = peek().kind() == TokenKind::LeftParen &&
-                    peek(2).kind() == TokenKind::Identifier && peek(2).lexeme() == "let";
-                failureBody = conditional
-                    ? parseConditionalPatternStatement()
-                    : parseIfStatement();
-            }
-            else
-            {
-                failureBody = parseEmbeddedStatementBlock();
-            }
-        }
-    }
-    else if (form == Form::While)
-    {
-        successBody = parseEmbeddedStatementBlock();
-    }
-    else
-    {
-        expect(TokenKind::KwElse, "'else' after let pattern initializer");
-        failureBody = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-        if (failureBody == nullptr)
-            expect(TokenKind::LeftBrace, "'{' to open the divergent let-else body");
-        if (!statementAlwaysDiverges(failureBody))
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                failureBody != nullptr ? failureBody->range() : featureRange,
-                "the else body of a let-else statement must diverge with return, throw, break, "
-                "continue, or an if whose branches both diverge");
-        }
-        expect(TokenKind::Semicolon, "';' after let-else statement");
-    }
-
-    const SourceRange statementRange = tokenRangeFrom(beginIndex);
-    const std::string temporary =
-        "$__nsc_conditional_pattern_" + std::to_string(nextMatchTemporary_++);
-    const std::string matched = temporary + "_matched";
-    const auto bindings = collectBindings(pattern);
-    const bool hasReferenceBinding = std::ranges::any_of(bindings, [](const auto& binding)
-    {
-        return binding.second == PatternBindingMode::Reference ||
-                binding.second == PatternBindingMode::ReferenceMutable;
-    });
-    const bool hasMoveBinding = std::ranges::any_of(bindings, [](const auto& binding)
-    {
-        return binding.second == PatternBindingMode::Move;
-    });
-
-    const auto addPrelude = [&](ast::AstNode* destination)
-    {
-        ast::TypeSyntax* inferred = arena_.make<ast::TypeSyntax>(
-            featureRange, TokenKind::KwVar, "var");
-        ast::AstNode* declaration = makeVariableDeclaration(
-            inferred, temporary, sourceExpression, false, !hasReferenceBinding && !hasMoveBinding);
-        if (hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
-        destination->addChild(declaration);
-        ast::TypeSyntax* boolType = arena_.make<ast::TypeSyntax>(
-            featureRange, TokenKind::KwBool, "bool");
-        destination->addChild(makeVariableDeclaration(
-            boolType,
-            matched,
-            makeBooleanLiteral(featureRange, false),
-            false,
-            false));
-    };
-    const auto makeNotMatched = [&]()
-    {
-        ast::AstNode* result = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::UnaryExpression, statementRange);
-        result->setTokenKind(TokenKind::Bang);
-        result->setFirst(makeIdentifierExpression(statementRange, matched));
-        return result;
-    };
-    const auto makeSuccess = [&](bool includeBody)
-    {
-        ast::AstNode* body = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, statementRange);
-        body->addChild(makeExpressionStatement(makeAssignmentExpression(
-            makeIdentifierExpression(statementRange, matched),
-            makeBooleanLiteral(statementRange, true))));
-        if (includeBody && successBody != nullptr)
-            for (ast::AstNode* child : successBody->children()) body->addChild(child);
-        return body;
-    };
-    PatternExpressionFactory root = [&, statementRange]
-    {
-        return makeIdentifierExpression(statementRange, temporary);
-    };
-
-    if (form == Form::While)
-    {
-        ast::AstNode* iteration = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, statementRange);
-        addPrelude(iteration);
-        iteration->addChild(lowerPattern(pattern, root, makeSuccess(true), temporary));
-        ast::AstNode* stopBody = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, statementRange);
-        stopBody->addChild(arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BreakStatement, statementRange));
-        ast::AstNode* stop = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::IfStatement, statementRange);
-        stop->setFirst(makeNotMatched());
-        stop->setSecond(stopBody);
-        iteration->addChild(stop);
-
-        ast::AstNode* loop = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::WhileStatement, statementRange);
-        loop->setFirst(makeBooleanLiteral(featureRange, true));
-        loop->setSecond(iteration);
-        return loop;
-    }
-
-    ast::AstNode* lowered = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BlockStatement, statementRange);
-    addPrelude(lowered);
-    lowered->addChild(lowerPattern(
-        pattern,
-        root,
-        makeSuccess(form == Form::If),
-        temporary,
-        form != Form::LetElse));
-
-    if (failureBody != nullptr)
-    {
-        ast::AstNode* failure = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::IfStatement, statementRange);
-        failure->setFirst(makeNotMatched());
-        failure->setSecond(failureBody);
-        lowered->addChild(failure);
-    }
-
-    if (form == Form::LetElse)
-    {
-        emitPatternBindings(pattern, root, lowered, temporary);
-        lowered->setAuxiliaryText("conditional-pattern-inline");
-    }
-    return lowered;
+    return parseStructuredControlStatement();
 }
 
 void Parser::parseIfHeader(IfParseState& state)
@@ -10926,6 +10685,7 @@ private:
         ParseUsing,
         ParseDefer,
         ParseForeach,
+        ParseConditionalPattern,
         ParseSwitch,
         ParseMatch,
         ParseEmbedded,
@@ -10946,6 +10706,10 @@ private:
         FinishUsing,
         FinishDefer,
         FinishForeach,
+        FinishConditionalPatternSuccess,
+        FinishConditionalPatternFailure,
+        FinishConditionalPatternWhile,
+        FinishConditionalPatternLetElse,
         ContinueSwitch,
         ContinueSwitchSection,
         AppendSwitchStatement,
@@ -11002,6 +10766,22 @@ private:
         SourceRange deferRange;
         std::vector<DeferCapture> captures;
     };
+    enum class ConditionalPatternForm
+    {
+        If,
+        While,
+        LetElse
+    };
+    struct ConditionalPatternParseState final
+    {
+        std::size_t beginIndex = 0;
+        ConditionalPatternForm form = ConditionalPatternForm::LetElse;
+        SourceRange featureRange;
+        Pattern pattern;
+        ast::AstNode* sourceExpression = nullptr;
+        ast::AstNode* successBody = nullptr;
+        ast::AstNode* failureBody = nullptr;
+    };
     struct MatchArm final
     {
         Pattern pattern;
@@ -11037,6 +10817,16 @@ private:
         return parser_.at(TokenKind::KwWhile) && !conditional;
     }
 
+    bool conditionalPatternAtCursor() const noexcept
+    {
+        const bool conditionalControl =
+            (parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile)) &&
+            parser_.peek().kind() == TokenKind::LeftParen &&
+            parser_.peek(2).kind() == TokenKind::Identifier &&
+            parser_.peek(2).lexeme() == "let";
+        return conditionalControl || parser_.atContextualKeyword("let");
+    }
+
     bool structuredControlAtCursor() const noexcept
     {
         return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
@@ -11044,6 +10834,7 @@ private:
             parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
             parser_.atContextualKeyword("defer") ||
             parser_.at(TokenKind::KwForeach) ||
+            conditionalPatternAtCursor() ||
             parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
     }
@@ -11085,6 +10876,7 @@ private:
         case WorkKind::ParseUsing: parseUsing(); break;
         case WorkKind::ParseDefer: parseDefer(); break;
         case WorkKind::ParseForeach: parseForeach(); break;
+        case WorkKind::ParseConditionalPattern: parseConditionalPattern(); break;
         case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseMatch: parseMatch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
@@ -11105,6 +10897,14 @@ private:
         case WorkKind::FinishUsing: finishUsing(current.stateIndex, popValue()); break;
         case WorkKind::FinishDefer: finishDefer(current.stateIndex, popValue()); break;
         case WorkKind::FinishForeach: finishForeach(current.stateIndex, popValue()); break;
+        case WorkKind::FinishConditionalPatternSuccess:
+            finishConditionalPatternSuccess(current.stateIndex, popValue()); break;
+        case WorkKind::FinishConditionalPatternFailure:
+            finishConditionalPatternFailure(current.stateIndex, popValue()); break;
+        case WorkKind::FinishConditionalPatternWhile:
+            finishConditionalPatternWhile(current.stateIndex, popValue()); break;
+        case WorkKind::FinishConditionalPatternLetElse:
+            finishConditionalPatternLetElse(current.stateIndex, popValue()); break;
         case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
         case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
         case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
@@ -11125,6 +10925,8 @@ private:
             work_.push_back({WorkKind::ParseDefer, 0});
         else if (parser_.at(TokenKind::KwForeach))
             work_.push_back({WorkKind::ParseForeach, 0});
+        else if (conditionalPatternAtCursor())
+            work_.push_back({WorkKind::ParseConditionalPattern, 0});
         else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else if (parser_.startsParenthesizedBlock("match"))
             work_.push_back({WorkKind::ParseMatch, 0});
@@ -11572,6 +11374,304 @@ private:
     {
         values_.push_back(parser_.lowerForeachStatement(
             std::move(foreachStates_[index]), body));
+    }
+
+    std::vector<std::pair<std::string, PatternBindingMode>> collectPatternBindings(
+        const Pattern& root)
+    {
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::function<void(const Pattern&)> visit = [&](const Pattern& currentPattern)
+        {
+            if (currentPattern.kind == PatternKind::Binding)
+            {
+                bindings.emplace_back(currentPattern.name, currentPattern.bindingMode);
+                return;
+            }
+            for (const Pattern& child : currentPattern.children) visit(child);
+        };
+        visit(root);
+        std::ranges::sort(bindings, [](const auto& left, const auto& right)
+        {
+            if (left.first != right.first) return left.first < right.first;
+            return left.second < right.second;
+        });
+        return bindings;
+    }
+
+    void parseConditionalPatternHeader(ConditionalPatternParseState& state)
+    {
+        state.beginIndex = parser_.index_;
+        state.featureRange = parser_.current().range();
+        if (parser_.at(TokenKind::KwIf))
+        {
+            state.form = ConditionalPatternForm::If;
+            state.featureRange = parser_.consume().range();
+            parser_.expect(TokenKind::LeftParen, "'(' after 'if'");
+            parser_.expectContextualKeyword("let", "'let' in conditional pattern");
+        }
+        else if (parser_.at(TokenKind::KwWhile))
+        {
+            state.form = ConditionalPatternForm::While;
+            state.featureRange = parser_.consume().range();
+            parser_.expect(TokenKind::LeftParen, "'(' after 'while'");
+            parser_.expectContextualKeyword("let", "'let' in conditional pattern");
+        }
+        else
+        {
+            state.form = ConditionalPatternForm::LetElse;
+            parser_.expectContextualKeyword("let", "'let'");
+        }
+
+        state.pattern = parser_.parsePattern(false);
+        parser_.expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
+        state.sourceExpression = parser_.parseAssignmentExpression();
+        if (state.form != ConditionalPatternForm::LetElse)
+            parser_.expect(TokenKind::RightParen, "')' after conditional pattern");
+
+        std::function<void(const Pattern&, bool)> validateBindingModes =
+            [&](const Pattern& currentPattern, bool preservesAddress)
+        {
+            if (currentPattern.kind == PatternKind::Binding &&
+                currentPattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
+            {
+                parser_.diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    currentPattern.range,
+                    "ref/move pattern binding cannot cross a tuple deconstruction or variant "
+                    "payload copy; bind the aggregate first");
+            }
+            const bool childPreservesAddress = preservesAddress &&
+                currentPattern.kind != PatternKind::Tuple &&
+                currentPattern.kind != PatternKind::Variant;
+            for (const Pattern& child : currentPattern.children)
+                validateBindingModes(child, childPreservesAddress);
+        };
+        std::function<void(const Pattern&)> validateOrBindings =
+            [&](const Pattern& currentPattern)
+        {
+            if (currentPattern.kind == PatternKind::Or && !currentPattern.children.empty())
+            {
+                const auto expected = collectPatternBindings(currentPattern.children.front());
+                bool identical = true;
+                for (std::size_t childIndex = 1;
+                     childIndex < currentPattern.children.size(); ++childIndex)
+                {
+                    identical = identical &&
+                        collectPatternBindings(currentPattern.children[childIndex]) == expected;
+                }
+                if (!identical)
+                {
+                    parser_.diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        currentPattern.range,
+                        "OR-pattern alternatives must bind identical names with identical "
+                        "value/ref/move modes");
+                }
+            }
+            for (const Pattern& child : currentPattern.children) validateOrBindings(child);
+        };
+        validateBindingModes(state.pattern, true);
+        validateOrBindings(state.pattern);
+    }
+
+    void parseConditionalPattern()
+    {
+        const std::size_t index = conditionalPatternStates_.size();
+        conditionalPatternStates_.emplace_back();
+        ConditionalPatternParseState& state = conditionalPatternStates_.back();
+        parseConditionalPatternHeader(state);
+        if (state.form == ConditionalPatternForm::If)
+        {
+            work_.push_back({WorkKind::FinishConditionalPatternSuccess, index});
+            work_.push_back({WorkKind::ParseEmbedded, 0});
+            return;
+        }
+        if (state.form == ConditionalPatternForm::While)
+        {
+            work_.push_back({WorkKind::FinishConditionalPatternWhile, index});
+            work_.push_back({WorkKind::ParseEmbedded, 0});
+            return;
+        }
+
+        parser_.expect(TokenKind::KwElse, "'else' after let pattern initializer");
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            work_.push_back({WorkKind::FinishConditionalPatternLetElse, index});
+            work_.push_back({WorkKind::ParseBlock, 0});
+        }
+        else
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' to open the divergent let-else body");
+            finishConditionalPatternLetElse(index, nullptr);
+        }
+    }
+
+    void finishConditionalPatternSuccess(std::size_t index, ast::AstNode* successBody)
+    {
+        ConditionalPatternParseState& state = conditionalPatternStates_[index];
+        state.successBody = successBody;
+        if (!parser_.consumeIf(TokenKind::KwElse))
+        {
+            values_.push_back(lowerConditionalPattern(state));
+            return;
+        }
+        work_.push_back({WorkKind::FinishConditionalPatternFailure, index});
+        if (parser_.at(TokenKind::KwIf))
+        {
+            work_.push_back({conditionalPatternAtCursor()
+                ? WorkKind::ParseConditionalPattern
+                : WorkKind::ParseIf, 0});
+        }
+        else
+        {
+            work_.push_back({WorkKind::ParseEmbedded, 0});
+        }
+    }
+
+    void finishConditionalPatternFailure(std::size_t index, ast::AstNode* failureBody)
+    {
+        ConditionalPatternParseState& state = conditionalPatternStates_[index];
+        state.failureBody = failureBody;
+        values_.push_back(lowerConditionalPattern(state));
+    }
+
+    void finishConditionalPatternWhile(std::size_t index, ast::AstNode* successBody)
+    {
+        ConditionalPatternParseState& state = conditionalPatternStates_[index];
+        state.successBody = successBody;
+        values_.push_back(lowerConditionalPattern(state));
+    }
+
+    void finishConditionalPatternLetElse(std::size_t index, ast::AstNode* failureBody)
+    {
+        ConditionalPatternParseState& state = conditionalPatternStates_[index];
+        state.failureBody = failureBody;
+        if (!parser_.statementAlwaysDiverges(failureBody))
+        {
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                failureBody != nullptr ? failureBody->range() : state.featureRange,
+                "the else body of a let-else statement must diverge with return, throw, break, "
+                "continue, or an if whose branches both diverge");
+        }
+        parser_.expect(TokenKind::Semicolon, "';' after let-else statement");
+        values_.push_back(lowerConditionalPattern(state));
+    }
+
+    ast::AstNode* lowerConditionalPattern(ConditionalPatternParseState& state)
+    {
+        const SourceRange statementRange = parser_.tokenRangeFrom(state.beginIndex);
+        const std::string temporary =
+            "$__nsc_conditional_pattern_" + std::to_string(parser_.nextMatchTemporary_++);
+        const std::string matched = temporary + "_matched";
+        const auto bindings = collectPatternBindings(state.pattern);
+        const bool hasReferenceBinding = std::ranges::any_of(
+            bindings, [](const auto& binding)
+        {
+            return binding.second == PatternBindingMode::Reference ||
+                binding.second == PatternBindingMode::ReferenceMutable;
+        });
+        const bool hasMoveBinding = std::ranges::any_of(bindings, [](const auto& binding)
+        {
+            return binding.second == PatternBindingMode::Move;
+        });
+
+        const auto addPrelude = [&](ast::AstNode* destination)
+        {
+            ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
+                state.featureRange, TokenKind::KwVar, "var");
+            ast::AstNode* declaration = parser_.makeVariableDeclaration(
+                inferred, temporary, state.sourceExpression, false,
+                !hasReferenceBinding && !hasMoveBinding);
+            if (hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
+            destination->addChild(declaration);
+            ast::TypeSyntax* boolType = parser_.arena_.make<ast::TypeSyntax>(
+                state.featureRange, TokenKind::KwBool, "bool");
+            destination->addChild(parser_.makeVariableDeclaration(
+                boolType,
+                matched,
+                parser_.makeBooleanLiteral(state.featureRange, false),
+                false,
+                false));
+        };
+        const auto makeNotMatched = [&]()
+        {
+            ast::AstNode* result = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::UnaryExpression, statementRange);
+            result->setTokenKind(TokenKind::Bang);
+            result->setFirst(parser_.makeIdentifierExpression(statementRange, matched));
+            return result;
+        };
+        const auto makeSuccess = [&](bool includeBody)
+        {
+            ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, statementRange);
+            body->addChild(parser_.makeExpressionStatement(parser_.makeAssignmentExpression(
+                parser_.makeIdentifierExpression(statementRange, matched),
+                parser_.makeBooleanLiteral(statementRange, true))));
+            if (includeBody && state.successBody != nullptr)
+            {
+                for (ast::AstNode* child : state.successBody->children()) body->addChild(child);
+            }
+            return body;
+        };
+        PatternExpressionFactory root = [&, statementRange]
+        {
+            return parser_.makeIdentifierExpression(statementRange, temporary);
+        };
+
+        if (state.form == ConditionalPatternForm::While)
+        {
+            ast::AstNode* iteration = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, statementRange);
+            addPrelude(iteration);
+            iteration->addChild(parser_.lowerPattern(
+                state.pattern, root, makeSuccess(true), temporary));
+            ast::AstNode* stopBody = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, statementRange);
+            stopBody->addChild(parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BreakStatement, statementRange));
+            ast::AstNode* stop = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IfStatement, statementRange);
+            stop->setFirst(makeNotMatched());
+            stop->setSecond(stopBody);
+            iteration->addChild(stop);
+
+            ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::WhileStatement, statementRange);
+            loop->setFirst(parser_.makeBooleanLiteral(state.featureRange, true));
+            loop->setSecond(iteration);
+            return loop;
+        }
+
+        ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, statementRange);
+        addPrelude(lowered);
+        lowered->addChild(parser_.lowerPattern(
+            state.pattern,
+            root,
+            makeSuccess(state.form == ConditionalPatternForm::If),
+            temporary,
+            state.form != ConditionalPatternForm::LetElse));
+
+        if (state.failureBody != nullptr)
+        {
+            ast::AstNode* failure = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IfStatement, statementRange);
+            failure->setFirst(makeNotMatched());
+            failure->setSecond(state.failureBody);
+            lowered->addChild(failure);
+        }
+
+        if (state.form == ConditionalPatternForm::LetElse)
+        {
+            parser_.emitPatternBindings(state.pattern, root, lowered, temporary);
+            lowered->setAuxiliaryText("conditional-pattern-inline");
+        }
+        return lowered;
     }
 
     void parseSwitch()
@@ -12439,6 +12539,7 @@ private:
     std::vector<UsingParseState> usingStates_;
     std::vector<DeferParseState> deferStates_;
     std::vector<ForeachParseState> foreachStates_;
+    std::vector<ConditionalPatternParseState> conditionalPatternStates_;
     std::vector<SwitchParseState> switchStates_;
     std::vector<MatchParseState> matchStates_;
     std::vector<BlockParseState> blockStates_;
