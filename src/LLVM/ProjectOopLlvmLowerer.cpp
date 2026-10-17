@@ -3089,26 +3089,13 @@ private:
             deallocationFunction_ = deallocationWrapper;
         }
 
-        // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI
-        // void(void* context, void* ptr); the default thunk ignores context and forwards to
-        // __nativesharp_free(ptr). Built inline (the runtime library is out of scope), so it is a
-        // real function pointer that can be stored in the object header.
+        // NS304-T13-F07: stable allocator-deallocation ABI. Custom allocator objects preserve a
+        // function with this shape in a per-object descriptor sidecar; the public object header
+        // remains the historical single descriptor pointer.
         {
             LLVMTypeRef thunkParams[] = {ptr, ptr};
             allocatorFreeThunkType_ = LLVMFunctionType(
                 LLVMVoidTypeInContext(context_), thunkParams, 2, 0);
-            allocatorFreeThunkFunction_ = LLVMAddFunction(
-                module_, "__nativesharp_allocator_free_thunk", allocatorFreeThunkType_);
-            LLVMSetLinkage(allocatorFreeThunkFunction_, LLVMInternalLinkage);
-            LLVMValueRef thunkPtrParam = LLVMGetParam(allocatorFreeThunkFunction_, 1);
-            LLVMBasicBlockRef thunkEntry = LLVMAppendBasicBlockInContext(
-                context_, allocatorFreeThunkFunction_, "entry");
-            LLVMPositionBuilderAtEnd(builder_, thunkEntry);
-            LLVMValueRef freeArgs[] = {thunkPtrParam};
-            LLVMBuildCall2(
-                builder_, deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
-            LLVMBuildRetVoid(builder_);
-            applyFunctionAttribute(allocatorFreeThunkFunction_, "nounwind");
         }
 
         LLVMTypeRef consoleParams[] = {ptr, LLVMInt32TypeInContext(context_)};
@@ -5838,40 +5825,11 @@ private:
                 1,
                 "");
             LLVMValueRef freeArguments[] = {releasingObject};
-            // NS304-T13-F08: release storage through the provenance thunk, exactly like
-            // emitRaiiDestroy, so a custom allocator, the default heap and raw placement share one
-            // release path. The previous unconditional GC free corrupted pooled objects.
-            const std::string releasingTypeKey =
-                "type:" + nameLookup_.namedTypes()[table.typeOrdinal].identity.key();
-            const frontend::ProjectOopMirClassLayout* releasingLayout = findClassLayout(mirModel_, releasingTypeKey);
-            if (releasingLayout == nullptr)
-            {
-                return fail(error, "NS304-T13-F08 delete entry has no class layout for " + releasingTypeKey);
-            }
-            LLVMValueRef releasingThunkAddress = byteOffset(
-                releasingObject, releasingLayout->deallocateThunkOffset, "delete.thunk.addr");
-            LLVMValueRef releasingThunk = LLVMBuildLoad2(
-                builder_, ptr, releasingThunkAddress, "delete.thunk");
-            LLVMValueRef releasingHasThunk = LLVMBuildICmp(
-                builder_, LLVMIntNE, releasingThunk, LLVMConstNull(ptr), "delete.hasthunk");
-            LLVMBasicBlockRef releasingDeallocBlock = appendBlock("delete.dealloc");
-            LLVMBasicBlockRef releasingGcFreeBlock = appendBlock("delete.gcfree");
-            LLVMBasicBlockRef releasingDeallocDoneBlock = appendBlock("delete.dealloc.done");
-            LLVMBuildCondBr(builder_, releasingHasThunk, releasingDeallocBlock, releasingGcFreeBlock);
-            LLVMPositionBuilderAtEnd(builder_, releasingDeallocBlock);
-            LLVMValueRef releasingContextAddress = byteOffset(
-                releasingObject, releasingLayout->allocatorContextOffset, "delete.context.addr");
-            LLVMValueRef releasingContext = LLVMBuildLoad2(
-                builder_, ptr, releasingContextAddress, "delete.context");
-            LLVMValueRef releasingDeallocArgs[] = {releasingContext, releasingObject};
-            buildNoUnwindCall(
-                allocatorFreeThunkType_, releasingThunk, releasingDeallocArgs, 2, "");
-            LLVMBuildBr(builder_, releasingDeallocDoneBlock);
-            LLVMPositionBuilderAtEnd(builder_, releasingGcFreeBlock);
+            // The ordinary descriptor preserves the historical heap contract. Custom allocator
+            // objects publish a per-object descriptor sidecar whose field 5 points at the custom
+            // release wrapper, so no provenance bytes are read from the public object layout.
             buildNoUnwindCall(
                 deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
-            LLVMBuildBr(builder_, releasingDeallocDoneBlock);
-            LLVMPositionBuilderAtEnd(builder_, releasingDeallocDoneBlock);
             LLVMBuildRetVoid(builder_);
         }
         currentDebugSubprogram_ = nullptr;
@@ -7241,13 +7199,19 @@ private:
             return fail(error, "Stage 49 RAII cleanup has no class-descriptor destruction ABI");
         }
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "raii.descriptor");
-        // NS304-T13-F07: object lifetime is always destroyed in place (descriptor field 7); storage
-        // release is then driven by the header's provenance thunk, so default heap, custom
-        // allocator, raw placement and stack-promoted storage share one release path.
+        // Owned storage dispatches through field 5. For an ordinary heap object that is the
+        // descriptor's normal destroy-and-free entry; for a custom allocator object its sidecar
+        // replaces field 5 with the context-aware release wrapper. Borrowed raw placement and
+        // stack-promoted storage dispatch through field 7 and therefore destroy in place only.
+        const bool releasesStorage =
+            node->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow ||
+            node->storageOwnership == sema::OwnershipKind::Owned;
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
-            builder_, descriptorType_, descriptor, 7, "raii.object.entry.addr");
+            builder_, descriptorType_, descriptor, releasesStorage ? 5U : 7U,
+            releasesStorage ? "raii.release.entry.addr" : "raii.object.entry.addr");
         LLVMValueRef destructionEntry = LLVMBuildLoad2(
-            builder_, ptr, entryAddress, "raii.object.entry");
+            builder_, ptr, entryAddress,
+            releasesStorage ? "raii.release.entry" : "raii.object.entry");
         LLVMValueRef arguments[] = {value};
         if (buildPotentiallyThrowingCall(
                 destructionEntryFunctionType_, destructionEntry, arguments, 1, "", error) == nullptr &&
@@ -7259,29 +7223,6 @@ private:
         {
             return true;
         }
-        // Read the provenance thunk; a null thunk means borrowed/stack storage with no release.
-        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, node->typeKey);
-        if (layout == nullptr)
-        {
-            return fail(error,
-                "NS304-T13-F07 raii cleanup has no class layout for " + node->typeKey);
-        }
-        LLVMValueRef thunkAddress =
-            byteOffset(value, layout->deallocateThunkOffset, "raii.thunk.addr");
-        LLVMValueRef thunk = LLVMBuildLoad2(builder_, ptr, thunkAddress, "raii.thunk");
-        LLVMValueRef hasThunk = LLVMBuildICmp(
-            builder_, LLVMIntNE, thunk, LLVMConstNull(ptr), "raii.hasthunk");
-        LLVMBasicBlockRef deallocBlock = appendBlock("raii.dealloc");
-        LLVMBasicBlockRef deallocDoneBlock = appendBlock("raii.dealloc.done");
-        LLVMBuildCondBr(builder_, hasThunk, deallocBlock, deallocDoneBlock);
-        LLVMPositionBuilderAtEnd(builder_, deallocBlock);
-        LLVMValueRef contextAddress =
-            byteOffset(value, layout->allocatorContextOffset, "raii.context.addr");
-        LLVMValueRef context = LLVMBuildLoad2(builder_, ptr, contextAddress, "raii.context");
-        LLVMValueRef deallocArgs[] = {context, value};
-        buildNoUnwindCall(allocatorFreeThunkType_, thunk, deallocArgs, 2, "");
-        LLVMBuildBr(builder_, deallocDoneBlock);
-        LLVMPositionBuilderAtEnd(builder_, deallocDoneBlock);
         LLVMBuildBr(builder_, doneBlock);
         LLVMPositionBuilderAtEnd(builder_, doneBlock);
         return true;
@@ -20728,16 +20669,6 @@ private:
             return failValue(error, "Macro A allocation cannot resolve its class descriptor");
         }
         LLVMBuildStore(builder_, descriptorValue, object);
-        {
-            LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-            // Stack-promoted storage is a frame alloca: no heap deallocation (null thunk). Heap
-            // objects get the default free thunk.
-            LLVMValueRef thunk = node->stackPromotedObject
-                ? LLVMConstNull(pointerType) : allocatorFreeThunkFunction_;
-            if (!storeAllocatorProvenance(
-                    object, node->typeKey, LLVMConstNull(pointerType), thunk, error))
-                return nullptr;
-        }
 
         if (!node->calleeName.empty())
         {
@@ -20866,34 +20797,34 @@ private:
             }
             if (descriptorValue == nullptr)
                 return failValue(error, "item 318 placement construction cannot resolve its class descriptor");
-            LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
-            if (node->alignment > 1U)
-                LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
-            // NS304-T13-F07: allocator provenance. A custom `new (alloc) T(...)` stores the concrete
-            // allocator context + its generated deallocate thunk; raw placement borrows its storage
-            // (null context + null thunk = no release).
+            const bool hasCustomAllocator =
+                node->allocatorContextLocalOrdinal.has_value() &&
+                node->allocatorDeallocateMemberOrdinal.has_value() &&
+                node->allocatorTypeOrdinal.has_value();
+            if (hasCustomAllocator)
             {
-                LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-                LLVMValueRef context = LLVMConstNull(pointerType);
-                LLVMValueRef thunk = LLVMConstNull(pointerType);
-                if (node->allocatorContextLocalOrdinal.has_value() &&
-                    node->allocatorDeallocateMemberOrdinal.has_value() &&
-                    node->allocatorTypeOrdinal.has_value())
-                {
-                    const auto found = localStorage_.find(*node->allocatorContextLocalOrdinal);
-                    if (found == localStorage_.end() || found->second == nullptr)
-                        return failValue(error,
-                            "NS304-T13-F07 allocator provenance has no context storage");
-                    context = LLVMBuildLoad2(
-                        builder_, pointerType, found->second, "allocator.context.load");
-                    thunk = allocatorDeallocateThunk(
-                        *node->allocatorTypeOrdinal,
-                        node->allocatorDeallocateCalleeName,
-                        error);
-                    if (thunk == nullptr) return nullptr;
-                }
-                if (!storeAllocatorProvenance(storage, node->typeKey, context, thunk, error))
+                const auto found = localStorage_.find(*node->allocatorContextLocalOrdinal);
+                if (found == localStorage_.end() || found->second == nullptr)
+                    return failValue(error,
+                        "NS304-T13-F07 allocator provenance has no context storage");
+                LLVMValueRef context = LLVMBuildLoad2(
+                    builder_, pointerType, found->second, "allocator.context.load");
+                LLVMValueRef thunk = allocatorDeallocateThunk(
+                    *node->allocatorTypeOrdinal,
+                    node->allocatorDeallocateCalleeName,
+                    error);
+                if (thunk == nullptr) return nullptr;
+                if (!installAllocatorDescriptorSidecar(
+                        storage, descriptorValue, context, thunk, error))
                     return nullptr;
+            }
+            else
+            {
+                // Raw placement borrows storage. Its ordinary descriptor keeps field 7 available
+                // for object-only destruction; cleanup chooses that entry from storageOwnership.
+                LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
+                if (node->alignment > 1U)
+                    LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
             }
         }
 
@@ -20916,7 +20847,7 @@ private:
                 LLVMBasicBlockRef outerUnwind = buildCurrentUnwindDestination(error);
                 if (!error.empty()) return nullptr;
                 allocatorFailureCleanup = emitAllocatorConstructionFailureCleanup(
-                    storage, node->typeKey, outerUnwind, error);
+                    storage, outerUnwind, error);
                 if (allocatorFailureCleanup == nullptr) return nullptr;
                 LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
             }
@@ -21644,46 +21575,157 @@ private:
         return mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
     }
 
-    // NS304-T13-F07: initialize the object header's provenance slots (allocator context + deallocate
-    // thunk) before the constructor so every throwing path already observes a valid provenance.
-    // A null thunk means "no deallocation" (raw placement / stack-promoted storage).
-    bool storeAllocatorProvenance(
+    // Creates the private descriptor shape used only by custom-allocator objects. Its first field
+    // is a byte-for-byte public class descriptor, so every existing consumer can dispatch through
+    // object[0] without knowing that context and thunk live immediately after that descriptor.
+    bool ensureAllocatorDescriptorSidecar(std::string& error)
+    {
+        if (allocatorDescriptorSidecarType_ != nullptr &&
+            allocatorDescriptorSidecarReleaseFunction_ != nullptr)
+            return true;
+        if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr ||
+            allocatorFreeThunkType_ == nullptr || deallocationFunction_ == nullptr)
+        {
+            return fail(error, "NS304-T13-F07 allocator sidecar requires completed descriptor/runtime ABI");
+        }
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef sidecarFields[] = {descriptorType_, ptr, ptr};
+        allocatorDescriptorSidecarType_ = LLVMStructCreateNamed(
+            context_, "nativesharp.allocator_descriptor_sidecar");
+        if (allocatorDescriptorSidecarType_ == nullptr)
+            return fail(error, "NS304-T13-F07 failed to create allocator descriptor sidecar type");
+        LLVMStructSetBody(allocatorDescriptorSidecarType_, sidecarFields, 3, 0);
+
+        allocatorDescriptorSidecarReleaseFunction_ = LLVMAddFunction(
+            module_, "__nativesharp_allocator_sidecar_destroy_and_free",
+            destructionEntryFunctionType_);
+        if (allocatorDescriptorSidecarReleaseFunction_ == nullptr)
+            return fail(error, "NS304-T13-F07 failed to create allocator sidecar release entry");
+        LLVMSetLinkage(allocatorDescriptorSidecarReleaseFunction_, LLVMInternalLinkage);
+
+        LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
+            context_, allocatorDescriptorSidecarReleaseFunction_, "entry");
+        LLVMPositionBuilderAtEnd(builder_, entry);
+        LLVMValueRef object = LLVMGetParam(allocatorDescriptorSidecarReleaseFunction_, 0);
+        LLVMSetValueName2(object, "object", 6);
+        LLVMValueRef sidecar = LLVMBuildLoad2(builder_, ptr, object, "allocator.sidecar");
+
+        LLVMValueRef objectEntryAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, sidecar, 7, "allocator.sidecar.object.entry.addr");
+        LLVMValueRef objectEntry = LLVMBuildLoad2(
+            builder_, ptr, objectEntryAddress, "allocator.sidecar.object.entry");
+        LLVMValueRef destroyArguments[] = {object};
+        LLVMBuildCall2(
+            builder_, destructionEntryFunctionType_, objectEntry, destroyArguments, 1, "");
+
+        LLVMValueRef contextAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 1,
+            "allocator.sidecar.context.addr");
+        LLVMValueRef context = LLVMBuildLoad2(
+            builder_, ptr, contextAddress, "allocator.sidecar.context");
+        LLVMValueRef thunkAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 2,
+            "allocator.sidecar.thunk.addr");
+        LLVMValueRef thunk = LLVMBuildLoad2(
+            builder_, ptr, thunkAddress, "allocator.sidecar.thunk");
+        LLVMValueRef deallocateArguments[] = {context, object};
+        LLVMBuildCall2(
+            builder_, allocatorFreeThunkType_, thunk, deallocateArguments, 2, "");
+        LLVMValueRef freeSidecarArguments[] = {sidecar};
+        LLVMBuildCall2(
+            builder_, deallocationFunctionType_, deallocationFunction_,
+            freeSidecarArguments, 1, "");
+        LLVMBuildRetVoid(builder_);
+        applyFunctionAttribute(allocatorDescriptorSidecarReleaseFunction_, "nounwind");
+
+        if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
+        return true;
+    }
+
+    // Installs custom allocator provenance without changing the object's physical layout. The
+    // sidecar allocation is compiler-owned; if it fails after the user's Allocate succeeded, the
+    // original block is returned through the user's thunk before reporting AllocationFailure.
+    bool installAllocatorDescriptorSidecar(
         LLVMValueRef object,
-        std::string_view typeKey,
+        LLVMValueRef descriptor,
         LLVMValueRef context,
         LLVMValueRef thunk,
         std::string& error)
     {
-        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
-        if (layout == nullptr)
-            return fail(error,
-                "NS304-T13-F07 provenance has no class layout for " + std::string(typeKey));
-        LLVMValueRef contextAddress =
-            byteOffset(object, layout->allocatorContextOffset, "allocator.context");
+        if (object == nullptr || descriptor == nullptr || context == nullptr || thunk == nullptr ||
+            !ensureAllocatorDescriptorSidecar(error))
+            return false;
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        // Frozen Win64 descriptor ABI: six pointers + two i64 values = 64 bytes. The private
+        // sidecar appends two pointers and is therefore 80 bytes. These constants deliberately
+        // describe the public descriptor contract instead of querying host C++ layout.
+        constexpr std::uint64_t descriptorBytes = 64;
+        constexpr std::uint64_t sidecarBytes = 80;
+        LLVMValueRef sidecarSize = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), sidecarBytes, 0);
+        LLVMValueRef allocationArguments[] = {sidecarSize};
+        LLVMValueRef sidecar = buildNoUnwindCall(
+            allocationFunctionType_, allocationFunction_, allocationArguments, 1,
+            "allocator.sidecar");
+        LLVMValueRef sidecarValid = LLVMBuildICmp(
+            builder_, LLVMIntNE, sidecar, LLVMConstNull(ptr), "allocator.sidecar.valid");
+        LLVMBasicBlockRef readyBlock = appendBlock("allocator.sidecar.ready");
+        LLVMBasicBlockRef failureBlock = appendBlock("allocator.sidecar.failure");
+        LLVMBuildCondBr(builder_, sidecarValid, readyBlock, failureBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, failureBlock);
+        LLVMValueRef releaseArguments[] = {context, object};
+        buildNoUnwindCall(allocatorFreeThunkType_, thunk, releaseArguments, 2, "");
+        LLVMValueRef reason = LLVMConstInt(
+            LLVMInt32TypeInContext(context_),
+            static_cast<std::uint64_t>(LlvmTrapReason::AllocationFailure), 0);
+        LLVMValueRef trapArguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        LLVMBuildUnreachable(builder_);
+
+        LLVMPositionBuilderAtEnd(builder_, readyBlock);
+        LLVMValueRef sidecarDescriptorAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 0,
+            "allocator.sidecar.descriptor.addr");
+        LLVMValueRef descriptorSize = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), descriptorBytes, 0);
+        LLVMValueRef copyArguments[] = {
+            sidecarDescriptorAddress,
+            descriptor,
+            descriptorSize,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memcpyFunctionType_, memcpyFunction_, copyArguments, 4, "");
+
+        LLVMValueRef releaseEntryAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, sidecarDescriptorAddress, 5,
+            "allocator.sidecar.release.entry.addr");
+        LLVMBuildStore(
+            builder_, allocatorDescriptorSidecarReleaseFunction_, releaseEntryAddress);
+        LLVMValueRef contextAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 1,
+            "allocator.sidecar.context.addr");
         LLVMBuildStore(builder_, context, contextAddress);
-        LLVMValueRef thunkAddress =
-            byteOffset(object, layout->deallocateThunkOffset, "allocator.thunk");
+        LLVMValueRef thunkAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 2,
+            "allocator.sidecar.thunk.addr");
         LLVMBuildStore(builder_, thunk, thunkAddress);
+        LLVMBuildStore(builder_, sidecar, object);
         return true;
     }
 
     // NS304-T13-F07: a custom allocator owns the raw block as soon as Allocate succeeds. If the
     // constructor unwinds, its own cleanup has already destroyed every initialized subobject; this
-    // caller-side cleanuppad must therefore release only the block, through the provenance stored
-    // in the header, and then continue the original unwind without running the object destructor.
+    // caller-side cleanuppad must therefore release only the block and its descriptor sidecar,
+    // then continue the original unwind without running the object destructor.
     LLVMBasicBlockRef emitAllocatorConstructionFailureCleanup(
         LLVMValueRef object,
-        std::string_view typeKey,
         LLVMBasicBlockRef outerUnwind,
         std::string& error)
     {
-        const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, typeKey);
-        if (layout == nullptr)
-        {
-            error = "NS304-T13-F07 constructor failure has no class layout for " +
-                std::string(typeKey);
-            return nullptr;
-        }
+        if (!ensureAllocatorDescriptorSidecar(error)) return nullptr;
         LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
         if (sourceBlock == nullptr)
         {
@@ -21710,17 +21752,24 @@ private:
             nullptr,
             outerUnwind});
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-        LLVMValueRef thunkAddress =
-            byteOffset(object, layout->deallocateThunkOffset, "placement.failure.thunk.addr");
+        LLVMValueRef sidecar = LLVMBuildLoad2(
+            builder_, pointerType, object, "placement.failure.sidecar");
+        LLVMValueRef thunkAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 2,
+            "placement.failure.thunk.addr");
         LLVMValueRef thunk =
             LLVMBuildLoad2(builder_, pointerType, thunkAddress, "placement.failure.thunk");
-        LLVMValueRef contextAddress =
-            byteOffset(object, layout->allocatorContextOffset, "placement.failure.context.addr");
+        LLVMValueRef contextAddress = LLVMBuildStructGEP2(
+            builder_, allocatorDescriptorSidecarType_, sidecar, 1,
+            "placement.failure.context.addr");
         LLVMValueRef context =
             LLVMBuildLoad2(builder_, pointerType, contextAddress, "placement.failure.context");
         LLVMValueRef deallocateArguments[] = {context, object};
         buildNoUnwindCall(
             allocatorFreeThunkType_, thunk, deallocateArguments, 2, "");
+        LLVMValueRef freeSidecarArguments[] = {sidecar};
+        buildNoUnwindCall(
+            deallocationFunctionType_, deallocationFunction_, freeSidecarArguments, 1, "");
         LLVMBuildCleanupRet(builder_, cleanupPad, outerUnwind);
         funcletStack_.pop_back();
         LLVMPositionBuilderAtEnd(builder_, sourceBlock);
@@ -21729,8 +21778,8 @@ private:
 
     // NS304-T13-F07: generate (and cache) the per-allocator-type deallocate thunk
     // void(void* context, void* ptr) { <T>::Deallocate(context, ptr); }. Internal linkage, so each
-    // module carries its own copy; the function pointer stored in the header stays valid in the
-    // final binary.
+    // module carries its own copy; the function pointer stored in the descriptor sidecar stays
+    // valid in the final binary.
     LLVMValueRef allocatorDeallocateThunk(
         std::size_t allocatorTypeOrdinal,
         std::string_view deallocateCalleeName,
@@ -22272,10 +22321,11 @@ private:
     LLVMValueRef runtimeDebugTraceFunction_ = nullptr;
     LLVMTypeRef runtimeDebugTraceFunctionType_ = nullptr;
     LLVMValueRef runtimeDebugTraceFlags_ = nullptr;
-    // NS304-T13-F07: allocator provenance deallocate thunk. Stable ABI void(void* context, void* ptr);
-    // the default thunk ignores context and forwards to __nativesharp_free.
-    LLVMValueRef allocatorFreeThunkFunction_ = nullptr;
+    // NS304-T13-F07: allocator provenance stays outside the public object layout. The sidecar
+    // begins with a complete public descriptor and appends context + deallocate thunk.
     LLVMTypeRef allocatorFreeThunkType_ = nullptr;
+    LLVMTypeRef allocatorDescriptorSidecarType_ = nullptr;
+    LLVMValueRef allocatorDescriptorSidecarReleaseFunction_ = nullptr;
     LLVMValueRef consoleWriteLineFunction_ = nullptr;
     LLVMTypeRef consoleWriteLineFunctionType_ = nullptr;
     LLVMValueRef consoleReadLineFunction_ = nullptr;

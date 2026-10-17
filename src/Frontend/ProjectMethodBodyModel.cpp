@@ -13324,6 +13324,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             carrier->returnErrorFactoryMemberOrdinal);
                     }
                 }
+                const bool allocatorConstruction =
+                    site.kind == ProjectConstructionSiteKind::Allocator;
                 recordConstructionSite(std::move(site));
                 // A placed struct is exposed through the raw T* that names its supplied storage.
                 // A class expression keeps NativeSharp's ordinary class-reference type even
@@ -13346,7 +13348,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 if (result.valid)
                 {
                     result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
-                    result.storageOwnership = sema::OwnershipKind::Borrowed;
+                    // Raw placement borrows caller-supplied T* storage. `new (allocator)`, in
+                    // contrast, returns the owner that must eventually call that allocator's
+                    // Deallocate; the descriptor sidecar preserves how to discharge the owned
+                    // storage obligation without changing the object header.
+                    result.storageOwnership = allocatorConstruction
+                        ? sema::OwnershipKind::Owned
+                        : sema::OwnershipKind::Borrowed;
                 }
             }
             break;

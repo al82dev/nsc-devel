@@ -8843,7 +8843,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         : binding->targetTypeKey);
                 construction->constructionOrdinal = ordinal;
                 construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
-                construction->storageOwnership = sema::OwnershipKind::Borrowed;
+                // Allocator placement owns the returned block even though another object supplies
+                // Allocate/Deallocate. Raw placement remains the separate borrowed-storage path.
+                construction->storageOwnership = sema::OwnershipKind::Owned;
                 construction->targetTypeOrdinal = binding->targetTypeOrdinal;
                 construction->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
                     ? binding->selectedConstructorMemberOrdinal
