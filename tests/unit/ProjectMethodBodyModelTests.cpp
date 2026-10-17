@@ -1057,6 +1057,74 @@ class TryShape {
         "try migration preserves the exact missing-handler diagnostic and recovery");
 }
 
+void testDeepNestedUsingParser(TestContext& tests)
+{
+    constexpr std::size_t depth = 1024;
+    std::string source = "class Resource { } class DeepUsingParser { void Run(Resource input) { ";
+    source.reserve(source.size() + depth * 48U + 32U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        source += "using (Resource item" + std::to_string(index) + " = input) { ";
+    }
+    for (std::size_t index = 0; index < depth; ++index) source += "} ";
+    source += "} }\n";
+
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer("DeepUsingParser.ns", std::move(source));
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    std::size_t usingCount = 0;
+    std::vector<const nativesharp::ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const nativesharp::ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::UsingStatement) ++usingCount;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    tests.expect(root != nullptr && usingCount == depth && !diagnostics.hasErrors(),
+        "1024 nested using bodies preserve every node through heap-backed continuations");
+}
+
+void testUsingParserRecoveryContract(TestContext& tests)
+{
+    nativesharp::source::SourceManager sources;
+    const nativesharp::FileId fileId = sources.addBuffer(
+        "MalformedUsing.ns",
+        "class MalformedUsing { int Run() { using (int resource Open()) {} return 3; } }");
+    const nativesharp::source::SourceFile* file = sources.getFile(fileId);
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    nativesharp::lexer::Lexer lexer(*file, diagnostics);
+    const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
+    nativesharp::ast::AstArena arena;
+    nativesharp::parser::Parser parser(tokens, arena, diagnostics);
+    const nativesharp::ast::AstNode* root = parser.parseCompilationUnit();
+    const nativesharp::ast::AstNode* following = nullptr;
+    std::vector<const nativesharp::ast::AstNode*> pending{root};
+    while (!pending.empty())
+    {
+        const nativesharp::ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind() == nativesharp::ast::AstNodeKind::ReturnStatement) following = node;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const nativesharp::ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    tests.expect(root != nullptr && diagnostics.hasErrors() && following != nullptr,
+        "malformed using recovery preserves the following return statement");
+}
+
 void testDeepNestedTryFinallyStatements(TestContext& tests, const std::filesystem::path& root)
 {
     constexpr std::size_t depth = 256;
@@ -1392,6 +1460,8 @@ int main()
     testMatchStatementDiagnosticOrder(tests);
     testDeepNestedTryCatchParser(tests);
     testTryCatchFinallyParserContracts(tests);
+    testDeepNestedUsingParser(tests);
+    testUsingParserRecoveryContract(tests);
     testDeepNestedTryFinallyStatements(tests, root);
     testDeepNestedCatchBodies(tests, root);
     testQualifiedStaticTypeRoots(tests, root);

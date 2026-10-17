@@ -10923,6 +10923,7 @@ private:
         ParseFor,
         ParseTry,
         ParseStandaloneCatch,
+        ParseUsing,
         ParseSwitch,
         ParseMatch,
         ParseEmbedded,
@@ -10940,6 +10941,7 @@ private:
         FinishCatchBlock,
         FinishFinallyBlock,
         FinishStandaloneCatch,
+        FinishUsing,
         ContinueSwitch,
         ContinueSwitchSection,
         AppendSwitchStatement,
@@ -10977,6 +10979,11 @@ private:
     {
         std::size_t beginIndex = 0;
         ast::AstNode* clause = nullptr;
+    };
+    struct UsingParseState final
+    {
+        std::size_t beginIndex = 0;
+        ast::AstNode* node = nullptr;
     };
     struct MatchArm final
     {
@@ -11017,7 +11024,8 @@ private:
     {
         return ordinaryIfAtCursor() || ordinaryWhileAtCursor() ||
             parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
-            parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwSwitch) ||
+            parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
+            parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
     }
 
@@ -11055,6 +11063,7 @@ private:
         case WorkKind::ParseFor: parseFor(); break;
         case WorkKind::ParseTry: parseTry(); break;
         case WorkKind::ParseStandaloneCatch: parseStandaloneCatch(); break;
+        case WorkKind::ParseUsing: parseUsing(); break;
         case WorkKind::ParseSwitch: parseSwitch(); break;
         case WorkKind::ParseMatch: parseMatch(); break;
         case WorkKind::ParseEmbedded: parseEmbedded(); break;
@@ -11072,6 +11081,7 @@ private:
         case WorkKind::FinishCatchBlock: finishCatchBlock(current.stateIndex); break;
         case WorkKind::FinishFinallyBlock: finishFinallyBlock(current.stateIndex); break;
         case WorkKind::FinishStandaloneCatch: finishStandaloneCatch(current.stateIndex); break;
+        case WorkKind::FinishUsing: finishUsing(current.stateIndex, popValue()); break;
         case WorkKind::ContinueSwitch: continueSwitch(current.stateIndex); break;
         case WorkKind::ContinueSwitchSection: continueSwitchSection(current); break;
         case WorkKind::AppendSwitchStatement: appendSwitchStatement(current.stateIndex); break;
@@ -11087,6 +11097,7 @@ private:
         else if (parser_.at(TokenKind::KwDo)) work_.push_back({WorkKind::ParseDoWhile, 0});
         else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
         else if (parser_.at(TokenKind::KwTry)) work_.push_back({WorkKind::ParseTry, 0});
+        else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
         else if (parser_.at(TokenKind::KwSwitch)) work_.push_back({WorkKind::ParseSwitch, 0});
         else if (parser_.startsParenthesizedBlock("match"))
             work_.push_back({WorkKind::ParseMatch, 0});
@@ -11300,6 +11311,57 @@ private:
         state.clause->setFirst(popValue());
         state.clause->setRange(parser_.tokenRangeFrom(state.beginIndex));
         values_.push_back(state.clause);
+    }
+
+    void parseUsing()
+    {
+        const std::size_t index = usingStates_.size();
+        usingStates_.push_back({parser_.index_});
+        UsingParseState& state = usingStates_.back();
+        parser_.consume();
+        parser_.expect(TokenKind::LeftParen, "'(' after using");
+
+        ast::TypeSyntax* resourceType = nullptr;
+        if (parser_.canStartTypeAt(parser_.index_))
+            resourceType = parser_.parseType();
+        else
+            parser_.expect(TokenKind::Identifier, "resource type");
+
+        std::string resourceName;
+        if (parser_.at(TokenKind::Identifier))
+            resourceName = std::string(parser_.consume().lexeme());
+        else
+            parser_.expect(TokenKind::Identifier, "resource variable name");
+
+        ast::AstNode* initializer = nullptr;
+        if (parser_.expect(TokenKind::Equal, "'=' in using resource declaration"))
+            initializer = parser_.parseExpression();
+        parser_.expect(TokenKind::RightParen, "')' after using resource declaration");
+
+        state.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::UsingStatement,
+            parser_.tokenRangeFrom(state.beginIndex));
+        state.node->setTypeSyntax(resourceType);
+        state.node->setText(std::move(resourceName));
+        state.node->setFirst(initializer);
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            work_.push_back({WorkKind::FinishUsing, index});
+            work_.push_back({WorkKind::ParseBlock, 0});
+        }
+        else
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after using declaration");
+            finishUsing(index, nullptr);
+        }
+    }
+
+    void finishUsing(std::size_t index, ast::AstNode* body)
+    {
+        UsingParseState& state = usingStates_[index];
+        state.node->setSecond(body);
+        state.node->setRange(parser_.tokenRangeFrom(state.beginIndex));
+        values_.push_back(state.node);
     }
 
     void parseSwitch()
@@ -12164,6 +12226,7 @@ private:
     std::vector<ForParseState> forStates_;
     std::vector<TryParseState> tryStates_;
     std::vector<StandaloneCatchParseState> standaloneCatchStates_;
+    std::vector<UsingParseState> usingStates_;
     std::vector<SwitchParseState> switchStates_;
     std::vector<MatchParseState> matchStates_;
     std::vector<BlockParseState> blockStates_;
@@ -14693,55 +14756,7 @@ ast::AstNode* Parser::parseThrowStatement()
 
 ast::AstNode* Parser::parseUsingStatement()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-    expect(TokenKind::LeftParen, "'(' after using");
-
-    ast::TypeSyntax* resourceType = nullptr;
-    if (canStartTypeAt(index_))
-    {
-        resourceType = parseType();
-    }
-    else
-    {
-        expect(TokenKind::Identifier, "resource type");
-    }
-
-    std::string resourceName;
-    if (at(TokenKind::Identifier))
-    {
-        resourceName = std::string(consume().lexeme());
-    }
-    else
-    {
-        expect(TokenKind::Identifier, "resource variable name");
-    }
-
-    ast::AstNode* initializer = nullptr;
-    if (expect(TokenKind::Equal, "'=' in using resource declaration"))
-    {
-        initializer = parseExpression();
-    }
-    expect(TokenKind::RightParen, "')' after using resource declaration");
-
-    ast::AstNode* body = nullptr;
-    if (at(TokenKind::LeftBrace))
-    {
-        body = parseBlock();
-    }
-    else
-    {
-        expect(TokenKind::LeftBrace, "'{' after using declaration");
-    }
-
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::UsingStatement,
-        tokenRangeFrom(beginIndex));
-    node->setTypeSyntax(resourceType);
-    node->setText(std::move(resourceName));
-    node->setFirst(initializer);
-    node->setSecond(body);
-    return node;
+    return parseStructuredControlStatement();
 }
 
 ast::AstNode* Parser::parseExpression()
