@@ -4895,6 +4895,8 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(nsc_stage48_2_library_metadata_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_stage48_2_library_metadata_tests)
     add_test(NAME nsc.stage48_2.library-metadata COMMAND nsc_stage48_2_library_metadata_tests)
+    set_tests_properties(nsc.stage48_2.library-metadata PROPERTIES
+        ENVIRONMENT "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}")
 
     add_executable(
         nsc_library_metadata_version_tolerance_tests
