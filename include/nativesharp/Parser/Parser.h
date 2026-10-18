@@ -1127,11 +1127,30 @@ private:
     ast::AstNode* parseExternCDeclaration();
     void parseExternCBlock(ast::AstNode* declaration);
     bool parseExternCSingle(ast::AstNode* declaration);
-    ast::AstNode* parseFunctionOrGlobalVariable();
-    ast::AstNode* parseFunctionTail(ast::TypeSyntax* returnType, const lexer::Token& name, bool externalOnly);
+    ast::AstNode* parseFunctionOrGlobalVariable(bool deferBlockBody = false);
+    ast::AstNode* parseExtensionOperatorFunction(
+        ast::TypeSyntax* type,
+        std::size_t beginIndex,
+        bool isReferenceReturn);
+    ast::AstNode* finishFunctionOrGlobalVariable(
+        std::size_t beginIndex,
+        ast::TypeSyntax* type,
+        const lexer::Token& name,
+        bool isConst,
+        bool isReferenceReturn,
+        std::string returnLifetime,
+        bool deferBlockBody);
+    ast::AstNode* parseFunctionTail(
+        ast::TypeSyntax* returnType,
+        const lexer::Token& name,
+        bool externalOnly,
+        bool deferBlockBody = false);
     bool parseVariadicCallableParameters(ast::AstNode* callable);
     void validateGlobalFunctionConstraints(ast::AstNode* function);
-    void parseGlobalFunctionBody(ast::AstNode* function, bool externalOnly);
+    void parseGlobalFunctionBody(
+        ast::AstNode* function,
+        bool externalOnly,
+        bool deferBlockBody = false);
     void parseThrowsClause(ast::AstNode* callable);
     void parseFloatingPointModeClause(ast::AstNode* callable);
     void parseFfiUnwindClause(ast::AstNode* callable);
@@ -1151,6 +1170,10 @@ private:
     };
     class ParseContinuationCoordinator;
     ast::AstNode* parseWithContinuation(ContinuationRequestKind kind);
+    ast::AstNode* lowerLocalFunctionDeclaration(
+        ast::AstNode* function,
+        bool isStaticLocal,
+        std::size_t beginIndex);
     ParseContinuationCoordinator* activeContinuationCoordinator_ = nullptr;
     ast::AstNode* parseFloatingPointScopeStatement();
     ast::AstNode* parseUnsafeScopeStatement();

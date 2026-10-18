@@ -2175,7 +2175,7 @@ bool Parser::parseExternCSingle(ast::AstNode* declaration)
 }
 
 // Parses a namespace function or global variable after its declaration modifiers.
-ast::AstNode* Parser::parseFunctionOrGlobalVariable()
+ast::AstNode* Parser::parseFunctionOrGlobalVariable(bool deferBlockBody)
 {
     const std::size_t beginIndex = index_;
     const bool isConst = consumeIf(TokenKind::KwConst);
@@ -2188,24 +2188,8 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
         returnLifetime = parseOptionalLifetimeAnnotation("ref return");
     }
     ast::TypeSyntax* type = parseType();
-
-    // NS304-T08-F04: an extension operator (`extension T { static Vector operator+(...) }`) is a
-    // namespace function marked ns3-extension-static; the operator lookup resolves it for the type.
     if (at(TokenKind::KwOperator) && parsingExtensionBody_)
-    {
-        ast::AstNode* operatorDeclaration =
-            parseOperatorTail(type, TokenKind::KwPublic, true, beginIndex);
-        if (operatorDeclaration != nullptr)
-        {
-            operatorDeclaration->addModifier(TokenKind::KwStatic);
-            // NS304-T08-F04: keep the operator: metadata and append the extension marker.
-            operatorDeclaration->setAuxiliaryText(
-                operatorDeclaration->auxiliaryText() + "|ns3-extension-static");
-            operatorDeclaration->setReference(isReferenceReturn);
-        }
-        return operatorDeclaration;
-    }
-
+        return parseExtensionOperatorFunction(type, beginIndex, isReferenceReturn);
     if (!at(TokenKind::Identifier))
     {
         expect(TokenKind::Identifier, "declaration name");
@@ -2214,9 +2198,40 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
     }
 
     const lexer::Token& name = consume();
+    return finishFunctionOrGlobalVariable(
+        beginIndex, type, name, isConst, isReferenceReturn,
+        std::move(returnLifetime), deferBlockBody);
+}
+
+// Preserves the extension-operator marker, static contract, and reference return flag.
+ast::AstNode* Parser::parseExtensionOperatorFunction(
+    ast::TypeSyntax* type,
+    std::size_t beginIndex,
+    bool isReferenceReturn)
+{
+    ast::AstNode* declaration =
+        parseOperatorTail(type, TokenKind::KwPublic, true, beginIndex);
+    if (declaration == nullptr) return nullptr;
+    declaration->addModifier(TokenKind::KwStatic);
+    declaration->setAuxiliaryText(
+        declaration->auxiliaryText() + "|ns3-extension-static");
+    declaration->setReference(isReferenceReturn);
+    return declaration;
+}
+
+// Dispatches a named namespace declaration after its shared prefix has been consumed.
+ast::AstNode* Parser::finishFunctionOrGlobalVariable(
+    std::size_t beginIndex,
+    ast::TypeSyntax* type,
+    const lexer::Token& name,
+    bool isConst,
+    bool isReferenceReturn,
+    std::string returnLifetime,
+    bool deferBlockBody)
+{
     if (!isConst && (at(TokenKind::LeftParen) || at(TokenKind::Less)))
     {
-        ast::AstNode* function = parseFunctionTail(type, name, false);
+        ast::AstNode* function = parseFunctionTail(type, name, false, deferBlockBody);
         if (function != nullptr)
         {
             function->setReference(isReferenceReturn);

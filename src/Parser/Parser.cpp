@@ -380,6 +380,15 @@ ast::AstNode* Parser::parseLocalFunctionAsLambda()
     const bool isStaticLocal = at(TokenKind::KwStatic);
     if (isStaticLocal) consume();
     ast::AstNode* function = parseFunctionOrGlobalVariable();
+    return lowerLocalFunctionDeclaration(function, isStaticLocal, beginIndex);
+}
+
+// Converts one fully parsed local function to the existing lambda-backed declaration contract.
+ast::AstNode* Parser::lowerLocalFunctionDeclaration(
+    ast::AstNode* function,
+    bool isStaticLocal,
+    std::size_t beginIndex)
+{
     if (function == nullptr || function->kind() != ast::AstNodeKind::FunctionDeclaration)
     {
         return function;

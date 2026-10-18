@@ -3019,7 +3019,8 @@ void Parser::parseMethodBody(
 ast::AstNode* Parser::parseFunctionTail(
     ast::TypeSyntax* returnType,
     const lexer::Token& name,
-    bool externalOnly)
+    bool externalOnly,
+    bool deferBlockBody)
 {
     const std::size_t beginIndex = index_ > 0 ? index_ - 1 : 0;
     ast::AstNode* function = arena_.make<ast::AstNode>(
@@ -3042,7 +3043,7 @@ ast::AstNode* Parser::parseFunctionTail(
             "'...' is valid only in a body-less extern C declaration");
     parseGenericConstraintClauses(function);
     validateGlobalFunctionConstraints(function);
-    parseGlobalFunctionBody(function, externalOnly);
+    parseGlobalFunctionBody(function, externalOnly, deferBlockBody);
     if (function->first() != nullptr && function->floatingPointMode() !=
             ast::FloatingPointModeSyntaxKind::Inherit)
         applyMemberFloatingPointMode(
@@ -3099,7 +3100,8 @@ void Parser::validateGlobalFunctionConstraints(ast::AstNode* function)
 
 void Parser::parseGlobalFunctionBody(
     ast::AstNode* function,
-    bool externalOnly)
+    bool externalOnly,
+    bool deferBlockBody)
 {
     if (externalOnly)
     {
@@ -3116,6 +3118,7 @@ void Parser::parseGlobalFunctionBody(
     if (consumeIf(TokenKind::Semicolon)) return;
     if (at(TokenKind::LeftBrace))
     {
+        if (deferBlockBody) return;
         function->setFirst(parseBlock());
         return;
     }

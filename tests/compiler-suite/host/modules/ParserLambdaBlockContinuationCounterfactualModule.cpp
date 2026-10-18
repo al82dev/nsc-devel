@@ -16,11 +16,15 @@ using namespace parser_support;
 using namespace nativesharp::ast;
 
 constexpr std::size_t kDepth = 32768;
-constexpr std::array<std::string_view, 4> kProbes{
+constexpr std::array<std::string_view, 8> kProbes{
     "TP-PAR-555-lambda-block-return-depth",
     "TP-PAR-555-lambda-block-expression-depth",
     "TP-PAR-555-simple-statement-contracts",
-    "TP-PAR-555-recovery-and-defer-boundary"};
+    "TP-PAR-555-recovery-and-defer-boundary",
+    "TP-PAR-555-variable-initializer-depth",
+    "TP-PAR-555-deconstruction-rhs-depth",
+    "TP-PAR-555-aggregate-initializer-depth",
+    "TP-PAR-555-local-declaration-contracts"};
 
 // Builds an adversarial linear token stream without recursive fixture construction.
 std::string makeDeepLambdaBlockSource(bool returnStatement)
@@ -139,6 +143,154 @@ bool testRecoveryAndDeferBoundary(std::string& detail)
     return false;
 }
 
+// Builds nested lambda blocks whose local declaration initializer owns the next expression.
+std::string makeDeepLocalInitializerSource(bool deconstruction)
+{
+    std::string source;
+    source.reserve(kDepth * 55U);
+    for (std::size_t index = 0; index < kDepth; ++index)
+    {
+        source += "handler" + std::to_string(index) + " => { ";
+        if (deconstruction)
+            source += "var (left" + std::to_string(index) + ", right" +
+                std::to_string(index) + ") = ";
+        else
+            source += "int value" + std::to_string(index) + " = ";
+    }
+    source += "terminal";
+    for (std::size_t index = 0; index < kDepth; ++index) source += "; }";
+    return source;
+}
+
+// Validates every lambda/block/declaration edge iteratively without consuming native stack.
+bool validateDeepLocalInitializer(
+    const AstNode* node,
+    AstNodeKind declarationKind,
+    std::string& detail)
+{
+    for (std::size_t index = 0; index < kDepth; ++index)
+    {
+        const AstNode* const block = node != nullptr ? node->first() : nullptr;
+        const AstNode* declaration = block != nullptr && block->children().size() == 1U
+            ? block->children()[0] : nullptr;
+        if (node == nullptr || node->kind() != AstNodeKind::LambdaExpression || !node->flag() ||
+            block == nullptr || block->kind() != AstNodeKind::BlockStatement ||
+            declaration == nullptr || declaration->kind() != declarationKind ||
+            !declaration->range().isValid())
+        {
+            detail = "invalid local initializer edge at depth " + std::to_string(index);
+            return false;
+        }
+        node = declaration->first();
+    }
+    if (node != nullptr && node->kind() == AstNodeKind::IdentifierExpression &&
+        node->text() == "terminal") return true;
+    detail = "deep local initializer terminal mismatch";
+    return false;
+}
+
+// Parses one adversarial variable or deconstruction initializer route.
+bool testDeepLocalInitializer(bool deconstruction, std::string& detail)
+{
+    ParserFixture fixture(makeDeepLocalInitializerSource(deconstruction));
+    const AstNode* const root = fixture.parser().parseExpression();
+    const AstNodeKind kind = deconstruction
+        ? AstNodeKind::DeconstructionDeclarationStatement
+        : AstNodeKind::VariableDeclarationStatement;
+    if (!validateDeepLocalInitializer(root, kind, detail)) return false;
+    if (fixture.diagnostics().diagnostics().empty()) return true;
+    detail = "valid deep local initializer emitted diagnostics";
+    return false;
+}
+
+// Builds a single declaration with 32,768 nested aggregate initializer frames.
+std::string makeDeepAggregateSource()
+{
+    std::string source = "handler => { int value = ";
+    source.append(kDepth, '{');
+    source += "terminal";
+    source.append(kDepth, '}');
+    source += "; }";
+    return source;
+}
+
+// Verifies nested aggregate ownership and exact terminal placement iteratively.
+bool testDeepAggregateInitializer(std::string& detail)
+{
+    ParserFixture fixture(makeDeepAggregateSource());
+    const AstNode* node = fixture.parser().parseExpression();
+    const AstNode* block = node != nullptr ? node->first() : nullptr;
+    const AstNode* declaration = block != nullptr && block->children().size() == 1U
+        ? block->children()[0] : nullptr;
+    node = declaration != nullptr ? declaration->first() : nullptr;
+    for (std::size_t index = 0; index < kDepth; ++index)
+    {
+        if (node == nullptr || node->kind() != AstNodeKind::AggregateInitializerExpression ||
+            node->children().size() != 1U || !node->range().isValid())
+        {
+            detail = "invalid aggregate initializer at depth " + std::to_string(index);
+            return false;
+        }
+        node = node->children()[0];
+    }
+    if (declaration != nullptr && declaration->kind() == AstNodeKind::VariableDeclarationStatement &&
+        node != nullptr && node->kind() == AstNodeKind::IdentifierExpression &&
+        node->text() == "terminal" && fixture.diagnostics().diagnostics().empty()) return true;
+    detail = "deep aggregate declaration, terminal, or diagnostics changed";
+    return false;
+}
+
+// Returns the only statement of a block-bodied lambda fixture.
+const AstNode* singleLambdaStatement(ParserFixture& fixture)
+{
+    const AstNode* const lambda = fixture.parser().parseExpression();
+    const AstNode* const block = lambda != nullptr ? lambda->first() : nullptr;
+    return block != nullptr && block->kind() == AstNodeKind::BlockStatement &&
+        block->children().size() == 1U ? block->children()[0] : nullptr;
+}
+
+// Covers await diagnostics, declaration-list metadata, scope, and local-function lowering.
+bool testLocalDeclarationContracts(std::string& detail)
+{
+    ParserFixture awaitFixture("handler => { await future; }");
+    const AstNode* const awaitStatement = singleLambdaStatement(awaitFixture);
+    const bool awaitOk = awaitStatement != nullptr &&
+        awaitStatement->kind() == AstNodeKind::ExpressionStatement &&
+        awaitStatement->first() != nullptr &&
+        awaitStatement->first()->kind() == AstNodeKind::AwaitExpression &&
+        awaitFixture.diagnostics().diagnostics().empty();
+
+    ParserFixture listFixture(
+        "handler => { static int first = 1, second = { item = 2 }; }");
+    const AstNode* const declarations = singleLambdaStatement(listFixture);
+    const bool listOk = declarations != nullptr && declarations->kind() == AstNodeKind::BlockStatement &&
+        declarations->auxiliaryText() == "declaration-list" && declarations->children().size() == 2U &&
+        declarations->children()[0]->hasModifier(TokenKind::KwStatic) &&
+        declarations->children()[1]->hasModifier(TokenKind::KwStatic) &&
+        listFixture.diagnostics().diagnostics().empty();
+
+    ParserFixture scopeFixture("handler => { scope Enemy value = source; }", {"Enemy"});
+    const AstNode* const scoped = singleLambdaStatement(scopeFixture);
+    const bool scopeOk = scoped != nullptr &&
+        scoped->kind() == AstNodeKind::VariableDeclarationStatement &&
+        scoped->auxiliaryText() == "local:scope" && scopeFixture.diagnostics().diagnostics().empty();
+
+    ParserFixture localFixture(
+        "handler => { int local() { int nested = 3; return nested; } }");
+    const AstNode* const localFunction = singleLambdaStatement(localFixture);
+    const bool localOk = localFunction != nullptr &&
+        localFunction->kind() == AstNodeKind::VariableDeclarationStatement &&
+        localFunction->auxiliaryText() == "local-function" && localFunction->first() != nullptr &&
+        localFunction->first()->kind() == AstNodeKind::LambdaExpression && localFunction->first()->flag() &&
+        localFixture.diagnostics().diagnostics().empty();
+    if (awaitOk && listOk && scopeOk && localOk) return true;
+    if (!awaitOk) detail = "await expression-statement contract changed";
+    else if (!listOk) detail = "static declaration-list contract changed";
+    else if (!scopeOk) detail = "scope local metadata contract changed";
+    else detail = "local-function lowering contract changed";
+    return false;
+}
+
 // Maps an isolated probe name to exactly one bounded counterfactual.
 bool runProbe(std::string_view probe, std::string& detail)
 {
@@ -146,6 +298,10 @@ bool runProbe(std::string_view probe, std::string& detail)
     if (probe == kProbes[1]) return testDeepLambdaBlock(false, detail);
     if (probe == kProbes[2]) return testSimpleStatementContracts(detail);
     if (probe == kProbes[3]) return testRecoveryAndDeferBoundary(detail);
+    if (probe == kProbes[4]) return testDeepLocalInitializer(false, detail);
+    if (probe == kProbes[5]) return testDeepLocalInitializer(true, detail);
+    if (probe == kProbes[6]) return testDeepAggregateInitializer(detail);
+    if (probe == kProbes[7]) return testLocalDeclarationContracts(detail);
     detail = "unknown probe '" + std::string(probe) + "'";
     return false;
 }
@@ -157,7 +313,8 @@ void testLambdaBlockContinuation(TestContext& context)
     if (!probe.empty())
     {
         std::string detail;
-        context.expect(runProbe(probe, detail),
+        const bool passed = runProbe(probe, detail);
+        context.expect(passed,
             "TP-PAR-555 lambda-block continuation must preserve its contract: " + detail);
         return;
     }

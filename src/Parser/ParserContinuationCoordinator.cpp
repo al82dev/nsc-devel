@@ -39,7 +39,14 @@ private:
         FinishThrow,
         FinishJump,
         FinishYieldReturn,
-        FinishStaticAssert
+        FinishStaticAssert,
+        FinishDeconstruction,
+        ContinueVariableDeclaration,
+        FinishVariableInitializer,
+        Aggregate,
+        ContinueAggregate,
+        FinishAggregateElement,
+        FinishLocalFunction
     };
 
     enum class StatementKind : std::uint8_t
@@ -52,7 +59,12 @@ private:
         Throw,
         Jump,
         Yield,
-        StaticAssert
+        StaticAssert,
+        AwaitExpression,
+        Deconstruction,
+        VariableDeclaration,
+        StaticLocal,
+        LocalFunction
     };
 
     struct ResultSlot final
@@ -68,6 +80,29 @@ private:
         std::size_t resultSlot = 0;
         ast::AstNode* block = nullptr;
         ast::AstNode* destination = nullptr;
+    };
+
+    struct VariableFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::TypeSyntax* type = nullptr;
+        ast::AstNode* first = nullptr;
+        ast::AstNode* declarationList = nullptr;
+        bool isStaticLocal = false;
+        bool isConst = false;
+        bool isRaii = false;
+        bool isVolatile = false;
+        bool isReferenceLocal = false;
+        bool isPinned = false;
+        bool isScope = false;
+    };
+
+    struct AggregateFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::AstNode* node = nullptr;
     };
 
     struct Work final
@@ -121,11 +156,30 @@ private:
     void finishYieldReturn(const Work& work);
     void startStaticAssert(const Work& work);
     void finishStaticAssert(const Work& work);
+    void startAwaitExpression(const Work& work);
+    void startDeconstruction(const Work& work);
+    void finishDeconstruction(const Work& work);
+    void startVariableDeclaration(const Work& work, bool isStaticLocal);
+    void parseVariablePrefix(VariableFrame& frame);
+    void continueVariableDeclaration(const Work& work);
+    ast::AstNode* makeVariableDeclarator(VariableFrame& frame, bool cloneType);
+    void scheduleVariableInitializer(const Work& work);
+    void finishVariableInitializer(const Work& work);
+    void acceptVariableDeclarator(std::size_t frameIndex, ast::AstNode* variable);
+    void finishVariableDeclaration(VariableFrame& frame);
+    void startAggregate(const Work& work);
+    void continueAggregate(const Work& work);
+    void finishAggregateElement(const Work& work);
+    void finishAggregate(AggregateFrame& frame);
+    void startLocalFunction(const Work& work);
+    void finishLocalFunction(const Work& work);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
     std::deque<ResultSlot> resultSlots_;
     std::deque<BlockFrame> blockFrames_;
+    std::deque<VariableFrame> variableFrames_;
+    std::deque<AggregateFrame> aggregateFrames_;
     std::vector<Work> work_;
 };
 
@@ -199,6 +253,13 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishJump: finishJump(work); return;
     case WorkKind::FinishYieldReturn: finishYieldReturn(work); return;
     case WorkKind::FinishStaticAssert: finishStaticAssert(work); return;
+    case WorkKind::FinishDeconstruction: finishDeconstruction(work); return;
+    case WorkKind::ContinueVariableDeclaration: continueVariableDeclaration(work); return;
+    case WorkKind::FinishVariableInitializer: finishVariableInitializer(work); return;
+    case WorkKind::Aggregate: startAggregate(work); return;
+    case WorkKind::ContinueAggregate: continueAggregate(work); return;
+    case WorkKind::FinishAggregateElement: finishAggregateElement(work); return;
+    case WorkKind::FinishLocalFunction: finishLocalFunction(work); return;
     }
 }
 
@@ -320,11 +381,9 @@ bool Parser::ParseContinuationCoordinator::controlStatementStarts() const noexce
         parser_.startsParenthesizedBlock("match");
 }
 
-// Mirrors declaration disambiguation so value statements alone enter the B worklist.
+// Mirrors variable-declaration disambiguation after C-owned special forms are classified.
 bool Parser::ParseContinuationCoordinator::declarationStatementStarts() const noexcept
 {
-    if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen) return true;
-    if (parser_.looksLikeLocalFunction() || parser_.atContextualKeyword("await")) return true;
     if (parser_.atContextualKeyword("pin") &&
         (parser_.peek().kind() == TokenKind::KwRaii ||
          (parser_.peek().kind() == TokenKind::Identifier && parser_.peek().lexeme() == "ref")))
@@ -338,7 +397,7 @@ bool Parser::ParseContinuationCoordinator::declarationStatementStarts() const no
     return parser_.looksLikeVariableDeclaration() && !parser_.looksLikeClosedGenericTypeReference();
 }
 
-// Reproduces the canonical dispatcher order while isolating the simple B-owned statements.
+// Reproduces the canonical dispatcher order while isolating the B and C worklist families.
 Parser::ParseContinuationCoordinator::StatementKind
 Parser::ParseContinuationCoordinator::classifyStatement() const
 {
@@ -346,7 +405,9 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
     if (parser_.atContextualKeyword("yield"))
         return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
-    if (parser_.at(TokenKind::KwStatic)) return StatementKind::Direct;
+    if (parser_.at(TokenKind::KwStatic))
+        return parser_.looksLikeLocalFunction()
+            ? StatementKind::LocalFunction : StatementKind::StaticLocal;
     if (parser_.at(TokenKind::KwBreak) || parser_.at(TokenKind::KwContinue)) return StatementKind::Jump;
     if (parser_.atContextualKeyword("must_tail")) return StatementKind::MustTailReturn;
     if (parser_.at(TokenKind::KwReturn)) return StatementKind::Return;
@@ -354,7 +415,11 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
         parser_.at(TokenKind::KwUsing)) return StatementKind::Direct;
     if (parser_.at(TokenKind::KwThrow)) return StatementKind::Throw;
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
-    if (declarationStatementStarts()) return StatementKind::Direct;
+    if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
+        return StatementKind::Deconstruction;
+    if (parser_.looksLikeLocalFunction()) return StatementKind::LocalFunction;
+    if (parser_.atContextualKeyword("await")) return StatementKind::AwaitExpression;
+    if (declarationStatementStarts()) return StatementKind::VariableDeclaration;
     return StatementKind::Expression;
 }
 
@@ -372,6 +437,11 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::Jump: startJump(work); return;
     case StatementKind::Yield: startYield(work); return;
     case StatementKind::StaticAssert: startStaticAssert(work); return;
+    case StatementKind::AwaitExpression: startAwaitExpression(work); return;
+    case StatementKind::Deconstruction: startDeconstruction(work); return;
+    case StatementKind::VariableDeclaration: startVariableDeclaration(work, false); return;
+    case StatementKind::StaticLocal: startVariableDeclaration(work, true); return;
+    case StatementKind::LocalFunction: startLocalFunction(work); return;
     }
 }
 
@@ -413,7 +483,7 @@ void Parser::ParseContinuationCoordinator::finishExpressionStatement(const Work&
         ast::AstNodeKind::ExpressionStatement,
         expression != nullptr ? expression->range() : parser_.current().range());
     statement->setFirst(expression);
-    parser_.expect(TokenKind::Semicolon, "';'");
+    parser_.expect(TokenKind::Semicolon, work.text.empty() ? "';'" : work.text);
     statement->setRange(parser_.tokenRangeFrom(work.beginIndex));
     complete(work.resultSlot, statement);
 }
@@ -585,6 +655,348 @@ void Parser::ParseContinuationCoordinator::finishStaticAssert(const Work& work)
     statement->setFirst(childValue(work));
     statement->setText(std::move(message));
     complete(work.resultSlot, statement);
+}
+
+// Routes contextual await through the expression worklist while preserving its diagnostic text.
+void Parser::ParseContinuationCoordinator::startAwaitExpression(const Work& work)
+{
+    const std::size_t childSlot = makeResultSlot();
+    Work finish{WorkKind::FinishExpressionStatement, work.resultSlot};
+    finish.childSlot = childSlot;
+    finish.beginIndex = parser_.index_;
+    finish.text = "';' after await expression";
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Parses only the binding pattern synchronously, then schedules the recursive RHS.
+void Parser::ParseContinuationCoordinator::startDeconstruction(const Work& work)
+{
+    Work finish{WorkKind::FinishDeconstruction, work.resultSlot};
+    finish.beginIndex = parser_.index_;
+    const SourceRange featureRange = parser_.consume().range();
+    ast::AstNode* pattern = parser_.parseDeconstructionPattern();
+    finish.node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::DeconstructionDeclarationStatement, featureRange);
+    if (pattern != nullptr && pattern->kind() == ast::AstNodeKind::TupleExpression)
+        for (ast::AstNode* binding : pattern->children()) finish.node->addChild(binding);
+    parser_.expect(TokenKind::Equal, "'=' after deconstruction bindings");
+    finish.childSlot = makeResultSlot();
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, finish.childSlot});
+}
+
+// Attaches the completed assignment expression and preserves delimiter/range ordering.
+void Parser::ParseContinuationCoordinator::finishDeconstruction(const Work& work)
+{
+    work.node->setFirst(childValue(work));
+    parser_.expect(TokenKind::Semicolon, "';'");
+    work.node->setRange(parser_.tokenRangeFrom(work.beginIndex));
+    complete(work.resultSlot, work.node);
+}
+
+// Validates static-local syntax before sharing the ordinary variable-declaration machine.
+void Parser::ParseContinuationCoordinator::startVariableDeclaration(
+    const Work& work,
+    bool isStaticLocal)
+{
+    const std::size_t beginIndex = parser_.index_;
+    if (isStaticLocal)
+    {
+        const SourceRange staticRange = parser_.consume().range();
+        if (!declarationStatementStarts())
+        {
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                staticRange,
+                "static statement must declare a local variable");
+            parser_.synchronizeStatement();
+            complete(work.resultSlot, parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, staticRange));
+            return;
+        }
+    }
+    const std::size_t frameIndex = variableFrames_.size();
+    variableFrames_.push_back({beginIndex, work.resultSlot});
+    variableFrames_.back().isStaticLocal = isStaticLocal;
+    parseVariablePrefix(variableFrames_.back());
+    Work next{WorkKind::ContinueVariableDeclaration, work.resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(std::move(next));
+}
+
+// Consumes declaration modifiers and type exactly once for every declarator in the frame.
+void Parser::ParseContinuationCoordinator::parseVariablePrefix(VariableFrame& frame)
+{
+    const bool pinnedReference = parser_.atContextualKeyword("pin") &&
+        parser_.peek().kind() == TokenKind::Identifier && parser_.peek().lexeme() == "ref";
+    frame.isPinned = pinnedReference ||
+        (parser_.atContextualKeyword("pin") && parser_.peek().kind() == TokenKind::KwRaii);
+    if (frame.isPinned) parser_.consume();
+    frame.isReferenceLocal = parser_.atContextualKeyword("ref") &&
+        (parser_.canStartTypeAt(parser_.index_ + 1) || parser_.peek().kind() == TokenKind::KwVar ||
+         parser_.peek().kind() == TokenKind::KwConst || parser_.peek().kind() == TokenKind::KwRaii);
+    if (frame.isReferenceLocal) parser_.consume();
+    frame.isRaii = parser_.consumeIf(TokenKind::KwRaii);
+    frame.isVolatile = parser_.consumeIf(TokenKind::KwVolatile);
+    frame.isConst = parser_.consumeIf(TokenKind::KwConst);
+    frame.isScope = parser_.atContextualKeyword("scope") &&
+        (parser_.canStartTypeAt(parser_.index_ + 1) || parser_.peek().kind() == TokenKind::KwVar);
+    if (frame.isScope) parser_.consume();
+    if (frame.isRaii && frame.isConst)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.tokens_[frame.beginIndex].range(),
+            "raii locals cannot also be const");
+    if (!parser_.at(TokenKind::KwVar)) { frame.type = parser_.parseType(); return; }
+    if (frame.isReferenceLocal)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "reference locals require an explicit element type");
+    const lexer::Token& varToken = parser_.consume();
+    frame.type = parser_.arena_.make<ast::TypeSyntax>(
+        varToken.range(), TokenKind::KwVar, std::string("var"));
+}
+
+// Creates one declarator without consuming its optional initializer.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeVariableDeclarator(
+    VariableFrame& frame,
+    bool cloneType)
+{
+    if (!parser_.at(TokenKind::Identifier))
+    {
+        parser_.expect(TokenKind::Identifier, "variable name");
+        return nullptr;
+    }
+    const lexer::Token& name = parser_.consume();
+    ast::AstNode* variable = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::VariableDeclarationStatement, name.range());
+    variable->setTypeSyntax(cloneType ? parser_.cloneDeclarationType(frame.type) : frame.type);
+    variable->setText(std::string(name.lexeme()));
+    variable->setFlag(frame.isConst);
+    if (frame.isRaii) variable->addModifier(TokenKind::KwRaii);
+    if (frame.isVolatile) variable->addModifier(TokenKind::KwVolatile);
+    if (frame.isReferenceLocal)
+        variable->setAuxiliaryText(frame.isPinned ? "local:pinned-ref" : "local:ref");
+    else if (frame.isPinned) variable->setAuxiliaryText("local:pinned");
+    return variable;
+}
+
+// Advances one declarator and schedules only its recursive initializer when present.
+void Parser::ParseContinuationCoordinator::continueVariableDeclaration(const Work& work)
+{
+    VariableFrame& frame = variableFrames_[work.frameIndex];
+    const std::size_t beginIndex = parser_.index_;
+    ast::AstNode* variable = makeVariableDeclarator(frame, frame.first != nullptr);
+    if (variable == nullptr)
+    {
+        parser_.synchronizeStatement();
+        if (frame.first == nullptr) complete(frame.resultSlot, nullptr);
+        else finishVariableDeclaration(frame);
+        return;
+    }
+    Work finish{WorkKind::FinishVariableInitializer, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.beginIndex = beginIndex;
+    finish.node = variable;
+    if (!parser_.consumeIf(TokenKind::Equal))
+    {
+        if (frame.isReferenceLocal)
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                parser_.current().range(),
+                "reference-local declaration requires '= ref <storage>'");
+        else if (frame.isConst)
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                parser_.current().range(),
+                "const declaration requires an initializer");
+        finishVariableInitializer(finish);
+        return;
+    }
+    if (frame.isReferenceLocal)
+        parser_.expectContextualKeyword("ref", "'ref' before the reference-local initializer");
+    scheduleVariableInitializer(finish);
+}
+
+// Selects aggregate or ordinary expression parsing without adding a native frame.
+void Parser::ParseContinuationCoordinator::scheduleVariableInitializer(
+    const Work& finish)
+{
+    Work continuation = finish;
+    continuation.childSlot = makeResultSlot();
+    work_.push_back(continuation);
+    work_.push_back({
+        parser_.at(TokenKind::LeftBrace) ? WorkKind::Aggregate : WorkKind::Expression,
+        continuation.childSlot});
+}
+
+// Attaches an optional initializer, fixes the declarator range, and advances the list.
+void Parser::ParseContinuationCoordinator::finishVariableInitializer(const Work& work)
+{
+    work.node->setFirst(childValue(work));
+    work.node->setRange(parser_.tokenRangeFrom(work.beginIndex));
+    acceptVariableDeclarator(work.frameIndex, work.node);
+}
+
+// Preserves declaration-list construction, static/scope metadata, and source order.
+void Parser::ParseContinuationCoordinator::acceptVariableDeclarator(
+    std::size_t frameIndex,
+    ast::AstNode* variable)
+{
+    VariableFrame& frame = variableFrames_[frameIndex];
+    if (frame.isStaticLocal) variable->addModifier(TokenKind::KwStatic);
+    if (frame.first == nullptr)
+    {
+        frame.first = variable;
+        if (frame.isScope) variable->setAuxiliaryText("local:scope");
+    }
+    else
+    {
+        if (frame.declarationList == nullptr)
+        {
+            frame.declarationList = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, frame.first->range());
+            frame.declarationList->setAuxiliaryText("declaration-list");
+            frame.declarationList->addChild(frame.first);
+        }
+        frame.declarationList->addChild(variable);
+    }
+    if (!parser_.consumeIf(TokenKind::Comma)) { finishVariableDeclaration(frame); return; }
+    Work next{WorkKind::ContinueVariableDeclaration, frame.resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(std::move(next));
+}
+
+// Consumes the statement delimiter and publishes either one declarator or its list wrapper.
+void Parser::ParseContinuationCoordinator::finishVariableDeclaration(VariableFrame& frame)
+{
+    parser_.expect(TokenKind::Semicolon, "';'");
+    ast::AstNode* result = frame.declarationList != nullptr
+        ? frame.declarationList : frame.first;
+    if (result != nullptr) result->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    complete(frame.resultSlot, result);
+}
+
+// Opens one aggregate frame and advances it through bounded element continuations.
+void Parser::ParseContinuationCoordinator::startAggregate(const Work& work)
+{
+    const std::size_t beginIndex = parser_.index_;
+    const lexer::Token& open = parser_.consume();
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::AggregateInitializerExpression, open.range());
+    const std::size_t frameIndex = aggregateFrames_.size();
+    aggregateFrames_.push_back({beginIndex, work.resultSlot, node});
+    Work next{WorkKind::ContinueAggregate, work.resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(std::move(next));
+}
+
+// Schedules exactly one aggregate element while preserving spread/designator precedence.
+void Parser::ParseContinuationCoordinator::continueAggregate(const Work& work)
+{
+    AggregateFrame& frame = aggregateFrames_[work.frameIndex];
+    if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+    {
+        finishAggregate(frame);
+        return;
+    }
+    Work finish{WorkKind::FinishAggregateElement, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    WorkKind childKind = parser_.at(TokenKind::LeftBrace)
+        ? WorkKind::Aggregate : WorkKind::Expression;
+    if (parser_.at(TokenKind::DotDot))
+    {
+        const SourceRange spread = parser_.consume().range();
+        finish.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SpreadElementExpression, spread);
+        finish.node->setTokenKind(TokenKind::DotDot);
+        finish.tokenKind = TokenKind::DotDot;
+        childKind = WorkKind::Expression;
+    }
+    else if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Equal)
+    {
+        finish.text = std::string(parser_.consume().lexeme());
+        parser_.consume();
+        childKind = parser_.at(TokenKind::LeftBrace)
+            ? WorkKind::Aggregate : WorkKind::Expression;
+    }
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({childKind, childSlot});
+}
+
+// Attaches one completed element and advances or closes the enclosing aggregate.
+void Parser::ParseContinuationCoordinator::finishAggregateElement(const Work& work)
+{
+    AggregateFrame& frame = aggregateFrames_[work.frameIndex];
+    ast::AstNode* element = childValue(work);
+    if (work.tokenKind == TokenKind::DotDot)
+    {
+        work.node->setFirst(element);
+        work.node->setRange(parser_.join(
+            work.node->range(), element != nullptr ? element->range() : work.node->range()));
+        element = work.node;
+    }
+    if (element != nullptr && !work.text.empty()) element->setArgumentName(work.text);
+    if (element == nullptr) { finishAggregate(frame); return; }
+    frame.node->addChild(element);
+    if (!parser_.consumeIf(TokenKind::Comma)) { finishAggregate(frame); return; }
+    Work next{WorkKind::ContinueAggregate, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(std::move(next));
+}
+
+// Closes one aggregate and publishes its exact token range.
+void Parser::ParseContinuationCoordinator::finishAggregate(AggregateFrame& frame)
+{
+    parser_.expect(TokenKind::RightBrace, "'}'");
+    frame.node->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    complete(frame.resultSlot, frame.node);
+}
+
+// Parses a local-function header, deferring only its block body to the shared worklist.
+void Parser::ParseContinuationCoordinator::startLocalFunction(const Work& work)
+{
+    const std::size_t beginIndex = parser_.index_;
+    const bool isStaticLocal = parser_.at(TokenKind::KwStatic);
+    if (isStaticLocal) parser_.consume();
+    ast::AstNode* function = parser_.parseFunctionOrGlobalVariable(true);
+    if (function == nullptr || function->kind() != ast::AstNodeKind::FunctionDeclaration ||
+        !parser_.at(TokenKind::LeftBrace))
+    {
+        complete(work.resultSlot, parser_.lowerLocalFunctionDeclaration(
+            function, isStaticLocal, beginIndex));
+        return;
+    }
+    Work finish{WorkKind::FinishLocalFunction, work.resultSlot};
+    finish.beginIndex = beginIndex;
+    finish.node = function;
+    finish.flag = isStaticLocal;
+    finish.childSlot = makeResultSlot();
+    const std::size_t bodySlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Block, bodySlot});
+}
+
+// Restores canonical body metadata before lowering the local function to its lambda declaration.
+void Parser::ParseContinuationCoordinator::finishLocalFunction(const Work& work)
+{
+    ast::AstNode* const body = childValue(work);
+    work.node->setFirst(body);
+    if (body != nullptr && work.node->floatingPointMode() !=
+            ast::FloatingPointModeSyntaxKind::Inherit)
+        parser_.applyMemberFloatingPointMode(body, work.node->floatingPointMode());
+    if (body != nullptr) work.node->setRange(parser_.join(work.node->range(), body->range()));
+    complete(work.resultSlot, parser_.lowerLocalFunctionDeclaration(
+        work.node, work.flag, work.beginIndex));
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)
