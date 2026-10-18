@@ -30,6 +30,15 @@ struct HirAtomicCallPlan final
 std::optional<HirAtomicCallPlan> hirAtomicCallPlan(
     MethodCoreOperationKind kind);
 
+struct HirMonitorCallPlan final
+{
+    ProjectOopHirNodeKind hirKind;
+    bool waits;
+};
+
+std::optional<HirMonitorCallPlan> hirMonitorCallPlan(
+    MethodCoreOperationKind kind);
+
 inline std::unique_ptr<ProjectOopHirNode> makeNode(
     ProjectOopHirNodeKind kind,
     const ast::AstNode* syntax,

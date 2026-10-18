@@ -7107,6 +7107,316 @@ void testDeepAtomicInterlockedCallLowering(TestContext& tests)
     testAtomicPrevalidation(tests);
 }
 
+void appendMonitorBindings(
+    CoreOperandCallSyntax& fixture,
+    nativesharp::ast::AstNode* call,
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    const nativesharp::ast::AstNode* receiver)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    appendCoreOperandBindings(
+        fixture,
+        call,
+        kind,
+        kind == CoreKind::MonitorWait ? "builtin:bool" : "builtin:void");
+    auto& core = fixture.cores.back();
+    core.elementTypeKey = "type:native-monitor-field";
+    core.implicitFieldMemberOrdinal = kind == CoreKind::MonitorWait ? 9U : 7U;
+    if (kind == CoreKind::MonitorWait)
+        core.secondaryImplicitFieldMemberOrdinal = 7U;
+    auto& binding = fixture.calls.back();
+    binding.staticCall = false;
+    binding.receiverSyntax = receiver;
+}
+
+CoreOperandCallSyntax makeMonitorCallSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(3U);
+    fixture.cores.reserve(1U);
+    fixture.calls.reserve(1U);
+    fixture.names.reserve(1U);
+    auto* receiver = appendCoreOperandLocal(fixture, "type:Monitor");
+    auto* call = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    if (kind == CoreKind::MonitorWait)
+        call->addChild(appendCoreOperandInteger(fixture, 17U));
+    appendMonitorBindings(fixture, call, kind, receiver);
+    fixture.root = call;
+    return fixture;
+}
+
+CoreOperandCallSyntax makeDeepMonitorCallSyntax(std::size_t depth)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    constexpr std::array<CoreKind, 5U> kinds{
+        CoreKind::MonitorEnter,
+        CoreKind::MonitorExit,
+        CoreKind::MonitorWait,
+        CoreKind::MonitorPulse,
+        CoreKind::MonitorPulseAll,
+    };
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.cores.reserve(depth);
+    fixture.calls.reserve(depth);
+    fixture.names.reserve(1U);
+    auto* current = appendCoreOperandLocal(fixture, "type:Monitor");
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* call = appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        const CoreKind kind = kinds[index % kinds.size()];
+        if (kind == CoreKind::MonitorWait)
+            call->addChild(appendCoreOperandInteger(fixture, index + 1U));
+        appendMonitorBindings(fixture, call, kind, current);
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+nativesharp::frontend::ProjectOopHirNodeKind monitorHirKind(
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    if (kind == CoreKind::MonitorEnter) return HirKind::CoreMonitorEnter;
+    if (kind == CoreKind::MonitorExit) return HirKind::CoreMonitorExit;
+    if (kind == CoreKind::MonitorWait) return HirKind::CoreMonitorWait;
+    if (kind == CoreKind::MonitorPulse) return HirKind::CoreMonitorPulse;
+    return HirKind::CoreMonitorPulseAll;
+}
+
+bool deepMonitorCallMatches(const ProjectOopHirNode* node, std::size_t expectedDepth)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::array<CoreKind, 5U> kinds{
+        CoreKind::MonitorEnter,
+        CoreKind::MonitorExit,
+        CoreKind::MonitorWait,
+        CoreKind::MonitorPulse,
+        CoreKind::MonitorPulseAll,
+    };
+    std::size_t remaining = expectedDepth;
+    while (remaining > 0U && node != nullptr)
+    {
+        const CoreKind expectedKind = kinds[(remaining - 1U) % kinds.size()];
+        if (node->kind != monitorHirKind(expectedKind)) return false;
+        if (expectedKind == CoreKind::MonitorWait)
+        {
+            if (node->typeKey != "builtin:bool" || node->memberOrdinal != 9U ||
+                node->secondaryMemberOrdinal != 7U || node->children.size() != 2U ||
+                node->children[1]->kind != HirKind::IntegerConstant ||
+                node->children[1]->integerValue != remaining)
+                return false;
+            node = node->children[0].get();
+        }
+        else
+        {
+            if (node->typeKey != "builtin:void" || node->children.size() != 1U ||
+                node->children[0]->kind != HirKind::FieldAddress ||
+                node->children[0]->typeKey != "type:native-monitor-field" ||
+                node->children[0]->memberOrdinal != 7U ||
+                node->children[0]->children.size() != 1U)
+                return false;
+            node = node->children[0]->children[0].get();
+        }
+        --remaining;
+    }
+    return remaining == 0U && node != nullptr && node->kind == HirKind::LocalValue;
+}
+
+void testMonitorNominalContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::array<CoreKind, 5U> kinds{
+        CoreKind::MonitorEnter,
+        CoreKind::MonitorExit,
+        CoreKind::MonitorWait,
+        CoreKind::MonitorPulse,
+        CoreKind::MonitorPulseAll,
+    };
+    std::string error;
+    for (const CoreKind kind : kinds)
+    {
+        auto fixture = makeMonitorCallSyntax(kind);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        const bool waits = kind == CoreKind::MonitorWait;
+        const bool validShape = lowered != nullptr && error.empty() &&
+            lowered->kind == monitorHirKind(kind) &&
+            lowered->typeKey == (waits ? "builtin:bool" : "builtin:void") &&
+            lowered->children.size() == (waits ? 2U : 1U) &&
+            (waits
+                ? lowered->children[0]->kind == HirKind::LocalValue &&
+                    lowered->children[1]->kind == HirKind::IntegerConstant &&
+                    lowered->memberOrdinal == 9U && lowered->secondaryMemberOrdinal == 7U
+                : lowered->children[0]->kind == HirKind::FieldAddress &&
+                    lowered->children[0]->typeKey == "type:native-monitor-field" &&
+                    lowered->children[0]->memberOrdinal == 7U &&
+                    lowered->children[0]->children.size() == 1U &&
+                    lowered->children[0]->children[0]->kind == HirKind::LocalValue);
+        tests.expect(validShape,
+            std::string(nativesharp::frontend::methodCoreOperationKindName(kind)) +
+                " preserves its exact receiver, ordinal, type, and child contract");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+}
+
+void testMonitorWaitConversions(TestContext& tests)
+{
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    for (std::size_t mode = 0U; mode < 3U; ++mode)
+    {
+        auto fixture = makeMonitorCallSyntax(CoreKind::MonitorWait);
+        if (mode != 0U)
+        {
+            nativesharp::frontend::ProjectImplicitConversion conversion;
+            conversion.kind = mode == 1U ? ConversionKind::Identity : ConversionKind::Numeric;
+            conversion.sourceTypeKey = "builtin:int";
+            conversion.targetTypeKey = "builtin:int";
+            fixture.calls.front().selectedConversions.push_back(std::move(conversion));
+        }
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        const bool converted = mode == 2U;
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->children.size() == 2U &&
+                lowered->children[1]->kind ==
+                    (converted ? HirKind::Conversion : HirKind::IntegerConstant) &&
+                (!converted || (lowered->children[1]->children.size() == 1U &&
+                    lowered->children[1]->children[0]->kind == HirKind::IntegerConstant)),
+            "Monitor.Wait preserves empty, identity, and non-identity timeout conversion cases");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+}
+
+void makeMonitorReceiverSentinelInvalid(CoreOperandCallSyntax& fixture)
+{
+    auto* sentinel = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    fixture.calls.front().receiverSyntax = sentinel;
+    fixture.cores.emplace_back();
+    fixture.cores.back().syntax = sentinel;
+    fixture.cores.back().kind =
+        nativesharp::frontend::MethodCoreOperationKind::StringConcat;
+    fixture.cores.back().resultTypeKey = "builtin:string";
+}
+
+void testMonitorPrevalidation(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto address = makeMonitorCallSyntax(CoreKind::MonitorEnter);
+    auto node = lowerCoreOperandCallFixture(address, true, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor operation result is not addressable",
+        "Monitor simple address validation precedes receiver lowering");
+
+    error.clear();
+    auto missingOrdinal = makeMonitorCallSyntax(CoreKind::MonitorExit);
+    missingOrdinal.cores.front().implicitFieldMemberOrdinal.reset();
+    makeMonitorReceiverSentinelInvalid(missingOrdinal);
+    node = lowerCoreOperandCallFixture(missingOrdinal, false, error);
+    tests.expect(node == nullptr && error ==
+            "Stage 54.4 Monitor core operation is missing its implicit field member ordinal",
+        "Monitor simple ordinal validation precedes receiver lowering");
+
+    error.clear();
+    auto missingReceiver = makeMonitorCallSyntax(CoreKind::MonitorPulse);
+    missingReceiver.calls.front().receiverSyntax = nullptr;
+    node = lowerCoreOperandCallFixture(missingReceiver, false, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor core operation requires a resolved receiver",
+        "Monitor simple receiver validation preserves its exact diagnostic");
+
+    error.clear();
+    auto missingCall = makeMonitorCallSyntax(CoreKind::MonitorEnter);
+    missingCall.calls.clear();
+    node = lowerCoreOperandCallFixture(missingCall, false, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor core operation requires a resolved receiver",
+        "Monitor simple missing-call validation preserves its exact diagnostic");
+
+    error.clear();
+    auto simpleArity = makeMonitorCallSyntax(CoreKind::MonitorPulseAll);
+    const_cast<nativesharp::ast::AstNode*>(simpleArity.root)->addChild(
+        appendCoreOperandInteger(simpleArity, 1U));
+    makeMonitorReceiverSentinelInvalid(simpleArity);
+    node = lowerCoreOperandCallFixture(simpleArity, false, error);
+    tests.expect(node == nullptr && error ==
+            "Stage 54.4 Monitor.Enter/Exit/Pulse/PulseAll take no explicit arguments",
+        "Monitor simple arity validation precedes receiver lowering");
+
+    error.clear();
+    auto waitAddress = makeMonitorCallSyntax(CoreKind::MonitorWait);
+    node = lowerCoreOperandCallFixture(waitAddress, true, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor.Wait result is not addressable",
+        "Monitor.Wait address validation precedes receiver lowering");
+
+    error.clear();
+    auto waitOrdinal = makeMonitorCallSyntax(CoreKind::MonitorWait);
+    waitOrdinal.cores.front().secondaryImplicitFieldMemberOrdinal.reset();
+    makeMonitorReceiverSentinelInvalid(waitOrdinal);
+    node = lowerCoreOperandCallFixture(waitOrdinal, false, error);
+    tests.expect(node == nullptr && error ==
+            "Stage 54.4 Monitor.Wait is missing one of its two implicit field member ordinals",
+        "Monitor.Wait ordinal validation precedes receiver lowering");
+
+    error.clear();
+    auto waitReceiver = makeMonitorCallSyntax(CoreKind::MonitorWait);
+    waitReceiver.calls.front().receiverSyntax = nullptr;
+    node = lowerCoreOperandCallFixture(waitReceiver, false, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor.Wait requires a resolved receiver",
+        "Monitor.Wait receiver validation preserves its exact diagnostic");
+
+    error.clear();
+    auto waitCall = makeMonitorCallSyntax(CoreKind::MonitorWait);
+    waitCall.calls.clear();
+    node = lowerCoreOperandCallFixture(waitCall, false, error);
+    tests.expect(node == nullptr &&
+            error == "Stage 54.4 Monitor.Wait requires a resolved receiver",
+        "Monitor.Wait missing-call validation preserves its exact diagnostic");
+
+    error.clear();
+    auto waitArity = makeMonitorCallSyntax(CoreKind::MonitorWait);
+    const_cast<nativesharp::ast::AstNode*>(waitArity.root)->addChild(
+        appendCoreOperandInteger(waitArity, 2U));
+    makeMonitorReceiverSentinelInvalid(waitArity);
+    node = lowerCoreOperandCallFixture(waitArity, false, error);
+    tests.expect(node == nullptr && error ==
+            "Stage 54.4 Monitor.Wait takes exactly one explicit millisecondsTimeout argument",
+        "Monitor.Wait arity validation precedes receiver lowering");
+}
+
+void testDeepMonitorCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::string error;
+    auto fixture = makeDeepMonitorCallSyntax(nestingDepth);
+    auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "the structural 32768-level alternating Monitor contrafactual lowers without "
+        "process-stack recursion (" + error + ")");
+    tests.expect(deepMonitorCallMatches(lowered.get(), nestingDepth),
+        "Monitor frames preserve receiver-to-timeout order, field wrapping, and both Wait ordinals");
+    destroyHirTreeIteratively(lowered);
+
+    testMonitorNominalContracts(tests);
+    testMonitorWaitConversions(tests);
+    testMonitorPrevalidation(tests);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -11135,6 +11445,10 @@ int main()
     {
         testDeepAtomicInterlockedCallLowering(tests);
     }
+    else if (focusValue == "hir-monitor-call-depth")
+    {
+        testDeepMonitorCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -11347,6 +11661,7 @@ int main()
         testDeepIteratorCoreCallLowering(tests);
         testDeepSpanStringCoreCallLowering(tests);
         testDeepAtomicInterlockedCallLowering(tests);
+        testDeepMonitorCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

@@ -480,6 +480,21 @@ std::optional<HirAtomicCallPlan> hirAtomicCallPlan(MethodCoreOperationKind kind)
     return std::nullopt;
 }
 
+std::optional<HirMonitorCallPlan> hirMonitorCallPlan(MethodCoreOperationKind kind)
+{
+    if (kind == MethodCoreOperationKind::MonitorEnter)
+        return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorEnter, false};
+    if (kind == MethodCoreOperationKind::MonitorExit)
+        return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorExit, false};
+    if (kind == MethodCoreOperationKind::MonitorWait)
+        return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorWait, true};
+    if (kind == MethodCoreOperationKind::MonitorPulse)
+        return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorPulse, false};
+    if (kind == MethodCoreOperationKind::MonitorPulseAll)
+        return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorPulseAll, false};
+    return std::nullopt;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -1281,113 +1296,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
         error = "Stage 34 atomic core call escaped iterative lowering";
         return nullptr;
     }
-    // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor's five
-    // instance methods. Enter/Exit/Pulse/PulseAll rejoin the EXACT same "one implicit
-    // FieldAddress child, built by hand from the receiver + a single resolved ordinal"
-    // shape the Atomics block right above already established -- see that block's own
-    // header comment for the full rationale (no `&`/`*` operator support in this
-    // pipeline). Wait is handled separately below (it is NOT part of this if): it needs
-    // TWO field addresses on the SAME receiver rather than one, which this shared shape
-    // cannot express without lowering the receiver expression twice (see
-    // MethodCoreOperationKind::MonitorWait's comment in ProjectMethodBodyModel.h).
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::MonitorEnter ||
-         core->kind == MethodCoreOperationKind::MonitorExit ||
-         core->kind == MethodCoreOperationKind::MonitorPulse ||
-         core->kind == MethodCoreOperationKind::MonitorPulseAll))
+    // H02S14J owns all five Monitor operations in the iterative expression machine. This
+    // residual guard proves that no recursive receiver/timeout lowering can silently return.
+    if (core != nullptr && hirMonitorCallPlan(core->kind).has_value())
     {
         if (addressContext)
         {
-            error = "Stage 54.4 Monitor operation result is not addressable";
+            error = core->kind == MethodCoreOperationKind::MonitorWait
+                ? "Stage 54.4 Monitor.Wait result is not addressable"
+                : "Stage 54.4 Monitor operation result is not addressable";
             return nullptr;
         }
-        if (!core->implicitFieldMemberOrdinal.has_value())
-        {
-            error = "Stage 54.4 Monitor core operation is missing its implicit field member ordinal";
-            return nullptr;
-        }
-        const MethodCallBinding* call = callBinding(expression);
-        if (call == nullptr || call->receiverSyntax == nullptr)
-        {
-            error = "Stage 54.4 Monitor core operation requires a resolved receiver";
-            return nullptr;
-        }
-        if (!expression->children().empty())
-        {
-            error = "Stage 54.4 Monitor.Enter/Exit/Pulse/PulseAll take no explicit arguments";
-            return nullptr;
-        }
-        auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
-        if (receiver == nullptr) return nullptr;
-
-        auto location = makeNode(ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
-        location->memberOrdinal = *core->implicitFieldMemberOrdinal;
-        location->children.push_back(std::move(receiver));
-
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreMonitorEnter;
-        if (core->kind == MethodCoreOperationKind::MonitorEnter) kind = ProjectOopHirNodeKind::CoreMonitorEnter;
-        else if (core->kind == MethodCoreOperationKind::MonitorExit) kind = ProjectOopHirNodeKind::CoreMonitorExit;
-        else if (core->kind == MethodCoreOperationKind::MonitorPulse) kind = ProjectOopHirNodeKind::CoreMonitorPulse;
-        else if (core->kind == MethodCoreOperationKind::MonitorPulseAll) kind = ProjectOopHirNodeKind::CoreMonitorPulseAll;
-
-        auto node = makeNode(kind, expression, core->resultTypeKey);
-        node->children.push_back(std::move(location));
-        return node;
-    }
-    // Stage 54.4: Monitor.Wait(int millisecondsTimeout) -- the one core operation in this
-    // round that needs the addresses of TWO different fields (`cv_`, `lock_`) on the SAME
-    // receiver for a single runtime call (SleepConditionVariableSRW). Deliberately built as
-    // a single custom node whose ONLY child is the receiver expression lowered EXACTLY
-    // ONCE (never wrapped in a FieldAddress node here) plus the explicit timeout argument,
-    // with BOTH field ordinals carried as node metadata (memberOrdinal = cv_,
-    // secondaryMemberOrdinal = lock_) for ProjectOopMirModel.cpp to resolve into byte
-    // offsets and ProjectOopLlvmLowerer.cpp to turn into two GEPs off that single lowered
-    // receiver value -- see MethodCoreOperationKind::MonitorWait's comment in
-    // ProjectMethodBodyModel.h for why re-lowering the receiver a second time (the way
-    // Enter/Exit/Pulse/PulseAll each lower their own single implicit field, above) would be
-    // a real correctness bug for a non-trivial receiver expression.
-    if (core != nullptr && core->kind == MethodCoreOperationKind::MonitorWait)
-    {
-        if (addressContext)
-        {
-            error = "Stage 54.4 Monitor.Wait result is not addressable";
-            return nullptr;
-        }
-        if (!core->implicitFieldMemberOrdinal.has_value() ||
-            !core->secondaryImplicitFieldMemberOrdinal.has_value())
-        {
-            error = "Stage 54.4 Monitor.Wait is missing one of its two implicit field member ordinals";
-            return nullptr;
-        }
-        const MethodCallBinding* call = callBinding(expression);
-        if (call == nullptr || call->receiverSyntax == nullptr)
-        {
-            error = "Stage 54.4 Monitor.Wait requires a resolved receiver";
-            return nullptr;
-        }
-        if (expression->children().size() != 1)
-        {
-            error = "Stage 54.4 Monitor.Wait takes exactly one explicit millisecondsTimeout argument";
-            return nullptr;
-        }
-        auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
-        if (receiver == nullptr) return nullptr;
-
-        auto timeout = lowerExpression(expression->children().front(), memberOrdinal, false, error);
-        if (timeout == nullptr) return nullptr;
-        if (!call->selectedConversions.empty() &&
-            call->selectedConversions.front().kind != ProjectConversionKind::Identity)
-        {
-            timeout = wrapImplicitConversion(
-                std::move(timeout), call->selectedConversions.front(), expression->children().front());
-        }
-
-        auto node = makeNode(ProjectOopHirNodeKind::CoreMonitorWait, expression, core->resultTypeKey);
-        node->memberOrdinal = *core->implicitFieldMemberOrdinal;
-        node->secondaryMemberOrdinal = *core->secondaryImplicitFieldMemberOrdinal;
-        node->children.push_back(std::move(receiver));
-        node->children.push_back(std::move(timeout));
-        return node;
+        error = "Stage 34 monitor core call escaped iterative lowering";
+        return nullptr;
     }
     // SHR-022. AQUI ES DONDE LAS CUATRO SALIDAS DE CONSOLA VUELVEN A SER UNA.
     //

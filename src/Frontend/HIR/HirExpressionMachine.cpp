@@ -175,6 +175,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         IteratorCoreCall,
         CoreOperandCall,
         AtomicCoreCall,
+        MonitorCoreCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -279,6 +280,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::size_t nextValue = 0U;
         bool explicitLocation = false;
     };
+    enum class MonitorCoreCallFrameStage : std::uint8_t
+    {
+        Receiver,
+        Timeout,
+        Ready,
+    };
+    struct MonitorCoreCallFrameState final
+    {
+        const MethodCallBinding* binding = nullptr;
+        HirMonitorCallPlan plan{};
+        std::unique_ptr<ProjectOopHirNode> node;
+        std::unique_ptr<ProjectOopHirNode> receiver;
+        const ast::AstNode* timeoutSyntax = nullptr;
+        MonitorCoreCallFrameStage stage = MonitorCoreCallFrameStage::Receiver;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -298,6 +314,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<DelegateInvokeFrameState> delegateInvoke;
         std::optional<CoreOperandCallFrameState> coreOperandCall;
         std::optional<AtomicCoreCallFrameState> atomicCoreCall;
+        std::optional<MonitorCoreCallFrameState> monitorCoreCall;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -459,6 +476,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             const MethodCoreBinding* atomicCore = coreBinding(syntax);
             if (atomicCore != nullptr && hirAtomicCallPlan(atomicCore->kind).has_value())
                 return IterativeExpressionKind::AtomicCoreCall;
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* monitorCore = coreBinding(syntax);
+            if (monitorCore != nullptr && hirMonitorCallPlan(monitorCore->kind).has_value())
+                return IterativeExpressionKind::MonitorCoreCall;
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -1815,6 +1838,120 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 call.stage = AtomicCoreCallFrameStage::Ready;
             return true;
         };
+        const auto initializeMonitorCoreCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            const std::optional<HirMonitorCallPlan> plan =
+                hirMonitorCallPlan(frame.core->kind);
+            if (!plan.has_value())
+            {
+                error = "Stage 34 monitor core call escaped iterative classification";
+                return false;
+            }
+
+            MonitorCoreCallFrameState call;
+            call.plan = *plan;
+            if (frame.addressContext)
+            {
+                error = call.plan.waits
+                    ? "Stage 54.4 Monitor.Wait result is not addressable"
+                    : "Stage 54.4 Monitor operation result is not addressable";
+                return false;
+            }
+            if (call.plan.waits)
+            {
+                if (!frame.core->implicitFieldMemberOrdinal.has_value() ||
+                    !frame.core->secondaryImplicitFieldMemberOrdinal.has_value())
+                {
+                    error = "Stage 54.4 Monitor.Wait is missing one of its two implicit field member ordinals";
+                    return false;
+                }
+            }
+            else if (!frame.core->implicitFieldMemberOrdinal.has_value())
+            {
+                error = "Stage 54.4 Monitor core operation is missing its implicit field member ordinal";
+                return false;
+            }
+
+            call.binding = callBinding(frame.syntax);
+            if (call.binding == nullptr || call.binding->receiverSyntax == nullptr)
+            {
+                error = call.plan.waits
+                    ? "Stage 54.4 Monitor.Wait requires a resolved receiver"
+                    : "Stage 54.4 Monitor core operation requires a resolved receiver";
+                return false;
+            }
+            if (call.plan.waits)
+            {
+                if (frame.syntax->children().size() != 1U)
+                {
+                    error = "Stage 54.4 Monitor.Wait takes exactly one explicit millisecondsTimeout argument";
+                    return false;
+                }
+                call.timeoutSyntax = frame.syntax->children().front();
+            }
+            else if (!frame.syntax->children().empty())
+            {
+                error = "Stage 54.4 Monitor.Enter/Exit/Pulse/PulseAll take no explicit arguments";
+                return false;
+            }
+            frame.monitorCoreCall.emplace(std::move(call));
+            return true;
+        };
+        struct MonitorCoreCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+        };
+        const auto nextMonitorCoreCallChild = [](const MonitorCoreCallFrameState& call)
+            -> std::optional<MonitorCoreCallChild>
+        {
+            if (call.stage == MonitorCoreCallFrameStage::Receiver)
+                return MonitorCoreCallChild{call.binding->receiverSyntax};
+            if (call.stage == MonitorCoreCallFrameStage::Timeout)
+                return MonitorCoreCallChild{call.timeoutSyntax};
+            return std::nullopt;
+        };
+        const auto acceptMonitorCoreCallChild = [&](IterativeExpressionFrame& frame,
+                                                    std::unique_ptr<ProjectOopHirNode> child)
+        {
+            MonitorCoreCallFrameState& call = *frame.monitorCoreCall;
+            if (call.stage == MonitorCoreCallFrameStage::Receiver)
+            {
+                if (call.plan.waits)
+                {
+                    call.receiver = std::move(child);
+                    call.stage = MonitorCoreCallFrameStage::Timeout;
+                    return;
+                }
+                auto location = makeNode(
+                    ProjectOopHirNodeKind::FieldAddress,
+                    frame.syntax,
+                    frame.core->elementTypeKey);
+                location->memberOrdinal = *frame.core->implicitFieldMemberOrdinal;
+                location->children.push_back(std::move(child));
+                call.node = makeNode(call.plan.hirKind, frame.syntax, frame.core->resultTypeKey);
+                call.node->children.push_back(std::move(location));
+                call.stage = MonitorCoreCallFrameStage::Ready;
+                return;
+            }
+
+            if (!call.binding->selectedConversions.empty() &&
+                call.binding->selectedConversions.front().kind !=
+                    ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    call.binding->selectedConversions.front(),
+                    frame.syntax->children().front());
+            }
+            call.node = makeNode(call.plan.hirKind, frame.syntax, frame.core->resultTypeKey);
+            call.node->memberOrdinal = *frame.core->implicitFieldMemberOrdinal;
+            call.node->secondaryMemberOrdinal =
+                *frame.core->secondaryImplicitFieldMemberOrdinal;
+            call.node->children.push_back(std::move(call.receiver));
+            call.node->children.push_back(std::move(child));
+            call.stage = MonitorCoreCallFrameStage::Ready;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -2096,6 +2233,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
                 {
                     if (!initializeAtomicCoreCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::MonitorCoreCall)
+                {
+                    if (!initializeMonitorCoreCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2641,6 +2787,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = false;
                 }
+                else if (*currentKind == IterativeExpressionKind::MonitorCoreCall)
+                {
+                    const std::optional<MonitorCoreCallChild> child =
+                        nextMonitorCoreCallChild(*frames.back().monitorCoreCall);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 monitor core-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = false;
+                }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
                     current = frames.back().receiverFrame.syntax;
@@ -2791,6 +2951,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
                 {
                     // Atomic locations and values are already resolved value expressions.
+                }
+                else if (*currentKind == IterativeExpressionKind::MonitorCoreCall)
+                {
+                    // Monitor receivers and Wait timeouts are value expressions.
                 }
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
@@ -3640,6 +3804,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
                     const std::optional<AtomicCoreCallChild> child =
                         nextAtomicCoreCallChild(frame);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    lowered = std::move(call.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::MonitorCoreCall)
+                {
+                    acceptMonitorCoreCallChild(frame, std::move(lowered));
+                    MonitorCoreCallFrameState& call = *frame.monitorCoreCall;
+                    const std::optional<MonitorCoreCallChild> child =
+                        nextMonitorCoreCallChild(call);
                     if (child.has_value())
                     {
                         current = child->syntax;
