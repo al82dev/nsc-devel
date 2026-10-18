@@ -55,6 +55,21 @@ private:
         ast::FloatingPointModeSyntaxKind mode);
     bool canStartTypeAt(std::size_t tokenIndex) const noexcept;
     bool scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
+    bool scanOwnershipTypePrefix(std::size_t& tokenIndex) const noexcept;
+    bool scanFunctionTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
+    bool scanFunctionCarrierAt(std::size_t& cursor) const noexcept;
+    bool scanFunctionParametersAt(std::size_t& cursor) const noexcept;
+    void scanFunctionEffectsAt(std::size_t& cursor) const noexcept;
+    bool scanTupleTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
+    bool scanNamedTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
+    bool scanNamedTypeIdentityAt(
+        std::size_t tokenIndex,
+        std::size_t& cursor,
+        bool& builtin) const noexcept;
+    bool scanGenericTypeArgumentsAt(std::size_t& cursor) const noexcept;
+    bool scanTypeSuffixesAt(std::size_t& cursor) const noexcept;
+    std::size_t scanPointerQualifiersAt(std::size_t cursor) const noexcept;
+    bool scanArraySuffixAt(std::size_t& cursor) const noexcept;
     bool looksLikeVariableDeclaration() const noexcept;
     bool looksLikeLocalFunction() const noexcept;
     ast::AstNode* parseLocalFunctionAsLambda();
@@ -62,6 +77,93 @@ private:
     bool looksLikeParenthesizedType() const noexcept;
     bool parseQualifiedName(std::string& name, SourceRange& range);
     ast::TypeSyntax* parseType();
+
+    struct TypeParseState final
+    {
+        ast::OwnershipQualifierSyntaxKind ownershipQualifier =
+            ast::OwnershipQualifierSyntaxKind::None;
+        ast::ReferenceQualifierSyntaxKind referenceQualifier =
+            ast::ReferenceQualifierSyntaxKind::None;
+        std::string lifetimeName;
+        SourceRange qualifierRange{};
+        bool dynamicTrait = false;
+        SourceRange dynamicRange{};
+        bool opaqueResult = false;
+        SourceRange opaqueRange{};
+        SourceRange longDoubleRange{};
+        bool recoverLongDoubleAsDouble = false;
+    };
+
+    struct FunctionTypeParseState final
+    {
+        ast::FunctionTypeCarrierSyntaxKind carrier =
+            ast::FunctionTypeCarrierSyntaxKind::Pointer;
+        ast::FunctionCallingConventionSyntaxKind convention =
+            ast::FunctionCallingConventionSyntaxKind::NativeSharp;
+        bool nullable = false;
+        std::string lifetimeName;
+    };
+
+    ast::TypeSyntax* parseTypeImpl();
+    bool parseTypeQualifiers(TypeParseState& state);
+    bool parseOwnershipTypeQualifier(TypeParseState& state);
+    void parseReferenceTypeQualifier(TypeParseState& state);
+    void parseTraitTypeQualifiers(TypeParseState& state);
+    void parseDeferredTypePrefix(TypeParseState& state);
+    ast::TypeSyntax* parseFunctionType(TypeParseState& state);
+    bool parseFunctionCarrier(SourceRange start, FunctionTypeParseState& state);
+    void parseFunctionCallingConvention(FunctionTypeParseState& state);
+    void validateFunctionCarrier(
+        SourceRange start,
+        const FunctionTypeParseState& state);
+    ast::TypeSyntax* makeFunctionType(
+        SourceRange start,
+        TypeParseState& typeState,
+        FunctionTypeParseState& functionState);
+    bool parseFunctionTypeParameters(ast::TypeSyntax* function);
+    bool parseFunctionTypeResult(ast::TypeSyntax* function);
+    void parseFunctionTypeEffects(ast::TypeSyntax* function);
+    bool parseFunctionTypeError(
+        ast::TypeSyntax* function,
+        const FunctionTypeParseState& state);
+    void validateFunctionVariadic(
+        ast::TypeSyntax* function,
+        SourceRange start,
+        const FunctionTypeParseState& state);
+    ast::TypeSyntax* parseTupleType(TypeParseState& state);
+    ast::TypeSyntax* parseNamedType(TypeParseState& state);
+    ast::TypeSyntax* parseNamedTypeBase(
+        TypeParseState& state,
+        SourceRange& completeRange);
+    static void normalizeBuiltinTypeName(std::string& baseName);
+    void parseNamedTypeArguments(ast::TypeSyntax* type, SourceRange& completeRange);
+    void parseTypePostfixModifiers(ast::TypeSyntax* type, SourceRange& completeRange);
+    void parsePointeeConst(
+        ast::TypeSyntax* type,
+        SourceRange& completeRange,
+        bool& pointeeConst,
+        SourceRange& pointeeConstRange);
+    void parsePointerTypeModifier(ast::TypeSyntax* type, SourceRange& completeRange);
+    void parsePointerTypeQualifiers(ast::TypeModifierSyntax& pointer);
+    void parsePointerTypeQualifier(ast::TypeModifierSyntax& pointer);
+    void parsePointerProvenanceQualifier(ast::TypeModifierSyntax& pointer);
+    void parsePointerNumericQualifier(
+        ast::TypeModifierSyntax& pointer,
+        std::string_view qualifier,
+        SourceRange qualifierStart);
+    void parseArrayTypeModifier(ast::TypeSyntax* type, SourceRange& completeRange);
+    bool parseSpecialArrayTypeModifier(
+        ast::TypeSyntax* type,
+        SourceRange left,
+        SourceRange& completeRange);
+    void parseRankArrayTypeModifier(
+        ast::TypeSyntax* type,
+        SourceRange left,
+        SourceRange& completeRange);
+    void parseFixedArrayTypeModifier(
+        ast::TypeSyntax* type,
+        SourceRange left,
+        SourceRange& completeRange);
     std::string parseOptionalLifetimeAnnotation(std::string_view context);
     ast::TypeSyntax* parseAllocationElementType();
     bool parseGenericParameterList(ast::AstNode* declaration);
