@@ -259,6 +259,7 @@ add_executable(
     host/modules/ParserStateRobustnessFinalModule.cpp
     host/modules/ParserProductTestShim.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/ParserContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/DeclarationParser.cpp"
     host/modules/SemaConstantConversionModule.cpp
     host/modules/SemaEffectsExpressionModule.cpp
     host/modules/SemaScopeSymbolModule.cpp

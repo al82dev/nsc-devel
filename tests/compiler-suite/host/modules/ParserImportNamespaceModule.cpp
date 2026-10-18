@@ -234,8 +234,9 @@ void registerUsingNamespaceCase(TestRegistry& registry)
 void registerUsingAliasCase(TestRegistry& registry)
 {
     addCase(registry, "TP-PAR-124", "CP-PAR-013", [](TestContext& context) {
-        ParserFixture fixture("using Ptr = int*;");
-        AstNode* node = childAt(parse(fixture), 0);
+        ParserFixture fixture("using Ptr = int*; using Buffer<T> = T*;");
+        AstNode* root = parse(fixture);
+        AstNode* node = childAt(root, 0);
         context.expect(node != nullptr && node->kind() == AstNodeKind::UsingAliasDirective &&
                 node->text() == "Ptr",
             "TP-PAR-124 using alias name and kind must be exact");
@@ -243,6 +244,13 @@ void registerUsingAliasCase(TestRegistry& registry)
                 node->typeSyntax()->baseTokenKind() == TokenKind::KwInt &&
                 node->typeSyntax()->modifiers().size() == 1,
             "TP-PAR-124 using alias must retain full pointer TypeSyntax");
+        AstNode* generic = childAt(root, 1);
+        context.expect(generic != nullptr && generic->kind() == AstNodeKind::UsingAliasDirective &&
+                generic->text() == "Buffer" && generic->genericParameters().size() == 1 &&
+                generic->genericParameters()[0] == "T" && generic->typeSyntax() != nullptr &&
+                generic->typeSyntax()->baseName() == "T" &&
+                generic->typeSyntax()->modifiers().size() == 1,
+            "TP-PAR-124 generic alias must retain parameter scope and pointer target");
     });
 }
 

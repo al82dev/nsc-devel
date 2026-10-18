@@ -17,6 +17,8 @@
 
 namespace nativesharp::parser
 {
+struct ParsedVariantCase;
+
 class Parser final
 {
 public:
@@ -43,6 +45,7 @@ private:
     SourceRange tokenRangeFrom(std::size_t beginIndex) const noexcept;
 
     bool canStartType(const lexer::Token& token) const noexcept;
+    bool isAccessibilityModifier(lexer::TokenKind kind) const noexcept;
     bool canStartTypeAt(std::size_t tokenIndex) const noexcept;
     bool scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool looksLikeVariableDeclaration() const noexcept;
@@ -69,10 +72,57 @@ private:
     ast::AstNode* parseNamespaceMember();
     ast::AstNode* parseNamespaceDeclaration();
     ast::AstNode* parseExtensionDeclaration(lexer::TokenKind accessibility = lexer::TokenKind::Invalid);
+    std::vector<std::string> scanExtensionGenericArguments() const;
+    ast::AstNode* makeExtensionReceiver(
+        ast::TypeSyntax* receiverType,
+        lexer::TokenKind receiverPass);
+    void addExtensionMember(
+        ast::AstNode* extension,
+        ast::AstNode* member,
+        ast::TypeSyntax* receiverType,
+        lexer::TokenKind receiverPass,
+        lexer::TokenKind accessibility,
+        const std::vector<std::string>& genericArguments);
+    void addExtensionPropertyAccessors(
+        ast::AstNode* extension,
+        ast::AstNode* property,
+        ast::TypeSyntax* receiverType,
+        lexer::TokenKind receiverPass);
+    ast::AstNode* cloneDeclarationNode(const ast::AstNode* node);
+    ast::TypeSyntax* cloneDeclarationType(const ast::TypeSyntax* type);
     ast::AstNode* parseUsingDirective();
+    ast::AstNode* parseUsingAliasDirective(
+        std::size_t beginIndex,
+        const lexer::Token& first);
+    ast::AstNode* parseUsingNamespaceDirective(
+        std::size_t beginIndex,
+        const lexer::Token& first);
     // NativeSharp 3.0 T12-F02. Explicit imports lower to the existing using nodes so name
     // lookup, generic materialization and extension lookup all observe one deterministic table.
+    enum class ExplicitImportKind : std::uint64_t
+    {
+        Module = 1,
+        Symbol = 2,
+        Trait = 3,
+        Extensions = 4,
+        RestrictedGlob = 5
+    };
     ast::AstNode* parseImportDirective(bool reexport = false);
+    ExplicitImportKind parseExplicitImportKind();
+    bool parseExplicitImportTarget(
+        ExplicitImportKind& kind,
+        lexer::Token& first,
+        lexer::Token& last,
+        std::string& target);
+    bool parseExplicitImportAlias(std::string& alias, lexer::Token& last);
+    ast::AstNode* makeExplicitImport(
+        std::size_t beginIndex,
+        bool reexport,
+        ExplicitImportKind kind,
+        const lexer::Token& first,
+        const lexer::Token& last,
+        std::string target,
+        std::string alias);
     ast::AstNode* parseGlobalDeclaration();
     // C2.2 "union and explicit layout": a union is parsed by the same routine as a struct --
     // they differ only in where their fields land, which is a layout question, not a syntax one.
@@ -86,16 +136,119 @@ private:
         bool isBorrowedView = false,
         bool isRecordStruct = false,
         bool isCopyType = false);
+    void appendStructMarker(ast::AstNode* declaration, std::string_view marker);
+    void applyStructMarkers(
+        ast::AstNode* declaration,
+        StructLayoutForm form,
+        bool isBorrowedView,
+        bool isRecordStruct,
+        bool isCopyType);
+    void parseStructPrimaryConstructor(
+        ast::AstNode* declaration,
+        const lexer::Token& name,
+        std::string_view structName,
+        bool isRecordStruct);
+    ast::AstNode* parsePromotedStructParameter(
+        ast::AstNode* declaration,
+        std::unordered_set<std::string>& names,
+        bool isRecordStruct);
+    void parseStructBaseTypes(ast::AstNode* declaration);
+    void parseRecordDerives(
+        ast::AstNode* declaration,
+        bool isRecordStruct,
+        bool& sawRecordDeriveClause);
     // NativeSharp 3.0 T03. A closed tagged sum is materialized as an ordinary struct whose
     // payload carrier is an in-place union. Keeping the generated representation in the parser
     // means name lookup, generics, layout, HIR, MIR and LLVM all consume the same productive AST
     // shapes they already understand instead of a second, partially integrated backend path.
     ast::AstNode* parseVariantDeclaration();
+    void parseVariantCases(
+        std::vector<ParsedVariantCase>& cases,
+        std::unordered_set<std::string>& caseNames);
+    void parseVariantPayload(ParsedVariantCase& item, const lexer::Token& caseName);
+    void validateVariantGeneratedNames(const std::vector<ParsedVariantCase>& cases);
+    ast::TypeSyntax* makeVariantTagType(
+        SourceRange range,
+        lexer::TokenKind tagKind,
+        std::string_view tagTypeName);
+    ast::TypeSyntax* makeVariantSelfType(
+        SourceRange range,
+        std::string_view variantName,
+        const ast::AstNode* declaration);
+    ast::AstNode* makeVariantBlock(SourceRange range);
+    ast::AstNode* makeVariantReturn(ast::AstNode* expression, SourceRange range);
+    ast::AstNode* makeVariantMove(ast::AstNode* expression, SourceRange range);
+    void markVariantPublic(ast::AstNode* member);
+    void markVariantPrivate(ast::AstNode* member);
+    void addVariantStorage(
+        ast::AstNode* declaration,
+        const std::vector<ParsedVariantCase>& cases,
+        SourceRange range,
+        lexer::TokenKind tagKind,
+        std::string_view tagTypeName,
+        std::string_view variantName,
+        std::string& payloadFieldName);
+    void addVariantCaseMembers(
+        ast::AstNode* declaration,
+        const ParsedVariantCase& item,
+        std::size_t caseIndex,
+        SourceRange variantRange,
+        std::string_view variantName,
+        std::string_view payloadFieldName);
+    void addVariantFactory(
+        ast::AstNode* declaration,
+        const ParsedVariantCase& item,
+        std::size_t caseIndex,
+        SourceRange variantRange,
+        std::string_view variantName,
+        std::string_view payloadFieldName);
+    void addVariantTest(
+        ast::AstNode* declaration,
+        const ParsedVariantCase& item,
+        std::size_t caseIndex);
+    void addVariantExtract(
+        ast::AstNode* declaration,
+        const ParsedVariantCase& item,
+        std::size_t caseIndex,
+        std::string_view payloadFieldName);
+    void addVariantTagMethod(
+        ast::AstNode* declaration,
+        SourceRange range,
+        lexer::TokenKind tagKind,
+        std::string_view tagTypeName);
+    void setVariantMetadata(
+        ast::AstNode* declaration,
+        const std::vector<ParsedVariantCase>& cases,
+        std::string_view tagTypeName);
     // NativeSharp 3.0 T04-F05. An opaque alias is represented by the ordinary nominal
     // single-field struct machinery. The parser synthesizes the private representation and the
     // module-internal explicit boundary operations, so every later phase sees one productive
     // value type rather than a parallel alias-only backend path.
     ast::AstNode* parseOpaqueTypeDeclaration(bool explicitCopy);
+    ast::TypeSyntax* makeOpaqueSelfType(
+        SourceRange range,
+        std::string_view typeName,
+        const ast::AstNode* declaration);
+    ast::AstNode* makeOpaqueReturn(ast::AstNode* expression);
+    ast::AstNode* makeOpaqueMove(ast::AstNode* expression);
+    void addOpaqueRepresentationField(
+        ast::AstNode* declaration,
+        SourceRange range,
+        ast::TypeSyntax* representation,
+        std::string_view representationField);
+    void markOpaqueInternal(ast::AstNode* member);
+    void addOpaqueFromRepresentation(
+        ast::AstNode* declaration,
+        SourceRange range,
+        std::string_view typeName,
+        ast::TypeSyntax* representation,
+        std::string_view representationField,
+        bool explicitCopy);
+    void addOpaqueToRepresentation(
+        ast::AstNode* declaration,
+        SourceRange range,
+        ast::TypeSyntax* representation,
+        std::string_view representationField);
     ast::AstNode* parseStructBody(
         ast::AstNode* declaration,
         std::string_view structName,
@@ -105,12 +258,39 @@ private:
         bool isAbstract,
         bool isSealed,
         bool isStatic = false);
+    void applyClassModifiers(
+        ast::AstNode* declaration,
+        bool isAbstract,
+        bool isSealed,
+        bool isStatic);
+    void parseClassPrimaryConstructor(
+        ast::AstNode* declaration,
+        const lexer::Token& name,
+        std::string_view className);
+    ast::AstNode* parsePromotedClassParameter(
+        ast::AstNode* declaration,
+        std::unordered_set<std::string>& names);
+    void addClassPrimaryConstructor(
+        ast::AstNode* declaration,
+        const lexer::Token& name,
+        std::string_view className,
+        const std::vector<ast::AstNode*>& parameters);
+    void parseClassBaseTypes(ast::AstNode* declaration, bool isStatic);
+    void parseClassBody(
+        ast::AstNode* declaration,
+        std::string_view className,
+        bool isStatic);
     // NativeSharp 3.0 T05-F02. A trait impl is represented as a class extension whose second()
     // names the target and whose sole base specification names the trait. Later phases merge the
     // extension with the locally-owned class and retain this source node for reusable NSMETA.
     ast::AstNode* parseTraitImplementationDeclaration();
+    void validateTraitImplementationTarget(ast::AstNode* declaration, ast::TypeSyntax* target);
+    void parseTraitImplementationBody(ast::AstNode* declaration);
     ast::AstNode* parseInterfaceDeclaration(bool isPartial, bool isTrait = false);
+    void parseInterfaceBaseTypes(ast::AstNode* declaration);
+    void parseInterfaceBody(ast::AstNode* declaration, bool isTrait);
     ast::AstNode* parseDelegateDeclaration();
+    void parseDelegateParameters(ast::AstNode* declaration);
     ast::AstNode* parseInterfaceMember(bool isTrait);
     ast::AstNode* parseAssociatedItem(bool implementation);
     ast::AstNode* parseClassMember(
@@ -241,6 +421,8 @@ private:
         bool isPartialMethod = false);
     ast::AstNode* parseEnumDeclaration();
     ast::AstNode* parseExternCDeclaration();
+    void parseExternCBlock(ast::AstNode* declaration);
+    bool parseExternCSingle(ast::AstNode* declaration);
     ast::AstNode* parseFunctionOrGlobalVariable();
     ast::AstNode* parseFunctionTail(ast::TypeSyntax* returnType, const lexer::Token& name, bool externalOnly);
     void parseThrowsClause(ast::AstNode* callable);
