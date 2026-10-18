@@ -4033,6 +4033,47 @@ void testDeepMirIntegerConstantEvaluation(TestContext& tests)
         "MIR integer evaluation preserves 32768 mixed operations without stack recursion");
     destroyHirTreeIteratively(expression);
 }
+
+void testDeepMirFloatingConstantEvaluation(TestContext& tests)
+{
+    using Node = nativesharp::frontend::ProjectOopHirNode;
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    auto expression = std::make_unique<Node>();
+    expression->kind = Kind::FloatingConstant;
+    expression->typeKey = "builtin:double";
+    expression->floatingValue = 1.0;
+    for (std::size_t depth = 0; depth < nestingDepth; ++depth)
+    {
+        auto parent = std::make_unique<Node>();
+        parent->typeKey = "builtin:double";
+        if (depth % 3U == 0U) parent->kind = Kind::Conversion;
+        else if (depth % 3U == 1U)
+        {
+            parent->kind = Kind::Unary;
+            parent->operation = nativesharp::lexer::TokenKind::Plus;
+        }
+        else
+        {
+            parent->kind = Kind::Binary;
+            parent->operation = nativesharp::lexer::TokenKind::Plus;
+            auto zero = std::make_unique<Node>();
+            zero->kind = Kind::FloatingConstant;
+            zero->typeKey = "builtin:double";
+            parent->children.push_back(std::move(expression));
+            parent->children.push_back(std::move(zero));
+            expression = std::move(parent);
+            continue;
+        }
+        parent->children.push_back(std::move(expression));
+        expression = std::move(parent);
+    }
+    const std::optional<double> value =
+        nativesharp::frontend::MirConstantEvaluator::floatingValue(expression.get(), {});
+    tests.expect(value.has_value() && *value == 1.0,
+        "MIR floating evaluation preserves 32768 mixed operations without stack recursion");
+    destroyHirTreeIteratively(expression);
+}
 }
 
 int main()
@@ -4187,6 +4228,10 @@ int main()
     {
         testDeepMirIntegerConstantEvaluation(tests);
     }
+    else if (focusValue == "mir-floating-constant-depth")
+    {
+        testDeepMirFloatingConstantEvaluation(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4220,6 +4265,7 @@ int main()
         testDeepMirIteratorLayoutDiscovery(tests);
         testDeepMirStringConstantEvaluation(tests);
         testDeepMirIntegerConstantEvaluation(tests);
+        testDeepMirFloatingConstantEvaluation(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

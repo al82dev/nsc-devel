@@ -193,12 +193,9 @@ std::optional<double> floatingStaticFieldValue(
 
 std::optional<double> floatingBinaryValue(
     const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
+    std::optional<double> left,
+    std::optional<double> right) noexcept
 {
-    const std::optional<double> left =
-        MirConstantEvaluator::floatingValue(node->children[0].get(), knownFields);
-    const std::optional<double> right =
-        MirConstantEvaluator::floatingValue(node->children[1].get(), knownFields);
     if (!left.has_value() || !right.has_value()) return std::nullopt;
     double result = 0.0;
     switch (node->operation)
@@ -211,6 +208,27 @@ std::optional<double> floatingBinaryValue(
         default: return std::nullopt;
     }
     return normalizeFloating(result, node->typeKey);
+}
+
+std::optional<double> floatingConversionValue(
+    const ProjectOopHirNode* node,
+    std::optional<double> value) noexcept
+{
+    return value.has_value()
+        ? std::optional<double>(normalizeFloating(*value, node->typeKey))
+        : std::nullopt;
+}
+
+std::optional<double> floatingUnaryValue(
+    const ProjectOopHirNode* node,
+    std::optional<double> value) noexcept
+{
+    if (!value.has_value()) return std::nullopt;
+    if (node->operation == lexer::TokenKind::Plus)
+        return normalizeFloating(*value, node->typeKey);
+    if (node->operation == lexer::TokenKind::Minus)
+        return normalizeFloating(-*value, node->typeKey);
+    return std::nullopt;
 }
 
 std::optional<bool> floatingComparison(
@@ -398,38 +416,69 @@ std::optional<double> MirConstantEvaluator::floatingValue(
     const ProjectOopHirNode* node,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
 {
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::FloatingConstant)
-        return normalizeFloating(node->floatingValue, node->typeKey);
-    if (node->kind == ProjectOopHirNodeKind::IntegerConstant)
+    using Result = std::optional<double>;
+    using Frame = std::tuple<const ProjectOopHirNode*, unsigned, Result>;
+    std::vector<Frame> work{{node, 0U, std::nullopt}};
+    std::vector<Result> values;
+    const auto finish = [&](Result value)
     {
-        const std::uint64_t bits = normalizeInteger(node->integerValue, node->typeKey);
-        return isSignedIntegralType(node->typeKey)
-            ? static_cast<double>(signedInteger(bits, node->typeKey))
-            : static_cast<double>(bits);
-    }
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
-        return floatingStaticFieldValue(node, knownFields);
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
+        work.pop_back();
+        values.push_back(std::move(value));
+    };
+    while (!work.empty())
     {
-        const std::optional<double> value = floatingValue(node->children.front().get(), knownFields);
-        return value.has_value()
-            ? std::optional<double>(normalizeFloating(*value, node->typeKey))
-            : std::nullopt;
+        auto& [current, state, left] = work.back();
+        if (state == 0U)
+        {
+            if (current == nullptr) { finish(std::nullopt); continue; }
+            if (current->kind == ProjectOopHirNodeKind::FloatingConstant)
+            {
+                finish(normalizeFloating(current->floatingValue, current->typeKey));
+                continue;
+            }
+            if (current->kind == ProjectOopHirNodeKind::IntegerConstant)
+            {
+                const std::uint64_t bits =
+                    normalizeInteger(current->integerValue, current->typeKey);
+                finish(isSignedIntegralType(current->typeKey)
+                    ? Result(static_cast<double>(signedInteger(bits, current->typeKey)))
+                    : Result(static_cast<double>(bits)));
+                continue;
+            }
+            if (current->kind == ProjectOopHirNodeKind::StaticFieldValue &&
+                current->memberOrdinal.has_value())
+            {
+                finish(floatingStaticFieldValue(current, knownFields));
+                continue;
+            }
+            const bool conversion = current->kind == ProjectOopHirNodeKind::Conversion &&
+                !current->children.empty();
+            const bool unary = current->kind == ProjectOopHirNodeKind::Unary &&
+                !current->children.empty();
+            const bool binary = current->kind == ProjectOopHirNodeKind::Binary &&
+                current->children.size() == 2U;
+            if (!conversion && !unary && !binary) { finish(std::nullopt); continue; }
+            state = 1U;
+            work.emplace_back(current->children.front().get(), 0U, std::nullopt);
+            continue;
+        }
+        Result child = std::move(values.back());
+        values.pop_back();
+        if (state == 1U && current->kind == ProjectOopHirNodeKind::Binary)
+        {
+            left = std::move(child);
+            state = 2U;
+            work.emplace_back(current->children[1].get(), 0U, std::nullopt);
+            continue;
+        }
+        if (current->kind == ProjectOopHirNodeKind::Conversion)
+            finish(floatingConversionValue(current, std::move(child)));
+        else if (current->kind == ProjectOopHirNodeKind::Unary)
+            finish(floatingUnaryValue(current, std::move(child)));
+        else
+            finish(floatingBinaryValue(current, std::move(left), std::move(child)));
     }
-    if (node->kind == ProjectOopHirNodeKind::Unary && !node->children.empty())
-    {
-        const std::optional<double> value = floatingValue(node->children.front().get(), knownFields);
-        if (!value.has_value()) return std::nullopt;
-        if (node->operation == lexer::TokenKind::Plus)
-            return normalizeFloating(*value, node->typeKey);
-        if (node->operation == lexer::TokenKind::Minus)
-            return normalizeFloating(-*value, node->typeKey);
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->children.size() == 2)
-        return floatingBinaryValue(node, knownFields);
-    return std::nullopt;
+    return values.empty() ? std::nullopt : std::move(values.back());
 }
 
 std::optional<bool> MirConstantEvaluator::booleanValue(
