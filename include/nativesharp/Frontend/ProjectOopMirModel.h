@@ -955,6 +955,8 @@ public:
     void restoreMirFunctions();
 
 private:
+    class MirNodeMachine;
+
     bool importLayouts(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,

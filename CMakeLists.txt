@@ -452,6 +452,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectOopHirModelDumper.cpp
     src/Frontend/MIR/MirBuildCoordinator.cpp
     src/Frontend/MIR/MirFunctionLowerer.cpp
+    src/Frontend/MIR/MirNodeMachine.cpp
     src/Frontend/MIR/MirLayoutImporter.cpp
     src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
