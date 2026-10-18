@@ -11,6 +11,21 @@ endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_LIST_DIR}/controller/integration/validate_source_registration.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --suite-root "${CMAKE_CURRENT_LIST_DIR}"
+    RESULT_VARIABLE _nsc_suite_source_registration_result
+    OUTPUT_VARIABLE _nsc_suite_source_registration_output
+    ERROR_VARIABLE _nsc_suite_source_registration_error)
+if(NOT _nsc_suite_source_registration_result EQUAL 0)
+    message(FATAL_ERROR
+        "compiler-suite source registration is incomplete:\n"
+        "${_nsc_suite_source_registration_output}"
+        "${_nsc_suite_source_registration_error}")
+endif()
+
 set(NSC_COMPILER_SUITE_NSC_EXECUTABLE "" CACHE FILEPATH "Explicit A:-drive NSC for process-owned suite cases")
 set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second explicit NSC for build-identity comparison")
 set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
@@ -243,6 +258,7 @@ add_executable(
     host/modules/ParserConstructionCloneFinalModule.cpp
     host/modules/ParserStateRobustnessFinalModule.cpp
     host/modules/ParserProductTestShim.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/ParserContext.cpp"
     host/modules/SemaConstantConversionModule.cpp
     host/modules/SemaEffectsExpressionModule.cpp
     host/modules/SemaScopeSymbolModule.cpp
@@ -481,6 +497,17 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableResultMerger.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableWaveReducer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableWaveScheduler.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/BodyScopeAndFlow.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/ExpressionAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/CallAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MemberAccessAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/AssignmentAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/ConstructionAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/PatternAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/OwnershipAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/EscapeAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/StatementAnalyzer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMethodBodyModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectReferenceEscapeEvaluator.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMethodBodyModelDumper.cpp"
