@@ -710,6 +710,7 @@ add_library(nsc_driver STATIC
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/ProjectCommands.cpp
+    src/Driver/PublicSurfaceEmitter.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
@@ -5580,6 +5581,17 @@ if(NSC_BUILD_TESTS)
     endif()
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    add_executable(nsc_public_surface_emitter_tests
+        tests/unit/PublicSurfaceEmitterTests.cpp)
+    target_include_directories(nsc_public_surface_emitter_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Driver)
+    target_link_libraries(nsc_public_surface_emitter_tests PRIVATE
+        nsc_driver nsc_frontend nsc_target)
+    target_compile_features(nsc_public_surface_emitter_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_public_surface_emitter_tests)
+    add_test(NAME nsc.public-surface-emitter
+        COMMAND nsc_public_surface_emitter_tests)
 
     add_executable(nsc_project_callable_wave_driver_tests
         tests/unit/ProjectCallableWaveDriverTests.cpp)
