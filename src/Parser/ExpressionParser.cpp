@@ -1970,10 +1970,10 @@ ast::AstNode* Parser::parseArgument()
 
 ast::AstNode* Parser::parsePostfixBaseExpression()
 {
-    if (!looksLikeClosedGenericTypeReference()) return parsePrimaryExpression();
+    if (!looksLikeClosedGenericTypeReference()) return nullptr;
     const SourceRange start = current().range();
     ast::TypeSyntax* type = parseType();
-    if (type == nullptr) return parsePrimaryExpression();
+    if (type == nullptr) return nullptr;
     ast::AstNode* expression = arena_.make<ast::AstNode>(
         ast::AstNodeKind::IdentifierExpression,
         join(start, tokens_[index_ - 1].range()));
@@ -1994,7 +1994,8 @@ private:
         Expression, ExpressionTail, Unary, FinishUnary, FinishBinary,
         FinishAssignment, FinishConditionalTrue, FinishConditionalFalse,
         FinishTypeRelation, FinishRangeEnd, FinishRangeStep,
-        Postfix, Call, Index, With
+        Postfix, Primary, Grouping, Collection, FinishNameOf,
+        FinishOverflowPolicy, ContinueInterpolation, Call, Index, With
     };
     struct Result final { ast::AstNode* value = nullptr; bool ready = false; };
     struct Work final {
@@ -2017,6 +2018,22 @@ private:
         TokenKind tokenKind = TokenKind::Invalid;
         std::string auxiliaryText;
         std::vector<ast::AstNode*> children;
+        std::size_t frameIndex = noSlot;
+        SourceRange outerRange;
+    };
+    struct InterpolationFrame final {
+        std::optional<lexer::Token> token;
+        std::vector<language::InterpolationPart> parts;
+        std::size_t partIndex = 0;
+        ast::AstNode* staticNode = nullptr;
+        ast::AstNode* runtimeResult = nullptr;
+        bool runtime = false;
+        std::unique_ptr<source::SourceFile> fragmentSource;
+        std::vector<lexer::Token> fragmentTokens;
+        std::span<const lexer::Token> outerTokens;
+        std::size_t outerIndex = 0;
+        std::vector<std::uint8_t> outerQuestionIndex;
+        std::size_t outerPendingGenericGreater = 0;
     };
 
     std::size_t makeSlot();
@@ -2035,6 +2052,21 @@ private:
     void finishRangeStep(Work work);
     void validateConstantRange(ast::AstNode* range) const;
     void startPostfix(Work work);
+    void startPrimary(Work work);
+    void continueGrouping(Work work);
+    void continueCollection(Work work);
+    void finishNameOf(Work work);
+    void finishOverflowPolicy(Work work);
+    void startInterpolationToken(Work work, const lexer::Token& token);
+    void scheduleInterpolation(std::size_t frameIndex, std::size_t resultSlot);
+    void finishInterpolationHole(Work work);
+    void enterInterpolationFragment(InterpolationFrame& frame);
+    void restoreInterpolationParser(InterpolationFrame& frame);
+    void schedulePrimaryArgument(Work work, bool tupleElement);
+    ast::AstNode* finishPrimaryArgument(Work& work);
+    bool startReservedPrimary(Work& work);
+    bool startKeywordPrimary(Work& work);
+    bool startAggregatePrimary(Work& work);
     void continueCall(Work work);
     void continueIndex(Work work);
     void continueWith(Work work);
@@ -2045,6 +2077,7 @@ private:
 
     Parser& parser_;
     std::deque<Result> results_;
+    std::deque<InterpolationFrame> interpolationFrames_;
     std::vector<Work> work_;
 };
 
@@ -2089,6 +2122,12 @@ ast::AstNode* Parser::PostfixIterationMachine::parse()
         case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
         case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
         case WorkKind::Postfix: startPostfix(std::move(work)); break;
+        case WorkKind::Primary: startPrimary(std::move(work)); break;
+        case WorkKind::Grouping: continueGrouping(std::move(work)); break;
+        case WorkKind::Collection: continueCollection(std::move(work)); break;
+        case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
+        case WorkKind::FinishOverflowPolicy: finishOverflowPolicy(std::move(work)); break;
+        case WorkKind::ContinueInterpolation: finishInterpolationHole(std::move(work)); break;
         case WorkKind::Call: continueCall(std::move(work)); break;
         case WorkKind::Index: continueIndex(std::move(work)); break;
         case WorkKind::With: continueWith(std::move(work)); break;
@@ -2428,9 +2467,404 @@ void Parser::PostfixIterationMachine::validateConstantRange(ast::AstNode* range)
         error);
 }
 
+void Parser::PostfixIterationMachine::schedulePrimaryArgument(
+    Work work,
+    bool tupleElement)
+{
+    work.childSlot = makeSlot();
+    work.flag = false;
+    work.text.clear();
+    work.auxiliaryText.clear();
+    work.tokenKind = TokenKind::Invalid;
+    if (tupleElement && parser_.at(TokenKind::DotDot))
+    {
+        work.tokenKind = TokenKind::DotDot;
+        work.range = parser_.consume().range();
+    }
+    else
+    {
+        if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Colon)
+        {
+            work.auxiliaryText = std::string(parser_.consume().lexeme());
+            parser_.consume();
+        }
+        const bool reference = (parser_.atContextualKeyword("ref") ||
+            parser_.atContextualKeyword("out") || parser_.at(TokenKind::KwIn)) &&
+            parser_.peek().kind() != TokenKind::Comma &&
+            parser_.peek().kind() != TokenKind::RightParen;
+        if (reference)
+        {
+            const lexer::Token& keyword = parser_.consume();
+            work.range = keyword.range();
+            work.text = keyword.kind() == TokenKind::KwIn
+                ? "in" : std::string(keyword.lexeme());
+            work.flag = true;
+        }
+    }
+    const std::size_t childSlot = work.childSlot;
+    work_.push_back(std::move(work));
+    scheduleChild(childSlot);
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::finishPrimaryArgument(Work& work)
+{
+    ast::AstNode* argument = finishArgument(work);
+    if (work.tokenKind != TokenKind::DotDot) return argument;
+    ast::AstNode* spread = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::SpreadElementExpression,
+        parser_.join(work.range, argument != nullptr ? argument->range() : work.range));
+    spread->setTokenKind(TokenKind::DotDot);
+    spread->setFirst(argument);
+    return spread;
+}
+
+void Parser::PostfixIterationMachine::continueGrouping(Work work)
+{
+    ast::AstNode* argument = finishPrimaryArgument(work);
+    if (work.node == nullptr)
+    {
+        if (!parser_.consumeIf(TokenKind::Comma))
+        {
+            parser_.expect(TokenKind::RightParen, "')'");
+            if (argument != nullptr)
+                argument->setRange(SourceRange(
+                    work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+            complete(work.resultSlot, argument);
+            return;
+        }
+        work.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::TupleExpression, work.outerRange);
+        if (argument != nullptr) work.node->addChild(argument);
+        if (parser_.at(TokenKind::RightParen) || parser_.at(TokenKind::EndOfFile))
+        {
+            parser_.expect(TokenKind::RightParen, "')' after tuple");
+            work.node->setRange(SourceRange(
+                work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+            complete(work.resultSlot, work.node);
+            return;
+        }
+        schedulePrimaryArgument(std::move(work), true);
+        return;
+    }
+    if (argument != nullptr) work.node->addChild(argument);
+    const bool comma = parser_.consumeIf(TokenKind::Comma);
+    if (!comma || parser_.at(TokenKind::RightParen) || parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightParen, "')' after tuple");
+        work.node->setRange(SourceRange(
+            work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    schedulePrimaryArgument(std::move(work), true);
+}
+
+void Parser::PostfixIterationMachine::continueCollection(Work work)
+{
+    ast::AstNode* element = results_[work.childSlot].value;
+    if (work.tokenKind == TokenKind::DotDot)
+    {
+        ast::AstNode* spread = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::SpreadElementExpression,
+            parser_.join(work.range, element != nullptr ? element->range() : work.range));
+        spread->setTokenKind(TokenKind::DotDot);
+        spread->setFirst(element);
+        element = spread;
+    }
+    if (element != nullptr) work.node->addChild(element);
+    if (!parser_.consumeIf(TokenKind::Comma) || parser_.at(TokenKind::RightBracket) ||
+        parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightBracket, "']' after collection expression");
+        work.node->setRange(SourceRange(
+            work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    work.tokenKind = TokenKind::Invalid;
+    if (parser_.at(TokenKind::DotDot))
+    {
+        work.tokenKind = TokenKind::DotDot;
+        work.range = parser_.consume().range();
+    }
+    work.childSlot = makeSlot();
+    const std::size_t childSlot = work.childSlot;
+    work_.push_back(std::move(work));
+    scheduleChild(childSlot);
+}
+
+void Parser::PostfixIterationMachine::finishNameOf(Work work)
+{
+    ast::AstNode* operand = results_[work.childSlot].value;
+    const SourceRange end = parser_.current().range();
+    parser_.expect(TokenKind::RightParen, "')' after 'nameof' argument");
+    ast::AstNode* expression = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::NameOfExpression, parser_.join(work.range, end));
+    expression->setFirst(operand);
+    const ast::AstNode* named = operand;
+    while (named != nullptr && (named->kind() == ast::AstNodeKind::CallExpression ||
+        named->kind() == ast::AstNodeKind::IndexExpression)) named = named->first();
+    if (named != nullptr && (named->kind() == ast::AstNodeKind::IdentifierExpression ||
+        named->kind() == ast::AstNodeKind::MemberExpression ||
+        named->kind() == ast::AstNodeKind::PointerMemberExpression ||
+        named->kind() == ast::AstNodeKind::NullConditionalMemberExpression))
+    {
+        expression->setText(named->text());
+    }
+    complete(work.resultSlot, expression);
+}
+
+void Parser::PostfixIterationMachine::finishOverflowPolicy(Work work)
+{
+    ast::AstNode* operand = results_[work.childSlot].value;
+    parser_.expect(TokenKind::RightParen, "')' after '" + work.text + "' operand");
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::OverflowPolicyExpression,
+        parser_.join(work.range, parser_.tokens_[parser_.index_ - 1U].range()));
+    node->setFirst(operand);
+    node->setAuxiliaryText(std::move(work.text));
+    complete(work.resultSlot, node);
+}
+
+void Parser::PostfixIterationMachine::enterInterpolationFragment(InterpolationFrame& frame)
+{
+    const language::InterpolationPart& part = frame.parts[frame.partIndex];
+    const lexer::Token& token = *frame.token;
+    const std::uint32_t tokenOffset = token.range().begin().offset();
+    const std::uint64_t requestedOffset =
+        static_cast<std::uint64_t>(tokenOffset) + 2U + part.expressionOffset;
+    const std::size_t prefix = requestedOffset <=
+            static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
+        ? static_cast<std::size_t>(requestedOffset) : static_cast<std::size_t>(tokenOffset);
+    std::string fragment(prefix, ' ');
+    fragment += part.text;
+    frame.fragmentSource = std::make_unique<source::SourceFile>(
+        token.range().begin().fileId(),
+        frame.runtime ? "<runtime-interpolation>" : "<interpolation-hole>",
+        std::move(fragment));
+    lexer::Lexer lexer(*frame.fragmentSource, parser_.diagnostics_);
+    frame.fragmentTokens = lexer.lexAll();
+    frame.outerTokens = parser_.tokens_;
+    frame.outerIndex = parser_.index_;
+    frame.outerQuestionIndex = std::move(parser_.conditionalQuestionIndex_);
+    frame.outerPendingGenericGreater = parser_.pendingGenericGreater_;
+    parser_.tokens_ = std::span<const lexer::Token>(frame.fragmentTokens);
+    parser_.index_ = 0;
+    parser_.pendingGenericGreater_ = 0;
+    parser_.buildConditionalQuestionIndex();
+}
+
+void Parser::PostfixIterationMachine::restoreInterpolationParser(InterpolationFrame& frame)
+{
+    parser_.tokens_ = frame.outerTokens;
+    parser_.index_ = frame.outerIndex;
+    parser_.conditionalQuestionIndex_ = std::move(frame.outerQuestionIndex);
+    parser_.pendingGenericGreater_ = frame.outerPendingGenericGreater;
+    frame.fragmentTokens.clear();
+    frame.fragmentSource.reset();
+}
+
+void Parser::PostfixIterationMachine::scheduleInterpolation(
+    std::size_t frameIndex,
+    std::size_t resultSlot)
+{
+    InterpolationFrame& frame = interpolationFrames_[frameIndex];
+    while (frame.partIndex < frame.parts.size())
+    {
+        const language::InterpolationPart& part = frame.parts[frame.partIndex];
+        if (part.kind == language::InterpolationPartKind::Hole)
+        {
+            Work finish{WorkKind::ContinueInterpolation, resultSlot, makeSlot()};
+            finish.frameIndex = frameIndex;
+            const std::size_t childSlot = finish.childSlot;
+            enterInterpolationFragment(frame);
+            work_.push_back(std::move(finish));
+            scheduleChild(childSlot);
+            return;
+        }
+        if (frame.runtime && !part.text.empty())
+        {
+            ast::AstNode* piece = parser_.makeInterpolationStringLiteral(*frame.token, part.text);
+            frame.runtimeResult = parser_.makeBinaryExpression(
+                TokenKind::Plus, frame.runtimeResult, piece);
+            frame.runtimeResult->setRange(frame.token->range());
+        }
+        ++frame.partIndex;
+    }
+    complete(resultSlot, frame.runtime ? frame.runtimeResult : frame.staticNode);
+}
+
+void Parser::PostfixIterationMachine::finishInterpolationHole(Work work)
+{
+    InterpolationFrame& frame = interpolationFrames_[work.frameIndex];
+    ast::AstNode* hole = results_[work.childSlot].value;
+    const bool hasTrailingTokens = !parser_.at(TokenKind::EndOfFile);
+    restoreInterpolationParser(frame);
+    if (frame.runtime && hasTrailingTokens)
+        parser_.diagnostics_.report(diagnostics::DiagnosticId::ExpectedExpression,
+            diagnostics::DiagnosticSeverity::Error, frame.token->range(),
+            "interpolation hole must contain exactly one expression");
+    if (hole == nullptr) hole = parser_.makeErrorExpression();
+    if (frame.runtime)
+    {
+        ast::AstNode* piece = parser_.formatRuntimeInterpolationHole(
+            *frame.token, frame.parts[frame.partIndex], hole);
+        frame.runtimeResult = parser_.makeBinaryExpression(
+            TokenKind::Plus, frame.runtimeResult, piece);
+        frame.runtimeResult->setRange(frame.token->range());
+    }
+    else frame.staticNode->addChild(hole);
+    ++frame.partIndex;
+    scheduleInterpolation(work.frameIndex, work.resultSlot);
+}
+
+void Parser::PostfixIterationMachine::startInterpolationToken(
+    Work work,
+    const lexer::Token& token)
+{
+    std::string value;
+    if (const auto* decoded = std::get_if<std::string>(&token.value())) value = *decoded;
+    parser_.consume();
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::InterpolatedStringExpression, token.range());
+    node->setTokenKind(token.kind());
+    node->setText(value);
+    interpolationFrames_.emplace_back();
+    const std::size_t frameIndex = interpolationFrames_.size() - 1U;
+    InterpolationFrame& frame = interpolationFrames_.back();
+    frame.token = token;
+    frame.staticNode = node;
+    std::string error;
+    if (!language::parseStaticInterpolation(value, frame.parts, error))
+    {
+        parser_.diagnostics_.report(diagnostics::DiagnosticId::InvalidStringLiteral,
+            diagnostics::DiagnosticSeverity::Error, token.range(), std::move(error));
+        node->setIntegerValue(0U);
+        complete(work.resultSlot, node);
+        return;
+    }
+    node->setIntegerValue(frame.parts.size());
+    frame.runtime = !std::ranges::all_of(frame.parts, isStaticInterpolationHole);
+    if (frame.runtime)
+        frame.runtimeResult = parser_.makeInterpolationStringLiteral(token, "");
+    scheduleInterpolation(frameIndex, work.resultSlot);
+}
+
+bool Parser::PostfixIterationMachine::startReservedPrimary(Work& work)
+{
+    if (parser_.startsParenthesizedBlock("match"))
+        { complete(work.resultSlot, parser_.parseMatchExpression()); return true; }
+    if (parser_.atContextualKeyword("loop") &&
+        (parser_.peek().kind() == TokenKind::LeftBrace ||
+         (parser_.peek().kind() == TokenKind::Identifier &&
+          parser_.peek(2).kind() == TokenKind::LeftBrace)))
+        { complete(work.resultSlot, parser_.parseLoopExpression()); return true; }
+    if (parser_.comprehensionExpressionStartsHere())
+        { complete(work.resultSlot, parser_.parseComprehensionExpression()); return true; }
+    return false;
+}
+
+bool Parser::PostfixIterationMachine::startKeywordPrimary(Work& work)
+{
+    if (parser_.atContextualKeyword("nameof") && parser_.peek().kind() == TokenKind::LeftParen)
+    {
+        if (parser_.nameOfHasQualifiedGenericOperand())
+            { complete(work.resultSlot, parser_.parseNameOfExpression()); return true; }
+        work.range = parser_.consume().range();
+        parser_.expect(TokenKind::LeftParen, "'(' after 'nameof'");
+        work.kind = WorkKind::FinishNameOf;
+        work.childSlot = makeSlot();
+        const std::size_t childSlot = work.childSlot;
+        work_.push_back(std::move(work)); scheduleChild(childSlot); return true;
+    }
+    if ((parser_.atContextualKeyword("checked") || parser_.atContextualKeyword("saturating") ||
+         parser_.atContextualKeyword("unchecked") || parser_.atContextualKeyword("wrapping")) &&
+        parser_.peek().kind() == TokenKind::LeftParen)
+    {
+        const lexer::Token& policy = parser_.consume();
+        work.kind = WorkKind::FinishOverflowPolicy;
+        work.range = policy.range(); work.text = std::string(policy.lexeme());
+        parser_.expect(TokenKind::LeftParen, "'(' after '" + work.text + "'");
+        work.childSlot = makeSlot(); const std::size_t childSlot = work.childSlot;
+        work_.push_back(std::move(work)); scheduleChild(childSlot); return true;
+    }
+    return false;
+}
+
+bool Parser::PostfixIterationMachine::startAggregatePrimary(Work& work)
+{
+    if (parser_.at(TokenKind::LeftBracket))
+    {
+        work.kind = WorkKind::Collection; work.outerRange = parser_.consume().range();
+        work.node = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::CollectionExpression, work.outerRange);
+        work.node->setAuxiliaryText("inferred-array-initializer");
+        if (parser_.at(TokenKind::RightBracket))
+        {
+            parser_.consume(); work.node->setRange(parser_.join(
+                work.outerRange, parser_.tokens_[parser_.index_ - 1U].range()));
+            complete(work.resultSlot, work.node); return true;
+        }
+        work.tokenKind = parser_.at(TokenKind::DotDot) ? parser_.consume().kind() : TokenKind::Invalid;
+        if (work.tokenKind == TokenKind::DotDot)
+            work.range = parser_.tokens_[parser_.index_ - 1U].range();
+        work.childSlot = makeSlot(); const std::size_t childSlot = work.childSlot;
+        work_.push_back(std::move(work)); scheduleChild(childSlot); return true;
+    }
+    if (parser_.at(TokenKind::LeftParen))
+    {
+        work.kind = WorkKind::Grouping; work.outerRange = parser_.consume().range();
+        if (parser_.at(TokenKind::RightParen))
+        {
+            ast::AstNode* tuple = parser_.arena_.make<ast::AstNode>(
+                ast::AstNodeKind::TupleExpression,
+                parser_.join(work.outerRange, parser_.consume().range()));
+            complete(work.resultSlot, tuple); return true;
+        }
+        schedulePrimaryArgument(std::move(work), false); return true;
+    }
+    return false;
+}
+
+void Parser::PostfixIterationMachine::startPrimary(Work work)
+{
+    if (startReservedPrimary(work) || startKeywordPrimary(work) || startAggregatePrimary(work))
+        return;
+    const lexer::Token& token = parser_.current();
+    const auto kind = parser_.classifyPrimaryToken(token.kind());
+    if (kind == ast::AstNodeKind::InterpolatedStringExpression)
+        { startInterpolationToken(std::move(work), token); return; }
+    if (kind.has_value())
+        { complete(work.resultSlot, parser_.makeTokenPrimaryExpression(token, *kind)); return; }
+    parser_.diagnostics_.report(diagnostics::DiagnosticId::ExpectedExpression,
+        diagnostics::DiagnosticSeverity::Error, token.range(), "expected expression");
+    if (!parser_.at(TokenKind::EndOfFile)) parser_.consume();
+    complete(work.resultSlot, parser_.makeErrorExpression());
+}
+
 void Parser::PostfixIterationMachine::startPostfix(Work work)
 {
-    ast::AstNode* expression = work.node != nullptr ? work.node : parser_.parsePostfixBaseExpression();
+    if (work.node == nullptr && work.childSlot == noSlot &&
+        !parser_.looksLikeClosedGenericTypeReference())
+    {
+        work.childSlot = makeSlot();
+        const std::size_t primarySlot = work.childSlot;
+        work_.push_back(std::move(work));
+        work_.push_back({WorkKind::Primary, primarySlot});
+        return;
+    }
+    ast::AstNode* expression = work.node;
+    if (expression == nullptr && work.childSlot != noSlot)
+        expression = results_[work.childSlot].value;
+    if (expression == nullptr) expression = parser_.parsePostfixBaseExpression();
+    if (expression == nullptr)
+    {
+        work.childSlot = makeSlot();
+        const std::size_t primarySlot = work.childSlot;
+        work_.push_back(std::move(work));
+        work_.push_back({WorkKind::Primary, primarySlot});
+        return;
+    }
     std::vector<ast::TypeSyntax*> genericArguments;
     const bool explicitGenerics = parser_.looksLikeGenericCallTypeArguments();
     if (explicitGenerics) parser_.parseTypeArgumentList(genericArguments);
@@ -2900,6 +3334,24 @@ ast::AstNode* Parser::parseCollectionExpression()
     expect(TokenKind::RightBracket, "']' after collection expression");
     collection->setRange(SourceRange(begin.begin(), tokens_[index_ - 1].range().end()));
     return collection;
+}
+
+bool Parser::nameOfHasQualifiedGenericOperand() const noexcept
+{
+    if (!atContextualKeyword("nameof") || peek().kind() != TokenKind::LeftParen)
+        return false;
+    std::size_t cursor = index_ + 2U;
+    while (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier)
+    {
+        ++cursor;
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Dot)
+        {
+            ++cursor;
+            continue;
+        }
+        break;
+    }
+    return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less;
 }
 
 ast::AstNode* Parser::parseNameOfExpression()

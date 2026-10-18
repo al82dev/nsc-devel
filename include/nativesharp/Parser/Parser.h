@@ -1423,6 +1423,7 @@ private:
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
     ast::AstNode* parseNameOfExpression();
+    bool nameOfHasQualifiedGenericOperand() const noexcept;
     ast::AstNode* parseOverflowPolicyExpression();
     ast::AstNode* parseCollectionExpression();
     ast::AstNode* parseComprehensionExpression();

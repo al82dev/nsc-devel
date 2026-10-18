@@ -282,6 +282,7 @@ add_executable(
     host/modules/ParserConditionalPatternCoordinatorCounterfactualModule.cpp
     host/modules/ParserSpecialStatementSccClosureCounterfactualModule.cpp
     host/modules/ParserPostfixPrattCounterfactualModule.cpp
+    host/modules/ParserPrimaryPrattCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContinuationProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
