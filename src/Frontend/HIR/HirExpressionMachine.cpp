@@ -183,6 +183,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         StructAggregateCall,
         EnvironmentExitCall,
         OrdinaryCall,
+        CollectionBuilder,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -575,6 +576,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  !syntax->children().empty()))
             {
                 return IterativeExpressionKind::OrdinaryCall;
+            }
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::CollectionExpression &&
+            !syntax->children().empty())
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr &&
+                core->kind == MethodCoreOperationKind::CollectionBuilder)
+            {
+                return IterativeExpressionKind::CollectionBuilder;
             }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
@@ -2946,6 +2957,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         current->children().begin(), current->children().begin() + available);
                     frame.operands.reserve(available);
                 }
+                else if (*currentKind == IterativeExpressionKind::CollectionBuilder)
+                {
+                    frame.core = coreBinding(current);
+                    frame.syntheticLocalOrdinal = nextSyntheticLocalOrdinal_++;
+                    frame.operandSyntaxes.assign(
+                        current->children().begin(), current->children().end());
+                    frame.operands.reserve(frame.operandSyntaxes.size());
+                }
                 else if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
@@ -3455,6 +3474,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
                     current = frames.back().operandSyntaxes.front();
+                else if (*currentKind == IterativeExpressionKind::CollectionBuilder)
+                {
+                    current = frames.back().operandSyntaxes.front();
+                    currentAddressContext = false;
+                }
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::RangeSlice)
@@ -4704,6 +4728,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     lowered = std::move(interpolation);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CollectionBuilder)
+                {
+                    frame.operands.push_back(std::move(lowered));
+                    if (frame.operands.size() < frame.operandSyntaxes.size())
+                    {
+                        current = frame.operandSyntaxes[frame.operands.size()];
+                        currentAddressContext = false;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishCollectionBuilderExpression(
+                        frame.syntax,
+                        *frame.core,
+                        frame.syntheticLocalOrdinal,
+                        std::move(frame.operands));
                     frames.pop_back();
                     continue;
                 }

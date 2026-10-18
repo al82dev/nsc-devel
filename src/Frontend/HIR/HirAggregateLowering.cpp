@@ -421,6 +421,52 @@ bool ProjectOopHirModel::appendAggregateLeaves(
 }
 
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishCollectionBuilderExpression(
+    const ast::AstNode* expression,
+    const MethodCoreBinding& core,
+    std::size_t temporaryOrdinal,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> elements)
+{
+    const std::string& temporaryTypeKey = core.resultTypeKey;
+    auto block = makeNode(
+        ProjectOopHirNodeKind::BlockExpression, expression, core.resultTypeKey);
+    auto create = makeNode(
+        ProjectOopHirNodeKind::StaticCall, expression, temporaryTypeKey);
+    create->memberOrdinal = core.builderMemberOrdinals[0];
+    auto declaration = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, temporaryTypeKey);
+    declaration->localOrdinal = temporaryOrdinal;
+    declaration->stringValue = "builder";
+    declaration->children.push_back(std::move(create));
+    block->children.push_back(std::move(declaration));
+
+    for (std::size_t index = 0; index < elements.size(); ++index)
+    {
+        const ast::AstNode* child = expression->children()[index];
+        auto add = makeNode(ProjectOopHirNodeKind::InstanceCall, child, "builtin:void");
+        add->memberOrdinal = core.builderMemberOrdinals[1];
+        auto receiver = makeNode(
+            ProjectOopHirNodeKind::LocalAddress, expression, temporaryTypeKey + "*");
+        receiver->localOrdinal = temporaryOrdinal;
+        add->children.push_back(std::move(receiver));
+        add->children.push_back(std::move(elements[index]));
+        auto statement = makeNode(
+            ProjectOopHirNodeKind::ExpressionStatement, child, "builtin:void");
+        statement->children.push_back(std::move(add));
+        block->children.push_back(std::move(statement));
+    }
+
+    auto toCollection = makeNode(
+        ProjectOopHirNodeKind::InstanceCall, expression, core.resultTypeKey);
+    toCollection->memberOrdinal = core.builderMemberOrdinals[2];
+    auto receiver = makeNode(
+        ProjectOopHirNodeKind::LocalAddress, expression, temporaryTypeKey + "*");
+    receiver->localOrdinal = temporaryOrdinal;
+    toCollection->children.push_back(std::move(receiver));
+    block->children.push_back(std::move(toCollection));
+    return block;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -533,51 +579,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExp
                     error = "collection builder result is a value, not addressable storage";
                     return nullptr;
                 }
-                const std::string tempTypeKey = core->resultTypeKey;
                 const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
-
-                auto block = makeNode(
-                    ProjectOopHirNodeKind::BlockExpression, expression, core->resultTypeKey);
-
-                // CreateBuilder() static call initializes the compiler-generated temporary.
-                auto create = makeNode(ProjectOopHirNodeKind::StaticCall, expression, tempTypeKey);
-                create->memberOrdinal = core->builderMemberOrdinals[0];
-                auto declaration = makeNode(
-                    ProjectOopHirNodeKind::LocalDeclaration, expression, tempTypeKey);
-                declaration->localOrdinal = tempOrdinal;
-                declaration->stringValue = "builder";
-                declaration->children.push_back(std::move(create));
-                block->children.push_back(std::move(declaration));
-
-                // Add(element) instance calls over the temporary, preserving source order.
-                for (const ast::AstNode* child : expression->children())
+                if (!expression->children().empty())
                 {
-                    auto element = lowerExpression(child, memberOrdinal, false, error);
-                    if (element == nullptr) return nullptr;
-                    auto add = makeNode(ProjectOopHirNodeKind::InstanceCall, child, "builtin:void");
-                    add->memberOrdinal = core->builderMemberOrdinals[1];
-                    auto addReceiver = makeNode(
-                        ProjectOopHirNodeKind::LocalAddress, expression, tempTypeKey + "*");
-                    addReceiver->localOrdinal = tempOrdinal;
-                    add->children.push_back(std::move(addReceiver));
-                    add->children.push_back(std::move(element));
-                    auto statement = makeNode(
-                        ProjectOopHirNodeKind::ExpressionStatement, child, "builtin:void");
-                    statement->children.push_back(std::move(add));
-                    block->children.push_back(std::move(statement));
+                    error = "Stage 34 collection builder escaped iterative lowering";
+                    return nullptr;
                 }
-
-                // ToCollection() instance call yields the result value.
-                auto toCollection = makeNode(
-                    ProjectOopHirNodeKind::InstanceCall, expression, core->resultTypeKey);
-                toCollection->memberOrdinal = core->builderMemberOrdinals[2];
-                auto toCollectionReceiver = makeNode(
-                    ProjectOopHirNodeKind::LocalAddress, expression, tempTypeKey + "*");
-                toCollectionReceiver->localOrdinal = tempOrdinal;
-                toCollection->children.push_back(std::move(toCollectionReceiver));
-                block->children.push_back(std::move(toCollection));
-
-                return block;
+                return finishCollectionBuilderExpression(
+                    expression, *core, tempOrdinal, {});
             }
             if (core == nullptr ||
                 (core->kind != MethodCoreOperationKind::ArrayAllocation &&

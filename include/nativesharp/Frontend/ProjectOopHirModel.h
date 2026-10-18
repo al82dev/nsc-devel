@@ -1060,6 +1060,11 @@ private:
         std::size_t memberOrdinal,
         bool addressContext,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishCollectionBuilderExpression(
+        const ast::AstNode* expression,
+        const MethodCoreBinding& core,
+        std::size_t temporaryOrdinal,
+        std::vector<std::unique_ptr<ProjectOopHirNode>> elements);
 
     std::unique_ptr<ProjectOopHirNode> lowerObjectConstructionExpression(
         const ast::AstNode* expression,

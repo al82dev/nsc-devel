@@ -330,6 +330,28 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerCollectionBuilderExpression(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const MethodExpressionTypeBinding& leafType,
+        const MethodExpressionTypeBinding& collectionType,
+        bool addressContext,
+        std::string& error)
+    {
+        for (const auto& node : syntax)
+        {
+            model.expressionTypeBySyntax_[node.get()] =
+                node->kind() == ast::AstNodeKind::CollectionExpression
+                    ? &collectionType
+                    : &leafType;
+        }
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCallExpression(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -5349,6 +5371,322 @@ void testDeepOrdinaryCallLowering(TestContext& tests)
     tests.expect(layoutMatches,
         "iterative ordinary calls preserve instance receivers, static arguments, targets, and order");
     destroyHirTreeIteratively(lowered);
+}
+
+void testDeepCollectionBuilderLowering(TestContext& tests)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    constexpr std::string_view resultType = "type:H02S15B.Collection";
+    constexpr std::array<std::size_t, 3U> memberOrdinals{31U, 32U, 33U};
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    syntax.reserve(nestingDepth + 1U);
+    cores.reserve(nestingDepth);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(19U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CollectionExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->addChild(current);
+        nativesharp::frontend::MethodCoreBinding core;
+        core.syntax = syntax.back().get();
+        core.kind = nativesharp::frontend::MethodCoreOperationKind::CollectionBuilder;
+        core.resultTypeKey = std::string(resultType);
+        core.builderMemberOrdinals = memberOrdinals;
+        cores.push_back(std::move(core));
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding leafType;
+    leafType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding collectionType;
+    collectionType.typeKey = std::string(resultType);
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCollectionBuilderExpression(
+            model, current, syntax, cores, leafType, collectionType, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level collection-builder chain lowers without process-stack recursion (" +
+            error + ")");
+
+    const ProjectOopHirNode* node = lowered.get();
+    bool layoutMatches = node != nullptr;
+    for (std::size_t ordinal = 0U; layoutMatches && ordinal < nestingDepth; ++ordinal)
+    {
+        const ProjectOopHirNode* declaration = node->children.size() == 3U
+            ? node->children[0].get() : nullptr;
+        const ProjectOopHirNode* statement = node->children.size() == 3U
+            ? node->children[1].get() : nullptr;
+        const ProjectOopHirNode* toCollection = node->children.size() == 3U
+            ? node->children[2].get() : nullptr;
+        const ProjectOopHirNode* create = declaration != nullptr &&
+                declaration->children.size() == 1U
+            ? declaration->children[0].get() : nullptr;
+        const ProjectOopHirNode* add = statement != nullptr &&
+                statement->children.size() == 1U
+            ? statement->children[0].get() : nullptr;
+        const ProjectOopHirNode* addReceiver = add != nullptr && add->children.size() == 2U
+            ? add->children[0].get() : nullptr;
+        const ProjectOopHirNode* resultReceiver = toCollection != nullptr &&
+                toCollection->children.size() == 1U
+            ? toCollection->children[0].get() : nullptr;
+        layoutMatches = node->kind == HirKind::BlockExpression &&
+            node->typeKey == resultType && node->syntax == cores[nestingDepth - 1U - ordinal].syntax &&
+            declaration != nullptr && declaration->syntax == node->syntax &&
+            declaration->kind == HirKind::LocalDeclaration &&
+            declaration->typeKey == resultType &&
+            declaration->localOrdinal == ordinal && declaration->stringValue == "builder" &&
+            create != nullptr && create->kind == HirKind::StaticCall &&
+            create->syntax == node->syntax && create->typeKey == resultType &&
+            create->memberOrdinal == memberOrdinals[0] && statement != nullptr &&
+            statement->kind == HirKind::ExpressionStatement && add != nullptr &&
+            statement->syntax == node->children[1]->syntax &&
+            statement->typeKey == "builtin:void" &&
+            add->kind == HirKind::InstanceCall &&
+            add->syntax == statement->syntax && add->typeKey == "builtin:void" &&
+            add->memberOrdinal == memberOrdinals[1] && addReceiver != nullptr &&
+            addReceiver->kind == HirKind::LocalAddress &&
+            addReceiver->syntax == node->syntax &&
+            addReceiver->localOrdinal == ordinal &&
+            addReceiver->typeKey == std::string(resultType) + "*" &&
+            toCollection != nullptr &&
+            toCollection->kind == HirKind::InstanceCall &&
+            toCollection->syntax == node->syntax && toCollection->typeKey == resultType &&
+            toCollection->memberOrdinal == memberOrdinals[2] &&
+            resultReceiver != nullptr &&
+            resultReceiver->kind == HirKind::LocalAddress &&
+            resultReceiver->syntax == node->syntax &&
+            resultReceiver->typeKey == std::string(resultType) + "*" &&
+            resultReceiver->localOrdinal == ordinal;
+        node = layoutMatches ? add->children[1].get() : nullptr;
+    }
+    layoutMatches = layoutMatches && node != nullptr &&
+        node->kind == HirKind::IntegerConstant && node->typeKey == "builtin:int" &&
+        node->integerValue == 19U;
+    tests.expect(layoutMatches,
+        "iterative collection builders preserve protocol order, member ordinals, and preorder locals");
+    destroyHirTreeIteratively(lowered);
+
+    const auto builderCore = [&](const nativesharp::ast::AstNode* node)
+    {
+        nativesharp::frontend::MethodCoreBinding core;
+        core.syntax = node;
+        core.kind = nativesharp::frontend::MethodCoreOperationKind::CollectionBuilder;
+        core.resultTypeKey = std::string(resultType);
+        core.builderMemberOrdinals = memberOrdinals;
+        return core;
+    };
+    const auto lowerFixture = [&](ProjectOopHirModel& fixtureModel,
+                                  const nativesharp::ast::AstNode* root,
+                                  const std::vector<std::unique_ptr<nativesharp::ast::AstNode>>& nodes,
+                                  const std::vector<nativesharp::frontend::MethodCoreBinding>& bindings,
+                                  bool address,
+                                  std::string& fixtureError)
+    {
+        return nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerCollectionBuilderExpression(
+                fixtureModel, root, nodes, bindings,
+                leafType, collectionType, address, fixtureError);
+    };
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> emptyNodes;
+    emptyNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,
+        nativesharp::SourceRange{}));
+    std::vector<nativesharp::frontend::MethodCoreBinding> emptyCores;
+    emptyCores.push_back(builderCore(emptyNodes.back().get()));
+    ProjectOopHirModel emptyModel;
+    error.clear();
+    auto empty = lowerFixture(
+        emptyModel, emptyNodes.back().get(), emptyNodes, emptyCores, false, error);
+    const bool emptyMatches = empty != nullptr && error.empty() &&
+        empty->kind == HirKind::BlockExpression && empty->syntax == emptyNodes.back().get() &&
+        empty->typeKey == resultType && empty->children.size() == 2U &&
+        empty->children[0]->kind == HirKind::LocalDeclaration &&
+        empty->children[0]->syntax == emptyNodes.back().get() &&
+        empty->children[0]->typeKey == resultType &&
+        empty->children[0]->children.size() == 1U &&
+        empty->children[0]->children[0]->kind == HirKind::StaticCall &&
+        empty->children[0]->children[0]->syntax == emptyNodes.back().get() &&
+        empty->children[0]->children[0]->typeKey == resultType &&
+        empty->children[1]->kind == HirKind::InstanceCall &&
+        empty->children[1]->syntax == emptyNodes.back().get() &&
+        empty->children[1]->typeKey == resultType &&
+        empty->children[1]->children.size() == 1U &&
+        empty->children[1]->children[0]->kind == HirKind::LocalAddress &&
+        empty->children[1]->children[0]->syntax == emptyNodes.back().get() &&
+        empty->children[1]->children[0]->typeKey == std::string(resultType) + "*";
+    tests.expect(emptyMatches,
+        "an empty builder preserves declaration/create/toCollection provenance and types");
+    destroyHirTreeIteratively(empty);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> orderedNodes;
+    for (std::uint64_t value : {3U, 5U, 8U})
+    {
+        orderedNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        orderedNodes.back()->setIntegerValue(value);
+    }
+    orderedNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,
+        nativesharp::SourceRange{}));
+    auto* orderedRoot = orderedNodes.back().get();
+    for (std::size_t index = 0; index < 3U; ++index)
+        orderedRoot->addChild(orderedNodes[index].get());
+    std::vector<nativesharp::frontend::MethodCoreBinding> orderedCores;
+    orderedCores.push_back(builderCore(orderedRoot));
+    ProjectOopHirModel orderedModel;
+    error.clear();
+    auto ordered = lowerFixture(
+        orderedModel, orderedRoot, orderedNodes, orderedCores, false, error);
+    bool orderedMatches = ordered != nullptr && error.empty() && ordered->children.size() == 5U;
+    for (std::size_t index = 0; orderedMatches && index < 3U; ++index)
+    {
+        const auto* statement = ordered->children[index + 1U].get();
+        const auto* add = statement->children.size() == 1U
+            ? statement->children[0].get() : nullptr;
+        const auto* value = add != nullptr && add->children.size() == 2U
+            ? add->children[1].get() : nullptr;
+        orderedMatches = statement->kind == HirKind::ExpressionStatement &&
+            statement->syntax == orderedNodes[index].get() &&
+            statement->typeKey == "builtin:void" && add != nullptr &&
+            add->kind == HirKind::InstanceCall && add->syntax == orderedNodes[index].get() &&
+            add->typeKey == "builtin:void" && value != nullptr &&
+            value->kind == HirKind::IntegerConstant && value->typeKey == "builtin:int" &&
+            value->integerValue == std::array<std::uint64_t, 3U>{3U, 5U, 8U}[index];
+    }
+    tests.expect(orderedMatches,
+        "three distinguishable builder elements preserve source order, syntax, and value types");
+    destroyHirTreeIteratively(ordered);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> siblingNodes;
+    for (std::uint64_t value : {1U, 2U})
+    {
+        siblingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        siblingNodes.back()->setIntegerValue(value);
+        siblingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CollectionExpression,
+            nativesharp::SourceRange{}));
+        siblingNodes.back()->addChild(siblingNodes[siblingNodes.size() - 2U].get());
+    }
+    siblingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,
+        nativesharp::SourceRange{}));
+    auto* siblingRoot = siblingNodes.back().get();
+    siblingRoot->addChild(siblingNodes[1].get());
+    siblingRoot->addChild(siblingNodes[3].get());
+    std::vector<nativesharp::frontend::MethodCoreBinding> siblingCores;
+    siblingCores.push_back(builderCore(siblingNodes[1].get()));
+    siblingCores.push_back(builderCore(siblingNodes[3].get()));
+    siblingCores.push_back(builderCore(siblingRoot));
+    ProjectOopHirModel siblingModel;
+    error.clear();
+    auto siblings = lowerFixture(
+        siblingModel, siblingRoot, siblingNodes, siblingCores, false, error);
+    const auto nestedBuilder = [&](std::size_t statementIndex) -> const ProjectOopHirNode*
+    {
+        if (siblings == nullptr || siblings->children.size() <= statementIndex) return nullptr;
+        const auto* statement = siblings->children[statementIndex].get();
+        return statement->children.size() == 1U && statement->children[0]->children.size() == 2U
+            ? statement->children[0]->children[1].get() : nullptr;
+    };
+    const ProjectOopHirNode* firstSibling = nestedBuilder(1U);
+    const ProjectOopHirNode* secondSibling = nestedBuilder(2U);
+    tests.expect(siblings != nullptr && error.empty() &&
+            siblings->children[0]->localOrdinal == 0U && firstSibling != nullptr &&
+            firstSibling->children[0]->localOrdinal == 1U && secondSibling != nullptr &&
+            secondSibling->children[0]->localOrdinal == 2U,
+        "sibling and nested builders reserve independent synthetic locals in preorder");
+    destroyHirTreeIteratively(siblings);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> addressNodes;
+    addressNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    addressNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression, nativesharp::SourceRange{}));
+    addressNodes.back()->addChild(addressNodes.front().get());
+    std::vector<nativesharp::frontend::MethodCoreBinding> addressCores;
+    addressCores.push_back(builderCore(addressNodes.back().get()));
+    ProjectOopHirModel addressModel;
+    error.clear();
+    auto rejectedAddress = lowerFixture(
+        addressModel, addressNodes.back().get(), addressNodes, addressCores, true, error);
+    const bool addressRejected = rejectedAddress == nullptr &&
+        error == "collection builder result is a value, not addressable storage";
+    addressNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression, nativesharp::SourceRange{}));
+    addressCores.push_back(builderCore(addressNodes.back().get()));
+    error.clear();
+    auto afterAddress = lowerFixture(
+        addressModel, addressNodes.back().get(), addressNodes, addressCores, false, error);
+    tests.expect(addressRejected && afterAddress != nullptr && error.empty() &&
+            afterAddress->children[0]->localOrdinal == 0U,
+        "address rejection preserves its diagnostic and consumes no synthetic ordinal");
+    destroyHirTreeIteratively(afterAddress);
+
+    const nativesharp::SourceRange badRange(
+        nativesharp::SourceLocation(nativesharp::FileId(17U), 41U),
+        nativesharp::SourceLocation(nativesharp::FileId(17U), 49U));
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> failingNodes;
+    failingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression, badRange));
+    failingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,
+        nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(17U), 30U),
+            nativesharp::SourceLocation(nativesharp::FileId(17U), 60U))));
+    failingNodes.back()->addChild(failingNodes.front().get());
+    std::vector<nativesharp::frontend::MethodCoreBinding> failingCores;
+    failingCores.push_back(builderCore(failingNodes.back().get()));
+    ProjectOopHirModel failingModel;
+    error.clear();
+    auto failed = lowerFixture(
+        failingModel, failingNodes.back().get(), failingNodes, failingCores, false, error);
+    tests.expect(failed == nullptr &&
+            error == "Stage 34 requires a resolved Stage 27 method call" &&
+            failingModel.lastErrorRange().begin() == badRange.begin() &&
+            failingModel.lastErrorRange().end() == badRange.end(),
+        "an inner element failure preserves its exact error/range and publishes no partial block");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> arrayNodes;
+    arrayNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    arrayNodes.back()->setIntegerValue(4U);
+    arrayNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression, nativesharp::SourceRange{}));
+    arrayNodes.back()->setAuxiliaryText("inferred-array-initializer");
+    arrayNodes.back()->addChild(arrayNodes.front().get());
+    nativesharp::frontend::MethodCoreBinding arrayCore;
+    arrayCore.syntax = arrayNodes.back().get();
+    arrayCore.kind = nativesharp::frontend::MethodCoreOperationKind::ArrayAllocation;
+    arrayCore.resultTypeKey = "builtin:int[]";
+    arrayCore.elementTypeKey = "builtin:int";
+    std::vector<nativesharp::frontend::MethodCoreBinding> arrayCores;
+    arrayCores.push_back(std::move(arrayCore));
+    ProjectOopHirModel arrayModel;
+    error.clear();
+    auto array = lowerFixture(
+        arrayModel, arrayNodes.back().get(), arrayNodes, arrayCores, false, error);
+    tests.expect(array != nullptr && error.empty() &&
+            array->kind == HirKind::ArrayAllocation && array->typeKey == "builtin:int[]" &&
+            array->booleanValue && array->children.size() == 2U &&
+            array->children[0]->kind == HirKind::IntegerConstant &&
+            array->children[0]->integerValue == 1U &&
+            array->children[1]->kind == HirKind::IntegerConstant &&
+            array->children[1]->integerValue == 4U,
+        "a CollectionExpression with ArrayAllocation core preserves the legacy array route");
+    destroyHirTreeIteratively(array);
 }
 
 struct DeepDelegateCreationSyntax final
@@ -12060,6 +12398,10 @@ int main()
     {
         testDeepOrdinaryCallLowering(tests);
     }
+    else if (focusValue == "hir-collection-builder-depth")
+    {
+        testDeepCollectionBuilderLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -12275,6 +12617,7 @@ int main()
         testDeepMonitorCallLowering(tests);
         testDeepConsoleEnumStructCallLowering(tests);
         testDeepOrdinaryCallLowering(tests);
+        testDeepCollectionBuilderLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
