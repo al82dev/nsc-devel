@@ -271,6 +271,27 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup* nameLookup,
+        const ProjectMemberModel* memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& binding,
+        bool asyncBody,
+        std::string& error)
+    {
+        model.nameLookup_ = nameLookup;
+        model.memberModel_ = memberModel;
+        model.loweringAsyncBody_ = asyncBody;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &binding;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, callerMemberOrdinal, false, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerMatchExpression(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -2203,6 +2224,144 @@ void testDeepAsyncAwaitScan(TestContext& tests)
             model, current, callSyntax, binding);
     tests.expect(ordinals == std::vector<std::size_t>({17U}),
         "iterative async await scan reaches a bound await through 32768 AST levels");
+}
+
+struct AwaitExpressionTarget final
+{
+    std::size_t producerOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+};
+
+bool prepareAwaitExpressionFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    AwaitExpressionTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepAwaitExpression";
+    writeProject(directory, "DeepAwaitExpression");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public struct AwaitHost {
+    public static int Produce() { return 1; }
+    public int Run() { return 0; }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepAwaitExpression.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundProducer = false;
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        if (members[ordinal].name == "Produce")
+        {
+            output.producerOrdinal = ordinal;
+            foundProducer = true;
+        }
+        else if (members[ordinal].name == "Run")
+        {
+            output.callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundProducer && foundCaller;
+}
+
+void testDeepAwaitVariableLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(nestingDepth + 2U);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    auto* operand = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::OverflowPolicyExpression,
+            nativesharp::SourceRange{}));
+        syntax.back()->setAuxiliaryText(index % 2U == 0U ? "checked" : "unchecked");
+        syntax.back()->setFirst(operand);
+        operand = syntax.back().get();
+    }
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::AwaitExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setFirst(operand);
+
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = "future:builtin:int";
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerAwaitExpression(
+        model, nullptr, nullptr, 0U, syntax.back().get(), syntax, {}, type, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "await lowers a 32768-level operand without process-stack recursion (" + error + ")");
+    tests.expect(lowered != nullptr &&
+            lowered->kind == nativesharp::frontend::ProjectOopHirNodeKind::AwaitFuture &&
+            lowered->typeKey == "builtin:int" && lowered->elementTypeKey == type.typeKey &&
+            lowered->stringValue.empty() && lowered->integerValue == 0U &&
+            lowered->children.size() == 1U,
+        "future-value await preserves type, pollFn route, sync state, and single operand");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testDirectAwaitCallLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    ProjectCompilation compilation;
+    AwaitExpressionTarget target;
+    std::string error;
+    const bool prepared = prepareAwaitExpressionFixture(root, compilation, target, error);
+    tests.expect(prepared, "the direct-await fixture builds producer and caller members (" + error + ")");
+    if (!prepared) return;
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(1U);
+    auto* operand = syntax.back().get();
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::AwaitExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setFirst(operand);
+    nativesharp::frontend::MethodCallBinding call;
+    call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+    call.syntax = operand;
+    call.staticCall = true;
+    call.selectedMemberOrdinal = target.producerOrdinal;
+    call.resultTypeKey = "future:builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = call.resultTypeKey;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerAwaitExpression(
+        model, compilation.nameLookup(), compilation.memberModel(), target.callerOrdinal,
+        syntax.back().get(), syntax, {call}, type, true, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "direct await lowers through the shared worklist (" + error + ")");
+    tests.expect(lowered != nullptr && !lowered->stringValue.empty() &&
+            lowered->stringValue.ends_with("$poll") && lowered->integerValue == 1U &&
+            lowered->cleanupRegionOrdinals.empty() &&
+            !lowered->exceptionTargetRegionOrdinal.has_value(),
+        "direct await preserves poll symbol, async state, and route-specific metadata");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testDeepAwaitExpressionLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    testDeepAwaitVariableLowering(tests);
+    testDirectAwaitCallLowering(tests, root);
 }
 
 void testDeepBuiltinUnaryExpressionLowering(TestContext& tests)
@@ -7348,6 +7507,10 @@ int main()
     else if (focusValue == "hir-async-await-scan-depth")
     {
         testDeepAsyncAwaitScan(tests);
+    }
+    else if (focusValue == "hir-await-expression-depth")
+    {
+        testDeepAwaitExpressionLowering(tests, root);
     }
     else if (focusValue == "hir-builtin-unary-depth")
     {

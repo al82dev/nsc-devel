@@ -134,6 +134,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
+        AwaitExpression,
         OverflowPolicy,
         BuiltinUnary,
         UserUnaryOperator,
@@ -209,6 +210,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool compoundSetter = false;
         std::size_t namespaceFunctionOrdinal = 0U;
         std::optional<std::size_t> assignmentLocalOrdinal;
+        std::optional<std::size_t> awaitMemberOrdinal;
+        std::vector<std::size_t> awaitCleanupRegionOrdinals;
+        std::optional<std::size_t> awaitExceptionTargetRegionOrdinal;
         std::string assignmentResultType;
         lexer::TokenKind assignmentOperation = lexer::TokenKind::Invalid;
         bool assignmentOwnsStorage = false;
@@ -235,6 +239,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         -> std::optional<IterativeExpressionKind>
     {
         if (syntax == nullptr) return std::nullopt;
+        if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
+            return IterativeExpressionKind::AwaitExpression;
         if (syntax->kind() == ast::AstNodeKind::LoopExpression)
             return IterativeExpressionKind::LoopExpression;
         if (!address && syntax->kind() == ast::AstNodeKind::InterpolatedStringExpression &&
@@ -881,6 +887,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.loopExpressionBinding->resultTypeKey);
                     frame.first->stringValue = frame.loopExpressionBinding->label;
                 }
+                else if (*currentKind == IterativeExpressionKind::AwaitExpression)
+                {
+                    const MethodCallBinding* binding = callBinding(current->first());
+                    if (binding != nullptr && binding->selectedMemberOrdinal.has_value() &&
+                        *binding->selectedMemberOrdinal < memberModel_->members().size())
+                    {
+                        frame.awaitMemberOrdinal = *binding->selectedMemberOrdinal;
+                        if (awaitProducerCanSuspend(*frame.awaitMemberOrdinal))
+                        {
+                            error = "await on an async function that can suspend requires the state machine "
+                                    "lowering (NS304-T05-F03)";
+                            if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        if (!loweringAsyncBody_ && !activeHirExceptionHandlers_.empty())
+                        {
+                            const auto& handler = activeHirExceptionHandlers_.back();
+                            for (std::size_t index = activeHirCleanupRegions_.size();
+                                index > handler.retainedCleanupDepth; --index)
+                            {
+                                frame.awaitCleanupRegionOrdinals.push_back(
+                                    activeHirCleanupRegions_[index - 1U]);
+                            }
+                            frame.awaitExceptionTargetRegionOrdinal = handler.hirRegionOrdinal;
+                        }
+                    }
+                }
                 else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
                 {
                     frame.operatorCallBinding = callBinding(current);
@@ -1315,6 +1349,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::LoopExpression)
                     current = current->first();
+                else if (*currentKind == IterativeExpressionKind::AwaitExpression)
+                    current = current->first();
                 else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
@@ -1549,6 +1585,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.first->children.push_back(std::move(lowered));
                     lowered = std::move(frame.first);
                     frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::AwaitExpression)
+                {
+                    const ast::AstNode* awaitSyntax = frame.syntax;
+                    lowered = lowerAwaitExpression(
+                        frame.syntax,
+                        std::move(lowered),
+                        frame.awaitMemberOrdinal,
+                        std::move(frame.awaitCleanupRegionOrdinals),
+                        frame.awaitExceptionTargetRegionOrdinal,
+                        error);
+                    frames.pop_back();
+                    if (lowered == nullptr)
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = awaitSyntax->range();
+                        return nullptr;
+                    }
                     continue;
                 }
                 if (frame.kind == IterativeExpressionKind::ExpressionStatement)
@@ -5877,7 +5932,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         // quiere que mida.
 
         case ast::AstNodeKind::AwaitExpression:
-            return lowerAwaitExpression(expression, memberOrdinal, error);
+            error = "await expression escaped iterative Stage 34 OOP HIR lowering";
+            return nullptr;
 
         default:
             error = "unsupported Stage 34 OOP expression kind: " +

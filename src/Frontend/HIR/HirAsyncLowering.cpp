@@ -763,96 +763,56 @@ std::vector<std::size_t> ProjectOopHirModel::collectAwaitedMemberOrdinals(
 }
 
 
+bool ProjectOopHirModel::awaitProducerCanSuspend(std::size_t rootMemberOrdinal) const
+{
+    std::unordered_set<std::size_t> visitedSuspendMembers;
+    std::vector<std::size_t> pendingMembers = {rootMemberOrdinal};
+    while (!pendingMembers.empty())
+    {
+        const std::size_t memberIdx = pendingMembers.back();
+        pendingMembers.pop_back();
+        if (!visitedSuspendMembers.insert(memberIdx).second) continue;
+        if (memberIdx >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& awaitedMember = memberModel_->members()[memberIdx];
+        if (awaitedMember.syntax == nullptr) continue;
+        const auto awaitedOrdinals = collectAwaitedMemberOrdinals(awaitedMember.syntax->first());
+        for (auto awaited = awaitedOrdinals.rbegin(); awaited != awaitedOrdinals.rend(); ++awaited)
+            if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
+    }
+    // Preserve the effective Stage 34 policy: the scan is cycle-safe but currently never rejects.
+    return false;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
     const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    std::unique_ptr<ProjectOopHirNode> operand,
+    std::optional<std::size_t> selectedMemberOrdinal,
+    std::vector<std::size_t> cleanupRegionOrdinals,
+    std::optional<std::size_t> exceptionTargetRegionOrdinal,
     std::string& error)
 {
-    // NS304-T05-F03: `await operand` over a synchronously-completing future. The operand
-    // must be a direct call to an async function (returns future:<T>); the poll function
-    // runs the body and stores the result, which this node reads back. Suspend/resume for
-    // pending futures is the state-machine step.
-    const MethodCallBinding* binding = callBinding(expression->first());
-    if (binding == nullptr || !binding->selectedMemberOrdinal.has_value() ||
-        *binding->selectedMemberOrdinal >= memberModel_->members().size())
-    {
-        // NS304-T05-F09: await over a future VARIABLE (not a direct call). The future
-        // carries its poll (pollFn), so the await resolves it from the operand's value.
-        auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
-        if (operand == nullptr) return nullptr;
-        const auto variableInner = language::futureInnerTypeKey(operand->typeKey);
-        if (!variableInner.has_value())
-        {
-            error = "await operand is neither an async call nor a future value: " +
-                operand->typeKey;
-            return nullptr;
-        }
-        auto await = makeNode(
-            ProjectOopHirNodeKind::AwaitFuture, expression, std::string(*variableInner));
-        await->elementTypeKey = operand->typeKey;
-        // Empty calleeName marks the pollFn path: the MIR/LLVM loads the poll from the
-        // future's pollFn field instead of a direct function reference.
-        await->stringValue.clear();
-        await->integerValue = loweringAsyncBody_ ? 1 : 0;
-        await->children.push_back(std::move(operand));
-        return await;
-    }
-    const ClassMemberSymbol& callee = memberModel_->members()[*binding->selectedMemberOrdinal];
-    // NS304-T05-F03: reject an await over a producer that can actually suspend
-    // (transitively awaits a suspend-capable future), which the caller cannot complete
-    // synchronously. A producer that only awaits synchronously-completing futures never
-    // suspends and is safe to await.
-    const auto canSuspend = [&](std::size_t rootMemberOrdinal) -> bool
-    {
-        std::unordered_set<std::size_t> visitedSuspendMembers;
-        std::vector<std::size_t> pendingMembers = {rootMemberOrdinal};
-        while (!pendingMembers.empty())
-        {
-            const std::size_t memberIdx = pendingMembers.back();
-            pendingMembers.pop_back();
-            if (!visitedSuspendMembers.insert(memberIdx).second) continue;
-            if (memberIdx >= memberModel_->members().size()) continue;
-            const ClassMemberSymbol& awaitedMember = memberModel_->members()[memberIdx];
-            if (awaitedMember.syntax == nullptr) continue;
-            const auto awaitedOrdinals =
-                collectAwaitedMemberOrdinals(awaitedMember.syntax->first());
-            for (auto awaited = awaitedOrdinals.rbegin(); awaited != awaitedOrdinals.rend(); ++awaited)
-                if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
-        }
-        return false;
-    };
-    if (canSuspend(*binding->selectedMemberOrdinal))
-    {
-        error = "await on an async function that can suspend requires the state machine "
-                "lowering (NS304-T05-F03)";
-        return nullptr;
-    }
-    auto call = lowerExpression(expression->first(), memberOrdinal, false, error);
-    if (call == nullptr) return nullptr;
-    const auto inner = language::futureInnerTypeKey(call->typeKey);
+    const auto inner = language::futureInnerTypeKey(operand->typeKey);
     if (!inner.has_value())
     {
-        error = "await operand does not produce a future surface: " + call->typeKey;
+        error = selectedMemberOrdinal.has_value()
+            ? "await operand does not produce a future surface: " + operand->typeKey
+            : "await operand is neither an async call nor a future value: " + operand->typeKey;
         return nullptr;
     }
+
     auto await = makeNode(ProjectOopHirNodeKind::AwaitFuture, expression, std::string(*inner));
-    await->elementTypeKey = call->typeKey;
-    await->stringValue = mangleCallable(
-        nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
-    // NS304-T05-F03: async context -> resume state index (single await = 1); sync context
-    // -> blocking await (integerValue = 0, poll once and read the result).
+    await->elementTypeKey = operand->typeKey;
     await->integerValue = loweringAsyncBody_ ? 1 : 0;
-    await->children.push_back(std::move(call));
-    // NS304-T05-F07 rethrow: a BLOCKING await inside a try rethrows the future's error slot
-    // into the enclosing catch, exactly like a `throw`. The async suspend path is separate.
-    if (!loweringAsyncBody_ && !activeHirExceptionHandlers_.empty())
+    if (selectedMemberOrdinal.has_value())
     {
-        const std::size_t retainedDepth = activeHirExceptionHandlers_.back().retainedCleanupDepth;
-        for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
-            await->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
-        await->exceptionTargetRegionOrdinal =
-            activeHirExceptionHandlers_.back().hirRegionOrdinal;
+        const ClassMemberSymbol& callee = memberModel_->members()[*selectedMemberOrdinal];
+        await->stringValue = mangleCallable(
+            nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
+        await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
+        await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     }
+    else await->stringValue.clear();
+    await->children.push_back(std::move(operand));
     return await;
 }
 

@@ -1047,8 +1047,12 @@ private:
 
     std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         const ast::AstNode* expression,
-        std::size_t memberOrdinal,
+        std::unique_ptr<ProjectOopHirNode> operand,
+        std::optional<std::size_t> selectedMemberOrdinal,
+        std::vector<std::size_t> cleanupRegionOrdinals,
+        std::optional<std::size_t> exceptionTargetRegionOrdinal,
         std::string& error);
+    bool awaitProducerCanSuspend(std::size_t rootMemberOrdinal) const;
 
     std::unique_ptr<ProjectOopHirNode> lowerCoroutineStatement(
         const ast::AstNode* statement,
