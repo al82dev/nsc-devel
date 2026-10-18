@@ -463,64 +463,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return lowerForStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::ForeachStatement:
-        {
-            // Foreach was desugared at parse time into two unconditionally-built candidate loops
-            // (see the design comment atop Parser::parseForeachStatement and
-            // ProjectMethodBodyModel::analyzeForeach). ProjectMethodBodyModel::analyzeForeach
-            // already picked the "real" candidate and ran ordinary semantic analysis on ONLY it --
-            // but the raw AST this function walks still carries the original ForeachStatement
-            // node, with BOTH candidate subtrees still attached, as the statement in the enclosing
-            // block. There is no side-channel recording which candidate Stage 27 chose, so HIR
-            // lowering re-derives the SAME array-vs-enumerator decision independently, the same
-            // way: resolve __foreach_source's already-analyzed typeKey via localSymbol() (populated
-            // from MethodLocalSymbol::syntax, see localBySyntax_) and check for the "[]" array
-            // suffix (see ProjectGenericModel::canonicalTypeKey for that representation). Both
-            // passes read the identical resolved type, so they always agree.
-            //
-            // No new HIR node kind is introduced: __foreach_source's declaration lowers through
-            // the ordinary VariableDeclarationStatement case above, and the chosen candidate --
-            // itself just a BlockStatement holding an index/enumerator VariableDeclarationStatement
-            // plus a WhileStatement -- lowers through the ordinary lowerBlock/WhileStatement paths.
-            // The two are wrapped in one outer Block so the foreach statement lowers to exactly one
-            // HIR node, mirroring the single Foreach semantic scope analyzeForeach created.
-            const MethodLocalSymbol* sourceLocal = localSymbol(statement->first());
-            if (sourceLocal == nullptr)
-            {
-                error = "Stage 34 foreach source local is missing its Stage 27 semantic binding";
-                return nullptr;
-            }
-            const bool isArray = sourceLocal->typeKey.size() > 2 &&
-                sourceLocal->typeKey.compare(sourceLocal->typeKey.size() - 2, 2, "[]") == 0;
-            const bool isSpan =
-                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span<") ||
-                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span__g") ||
-                sourceLocal->typeKey.find("::NativeSharp.Core.Span__g") != std::string::npos ||
-                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan<") ||
-                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan__g") ||
-                sourceLocal->typeKey.find("::NativeSharp.Core.ReadOnlySpan__g") != std::string::npos;
-            const ast::AstNode* chosenCandidate = isArray
-                ? statement->second()
-                : (isSpan && statement->children().size() > 1U
-                    ? statement->children()[1]
-                    : statement->third());
-
-            auto node = makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
-            std::unique_ptr<ProjectOopHirNode> sourceDeclHir =
-                lowerStatement(statement->first(), memberOrdinal, error);
-            if (sourceDeclHir == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(sourceDeclHir));
-
-            std::unique_ptr<ProjectOopHirNode> candidateHir = lowerBlock(chosenCandidate, memberOrdinal, error);
-            if (candidateHir == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(candidateHir));
-            return node;
-        }
+            return lowerForeachStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::BreakStatement:
         case ast::AstNodeKind::ContinueStatement:

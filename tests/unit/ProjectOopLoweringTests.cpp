@@ -1562,6 +1562,23 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerForeachStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodLocalSymbol> locals,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.locals_ = std::move(locals);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.localBySyntax_.clear();
+        for (const MethodLocalSymbol& local : methodBodyModel.locals_)
+            model.localBySyntax_[local.syntax] = &local;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -16006,6 +16023,236 @@ void testDeepForStatementLowering(TestContext& tests)
     destroyHirTreeIteratively(extra);
 }
 
+struct DeepForeachStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> statements;
+    std::vector<nativesharp::frontend::MethodLocalSymbol> locals;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepForeachStatementFixture makeDeepForeachCandidateFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepForeachStatementFixture fixture;
+    fixture.nodes.reserve(depth * 4U);
+    fixture.statements.reserve(depth);
+    fixture.locals.reserve(depth);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+
+    nativesharp::ast::AstNode* current = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        auto* source = append(AstKind::VariableDeclarationStatement);
+        auto* candidate = append(AstKind::BlockStatement);
+        if (current != nullptr) candidate->addChild(current);
+        auto* poison = append(static_cast<AstKind>(0xFFFF));
+        auto* statement = append(AstKind::ForeachStatement);
+        statement->setFirst(source);
+        statement->setSecond(candidate);
+        statement->setThird(poison);
+
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = source;
+        local.name = "__foreach_source";
+        local.typeKey = "builtin:int[]";
+        fixture.locals.push_back(std::move(local));
+        fixture.statements.push_back(statement);
+        current = statement;
+    }
+    std::reverse(fixture.statements.begin(), fixture.statements.end());
+    fixture.root = current;
+    return fixture;
+}
+
+DeepForeachStatementFixture makeDeepForeachSourceFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepForeachStatementFixture fixture;
+    fixture.nodes.reserve(depth * 3U + 1U);
+    fixture.statements.reserve(depth);
+    fixture.locals.reserve(depth + 1U);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+
+    nativesharp::ast::AstNode* current = append(AstKind::VariableDeclarationStatement);
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = current;
+        local.name = "__foreach_source";
+        local.typeKey = "builtin:int[]";
+        fixture.locals.push_back(std::move(local));
+
+        auto* candidate = append(AstKind::BlockStatement);
+        auto* poison = append(static_cast<AstKind>(0xFFFF));
+        auto* statement = append(AstKind::ForeachStatement);
+        statement->setFirst(current);
+        statement->setSecond(candidate);
+        statement->setThird(poison);
+        fixture.statements.push_back(statement);
+        current = statement;
+    }
+    std::reverse(fixture.statements.begin(), fixture.statements.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepForeachCandidateChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepForeachStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.statements.size(); ++index)
+    {
+        const auto* syntax = fixture.statements[index];
+        if (node == nullptr || node->kind != HirKind::Block ||
+            node->syntax != syntax || node->typeKey != "builtin:void" ||
+            node->children.size() != 2U || node->children[0] == nullptr ||
+            node->children[0]->kind != HirKind::LocalDeclaration ||
+            node->children[0]->syntax != syntax->first() ||
+            node->children[1] == nullptr ||
+            node->children[1]->kind != HirKind::Block ||
+            node->children[1]->syntax != syntax->second())
+        {
+            return false;
+        }
+        if (index + 1U == fixture.statements.size())
+            return node->children[1]->children.empty();
+        if (node->children[1]->children.size() != 1U) return false;
+        node = node->children[1]->children[0].get();
+    }
+    return false;
+}
+
+bool deepForeachSourceChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepForeachStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.statements.size(); ++index)
+    {
+        const auto* syntax = fixture.statements[index];
+        if (node == nullptr || node->kind != HirKind::Block ||
+            node->syntax != syntax || node->typeKey != "builtin:void" ||
+            node->children.size() != 2U || node->children[0] == nullptr ||
+            node->children[1] == nullptr ||
+            node->children[1]->kind != HirKind::Block ||
+            node->children[1]->syntax != syntax->second() ||
+            !node->children[1]->children.empty())
+        {
+            return false;
+        }
+        if (index + 1U == fixture.statements.size())
+        {
+            return node->children[0]->kind == HirKind::LocalDeclaration &&
+                node->children[0]->syntax == syntax->first();
+        }
+        node = node->children[0].get();
+    }
+    return false;
+}
+
+void testDeepForeachStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+
+    auto candidateFixture = makeDeepForeachCandidateFixture(nestingDepth);
+    nativesharp::frontend::ProjectMethodBodyModel candidateBodyModel;
+    ProjectOopHirModel candidateModel;
+    std::string error;
+    auto candidateLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForeachStatementForTest(
+            candidateModel, candidateBodyModel, candidateFixture.root,
+            std::move(candidateFixture.locals), {41U}, error);
+    tests.expect(candidateLowered != nullptr && error.empty(),
+        "32768 foreach candidate-block edges lower on one worklist (" + error + ")");
+    tests.expect(deepForeachCandidateChainMatches(
+            candidateLowered.get(), candidateFixture),
+        "iterative foreach candidate lowering preserves source-first two-child blocks");
+    tests.expect(nativesharp::frontend::ProjectOopHirModelTestAccess::
+            activeCleanupDepth(candidateModel) == 1U,
+        "foreach candidate lowering preserves enclosing cleanup state");
+    destroyHirTreeIteratively(candidateLowered);
+
+    auto sourceFixture = makeDeepForeachSourceFixture(nestingDepth);
+    nativesharp::frontend::ProjectMethodBodyModel sourceBodyModel;
+    ProjectOopHirModel sourceModel;
+    error.clear();
+    auto sourceLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForeachStatementForTest(
+            sourceModel, sourceBodyModel, sourceFixture.root,
+            std::move(sourceFixture.locals), {}, error);
+    tests.expect(sourceLowered != nullptr && error.empty(),
+        "32768 foreach source-statement edges lower on one worklist (" + error + ")");
+    tests.expect(deepForeachSourceChainMatches(sourceLowered.get(), sourceFixture),
+        "iterative foreach source lowering preserves the historical statement edge");
+    destroyHirTreeIteratively(sourceLowered);
+
+    const auto makeNode = [](AstKind kind)
+    {
+        return std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{});
+    };
+    auto source = makeNode(AstKind::VariableDeclarationStatement);
+    auto arrayCandidate = makeNode(AstKind::BlockStatement);
+    auto enumeratorCandidate = makeNode(AstKind::BlockStatement);
+    auto selection = makeNode(AstKind::ForeachStatement);
+    selection->setFirst(source.get());
+    selection->setSecond(arrayCandidate.get());
+    selection->setThird(enumeratorCandidate.get());
+    nativesharp::frontend::MethodLocalSymbol arrayLocal;
+    arrayLocal.syntax = source.get();
+    arrayLocal.name = "source";
+    arrayLocal.typeKey = "type:NativeSharp.Core.Span__g1[]";
+    nativesharp::frontend::ProjectMethodBodyModel selectionBodyModel;
+    ProjectOopHirModel selectionModel;
+    error.clear();
+    auto selected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForeachStatementForTest(
+            selectionModel, selectionBodyModel, selection.get(),
+            {arrayLocal}, {}, error);
+    tests.expect(selected != nullptr && error.empty() &&
+            selected->kind == HirKind::Block && selected->children.size() == 2U &&
+            selected->children[0]->syntax == source.get() &&
+            selected->children[1]->syntax == arrayCandidate.get(),
+        "foreach array suffix has priority and publishes exactly source then selected block");
+    destroyHirTreeIteratively(selected);
+
+    nativesharp::frontend::ProjectMethodBodyModel missingBodyModel;
+    ProjectOopHirModel missingModel;
+    error.clear();
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForeachStatementForTest(
+            missingModel, missingBodyModel, selection.get(), {}, {}, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 34 foreach source local is missing its Stage 27 semantic binding",
+        "foreach missing source binding wins before any source or candidate lowering");
+
+    auto invalidCandidate = makeNode(AstKind::IntegerLiteralExpression);
+    selection->setSecond(invalidCandidate.get());
+    nativesharp::frontend::ProjectMethodBodyModel invalidBodyModel;
+    ProjectOopHirModel invalidModel;
+    error.clear();
+    auto invalid = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForeachStatementForTest(
+            invalidModel, invalidBodyModel, selection.get(), {arrayLocal}, {}, error);
+    tests.expect(invalid == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body",
+        "foreach delegates selected candidate shape diagnostics to block lowering");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -19965,6 +20212,10 @@ int main()
     else if (focusValue == "hir-for-statement-depth")
     {
         testDeepForStatementLowering(tests);
+    }
+    else if (focusValue == "hir-foreach-statement-depth")
+    {
+        testDeepForeachStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
