@@ -14,7 +14,7 @@
 | Archivos funcionales | `src/Frontend/HIR/HirExpressionMachine.cpp`. |
 | Incluido | Clasificación resuelta, descenso según `passKind`, llamada estática, conversiones, borrows, cleanup, ref-return, comportamiento noheap histórico y `memberOrdinal`. |
 | Excluido | Operadores binarios, resolución de overloads, parser, Sema, MIR, LLVM, ABI, NSMETA y sintaxis nueva. |
-| Ejecución | Sin build ni pruebas por instrucción expresa; sólo auditoría estática y registro del contrafactual. |
+| Ejecución | Build focal PASS y `hir-user-unary-operator-depth` PASS 3/3. |
 
 ## Ruta histórica auditada
 
@@ -76,14 +76,16 @@ los bindings incompletos continúan por las decisiones builtin y diagnósticos a
 ## Contrafactual profundo registrado
 
 El foco `hir-user-unary-operator-depth` prepara primero un proyecto NativeSharp real con un struct
-`Node`, un `public static Node operator -(in Node value)` y un caller. Del modelo semántico toma el
+`Node`, un `public static Node operator -(Node value)` y un caller. Del modelo semántico toma el
 ordinal real del operador, el ordinal del caller y el type key canónico.
 
 Después construye una cadena interna de 32,768 llamadas y alterna los dos `AstNodeKind` que la
 ruta histórica compartía: `UnaryExpression` y `PostfixExpression`. Cada nivel usa un
-`MethodCallBinding` resuelto al mismo miembro real. La hoja es `this` tipado como el struct; como
-el parámetro real es `in`, sólo el address context correcto produce directamente `ThisValue`. Un
-descenso accidental como valor insertaría `PointerLoad` y haría fallar el matcher.
+`MethodCallBinding` resuelto al mismo miembro real. La selección del miembro exige además que el
+parámetro productivo tenga `ParameterPassKind::Value`, de modo que el contrafactual comprueba la
+ruta válida por valor y no una firma de operador rechazada por el lenguaje. La hoja es `this`
+tipado como el struct y, al consumirse por valor, debe permanecer como el `PointerLoad(ThisValue)`
+que materializa el valor del receiver de un struct.
 
 La verificación exige:
 
@@ -93,7 +95,8 @@ La verificación exige:
 - un único hijo por llamada y evaluación única del operando;
 - `memberOrdinal` y type key reales en todos los niveles;
 - ausencia de dispatch, base, null-conditional y ref-result accidentales;
-- hoja `ThisValue` directa, prueba observable del `passKind::In` preservado.
+- `ParameterPassKind::Value` obtenido del miembro real y hoja productiva
+  `PointerLoad(ThisValue)`.
 
 El uso sintético de `PostfixExpression` no añade sintaxis fuente: es un contrafactual interno para
 la segunda rama del caso histórico compartido. La declaración fuente continúa respetando las
@@ -126,8 +129,11 @@ es una función adicional dentro de un ejecutable unitario ya registrado.
 - Auditoría de target, `add_test`, foco y ruta predeterminada.
 - Revisión de diff y whitespace antes de integración.
 
-## Validación diferida
+## Validación focal
 
-No se compiló ni se ejecutó ninguna prueba. El foco queda preparado para la corrida consolidada;
-este expediente acredita implementación, razonamiento de paridad e integración estática, no éxito
-dinámico.
+- `nsc_project_oop_lowering_tests` compiló y enlazó correctamente.
+- `NSC_PROJECT_OOP_LOWERING_FOCUS=hir-user-unary-operator-depth`: PASS 3/3.
+- El fixture obtiene un operador real por valor del modelo semántico antes de construir la cadena.
+- Logs persistentes: `A:\temp\h02s13b-user-unary-build.log` y
+  `A:\temp\h02s13b-user-unary-focus.log`.
+- No se ejecutó baseline ni la batería completa.

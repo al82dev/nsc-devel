@@ -1835,7 +1835,7 @@ bool prepareUserUnaryOperatorFixture(
     writeFile(directory / "Main.ns", R"ns(
 namespace Deep {
 public struct Node {
-    public static Node operator -(in Node value) { return value; }
+    public static Node operator -(Node value) { return value; }
     public Node Run() { return -this; }
 }
 }
@@ -1852,7 +1852,7 @@ public struct Node {
     {
         const auto& member = members[ordinal];
         if (member.isUserOperator && member.parameters.size() == 1U &&
-            member.parameters.front().passKind == nativesharp::frontend::ParameterPassKind::In)
+            member.parameters.front().passKind == nativesharp::frontend::ParameterPassKind::Value)
         {
             output.operatorOrdinal = ordinal;
             output.nodeType = member.declaredTypeKey;
@@ -1930,8 +1930,11 @@ bool userUnaryOperatorChainMatches(
         node = node->children.front().get();
     }
     return observedDepth == expectedDepth && node != nullptr &&
-        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue &&
-        node->typeKey == target.nodeType;
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::PointerLoad &&
+        node->typeKey == target.nodeType && node->children.size() == 1U &&
+        node->children.front()->kind ==
+            nativesharp::frontend::ProjectOopHirNodeKind::ThisValue &&
+        node->children.front()->typeKey == target.nodeType;
 }
 
 void testDeepUserUnaryOperatorLowering(
@@ -1943,7 +1946,7 @@ void testDeepUserUnaryOperatorLowering(
     UserUnaryOperatorTarget target;
     std::string error;
     const bool prepared = prepareUserUnaryOperatorFixture(root, compilation, target, error);
-    tests.expect(prepared, "the user-unary fixture builds an `in` operator target (" + error + ")");
+    tests.expect(prepared, "the user-unary fixture builds a by-value operator target (" + error + ")");
     if (!prepared) return;
 
     DeepUserUnaryOperatorSyntax syntax =
