@@ -1312,6 +1312,71 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerVariableDeclarationStatement(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodLocalSymbol> locals,
+        std::vector<MethodLoopExpressionBinding> loops,
+        std::vector<MethodMatchExpressionBinding> matches,
+        std::vector<MethodCleanupRegion> cleanupRegions,
+        std::vector<MethodLocalBorrowBinding> localBorrows,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodNameBinding>& names,
+        std::string& error,
+        ProjectConstructionModel* constructionModel = nullptr,
+        std::vector<ObjectConstructionBinding> constructions = {},
+        const ProjectMemberModel* memberModel = nullptr,
+        std::size_t syntheticLocalFloor = 0U)
+    {
+        methodBodyModel.locals_ = std::move(locals);
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.matchExpressionBindings_ = std::move(matches);
+        methodBodyModel.cleanupRegions_ = std::move(cleanupRegions);
+        methodBodyModel.localBorrowBindings_ = std::move(localBorrows);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = memberModel;
+        model.nextSyntheticLocalOrdinal_ = syntheticLocalFloor;
+
+        model.localBySyntax_.clear();
+        for (const MethodLocalSymbol& local : methodBodyModel.locals_)
+            model.localBySyntax_[local.syntax] = &local;
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        methodBodyModel.matchExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.matchExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.matchExpressionBindingBySyntax_[
+                methodBodyModel.matchExpressionBindings_[index].syntax] = index;
+        }
+        model.cleanupRegionBySyntax_.clear();
+        for (const MethodCleanupRegion& cleanup : methodBodyModel.cleanupRegions_)
+            model.cleanupRegionBySyntax_[cleanup.syntax] = &cleanup;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        if (constructionModel != nullptr)
+        {
+            constructionModel->constructions_ = std::move(constructions);
+            constructionModel->built_ = true;
+            model.constructionModel_ = constructionModel;
+            for (const ObjectConstructionBinding& construction :
+                 constructionModel->constructions_)
+            {
+                model.constructionBySyntax_[construction.syntax] = &construction;
+            }
+        }
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static void setDumperBody(
         ProjectOopHirModel& model,
         std::unique_ptr<ProjectOopHirNode> body)
@@ -11939,6 +12004,1027 @@ void testDeepLoopExpressionLowering(TestContext& tests)
     testLoopExpressionContracts(tests);
 }
 
+struct VariableDeclarationDepthSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLocalSymbol> locals;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<nativesharp::frontend::MethodMatchExpressionBinding> matches;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendVariableDepthNode(
+    VariableDeclarationDepthSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::SourceRange range = {})
+{
+    fixture.nodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(kind, range));
+    return fixture.nodes.back().get();
+}
+
+VariableDeclarationDepthSyntax makeDeepVariableLoopSyntax(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& integerType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    VariableDeclarationDepthSyntax fixture;
+    fixture.nodes.reserve(depth * 3U);
+    fixture.locals.reserve(depth);
+    fixture.loops.reserve(depth > 0U ? depth - 1U : 0U);
+    fixture.typed.reserve(depth);
+    std::vector<nativesharp::ast::AstNode*> declarations;
+    declarations.reserve(depth);
+    for (std::size_t index = 0U; index < depth; ++index)
+        declarations.push_back(appendVariableDepthNode(
+            fixture, AstKind::VariableDeclarationStatement));
+    auto* leaf = appendVariableDepthNode(
+        fixture, AstKind::IntegerLiteralExpression);
+    leaf->setIntegerValue(37U);
+    fixture.typed.push_back({leaf, &integerType});
+    declarations.back()->setFirst(leaf);
+    for (std::size_t index = depth - 1U; index > 0U; --index)
+    {
+        auto* block = appendVariableDepthNode(fixture, AstKind::BlockStatement);
+        block->addChild(declarations[index]);
+        auto* loop = appendVariableDepthNode(fixture, AstKind::LoopExpression);
+        loop->setFirst(block);
+        declarations[index - 1U]->setFirst(loop);
+        fixture.loops.push_back({
+            loop, 0U, index - 1U,
+            "variable-loop-" + std::to_string(index - 1U),
+            "builtin:int"});
+        fixture.typed.push_back({loop, &integerType});
+    }
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = declarations[index];
+        local.name = "variable-" + std::to_string(index);
+        local.typeKey = "builtin:int";
+        local.declarationOrdinal = index;
+        fixture.locals.push_back(std::move(local));
+    }
+    fixture.root = declarations.front();
+    return fixture;
+}
+
+VariableDeclarationDepthSyntax makeDeepVariableMatchSyntax(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& booleanType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using TokenKind = nativesharp::lexer::TokenKind;
+    VariableDeclarationDepthSyntax fixture;
+    fixture.nodes.reserve(depth * 5U);
+    fixture.locals.reserve(depth);
+    fixture.matches.reserve(depth > 0U ? depth - 1U : 0U);
+    fixture.typed.reserve(depth * 4U);
+    std::vector<nativesharp::ast::AstNode*> declarations;
+    declarations.reserve(depth);
+    for (std::size_t index = 0U; index < depth; ++index)
+        declarations.push_back(appendVariableDepthNode(
+            fixture, AstKind::VariableDeclarationStatement));
+    auto* leaf = appendVariableDepthNode(
+        fixture, AstKind::BooleanLiteralExpression);
+    leaf->setTokenKind(TokenKind::KwTrue);
+    fixture.typed.push_back({leaf, &booleanType});
+    declarations.back()->setFirst(leaf);
+    for (std::size_t index = depth - 1U; index > 0U; --index)
+    {
+        auto* governing = appendVariableDepthNode(
+            fixture, AstKind::BooleanLiteralExpression);
+        governing->setTokenKind(TokenKind::KwTrue);
+        auto* condition = appendVariableDepthNode(
+            fixture, AstKind::BooleanLiteralExpression);
+        condition->setTokenKind(TokenKind::KwTrue);
+        auto* value = appendVariableDepthNode(
+            fixture, AstKind::BooleanLiteralExpression);
+        value->setTokenKind(TokenKind::KwTrue);
+        auto* arm = appendVariableDepthNode(fixture, AstKind::MatchArmExpression);
+        arm->setFirst(condition);
+        arm->setThird(value);
+        arm->addChild(declarations[index]);
+        auto* match = appendVariableDepthNode(fixture, AstKind::MatchExpression);
+        match->setFirst(governing);
+        match->addChild(arm);
+        declarations[index - 1U]->setFirst(match);
+        for (const auto* syntax : {governing, condition, value, match})
+            fixture.typed.push_back({syntax, &booleanType});
+        nativesharp::frontend::MethodMatchExpressionBinding binding;
+        binding.syntax = match;
+        binding.governingTypeKey = "builtin:bool";
+        binding.resultTypeKey = "builtin:bool";
+        binding.armConversions.push_back(
+            nativesharp::frontend::ProjectImplicitConversion{
+                nativesharp::frontend::ProjectConversionKind::Identity,
+                0, "builtin:bool", "builtin:bool", std::nullopt});
+        fixture.matches.push_back(std::move(binding));
+    }
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = declarations[index];
+        local.name = "match-variable-" + std::to_string(index);
+        local.typeKey = "builtin:bool";
+        local.declarationOrdinal = index;
+        fixture.locals.push_back(std::move(local));
+    }
+    fixture.root = declarations.front();
+    return fixture;
+}
+
+bool variableLoopChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const VariableDeclarationDepthSyntax& fixture,
+    std::size_t depth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::LocalDeclaration ||
+            node->syntax != fixture.locals[index].syntax ||
+            node->stringValue != "variable-" + std::to_string(index) ||
+            node->typeKey != "builtin:int" || node->localOrdinal != index ||
+            node->children.size() != 1U)
+            return false;
+        node = node->children.front().get();
+        if (index + 1U == depth)
+        {
+            return node != nullptr && node->kind == HirKind::IntegerConstant &&
+                node->typeKey == "builtin:int" && node->integerValue == 37U;
+        }
+        const std::size_t bindingIndex = depth - index - 2U;
+        if (node == nullptr || node->kind != HirKind::LoopExpression ||
+            node->syntax != fixture.loops[bindingIndex].syntax ||
+            node->stringValue != "variable-loop-" + std::to_string(index) ||
+            node->typeKey != "builtin:int" || node->children.size() != 1U)
+            return false;
+        node = node->children.front().get();
+        if (node == nullptr || node->kind != HirKind::Block ||
+            node->typeKey != "builtin:void" || node->children.size() != 1U)
+            return false;
+        node = node->children.front().get();
+    }
+    return false;
+}
+
+bool variableMatchChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const std::vector<nativesharp::frontend::MethodLocalSymbol>& locals,
+    std::size_t depth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::LocalDeclaration ||
+            node->syntax != locals[index].syntax ||
+            node->stringValue != "match-variable-" + std::to_string(index) ||
+            node->localOrdinal != index || node->children.size() != 1U)
+            return false;
+        node = node->children.front().get();
+        if (index + 1U == depth)
+            return node != nullptr && node->kind == HirKind::BooleanConstant &&
+                node->booleanValue;
+        if (node == nullptr || node->kind != HirKind::MatchExpression ||
+            node->typeKey != "builtin:bool" || node->children.size() != 2U)
+            return false;
+        const auto* arm = node->children[1].get();
+        if (node->children[0]->kind != HirKind::BooleanConstant ||
+            arm->kind != HirKind::MatchArm || arm->children.size() != 4U ||
+            arm->children[0]->kind != HirKind::BooleanConstant ||
+            arm->children[1]->kind != HirKind::BooleanConstant ||
+            arm->children[3]->kind != HirKind::BooleanConstant)
+            return false;
+        node = arm->children[2].get();
+    }
+    return false;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>
+lowerVariableDepthFixture(
+    VariableDeclarationDepthSyntax& fixture,
+    ProjectOopHirModel& model,
+    nativesharp::frontend::ProjectMethodBodyModel& methodBodyModel,
+    std::string& error)
+{
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            model, methodBodyModel, fixture.root, std::move(fixture.locals),
+            std::move(fixture.loops), std::move(fixture.matches), {}, {},
+            fixture.typed, {}, error);
+}
+
+void testDeepVariableDeclarationLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using nativesharp::frontend::MethodExpressionTypeBinding;
+    using nativesharp::frontend::MethodLocalSymbol;
+    constexpr std::size_t nestingDepth = 32768U;
+    MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    MethodExpressionTypeBinding longType;
+    longType.typeKey = "builtin:long";
+
+    auto deep = makeDeepVariableLoopSyntax(nestingDepth, integerType);
+    const auto deepSyntax = deep.locals;
+    const auto deepLoops = deep.loops;
+    ProjectOopHirModel deepModel;
+    nativesharp::frontend::ProjectMethodBodyModel deepBody;
+    std::string error;
+    auto lowered = lowerVariableDepthFixture(deep, deepModel, deepBody, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 variable->loop->block levels lower on one worklist (" + error + ")");
+    VariableDeclarationDepthSyntax observedFixture;
+    observedFixture.locals = deepSyntax;
+    observedFixture.loops = deepLoops;
+    tests.expect(variableLoopChainMatches(
+            lowered.get(), observedFixture, nestingDepth),
+        "iterative variable lowering preserves every declaration, ordinal, loop, block, and leaf");
+    destroyHirTreeIteratively(lowered);
+
+    MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+    auto deepMatch = makeDeepVariableMatchSyntax(nestingDepth, booleanType);
+    const auto deepMatchLocals = deepMatch.locals;
+    ProjectOopHirModel deepMatchModel;
+    nativesharp::frontend::ProjectMethodBodyModel deepMatchBody;
+    error.clear();
+    auto loweredMatch = lowerVariableDepthFixture(
+        deepMatch, deepMatchModel, deepMatchBody, error);
+    tests.expect(loweredMatch != nullptr && error.empty(),
+        "32768 variable->match->arm-declaration levels lower on one worklist (" +
+            error + ")");
+    tests.expect(variableMatchChainMatches(
+            loweredMatch.get(), deepMatchLocals, nestingDepth),
+        "iterative match declarations preserve condition, guard, declaration, value, and leaf order");
+    destroyHirTreeIteratively(loweredMatch);
+
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(46U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(46U), offset + 3U));
+    };
+    const auto lowerSingle = [&](nativesharp::ast::AstNode* declaration,
+                                 std::vector<std::unique_ptr<nativesharp::ast::AstNode>>& nodes,
+                                 std::vector<MethodLocalSymbol> locals,
+                                 const std::vector<std::pair<const nativesharp::ast::AstNode*,
+                                     const MethodExpressionTypeBinding*>>& typed,
+                                 const std::vector<nativesharp::frontend::MethodNameBinding>& names,
+                                 std::vector<nativesharp::frontend::MethodCleanupRegion> cleanups,
+                                 std::vector<nativesharp::frontend::MethodLocalBorrowBinding> borrows,
+                                 ProjectOopHirModel& model,
+                                 nativesharp::frontend::ProjectMethodBodyModel& body,
+                                 std::string& caseError)
+    {
+        (void)nodes;
+        return nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerVariableDeclarationStatement(
+                model, body, declaration, std::move(locals), {}, {},
+                std::move(cleanups), std::move(borrows), typed, names, caseError);
+    };
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> plainNodes;
+    plainNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(10U)));
+    auto* plainDeclaration = plainNodes.back().get();
+    MethodLocalSymbol plainLocal;
+    plainLocal.syntax = plainDeclaration;
+    plainLocal.name = "plain";
+    plainLocal.typeKey = "builtin:int";
+    plainLocal.isStatic = true;
+    plainLocal.isPinned = true;
+    plainLocal.ownership = nativesharp::sema::OwnershipKind::Borrowed;
+    plainLocal.objectLifetimeOwnership = nativesharp::sema::OwnershipKind::Owned;
+    plainLocal.storageOwnership = nativesharp::sema::OwnershipKind::Borrowed;
+    plainLocal.requiresValueDrop = true;
+    ProjectOopHirModel plainModel;
+    nativesharp::frontend::ProjectMethodBodyModel plainBody;
+    error.clear();
+    auto plain = lowerSingle(plainDeclaration, plainNodes, {plainLocal}, {}, {}, {}, {},
+        plainModel, plainBody, error);
+    tests.expect(plain != nullptr && error.empty() &&
+            plain->kind == HirKind::LocalDeclaration && plain->syntax == plainDeclaration &&
+            plain->typeKey == "builtin:int" && plain->stringValue == "plain" &&
+            plain->localOrdinal == 0U && plain->children.empty() && plain->staticLocal &&
+            plain->pinnedStorage && plain->automaticDestruction &&
+            plain->ownership == nativesharp::sema::OwnershipKind::Borrowed &&
+            plain->objectLifetimeOwnership == nativesharp::sema::OwnershipKind::Owned &&
+            plain->storageOwnership == nativesharp::sema::OwnershipKind::Borrowed &&
+            !plain->cleanupRegionOrdinal.has_value(),
+        "initializer-free and static drop-bearing declarations preserve metadata without cleanup");
+    destroyHirTreeIteratively(plain);
+
+    const auto testReference = [&](bool mutableReference)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IdentifierExpression, range(mutableReference ? 20U : 30U)));
+        auto* source = nodes.back().get();
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::VariableDeclarationStatement, range(mutableReference ? 24U : 34U)));
+        auto* declaration = nodes.back().get();
+        declaration->setFirst(source);
+        MethodLocalSymbol local;
+        local.syntax = declaration;
+        local.name = mutableReference ? "mutable-ref" : "readonly-ref";
+        local.typeKey = "builtin:int";
+        local.isReference = true;
+        local.referenceMutable = mutableReference;
+        MethodLocalSymbol sourceLocal;
+        sourceLocal.name = "source";
+        sourceLocal.typeKey = "builtin:int";
+        nativesharp::frontend::MethodNameBinding name;
+        name.syntax = source;
+        name.name = sourceLocal.name;
+        name.typeKey = sourceLocal.typeKey;
+        name.localOrdinal = 1U;
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string caseError;
+        auto node = lowerSingle(declaration, nodes, {local, sourceLocal},
+            {{source, &integerType}}, {name}, {}, {}, model, body, caseError);
+        tests.expect(node != nullptr && caseError.empty() && node->referenceLocal &&
+                node->referenceMutable == mutableReference && node->children.size() == 1U &&
+                node->children[0]->kind == HirKind::LocalAddress &&
+                node->children[0]->localOrdinal == 1U &&
+                node->children[0]->typeKey == "builtin:int",
+            mutableReference
+                ? "mutable reference initializer stays in address context without conversion"
+                : "readonly reference initializer stays in address context without conversion");
+        destroyHirTreeIteratively(node);
+    };
+    testReference(true);
+    testReference(false);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> valueNodes;
+    valueNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IdentifierExpression, range(36U)));
+    auto* valueSource = valueNodes.back().get();
+    valueNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(38U)));
+    auto* valueDeclaration = valueNodes.back().get();
+    valueDeclaration->setFirst(valueSource);
+    MethodLocalSymbol valueLocal;
+    valueLocal.syntax = valueDeclaration;
+    valueLocal.name = "value";
+    valueLocal.typeKey = "builtin:int";
+    MethodLocalSymbol valueSourceLocal;
+    valueSourceLocal.name = "source";
+    valueSourceLocal.typeKey = "builtin:int";
+    nativesharp::frontend::MethodNameBinding valueName;
+    valueName.syntax = valueSource;
+    valueName.name = "source";
+    valueName.typeKey = "builtin:int";
+    valueName.localOrdinal = 1U;
+    ProjectOopHirModel valueModel;
+    nativesharp::frontend::ProjectMethodBodyModel valueBody;
+    error.clear();
+    auto valueNode = lowerSingle(valueDeclaration, valueNodes,
+        {valueLocal, valueSourceLocal}, {{valueSource, &integerType}},
+        {valueName}, {}, {}, valueModel, valueBody, error);
+    tests.expect(valueNode != nullptr && error.empty() &&
+            valueNode->children.size() == 1U &&
+            valueNode->children[0]->kind == HirKind::LocalValue &&
+            valueNode->children[0]->localOrdinal == 1U,
+        "ordinary initializer lowers a local in value context rather than address context");
+    destroyHirTreeIteratively(valueNode);
+
+    const auto testConversion = [&](const MethodExpressionTypeBinding& targetType,
+                                    bool expectConversion,
+                                    std::string_view message)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IntegerLiteralExpression, range(40U)));
+        auto* value = nodes.back().get();
+        value->setIntegerValue(5U);
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::VariableDeclarationStatement, range(44U)));
+        auto* declaration = nodes.back().get();
+        declaration->setFirst(value);
+        MethodLocalSymbol local;
+        local.syntax = declaration;
+        local.name = "converted";
+        local.typeKey = targetType.typeKey;
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string caseError;
+        auto node = lowerSingle(declaration, nodes, {local}, {{value, &integerType}},
+            {}, {}, {}, model, body, caseError);
+        const auto* child = node != nullptr && node->children.size() == 1U
+            ? node->children[0].get() : nullptr;
+        tests.expect(node != nullptr && caseError.empty() && child != nullptr &&
+                (child->kind == HirKind::Conversion) == expectConversion &&
+                child->typeKey == (expectConversion
+                    ? targetType.typeKey : integerType.typeKey),
+            std::string(message));
+        destroyHirTreeIteratively(node);
+    };
+    testConversion(integerType, false,
+        "identity initializer preserves the original child without a conversion wrapper");
+    testConversion(longType, true,
+        "numeric initializer inserts exactly one conversion to the local type");
+    MethodExpressionTypeBinding unrelatedType;
+    unrelatedType.typeKey = "type:H02S16A.Unrelated";
+    testConversion(unrelatedType, false,
+        "a nonexistent implicit conversion adds no new HIR diagnostic or wrapper");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> placementNodes;
+    placementNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IdentifierExpression, range(46U)));
+    auto* placementStorage = placementNodes.back().get();
+    placementNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::PlacementConstructionExpression, range(47U)));
+    auto* placementExpression = placementNodes.back().get();
+    placementExpression->setFirst(placementStorage);
+    placementNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(48U)));
+    auto* placementDeclaration = placementNodes.back().get();
+    placementDeclaration->setFirst(placementExpression);
+    MethodExpressionTypeBinding placementType;
+    placementType.typeKey = "type:H02S16A.Value*";
+    MethodLocalSymbol placementLocal;
+    placementLocal.syntax = placementDeclaration;
+    placementLocal.name = "placed";
+    placementLocal.typeKey = placementType.typeKey;
+    MethodLocalSymbol storageLocal;
+    storageLocal.name = "storage";
+    storageLocal.typeKey = placementType.typeKey;
+    nativesharp::frontend::MethodNameBinding storageName;
+    storageName.syntax = placementStorage;
+    storageName.name = storageLocal.name;
+    storageName.typeKey = storageLocal.typeKey;
+    storageName.localOrdinal = 1U;
+    auto placementBinding = ordinaryConstructionBinding(
+        placementExpression, "type:H02S16A.Value", true, 0U, 5U);
+    ProjectOopHirModel placementModel;
+    nativesharp::frontend::ProjectMethodBodyModel placementBody;
+    nativesharp::frontend::ProjectConstructionModel placementConstructions;
+    error.clear();
+    auto placement = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            placementModel, placementBody, placementDeclaration,
+            {placementLocal, storageLocal}, {}, {}, {}, {},
+            {{placementStorage, &placementType}, {placementExpression, &placementType}},
+            {storageName}, error, &placementConstructions, {placementBinding});
+    tests.expect(placement != nullptr && error.empty() &&
+            placement->placementConstructed && placement->children.size() == 1U &&
+            placement->children[0]->kind == HirKind::PlacementConstruction,
+        "direct placement construction sets placementConstructed before any wrapper");
+    destroyHirTreeIteratively(placement);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> objectNodes;
+    objectNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ObjectCreationExpression, range(49U)));
+    auto* objectExpression = objectNodes.back().get();
+    objectNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(50U)));
+    auto* objectDeclaration = objectNodes.back().get();
+    objectDeclaration->setFirst(objectExpression);
+    MethodExpressionTypeBinding objectType;
+    objectType.typeKey = "type:H02S16A.Object";
+    MethodLocalSymbol objectLocal;
+    objectLocal.syntax = objectDeclaration;
+    objectLocal.name = "object";
+    objectLocal.typeKey = objectType.typeKey;
+    auto objectBinding = ordinaryConstructionBinding(
+        objectExpression, objectType.typeKey, false, 0U, 6U);
+    ProjectOopHirModel objectModel;
+    nativesharp::frontend::ProjectMethodBodyModel objectBody;
+    nativesharp::frontend::ProjectConstructionModel objectConstructions;
+    error.clear();
+    auto object = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            objectModel, objectBody, objectDeclaration, {objectLocal}, {}, {}, {}, {},
+            {{objectExpression, &objectType}}, {}, error,
+            &objectConstructions, {objectBinding});
+    tests.expect(object != nullptr && error.empty() && !object->placementConstructed &&
+            object->children.size() == 1U &&
+            object->children[0]->kind == HirKind::ObjectConstruction,
+        "a non-placement construction is not inspected through wrappers for placement metadata");
+    destroyHirTreeIteratively(object);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> allocatorNodes;
+    allocatorNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IdentifierExpression, range(51U)));
+    auto* allocatorReceiver = allocatorNodes.back().get();
+    allocatorNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::PlacementConstructionExpression, range(52U)));
+    auto* allocatorExpression = allocatorNodes.back().get();
+    allocatorExpression->setFirst(allocatorReceiver);
+    allocatorNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(53U)));
+    auto* allocatorDeclaration = allocatorNodes.back().get();
+    allocatorDeclaration->setFirst(allocatorExpression);
+    MethodExpressionTypeBinding allocatorResultType;
+    allocatorResultType.typeKey = "type:H02S15D.Node";
+    MethodExpressionTypeBinding allocatorType;
+    allocatorType.typeKey = "type:H02S15D.ClassAllocator";
+    MethodLocalSymbol allocatorResultLocal;
+    allocatorResultLocal.syntax = allocatorDeclaration;
+    allocatorResultLocal.name = "allocated";
+    allocatorResultLocal.typeKey = allocatorResultType.typeKey;
+    MethodLocalSymbol allocatorReceiverLocal;
+    allocatorReceiverLocal.name = "allocator";
+    allocatorReceiverLocal.typeKey = allocatorType.typeKey;
+    auto allocatorName = allocatorLocalBinding(
+        allocatorReceiver, allocatorReceiverLocal.name,
+        allocatorReceiverLocal.typeKey, 1U);
+    auto allocatorBinding = allocatorConstructionBinding(
+        allocatorExpression, allocatorType.typeKey, 0U);
+    ProjectOopHirModel allocatorModel;
+    nativesharp::frontend::ProjectMethodBodyModel allocatorBody;
+    nativesharp::frontend::ProjectConstructionModel allocatorConstructions;
+    error.clear();
+    auto allocated = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            allocatorModel, allocatorBody, allocatorDeclaration,
+            {allocatorResultLocal, allocatorReceiverLocal}, {}, {}, {}, {},
+            {{allocatorReceiver, &allocatorType},
+             {allocatorExpression, &allocatorResultType}},
+            {allocatorName}, error, &allocatorConstructions, {allocatorBinding},
+            nullptr, 2U);
+    tests.expect(allocated != nullptr && error.empty() &&
+            !allocated->placementConstructed && allocated->children.size() == 1U &&
+            allocated->children[0]->kind == HirKind::BlockExpression &&
+            allocatorPlacement(allocated->children[0].get()) != nullptr,
+        "allocator-selected construction preserves placementConstructed=false because the initializer top level is its Block wrapper");
+    destroyHirTreeIteratively(allocated);
+
+    nativesharp::frontend::ClassMemberSymbol noheapCaller;
+    noheapCaller.kind = nativesharp::frontend::ClassMemberKind::Method;
+    noheapCaller.name = "NoHeapCaller";
+    noheapCaller.signatureKey = "H02S16A.NoHeapCaller()";
+    noheapCaller.isNoHeap = true;
+    noheapCaller.effects = nativesharp::sema::EffectSet(
+        nativesharp::sema::Effect::NoHeap);
+    nativesharp::frontend::ClassMemberSymbol heapConstructor;
+    heapConstructor.kind = nativesharp::frontend::ClassMemberKind::Constructor;
+    heapConstructor.name = "Value";
+    heapConstructor.signatureKey = "H02S16A.Value()";
+    nativesharp::frontend::ProjectMemberModel noheapMembers;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(
+            noheapMembers, {noheapCaller, heapConstructor}, {{0U, 1U}});
+    placementBinding.selectedConstructorMemberOrdinal = 1U;
+    ProjectOopHirModel noheapModel;
+    nativesharp::frontend::ProjectMethodBodyModel noheapBody;
+    nativesharp::frontend::ProjectConstructionModel noheapConstructions;
+    error.clear();
+    auto forbiddenPlacement = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            noheapModel, noheapBody, placementDeclaration,
+            {placementLocal, storageLocal}, {}, {}, {}, {},
+            {{placementStorage, &placementType}, {placementExpression, &placementType}},
+            {storageName}, error, &noheapConstructions, {placementBinding},
+            &noheapMembers);
+    tests.expect(forbiddenPlacement == nullptr && error ==
+            "NS3030: noheap callable 'H02S16A.NoHeapCaller()' cannot call non-noheap constructor 'H02S16A.Value()'" &&
+            noheapModel.lastErrorRange().begin() == range(47U).begin() &&
+            noheapModel.lastErrorRange().end() == range(47U).end(),
+        "each variable initializer receives the historical noheap postcondition exactly once at its inner range");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> borrowNodes;
+    borrowNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, range(50U)));
+    auto* borrowValue = borrowNodes.back().get();
+    borrowValue->setIntegerValue(8U);
+    borrowNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(54U)));
+    auto* borrowDeclaration = borrowNodes.back().get();
+    borrowDeclaration->setFirst(borrowValue);
+    MethodLocalSymbol borrowLocal;
+    borrowLocal.syntax = borrowDeclaration;
+    borrowLocal.name = "borrowed";
+    borrowLocal.typeKey = "builtin:long";
+    borrowLocal.ownership = nativesharp::sema::OwnershipKind::Borrowed;
+    borrowLocal.localBorrowBindingOrdinal = 0U;
+    nativesharp::frontend::MethodLocalBorrowBinding borrowBinding;
+    borrowBinding.sourceKind =
+        nativesharp::frontend::MethodLocalBorrowSourceKind::BorrowedParameter;
+    borrowBinding.sourceLocalOrdinal = 7U;
+    borrowBinding.sourceParameterOrdinal = 9U;
+    ProjectOopHirModel borrowModel;
+    nativesharp::frontend::ProjectMethodBodyModel borrowBody;
+    error.clear();
+    auto borrow = lowerSingle(borrowDeclaration, borrowNodes, {borrowLocal},
+        {{borrowValue, &integerType}}, {}, {}, {borrowBinding},
+        borrowModel, borrowBody, error);
+    tests.expect(borrow != nullptr && error.empty() && borrow->children.size() == 1U &&
+            borrow->children[0]->kind == HirKind::BorrowValue &&
+            borrow->children[0]->typeKey == "builtin:long" &&
+            borrow->children[0]->localBorrowSourceKind ==
+                nativesharp::frontend::MethodLocalBorrowSourceKind::BorrowedParameter &&
+            borrow->children[0]->localOrdinal == 7U &&
+            borrow->children[0]->parameterOrdinal == 9U &&
+            borrow->children[0]->children.size() == 1U &&
+            borrow->children[0]->children[0]->kind == HirKind::Conversion,
+        "borrow wraps the converted initializer and preserves source ordinals");
+    destroyHirTreeIteratively(borrow);
+    borrowLocal.localBorrowBindingOrdinal = 4U;
+    ProjectOopHirModel missingBorrowModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingBorrowBody;
+    error.clear();
+    auto missingBorrow = lowerSingle(borrowDeclaration, borrowNodes, {borrowLocal},
+        {{borrowValue, &integerType}}, {}, {}, {borrowBinding},
+        missingBorrowModel, missingBorrowBody, error);
+    tests.expect(missingBorrow != nullptr && error.empty() &&
+            missingBorrow->children.size() == 1U &&
+            missingBorrow->children[0]->kind == HirKind::Conversion,
+        "an out-of-range local borrow ordinal preserves the historical unwrapped result");
+    destroyHirTreeIteratively(missingBorrow);
+    borrowLocal.localBorrowBindingOrdinal.reset();
+    ProjectOopHirModel absentBorrowModel;
+    nativesharp::frontend::ProjectMethodBodyModel absentBorrowBody;
+    error.clear();
+    auto absentBorrow = lowerSingle(borrowDeclaration, borrowNodes, {borrowLocal},
+        {{borrowValue, &integerType}}, {}, {}, {borrowBinding},
+        absentBorrowModel, absentBorrowBody, error);
+    tests.expect(absentBorrow != nullptr && error.empty() &&
+            absentBorrow->children.size() == 1U &&
+            absentBorrow->children[0]->kind == HirKind::Conversion,
+        "an absent local borrow ordinal preserves the historical unwrapped result");
+    destroyHirTreeIteratively(absentBorrow);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> cleanupNodes;
+    cleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(60U)));
+    auto* cleanupDeclaration = cleanupNodes.back().get();
+    MethodLocalSymbol cleanupLocal;
+    cleanupLocal.syntax = cleanupDeclaration;
+    cleanupLocal.name = "cleanup";
+    cleanupLocal.typeKey = "type:H02S16A.Resource";
+    cleanupLocal.isRaii = true;
+    cleanupLocal.isScope = true;
+    cleanupLocal.requiresValueDrop = true;
+    nativesharp::frontend::MethodCleanupRegion cleanupRegion;
+    cleanupRegion.syntax = cleanupDeclaration;
+    ProjectOopHirModel cleanupModel;
+    nativesharp::frontend::ProjectMethodBodyModel cleanupBody;
+    error.clear();
+    auto cleanup = lowerSingle(cleanupDeclaration, cleanupNodes, {cleanupLocal}, {}, {},
+        {cleanupRegion}, {}, cleanupModel, cleanupBody, error);
+    tests.expect(cleanup != nullptr && error.empty() && cleanup->automaticDestruction &&
+            cleanup->cleanupRegionOrdinal == 0U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                cleanupModel) == 0U,
+        "drop-bearing non-static declaration records its cleanup ordinal without early activation");
+    destroyHirTreeIteratively(cleanup);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> loopCleanupNodes;
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(62U)));
+    auto* loopInnerDeclaration = loopCleanupNodes.back().get();
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, range(63U)));
+    auto* loopCleanupBlock = loopCleanupNodes.back().get();
+    loopCleanupBlock->addChild(loopInnerDeclaration);
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, range(64U)));
+    auto* loopCleanupExpression = loopCleanupNodes.back().get();
+    loopCleanupExpression->setFirst(loopCleanupBlock);
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(65U)));
+    auto* loopOuterDeclaration = loopCleanupNodes.back().get();
+    loopOuterDeclaration->setFirst(loopCleanupExpression);
+    MethodLocalSymbol loopOuterLocal;
+    loopOuterLocal.syntax = loopOuterDeclaration;
+    loopOuterLocal.name = "loop-result";
+    loopOuterLocal.typeKey = "builtin:int";
+    MethodLocalSymbol loopInnerLocal = cleanupLocal;
+    loopInnerLocal.syntax = loopInnerDeclaration;
+    nativesharp::frontend::MethodCleanupRegion loopCleanupRegion;
+    loopCleanupRegion.syntax = loopInnerDeclaration;
+    nativesharp::frontend::MethodLoopExpressionBinding loopBinding{
+        loopCleanupExpression, 0U, 0U, "cleanup-loop", "builtin:int"};
+    ProjectOopHirModel loopCleanupModel;
+    nativesharp::frontend::ProjectMethodBodyModel loopCleanupBody;
+    error.clear();
+    auto loopCleanup = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            loopCleanupModel, loopCleanupBody, loopOuterDeclaration,
+            {loopOuterLocal, loopInnerLocal}, {loopBinding}, {},
+            {loopCleanupRegion}, {}, {{loopCleanupExpression, &integerType}}, {}, error);
+    const auto* loopBody = loopCleanup != nullptr && loopCleanup->children.size() == 1U &&
+            loopCleanup->children[0]->children.size() == 1U
+        ? loopCleanup->children[0]->children[0].get() : nullptr;
+    const auto* loopInner = loopBody != nullptr && loopBody->children.size() == 1U
+        ? loopBody->children[0].get() : nullptr;
+    tests.expect(loopInner != nullptr && error.empty() &&
+            loopInner->kind == HirKind::LocalDeclaration &&
+            loopInner->cleanupRegionOrdinal == 0U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                loopCleanupModel) == 0U,
+        "LoopBlock appends a drop-bearing variable, activates its cleanup once, and restores depth");
+    destroyHirTreeIteratively(loopCleanup);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> matchCleanupNodes;
+    const auto appendMatchNode = [&](AstKind kind, std::uint32_t offset)
+    {
+        matchCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, range(offset)));
+        return matchCleanupNodes.back().get();
+    };
+    auto* governing = appendMatchNode(AstKind::BooleanLiteralExpression, 66U);
+    governing->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* condition = appendMatchNode(AstKind::BooleanLiteralExpression, 67U);
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* guard = appendMatchNode(AstKind::BooleanLiteralExpression, 68U);
+    guard->setTokenKind(nativesharp::lexer::TokenKind::KwFalse);
+    auto* matchInnerDeclaration = appendMatchNode(
+        AstKind::VariableDeclarationStatement, 69U);
+    auto* matchValue = appendMatchNode(AstKind::BooleanLiteralExpression, 70U);
+    matchValue->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* arm = appendMatchNode(AstKind::MatchArmExpression, 71U);
+    arm->setFirst(condition);
+    arm->setSecond(guard);
+    arm->setThird(matchValue);
+    arm->addChild(matchInnerDeclaration);
+    auto* matchExpression = appendMatchNode(AstKind::MatchExpression, 72U);
+    matchExpression->setFirst(governing);
+    matchExpression->addChild(arm);
+    auto* matchOuterDeclaration = appendMatchNode(
+        AstKind::VariableDeclarationStatement, 73U);
+    matchOuterDeclaration->setFirst(matchExpression);
+    MethodLocalSymbol matchOuterLocal;
+    matchOuterLocal.syntax = matchOuterDeclaration;
+    matchOuterLocal.name = "match-result";
+    matchOuterLocal.typeKey = "builtin:bool";
+    MethodLocalSymbol matchInnerLocal = cleanupLocal;
+    matchInnerLocal.syntax = matchInnerDeclaration;
+    nativesharp::frontend::MethodCleanupRegion matchCleanupRegion;
+    matchCleanupRegion.syntax = matchInnerDeclaration;
+    nativesharp::frontend::MethodMatchExpressionBinding matchBinding;
+    matchBinding.syntax = matchExpression;
+    matchBinding.governingTypeKey = "builtin:bool";
+    matchBinding.resultTypeKey = "builtin:bool";
+    matchBinding.armTags = {{4, 6}};
+    matchBinding.armConversions.push_back(
+        nativesharp::frontend::ProjectImplicitConversion{
+            nativesharp::frontend::ProjectConversionKind::Identity,
+            0, "builtin:bool", "builtin:bool", std::nullopt});
+    ProjectOopHirModel matchCleanupModel;
+    nativesharp::frontend::ProjectMethodBodyModel matchCleanupBody;
+    error.clear();
+    auto matchCleanup = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            matchCleanupModel, matchCleanupBody, matchOuterDeclaration,
+            {matchOuterLocal, matchInnerLocal}, {}, {matchBinding},
+            {matchCleanupRegion}, {},
+            {{governing, &booleanType}, {condition, &booleanType},
+             {guard, &booleanType}, {matchValue, &booleanType},
+             {matchExpression, &booleanType}}, {}, error);
+    const auto* matchNode = matchCleanup != nullptr && matchCleanup->children.size() == 1U
+        ? matchCleanup->children[0].get() : nullptr;
+    const auto* matchArm = matchNode != nullptr && matchNode->children.size() == 2U
+        ? matchNode->children[1].get() : nullptr;
+    tests.expect(matchArm != nullptr && error.empty() &&
+            matchArm->switchLabels == std::vector<std::int64_t>({4, 6}) &&
+            matchArm->children.size() == 4U &&
+            matchArm->children[0]->syntax == condition &&
+            matchArm->children[1]->syntax == guard &&
+            matchArm->children[2]->syntax == matchInnerDeclaration &&
+            matchArm->children[2]->cleanupRegionOrdinal == 0U &&
+            matchArm->children[3]->syntax == matchValue &&
+            matchArm->cleanupRegionOrdinals == std::vector<std::size_t>({0U}) &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                matchCleanupModel) == 0U,
+        "Match preserves condition, guard, variable declaration, value, and cleanup suffix order");
+    destroyHirTreeIteratively(matchCleanup);
+
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, range(74U)));
+    auto* failingLoopValue = loopCleanupNodes.back().get();
+    loopCleanupNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ExpressionStatement, range(75U)));
+    auto* failingLoopStatement = loopCleanupNodes.back().get();
+    failingLoopStatement->setFirst(failingLoopValue);
+    loopCleanupBlock->addChild(failingLoopStatement);
+    ProjectOopHirModel loopRollbackModel;
+    nativesharp::frontend::ProjectMethodBodyModel loopRollbackBody;
+    error.clear();
+    auto loopRollback = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            loopRollbackModel, loopRollbackBody, loopOuterDeclaration,
+            {loopOuterLocal, loopInnerLocal}, {loopBinding}, {},
+            {loopCleanupRegion}, {},
+            {{loopCleanupExpression, &integerType}, {failingLoopValue, &integerType}},
+            {}, error);
+    tests.expect(loopRollback == nullptr &&
+            error == "T07-F05 loop expression has no semantic binding" &&
+            loopRollbackModel.lastErrorRange().begin() == range(74U).begin() &&
+            loopRollbackModel.lastErrorRange().end() == range(74U).end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                loopRollbackModel) == 0U,
+        "deep LoopBlock failure after a variable declaration rolls cleanup back completely");
+
+    auto* failingMatchValue = appendMatchNode(AstKind::LoopExpression, 76U);
+    arm->setThird(failingMatchValue);
+    ProjectOopHirModel matchRollbackModel;
+    nativesharp::frontend::ProjectMethodBodyModel matchRollbackBody;
+    error.clear();
+    auto matchRollback = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerVariableDeclarationStatement(
+            matchRollbackModel, matchRollbackBody, matchOuterDeclaration,
+            {matchOuterLocal, matchInnerLocal}, {}, {matchBinding},
+            {matchCleanupRegion}, {},
+            {{governing, &booleanType}, {condition, &booleanType},
+             {guard, &booleanType}, {failingMatchValue, &booleanType},
+             {matchExpression, &booleanType}}, {}, error);
+    tests.expect(matchRollback == nullptr &&
+            error == "T07-F05 loop expression has no semantic binding" &&
+            matchRollbackModel.lastErrorRange().begin() == range(76U).begin() &&
+            matchRollbackModel.lastErrorRange().end() == range(76U).end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                matchRollbackModel) == 0U,
+        "deep Match-arm failure after a variable declaration rolls cleanup back completely");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> failureNodes;
+    failureNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, range(70U)));
+    auto* unboundLoop = failureNodes.back().get();
+    failureNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, range(80U)));
+    auto* failureDeclaration = failureNodes.back().get();
+    failureDeclaration->setFirst(unboundLoop);
+    MethodLocalSymbol failureLocal = cleanupLocal;
+    failureLocal.syntax = failureDeclaration;
+    nativesharp::frontend::MethodCleanupRegion failureCleanup;
+    failureCleanup.syntax = failureDeclaration;
+    ProjectOopHirModel failureModel;
+    nativesharp::frontend::ProjectMethodBodyModel failureBody;
+    error.clear();
+    auto failure = lowerSingle(failureDeclaration, failureNodes, {failureLocal},
+        {{unboundLoop, &integerType}}, {}, {failureCleanup}, {},
+        failureModel, failureBody, error);
+    tests.expect(failure == nullptr &&
+            error == "T07-F05 loop expression has no semantic binding" &&
+            failureModel.lastErrorRange().begin() == range(70U).begin() &&
+            failureModel.lastErrorRange().end() == range(70U).end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                failureModel) == 0U,
+        "failed initializer preserves the inner range and publishes no partial cleanup");
+
+    const auto testVla = [&](bool multidimensional)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        const std::size_t rank = multidimensional ? 3U : 1U;
+        std::vector<const nativesharp::ast::AstNode*> extents;
+        for (std::size_t index = 0U; index < rank; ++index)
+        {
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                multidimensional ? AstKind::IdentifierExpression
+                                 : AstKind::IntegerLiteralExpression,
+                range(100U +
+                    static_cast<std::uint32_t>(index * 10U))));
+            if (!multidimensional) nodes.back()->setIntegerValue(11U + index);
+            extents.push_back(nodes.back().get());
+        }
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::VariableDeclarationStatement, range(140U)));
+        auto* declaration = nodes.back().get();
+        MethodLocalSymbol local;
+        local.syntax = declaration;
+        local.name = multidimensional ? "matrix" : "vector";
+        local.typeKey = "builtin:int*";
+        local.isVariableLengthArray = true;
+        local.variableLengthArrayElementTypeKey = "builtin:int";
+        local.variableLengthArrayCountSyntax = extents.front();
+        local.variableLengthArrayExtentSyntaxes = extents;
+        local.variableLengthArrayExtentTypeKeys.assign(rank, "builtin:int");
+        local.variableLengthArrayRootLocalOrdinal = 0U;
+        std::vector<MethodLocalSymbol> locals;
+        locals.push_back(local);
+        std::vector<nativesharp::frontend::MethodNameBinding> names;
+        if (multidimensional)
+        {
+            for (std::size_t index = 0U; index < rank; ++index)
+            {
+                MethodLocalSymbol hidden;
+                hidden.syntax = extents[index];
+                hidden.name = "__vla_extent_0_" + std::to_string(index);
+                hidden.typeKey = "builtin:int";
+                locals.push_back(std::move(hidden));
+                locals[0].variableLengthArrayExtentLocalOrdinals.push_back(index + 1U);
+            }
+            for (std::size_t index = 0U; index < rank; ++index)
+            {
+                MethodLocalSymbol source;
+                source.name = "volatile-extent-" + std::to_string(index);
+                source.typeKey = "builtin:int";
+                source.isVolatile = true;
+                locals.push_back(std::move(source));
+                nativesharp::frontend::MethodNameBinding name;
+                name.syntax = extents[index];
+                name.name = locals.back().name;
+                name.typeKey = "builtin:int";
+                name.localOrdinal = rank + 1U + index;
+                names.push_back(std::move(name));
+            }
+        }
+        std::vector<std::pair<const nativesharp::ast::AstNode*,
+            const MethodExpressionTypeBinding*>> typed;
+        for (const auto* extent : extents) typed.push_back({extent, &integerType});
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string caseError;
+        auto node = lowerSingle(declaration, nodes, std::move(locals), typed, names, {}, {},
+            model, body, caseError);
+        bool valid = node != nullptr && caseError.empty();
+        if (!multidimensional)
+        {
+            valid = valid && node->kind == HirKind::LocalDeclaration &&
+                node->variableLengthArray && node->variableLengthArrayRank == 1U &&
+                node->elementTypeKey == "builtin:int" && node->children.size() == 1U &&
+                node->children[0]->kind == HirKind::StackAllocation &&
+                node->children[0]->children.size() == 1U &&
+                node->children[0]->children[0]->integerValue == 11U;
+        }
+        else
+        {
+            valid = valid && node->kind == HirKind::Block && node->children.size() == 4U;
+            for (std::size_t index = 0U; index < rank && valid; ++index)
+            {
+                const auto* hidden = node->children[index].get();
+                valid = hidden->kind == HirKind::LocalDeclaration &&
+                    hidden->syntax == extents[index] && hidden->localOrdinal == index + 1U &&
+                    hidden->stringValue == "__vla_extent_0_" + std::to_string(index) &&
+                    hidden->debugDisplayName == "matrix.Length[" + std::to_string(index) + "]" &&
+                    hidden->children.size() == 1U &&
+                    hidden->children[0]->kind == HirKind::LocalValue &&
+                    hidden->children[0]->localOrdinal == rank + 1U + index &&
+                    hidden->children[0]->volatileAccess;
+            }
+            const auto* main = valid ? node->children.back().get() : nullptr;
+            const auto* allocation = main != nullptr && main->children.size() == 1U
+                ? main->children[0].get() : nullptr;
+            valid = valid && main->kind == HirKind::LocalDeclaration &&
+                main->localOrdinal == 0U && main->variableLengthArrayRank == rank &&
+                allocation != nullptr && allocation->kind == HirKind::StackAllocation &&
+                allocation->children.size() == rank;
+            for (std::size_t index = 0U; index < rank && valid; ++index)
+                valid = allocation->children[index]->kind == HirKind::LocalValue &&
+                    allocation->children[index]->localOrdinal == index + 1U;
+        }
+        tests.expect(valid, multidimensional
+            ? "multidimensional VLA evaluates extents once in source order and publishes hidden locals before the main allocation"
+            : "one-dimensional VLA preserves rank, element type, and one count evaluation");
+        destroyHirTreeIteratively(node);
+    };
+    testVla(false);
+    testVla(true);
+
+    const auto testMalformedVla = [&](bool cardinalityMismatch)
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            cardinalityMismatch ? AstKind::LoopExpression
+                                : AstKind::IntegerLiteralExpression,
+            range(160U)));
+        auto* extent = nodes.back().get();
+        if (!cardinalityMismatch) extent->setIntegerValue(3U);
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IntegerLiteralExpression, range(170U)));
+        auto* secondExtent = nodes.back().get();
+        secondExtent->setIntegerValue(4U);
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::VariableDeclarationStatement, range(180U)));
+        auto* declaration = nodes.back().get();
+        MethodLocalSymbol local;
+        local.syntax = declaration;
+        local.name = "bad-vla";
+        local.typeKey = "builtin:int*";
+        local.isVariableLengthArray = true;
+        if (cardinalityMismatch)
+        {
+            local.variableLengthArrayElementTypeKey = "builtin:int";
+            local.variableLengthArrayCountSyntax = extent;
+            local.variableLengthArrayExtentSyntaxes = {extent, secondExtent};
+            local.variableLengthArrayExtentLocalOrdinals = {1U};
+        }
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string caseError;
+        auto node = lowerSingle(declaration, nodes, {local},
+            {{extent, &integerType}, {secondExtent, &integerType}}, {}, {}, {},
+            model, body, caseError);
+        const std::string expected = cardinalityMismatch
+            ? "multidimensional VLA lost its captured extent locals"
+            : "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+        tests.expect(node == nullptr && caseError == expected,
+            cardinalityMismatch
+                ? "captured-extent cardinality mismatch wins before evaluating an observably unbound first extent"
+                : "incomplete VLA metadata preserves its exact pre-descent diagnostic");
+    };
+    testMalformedVla(false);
+    testMalformedVla(true);
+}
+
 struct UserIndexerTarget final
 {
     std::size_t getterOrdinal = 0;
@@ -15755,6 +16841,10 @@ int main()
     else if (focusValue == "hir-loop-expression-depth")
     {
         testDeepLoopExpressionLowering(tests);
+    }
+    else if (focusValue == "hir-variable-declaration-depth")
+    {
+        testDeepVariableDeclarationLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {

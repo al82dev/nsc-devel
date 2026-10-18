@@ -118,19 +118,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionStatement(
         error);
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerVariableDeclarationStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        nullptr, memberOrdinal, false, statement, error);
+}
+
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
     bool addressContext,
-    const ast::AstNode* expressionStatement,
+    const ast::AstNode* statementContinuation,
     std::string& error)
 {
     std::unique_ptr<ProjectOopHirNode> lowered;
     enum class IterativeExpressionKind : std::uint8_t
     {
         ExpressionStatement,
+        VariableDeclaration,
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
@@ -433,6 +443,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<std::size_t> pendingMoveSourceLocalOrdinal;
         std::optional<std::size_t> pendingMoveSourceParameterOrdinal;
     };
+    enum class VariableDeclarationFrameMode : std::uint8_t
+    {
+        NoChild,
+        Initializer,
+        VlaSingle,
+        VlaExtents,
+        Ready,
+    };
+    struct VariableDeclarationFrameState final
+    {
+        const MethodLocalSymbol* local = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        std::unique_ptr<ProjectOopHirNode> vlaBlock;
+        std::vector<std::unique_ptr<ProjectOopHirNode>> allocationCounts;
+        VariableDeclarationFrameMode mode =
+            VariableDeclarationFrameMode::NoChild;
+        std::size_t nextExtent = 0U;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -458,6 +486,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<StructAggregateCallFrameState> structAggregateCall;
         std::optional<OrdinaryCallFrameState> ordinaryCall;
         std::optional<AggregateCrossFrameState> aggregateCross;
+        std::optional<VariableDeclarationFrameState> variableDeclaration;
         std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
         std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
@@ -1184,16 +1213,125 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         return std::nullopt;
     };
 
+    const auto applyVariableChildPostconditions = [&]
+        (std::unique_ptr<ProjectOopHirNode>& child,
+         const ast::AstNode* childSyntax,
+         std::size_t childMemberOrdinal) -> bool
+    {
+        const ClassMemberSymbol* activeMember = memberModel_ != nullptr &&
+                childMemberOrdinal < memberModel_->members().size()
+            ? &memberModel_->members()[childMemberOrdinal]
+            : nullptr;
+        const sema::EffectContext effects(activeMember != nullptr
+            ? activeMember->effects
+            : sema::EffectSet{});
+        const auto directlyAllocatesHeap = [](ProjectOopHirNodeKind kind) noexcept
+        {
+            switch (kind)
+            {
+                case ProjectOopHirNodeKind::ArrayAllocation:
+                case ProjectOopHirNodeKind::RangeArrayAllocation:
+                case ProjectOopHirNodeKind::RawAllocation:
+                case ProjectOopHirNodeKind::StringConcat:
+                case ProjectOopHirNodeKind::StringSubstring:
+                case ProjectOopHirNodeKind::StringFromCharArray:
+                case ProjectOopHirNodeKind::DelegateCreate:
+                case ProjectOopHirNodeKind::LambdaCreate:
+                case ProjectOopHirNodeKind::EventAdd:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        const ProjectOopHirNode* loweredChild = child.get();
+        if (child != nullptr && effects.allows(sema::Effect::NoHeap) &&
+            loweredChild != nullptr && directlyAllocatesHeap(loweredChild->kind))
+        {
+            error = "NS3030: noheap callable '" + activeMember->name +
+                "' cannot contain direct heap allocation '" +
+                std::string(projectOopHirNodeKindName(loweredChild->kind)) + "'";
+            child.reset();
+        }
+        if (child != nullptr && effects.allows(sema::Effect::NoHeap))
+        {
+            const ClassMemberSymbol& caller = *activeMember;
+            const MethodCallBinding* call = callBinding(childSyntax);
+            if (call != nullptr &&
+                call->resolution == MethodCallResolutionKind::Resolved &&
+                call->selectedMemberOrdinal.has_value() &&
+                *call->selectedMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& callee =
+                    memberModel_->members()[*call->selectedMemberOrdinal];
+                if (!callee.isNoHeap)
+                {
+                    error = "NS3030: noheap callable '" + caller.signatureKey +
+                        "' cannot call non-noheap callable '" +
+                        callee.signatureKey + "'";
+                    child.reset();
+                }
+            }
+            if (child != nullptr && loweredChild != nullptr &&
+                (loweredChild->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+                 loweredChild->kind == ProjectOopHirNodeKind::EventInvoke))
+            {
+                error = "NS3030: noheap callable '" + caller.signatureKey +
+                    "' cannot invoke an indirect target without a noheap contract";
+                child.reset();
+            }
+            if (child != nullptr && loweredChild != nullptr &&
+                (loweredChild->kind == ProjectOopHirNodeKind::PlacementConstruction ||
+                 loweredChild->kind == ProjectOopHirNodeKind::ValueConstruction))
+            {
+                const ObjectConstructionBinding* binding =
+                    constructionBinding(childSyntax);
+                if (binding == nullptr ||
+                    !binding->selectedConstructorMemberOrdinal.has_value() ||
+                    *binding->selectedConstructorMemberOrdinal >=
+                        memberModel_->members().size())
+                {
+                    error = "NS3030: noheap callable '" + caller.signatureKey +
+                        "' cannot invoke an implicit constructor without a noheap contract";
+                    child.reset();
+                }
+                else
+                {
+                    const ClassMemberSymbol& constructor =
+                        memberModel_->members()[
+                            *binding->selectedConstructorMemberOrdinal];
+                    if (!constructor.isNoHeap)
+                    {
+                        error = "NS3030: noheap callable '" +
+                            caller.signatureKey +
+                            "' cannot call non-noheap constructor '" +
+                            constructor.signatureKey + "'";
+                        child.reset();
+                    }
+                }
+            }
+        }
+        if (child == nullptr && !error.empty() &&
+            !lastErrorRange_.isValid() && childSyntax != nullptr)
+        {
+            lastErrorRange_ = childSyntax->range();
+        }
+        return child != nullptr;
+    };
+
     const std::optional<IterativeExpressionKind> rootKind =
         iterativeKind(expression, addressContext);
-    if (rootKind.has_value() || expressionStatement != nullptr)
+    if (rootKind.has_value() || statementContinuation != nullptr)
     {
         std::vector<IterativeExpressionFrame> frames;
-        if (expressionStatement != nullptr)
+        if (statementContinuation != nullptr)
         {
             IterativeExpressionFrame frame;
-            frame.kind = IterativeExpressionKind::ExpressionStatement;
-            frame.syntax = expressionStatement;
+            frame.kind = statementContinuation->kind() ==
+                    ast::AstNodeKind::VariableDeclarationStatement
+                ? IterativeExpressionKind::VariableDeclaration
+                : IterativeExpressionKind::ExpressionStatement;
+            frame.syntax = statementContinuation;
+            frame.memberOrdinal = memberOrdinal;
             frames.push_back(std::move(frame));
         }
         const ast::AstNode* current = expression;
@@ -3622,6 +3760,260 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             }
             return true;
         };
+        const auto initializeVariableDeclarationFrame =
+            [&](IterativeExpressionFrame& frame) -> bool
+        {
+            VariableDeclarationFrameState variable;
+            variable.local = localSymbol(frame.syntax);
+            if (variable.local == nullptr)
+            {
+                error = "Stage 34 cannot map local declaration to Stage 27 local symbol";
+                return false;
+            }
+            const MethodLocalSymbol& local = *variable.local;
+            variable.node = makeNode(
+                ProjectOopHirNodeKind::LocalDeclaration,
+                frame.syntax,
+                local.typeKey);
+            variable.node->stringValue = local.name;
+            variable.node->referenceLocal = local.isReference;
+            variable.node->referenceMutable = local.referenceMutable;
+            variable.node->staticLocal = local.isStatic;
+            variable.node->pinnedStorage = local.isPinned;
+            variable.node->ownership = local.ownership;
+            variable.node->automaticDestruction =
+                local.isRaii || local.isScope || local.requiresValueDrop;
+            variable.node->objectLifetimeOwnership = local.objectLifetimeOwnership;
+            variable.node->storageOwnership = local.storageOwnership;
+            variable.node->localOrdinal = static_cast<std::size_t>(
+                variable.local - methodBodyModel_->locals().data());
+            if (!local.isStatic &&
+                (local.isRaii || local.isScope || local.requiresValueDrop))
+            {
+                const MethodCleanupRegion* region = cleanupRegion(frame.syntax);
+                if (region == nullptr)
+                {
+                    error = "drop-bearing local is missing its lexical cleanup region";
+                    return false;
+                }
+                variable.node->cleanupRegionOrdinal = cleanupRegionOrdinal(region);
+                if (!variable.node->cleanupRegionOrdinal.has_value())
+                {
+                    error = "drop-bearing local cleanup region has no stable ordinal";
+                    return false;
+                }
+            }
+            if (local.isVariableLengthArray)
+            {
+                if (local.variableLengthArrayCountSyntax == nullptr ||
+                    local.variableLengthArrayElementTypeKey.empty())
+                {
+                    error =
+                        "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+                    return false;
+                }
+                variable.node->variableLengthArray = true;
+                variable.node->variableLengthArrayRank = std::max<std::size_t>(
+                    1U, local.variableLengthArrayExtentSyntaxes.size());
+                variable.node->elementTypeKey =
+                    local.variableLengthArrayElementTypeKey;
+                if (local.variableLengthArrayExtentSyntaxes.size() > 1U)
+                {
+                    if (local.variableLengthArrayExtentLocalOrdinals.size() !=
+                        local.variableLengthArrayExtentSyntaxes.size())
+                    {
+                        error = "multidimensional VLA lost its captured extent locals";
+                        return false;
+                    }
+                    variable.vlaBlock = makeNode(
+                        ProjectOopHirNodeKind::Block,
+                        frame.syntax,
+                        "builtin:void");
+                    variable.mode = VariableDeclarationFrameMode::VlaExtents;
+                }
+                else
+                {
+                    variable.mode = VariableDeclarationFrameMode::VlaSingle;
+                }
+            }
+            else if (frame.syntax->first() != nullptr)
+            {
+                variable.mode = VariableDeclarationFrameMode::Initializer;
+            }
+            else
+            {
+                variable.mode = VariableDeclarationFrameMode::NoChild;
+            }
+            frame.variableDeclaration.emplace(std::move(variable));
+            return true;
+        };
+        struct VariableDeclarationChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextVariableDeclarationChild =
+            [&](const IterativeExpressionFrame& frame)
+                -> std::optional<VariableDeclarationChild>
+        {
+            const VariableDeclarationFrameState& variable =
+                *frame.variableDeclaration;
+            if (variable.mode == VariableDeclarationFrameMode::Initializer)
+                return VariableDeclarationChild{
+                    frame.syntax->first(), variable.local->isReference};
+            if (variable.mode == VariableDeclarationFrameMode::VlaSingle)
+                return VariableDeclarationChild{
+                    variable.local->variableLengthArrayCountSyntax, false};
+            if (variable.mode == VariableDeclarationFrameMode::VlaExtents)
+                return VariableDeclarationChild{
+                    variable.local->variableLengthArrayExtentSyntaxes[
+                        variable.nextExtent],
+                    false};
+            return std::nullopt;
+        };
+        const auto completeVariableAllocation =
+            [&](IterativeExpressionFrame& frame)
+        {
+            VariableDeclarationFrameState& variable =
+                *frame.variableDeclaration;
+            auto allocation = makeNode(
+                ProjectOopHirNodeKind::StackAllocation,
+                frame.syntax,
+                variable.local->typeKey);
+            allocation->elementTypeKey =
+                variable.local->variableLengthArrayElementTypeKey;
+            for (auto& count : variable.allocationCounts)
+                allocation->children.push_back(std::move(count));
+            variable.node->children.push_back(std::move(allocation));
+            if (variable.vlaBlock != nullptr)
+                variable.vlaBlock->children.push_back(std::move(variable.node));
+            variable.mode = VariableDeclarationFrameMode::Ready;
+        };
+        const auto acceptVariableDeclarationChild =
+            [&](IterativeExpressionFrame& frame,
+                std::unique_ptr<ProjectOopHirNode> child) -> bool
+        {
+            VariableDeclarationFrameState& variable =
+                *frame.variableDeclaration;
+            const MethodLocalSymbol& local = *variable.local;
+            if (variable.mode == VariableDeclarationFrameMode::Initializer)
+            {
+                variable.node->placementConstructed =
+                    child->kind == ProjectOopHirNodeKind::PlacementConstruction;
+                const ProjectImplicitConversion conversion = local.isReference
+                    ? ProjectImplicitConversion{
+                        ProjectConversionKind::Identity, 0, local.typeKey,
+                        local.typeKey, std::nullopt}
+                    : classifyImplicit(
+                        child->typeKey,
+                        local.typeKey,
+                        expressionType(frame.syntax->first()) != nullptr
+                            ? expressionType(frame.syntax->first())->integerConstant
+                            : std::nullopt);
+                if (conversion.exists() &&
+                    conversion.kind != ProjectConversionKind::Identity)
+                {
+                    child = wrapImplicitConversion(
+                        std::move(child), conversion, frame.syntax->first());
+                }
+                if (local.ownership == sema::OwnershipKind::Borrowed &&
+                    local.localBorrowBindingOrdinal.has_value() &&
+                    *local.localBorrowBindingOrdinal <
+                        methodBodyModel_->localBorrowBindings().size())
+                {
+                    const MethodLocalBorrowBinding& borrow =
+                        methodBodyModel_->localBorrowBindings()[
+                            *local.localBorrowBindingOrdinal];
+                    auto borrowed = makeNode(
+                        ProjectOopHirNodeKind::BorrowValue,
+                        frame.syntax->first(),
+                        local.typeKey);
+                    borrowed->localBorrowSourceKind = borrow.sourceKind;
+                    borrowed->localOrdinal = borrow.sourceLocalOrdinal;
+                    borrowed->parameterOrdinal = borrow.sourceParameterOrdinal;
+                    borrowed->children.push_back(std::move(child));
+                    child = std::move(borrowed);
+                }
+                variable.node->children.push_back(std::move(child));
+                variable.mode = VariableDeclarationFrameMode::Ready;
+                return true;
+            }
+            if (variable.mode == VariableDeclarationFrameMode::VlaSingle)
+            {
+                variable.allocationCounts.push_back(std::move(child));
+                completeVariableAllocation(frame);
+                return true;
+            }
+            if (variable.mode == VariableDeclarationFrameMode::VlaExtents)
+            {
+                const std::size_t dimension = variable.nextExtent;
+                const std::size_t extentOrdinal =
+                    local.variableLengthArrayExtentLocalOrdinals[dimension];
+                const std::string& extentType =
+                    methodBodyModel_->locals()[extentOrdinal].typeKey;
+                auto extentDeclaration = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration,
+                    local.variableLengthArrayExtentSyntaxes[dimension],
+                    extentType);
+                extentDeclaration->stringValue =
+                    methodBodyModel_->locals()[extentOrdinal].name;
+                extentDeclaration->debugDisplayName =
+                    local.name + ".Length[" + std::to_string(dimension) + "]";
+                extentDeclaration->localOrdinal = extentOrdinal;
+                extentDeclaration->children.push_back(std::move(child));
+                variable.vlaBlock->children.push_back(
+                    std::move(extentDeclaration));
+                auto extentValue = makeNode(
+                    ProjectOopHirNodeKind::LocalValue,
+                    local.variableLengthArrayExtentSyntaxes[dimension],
+                    extentType);
+                extentValue->localOrdinal = extentOrdinal;
+                variable.allocationCounts.push_back(std::move(extentValue));
+                ++variable.nextExtent;
+                if (variable.nextExtent ==
+                    local.variableLengthArrayExtentSyntaxes.size())
+                {
+                    completeVariableAllocation(frame);
+                }
+                return true;
+            }
+            error = "Stage 34 variable declaration frame accepted an unexpected child";
+            return false;
+        };
+        const auto finishVariableDeclarationFrame =
+            [&](IterativeExpressionFrame& frame)
+                -> std::unique_ptr<ProjectOopHirNode>
+        {
+            VariableDeclarationFrameState& variable =
+                *frame.variableDeclaration;
+            if (variable.mode == VariableDeclarationFrameMode::NoChild)
+                variable.mode = VariableDeclarationFrameMode::Ready;
+            return variable.vlaBlock != nullptr
+                ? std::move(variable.vlaBlock)
+                : std::move(variable.node);
+        };
+        const auto activateLocalCleanup =
+            [&](const std::unique_ptr<ProjectOopHirNode>& node)
+        {
+            const ProjectOopHirNode* declaration = node.get();
+            if (declaration != nullptr &&
+                declaration->kind == ProjectOopHirNodeKind::Block &&
+                declaration->syntax != nullptr &&
+                declaration->syntax->kind() ==
+                    ast::AstNodeKind::VariableDeclarationStatement &&
+                !declaration->children.empty())
+            {
+                declaration = declaration->children.back().get();
+            }
+            if (declaration != nullptr &&
+                declaration->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+                declaration->cleanupRegionOrdinal.has_value())
+            {
+                activeHirCleanupRegions_.push_back(
+                    *declaration->cleanupRegionOrdinal);
+            }
+        };
+
         enum class LoopBlockAdvance : std::uint8_t
         {
             Descend,
@@ -3665,20 +4057,69 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentInputKind = IterativeInputKind::Expression;
                     return LoopBlockAdvance::Descend;
                 }
+                if (statement != nullptr &&
+                    statement->kind() ==
+                        ast::AstNodeKind::VariableDeclarationStatement)
+                {
+                    IterativeExpressionFrame variableFrame;
+                    variableFrame.kind =
+                        IterativeExpressionKind::VariableDeclaration;
+                    variableFrame.syntax = statement;
+                    variableFrame.memberOrdinal = frame.memberOrdinal;
+                    if (!initializeVariableDeclarationFrame(variableFrame))
+                        return LoopBlockAdvance::Error;
+                    const auto child =
+                        nextVariableDeclarationChild(variableFrame);
+                    if (!child.has_value())
+                    {
+                        auto variableNode =
+                            finishVariableDeclarationFrame(variableFrame);
+                        activateLocalCleanup(variableNode);
+                        frame.loopBlockNode->children.push_back(
+                            std::move(variableNode));
+                        continue;
+                    }
+                    const std::size_t variableMemberOrdinal =
+                        variableFrame.memberOrdinal;
+                    frames.push_back(std::move(variableFrame));
+                    current = child->syntax;
+                    currentMemberOrdinal = variableMemberOrdinal;
+                    currentAddressContext = child->addressContext;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
 
                 std::unique_ptr<ProjectOopHirNode> statementNode =
                     lowerStatement(statement, frame.memberOrdinal, error);
                 if (statementNode == nullptr) return LoopBlockAdvance::Error;
-                if (statementNode->kind == ProjectOopHirNodeKind::LocalDeclaration &&
-                    statementNode->cleanupRegionOrdinal.has_value())
-                {
-                    activeHirCleanupRegions_.push_back(
-                        *statementNode->cleanupRegionOrdinal);
-                }
+                activateLocalCleanup(statementNode);
                 frame.loopBlockNode->children.push_back(std::move(statementNode));
             }
         };
-        while (true)
+        bool worklistComplete = false;
+        if (frames.size() == 1U &&
+            frames.back().kind == IterativeExpressionKind::VariableDeclaration)
+        {
+            if (!initializeVariableDeclarationFrame(frames.back()))
+            {
+                if (!lastErrorRange_.isValid())
+                    lastErrorRange_ = frames.back().syntax->range();
+                return nullptr;
+            }
+            const auto child = nextVariableDeclarationChild(frames.back());
+            if (child.has_value())
+            {
+                current = child->syntax;
+                currentAddressContext = child->addressContext;
+            }
+            else
+            {
+                lowered = finishVariableDeclarationFrame(frames.back());
+                frames.pop_back();
+                worklistComplete = true;
+            }
+        }
+        while (!worklistComplete)
         {
             if (currentInputKind == IterativeInputKind::LoopBlock)
             {
@@ -4889,7 +5330,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 const bool isExpressionStatementRoot =
                     frames.size() == 1u &&
                     frames.back().kind == IterativeExpressionKind::ExpressionStatement;
-                lowered = isExpressionStatementRoot
+                const bool isVariableDeclarationChild =
+                    !frames.empty() &&
+                    frames.back().kind == IterativeExpressionKind::VariableDeclaration;
+                lowered = isExpressionStatementRoot || isVariableDeclarationChild
                     ? lowerExpressionImpl(
                         current, currentMemberOrdinal, currentAddressContext, error)
                     : lowerExpression(
@@ -4897,9 +5341,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 if (lowered == nullptr)
                 {
                     rollbackMatchCleanups();
-                    if (!lastErrorRange_.isValid() && !frames.empty() &&
-                        frames.back().kind != IterativeExpressionKind::ExpressionStatement)
-                        lastErrorRange_ = frames.back().syntax->range();
+                    if (!lastErrorRange_.isValid() && !frames.empty())
+                    {
+                        if (frames.back().kind ==
+                                IterativeExpressionKind::VariableDeclaration &&
+                            current != nullptr)
+                        {
+                            lastErrorRange_ = current->range();
+                        }
+                        else if (frames.back().kind !=
+                            IterativeExpressionKind::ExpressionStatement)
+                        {
+                            lastErrorRange_ = frames.back().syntax->range();
+                        }
+                    }
                     break;
                 }
             }
@@ -4910,6 +5365,42 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             while (!frames.empty())
             {
                 IterativeExpressionFrame& frame = frames.back();
+                if (frame.kind == IterativeExpressionKind::VariableDeclaration)
+                {
+                    const auto pendingChild =
+                        nextVariableDeclarationChild(frame);
+                    if (!pendingChild.has_value() ||
+                        !applyVariableChildPostconditions(
+                            lowered,
+                            pendingChild->syntax,
+                            frame.memberOrdinal))
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        return nullptr;
+                    }
+                    if (!acceptVariableDeclarationChild(
+                            frame, std::move(lowered)))
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        return nullptr;
+                    }
+                    const auto child = nextVariableDeclarationChild(frame);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishVariableDeclarationFrame(frame);
+                    frames.pop_back();
+                    continue;
+                }
                 if (frame.kind == IterativeExpressionKind::LoopBlockExpressionStatement)
                 {
                     auto statement = makeNode(
@@ -4923,6 +5414,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
                 if (frame.kind == IterativeExpressionKind::LoopBlock)
                 {
+                    activateLocalCleanup(lowered);
                     frame.loopBlockNode->children.push_back(std::move(lowered));
                     const ast::AstNode* blockSyntax = frame.syntax;
                     const LoopBlockAdvance advance = advanceLoopBlock(frames.size() - 1U);
@@ -5126,36 +5618,69 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         currentAddressContext = false;
                         return true;
                     };
-                    const auto beginValue = [&]() -> bool
+                    const auto advanceDeclarations = [&]() -> bool
                     {
                         const ast::AstNode* armSyntax =
                             frame.syntax->children()[frame.armIndex];
-                        frame.cleanupDepth = activeHirCleanupRegions_.size();
-                        frame.cleanupActive = true;
-                        for (const ast::AstNode* declaration : armSyntax->children())
+                        while (frame.syntheticLocalOrdinal <
+                            armSyntax->children().size())
                         {
+                            const ast::AstNode* declaration =
+                                armSyntax->children()[frame.syntheticLocalOrdinal++];
+                            if (declaration != nullptr &&
+                                declaration->kind() ==
+                                    ast::AstNodeKind::VariableDeclarationStatement)
+                            {
+                                IterativeExpressionFrame variableFrame;
+                                variableFrame.kind =
+                                    IterativeExpressionKind::VariableDeclaration;
+                                variableFrame.syntax = declaration;
+                                variableFrame.memberOrdinal = frame.memberOrdinal;
+                                if (!initializeVariableDeclarationFrame(variableFrame))
+                                    return false;
+                                const auto child =
+                                    nextVariableDeclarationChild(variableFrame);
+                                if (!child.has_value())
+                                {
+                                    auto declarationNode =
+                                        finishVariableDeclarationFrame(variableFrame);
+                                    activateLocalCleanup(declarationNode);
+                                    frame.matchArm->children.push_back(
+                                        std::move(declarationNode));
+                                    continue;
+                                }
+                                const std::size_t declarationMemberOrdinal =
+                                    variableFrame.memberOrdinal;
+                                frame.stage = 3U;
+                                frames.push_back(std::move(variableFrame));
+                                current = child->syntax;
+                                currentMemberOrdinal = declarationMemberOrdinal;
+                                currentAddressContext = child->addressContext;
+                                return true;
+                            }
                             auto declarationNode = lowerStatement(
                                 declaration, frame.memberOrdinal, error);
-                            if (declarationNode == nullptr)
-                            {
-                                activeHirCleanupRegions_.resize(frame.cleanupDepth);
-                                frame.cleanupActive = false;
-                                return false;
-                            }
-                            if (declarationNode->kind ==
-                                    ProjectOopHirNodeKind::LocalDeclaration &&
-                                declarationNode->cleanupRegionOrdinal.has_value())
-                            {
-                                activeHirCleanupRegions_.push_back(
-                                    *declarationNode->cleanupRegionOrdinal);
-                            }
-                            frame.matchArm->children.push_back(std::move(declarationNode));
+                            if (declarationNode == nullptr) return false;
+                            activateLocalCleanup(declarationNode);
+                            frame.matchArm->children.push_back(
+                                std::move(declarationNode));
                         }
-                        frame.stage = 3U;
+                        frame.stage = 4U;
                         current = armSyntax->third();
                         currentMemberOrdinal = frame.memberOrdinal;
-                        currentAddressContext = frame.matchBinding->referenceResult;
+                        currentAddressContext =
+                            frame.matchBinding->referenceResult;
                         return true;
+                    };
+                    const auto beginValue = [&]() -> bool
+                    {
+                        frame.cleanupDepth = activeHirCleanupRegions_.size();
+                        frame.cleanupActive = true;
+                        frame.syntheticLocalOrdinal = 0U;
+                        if (advanceDeclarations()) return true;
+                        activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                        frame.cleanupActive = false;
+                        return false;
                     };
                     const auto finishMatch = [&]()
                     {
@@ -5223,6 +5748,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     {
                         frame.matchArm->children.push_back(std::move(lowered));
                         if (!beginValue())
+                        {
+                            rollbackMatchCleanups();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        descend = true;
+                        break;
+                    }
+                    if (frame.stage == 3U)
+                    {
+                        activateLocalCleanup(lowered);
+                        frame.matchArm->children.push_back(std::move(lowered));
+                        if (!advanceDeclarations())
                         {
                             rollbackMatchCleanups();
                             lowered.reset();
@@ -7405,7 +7944,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         }
     };
     const ProjectOopHirNode* loweredExpression = lowered.get();
-    if (expressionStatement != nullptr && loweredExpression != nullptr &&
+    if (statementContinuation != nullptr &&
+        statementContinuation->kind() == ast::AstNodeKind::ExpressionStatement &&
+        loweredExpression != nullptr &&
         loweredExpression->kind == ProjectOopHirNodeKind::ExpressionStatement &&
         loweredExpression->children.size() == 1U)
     {
