@@ -114,6 +114,7 @@ class Parser::MatchExpressionPatternAnalyzer final
         const Pattern* pattern = nullptr;
         std::size_t nextChild = 0;
         std::size_t preorder = 0;
+        bool preservesAddress = true;
         std::vector<Summary> children;
     };
 
@@ -125,13 +126,16 @@ public:
 
     MatchPatternAnalysis analyze(const Pattern& root)
     {
-        pushFrame(root);
+        pushFrame(root, true);
         while (!frames_.empty())
         {
             Frame& frame = frames_.back();
             if (frame.nextChild < frame.pattern->children.size())
             {
-                pushFrame(frame.pattern->children[frame.nextChild++]);
+                const bool childPreservesAddress = frame.preservesAddress &&
+                    frame.pattern->kind != PatternKind::Tuple &&
+                    frame.pattern->kind != PatternKind::Variant;
+                pushFrame(frame.pattern->children[frame.nextChild++], childPreservesAddress);
                 continue;
             }
             Summary summary = finishFrame(frame);
@@ -143,12 +147,15 @@ public:
     }
 
 private:
-    void pushFrame(const Pattern& pattern)
+    void pushFrame(const Pattern& pattern, bool preservesAddress)
     {
         const std::size_t preorder = patterns_.size();
         patterns_.push_back(&pattern);
         invalidOr_.push_back(false);
-        Frame frame{&pattern, 0, preorder, {}};
+        if (pattern.kind == PatternKind::Binding &&
+            pattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
+            nonAddressableBindingRanges_.push_back(pattern.range);
+        Frame frame{&pattern, 0, preorder, preservesAddress, {}};
         frame.children.reserve(pattern.children.size());
         frames_.push_back(std::move(frame));
     }
@@ -235,6 +242,9 @@ private:
             for (std::size_t index = 0; index < count; ++index)
                 result.bindings.push_back(binding);
         std::ranges::sort(result.bindings);
+        for (std::size_t index = 0; index < invalidOr_.size(); ++index)
+            if (invalidOr_[index]) result.invalidOrRanges.push_back(patterns_[index]->range);
+        result.nonAddressableBindingRanges = std::move(nonAddressableBindingRanges_);
         result.cases = std::move(summary.cases);
         result.listLengths = std::move(summary.listLengths);
         result.wildcard = summary.wildcard;
@@ -262,6 +272,7 @@ private:
     std::vector<Frame> frames_;
     std::vector<const Pattern*> patterns_;
     std::vector<bool> invalidOr_;
+    std::vector<SourceRange> nonAddressableBindingRanges_;
 };
 
 Parser::MatchPatternAnalysis Parser::analyzeMatchExpressionPattern(

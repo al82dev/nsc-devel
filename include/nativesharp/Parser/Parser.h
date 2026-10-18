@@ -1252,10 +1252,17 @@ private:
     struct MatchPatternAnalysis final
     {
         std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::vector<SourceRange> invalidOrRanges;
+        std::vector<SourceRange> nonAddressableBindingRanges;
         std::vector<std::string> cases;
         std::vector<std::pair<std::size_t, bool>> listLengths;
         bool wildcard = false;
         bool partial = false;
+    };
+    struct ConditionalPatternAnalysis final
+    {
+        bool hasReferenceBinding = false;
+        bool hasMoveBinding = false;
     };
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
@@ -1291,6 +1298,7 @@ private:
         ast::AstNode* destination,
         std::string_view temporaryPrefix);
     ast::AstNode* parseConditionalPatternStatement();
+    ConditionalPatternAnalysis analyzeConditionalPattern(const Pattern& pattern);
     bool statementAlwaysDiverges(const ast::AstNode* statement) const;
     ast::AstNode* parseStaticAssertStatement();
     ast::AstNode* parseInlineAssemblyStatement();

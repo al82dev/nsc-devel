@@ -1395,6 +1395,40 @@ ast::AstNode* Parser::parseConditionalPatternStatement()
     return parseStructuredControlStatement();
 }
 
+Parser::ConditionalPatternAnalysis Parser::analyzeConditionalPattern(const Pattern& pattern)
+{
+    MatchPatternAnalysis facts = analyzeMatchExpressionPattern(pattern, false);
+    for (const SourceRange& range : facts.nonAddressableBindingRanges)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "ref/move pattern binding cannot cross a tuple deconstruction or variant "
+            "payload copy; bind the aggregate first");
+    }
+    for (const SourceRange& range : facts.invalidOrRanges)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "OR-pattern alternatives must bind identical names with identical "
+            "value/ref/move modes");
+    }
+
+    ConditionalPatternAnalysis result;
+    for (const auto& [name, mode] : facts.bindings)
+    {
+        static_cast<void>(name);
+        result.hasReferenceBinding = result.hasReferenceBinding ||
+            mode == PatternBindingMode::Reference ||
+            mode == PatternBindingMode::ReferenceMutable;
+        result.hasMoveBinding = result.hasMoveBinding || mode == PatternBindingMode::Move;
+    }
+    return result;
+}
+
 void Parser::parseIfHeader(IfParseState& state)
 {
     state.beginIndex = index_;
@@ -1578,6 +1612,14 @@ private:
         ast::AstNode* sourceExpression = nullptr;
         ast::AstNode* successBody = nullptr;
         ast::AstNode* failureBody = nullptr;
+        bool hasReferenceBinding = false;
+        bool hasMoveBinding = false;
+    };
+    struct ConditionalPatternLoweringContext final
+    {
+        SourceRange statementRange;
+        std::string temporary;
+        std::string matched;
     };
     struct MatchArm final
     {
@@ -2205,104 +2247,43 @@ private:
             std::move(foreachStates_[index]), body));
     }
 
-    std::vector<std::pair<std::string, PatternBindingMode>> collectPatternBindings(
-        const Pattern& root)
-    {
-        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
-        std::function<void(const Pattern&)> visit = [&](const Pattern& currentPattern)
-        {
-            if (currentPattern.kind == PatternKind::Binding)
-            {
-                bindings.emplace_back(currentPattern.name, currentPattern.bindingMode);
-                return;
-            }
-            for (const Pattern& child : currentPattern.children) visit(child);
-        };
-        visit(root);
-        std::ranges::sort(bindings, [](const auto& left, const auto& right)
-        {
-            if (left.first != right.first) return left.first < right.first;
-            return left.second < right.second;
-        });
-        return bindings;
-    }
-
-    void parseConditionalPatternHeader(ConditionalPatternParseState& state)
+    void parseConditionalPatternPrefix(ConditionalPatternParseState& state)
     {
         state.beginIndex = parser_.index_;
         state.featureRange = parser_.current().range();
-        if (parser_.at(TokenKind::KwIf))
+        if (parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile))
         {
-            state.form = ConditionalPatternForm::If;
+            state.form = parser_.at(TokenKind::KwIf)
+                ? ConditionalPatternForm::If
+                : ConditionalPatternForm::While;
             state.featureRange = parser_.consume().range();
-            parser_.expect(TokenKind::LeftParen, "'(' after 'if'");
+            parser_.expect(TokenKind::LeftParen, state.form == ConditionalPatternForm::If
+                ? "'(' after 'if'"
+                : "'(' after 'while'");
             parser_.expectContextualKeyword("let", "'let' in conditional pattern");
+            return;
         }
-        else if (parser_.at(TokenKind::KwWhile))
-        {
-            state.form = ConditionalPatternForm::While;
-            state.featureRange = parser_.consume().range();
-            parser_.expect(TokenKind::LeftParen, "'(' after 'while'");
-            parser_.expectContextualKeyword("let", "'let' in conditional pattern");
-        }
-        else
-        {
-            state.form = ConditionalPatternForm::LetElse;
-            parser_.expectContextualKeyword("let", "'let'");
-        }
+        state.form = ConditionalPatternForm::LetElse;
+        parser_.expectContextualKeyword("let", "'let'");
+    }
 
+    void parseConditionalPatternPayload(ConditionalPatternParseState& state)
+    {
         state.pattern = parser_.parsePattern(false);
         parser_.expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
         state.sourceExpression = parser_.parseAssignmentExpression();
         if (state.form != ConditionalPatternForm::LetElse)
             parser_.expect(TokenKind::RightParen, "')' after conditional pattern");
+    }
 
-        std::function<void(const Pattern&, bool)> validateBindingModes =
-            [&](const Pattern& currentPattern, bool preservesAddress)
-        {
-            if (currentPattern.kind == PatternKind::Binding &&
-                currentPattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
-            {
-                parser_.diagnostics_.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    currentPattern.range,
-                    "ref/move pattern binding cannot cross a tuple deconstruction or variant "
-                    "payload copy; bind the aggregate first");
-            }
-            const bool childPreservesAddress = preservesAddress &&
-                currentPattern.kind != PatternKind::Tuple &&
-                currentPattern.kind != PatternKind::Variant;
-            for (const Pattern& child : currentPattern.children)
-                validateBindingModes(child, childPreservesAddress);
-        };
-        std::function<void(const Pattern&)> validateOrBindings =
-            [&](const Pattern& currentPattern)
-        {
-            if (currentPattern.kind == PatternKind::Or && !currentPattern.children.empty())
-            {
-                const auto expected = collectPatternBindings(currentPattern.children.front());
-                bool identical = true;
-                for (std::size_t childIndex = 1;
-                     childIndex < currentPattern.children.size(); ++childIndex)
-                {
-                    identical = identical &&
-                        collectPatternBindings(currentPattern.children[childIndex]) == expected;
-                }
-                if (!identical)
-                {
-                    parser_.diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        currentPattern.range,
-                        "OR-pattern alternatives must bind identical names with identical "
-                        "value/ref/move modes");
-                }
-            }
-            for (const Pattern& child : currentPattern.children) validateOrBindings(child);
-        };
-        validateBindingModes(state.pattern, true);
-        validateOrBindings(state.pattern);
+    void parseConditionalPatternHeader(ConditionalPatternParseState& state)
+    {
+        parseConditionalPatternPrefix(state);
+        parseConditionalPatternPayload(state);
+        const Parser::ConditionalPatternAnalysis analysis =
+            parser_.analyzeConditionalPattern(state.pattern);
+        state.hasReferenceBinding = analysis.hasReferenceBinding;
+        state.hasMoveBinding = analysis.hasMoveBinding;
     }
 
     void parseConditionalPattern()
@@ -2390,97 +2371,114 @@ private:
         values_.push_back(lowerConditionalPattern(state));
     }
 
-    ast::AstNode* lowerConditionalPattern(ConditionalPatternParseState& state)
+    PatternExpressionFactory makeConditionalPatternRoot(
+        const ConditionalPatternLoweringContext& context)
     {
-        const SourceRange statementRange = parser_.tokenRangeFrom(state.beginIndex);
-        const std::string temporary =
-            "$__nsc_conditional_pattern_" + std::to_string(parser_.nextMatchTemporary_++);
-        const std::string matched = temporary + "_matched";
-        const auto bindings = collectPatternBindings(state.pattern);
-        const bool hasReferenceBinding = std::ranges::any_of(
-            bindings, [](const auto& binding)
+        return [this, range = context.statementRange, temporary = context.temporary]
         {
-            return binding.second == PatternBindingMode::Reference ||
-                binding.second == PatternBindingMode::ReferenceMutable;
-        });
-        const bool hasMoveBinding = std::ranges::any_of(bindings, [](const auto& binding)
-        {
-            return binding.second == PatternBindingMode::Move;
-        });
-
-        const auto addPrelude = [&](ast::AstNode* destination)
-        {
-            ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
-                state.featureRange, TokenKind::KwVar, "var");
-            ast::AstNode* declaration = parser_.makeVariableDeclaration(
-                inferred, temporary, state.sourceExpression, false,
-                !hasReferenceBinding && !hasMoveBinding);
-            if (hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
-            destination->addChild(declaration);
-            ast::TypeSyntax* boolType = parser_.arena_.make<ast::TypeSyntax>(
-                state.featureRange, TokenKind::KwBool, "bool");
-            destination->addChild(parser_.makeVariableDeclaration(
-                boolType,
-                matched,
-                parser_.makeBooleanLiteral(state.featureRange, false),
-                false,
-                false));
+            return parser_.makeIdentifierExpression(range, temporary);
         };
-        const auto makeSuccess = [&](bool includeBody)
-        {
-            ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, statementRange);
-            body->addChild(parser_.makeExpressionStatement(parser_.makeAssignmentExpression(
-                parser_.makeIdentifierExpression(statementRange, matched),
-                parser_.makeBooleanLiteral(statementRange, true))));
-            if (includeBody && state.successBody != nullptr)
-            {
-                for (ast::AstNode* child : state.successBody->children()) body->addChild(child);
-            }
-            return body;
-        };
-        PatternExpressionFactory root = [&, statementRange]
-        {
-            return parser_.makeIdentifierExpression(statementRange, temporary);
-        };
+    }
 
-        if (state.form == ConditionalPatternForm::While)
-        {
-            ast::AstNode* iteration = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, statementRange);
-            addPrelude(iteration);
-            iteration->addChild(parser_.lowerPattern(
-                state.pattern, root, makeSuccess(true), temporary));
-            ast::AstNode* stopBody = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, statementRange);
-            stopBody->addChild(parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BreakStatement, statementRange));
-            ast::AstNode* stop = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::IfStatement, statementRange);
-            stop->setFirst(makeConditionalPatternNotMatched(statementRange, matched));
-            stop->setSecond(stopBody);
-            iteration->addChild(stop);
+    void addConditionalPatternPrelude(
+        const ConditionalPatternParseState& state,
+        const ConditionalPatternLoweringContext& context,
+        ast::AstNode* destination)
+    {
+        ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
+            state.featureRange, TokenKind::KwVar, "var");
+        ast::AstNode* declaration = parser_.makeVariableDeclaration(
+            inferred, context.temporary, state.sourceExpression, false,
+            !state.hasReferenceBinding && !state.hasMoveBinding);
+        if (state.hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
+        destination->addChild(declaration);
+        ast::TypeSyntax* boolType = parser_.arena_.make<ast::TypeSyntax>(
+            state.featureRange, TokenKind::KwBool, "bool");
+        destination->addChild(parser_.makeVariableDeclaration(
+            boolType,
+            context.matched,
+            parser_.makeBooleanLiteral(state.featureRange, false),
+            false,
+            false));
+    }
 
-            ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::WhileStatement, statementRange);
-            loop->setFirst(parser_.makeBooleanLiteral(state.featureRange, true));
-            loop->setSecond(iteration);
-            return loop;
+    ast::AstNode* makeConditionalPatternSuccess(
+        const ConditionalPatternParseState& state,
+        const ConditionalPatternLoweringContext& context,
+        bool includeBody)
+    {
+        ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, context.statementRange);
+        body->addChild(parser_.makeExpressionStatement(parser_.makeAssignmentExpression(
+            parser_.makeIdentifierExpression(context.statementRange, context.matched),
+            parser_.makeBooleanLiteral(context.statementRange, true))));
+        if (includeBody && state.successBody != nullptr)
+        {
+            for (ast::AstNode* child : state.successBody->children()) body->addChild(child);
         }
+        return body;
+    }
 
+    ast::AstNode* lowerConditionalPatternWhile(
+        ConditionalPatternParseState& state,
+        const ConditionalPatternLoweringContext& context)
+    {
+        PatternExpressionFactory root = makeConditionalPatternRoot(context);
+        ast::AstNode* iteration = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, context.statementRange);
+        addConditionalPatternPrelude(state, context, iteration);
+        iteration->addChild(parser_.lowerPattern(
+            state.pattern,
+            root,
+            makeConditionalPatternSuccess(state, context, true),
+            context.temporary));
+        ast::AstNode* stopBody = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, context.statementRange);
+        stopBody->addChild(parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BreakStatement, context.statementRange));
+        ast::AstNode* stop = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, context.statementRange);
+        stop->setFirst(makeConditionalPatternNotMatched(
+            context.statementRange, context.matched));
+        stop->setSecond(stopBody);
+        iteration->addChild(stop);
+
+        ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::WhileStatement, context.statementRange);
+        loop->setFirst(parser_.makeBooleanLiteral(state.featureRange, true));
+        loop->setSecond(iteration);
+        return loop;
+    }
+
+    ast::AstNode* lowerConditionalPatternSelection(
+        ConditionalPatternParseState& state,
+        const ConditionalPatternLoweringContext& context)
+    {
+        PatternExpressionFactory root = makeConditionalPatternRoot(context);
         ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BlockStatement, statementRange);
-        addPrelude(lowered);
+            ast::AstNodeKind::BlockStatement, context.statementRange);
+        addConditionalPatternPrelude(state, context, lowered);
         lowered->addChild(parser_.lowerPattern(
             state.pattern,
             root,
-            makeSuccess(state.form == ConditionalPatternForm::If),
-            temporary,
+            makeConditionalPatternSuccess(
+                state, context, state.form == ConditionalPatternForm::If),
+            context.temporary,
             state.form != ConditionalPatternForm::LetElse));
-
-        finishConditionalPatternLowering(
-            state, root, lowered, temporary, matched, statementRange);
+        finishConditionalPatternLowering(state, root, lowered, context);
         return lowered;
+    }
+
+    ast::AstNode* lowerConditionalPattern(ConditionalPatternParseState& state)
+    {
+        ConditionalPatternLoweringContext context;
+        context.statementRange = parser_.tokenRangeFrom(state.beginIndex);
+        context.temporary =
+            "$__nsc_conditional_pattern_" + std::to_string(parser_.nextMatchTemporary_++);
+        context.matched = context.temporary + "_matched";
+        if (state.form == ConditionalPatternForm::While)
+            return lowerConditionalPatternWhile(state, context);
+        return lowerConditionalPatternSelection(state, context);
     }
 
     ast::AstNode* makeConditionalPatternNotMatched(
@@ -2498,20 +2496,19 @@ private:
         ConditionalPatternParseState& state,
         const PatternExpressionFactory& root,
         ast::AstNode* lowered,
-        const std::string& temporary,
-        const std::string& matched,
-        SourceRange statementRange)
+        const ConditionalPatternLoweringContext& context)
     {
         if (state.failureBody != nullptr)
         {
             ast::AstNode* failure = parser_.arena_.make<ast::AstNode>(
-                ast::AstNodeKind::IfStatement, statementRange);
-            failure->setFirst(makeConditionalPatternNotMatched(statementRange, matched));
+                ast::AstNodeKind::IfStatement, context.statementRange);
+            failure->setFirst(makeConditionalPatternNotMatched(
+                context.statementRange, context.matched));
             failure->setSecond(state.failureBody);
             lowered->addChild(failure);
         }
         if (state.form != ConditionalPatternForm::LetElse) return;
-        parser_.emitPatternBindings(state.pattern, root, lowered, temporary);
+        parser_.emitPatternBindings(state.pattern, root, lowered, context.temporary);
         lowered->setAuxiliaryText("conditional-pattern-inline");
     }
 
