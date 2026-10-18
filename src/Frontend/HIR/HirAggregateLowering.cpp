@@ -653,6 +653,205 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExp
     }
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructionExpression(
+    const ast::AstNode* expression,
+    const ObjectConstructionBinding& binding,
+    std::size_t constructionOrdinal,
+    std::size_t computedSize,
+    std::size_t temporaryOrdinal,
+    std::size_t contextOrdinal,
+    std::optional<std::size_t> allocatorTypeOrdinal,
+    std::unique_ptr<ProjectOopHirNode> receiver,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+    std::vector<std::size_t> argumentParameterOrdinals,
+    std::string& error)
+{
+    auto block = makeNode(
+        ProjectOopHirNodeKind::BlockExpression,
+        expression,
+        binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Result
+            ? binding.allocatorResultCarrierTypeKey
+            : binding.targetTypeKey);
+
+    const std::string allocatorReceiverTypeKey = receiver->typeKey;
+    auto contextDecl = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, allocatorReceiverTypeKey);
+    contextDecl->localOrdinal = contextOrdinal;
+    contextDecl->stringValue = "allocator.context";
+    contextDecl->children.push_back(std::move(receiver));
+    block->children.push_back(std::move(contextDecl));
+
+    auto contextValue = makeNode(
+        ProjectOopHirNodeKind::LocalValue, expression, allocatorReceiverTypeKey);
+    contextValue->localOrdinal = contextOrdinal;
+    auto allocate = makeNode(
+        ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
+    allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
+    allocate->children.push_back(std::move(contextValue));
+    auto sizeArg = makeNode(
+        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+    sizeArg->integerValue = computedSize;
+    allocate->children.push_back(std::move(sizeArg));
+    auto allocationDecl = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
+    allocationDecl->localOrdinal = temporaryOrdinal;
+    allocationDecl->stringValue = "allocator.bytes";
+    allocationDecl->children.push_back(std::move(allocate));
+    block->children.push_back(std::move(allocationDecl));
+
+    const bool trailingConstruction = expression->auxiliaryText() == "trailing";
+    auto construction = makeNode(
+        ProjectOopHirNodeKind::PlacementConstruction,
+        expression,
+        (binding.targetIsStruct && !trailingConstruction)
+            ? binding.targetTypeKey + "*"
+            : binding.targetTypeKey);
+    construction->constructionOrdinal = constructionOrdinal;
+    construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+    construction->storageOwnership = sema::OwnershipKind::Owned;
+    construction->targetTypeOrdinal = binding.targetTypeOrdinal;
+    construction->memberOrdinal = binding.selectedConstructorMemberOrdinal.has_value()
+        ? binding.selectedConstructorMemberOrdinal
+        : binding.implicitDefaultBaseConstructorMemberOrdinal;
+    construction->allocatorContextLocalOrdinal = contextOrdinal;
+    construction->allocatorDeallocateMemberOrdinal =
+        binding.allocatorDeallocateMemberOrdinal;
+    construction->allocatorTypeOrdinal = allocatorTypeOrdinal;
+    auto storage = makeNode(
+        ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
+    storage->localOrdinal = temporaryOrdinal;
+    construction->children.push_back(std::move(storage));
+    for (auto& argument : arguments)
+        construction->children.push_back(std::move(argument));
+    construction->argumentParameterOrdinals = std::move(argumentParameterOrdinals);
+    construction->argumentCount = construction->argumentParameterOrdinals.size();
+
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::None)
+    {
+        block->children.push_back(std::move(construction));
+        return block;
+    }
+
+    std::string resultType = construction->typeKey;
+    auto bytesValue = makeNode(
+        ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
+    bytesValue->localOrdinal = temporaryOrdinal;
+    auto nullBytes = makeNode(
+        ProjectOopHirNodeKind::NullConstant, expression, "builtin:byte*");
+    auto compare = makeNode(
+        ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
+    compare->operation = lexer::TokenKind::BangEqual;
+    compare->children.push_back(std::move(bytesValue));
+    compare->children.push_back(std::move(nullBytes));
+
+    std::unique_ptr<ProjectOopHirNode> whenFalse;
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Null)
+    {
+        whenFalse = makeNode(
+            ProjectOopHirNodeKind::NullConstant, expression, resultType);
+    }
+    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Panic)
+    {
+        whenFalse = makeNode(
+            ProjectOopHirNodeKind::Panic, expression, "builtin:never");
+        whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+        for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
+            whenFalse->cleanupRegionOrdinals.push_back(
+                activeHirCleanupRegions_[index - 1U]);
+    }
+    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Throws)
+    {
+        constexpr std::string_view exceptionTypeKey =
+            "type:NativeSharpCore::NativeSharp.Core.AllocationFailureException";
+        const std::optional<std::size_t> exceptionType =
+            inheritanceModel_ != nullptr
+                ? inheritanceModel_->typeOrdinalForTypeKey(std::string(exceptionTypeKey))
+                : std::nullopt;
+        if (!exceptionType.has_value() || memberModel_ == nullptr)
+        {
+            error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException";
+            return nullptr;
+        }
+        std::optional<std::size_t> createMethod;
+        for (const std::size_t memberOrdinal :
+             memberModel_->findMembers(*exceptionType, "Create"))
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            if (!memberModel_->members()[memberOrdinal].isStatic) continue;
+            createMethod = memberOrdinal;
+            break;
+        }
+        if (!createMethod.has_value())
+        {
+            error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()";
+            return nullptr;
+        }
+        auto createCall = makeNode(
+            ProjectOopHirNodeKind::StaticCall, expression, std::string(exceptionTypeKey));
+        createCall->memberOrdinal = *createMethod;
+
+        whenFalse = makeNode(
+            ProjectOopHirNodeKind::Throw, expression, "builtin:never");
+        whenFalse->exceptionTypeOrdinal = *exceptionType;
+        whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+        const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
+            ? 0U : activeHirExceptionHandlers_.back().retainedCleanupDepth;
+        for (std::size_t index = activeHirCleanupRegions_.size();
+             index > retainedDepth; --index)
+        {
+            whenFalse->cleanupRegionOrdinals.push_back(
+                activeHirCleanupRegions_[index - 1U]);
+        }
+        if (!activeHirExceptionHandlers_.empty())
+            whenFalse->exceptionTargetRegionOrdinal =
+                activeHirExceptionHandlers_.back().hirRegionOrdinal;
+        whenFalse->children.push_back(std::move(createCall));
+    }
+    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Result)
+    {
+        if (!binding.allocatorResultOkFactoryMemberOrdinal.has_value() ||
+            !binding.allocatorResultErrorFactoryMemberOrdinal.has_value() ||
+            binding.allocatorResultCarrierTypeKey.empty())
+        {
+            error = "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories";
+            return nullptr;
+        }
+        resultType = binding.allocatorResultCarrierTypeKey;
+
+        auto errorArg = makeNode(
+            ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+        errorArg->integerValue = 0U;
+        auto errorCall = makeNode(
+            ProjectOopHirNodeKind::StaticCall,
+            expression,
+            binding.allocatorResultCarrierTypeKey);
+        errorCall->memberOrdinal = *binding.allocatorResultErrorFactoryMemberOrdinal;
+        errorCall->children.push_back(std::move(errorArg));
+        whenFalse = std::move(errorCall);
+
+        auto okCall = makeNode(
+            ProjectOopHirNodeKind::StaticCall,
+            expression,
+            binding.allocatorResultCarrierTypeKey);
+        okCall->memberOrdinal = *binding.allocatorResultOkFactoryMemberOrdinal;
+        okCall->children.push_back(std::move(construction));
+        construction = std::move(okCall);
+    }
+    else
+    {
+        error = "NS304-T13-F08 allocator failure profile is not implemented yet";
+        return nullptr;
+    }
+
+    auto conditional = makeNode(
+        ProjectOopHirNodeKind::Conditional, expression, resultType);
+    conditional->children.push_back(std::move(compare));
+    conditional->children.push_back(std::move(construction));
+    conditional->children.push_back(std::move(whenFalse));
+    block->children.push_back(std::move(conditional));
+    return block;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerObjectConstructionExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -671,9 +870,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerObjectConstructionEx
     }
     const auto ordinal = static_cast<std::size_t>(
         binding - constructionModel_->constructions().data());
-    // NS304-T13-F02: allocator selection desugars to `allocator.Allocate(size)` + placement
-    // construction on the returned pointer (no direct LLVM call, which would cross code
-    // units). The placement node is built below with a local `byte*` as storage.
     if (binding->allocatorSelection && binding->allocatorAllocateMemberOrdinal.has_value())
     {
         if (addressContext)
@@ -681,267 +877,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerObjectConstructionEx
             error = "allocator construction result is a value, not addressable storage";
             return nullptr;
         }
-        std::size_t size = 0;
-        if (objectLayoutModel_ != nullptr)
-        {
-            if (binding->targetIsStruct)
-            {
-                const auto* layout =
-                    objectLayoutModel_->structLayoutForType(binding->targetTypeOrdinal);
-                if (layout != nullptr) size = layout->size;
-            }
-            else
-            {
-                const auto* layout =
-                    objectLayoutModel_->layoutForType(binding->targetTypeOrdinal);
-                if (layout != nullptr) size = layout->size;
-            }
-        }
-        // NS304-T13-F06: the allocated extent is the header plus Capacity*sizeof(T). The
-        // flexible element size is 1 byte here because `T[*]` only admits trivial elements
-        // whose identity size is consulted below via the field's element type.
-        if (expression->auxiliaryText() == "trailing" && !expression->children().empty())
-        {
-            const MethodExpressionTypeBinding* capacityType =
-                expressionType(expression->children().back());
-            if (capacityType != nullptr && capacityType->integerConstant.has_value())
-            {
-                size += static_cast<std::size_t>(capacityType->integerConstant->value);
-            }
-        }
-        const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
-        const std::size_t contextOrdinal = nextSyntheticLocalOrdinal_++;
-        // NS304-T13-F08 `failure: result`: the block yields the closed Result<T,E>, not the
-        // raw target type; the conditional below is the block's last expression.
-        auto block = makeNode(
-            ProjectOopHirNodeKind::BlockExpression, expression,
-            binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Result
-                ? binding->allocatorResultCarrierTypeKey
-                : binding->targetTypeKey);
-
-        // A struct allocator is stored by value, so `Allocate` needs its address; a class
-        // allocator is a reference and needs the loaded value (the reference pointer).
-        bool allocatorIsStruct = false;
-        std::optional<std::size_t> allocatorTypeOrdinal;
-        if (inheritanceModel_ != nullptr && nameLookup_ != nullptr)
-        {
-            allocatorTypeOrdinal =
-                inheritanceModel_->typeOrdinalForTypeKey(binding->allocatorTypeKey);
-            if (allocatorTypeOrdinal.has_value() &&
-                *allocatorTypeOrdinal < nameLookup_->namedTypes().size())
-            {
-                allocatorIsStruct =
-                    nameLookup_->namedTypes()[*allocatorTypeOrdinal].kind ==
-                    NamedTypeDeclarationKind::Struct;
-            }
-        }
-        auto receiver = lowerExpression(
-            expression->first(), memberOrdinal, allocatorIsStruct, error);
-        if (receiver == nullptr) return nullptr;
-        const std::string allocatorReceiverTypeKey = receiver->typeKey;
-
-        // NS304-T13-F07: store the allocator reference once so `Allocate` (now) and the
-        // header provenance (construction, below) share the SAME evaluated value -- no
-        // double evaluation of a non-local allocator expression.
-        auto contextDecl = makeNode(
-            ProjectOopHirNodeKind::LocalDeclaration, expression, allocatorReceiverTypeKey);
-        contextDecl->localOrdinal = contextOrdinal;
-        contextDecl->stringValue = "allocator.context";
-        contextDecl->children.push_back(std::move(receiver));
-        block->children.push_back(std::move(contextDecl));
-
-        auto contextValue = makeNode(
-            ProjectOopHirNodeKind::LocalValue, expression, allocatorReceiverTypeKey);
-        contextValue->localOrdinal = contextOrdinal;
-
-        auto allocate = makeNode(
-            ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
-        allocate->memberOrdinal = *binding->allocatorAllocateMemberOrdinal;
-        allocate->children.push_back(std::move(contextValue));
-        auto sizeArg = makeNode(
-            ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
-        sizeArg->integerValue = size;
-        allocate->children.push_back(std::move(sizeArg));
-        auto decl = makeNode(
-            ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
-        decl->localOrdinal = tempOrdinal;
-        decl->stringValue = "allocator.bytes";
-        decl->children.push_back(std::move(allocate));
-        block->children.push_back(std::move(decl));
-
-        // NS304-T13-F06: the trailing `trailing: capacity` child is the flexible-array
-        // extent, not a constructor argument; the result is the header struct BY VALUE.
-        const bool trailingConstruction = expression->auxiliaryText() == "trailing";
-        auto construction = makeNode(
-            ProjectOopHirNodeKind::PlacementConstruction, expression,
-            (binding->targetIsStruct && !trailingConstruction)
-                ? binding->targetTypeKey + "*"
-                : binding->targetTypeKey);
-        construction->constructionOrdinal = ordinal;
-        construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
-        // Allocator placement owns the returned block even though another object supplies
-        // Allocate/Deallocate. Raw placement remains the separate borrowed-storage path.
-        construction->storageOwnership = sema::OwnershipKind::Owned;
-        construction->targetTypeOrdinal = binding->targetTypeOrdinal;
-        construction->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
-            ? binding->selectedConstructorMemberOrdinal
-            : binding->implicitDefaultBaseConstructorMemberOrdinal;
-        // NS304-T13-F07: allocator provenance for the header (context + generated thunk).
-        construction->allocatorContextLocalOrdinal = contextOrdinal;
-        construction->allocatorDeallocateMemberOrdinal =
-            binding->allocatorDeallocateMemberOrdinal;
-        construction->allocatorTypeOrdinal = allocatorTypeOrdinal;
-        auto storage = makeNode(
-            ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
-        storage->localOrdinal = tempOrdinal;
-        construction->children.push_back(std::move(storage));
-        const std::size_t constructorArgumentCount =
-            expression->children().size() - (trailingConstruction ? 1U : 0U);
-        for (std::size_t index = 0; index < constructorArgumentCount; ++index)
-        {
-            auto argument = lowerExpression(
-                expression->children()[index], memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            if (index < binding->selectedConversions.size() &&
-                binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
-            {
-                argument = wrapImplicitConversion(
-                    std::move(argument), binding->selectedConversions[index],
-                    expression->children()[index]);
-            }
-            if (index >= binding->selectedArgumentParameterOrdinals.size())
-            {
-                error = "named construction argument has no selected parameter ordinal";
-                return nullptr;
-            }
-            construction->children.push_back(std::move(argument));
-            construction->argumentParameterOrdinals.push_back(
-                binding->selectedArgumentParameterOrdinals[index]);
-        }
-        construction->argumentCount = construction->argumentParameterOrdinals.size();
-        // NS304-T13-F08: explicit failure profile. `None` keeps the plain construction; the
-        // other profiles wrap it in a null-check so an Allocate returning null takes the
-        // failure branch and the constructor never runs.
-        if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::None)
-        {
-            block->children.push_back(std::move(construction));
-            return block;
-        }
-        std::string resultType = construction->typeKey;
-        auto bytesValue = makeNode(
-            ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
-        bytesValue->localOrdinal = tempOrdinal;
-        auto nullBytes = makeNode(
-            ProjectOopHirNodeKind::NullConstant, expression, "builtin:byte*");
-        auto compare = makeNode(
-            ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
-        compare->operation = lexer::TokenKind::BangEqual;
-        compare->children.push_back(std::move(bytesValue));
-        compare->children.push_back(std::move(nullBytes));
-
-        std::unique_ptr<ProjectOopHirNode> whenFalse;
-        if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Null)
-        {
-            whenFalse = makeNode(
-                ProjectOopHirNodeKind::NullConstant, expression, resultType);
-        }
-        else if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Panic)
-        {
-            whenFalse = makeNode(
-                ProjectOopHirNodeKind::Panic, expression, "builtin:never");
-            whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
-            for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
-                whenFalse->cleanupRegionOrdinals.push_back(
-                    activeHirCleanupRegions_[index - 1]);
-        }
-        else if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Throws)
-        {
-            constexpr std::string_view exceptionTypeKey =
-                "type:NativeSharpCore::NativeSharp.Core.AllocationFailureException";
-            const std::optional<std::size_t> exceptionType =
-                inheritanceModel_ != nullptr
-                    ? inheritanceModel_->typeOrdinalForTypeKey(std::string(exceptionTypeKey))
-                    : std::nullopt;
-            if (!exceptionType.has_value() || memberModel_ == nullptr)
-            {
-                error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException";
-                return nullptr;
-            }
-            std::optional<std::size_t> createMethod;
-            for (const std::size_t memberOrdinal :
-                 memberModel_->findMembers(*exceptionType, "Create"))
-            {
-                if (memberOrdinal >= memberModel_->members().size()) continue;
-                if (!memberModel_->members()[memberOrdinal].isStatic) continue;
-                createMethod = memberOrdinal;
-                break;
-            }
-            if (!createMethod.has_value())
-            {
-                error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()";
-                return nullptr;
-            }
-            auto createCall = makeNode(
-                ProjectOopHirNodeKind::StaticCall, expression, std::string(exceptionTypeKey));
-            createCall->memberOrdinal = *createMethod;
-
-            whenFalse = makeNode(
-                ProjectOopHirNodeKind::Throw, expression, "builtin:never");
-            whenFalse->exceptionTypeOrdinal = *exceptionType;
-            whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
-            const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
-                ? 0 : activeHirExceptionHandlers_.back().retainedCleanupDepth;
-            for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
-                whenFalse->cleanupRegionOrdinals.push_back(
-                    activeHirCleanupRegions_[index - 1]);
-            if (!activeHirExceptionHandlers_.empty())
-                whenFalse->exceptionTargetRegionOrdinal =
-                    activeHirExceptionHandlers_.back().hirRegionOrdinal;
-            whenFalse->children.push_back(std::move(createCall));
-        }
-        else if (binding->allocatorFailureProfile == ProjectAllocatorFailureProfile::Result)
-        {
-            if (!binding->allocatorResultOkFactoryMemberOrdinal.has_value() ||
-                !binding->allocatorResultErrorFactoryMemberOrdinal.has_value() ||
-                binding->allocatorResultCarrierTypeKey.empty())
-            {
-                error = "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories";
-                return nullptr;
-            }
-            resultType = binding->allocatorResultCarrierTypeKey;
-
-            // Error(AllocationFailure.OutOfMemory)
-            auto errorArg = makeNode(
-                ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
-            errorArg->integerValue = 0;
-            auto errorCall = makeNode(
-                ProjectOopHirNodeKind::StaticCall, expression,
-                binding->allocatorResultCarrierTypeKey);
-            errorCall->memberOrdinal = *binding->allocatorResultErrorFactoryMemberOrdinal;
-            errorCall->children.push_back(std::move(errorArg));
-            whenFalse = std::move(errorCall);
-
-            // Ok(construction)
-            auto okCall = makeNode(
-                ProjectOopHirNodeKind::StaticCall, expression,
-                binding->allocatorResultCarrierTypeKey);
-            okCall->memberOrdinal = *binding->allocatorResultOkFactoryMemberOrdinal;
-            okCall->children.push_back(std::move(construction));
-            construction = std::move(okCall);
-        }
-        else
-        {
-            error = "NS304-T13-F08 allocator failure profile is not implemented yet";
-            return nullptr;
-        }
-
-        auto conditional = makeNode(
-            ProjectOopHirNodeKind::Conditional, expression, resultType);
-        conditional->children.push_back(std::move(compare));
-        conditional->children.push_back(std::move(construction));
-        conditional->children.push_back(std::move(whenFalse));
-        block->children.push_back(std::move(conditional));
-        return block;
+        error = "Stage 34 allocator construction escaped iterative lowering";
+        return nullptr;
     }
     auto node = makeNode(
         placement

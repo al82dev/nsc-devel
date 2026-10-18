@@ -25,6 +25,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct ProjectOopHirModelTestAccess;
+
 enum class ConstructionResolutionKind
 {
     ResolvedExplicit,
@@ -211,6 +213,8 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     void scanUnsupportedContexts(
         const ast::AstNode* node,
         diagnostics::DiagnosticEngine& diagnostics);

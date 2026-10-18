@@ -1071,6 +1071,18 @@ private:
         std::size_t memberOrdinal,
         bool addressContext,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishAllocatorConstructionExpression(
+        const ast::AstNode* expression,
+        const ObjectConstructionBinding& binding,
+        std::size_t constructionOrdinal,
+        std::size_t computedSize,
+        std::size_t temporaryOrdinal,
+        std::size_t contextOrdinal,
+        std::optional<std::size_t> allocatorTypeOrdinal,
+        std::unique_ptr<ProjectOopHirNode> receiver,
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+        std::vector<std::size_t> argumentParameterOrdinals,
+        std::string& error);
 
     std::unique_ptr<ProjectOopHirNode> lowerAggregateOrLayoutExpression(
         const ast::AstNode* expression,

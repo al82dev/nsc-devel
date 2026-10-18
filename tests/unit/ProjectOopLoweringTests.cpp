@@ -368,6 +368,167 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerAllocatorConstructionExpressionForTest(
+        ProjectOopHirModel& model,
+        ProjectConstructionModel& constructionModel,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<const ast::AstNode*>& constructionSyntaxes,
+        ObjectConstructionBinding binding,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodNameBinding>& names,
+        const ProjectNameLookup* nameLookup,
+        const ProjectInheritanceModel* inheritanceModel,
+        const ProjectObjectLayoutModel* objectLayoutModel,
+        const ProjectMemberModel* memberModel,
+        std::size_t syntheticLocalFloor,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::optional<std::pair<std::size_t, std::size_t>> exceptionHandler,
+        bool addressContext,
+        std::string& error)
+    {
+        constructionModel.constructions_.clear();
+        constructionModel.constructions_.push_back(std::move(binding));
+        constructionModel.built_ = true;
+        model.constructionModel_ = &constructionModel;
+        for (const ast::AstNode* syntax : constructionSyntaxes)
+            model.constructionBySyntax_[syntax] = &constructionModel.constructions_.front();
+
+        methodBodyModel.locals_.clear();
+        for (const MethodNameBinding& name : names)
+        {
+            model.nameBindingBySyntax_[name.syntax] = &name;
+            if (!name.localOrdinal.has_value()) continue;
+            if (methodBodyModel.locals_.size() <= *name.localOrdinal)
+                methodBodyModel.locals_.resize(*name.localOrdinal + 1U);
+            methodBodyModel.locals_[*name.localOrdinal].name = name.name;
+            methodBodyModel.locals_[*name.localOrdinal].typeKey = name.typeKey;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.nameLookup_ = nameLookup;
+        model.inheritanceModel_ = inheritanceModel;
+        model.objectLayoutModel_ = objectLayoutModel;
+        model.memberModel_ = memberModel;
+        model.nextSyntheticLocalOrdinal_ = syntheticLocalFloor;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        if (exceptionHandler.has_value())
+        {
+            ProjectOopHirModel::HirExceptionHandlerContext handler;
+            handler.hirRegionOrdinal = exceptionHandler->first;
+            handler.retainedCleanupDepth = exceptionHandler->second;
+            model.activeHirExceptionHandlers_.push_back(handler);
+        }
+        return model.lowerExpression(root, 73U, addressContext, error);
+    }
+
+    static std::size_t nextSyntheticLocalOrdinal(const ProjectOopHirModel& model)
+    {
+        return model.nextSyntheticLocalOrdinal_;
+    }
+
+    static void configureAllocatorLayouts(
+        ProjectObjectLayoutModel& objectLayoutModel,
+        std::size_t typeOrdinal,
+        std::string typeKey,
+        std::uint64_t classSize,
+        std::uint64_t structSize)
+    {
+        objectLayoutModel.classLayouts_.clear();
+        objectLayoutModel.classLayoutIndexByType_.assign(typeOrdinal + 1U, std::nullopt);
+        ClassObjectLayout classLayout;
+        classLayout.typeOrdinal = typeOrdinal;
+        classLayout.typeKey = typeKey;
+        classLayout.size = classSize;
+        objectLayoutModel.classLayoutIndexByType_[typeOrdinal] = 0U;
+        objectLayoutModel.classLayouts_.push_back(std::move(classLayout));
+
+        objectLayoutModel.structLayouts_.clear();
+        objectLayoutModel.structLayoutIndexByType_.assign(typeOrdinal + 1U, std::nullopt);
+        StructValueLayout structLayout;
+        structLayout.typeOrdinal = typeOrdinal;
+        structLayout.typeKey = std::move(typeKey);
+        structLayout.size = structSize;
+        objectLayoutModel.structLayoutIndexByType_[typeOrdinal] = 0U;
+        objectLayoutModel.structLayouts_.push_back(std::move(structLayout));
+        objectLayoutModel.built_ = true;
+    }
+
+    static void configureAllocationFailureCreate(
+        ProjectMemberModel& memberModel,
+        std::size_t exceptionTypeOrdinal)
+    {
+        memberModel.members_.clear();
+        ClassMemberSymbol create;
+        create.name = "Create";
+        create.declaringTypeOrdinal = exceptionTypeOrdinal;
+        create.isStatic = true;
+        memberModel.members_.push_back(std::move(create));
+        memberModel.membersByType_.assign(exceptionTypeOrdinal + 1U, {});
+        memberModel.membersByType_[exceptionTypeOrdinal].push_back(0U);
+        memberModel.promotedMembersByType_.assign(exceptionTypeOrdinal + 1U, {});
+        memberModel.buildMemberNameIndex();
+        memberModel.built_ = true;
+    }
+
+    static bool configureAllocatorTypes(
+        ProjectNameLookup& nameLookup,
+        ProjectInheritanceModel& inheritanceModel,
+        NamedTypeDeclarationKind allocatorKind,
+        bool includeAllocationFailureException,
+        std::string& allocatorTypeKey,
+        std::optional<std::size_t>& exceptionTypeOrdinal)
+    {
+        nameLookup.namedTypes_.clear();
+        NamedTypeDeclaration allocator{
+            compilation::TypeIdentity("H02S15D", {}, {}, "Allocator"),
+            allocatorKind,
+            NamedTypeAccessibility::Internal,
+            std::nullopt,
+            false,
+            false,
+            false,
+            false,
+            false,
+            0U,
+            0U,
+            FileId{},
+            SourceRange{},
+            nullptr,
+            {}};
+        nameLookup.namedTypes_.push_back(std::move(allocator));
+        allocatorTypeKey = "type:" + nameLookup.namedTypes_.back().identity.key();
+        exceptionTypeOrdinal.reset();
+        if (includeAllocationFailureException)
+        {
+            NamedTypeDeclaration exception{
+                compilation::TypeIdentity(
+                    "NativeSharpCore", {"NativeSharp", "Core"}, {},
+                    "AllocationFailureException"),
+                NamedTypeDeclarationKind::Class,
+                NamedTypeAccessibility::Public,
+                std::nullopt,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0U,
+                0U,
+                FileId{},
+                SourceRange{},
+                nullptr,
+                {}};
+            exceptionTypeOrdinal = nameLookup.namedTypes_.size();
+            nameLookup.namedTypes_.push_back(std::move(exception));
+        }
+        nameLookup.built_ = true;
+        diagnostics::DiagnosticEngine diagnostics;
+        return inheritanceModel.build(nameLookup, diagnostics);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCallExpression(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -1208,6 +1369,12 @@ struct ProjectOopHirModelTestAccess final
 namespace
 {
 using nativesharp::frontend::ProjectCompilation;
+using nativesharp::frontend::ProjectConstructionModel;
+using nativesharp::frontend::ProjectInheritanceModel;
+using nativesharp::frontend::ProjectMemberModel;
+using nativesharp::frontend::ProjectMethodBodyModel;
+using nativesharp::frontend::ProjectNameLookup;
+using nativesharp::frontend::ProjectObjectLayoutModel;
 using nativesharp::frontend::ProjectOopHirNode;
 using nativesharp::frontend::ProjectOopHirModel;
 using nativesharp::frontend::ProjectOopMirModel;
@@ -5902,6 +6069,689 @@ void testDeepArrayConstructionLowering(TestContext& tests)
         emptyRangeModel.lastErrorRange().begin()==emptyRangeNodes.back()->range().begin() &&
         emptyRangeModel.lastErrorRange().end()==emptyRangeNodes.back()->range().end(),
         "dimensionless range array preserves its historical null-expression diagnostic and range");
+}
+
+struct AllocatorConstructionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> constructions;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendAllocatorSyntax(
+    AllocatorConstructionSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::SourceRange range = {})
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(kind, range));
+    return fixture.nodes.back().get();
+}
+
+nativesharp::frontend::MethodNameBinding allocatorLocalBinding(
+    const nativesharp::ast::AstNode* syntax,
+    std::string name,
+    std::string typeKey,
+    std::size_t ordinal)
+{
+    nativesharp::frontend::MethodNameBinding binding;
+    binding.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    binding.syntax = syntax;
+    binding.name = std::move(name);
+    binding.typeKey = std::move(typeKey);
+    binding.localOrdinal = ordinal;
+    return binding;
+}
+
+nativesharp::frontend::ObjectConstructionBinding allocatorConstructionBinding(
+    const nativesharp::ast::AstNode* syntax,
+    std::string allocatorTypeKey,
+    std::size_t argumentCount)
+{
+    using nativesharp::frontend::ConstructionResolutionKind;
+    using nativesharp::frontend::ProjectConversionKind;
+    nativesharp::frontend::ObjectConstructionBinding binding;
+    binding.resolution = ConstructionResolutionKind::ResolvedExplicit;
+    binding.syntax = syntax;
+    binding.targetTypeOrdinal = 0U;
+    binding.targetTypeKey = "type:H02S15D.Node";
+    binding.allocatorSelection = true;
+    binding.allocatorTypeKey = std::move(allocatorTypeKey);
+    binding.allocatorAllocateMemberOrdinal = 101U;
+    binding.allocatorDeallocateMemberOrdinal = 102U;
+    binding.selectedConstructorMemberOrdinal = 201U;
+    for (std::size_t index = 0; index < argumentCount; ++index)
+    {
+        nativesharp::frontend::ProjectImplicitConversion conversion;
+        conversion.kind = ProjectConversionKind::Identity;
+        conversion.sourceTypeKey = "type:H02S15D.Node";
+        conversion.targetTypeKey = "type:H02S15D.Node";
+        binding.selectedConversions.push_back(std::move(conversion));
+        binding.selectedArgumentParameterOrdinals.push_back(10U + index);
+    }
+    return binding;
+}
+
+const ProjectOopHirNode* allocatorPlacement(const ProjectOopHirNode* block)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    if (block == nullptr || block->children.size() < 3U) return nullptr;
+    const ProjectOopHirNode* value = block->children[2].get();
+    if (value->kind == HirKind::PlacementConstruction) return value;
+    if (value->kind != HirKind::Conditional || value->children.size() != 3U) return nullptr;
+    const ProjectOopHirNode* success = value->children[1].get();
+    if (success->kind == HirKind::PlacementConstruction) return success;
+    return success->kind == HirKind::StaticCall && success->children.size() == 1U
+        ? success->children.front().get() : nullptr;
+}
+
+void testDeepAllocatorConstructionLowering(TestContext& tests)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using Failure = nativesharp::frontend::ProjectAllocatorFailureProfile;
+    using TypeKind = nativesharp::frontend::NamedTypeDeclarationKind;
+    constexpr std::size_t depth = 32768U;
+    const nativesharp::SourceRange outerRange(
+        nativesharp::SourceLocation(nativesharp::FileId(31U), 10U),
+        nativesharp::SourceLocation(nativesharp::FileId(31U), 20U));
+    const nativesharp::SourceRange innerRange(
+        nativesharp::SourceLocation(nativesharp::FileId(31U), 40U),
+        nativesharp::SourceLocation(nativesharp::FileId(31U), 44U));
+
+    nativesharp::frontend::MethodExpressionTypeBinding nodeType;
+    nodeType.typeKey = "type:H02S15D.Node";
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+
+    ProjectNameLookup structLookup;
+    ProjectInheritanceModel structInheritance;
+    std::string structAllocatorType;
+    std::optional<std::size_t> ignoredException;
+    const bool structTypesReady =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAllocatorTypes(
+            structLookup, structInheritance, TypeKind::Struct, false,
+            structAllocatorType, ignoredException);
+
+    ProjectObjectLayoutModel layouts;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::configureAllocatorLayouts(
+        layouts, 0U, nodeType.typeKey, 48U, 24U);
+
+    AllocatorConstructionSyntax deep;
+    deep.nodes.reserve(depth + 2U);
+    deep.constructions.reserve(depth);
+    auto* receiver = appendAllocatorSyntax(
+        deep, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* leaf = appendAllocatorSyntax(
+        deep, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    deep.names.push_back(allocatorLocalBinding(
+        receiver, "allocator", structAllocatorType, 0U));
+    deep.names.push_back(allocatorLocalBinding(leaf, "tail", nodeType.typeKey, 1U));
+    deep.typed.push_back({receiver, &nodeType});
+    deep.typed.push_back({leaf, &nodeType});
+    nativesharp::ast::AstNode* nested = leaf;
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* construction = appendAllocatorSyntax(
+            deep,
+            nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+            index + 1U == depth ? outerRange : nativesharp::SourceRange{});
+        construction->setFirst(receiver);
+        construction->addChild(nested);
+        deep.constructions.push_back(construction);
+        deep.typed.push_back({construction, &nodeType});
+        nested = construction;
+    }
+    deep.root = nested;
+    auto deepBinding = allocatorConstructionBinding(
+        deep.root, structAllocatorType, 1U);
+    ProjectOopHirModel deepModel;
+    ProjectConstructionModel deepConstructionModel;
+    ProjectMethodBodyModel deepBodyModel;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerAllocatorConstructionExpressionForTest(
+            deepModel, deepConstructionModel, deepBodyModel, deep.root,
+            deep.constructions, std::move(deepBinding), deep.typed, deep.names,
+            &structLookup, &structInheritance, &layouts, nullptr,
+            2U, {}, std::nullopt, false, error);
+    const ProjectOopHirNode* cursor = lowered.get();
+    bool deepShape = structTypesReady && error.empty();
+    for (std::size_t level = 0; level < depth && deepShape; ++level)
+    {
+        const std::size_t temporaryOrdinal = 2U + level * 2U;
+        const std::size_t contextOrdinal = temporaryOrdinal + 1U;
+        const ProjectOopHirNode* context = cursor != nullptr && cursor->children.size() == 3U
+            ? cursor->children[0].get() : nullptr;
+        const ProjectOopHirNode* allocation = cursor != nullptr && cursor->children.size() == 3U
+            ? cursor->children[1].get() : nullptr;
+        const ProjectOopHirNode* placement = allocatorPlacement(cursor);
+        const ProjectOopHirNode* allocate = allocation != nullptr &&
+                allocation->children.size() == 1U
+            ? allocation->children[0].get() : nullptr;
+        deepShape = cursor != nullptr && cursor->kind == HirKind::BlockExpression &&
+            cursor->typeKey == nodeType.typeKey && context != nullptr &&
+            context->kind == HirKind::LocalDeclaration &&
+            context->stringValue == "allocator.context" &&
+            context->typeKey == structAllocatorType &&
+            context->localOrdinal == contextOrdinal && context->children.size() == 1U &&
+            context->children[0]->kind == HirKind::LocalAddress &&
+            context->children[0]->syntax == receiver &&
+            context->children[0]->typeKey == structAllocatorType &&
+            allocation != nullptr && allocation->kind == HirKind::LocalDeclaration &&
+            allocation->stringValue == "allocator.bytes" &&
+            allocation->localOrdinal == temporaryOrdinal && allocate != nullptr &&
+            allocate->kind == HirKind::InstanceCall && allocate->memberOrdinal == 101U &&
+            allocate->children.size() == 2U &&
+            allocate->children[0]->kind == HirKind::LocalValue &&
+            allocate->children[0]->localOrdinal == contextOrdinal &&
+            allocate->children[0]->typeKey == context->typeKey &&
+            allocate->children[1]->kind == HirKind::IntegerConstant &&
+            allocate->children[1]->integerValue == 48U && placement != nullptr &&
+            placement->kind == HirKind::PlacementConstruction &&
+            placement->typeKey == nodeType.typeKey && placement->constructionOrdinal == 0U &&
+            placement->targetTypeOrdinal == 0U && placement->memberOrdinal == 201U &&
+            placement->objectLifetimeOwnership == nativesharp::sema::OwnershipKind::Owned &&
+            placement->storageOwnership == nativesharp::sema::OwnershipKind::Owned &&
+            placement->allocatorContextLocalOrdinal == contextOrdinal &&
+            placement->allocatorDeallocateMemberOrdinal == 102U &&
+            placement->allocatorTypeOrdinal == 0U && placement->argumentCount == 1U &&
+            placement->argumentParameterOrdinals == std::vector<std::size_t>{10U} &&
+            placement->children.size() == 2U &&
+            placement->children[0]->kind == HirKind::LocalValue &&
+            placement->children[0]->localOrdinal == temporaryOrdinal;
+        cursor = deepShape ? placement->children[1].get() : nullptr;
+    }
+    deepShape = deepShape && cursor != nullptr && cursor->kind == HirKind::LocalValue &&
+        cursor->syntax == leaf && cursor->localOrdinal == 1U &&
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            nextSyntheticLocalOrdinal(deepModel) == 2U + depth * 2U;
+    tests.expect(deepShape,
+        "32768 allocator constructions preserve preorder locals, evaluation, layout, ownership, provenance, arguments, and terminal");
+    destroyHirTreeIteratively(lowered);
+
+    const auto makeFlatFixture = [&](std::size_t argumentCount,
+                                     std::string_view allocatorType,
+                                     bool trailing = false)
+    {
+        AllocatorConstructionSyntax fixture;
+        auto* flatReceiver = appendAllocatorSyntax(
+            fixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+        fixture.names.push_back(allocatorLocalBinding(
+            flatReceiver, "allocator", std::string(allocatorType), 0U));
+        fixture.typed.push_back({flatReceiver, &nodeType});
+        std::vector<nativesharp::ast::AstNode*> arguments;
+        for (std::size_t index = 0; index < argumentCount; ++index)
+        {
+            auto* argument = appendAllocatorSyntax(
+                fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+                index == 1U ? innerRange : nativesharp::SourceRange{});
+            argument->setIntegerValue(30U + index);
+            fixture.typed.push_back({argument, &intType});
+            arguments.push_back(argument);
+        }
+        auto* construction = appendAllocatorSyntax(
+            fixture,
+            nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+            outerRange);
+        construction->setFirst(flatReceiver);
+        for (auto* argument : arguments) construction->addChild(argument);
+        if (trailing) construction->setAuxiliaryText("trailing");
+        fixture.constructions.push_back(construction);
+        fixture.typed.push_back({construction, &nodeType});
+        fixture.root = construction;
+        return fixture;
+    };
+
+    const auto lowerFlat = [&](AllocatorConstructionSyntax& fixture,
+                               nativesharp::frontend::ObjectConstructionBinding binding,
+                               ProjectOopHirModel& model,
+                               ProjectConstructionModel& constructionModel,
+                               ProjectMethodBodyModel& bodyModel,
+                               const ProjectNameLookup* lookup,
+                               const ProjectInheritanceModel* inheritance,
+                               const ProjectMemberModel* members,
+                               std::size_t floor,
+                               std::vector<std::size_t> cleanups,
+                               std::optional<std::pair<std::size_t, std::size_t>> handler,
+                               bool address)
+    {
+        error.clear();
+        return nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAllocatorConstructionExpressionForTest(
+                model, constructionModel, bodyModel, fixture.root,
+                fixture.constructions, std::move(binding), fixture.typed, fixture.names,
+                lookup, inheritance, &layouts, members, floor,
+                std::move(cleanups), handler, address, error);
+    };
+
+    auto zeroFixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+    auto zeroBinding = allocatorConstructionBinding(
+        zeroFixture.root, "type:H02S15D.ClassAllocator", 0U);
+    ProjectOopHirModel zeroModel; ProjectConstructionModel zeroConstructions;
+    ProjectMethodBodyModel zeroBody;
+    auto zero = lowerFlat(zeroFixture, std::move(zeroBinding), zeroModel,
+        zeroConstructions, zeroBody, nullptr, nullptr, nullptr, 4U, {}, std::nullopt, false);
+    const ProjectOopHirNode* zeroPlacement = allocatorPlacement(zero.get());
+    tests.expect(zero != nullptr && error.empty() && zero->children.size() == 3U &&
+            zero->children[0]->typeKey == "type:H02S15D.ClassAllocator" &&
+            zero->children[0]->children[0]->kind == HirKind::LocalValue &&
+            zero->children[0]->children[0]->typeKey ==
+                "type:H02S15D.ClassAllocator" &&
+            zeroPlacement != nullptr && zeroPlacement->children.size() == 1U &&
+            zeroPlacement->argumentCount == 0U,
+        "zero-argument allocator construction still lowers one class receiver in value context");
+    destroyHirTreeIteratively(zero);
+
+    AllocatorConstructionSyntax receiverEffectFixture;
+    auto* effectLeaf = appendAllocatorSyntax(
+        receiverEffectFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* effectInner = appendAllocatorSyntax(
+        receiverEffectFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression);
+    auto* effectOuter = appendAllocatorSyntax(
+        receiverEffectFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression);
+    effectInner->setFirst(effectLeaf);
+    effectOuter->setFirst(effectInner);
+    receiverEffectFixture.names.push_back(allocatorLocalBinding(
+        effectLeaf, "allocator", "type:H02S15D.ClassAllocator", 0U));
+    receiverEffectFixture.typed.push_back({effectLeaf, &nodeType});
+    receiverEffectFixture.typed.push_back({effectInner, &nodeType});
+    receiverEffectFixture.typed.push_back({effectOuter, &nodeType});
+    receiverEffectFixture.constructions = {effectInner, effectOuter};
+    receiverEffectFixture.root = effectOuter;
+    auto receiverEffectBinding = allocatorConstructionBinding(
+        effectOuter, "type:H02S15D.ClassAllocator", 0U);
+    ProjectOopHirModel receiverEffectModel;
+    ProjectConstructionModel receiverEffectConstructions;
+    ProjectMethodBodyModel receiverEffectBody;
+    auto receiverEffect = lowerFlat(
+        receiverEffectFixture, std::move(receiverEffectBinding), receiverEffectModel,
+        receiverEffectConstructions, receiverEffectBody, nullptr, nullptr, nullptr,
+        40U, {}, std::nullopt, false);
+    const ProjectOopHirNode* receiverEffectContext = receiverEffect != nullptr &&
+            receiverEffect->children.size() == 3U
+        ? receiverEffect->children[0].get() : nullptr;
+    tests.expect(receiverEffectContext != nullptr &&
+            receiverEffectContext->children.size() == 1U &&
+            receiverEffectContext->children[0]->kind == HirKind::BlockExpression &&
+            receiverEffectContext->children[0]->children[0]->localOrdinal == 43U &&
+            receiverEffect->children[1]->children[0]->children[0]->localOrdinal == 41U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(receiverEffectModel) == 44U,
+        "effectful allocator receiver is evaluated once and reused through the outer context local");
+    destroyHirTreeIteratively(receiverEffect);
+
+    auto threeFixture = makeFlatFixture(3U, "type:H02S15D.ClassAllocator");
+    auto threeBinding = allocatorConstructionBinding(
+        threeFixture.root, "type:H02S15D.ClassAllocator", 3U);
+    threeBinding.selectedConversions[1].kind =
+        nativesharp::frontend::ProjectConversionKind::Numeric;
+    threeBinding.selectedConversions[1].sourceTypeKey = "builtin:int";
+    threeBinding.selectedConversions[1].targetTypeKey = "builtin:long";
+    ProjectOopHirModel threeModel; ProjectConstructionModel threeConstructions;
+    ProjectMethodBodyModel threeBody;
+    auto three = lowerFlat(threeFixture, std::move(threeBinding), threeModel,
+        threeConstructions, threeBody, nullptr, nullptr, nullptr, 6U, {}, std::nullopt, false);
+    const ProjectOopHirNode* threePlacement = allocatorPlacement(three.get());
+    tests.expect(threePlacement != nullptr && threePlacement->children.size() == 4U &&
+            threePlacement->children[1]->integerValue == 30U &&
+            threePlacement->children[2]->kind == HirKind::Conversion &&
+            threePlacement->children[2]->children.size() == 1U &&
+            threePlacement->children[2]->children[0]->integerValue == 31U &&
+            threePlacement->children[3]->integerValue == 32U &&
+            threePlacement->argumentParameterOrdinals ==
+                std::vector<std::size_t>({10U, 11U, 12U}),
+        "three allocator arguments preserve source order, parallel parameters, and one non-identity conversion");
+    destroyHirTreeIteratively(three);
+
+    AllocatorConstructionSyntax missingFixture;
+    auto* missingReceiver = appendAllocatorSyntax(
+        missingFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* missingFirst = appendAllocatorSyntax(
+        missingFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    missingFirst->setIntegerValue(50U);
+    auto* missingSecond = appendAllocatorSyntax(
+        missingFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+        innerRange);
+    missingSecond->setFirst(missingReceiver);
+    auto* forbiddenThird = appendAllocatorSyntax(
+        missingFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression);
+    forbiddenThird->setFirst(missingReceiver);
+    auto* missingRoot = appendAllocatorSyntax(
+        missingFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+        outerRange);
+    missingRoot->setFirst(missingReceiver);
+    missingRoot->addChild(missingFirst);
+    missingRoot->addChild(missingSecond);
+    missingRoot->addChild(forbiddenThird);
+    missingFixture.names.push_back(allocatorLocalBinding(
+        missingReceiver, "allocator", "type:H02S15D.ClassAllocator", 0U));
+    missingFixture.typed = {
+        {missingReceiver, &nodeType},
+        {missingFirst, &intType},
+        {missingSecond, &nodeType},
+        {forbiddenThird, &nodeType},
+        {missingRoot, &nodeType}};
+    missingFixture.constructions = {missingSecond, forbiddenThird, missingRoot};
+    missingFixture.root = missingRoot;
+    auto missingBinding = allocatorConstructionBinding(
+        missingFixture.root, "type:H02S15D.ClassAllocator", 3U);
+    missingBinding.selectedConversions[1].kind =
+        nativesharp::frontend::ProjectConversionKind::Numeric;
+    missingBinding.selectedConversions[1].sourceTypeKey = nodeType.typeKey;
+    missingBinding.selectedConversions[1].targetTypeKey = "type:H02S15D.ConvertedNode";
+    missingBinding.selectedArgumentParameterOrdinals.resize(1U);
+    ProjectOopHirModel missingModel; ProjectConstructionModel missingConstructions;
+    ProjectMethodBodyModel missingBody;
+    auto missing = lowerFlat(missingFixture, std::move(missingBinding), missingModel,
+        missingConstructions, missingBody, nullptr, nullptr, nullptr, 8U, {}, std::nullopt, false);
+    tests.expect(missing == nullptr &&
+            error == "named construction argument has no selected parameter ordinal" &&
+            missingModel.lastErrorRange().begin() == outerRange.begin() &&
+            missingModel.lastErrorRange().end() == outerRange.end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(missingModel) == 12U,
+        "missing parameter ordinal is diagnosed after lowering and converting its nested allocator argument, does not lower the next construction, and publishes no partial block");
+
+    auto addressFixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+    auto addressBinding = allocatorConstructionBinding(
+        addressFixture.root, "type:H02S15D.ClassAllocator", 0U);
+    ProjectOopHirModel addressModel; ProjectConstructionModel addressConstructions;
+    ProjectMethodBodyModel addressBody;
+    auto address = lowerFlat(addressFixture, std::move(addressBinding), addressModel,
+        addressConstructions, addressBody, nullptr, nullptr, nullptr, 12U, {}, std::nullopt, true);
+    tests.expect(address == nullptr &&
+            error == "allocator construction result is a value, not addressable storage" &&
+            addressModel.lastErrorRange().begin() == outerRange.begin() &&
+            addressModel.lastErrorRange().end() == outerRange.end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(addressModel) == 12U,
+        "outer address rejection is exact and consumes no synthetic ordinal");
+
+    nativesharp::frontend::MethodExpressionTypeBinding capacityType = intType;
+    capacityType.integerConstant = nativesharp::frontend::ProjectIntegerConstant{7U, false, false};
+    auto trailingFixture = makeFlatFixture(2U, structAllocatorType, true);
+    trailingFixture.typed.back() = {trailingFixture.root, &nodeType};
+    trailingFixture.typed[2] = {trailingFixture.nodes[2].get(), &capacityType};
+    auto trailingBinding = allocatorConstructionBinding(
+        trailingFixture.root, structAllocatorType, 1U);
+    trailingBinding.targetIsStruct = true;
+    trailingBinding.selectedConstructorMemberOrdinal.reset();
+    trailingBinding.implicitDefaultBaseConstructorMemberOrdinal = 202U;
+    ProjectOopHirModel trailingModel; ProjectConstructionModel trailingConstructions;
+    ProjectMethodBodyModel trailingBody;
+    auto trailing = lowerFlat(trailingFixture, std::move(trailingBinding), trailingModel,
+        trailingConstructions, trailingBody, &structLookup, &structInheritance,
+        nullptr, 14U, {}, std::nullopt, false);
+    const ProjectOopHirNode* trailingPlacement = allocatorPlacement(trailing.get());
+    tests.expect(trailing != nullptr && trailing->children[1]->children[0]->children[1]->integerValue == 31U &&
+            trailingPlacement != nullptr && trailingPlacement->typeKey == nodeType.typeKey &&
+            trailingPlacement->memberOrdinal == 202U && trailingPlacement->argumentCount == 1U &&
+            trailingPlacement->children.size() == 2U,
+        "trailing capacity adjusts struct size, is not lowered as an argument, and preserves implicit constructor/value result");
+    destroyHirTreeIteratively(trailing);
+
+    nativesharp::SourceRange profileErrorRange;
+    const auto exerciseProfile = [&](Failure profile,
+                                     nativesharp::frontend::ObjectConstructionBinding binding,
+                                     std::vector<std::size_t> cleanups = {},
+                                     std::optional<std::pair<std::size_t, std::size_t>> handler = std::nullopt,
+                                     const ProjectNameLookup* lookup = nullptr,
+                                     const ProjectInheritanceModel* inheritance = nullptr,
+                                     const ProjectMemberModel* members = nullptr)
+    {
+        auto fixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+        binding.syntax = fixture.root;
+        binding.allocatorFailureProfile = profile;
+        ProjectOopHirModel model; ProjectConstructionModel constructions;
+        ProjectMethodBodyModel body;
+        auto result = lowerFlat(fixture, std::move(binding), model, constructions, body,
+            lookup, inheritance, members, 20U, std::move(cleanups), handler, false);
+        profileErrorRange = model.lastErrorRange();
+        return result;
+    };
+
+    const auto hasExactFailureCondition = [&](const ProjectOopHirNode* block,
+                                              std::string_view resultType)
+    {
+        if (block == nullptr || block->children.size() != 3U) return false;
+        const ProjectOopHirNode* conditional = block->children[2].get();
+        if (conditional->kind != HirKind::Conditional ||
+            conditional->typeKey != resultType || conditional->children.size() != 3U)
+        {
+            return false;
+        }
+        const ProjectOopHirNode* condition = conditional->children[0].get();
+        return condition->kind == HirKind::Binary &&
+            condition->operation == nativesharp::lexer::TokenKind::BangEqual &&
+            condition->typeKey == "builtin:bool" && condition->children.size() == 2U &&
+            condition->children[0]->kind == HirKind::LocalValue &&
+            condition->children[0]->localOrdinal == 20U &&
+            condition->children[0]->typeKey == "builtin:byte*" &&
+            condition->children[1]->kind == HirKind::NullConstant &&
+            condition->children[1]->typeKey == "builtin:byte*";
+    };
+
+    auto nullBinding = allocatorConstructionBinding(nullptr, "type:H02S15D.ClassAllocator", 0U);
+    auto nullProfile = exerciseProfile(Failure::Null, std::move(nullBinding));
+    const ProjectOopHirNode* nullConditional = nullProfile != nullptr &&
+            nullProfile->children.size() == 3U
+        ? nullProfile->children[2].get() : nullptr;
+    const ProjectOopHirNode* nullCondition = nullConditional != nullptr &&
+            nullConditional->children.size() == 3U
+        ? nullConditional->children[0].get() : nullptr;
+    tests.expect(nullProfile != nullptr && error.empty() &&
+            hasExactFailureCondition(nullProfile.get(), nodeType.typeKey) &&
+            nullProfile->typeKey == nodeType.typeKey && nullConditional != nullptr &&
+            nullConditional->kind == HirKind::Conditional &&
+            nullConditional->typeKey == nodeType.typeKey && nullCondition != nullptr &&
+            nullCondition->kind == HirKind::Binary &&
+            nullCondition->operation == nativesharp::lexer::TokenKind::BangEqual &&
+            nullCondition->typeKey == "builtin:bool" &&
+            nullCondition->children.size() == 2U &&
+            nullCondition->children[0]->kind == HirKind::LocalValue &&
+            nullCondition->children[0]->localOrdinal == 20U &&
+            nullCondition->children[0]->typeKey == "builtin:byte*" &&
+            nullCondition->children[1]->kind == HirKind::NullConstant &&
+            nullCondition->children[1]->typeKey == "builtin:byte*" &&
+            nullConditional->children[1]->kind == HirKind::PlacementConstruction &&
+            nullConditional->children[1]->typeKey == nodeType.typeKey &&
+            nullConditional->children[2]->kind == HirKind::NullConstant &&
+            nullConditional->children[2]->typeKey == nodeType.typeKey,
+        "failure null preserves exact BangEqual byte-local/null shape, ordinals, and result/branch types");
+    destroyHirTreeIteratively(nullProfile);
+
+    auto panicBinding = allocatorConstructionBinding(nullptr, "type:H02S15D.ClassAllocator", 0U);
+    auto panicProfile = exerciseProfile(
+        Failure::Panic, std::move(panicBinding), {3U, 5U, 8U});
+    const ProjectOopHirNode* panicFalse = panicProfile != nullptr
+        ? panicProfile->children[2]->children[2].get() : nullptr;
+    tests.expect(panicFalse != nullptr && panicFalse->kind == HirKind::Panic &&
+            hasExactFailureCondition(panicProfile.get(), nodeType.typeKey) &&
+            panicProfile->children[2]->children[1]->typeKey == nodeType.typeKey &&
+            panicFalse->typeKey == "builtin:never" &&
+            panicFalse->cleanupContinuationKind ==
+                nativesharp::frontend::MethodCleanupContinuationKind::Exception &&
+            panicFalse->cleanupRegionOrdinals == std::vector<std::size_t>({8U, 5U, 3U}),
+        "failure panic captures active cleanup regions in reverse order at finalization");
+    destroyHirTreeIteratively(panicProfile);
+
+    ProjectNameLookup throwLookup;
+    ProjectInheritanceModel throwInheritance;
+    std::string throwAllocatorType;
+    std::optional<std::size_t> exceptionOrdinal;
+    const bool throwTypesReady =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAllocatorTypes(
+            throwLookup, throwInheritance, TypeKind::Class, true,
+            throwAllocatorType, exceptionOrdinal);
+    ProjectMemberModel throwMembers;
+    if (exceptionOrdinal.has_value())
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAllocationFailureCreate(
+            throwMembers, *exceptionOrdinal);
+    auto throwsBinding = allocatorConstructionBinding(nullptr, throwAllocatorType, 0U);
+    auto throwsProfile = exerciseProfile(
+        Failure::Throws, std::move(throwsBinding), {2U, 4U, 6U},
+        std::pair<std::size_t, std::size_t>{91U, 1U},
+        &throwLookup, &throwInheritance, &throwMembers);
+    const ProjectOopHirNode* throwFalse = throwsProfile != nullptr
+        ? throwsProfile->children[2]->children[2].get() : nullptr;
+    tests.expect(throwTypesReady && throwFalse != nullptr &&
+            hasExactFailureCondition(throwsProfile.get(), nodeType.typeKey) &&
+            throwsProfile->children[2]->children[1]->typeKey == nodeType.typeKey &&
+            throwFalse->kind == HirKind::Throw &&
+            throwFalse->typeKey == "builtin:never" &&
+            throwFalse->exceptionTypeOrdinal == exceptionOrdinal &&
+            throwFalse->exceptionTargetRegionOrdinal == 91U &&
+            throwFalse->cleanupRegionOrdinals == std::vector<std::size_t>({6U, 4U}) &&
+            throwFalse->children.size() == 1U &&
+            throwFalse->children[0]->kind == HirKind::StaticCall &&
+            throwFalse->children[0]->memberOrdinal == 0U,
+        "failure throws preserves Create, retained cleanup depth, and exception target");
+    destroyHirTreeIteratively(throwsProfile);
+
+    auto missingThrowsBinding = allocatorConstructionBinding(nullptr, "type:H02S15D.ClassAllocator", 0U);
+    auto missingThrows = exerciseProfile(Failure::Throws, std::move(missingThrowsBinding));
+    tests.expect(missingThrows == nullptr &&
+            error == "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException" &&
+            profileErrorRange.begin() == outerRange.begin() &&
+            profileErrorRange.end() == outerRange.end(),
+        "failure throws preserves the missing-exception diagnostic");
+
+    ProjectMemberModel noCreateMembers;
+    auto noCreateBinding = allocatorConstructionBinding(nullptr, throwAllocatorType, 0U);
+    auto noCreate = exerciseProfile(
+        Failure::Throws, std::move(noCreateBinding), {}, std::nullopt,
+        &throwLookup, &throwInheritance, &noCreateMembers);
+    tests.expect(noCreate == nullptr &&
+            error == "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()" &&
+            profileErrorRange.begin() == outerRange.begin() &&
+            profileErrorRange.end() == outerRange.end(),
+        "failure throws preserves the missing-Create diagnostic");
+
+    auto resultBinding = allocatorConstructionBinding(nullptr, "type:H02S15D.ClassAllocator", 0U);
+    resultBinding.allocatorResultCarrierTypeKey = "type:H02S15D.Result";
+    resultBinding.allocatorResultOkFactoryMemberOrdinal = 301U;
+    resultBinding.allocatorResultErrorFactoryMemberOrdinal = 302U;
+    auto resultProfile = exerciseProfile(Failure::Result, std::move(resultBinding));
+    const ProjectOopHirNode* resultConditional = resultProfile != nullptr
+        ? resultProfile->children[2].get() : nullptr;
+    tests.expect(resultProfile != nullptr && resultProfile->typeKey == "type:H02S15D.Result" &&
+            hasExactFailureCondition(resultProfile.get(), "type:H02S15D.Result") &&
+            resultConditional != nullptr && resultConditional->typeKey == "type:H02S15D.Result" &&
+            resultConditional->children[1]->kind == HirKind::StaticCall &&
+            resultConditional->children[1]->typeKey == "type:H02S15D.Result" &&
+            resultConditional->children[1]->memberOrdinal == 301U &&
+            allocatorPlacement(resultProfile.get()) != nullptr &&
+            allocatorPlacement(resultProfile.get())->typeKey == nodeType.typeKey &&
+            resultConditional->children[2]->kind == HirKind::StaticCall &&
+            resultConditional->children[2]->typeKey == "type:H02S15D.Result" &&
+            resultConditional->children[2]->memberOrdinal == 302U &&
+            resultConditional->children[2]->children[0]->kind == HirKind::IntegerConstant &&
+            resultConditional->children[2]->children[0]->typeKey == "builtin:int" &&
+            resultConditional->children[2]->children[0]->integerValue == 0U,
+        "failure result preserves exact byte test, carrier/branch typing, and Ok/Error factories");
+    destroyHirTreeIteratively(resultProfile);
+
+    auto incompleteResultBinding = allocatorConstructionBinding(nullptr, "type:H02S15D.ClassAllocator", 0U);
+    incompleteResultBinding.allocatorResultCarrierTypeKey = "type:H02S15D.Result";
+    auto incompleteResult = exerciseProfile(Failure::Result, std::move(incompleteResultBinding));
+    tests.expect(incompleteResult == nullptr &&
+            error == "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories" &&
+            profileErrorRange.begin() == outerRange.begin() &&
+            profileErrorRange.end() == outerRange.end(),
+        "failure result preserves the incomplete-factory diagnostic");
+
+    auto nonAllocatorFixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+    auto nonAllocatorBinding = allocatorConstructionBinding(
+        nonAllocatorFixture.root, "type:H02S15D.ClassAllocator", 0U);
+    nonAllocatorBinding.allocatorSelection = false;
+    ProjectOopHirModel nonAllocatorModel; ProjectConstructionModel nonAllocatorConstructions;
+    ProjectMethodBodyModel nonAllocatorBody;
+    auto nonAllocator = lowerFlat(
+        nonAllocatorFixture, std::move(nonAllocatorBinding), nonAllocatorModel,
+        nonAllocatorConstructions, nonAllocatorBody, nullptr, nullptr, nullptr,
+        30U, {}, std::nullopt, false);
+    tests.expect(nonAllocator != nullptr && error.empty() &&
+            nonAllocator->kind == HirKind::PlacementConstruction &&
+            nonAllocator->storageOwnership == nativesharp::sema::OwnershipKind::Borrowed,
+        "raw placement remains on the legacy non-allocator path");
+    destroyHirTreeIteratively(nonAllocator);
+
+    auto noAllocateFixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+    auto noAllocateBinding = allocatorConstructionBinding(
+        noAllocateFixture.root, "type:H02S15D.ClassAllocator", 0U);
+    noAllocateBinding.allocatorAllocateMemberOrdinal.reset();
+    ProjectOopHirModel noAllocateModel; ProjectConstructionModel noAllocateConstructions;
+    ProjectMethodBodyModel noAllocateBody;
+    auto noAllocate = lowerFlat(noAllocateFixture, std::move(noAllocateBinding),
+        noAllocateModel, noAllocateConstructions, noAllocateBody,
+        nullptr, nullptr, nullptr, 32U, {}, std::nullopt, false);
+    tests.expect(noAllocate != nullptr && error.empty() &&
+            noAllocate->kind == HirKind::PlacementConstruction &&
+            noAllocate->storageOwnership == nativesharp::sema::OwnershipKind::Borrowed,
+        "allocator binding without Allocate is not absorbed by the iterative classifier");
+    destroyHirTreeIteratively(noAllocate);
+
+    auto invalidFixture = makeFlatFixture(0U, "type:H02S15D.ClassAllocator");
+    auto invalidBinding = allocatorConstructionBinding(
+        invalidFixture.root, "type:H02S15D.ClassAllocator", 0U);
+    invalidBinding.resolution = nativesharp::frontend::ConstructionResolutionKind::InvalidTarget;
+    ProjectOopHirModel invalidModel; ProjectConstructionModel invalidConstructions;
+    ProjectMethodBodyModel invalidBody;
+    auto invalid = lowerFlat(invalidFixture, std::move(invalidBinding), invalidModel,
+        invalidConstructions, invalidBody, nullptr, nullptr, nullptr,
+        34U, {}, std::nullopt, false);
+    tests.expect(invalid == nullptr &&
+            error == "Stage 34 requires a resolved Stage 28 object construction" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(invalidModel) == 34U,
+        "invalid construction stays outside the allocator frame and preserves its diagnostic");
+
+    constexpr std::size_t failureDepth = 4096U;
+    AllocatorConstructionSyntax innerFailureFixture;
+    auto* innerReceiver = appendAllocatorSyntax(
+        innerFailureFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* failingArgument = appendAllocatorSyntax(
+        innerFailureFixture, nativesharp::ast::AstNodeKind::CallExpression, innerRange);
+    innerFailureFixture.names.push_back(allocatorLocalBinding(
+        innerReceiver, "allocator", "type:H02S15D.ClassAllocator", 0U));
+    innerFailureFixture.typed.push_back({innerReceiver, &nodeType});
+    innerFailureFixture.typed.push_back({failingArgument, &nodeType});
+    nativesharp::ast::AstNode* failingConstruction = failingArgument;
+    for (std::size_t index = 0; index < failureDepth; ++index)
+    {
+        auto* construction = appendAllocatorSyntax(
+            innerFailureFixture,
+            nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+            index + 1U == failureDepth ? outerRange : nativesharp::SourceRange{});
+        construction->setFirst(innerReceiver);
+        construction->addChild(failingConstruction);
+        innerFailureFixture.typed.push_back({construction, &nodeType});
+        innerFailureFixture.constructions.push_back(construction);
+        failingConstruction = construction;
+    }
+    innerFailureFixture.root = failingConstruction;
+    auto innerFailureBinding = allocatorConstructionBinding(
+        innerFailureFixture.root, "type:H02S15D.ClassAllocator", 1U);
+    ProjectOopHirModel innerFailureModel; ProjectConstructionModel innerFailureConstructions;
+    ProjectMethodBodyModel innerFailureBody;
+    auto innerFailure = lowerFlat(
+        innerFailureFixture, std::move(innerFailureBinding), innerFailureModel,
+        innerFailureConstructions, innerFailureBody, nullptr, nullptr, nullptr,
+        36U, {}, std::nullopt, false);
+    tests.expect(innerFailure == nullptr &&
+            error == "Stage 34 requires a resolved Stage 27 method call" &&
+            innerFailureModel.lastErrorRange().begin() == innerRange.begin() &&
+            innerFailureModel.lastErrorRange().end() == innerRange.end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(innerFailureModel) == 36U + failureDepth * 2U,
+        "a deep inner failure traverses and unwinds all allocator frames, preserves exact error/range, and publishes no partial block");
 }
 
 struct DeepDelegateCreationSyntax final
@@ -12621,6 +13471,10 @@ int main()
     {
         testDeepArrayConstructionLowering(tests);
     }
+    else if (focusValue == "hir-allocator-construction-depth")
+    {
+        testDeepAllocatorConstructionLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -12838,6 +13692,7 @@ int main()
         testDeepOrdinaryCallLowering(tests);
         testDeepCollectionBuilderLowering(tests);
         testDeepArrayConstructionLowering(tests);
+        testDeepAllocatorConstructionLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

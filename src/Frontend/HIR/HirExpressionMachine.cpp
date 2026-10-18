@@ -185,6 +185,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         OrdinaryCall,
         CollectionBuilder,
         ArrayConstruction,
+        AllocatorConstruction,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -347,6 +348,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool forwardedReceiver = false;
         bool hasOwnedTemporary = false;
     };
+    enum class AllocatorConstructionFrameStage : std::uint8_t
+    {
+        Receiver,
+        Arguments,
+        Ready,
+    };
+    struct AllocatorConstructionFrameState final
+    {
+        const ObjectConstructionBinding* binding = nullptr;
+        AllocatorConstructionFrameStage stage =
+            AllocatorConstructionFrameStage::Receiver;
+        std::size_t constructionOrdinal = 0U;
+        std::size_t computedSize = 0U;
+        std::size_t temporaryOrdinal = 0U;
+        std::size_t contextOrdinal = 0U;
+        std::optional<std::size_t> allocatorTypeOrdinal;
+        bool allocatorIsStruct = false;
+        const ast::AstNode* receiverSyntax = nullptr;
+        std::vector<const ast::AstNode*> argumentSyntaxes;
+        std::unique_ptr<ProjectOopHirNode> receiver;
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
+        std::vector<std::size_t> argumentParameterOrdinals;
+        std::size_t nextArgument = 0U;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -371,6 +396,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<EnumToStringCallFrameState> enumToStringCall;
         std::optional<StructAggregateCallFrameState> structAggregateCall;
         std::optional<OrdinaryCallFrameState> ordinaryCall;
+        std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
@@ -580,6 +606,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  !syntax->children().empty()))
             {
                 return IterativeExpressionKind::OrdinaryCall;
+            }
+        }
+        if (!address &&
+            syntax->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(syntax);
+            if (binding != nullptr &&
+                (binding->resolution == ConstructionResolutionKind::ResolvedExplicit ||
+                 binding->resolution == ConstructionResolutionKind::ResolvedImplicitDefault) &&
+                binding->allocatorSelection &&
+                binding->allocatorAllocateMemberOrdinal.has_value())
+            {
+                return IterativeExpressionKind::AllocatorConstruction;
             }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::CollectionExpression &&
@@ -1542,6 +1581,156 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 selectedMember.declaredTypeKey);
             load->children.push_back(std::move(loweredCall));
             return load;
+        };
+        const auto initializeAllocatorConstructionFrame =
+            [&](IterativeExpressionFrame& frame) -> bool
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(frame.syntax);
+            if (binding == nullptr ||
+                (binding->resolution != ConstructionResolutionKind::ResolvedExplicit &&
+                 binding->resolution != ConstructionResolutionKind::ResolvedImplicitDefault) ||
+                !binding->allocatorSelection ||
+                !binding->allocatorAllocateMemberOrdinal.has_value() ||
+                constructionModel_ == nullptr)
+            {
+                error = "Stage 34 requires a resolved Stage 28 object construction";
+                return false;
+            }
+
+            AllocatorConstructionFrameState construction;
+            construction.binding = binding;
+            construction.constructionOrdinal = static_cast<std::size_t>(
+                binding - constructionModel_->constructions().data());
+            if (objectLayoutModel_ != nullptr)
+            {
+                if (binding->targetIsStruct)
+                {
+                    const auto* layout = objectLayoutModel_->structLayoutForType(
+                        binding->targetTypeOrdinal);
+                    if (layout != nullptr) construction.computedSize = layout->size;
+                }
+                else
+                {
+                    const auto* layout = objectLayoutModel_->layoutForType(
+                        binding->targetTypeOrdinal);
+                    if (layout != nullptr) construction.computedSize = layout->size;
+                }
+            }
+            const bool trailingConstruction =
+                frame.syntax->auxiliaryText() == "trailing";
+            if (trailingConstruction && !frame.syntax->children().empty())
+            {
+                const MethodExpressionTypeBinding* capacityType =
+                    expressionType(frame.syntax->children().back());
+                if (capacityType != nullptr && capacityType->integerConstant.has_value())
+                {
+                    construction.computedSize += static_cast<std::size_t>(
+                        capacityType->integerConstant->value);
+                }
+            }
+            construction.temporaryOrdinal = nextSyntheticLocalOrdinal_++;
+            construction.contextOrdinal = nextSyntheticLocalOrdinal_++;
+            construction.receiverSyntax = frame.syntax->first();
+
+            if (inheritanceModel_ != nullptr && nameLookup_ != nullptr)
+            {
+                construction.allocatorTypeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(binding->allocatorTypeKey);
+                if (construction.allocatorTypeOrdinal.has_value() &&
+                    *construction.allocatorTypeOrdinal < nameLookup_->namedTypes().size())
+                {
+                    construction.allocatorIsStruct =
+                        nameLookup_->namedTypes()[*construction.allocatorTypeOrdinal].kind ==
+                        NamedTypeDeclarationKind::Struct;
+                }
+            }
+
+            const std::size_t argumentCount = frame.syntax->children().size() -
+                (trailingConstruction ? 1U : 0U);
+            construction.argumentSyntaxes.assign(
+                frame.syntax->children().begin(),
+                frame.syntax->children().begin() + argumentCount);
+            construction.arguments.reserve(argumentCount);
+            construction.argumentParameterOrdinals.reserve(argumentCount);
+            frame.allocatorConstruction.emplace(std::move(construction));
+            return true;
+        };
+        struct AllocatorConstructionChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextAllocatorConstructionChild =
+            [](const AllocatorConstructionFrameState& construction)
+                -> std::optional<AllocatorConstructionChild>
+        {
+            if (construction.stage == AllocatorConstructionFrameStage::Receiver)
+            {
+                return AllocatorConstructionChild{
+                    construction.receiverSyntax,
+                    construction.allocatorIsStruct};
+            }
+            if (construction.stage != AllocatorConstructionFrameStage::Arguments ||
+                construction.nextArgument >= construction.argumentSyntaxes.size())
+            {
+                return std::nullopt;
+            }
+            return AllocatorConstructionChild{
+                construction.argumentSyntaxes[construction.nextArgument], false};
+        };
+        const auto acceptAllocatorConstructionChild =
+            [&](AllocatorConstructionFrameState& construction,
+                std::unique_ptr<ProjectOopHirNode> child) -> bool
+        {
+            if (construction.stage == AllocatorConstructionFrameStage::Receiver)
+            {
+                construction.receiver = std::move(child);
+                construction.stage = construction.argumentSyntaxes.empty()
+                    ? AllocatorConstructionFrameStage::Ready
+                    : AllocatorConstructionFrameStage::Arguments;
+                return true;
+            }
+
+            const std::size_t index = construction.nextArgument++;
+            if (index < construction.binding->selectedConversions.size() &&
+                construction.binding->selectedConversions[index].kind !=
+                    ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    construction.binding->selectedConversions[index],
+                    construction.argumentSyntaxes[index]);
+            }
+            if (index >=
+                construction.binding->selectedArgumentParameterOrdinals.size())
+            {
+                error = "named construction argument has no selected parameter ordinal";
+                return false;
+            }
+            construction.arguments.push_back(std::move(child));
+            construction.argumentParameterOrdinals.push_back(
+                construction.binding->selectedArgumentParameterOrdinals[index]);
+            if (construction.nextArgument == construction.argumentSyntaxes.size())
+                construction.stage = AllocatorConstructionFrameStage::Ready;
+            return true;
+        };
+        const auto finishAllocatorConstructionFrame =
+            [&](IterativeExpressionFrame& frame) -> std::unique_ptr<ProjectOopHirNode>
+        {
+            AllocatorConstructionFrameState& construction =
+                *frame.allocatorConstruction;
+            return finishAllocatorConstructionExpression(
+                frame.syntax,
+                *construction.binding,
+                construction.constructionOrdinal,
+                construction.computedSize,
+                construction.temporaryOrdinal,
+                construction.contextOrdinal,
+                construction.allocatorTypeOrdinal,
+                std::move(construction.receiver),
+                std::move(construction.arguments),
+                std::move(construction.argumentParameterOrdinals),
+                error);
         };
         const auto initializeNamespaceCallFrame = [&](IterativeExpressionFrame& frame) -> bool
         {
@@ -2886,6 +3075,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         return nullptr;
                     }
                 }
+                else if (*currentKind == IterativeExpressionKind::AllocatorConstruction)
+                {
+                    if (!initializeAllocatorConstructionFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
                 else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     frame.nullConditionalCall = current->kind() ==
@@ -3534,6 +3732,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = child->addressContext;
                 }
+                else if (*currentKind == IterativeExpressionKind::AllocatorConstruction)
+                {
+                    const std::optional<AllocatorConstructionChild> child =
+                        nextAllocatorConstructionChild(
+                            *frames.back().allocatorConstruction);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 allocator-construction frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
+                }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
                     current = frames.back().receiverFrame.syntax;
@@ -3604,6 +3817,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (isBoundCallKind(*currentKind))
                 {
                     // The common frame selected both the child and its address context above.
+                }
+                else if (*currentKind == IterativeExpressionKind::AllocatorConstruction)
+                {
+                    // The allocator frame selected receiver addressability versus argument value.
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
@@ -4747,6 +4964,40 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     lowered = finishOrdinaryCall(frame);
+                    if (lowered == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        frames.clear();
+                        break;
+                    }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::AllocatorConstruction)
+                {
+                    AllocatorConstructionFrameState& construction =
+                        *frame.allocatorConstruction;
+                    if (!acceptAllocatorConstructionChild(
+                            construction, std::move(lowered)))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    const std::optional<AllocatorConstructionChild> child =
+                        nextAllocatorConstructionChild(construction);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishAllocatorConstructionFrame(frame);
                     if (lowered == nullptr)
                     {
                         if (!lastErrorRange_.isValid())
