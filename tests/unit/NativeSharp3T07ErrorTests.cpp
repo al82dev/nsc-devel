@@ -999,14 +999,16 @@ namespace ThrowsApi
             return function.name == "ExecuteFree";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == 38 && delegate != metadata.types.end() &&
+        metadataRead &&
+            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+            delegate != metadata.types.end() &&
             method != metadata.members.end() && accessor != metadata.members.end() &&
             freeFunction != metadata.namespaceFunctions.end() &&
             delegate->delegateErrorTypeKey == method->declaredErrorTypeKey &&
             delegate->delegateErrorTypeKey == accessor->declaredErrorTypeKey &&
             delegate->delegateErrorTypeKey == freeFunction->declaredErrorTypeKey &&
             delegate->delegateErrorTypeKey.ends_with("::ThrowsApi.Error"),
-        "NSMETA 1.38 round-trips typed throws for delegates, methods, accessors, and free functions (" +
+        "current NSMETA round-trips typed throws for delegates, methods, accessors, and free functions (" +
             metadataError + producerError + producerOutput + ")");
     if (metadataRead)
     {
