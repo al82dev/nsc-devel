@@ -145,6 +145,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         DeconstructionAssignment,
         EventSubscription,
         PropertyIndexerSetter,
+        NamespaceExtensionSetter,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -190,11 +191,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodDeconstructionBinding* deconstructionBinding = nullptr;
         const MethodEventBinding* eventSubscriptionBinding = nullptr;
         const MethodCallBinding* propertySetterBinding = nullptr;
+        const NamespaceFunctionCallBinding* extensionSetterBinding = nullptr;
         std::vector<HirTuplePatternFrame> deconstructionLeaves;
         std::unique_ptr<ProjectOopHirNode> deconstructionNode;
         std::unique_ptr<ProjectOopHirNode> setterCombinedValue;
         lexer::TokenKind compoundOperator = lexer::TokenKind::Invalid;
         bool compoundSetter = false;
+        std::size_t namespaceFunctionOrdinal = 0U;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -349,6 +352,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     memberModel_->members()[*setterCall->selectedMemberOrdinal];
                 if ((setter.isPropertyAccessor || setter.isIndexerAccessor) && setter.isSetter)
                     return IterativeExpressionKind::PropertyIndexerSetter;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->second() != nullptr)
+        {
+            const NamespaceFunctionCallBinding* setter = namespaceFunctionCallBinding(syntax);
+            if (setter != nullptr &&
+                setter->resolution == MethodCallResolutionKind::Resolved &&
+                setter->selectedFunctionOrdinal.has_value() &&
+                namespaceFunctionModel_ != nullptr &&
+                *setter->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
+            {
+                return IterativeExpressionKind::NamespaceExtensionSetter;
             }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
@@ -1023,6 +1039,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.stage = *receiverReady ? 1U : 0U;
                     }
                 }
+                else if (*currentKind == IterativeExpressionKind::NamespaceExtensionSetter)
+                {
+                    frame.extensionSetterBinding = namespaceFunctionCallBinding(current);
+                    frame.namespaceFunctionOrdinal =
+                        *frame.extensionSetterBinding->selectedFunctionOrdinal;
+                    const NamespaceFunctionSymbol& target = namespaceFunctionModel_->functions()[
+                        frame.namespaceFunctionOrdinal];
+                    if (currentAddressContext)
+                    {
+                        error = "the result of an extension-property assignment is a value, not addressable storage";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    if (frame.extensionSetterBinding->forwardedReceiver &&
+                        (frame.extensionSetterBinding->receiverSyntax == nullptr ||
+                         target.parameters.empty()))
+                    {
+                        error = "extension setter lost its synthetic receiver contract";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    frame.stage = frame.extensionSetterBinding->forwardedReceiver ? 0U : 1U;
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -1059,6 +1098,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         : frames.back().stage == 0U
                             ? frames.back().callTarget.receiverSyntax
                             : frames.back().operandSyntaxes.front();
+                else if (*currentKind == IterativeExpressionKind::NamespaceExtensionSetter)
+                    current = frames.back().stage == 0U
+                        ? frames.back().extensionSetterBinding->receiverSyntax
+                        : current->second();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -1160,6 +1203,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         currentAddressContext = boundCallArgumentNeedsAddress(
                             frames.back().callTarget.memberOrdinal, 0U);
                     }
+                }
+                else if (*currentKind == IterativeExpressionKind::NamespaceExtensionSetter)
+                {
+                    currentAddressContext = false;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -2622,6 +2669,69 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     setterNode->returnsAssignedValue = true;
                     lowered = std::move(setterNode);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NamespaceExtensionSetter)
+                {
+                    const NamespaceFunctionCallBinding& binding =
+                        *frame.extensionSetterBinding;
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        if (!binding.selectedConversions.empty() &&
+                            binding.selectedConversions.front().kind !=
+                                ProjectConversionKind::Identity)
+                        {
+                            frame.first = wrapImplicitConversion(
+                                std::move(frame.first), binding.selectedConversions.front(),
+                                binding.receiverSyntax);
+                        }
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const NamespaceFunctionSymbol& target = namespaceFunctionModel_->functions()[
+                        frame.namespaceFunctionOrdinal];
+                    const std::size_t valueParameterOrdinal =
+                        binding.forwardedReceiver ? 1U : 0U;
+                    if (valueParameterOrdinal >= target.parameters.size())
+                    {
+                        error = "extension setter has no value parameter";
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    if (valueParameterOrdinal < binding.selectedConversions.size() &&
+                        binding.selectedConversions[valueParameterOrdinal].kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered),
+                            binding.selectedConversions[valueParameterOrdinal],
+                            frame.syntax->second());
+                    }
+                    auto setter = makeNode(
+                        ProjectOopHirNodeKind::StaticCall,
+                        frame.syntax,
+                        binding.resultTypeKey);
+                    setter->namespaceFunctionOrdinal = frame.namespaceFunctionOrdinal;
+                    setter->stringValue = target.mangledName;
+                    if (binding.forwardedReceiver)
+                    {
+                        setter->children.push_back(std::move(frame.first));
+                        setter->argumentParameterOrdinals.push_back(0U);
+                        setter->argumentTypeKeys.push_back(target.parameters[0].typeKey);
+                    }
+                    setter->children.push_back(std::move(lowered));
+                    setter->argumentParameterOrdinals.push_back(valueParameterOrdinal);
+                    setter->argumentTypeKeys.push_back(
+                        target.parameters[valueParameterOrdinal].typeKey);
+                    setter->returnsAssignedValue = true;
+                    lowered = std::move(setter);
                     frames.pop_back();
                     continue;
                 }
