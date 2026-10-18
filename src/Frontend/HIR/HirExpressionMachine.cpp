@@ -27,6 +27,69 @@ bool isComparison(lexer::TokenKind kind) noexcept
         kind == lexer::TokenKind::Greater || kind == lexer::TokenKind::GreaterEqual;
 }
 
+std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
+    const ast::AstNode* expression,
+    const MethodCoreBinding& core,
+    std::size_t tempOrdinal,
+    const std::vector<language::InterpolationPart>& parts,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> holes,
+    std::string& error)
+{
+    const std::string& handlerType = core.resultTypeKey;
+    auto block = makeNode(ProjectOopHirNodeKind::BlockExpression, expression, handlerType);
+    auto declaration = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, handlerType);
+    declaration->localOrdinal = tempOrdinal;
+    declaration->stringValue = "handler";
+    declaration->children.push_back(makeNode(
+        ProjectOopHirNodeKind::DefaultValue, expression, handlerType));
+    block->children.push_back(std::move(declaration));
+
+    std::size_t holeIndex = 0;
+    for (const language::InterpolationPart& part : parts)
+    {
+        const bool isHole = part.kind == language::InterpolationPartKind::Hole;
+        const std::size_t builderOrdinal =
+            isHole ? core.builderMemberOrdinals[1] : core.builderMemberOrdinals[0];
+        std::unique_ptr<ProjectOopHirNode> argument;
+        if (isHole)
+        {
+            if (holeIndex >= holes.size())
+            {
+                error = "interpolation handler hole has no expression";
+                return nullptr;
+            }
+            argument = std::move(holes[holeIndex++]);
+        }
+        else
+        {
+            argument = makeNode(
+                ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
+            argument->stringValue = part.text;
+        }
+        auto call = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:void");
+        call->memberOrdinal = builderOrdinal;
+        auto receiver = makeNode(
+            ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
+        receiver->localOrdinal = tempOrdinal;
+        call->children.push_back(std::move(receiver));
+        call->children.push_back(std::move(argument));
+        auto statement = makeNode(
+            ProjectOopHirNodeKind::ExpressionStatement, expression, "builtin:void");
+        statement->children.push_back(std::move(call));
+        block->children.push_back(std::move(statement));
+    }
+
+    auto finish = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, handlerType);
+    finish->memberOrdinal = core.builderMemberOrdinals[2];
+    auto finishReceiver = makeNode(
+        ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
+    finishReceiver->localOrdinal = tempOrdinal;
+    finish->children.push_back(std::move(finishReceiver));
+    block->children.push_back(std::move(finish));
+    return block;
+}
+
 
 }
 
@@ -87,6 +150,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         PropertyGetter,
         ExtensionPropertyGetter,
         UserIndexerGetter,
+        InterpolationHandler,
         InstanceField,
         NullConditionalField,
         RangeSlice,
@@ -119,11 +183,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool operandAddressContext = false;
         bool nullConditionalCall = false;
         bool flowProvenNonNull = false;
+        std::size_t memberOrdinal = 0;
+        std::size_t syntheticLocalOrdinal = 0;
+        std::vector<language::InterpolationPart> interpolationParts;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
     {
         if (syntax == nullptr) return std::nullopt;
+        if (!address && syntax->kind() == ast::AstNodeKind::InterpolatedStringExpression &&
+            !syntax->children().empty())
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr && core->kind == MethodCoreOperationKind::InterpolationHandler)
+                return IterativeExpressionKind::InterpolationHandler;
+        }
         if (syntax->kind() == ast::AstNodeKind::OverflowPolicyExpression &&
             callBinding(syntax) == nullptr && delegateBinding(syntax) == nullptr &&
             lambdaBinding(syntax) == nullptr)
@@ -471,6 +545,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         }
         const ast::AstNode* current = expression;
         bool currentAddressContext = addressContext;
+        std::size_t currentMemberOrdinal = memberOrdinal;
         while (true)
         {
             const std::optional<IterativeExpressionKind> currentKind =
@@ -481,6 +556,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frame.kind = *currentKind;
                 frame.syntax = current;
                 frame.addressContext = currentAddressContext;
+                frame.memberOrdinal = currentMemberOrdinal;
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     frame.propertyGetterBinding = accessorGetterBinding(current);
@@ -521,6 +597,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.operandSyntaxes.push_back(current->second());
                     }
                     frame.operands.reserve(frame.operandSyntaxes.size());
+                }
+                else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
+                {
+                    frame.core = coreBinding(current);
+                    frame.syntheticLocalOrdinal = nextSyntheticLocalOrdinal_++;
+                    std::string parseError;
+                    if (!language::parseStaticInterpolation(
+                            current->text(), frame.interpolationParts, parseError))
+                    {
+                        error = std::move(parseError);
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        return nullptr;
+                    }
+                    const std::size_t holeCount = static_cast<std::size_t>(std::count_if(
+                        frame.interpolationParts.begin(),
+                        frame.interpolationParts.end(),
+                        [](const language::InterpolationPart& part)
+                        {
+                            return part.kind == language::InterpolationPartKind::Hole;
+                        }));
+                    const std::size_t available =
+                        std::min(holeCount, current->children().size());
+                    frame.operandSyntaxes.assign(
+                        current->children().begin(), current->children().begin() + available);
+                    frame.operands.reserve(available);
                 }
                 else if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
@@ -622,6 +723,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
                     current = frames.back().callTarget.receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
+                    current = frames.back().operandSyntaxes.front();
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::RangeSlice)
@@ -653,6 +756,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentAddressContext =
                         isStructValueType(frames.back().callTarget.receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
+                {
+                    currentAddressContext = false;
+                    currentMemberOrdinal = frames.back().core->builderMemberOrdinals[1];
                 }
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
                 {
@@ -700,9 +808,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frames.back().kind == IterativeExpressionKind::ExpressionStatement;
             lowered = isExpressionStatementRoot
                 ? lowerExpressionImpl(
-                    current, memberOrdinal, currentAddressContext, error)
+                    current, currentMemberOrdinal, currentAddressContext, error)
                 : lowerExpression(
-                    current, memberOrdinal, currentAddressContext, error);
+                    current, currentMemberOrdinal, currentAddressContext, error);
             if (lowered == nullptr)
             {
                 if (!lastErrorRange_.isValid() && !frames.empty() &&
@@ -814,6 +922,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         const ast::AstNode* syntax = frame.operandSyntaxes.front();
                         current = syntax->kind() == ast::AstNodeKind::FromEndExpression
                             ? syntax->first() : syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -825,6 +934,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             frame.operandSyntaxes[frame.operands.size()];
                         current = syntax->kind() == ast::AstNodeKind::FromEndExpression
                             ? syntax->first() : syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -884,6 +994,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(lowered);
                         frame.stage = 1U;
                         current = frame.operandSyntaxes.front();
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -892,6 +1003,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     if (frame.operands.size() < frame.operandSyntaxes.size())
                     {
                         current = frame.operandSyntaxes[frame.operands.size()];
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -1082,7 +1194,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     auto getter = lowerPropertyGetterWithReceiver(
                         frame.syntax,
-                        memberOrdinal,
+                        frame.memberOrdinal,
                         frame.addressContext,
                         error,
                         *frame.propertyGetterBinding,
@@ -1105,7 +1217,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     auto getter = lowerExtensionPropertyGetterWithReceiver(
                         frame.syntax,
-                        memberOrdinal,
+                        frame.memberOrdinal,
                         error,
                         *frame.extensionPropertyBinding,
                         std::move(lowered));
@@ -1140,6 +1252,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         if (!frame.operandSyntaxes.empty())
                         {
                             current = frame.operandSyntaxes.front();
+                            currentMemberOrdinal = frame.memberOrdinal;
                             currentAddressContext = false;
                             descend = true;
                             break;
@@ -1151,6 +1264,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         if (frame.operands.size() < frame.operandSyntaxes.size())
                         {
                             current = frame.operandSyntaxes[frame.operands.size()];
+                            currentMemberOrdinal = frame.memberOrdinal;
                             currentAddressContext = false;
                             descend = true;
                             break;
@@ -1158,7 +1272,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     auto getter = lowerIndexerGetterWithOperands(
                         frame.syntax,
-                        memberOrdinal,
+                        frame.memberOrdinal,
                         frame.addressContext,
                         error,
                         *frame.indexerGetterBinding,
@@ -1175,6 +1289,36 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     lowered = std::move(getter);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::InterpolationHandler)
+                {
+                    frame.operands.push_back(std::move(lowered));
+                    if (frame.operands.size() < frame.operandSyntaxes.size())
+                    {
+                        current = frame.operandSyntaxes[frame.operands.size()];
+                        currentAddressContext = false;
+                        currentMemberOrdinal = frame.core->builderMemberOrdinals[1];
+                        descend = true;
+                        break;
+                    }
+                    auto interpolation = buildInterpolationHandlerExpression(
+                        frame.syntax,
+                        *frame.core,
+                        frame.syntheticLocalOrdinal,
+                        frame.interpolationParts,
+                        std::move(frame.operands),
+                        error);
+                    if (interpolation == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    lowered = std::move(interpolation);
                     frames.pop_back();
                     continue;
                 }
@@ -1256,6 +1400,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         if (range.startSyntax != nullptr)
                         {
                             current = range.startSyntax;
+                            currentMemberOrdinal = frame.memberOrdinal;
                             currentAddressContext = false;
                             descend = true;
                             break;
@@ -1280,6 +1425,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         if (range.endSyntax != nullptr)
                         {
                             current = range.endSyntax;
+                            currentMemberOrdinal = frame.memberOrdinal;
                             currentAddressContext = false;
                             descend = true;
                             break;
@@ -1329,6 +1475,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(lowered);
                         frame.stage = 1U;
                         current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -1345,6 +1492,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(lowered);
                         frame.stage = 1U;
                         current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -1414,6 +1562,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(lowered);
                         frame.stage = 1U;
                         current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -1474,6 +1623,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(lowered);
                         frame.stage = 1U;
                         current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = false;
                         descend = true;
                         break;
@@ -1762,6 +1912,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.first = std::move(lowered);
                     frame.stage = 1U;
                     current = frame.syntax->second();
+                    currentMemberOrdinal = frame.memberOrdinal;
                     currentAddressContext = false;
                     descend = true;
                     break;
@@ -1771,6 +1922,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.second = std::move(lowered);
                     frame.stage = 2U;
                     current = frame.syntax->third();
+                    currentMemberOrdinal = frame.memberOrdinal;
                     currentAddressContext = false;
                     descend = true;
                     break;
@@ -2641,19 +2793,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "an interpolation handler result is a value, not addressable storage";
                     return nullptr;
                 }
-                const std::string handlerType = core->resultTypeKey;
                 const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
-                auto block = makeNode(
-                    ProjectOopHirNodeKind::BlockExpression, expression, handlerType);
-
-                auto declaration = makeNode(
-                    ProjectOopHirNodeKind::LocalDeclaration, expression, handlerType);
-                declaration->localOrdinal = tempOrdinal;
-                declaration->stringValue = "handler";
-                declaration->children.push_back(makeNode(
-                    ProjectOopHirNodeKind::DefaultValue, expression, handlerType));
-                block->children.push_back(std::move(declaration));
-
                 std::vector<language::InterpolationPart> parts;
                 std::string parseError;
                 if (!language::parseStaticInterpolation(expression->text(), parts, parseError))
@@ -2661,54 +2801,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = std::move(parseError);
                     return nullptr;
                 }
-                std::size_t holeIndex = 0;
-                for (const language::InterpolationPart& part : parts)
+                const bool hasHole = std::any_of(
+                    parts.begin(), parts.end(), [](const language::InterpolationPart& part)
                 {
-                    const bool isHole = part.kind == language::InterpolationPartKind::Hole;
-                    const std::size_t memberOrdinal =
-                        isHole ? core->builderMemberOrdinals[1] : core->builderMemberOrdinals[0];
-                    std::unique_ptr<ProjectOopHirNode> argument;
-                    if (isHole)
-                    {
-                        if (holeIndex >= expression->children().size())
-                        {
-                            error = "interpolation handler hole has no expression";
-                            return nullptr;
-                        }
-                        argument = lowerExpression(
-                            expression->children()[holeIndex++], memberOrdinal, false, error);
-                        if (argument == nullptr) return nullptr;
-                    }
-                    else
-                    {
-                        argument = makeNode(
-                            ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
-                        argument->stringValue = part.text;
-                    }
-                    auto call = makeNode(
-                        ProjectOopHirNodeKind::InstanceCall, expression, "builtin:void");
-                    call->memberOrdinal = memberOrdinal;
-                    auto receiver = makeNode(
-                        ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
-                    receiver->localOrdinal = tempOrdinal;
-                    call->children.push_back(std::move(receiver));
-                    call->children.push_back(std::move(argument));
-                    auto statement = makeNode(
-                        ProjectOopHirNodeKind::ExpressionStatement, expression, "builtin:void");
-                    statement->children.push_back(std::move(call));
-                    block->children.push_back(std::move(statement));
+                    return part.kind == language::InterpolationPartKind::Hole;
+                });
+                if (hasHole)
+                {
+                    error = "interpolation handler hole has no expression";
+                    return nullptr;
                 }
-
-                auto finish = makeNode(
-                    ProjectOopHirNodeKind::InstanceCall, expression, handlerType);
-                finish->memberOrdinal = core->builderMemberOrdinals[2];
-                auto finishReceiver = makeNode(
-                    ProjectOopHirNodeKind::LocalAddress, expression, handlerType + "*");
-                finishReceiver->localOrdinal = tempOrdinal;
-                finish->children.push_back(std::move(finishReceiver));
-                block->children.push_back(std::move(finish));
-
-                return block;
+                return buildInterpolationHandlerExpression(
+                    expression, *core, tempOrdinal, parts, {}, error);
             }
             if (addressContext)
             {

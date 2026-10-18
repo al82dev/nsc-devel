@@ -341,6 +341,26 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerInterpolationHandlerExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
+    }
+
     static void setRuntimeTypeBinding(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2450,6 +2470,259 @@ void testDeepUserIndexerGetterLowering(
     destroyHirTreeIteratively(lowered);
 }
 
+struct InterpolationHandlerTarget final
+{
+    std::size_t appendLiteralOrdinal = 0;
+    std::size_t appendFormattedOrdinal = 0;
+    std::size_t finishOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string typeKey;
+};
+
+bool prepareInterpolationHandlerFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    InterpolationHandlerTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepInterpolationHandler";
+    writeProject(directory, "DeepInterpolationHandler");
+    writeFile(directory / "Main.ns", R"ns(
+struct Builder {
+    public void AppendLiteral(string value) { }
+    public void AppendFormatted(int value) { }
+    public void AppendFormatted(Builder value) { }
+    public Builder Finish() { return this; }
+    public Builder Wrap() { Builder result = $"pre{2:X4}post"; return result; }
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepInterpolationHandler.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+    {
+        return false;
+    }
+    const auto types = compilation.nameLookup()->namedTypes();
+    const auto type = std::find_if(types.begin(), types.end(), [](const auto& candidate)
+    {
+        return candidate.identity.name() == "Builder";
+    });
+    if (type == types.end()) return false;
+    const std::size_t typeOrdinal = static_cast<std::size_t>(type - types.begin());
+    output.typeKey = "type:" + type->identity.key();
+    bool literal = false;
+    bool formatted = false;
+    bool finish = false;
+    bool caller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const auto& member = members[ordinal];
+        if (member.declaringTypeOrdinal != typeOrdinal) continue;
+        if (member.name == "AppendLiteral" && member.parameters.size() == 1U &&
+            member.parameters.front().typeKey == "builtin:string")
+        {
+            output.appendLiteralOrdinal = ordinal;
+            literal = true;
+        }
+        if (member.name == "AppendFormatted" && member.parameters.size() == 1U &&
+            member.parameters.front().typeKey == output.typeKey)
+        {
+            output.appendFormattedOrdinal = ordinal;
+            formatted = true;
+        }
+        if (member.name == "Finish" && member.parameters.empty())
+        {
+            output.finishOrdinal = ordinal;
+            finish = true;
+        }
+        if (member.name == "Wrap" && member.parameters.empty())
+        {
+            output.callerOrdinal = ordinal;
+            caller = true;
+        }
+    }
+    return literal && formatted && finish && caller;
+}
+
+struct DeepInterpolationHandlerSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepInterpolationHandlerSyntax makeDeepInterpolationHandlerSyntax(
+    std::size_t depth,
+    const InterpolationHandlerTarget& target)
+{
+    DeepInterpolationHandlerSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.cores.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+        auto* sideHole = fixture.nodes.back().get();
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::InterpolatedStringExpression,
+            nativesharp::SourceRange{}));
+        auto* interpolation = fixture.nodes.back().get();
+        interpolation->setText("pre{value:X4}mid{side}post");
+        interpolation->addChild(current);
+        interpolation->addChild(sideHole);
+        fixture.cores.emplace_back();
+        auto& core = fixture.cores.back();
+        core.kind = nativesharp::frontend::MethodCoreOperationKind::InterpolationHandler;
+        core.syntax = interpolation;
+        core.resultTypeKey = target.typeKey;
+        core.builderMemberOrdinals = {
+            target.appendLiteralOrdinal, target.appendFormattedOrdinal, target.finishOrdinal};
+        current = interpolation;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+const nativesharp::frontend::ProjectOopHirNode* interpolationArgument(
+    const nativesharp::frontend::ProjectOopHirNode* statement,
+    std::size_t memberOrdinal,
+    std::size_t localOrdinal,
+    std::string_view handlerType)
+{
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    if (statement == nullptr || statement->kind != Kind::ExpressionStatement ||
+        statement->children.size() != 1U) return nullptr;
+    const auto* call = statement->children.front().get();
+    if (call->kind != Kind::InstanceCall || call->typeKey != "builtin:void" ||
+        call->memberOrdinal != memberOrdinal || call->children.size() != 2U) return nullptr;
+    const auto* receiver = call->children.front().get();
+    if (receiver->kind != Kind::LocalAddress || receiver->localOrdinal != localOrdinal ||
+        receiver->typeKey != std::string(handlerType) + "*") return nullptr;
+    return call->children[1].get();
+}
+
+bool loadedBuilderThis(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::string_view typeKey)
+{
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    return node != nullptr && node->kind == Kind::PointerLoad && node->typeKey == typeKey &&
+        node->children.size() == 1U && node->children.front()->kind == Kind::ThisValue &&
+        node->children.front()->typeKey == typeKey;
+}
+
+bool interpolationHandlerChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const InterpolationHandlerTarget& target)
+{
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t depth = 0; depth < expectedDepth; ++depth)
+    {
+        if (node == nullptr || node->kind != Kind::BlockExpression ||
+            node->typeKey != target.typeKey || node->children.size() != 7U) return false;
+        const auto* declaration = node->children[0].get();
+        if (declaration->kind != Kind::LocalDeclaration || declaration->localOrdinal != depth ||
+            declaration->stringValue != "handler" || declaration->children.size() != 1U ||
+            declaration->children.front()->kind != Kind::DefaultValue) return false;
+        const auto* prefix = interpolationArgument(
+            node->children[1].get(), target.appendLiteralOrdinal, depth, target.typeKey);
+        const auto* nested = interpolationArgument(
+            node->children[2].get(), target.appendFormattedOrdinal, depth, target.typeKey);
+        const auto* middle = interpolationArgument(
+            node->children[3].get(), target.appendLiteralOrdinal, depth, target.typeKey);
+        const auto* side = interpolationArgument(
+            node->children[4].get(), target.appendFormattedOrdinal, depth, target.typeKey);
+        const auto* suffix = interpolationArgument(
+            node->children[5].get(), target.appendLiteralOrdinal, depth, target.typeKey);
+        if (prefix == nullptr || prefix->kind != Kind::StringLiteral || prefix->stringValue != "pre" ||
+            middle == nullptr || middle->kind != Kind::StringLiteral || middle->stringValue != "mid" ||
+            suffix == nullptr || suffix->kind != Kind::StringLiteral || suffix->stringValue != "post" ||
+            !loadedBuilderThis(side, target.typeKey)) return false;
+        const auto* finish = node->children[6].get();
+        if (finish->kind != Kind::InstanceCall || finish->memberOrdinal != target.finishOrdinal ||
+            finish->typeKey != target.typeKey || finish->children.size() != 1U ||
+            finish->children.front()->kind != Kind::LocalAddress ||
+            finish->children.front()->localOrdinal != depth) return false;
+        node = nested;
+    }
+    return loadedBuilderThis(node, target.typeKey);
+}
+
+void testInterpolationHandlerDiagnostics(
+    TestContext& tests,
+    const ProjectCompilation& compilation,
+    const InterpolationHandlerTarget& target)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.typeKey;
+    DeepInterpolationHandlerSyntax syntax = makeDeepInterpolationHandlerSyntax(1U, target);
+    syntax.nodes.back()->setText("pre{one}mid{two}post{missing}");
+    std::string error;
+    ProjectOopHirModel missingModel;
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerInterpolationHandlerExpression(
+            missingModel, *compilation.nameLookup(), *compilation.memberModel(),
+            target.callerOrdinal, syntax.root, syntax.nodes, syntax.cores, type, false, error);
+    tests.expect(missing == nullptr &&
+            error == "interpolation handler hole has no expression",
+        "iterative interpolation preserves the exact missing-hole diagnostic");
+
+    error.clear();
+    ProjectOopHirModel addressModel;
+    auto address = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerInterpolationHandlerExpression(
+            addressModel, *compilation.nameLookup(), *compilation.memberModel(),
+            target.callerOrdinal, syntax.root, syntax.nodes, syntax.cores, type, true, error);
+    tests.expect(address == nullptr &&
+            error == "an interpolation handler result is a value, not addressable storage",
+        "iterative interpolation preserves the exact address-context diagnostic");
+
+    syntax.nodes.back()->setText("pre{unterminated");
+    error.clear();
+    ProjectOopHirModel parseModel;
+    auto malformed = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerInterpolationHandlerExpression(
+            parseModel, *compilation.nameLookup(), *compilation.memberModel(),
+            target.callerOrdinal, syntax.root, syntax.nodes, syntax.cores, type, false, error);
+    tests.expect(malformed == nullptr && error == "unterminated interpolation hole",
+        "iterative interpolation preserves the interpolation-parser diagnostic");
+}
+
+void testDeepInterpolationHandlerLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    InterpolationHandlerTarget target;
+    std::string error;
+    const bool prepared = prepareInterpolationHandlerFixture(root, compilation, target, error);
+    tests.expect(prepared, "the interpolation fixture builds real builder members (" + error + ")");
+    if (!prepared) return;
+
+    DeepInterpolationHandlerSyntax syntax =
+        makeDeepInterpolationHandlerSyntax(nestingDepth, target);
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.typeKey;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerInterpolationHandlerExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(), target.callerOrdinal,
+            syntax.root, syntax.nodes, syntax.cores, type, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level interpolation-hole chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(interpolationHandlerChainMatches(lowered.get(), nestingDepth, target),
+        "iterative interpolation preserves literals, hole order, format-neutral builder calls, "
+        "synthetic ordinals, and Finish");
+    destroyHirTreeIteratively(lowered);
+    testInterpolationHandlerDiagnostics(tests, compilation, target);
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -3371,6 +3644,10 @@ int main()
     {
         testDeepUserIndexerGetterLowering(tests, root);
     }
+    else if (focusValue == "hir-interpolation-handler-depth")
+    {
+        testDeepInterpolationHandlerLowering(tests, root);
+    }
     else if (focusValue == "hir-overflow-policy-depth")
     {
         testDeepOverflowPolicyExpressionLowering(tests);
@@ -3446,6 +3723,7 @@ int main()
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);
         testDeepUserIndexerGetterLowering(tests, root);
+        testDeepInterpolationHandlerLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);
