@@ -69,6 +69,7 @@ std::vector<std::uint8_t> projectOopReachableDefinitionMask(
             {
                 const frontend::ProjectOopMirNode* node = nodes.back();
                 nodes.pop_back();
+                if (node == nullptr) continue;
                 addCallee(node->calleeName);
                 addCallee(node->secondaryCalleeName);
                 addCallee(node->resultSuccessTestCalleeName);
@@ -90,7 +91,7 @@ std::vector<std::uint8_t> projectOopReachableDefinitionMask(
                 addMember(node->disposeImplementationMemberOrdinal);
                 addMember(node->allocatorDeallocateMemberOrdinal);
                 for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-                    nodes.push_back(child->get());
+                    if (child->get() != nullptr) nodes.push_back(child->get());
             }
         };
         scanNode(function.body.get());
@@ -133,6 +134,7 @@ std::vector<std::uint8_t> projectOopStaticFieldDeclarationMask(
         {
             const frontend::ProjectOopMirNode* node = work.back();
             work.pop_back();
+            if (node == nullptr) continue;
             addMember(node->memberOrdinal);
             addMember(node->secondaryMemberOrdinal);
             addMember(node->resultSuccessTestMemberOrdinal);
@@ -144,7 +146,7 @@ std::vector<std::uint8_t> projectOopStaticFieldDeclarationMask(
             addMember(node->disposeImplementationMemberOrdinal);
             addMember(node->allocatorDeallocateMemberOrdinal);
             for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-                work.push_back(child->get());
+                if (child->get() != nullptr) work.push_back(child->get());
         }
     };
 
@@ -219,6 +221,7 @@ std::vector<std::size_t> projectOopCoordinatorFunctionDeclarations(
         {
             const frontend::ProjectOopMirNode* node = work.back();
             work.pop_back();
+            if (node == nullptr) continue;
             addName(node->calleeName);
             addName(node->secondaryCalleeName);
             addName(node->resultSuccessTestCalleeName);
@@ -241,7 +244,7 @@ std::vector<std::size_t> projectOopCoordinatorFunctionDeclarations(
             addMember(node->disposeImplementationMemberOrdinal);
             addMember(node->allocatorDeallocateMemberOrdinal);
             for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-                work.push_back(child->get());
+                if (child->get() != nullptr) work.push_back(child->get());
         }
     };
     const std::span<const frontend::ProjectOopMirStaticField> fields = mirModel.staticFields();

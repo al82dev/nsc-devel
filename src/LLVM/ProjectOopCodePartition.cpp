@@ -41,9 +41,10 @@ std::uint64_t nodeCost(const frontend::ProjectOopMirNode* node) noexcept
     {
         const frontend::ProjectOopMirNode* current = work.back();
         work.pop_back();
+        if (current == nullptr) continue;
         cost = saturatedAdd(cost, 1);
         for (auto it = current->children.rbegin(); it != current->children.rend(); ++it)
-            work.push_back(it->get());
+            if (it->get() != nullptr) work.push_back(it->get());
     }
     return cost;
 }
@@ -324,6 +325,7 @@ bool ProjectOopCodePartition::build(
         {
             const frontend::ProjectOopMirNode* node = work.back();
             work.pop_back();
+            if (node == nullptr) continue;
             const auto addCallee = [&](std::string_view name)
             {
                 if (name.empty()) return;
@@ -382,7 +384,7 @@ bool ProjectOopCodePartition::build(
                 }
             }
             for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
-                work.push_back(it->get());
+                if (it->get() != nullptr) work.push_back(it->get());
         }
     };
     for (ProjectOopCodeUnit& unit : units_)
