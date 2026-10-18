@@ -1538,15 +1538,6 @@ private:
     ast::AstNode* parseNullCoalescingExpression();
     ast::AstNode* parseRangeExpression();
     ast::AstNode* parseLogicalOrExpression();
-    ast::AstNode* parseLogicalAndExpression();
-    ast::AstNode* parseBitwiseOrExpression();
-    ast::AstNode* parseBitwiseXorExpression();
-    ast::AstNode* parseBitwiseAndExpression();
-    ast::AstNode* parseEqualityExpression();
-    ast::AstNode* parseRelationalExpression();
-    ast::AstNode* parseShiftExpression();
-    ast::AstNode* parseAdditiveExpression();
-    ast::AstNode* parseMultiplicativeExpression();
     ast::AstNode* parseAwaitUnaryExpression();
     ast::AstNode* parseFromEndUnaryExpression();
     ast::AstNode* parseMoveUnaryExpression();
@@ -1625,11 +1616,6 @@ private:
     ast::AstNode* parsePrimaryExpression();
     ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);
-    ast::AstNode* parseBinaryLevel(
-        ast::AstNode* (Parser::*nextLevel)(),
-        std::span<const lexer::TokenKind> operators,
-        ast::AstNodeKind nodeKind);
-
     ast::AstNode* makeErrorExpression();
     void synchronizeGlobal();
     void synchronizeStatement();

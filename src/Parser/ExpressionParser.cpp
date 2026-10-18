@@ -14,7 +14,6 @@
 #include "nativesharp/Source/SourceFile.h"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <deque>
 #include <functional>
@@ -31,25 +30,6 @@ namespace nativesharp::parser
 namespace
 {
 using lexer::TokenKind;
-
-constexpr std::array<TokenKind, 1> kLogicalOr = {TokenKind::PipePipe};
-constexpr std::array<TokenKind, 1> kLogicalAnd = {TokenKind::AmpAmp};
-constexpr std::array<TokenKind, 1> kBitwiseOr = {TokenKind::Pipe};
-constexpr std::array<TokenKind, 1> kBitwiseXor = {TokenKind::Caret};
-constexpr std::array<TokenKind, 1> kBitwiseAnd = {TokenKind::Amp};
-constexpr std::array<TokenKind, 2> kEquality = {TokenKind::EqualEqual, TokenKind::BangEqual};
-constexpr std::array<TokenKind, 4> kRelational = {
-    TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual};
-constexpr std::array<TokenKind, 2> kShift = {TokenKind::LessLess, TokenKind::GreaterGreater};
-constexpr std::array<TokenKind, 2> kAdditive = {TokenKind::Plus, TokenKind::Minus};
-constexpr std::array<TokenKind, 3> kMultiplicative = {TokenKind::Star, TokenKind::Slash, TokenKind::Percent};
-
-bool containsExpressionToken(
-    std::span<const TokenKind> values,
-    TokenKind kind) noexcept
-{
-    return std::find(values.begin(), values.end(), kind) != values.end();
-}
 
 std::optional<std::int64_t> signedIntegerLiteral(const ast::AstNode* expression) noexcept
 {
@@ -1386,89 +1366,6 @@ ast::AstNode* Parser::parseLambdaExpression()
     return parseAssignmentExpression();
 }
 
-ast::AstNode* Parser::parseLogicalOrExpression()
-{
-    return parseBinaryLevel(&Parser::parseLogicalAndExpression, kLogicalOr, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseLogicalAndExpression()
-{
-    return parseBinaryLevel(&Parser::parseBitwiseOrExpression, kLogicalAnd, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseBitwiseOrExpression()
-{
-    return parseBinaryLevel(&Parser::parseBitwiseXorExpression, kBitwiseOr, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseBitwiseXorExpression()
-{
-    return parseBinaryLevel(&Parser::parseBitwiseAndExpression, kBitwiseXor, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseBitwiseAndExpression()
-{
-    return parseBinaryLevel(&Parser::parseEqualityExpression, kBitwiseAnd, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseEqualityExpression()
-{
-    return parseBinaryLevel(&Parser::parseRelationalExpression, kEquality, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseRelationalExpression()
-{
-    ast::AstNode* left = parseShiftExpression();
-    while (containsExpressionToken(kRelational, current().kind()) || at(TokenKind::KwIs) || at(TokenKind::KwAs))
-    {
-        if (at(TokenKind::KwIs) || at(TokenKind::KwAs))
-        {
-            const TokenKind operation = consume().kind();
-            ast::TypeSyntax* targetType = parseType();
-            if (targetType == nullptr)
-            {
-                return left;
-            }
-            ast::AstNode* node = arena_.make<ast::AstNode>(
-                operation == TokenKind::KwIs
-                    ? ast::AstNodeKind::TypeTestExpression
-                    : ast::AstNodeKind::SafeCastExpression,
-                join(left->range(), targetType->range()));
-            node->setTokenKind(operation);
-            node->setTypeSyntax(targetType);
-            node->setFirst(left);
-            left = node;
-            continue;
-        }
-
-        const TokenKind operation = consume().kind();
-        ast::AstNode* right = parseShiftExpression();
-        ast::AstNode* node = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BinaryExpression,
-            join(left->range(), right->range()));
-        node->setTokenKind(operation);
-        node->setFirst(left);
-        node->setSecond(right);
-        left = node;
-    }
-    return left;
-}
-
-ast::AstNode* Parser::parseShiftExpression()
-{
-    return parseBinaryLevel(&Parser::parseAdditiveExpression, kShift, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseAdditiveExpression()
-{
-    return parseBinaryLevel(&Parser::parseMultiplicativeExpression, kAdditive, ast::AstNodeKind::BinaryExpression);
-}
-
-ast::AstNode* Parser::parseMultiplicativeExpression()
-{
-    return parseBinaryLevel(&Parser::parseUnaryExpression, kMultiplicative, ast::AstNodeKind::BinaryExpression);
-}
-
 ast::AstNode* Parser::parseAwaitUnaryExpression()
 {
     return parseUnaryIterativeExpression();
@@ -1665,6 +1562,7 @@ public:
     explicit PostfixIterationMachine(Parser& parser) noexcept : parser_(parser) {}
     ast::AstNode* parse();
     ast::AstNode* parseUnary();
+    ast::AstNode* parseBinary();
 
 private:
     static constexpr std::size_t noSlot = std::numeric_limits<std::size_t>::max();
@@ -1676,6 +1574,7 @@ private:
         FinishOverflowPolicy, ContinueInterpolation, Call, Index, With,
         NewArguments, PlacementNew, ArrayNew, ArrayInitializer
     };
+    ast::AstNode* parseRoot(WorkKind rootKind, std::uint8_t precedence);
     struct Result final { ast::AstNode* value = nullptr; bool ready = false; };
     struct Work final {
         Work() = default;
@@ -1832,55 +1731,22 @@ void Parser::PostfixIterationMachine::scheduleChild(std::size_t slot)
 
 ast::AstNode* Parser::PostfixIterationMachine::parse()
 {
-#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
-    ++scheduler_test_hooks::activeDepth;
-    scheduler_test_hooks::maximumDepth = std::max(
-        scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
-#endif
-    const std::size_t root = makeSlot();
-    work_.push_back({WorkKind::Postfix, root});
-    while (!results_[root].ready)
-    {
-        Work work = std::move(work_.back());
-        work_.pop_back();
-        switch (work.kind)
-        {
-        case WorkKind::Expression: startExpression(std::move(work)); break;
-        case WorkKind::ExpressionTail: continueExpression(std::move(work)); break;
-        case WorkKind::Unary: startUnary(std::move(work)); break;
-        case WorkKind::FinishUnary: finishUnary(std::move(work)); break;
-        case WorkKind::FinishBinary: finishBinary(std::move(work)); break;
-        case WorkKind::FinishAssignment: finishAssignment(std::move(work)); break;
-        case WorkKind::FinishConditionalTrue: finishConditionalTrue(std::move(work)); break;
-        case WorkKind::FinishConditionalFalse: finishConditionalFalse(std::move(work)); break;
-        case WorkKind::FinishTypeRelation: finishTypeRelation(std::move(work)); break;
-        case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
-        case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
-        case WorkKind::Postfix: startPostfix(std::move(work)); break;
-        case WorkKind::Primary: startPrimary(std::move(work)); break;
-        case WorkKind::Grouping: continueGrouping(std::move(work)); break;
-        case WorkKind::Collection: continueCollection(std::move(work)); break;
-        case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
-        case WorkKind::FinishOverflowPolicy: finishOverflowPolicy(std::move(work)); break;
-        case WorkKind::ContinueInterpolation: finishInterpolationHole(std::move(work)); break;
-        case WorkKind::Call: continueCall(std::move(work)); break;
-        case WorkKind::Index: continueIndex(std::move(work)); break;
-        case WorkKind::With: continueWith(std::move(work)); break;
-        case WorkKind::NewArguments: continueNewArguments(std::move(work)); break;
-        case WorkKind::PlacementNew: continuePlacementNew(std::move(work)); break;
-        case WorkKind::ArrayNew: continueArrayNew(std::move(work)); break;
-        case WorkKind::ArrayInitializer: continueArrayInitializer(std::move(work)); break;
-        }
-    }
-    ast::AstNode* result = results_[root].value;
-#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
-    scheduler_test_hooks::unfinishedResults = outstandingResults_;
-    --scheduler_test_hooks::activeDepth;
-#endif
-    return result;
+    return parseRoot(WorkKind::Postfix, 0);
 }
 
 ast::AstNode* Parser::PostfixIterationMachine::parseUnary()
+{
+    return parseRoot(WorkKind::Unary, 0);
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::parseBinary()
+{
+    return parseRoot(WorkKind::Expression, 5);
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::parseRoot(
+    WorkKind rootKind,
+    std::uint8_t precedence)
 {
 #if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
     ++scheduler_test_hooks::activeDepth;
@@ -1888,7 +1754,9 @@ ast::AstNode* Parser::PostfixIterationMachine::parseUnary()
         scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
 #endif
     const std::size_t root = makeSlot();
-    work_.push_back({WorkKind::Unary, root});
+    Work rootWork{rootKind, root};
+    rootWork.precedence = precedence;
+    work_.push_back(std::move(rootWork));
     while (!results_[root].ready)
     {
         Work work = std::move(work_.back());
@@ -1932,24 +1800,76 @@ ast::AstNode* Parser::PostfixIterationMachine::parseUnary()
 
 namespace
 {
-std::uint8_t postfixBridgePrecedence(TokenKind kind) noexcept
+enum class BinaryRightHandSide : std::uint8_t { Expression, Type };
+
+struct BinaryOperatorInfo final
+{
+    std::uint8_t leftBindingPower;
+    std::uint8_t rightBindingPower;
+    BinaryRightHandSide rightHandSide;
+    ast::AstNodeKind resultKind;
+};
+
+std::optional<BinaryOperatorInfo> binaryOperatorInfo(TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+    case TokenKind::PipePipe:
+        return BinaryOperatorInfo{
+            5, 6, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::AmpAmp:
+        return BinaryOperatorInfo{
+            6, 7, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Pipe:
+        return BinaryOperatorInfo{
+            7, 8, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Caret:
+        return BinaryOperatorInfo{
+            8, 9, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Amp:
+        return BinaryOperatorInfo{
+            9, 10, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::EqualEqual:
+    case TokenKind::BangEqual:
+        return BinaryOperatorInfo{
+            10, 11, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Less:
+    case TokenKind::LessEqual:
+    case TokenKind::Greater:
+    case TokenKind::GreaterEqual:
+        return BinaryOperatorInfo{
+            11, 12, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::KwIs:
+        return BinaryOperatorInfo{
+            11, 12, BinaryRightHandSide::Type, ast::AstNodeKind::TypeTestExpression};
+    case TokenKind::KwAs:
+        return BinaryOperatorInfo{
+            11, 12, BinaryRightHandSide::Type, ast::AstNodeKind::SafeCastExpression};
+    case TokenKind::LessLess:
+    case TokenKind::GreaterGreater:
+        return BinaryOperatorInfo{
+            12, 13, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Plus:
+    case TokenKind::Minus:
+        return BinaryOperatorInfo{
+            13, 14, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    case TokenKind::Star:
+    case TokenKind::Slash:
+    case TokenKind::Percent:
+        return BinaryOperatorInfo{
+            14, 15, BinaryRightHandSide::Expression, ast::AstNodeKind::BinaryExpression};
+    default: return std::nullopt;
+    }
+}
+
+std::uint8_t expressionBindingPower(TokenKind kind) noexcept
 {
     if (lexer::isAssignmentOperator(kind)) return 1;
     if (kind == TokenKind::Question) return 2;
     if (kind == TokenKind::QuestionQuestion) return 3;
     if (kind == TokenKind::DotDot || kind == TokenKind::DotDotEqual) return 4;
-    if (kind == TokenKind::PipePipe) return 5;
-    if (kind == TokenKind::AmpAmp) return 6;
-    if (kind == TokenKind::Pipe) return 7;
-    if (kind == TokenKind::Caret) return 8;
-    if (kind == TokenKind::Amp) return 9;
-    if (kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual) return 10;
-    if (containsExpressionToken(kRelational, kind) || kind == TokenKind::KwIs || kind == TokenKind::KwAs)
-        return 11;
-    if (containsExpressionToken(kShift, kind)) return 12;
-    if (containsExpressionToken(kAdditive, kind)) return 13;
-    if (containsExpressionToken(kMultiplicative, kind)) return 14;
-    return 0;
+    const std::optional<BinaryOperatorInfo> binary = binaryOperatorInfo(kind);
+    return binary.has_value() ? binary->leftBindingPower : 0;
 }
 
 bool postfixBridgeRightAssociative(TokenKind kind) noexcept
@@ -2009,7 +1929,8 @@ void Parser::PostfixIterationMachine::continueExpression(Work work)
 {
     ast::AstNode* left = work.node != nullptr ? work.node : results_[work.childSlot].value;
     const TokenKind operation = parser_.current().kind();
-    const std::uint8_t precedence = postfixBridgePrecedence(operation);
+    const std::optional<BinaryOperatorInfo> binary = binaryOperatorInfo(operation);
+    const std::uint8_t precedence = expressionBindingPower(operation);
     if (precedence == 0 || precedence < work.precedence ||
         (operation == TokenKind::Question && !parser_.questionBeginsConditional()))
     {
@@ -2024,7 +1945,7 @@ void Parser::PostfixIterationMachine::continueExpression(Work work)
         scheduleChild(child);
         return;
     }
-    if (operation == TokenKind::KwIs || operation == TokenKind::KwAs)
+    if (binary.has_value() && binary->rightHandSide == BinaryRightHandSide::Type)
     {
         parser_.consume();
         Work finish{WorkKind::FinishTypeRelation, work.resultSlot, noSlot, left};
@@ -2060,7 +1981,9 @@ void Parser::PostfixIterationMachine::continueExpression(Work work)
     finish.precedence = work.precedence;
     work_.push_back(std::move(finish));
     Work rhs{WorkKind::Expression, child};
-    rhs.precedence = postfixBridgeRightAssociative(operation) ? precedence : precedence + 1;
+    rhs.precedence = binary.has_value()
+        ? binary->rightBindingPower
+        : (postfixBridgeRightAssociative(operation) ? precedence : precedence + 1);
     work_.push_back(std::move(rhs));
 }
 
@@ -2255,8 +2178,10 @@ void Parser::PostfixIterationMachine::finishUnary(Work work)
 void Parser::PostfixIterationMachine::finishBinary(Work work)
 {
     ast::AstNode* right = results_[work.childSlot].value;
+    const std::optional<BinaryOperatorInfo> binary = binaryOperatorInfo(work.tokenKind);
     const ast::AstNodeKind kind = work.tokenKind == TokenKind::QuestionQuestion
-        ? ast::AstNodeKind::NullCoalescingExpression : ast::AstNodeKind::BinaryExpression;
+        ? ast::AstNodeKind::NullCoalescingExpression
+        : (binary.has_value() ? binary->resultKind : ast::AstNodeKind::BinaryExpression);
     ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
         kind, parser_.join(work.node->range(), right->range()));
     node->setTokenKind(work.tokenKind);
@@ -2309,8 +2234,9 @@ void Parser::PostfixIterationMachine::finishTypeRelation(Work work)
 {
     ast::TypeSyntax* type = parser_.parseType();
     if (type == nullptr) { complete(work.resultSlot, work.node); return; }
-    const ast::AstNodeKind kind = work.tokenKind == TokenKind::KwIs
-        ? ast::AstNodeKind::TypeTestExpression : ast::AstNodeKind::SafeCastExpression;
+    const std::optional<BinaryOperatorInfo> binary = binaryOperatorInfo(work.tokenKind);
+    const ast::AstNodeKind kind = binary.has_value()
+        ? binary->resultKind : ast::AstNodeKind::BinaryExpression;
     ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
         kind, parser_.join(work.node->range(), type->range()));
     node->setTokenKind(work.tokenKind);
@@ -3419,6 +3345,11 @@ ast::AstNode* Parser::parseUnaryIterativeExpression()
     return PostfixIterationMachine(*this).parseUnary();
 }
 
+ast::AstNode* Parser::parseLogicalOrExpression()
+{
+    return PostfixIterationMachine(*this).parseBinary();
+}
+
 ast::AstNode* Parser::parsePostfixExpression()
 {
     return PostfixIterationMachine(*this).parse();
@@ -4032,25 +3963,6 @@ ast::AstNode* Parser::parsePrimaryExpression()
         "expected expression");
     if (!at(TokenKind::EndOfFile)) consume();
     return makeErrorExpression();
-}
-
-ast::AstNode* Parser::parseBinaryLevel(
-    ast::AstNode* (Parser::*nextLevel)(),
-    std::span<const TokenKind> operators,
-    ast::AstNodeKind nodeKind)
-{
-    ast::AstNode* left = (this->*nextLevel)();
-    while (containsExpressionToken(operators, current().kind()))
-    {
-        const TokenKind operation = consume().kind();
-        ast::AstNode* right = (this->*nextLevel)();
-        ast::AstNode* node = arena_.make<ast::AstNode>(nodeKind, join(left->range(), right->range()));
-        node->setTokenKind(operation);
-        node->setFirst(left);
-        node->setSecond(right);
-        left = node;
-    }
-    return left;
 }
 
 }
