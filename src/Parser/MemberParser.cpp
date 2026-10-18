@@ -474,45 +474,6 @@ void Parser::applyNestedTypeIdentity(
     }
 }
 
-void Parser::applyNestedTypeLayout(
-    ast::AstNode* declaration,
-    const NestedTypeModifiers& modifiers)
-{
-    if (!modifiers.layoutPack.has_value() &&
-        !modifiers.layoutAlign.has_value() &&
-        !modifiers.layoutSize.has_value())
-        return;
-    if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            declaration->range(),
-            "pack/align/size layout modifiers apply only to nested struct and union declarations");
-        return;
-    }
-    if (declaration->auxiliaryText().find("variant") != std::string::npos)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            declaration->range(),
-            "pack/align/size cannot override the canonical tagged-variant layout");
-        return;
-    }
-    std::string layout = declaration->auxiliaryText();
-    const auto append = [&](std::string_view name, std::optional<std::uint64_t> value)
-    {
-        if (!value.has_value()) return;
-        layout += (layout.empty() ? "" : ",");
-        layout += std::string(name) + "=" + std::to_string(*value);
-    };
-    append("pack", modifiers.layoutPack);
-    append("align", modifiers.layoutAlign);
-    append("size", modifiers.layoutSize);
-    declaration->setAuxiliaryText(std::move(layout));
-}
-
 ast::AstNode* Parser::parseClassMemberImpl(
     std::string_view className,
     bool allowUnresolvedNamedTypes,
@@ -533,25 +494,6 @@ ast::AstNode* Parser::parseClassMemberImpl(
     return dispatchClassMember(className, structContext, state);
 }
 
-void Parser::parseMemberFrameStorage(MemberParseState& state)
-{
-    if (!at(TokenKind::LeftBracket)) return;
-    consume();
-    if (at(TokenKind::Identifier) && current().lexeme() == "FrameStorage")
-    {
-        consume();
-        expect(TokenKind::LeftParen, "'(' after FrameStorage");
-        if (at(TokenKind::Identifier))
-            state.frameStorage = std::string(consume().lexeme());
-        else
-            expect(TokenKind::Identifier, "FrameStorage argument (Stack, Arena or Heap)");
-        expect(TokenKind::RightParen, "')' after FrameStorage argument");
-        expect(TokenKind::RightBracket, "']' after FrameStorage");
-        return;
-    }
-    --index_;
-}
-
 void Parser::parseMemberModifiers(MemberParseState& state)
 {
     while (true)
@@ -565,33 +507,6 @@ void Parser::parseMemberModifiers(MemberParseState& state)
             continue;
         if (!tryParseStandardMemberModifier(state)) break;
         if (state.completedDeclaration != nullptr) break;
-    }
-}
-
-void Parser::parseExplicitFieldOffsets(MemberParseState& state)
-{
-    while (atContextualKeyword("at") && peek().kind() == TokenKind::LeftParen)
-    {
-        const lexer::Token& keyword = consume();
-        consume();
-        if (at(TokenKind::IntegerLiteral) &&
-            std::holds_alternative<std::uint64_t>(current().value()))
-        {
-            state.explicitFieldOffset = std::get<std::uint64_t>(current().value());
-            consume();
-        }
-        else expect(TokenKind::IntegerLiteral, "field byte offset");
-        expect(TokenKind::RightParen, "')'");
-        if (state.explicitFieldOffset.has_value() &&
-            *state.explicitFieldOffset > 0xFFFFFFULL)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                keyword.range(),
-                "explicit field offset is out of range");
-            state.explicitFieldOffset.reset();
-        }
     }
 }
 
@@ -657,43 +572,6 @@ bool Parser::tryParsePartialMemberModifier(MemberParseState& state)
     if (!member) return false;
     consume();
     state.isPartialMember = true;
-    return true;
-}
-
-bool Parser::tryParseNestedLayoutModifier(MemberParseState& state)
-{
-    const bool isPack = atContextualKeyword("pack");
-    const bool isAlign = atContextualKeyword("align");
-    if ((!isPack && !isAlign && !atContextualKeyword("size")) ||
-        peek().kind() != TokenKind::LeftParen)
-        return false;
-    const lexer::Token& keyword = consume();
-    consume();
-    std::optional<std::uint64_t> value;
-    if (at(TokenKind::IntegerLiteral) &&
-        std::holds_alternative<std::uint64_t>(current().value()))
-    {
-        value = std::get<std::uint64_t>(current().value());
-        consume();
-    }
-    else expect(TokenKind::IntegerLiteral,
-        isPack ? "pack value" : isAlign ? "alignment value" : "size value");
-    expect(TokenKind::RightParen, "')'");
-    if (value.has_value() && ((isPack || isAlign)
-            ? (*value == 0 || (*value & (*value - 1)) != 0) : (*value == 0)))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            keyword.range(),
-            isPack ? "pack requires a power-of-two byte value"
-                   : isAlign ? "align requires a power-of-two byte value"
-                             : "size requires a positive byte count");
-        value.reset();
-    }
-    if (isPack) state.nestedLayoutPack = value;
-    else if (isAlign) state.nestedLayoutAlign = value;
-    else state.nestedLayoutSize = value;
     return true;
 }
 

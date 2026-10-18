@@ -337,7 +337,66 @@ private:
         const lexer::Token& last,
         std::string target,
         std::string alias);
+    struct GlobalDeclarationAttributeState final
+    {
+        std::size_t declarationBeginIndex = 0;
+        lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        std::string granularVisibility;
+        bool isPartial = false;
+        bool isAbstract = false;
+        bool isSealed = false;
+        bool isStatic = false;
+        bool isExportedFunction = false;
+        bool isInlineFunction = false;
+        bool isForceInlineFunction = false;
+        bool isNoInlineFunction = false;
+        bool isReadonlyType = false;
+        bool isRecordStruct = false;
+        bool isCopyType = false;
+        bool isUnsafeTraitContract = false;
+        bool isBorrowedView = false;
+        bool isAsyncMethod = false;
+        bool returnDirectly = false;
+        std::optional<std::uint64_t> layoutPack;
+        std::optional<std::uint64_t> layoutAlign;
+        std::optional<std::uint64_t> layoutSize;
+        std::optional<std::string> representation;
+    };
     ast::AstNode* parseGlobalDeclaration();
+    void parseGlobalDeclarationPrefixes(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalRepresentationPrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalLayoutPrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalFunctionPrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalValueTypePrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalInheritancePrefix(GlobalDeclarationAttributeState& state);
+    ast::AstNode* dispatchGlobalDeclaration(GlobalDeclarationAttributeState& state);
+    bool tryDispatchReferenceGlobal(
+        GlobalDeclarationAttributeState& state,
+        ast::AstNode*& declaration);
+    bool tryDispatchValueGlobal(
+        GlobalDeclarationAttributeState& state,
+        ast::AstNode*& declaration);
+    bool tryDispatchExternGlobal(
+        GlobalDeclarationAttributeState& state,
+        ast::AstNode*& declaration);
+    ast::AstNode* dispatchGlobalFallback(GlobalDeclarationAttributeState& state);
+    void applyGlobalFunctionAttributes(
+        ast::AstNode* declaration,
+        const GlobalDeclarationAttributeState& state);
+    void applyGlobalIdentityAttributes(
+        ast::AstNode* declaration,
+        const GlobalDeclarationAttributeState& state);
+    void applyGlobalLayoutAttributes(
+        ast::AstNode* declaration,
+        const GlobalDeclarationAttributeState& state);
+    void finishGlobalDeclarationAttributes(
+        ast::AstNode* declaration,
+        const GlobalDeclarationAttributeState& state);
+    bool parseFrameStorageAttribute(std::string& frameStorage);
+    void applyNamespaceCallableAttributes(
+        ast::AstNode* declaration,
+        bool isAsync,
+        const std::string& frameStorage);
     // C2.2 "union and explicit layout": a union is parsed by the same routine as a struct --
     // they differ only in where their fields land, which is a layout question, not a syntax one.
     enum class StructLayoutForm

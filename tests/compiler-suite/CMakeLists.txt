@@ -266,6 +266,7 @@ add_executable(
     host/modules/ParserExpressionProductTestShim.cpp
     host/modules/ParserPatternProductTestShim.cpp
     host/modules/ParserGenericSyntaxProductTestShim.cpp
+    host/modules/ParserAttributeProductTestShim.cpp
     host/modules/SemaConstantConversionModule.cpp
     host/modules/SemaEffectsExpressionModule.cpp
     host/modules/SemaScopeSymbolModule.cpp

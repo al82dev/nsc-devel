@@ -313,6 +313,7 @@ add_library(nsc_frontend STATIC
     src/Parser/ExpressionParser.cpp
     src/Parser/PatternParser.cpp
     src/Parser/GenericSyntaxParser.cpp
+    src/Parser/AttributeParser.cpp
     src/Sema/OwnershipKind.cpp
     src/Sema/TypeKind.cpp
     src/Sema/Type.cpp

@@ -806,24 +806,6 @@ void Parser::parseLambdaCaptureList(std::string& contract)
     expect(TokenKind::RightBracket, "']' after lambda capture list");
 }
 
-void Parser::parseLambdaCaptureOrAttribute(
-    std::string& captureContract,
-    std::string& attributeContract)
-{
-    if (!consumeIf(TokenKind::LeftBracket)) return;
-    if (!at(TokenKind::RightBracket) && !atContextualKeyword("copy") &&
-        !atContextualKeyword("move") && !at(TokenKind::KwMove) &&
-        !atContextualKeyword("ref"))
-    {
-        std::string name;
-        if (at(TokenKind::Identifier)) name = std::string(consume().lexeme());
-        expect(TokenKind::RightBracket, "']' after lambda attribute");
-        attributeContract = "attribute:" + name;
-        return;
-    }
-    parseLambdaCaptureList(captureContract);
-}
-
 ast::AstNode* Parser::parseLambdaParameter()
 {
     const bool modifier = atContextualKeyword("ref") ||
