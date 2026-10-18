@@ -426,6 +426,28 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerEventSubscriptionExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<MethodEventBinding>& bindings,
+        bool addressContext,
+        const MethodLambdaBinding* currentLambda,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const MethodEventBinding& binding : bindings)
+            model.eventBindingBySyntax_[binding.syntax] = &binding;
+        model.currentLambda_ = currentLambda;
+        auto result = model.lowerExpression(
+            root, callerMemberOrdinal, addressContext, error);
+        model.currentLambda_ = nullptr;
+        return result;
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertyGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -2496,6 +2518,357 @@ void testDeepUserBinaryOperatorLowering(
     destroyHirTreeIteratively(lowered);
 
     testUserBinaryArgumentPreparation(tests, compilation, target, type);
+}
+
+struct EventSubscriptionTargets final
+{
+    nativesharp::frontend::MethodEventBinding backingAdd;
+    nativesharp::frontend::MethodEventBinding backingRemove;
+    nativesharp::frontend::MethodEventBinding customAdd;
+    nativesharp::frontend::MethodEventBinding customRemove;
+    nativesharp::frontend::MethodEventBinding structAdd;
+    std::size_t callerOrdinal = 0U;
+};
+
+bool prepareEventSubscriptionFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    EventSubscriptionTargets& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepEventSubscription";
+    writeProject(directory, "DeepEventSubscription");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public delegate void Handler();
+public class Publisher {
+    public event Handler Backing;
+    public event Handler Custom { add { } remove { } }
+    public void Touch(Handler h) {
+        Backing += h; Backing -= h; Custom += h; Custom -= h;
+    }
+}
+public struct StructPublisher {
+    public event Handler Backing;
+    public void Touch(Handler h) { Backing += h; }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(
+            directory / "DeepEventSubscription.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
+        compilation.methodBodyModel() == nullptr)
+        return false;
+    bool backingAdd = false;
+    bool backingRemove = false;
+    bool customAdd = false;
+    bool customRemove = false;
+    bool structAdd = false;
+    for (const auto& binding : compilation.methodBodyModel()->eventBindings())
+    {
+        const bool isStruct =
+            binding.receiverTypeKey.find("StructPublisher") != std::string::npos;
+        const bool isCustom = binding.customAccessorMemberOrdinal.has_value();
+        if (isStruct && binding.kind == nativesharp::frontend::MethodEventOperationKind::Add)
+        {
+            output.structAdd = binding;
+            structAdd = true;
+        }
+        else if (!isCustom && binding.kind == nativesharp::frontend::MethodEventOperationKind::Add)
+        {
+            output.backingAdd = binding;
+            output.callerOrdinal = binding.methodMemberOrdinal;
+            backingAdd = true;
+        }
+        else if (!isCustom)
+        {
+            output.backingRemove = binding;
+            backingRemove = true;
+        }
+        else if (binding.kind == nativesharp::frontend::MethodEventOperationKind::Add)
+        {
+            output.customAdd = binding;
+            customAdd = true;
+        }
+        else
+        {
+            output.customRemove = binding;
+            customRemove = true;
+        }
+    }
+    return backingAdd && backingRemove && customAdd && customRemove && structAdd;
+}
+
+struct DeepEventSubscriptionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodEventBinding> bindings;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepEventSubscriptionSyntax makeDeepEventSubscriptionSyntax(
+    std::size_t depth,
+    const EventSubscriptionTargets& targets)
+{
+    using EventKind = nativesharp::frontend::MethodEventOperationKind;
+    DeepEventSubscriptionSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.bindings.reserve(depth);
+    const auto makeNull = [&]()
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::NullLiteralExpression,
+            nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    auto* current = makeNull();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        const auto* source = index % 4U == 0U ? &targets.backingAdd
+            : index % 4U == 1U ? &targets.customRemove
+            : index % 4U == 2U ? &targets.customAdd
+                               : &targets.backingRemove;
+        fixture.bindings.push_back(*source);
+        auto& binding = fixture.bindings.back();
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::AssignmentExpression,
+            nativesharp::SourceRange{}));
+        auto* assignment = fixture.nodes.back().get();
+        assignment->setTokenKind(binding.kind == EventKind::Add
+            ? nativesharp::lexer::TokenKind::PlusEqual
+            : nativesharp::lexer::TokenKind::MinusEqual);
+        binding.syntax = assignment;
+        binding.staticEvent = false;
+        if (index % 2U == 0U)
+        {
+            binding.receiverSyntax = nullptr;
+            assignment->setSecond(current);
+        }
+        else
+        {
+            binding.receiverSyntax = current;
+            assignment->setSecond(makeNull());
+        }
+        current = assignment;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool eventSubscriptionChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepEventSubscriptionSyntax& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = fixture.bindings.size(); remaining > 0U; --remaining)
+    {
+        const auto& binding = fixture.bindings[remaining - 1U];
+        const bool custom = binding.customAccessorMemberOrdinal.has_value();
+        const HirKind expected = custom ? HirKind::InstanceCall
+            : binding.kind == nativesharp::frontend::MethodEventOperationKind::Add
+                ? HirKind::EventAdd : HirKind::EventRemove;
+        if (node == nullptr || node->kind != expected || node->syntax != binding.syntax ||
+            node->typeKey != "builtin:void" || node->children.size() != 2U)
+            return false;
+        const nativesharp::frontend::ProjectOopHirNode* receiver = nullptr;
+        if (custom)
+        {
+            if (node->memberOrdinal != binding.customAccessorMemberOrdinal ||
+                node->argumentParameterOrdinals != std::vector<std::size_t>{0U} ||
+                node->argumentTypeKeys != std::vector<std::string>{binding.delegateTypeKey})
+                return false;
+            receiver = node->children[0].get();
+        }
+        else
+        {
+            const auto* address = node->children[0].get();
+            if (node->memberOrdinal != binding.backingMemberOrdinal ||
+                node->elementTypeKey != binding.delegateTypeKey || address == nullptr ||
+                address->kind != HirKind::FieldAddress ||
+                address->memberOrdinal != binding.backingMemberOrdinal ||
+                address->children.size() != 1U)
+                return false;
+            receiver = address->children.front().get();
+        }
+        const bool explicitReceiver = binding.receiverSyntax != nullptr;
+        const auto* other = explicitReceiver ? node->children[1].get() : receiver;
+        if (other == nullptr || other->kind !=
+                (explicitReceiver ? HirKind::NullConstant : HirKind::ThisValue))
+            return false;
+        node = explicitReceiver ? receiver : node->children[1].get();
+    }
+    return node != nullptr && node->kind == HirKind::NullConstant;
+}
+
+struct SingleEventSubscriptionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodEventBinding> bindings;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+SingleEventSubscriptionSyntax makeSingleEventSubscriptionSyntax(
+    const nativesharp::frontend::MethodEventBinding& source,
+    bool staticEvent,
+    bool explicitReceiver)
+{
+    SingleEventSubscriptionSyntax fixture;
+    const auto makeNull = [&]()
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::NullLiteralExpression,
+            nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    auto* receiver = explicitReceiver ? makeNull() : nullptr;
+    auto* handler = makeNull();
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::AssignmentExpression,
+        nativesharp::SourceRange{}));
+    auto* assignment = fixture.nodes.back().get();
+    assignment->setTokenKind(source.kind ==
+            nativesharp::frontend::MethodEventOperationKind::Add
+        ? nativesharp::lexer::TokenKind::PlusEqual
+        : nativesharp::lexer::TokenKind::MinusEqual);
+    assignment->setSecond(handler);
+    fixture.bindings.push_back(source);
+    fixture.bindings.front().syntax = assignment;
+    fixture.bindings.front().receiverSyntax = receiver;
+    fixture.bindings.front().staticEvent = staticEvent;
+    fixture.root = assignment;
+    return fixture;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerSingleEventSubscription(
+    ProjectCompilation& compilation,
+    std::size_t callerOrdinal,
+    SingleEventSubscriptionSyntax& fixture,
+    bool addressContext,
+    const nativesharp::frontend::MethodLambdaBinding* currentLambda,
+    std::string& error)
+{
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerEventSubscriptionExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(), callerOrdinal,
+            fixture.root, fixture.bindings, addressContext, currentLambda, error);
+}
+
+void testEventSubscriptionContracts(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const EventSubscriptionTargets& targets)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    auto staticFixture = makeSingleEventSubscriptionSyntax(
+        targets.backingAdd, true, false);
+    auto staticNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, staticFixture, false, nullptr, error);
+    tests.expect(staticNode != nullptr && error.empty() &&
+            staticNode->kind == HirKind::EventAdd && staticNode->children.size() == 2U &&
+            staticNode->children[0]->kind == HirKind::StaticFieldAddress,
+        "iterative event lowering preserves static backing address before handler");
+    destroyHirTreeIteratively(staticNode);
+
+    error.clear();
+    auto structFixture = makeSingleEventSubscriptionSyntax(
+        targets.structAdd, false, true);
+    auto structNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, structFixture, false, nullptr, error);
+    const auto* fieldAddress = structNode != nullptr && !structNode->children.empty()
+        ? structNode->children.front().get() : nullptr;
+    const auto* temporary = fieldAddress != nullptr && !fieldAddress->children.empty()
+        ? fieldAddress->children.front().get() : nullptr;
+    tests.expect(structNode != nullptr && error.empty() &&
+            structNode->kind == HirKind::EventAdd && fieldAddress != nullptr &&
+            fieldAddress->kind == HirKind::FieldAddress && temporary != nullptr &&
+            temporary->kind == HirKind::TemporaryAddress,
+        "iterative event lowering materializes an explicit struct temporary exactly once");
+    destroyHirTreeIteratively(structNode);
+
+    error.clear();
+    auto convertedFixture = makeSingleEventSubscriptionSyntax(
+        targets.customAdd, false, false);
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = nativesharp::frontend::ProjectConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:null";
+    conversion.targetTypeKey = targets.customAdd.delegateTypeKey;
+    convertedFixture.bindings.front().argumentConversions = {conversion};
+    auto convertedNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, convertedFixture, false, nullptr, error);
+    tests.expect(convertedNode != nullptr && error.empty() &&
+            convertedNode->kind == HirKind::InstanceCall &&
+            convertedNode->children.size() == 2U &&
+            convertedNode->children[1]->kind == HirKind::Conversion,
+        "iterative custom event lowering preserves its selected handler conversion");
+    destroyHirTreeIteratively(convertedNode);
+}
+
+void testEventSubscriptionDiagnostics(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const EventSubscriptionTargets& targets)
+{
+    std::string error;
+    auto addressFixture = makeSingleEventSubscriptionSyntax(
+        targets.customAdd, false, false);
+    auto addressNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, addressFixture, true, nullptr, error);
+    const bool addressExact = addressNode == nullptr &&
+        error == "Stage 42 event subscription expression is not addressable";
+
+    error.clear();
+    auto backingFixture = makeSingleEventSubscriptionSyntax(
+        targets.backingAdd, false, false);
+    backingFixture.bindings.front().backingMemberOrdinal =
+        compilation.memberModel()->members().size();
+    auto backingNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, backingFixture, false, nullptr, error);
+    const bool backingExact = backingNode == nullptr &&
+        error == "Stage 42 event binding has invalid backing member";
+
+    error.clear();
+    auto captureFixture = makeSingleEventSubscriptionSyntax(
+        targets.customAdd, false, false);
+    nativesharp::frontend::MethodLambdaBinding lambda;
+    auto captureNode = lowerSingleEventSubscription(
+        compilation, targets.callerOrdinal, captureFixture, false, &lambda, error);
+    const bool captureExact = captureNode == nullptr &&
+        error == "Stage 43 implicit instance receiver has no captured this";
+    tests.expect(addressExact && backingExact && captureExact,
+        "iterative event lowering preserves address, backing, and captured-this diagnostics byte-exactly");
+}
+
+void testDeepEventSubscriptionLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    EventSubscriptionTargets targets;
+    std::string error;
+    const bool prepared = prepareEventSubscriptionFixture(
+        root, compilation, targets, error);
+    tests.expect(prepared,
+        "the event-subscription fixture exposes backing/custom and class/struct bindings (" +
+            error + ")");
+    if (!prepared) return;
+    DeepEventSubscriptionSyntax syntax =
+        makeDeepEventSubscriptionSyntax(nestingDepth, targets);
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerEventSubscriptionExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(),
+            targets.callerOrdinal, syntax.root, syntax.bindings, false, nullptr, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level event receiver/handler chain lowers without stack recursion (" +
+            error + ")");
+    tests.expect(eventSubscriptionChainMatches(lowered.get(), syntax),
+        "iterative event lowering preserves receiver-before-handler order and backing/custom add/remove shape");
+    destroyHirTreeIteratively(lowered);
+    testEventSubscriptionContracts(tests, compilation, targets);
+    testEventSubscriptionDiagnostics(tests, compilation, targets);
 }
 
 void testDeepConversionExpressionLowering(TestContext& tests)
@@ -5662,6 +6035,10 @@ int main()
     {
         testDeepDeconstructionAssignmentLowering(tests);
     }
+    else if (focusValue == "hir-event-add-remove-depth")
+    {
+        testDeepEventSubscriptionLowering(tests, root);
+    }
     else if (focusValue == "hir-conversion-depth")
     {
         testDeepConversionExpressionLowering(tests);
@@ -5849,6 +6226,7 @@ int main()
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepUserUnaryOperatorLowering(tests, root);
         testDeepUserBinaryOperatorLowering(tests, root);
+        testDeepEventSubscriptionLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);

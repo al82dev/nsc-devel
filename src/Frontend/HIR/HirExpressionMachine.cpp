@@ -143,6 +143,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         NullCoalescing,
         NullCoalescingAssignment,
         DeconstructionAssignment,
+        EventSubscription,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -186,6 +187,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodExpressionTypeBinding* operandType = nullptr;
         const MethodMatchExpressionBinding* matchBinding = nullptr;
         const MethodDeconstructionBinding* deconstructionBinding = nullptr;
+        const MethodEventBinding* eventSubscriptionBinding = nullptr;
         std::vector<HirTuplePatternFrame> deconstructionLeaves;
         std::unique_ptr<ProjectOopHirNode> deconstructionNode;
         bool materializeReceiverTemporary = false;
@@ -317,6 +319,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                   !binding->sourceTypeKey.empty()));
             if (iterativeReceiver)
                 return IterativeExpressionKind::DeconstructionAssignment;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->second() != nullptr)
+        {
+            const MethodEventBinding* binding = eventBinding(syntax);
+            if (binding != nullptr &&
+                (binding->kind == MethodEventOperationKind::Add ||
+                 binding->kind == MethodEventOperationKind::Remove))
+            {
+                return IterativeExpressionKind::EventSubscription;
+            }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
         {
@@ -822,6 +835,79 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         isStructValueType(frame.deconstructionBinding->sourceTypeKey) &&
                         !isNaturallyAddressable(current->second());
                 }
+                else if (*currentKind == IterativeExpressionKind::EventSubscription)
+                {
+                    frame.eventSubscriptionBinding = eventBinding(current);
+                    const MethodEventBinding& binding = *frame.eventSubscriptionBinding;
+                    if (!binding.customAccessorMemberOrdinal.has_value() &&
+                        (memberModel_ == nullptr ||
+                         binding.backingMemberOrdinal >= memberModel_->members().size()))
+                    {
+                        error = "Stage 42 event binding has invalid backing member";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    if (!binding.staticEvent && binding.receiverTypeKey.empty())
+                    {
+                        error = "Stage 40 receiver has no semantic class/interface/struct type";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    if (!binding.staticEvent &&
+                        (binding.receiverSyntax == nullptr ||
+                         binding.receiverSyntax->kind() == ast::AstNodeKind::BaseExpression))
+                    {
+                        if (currentLambda_ != nullptr)
+                        {
+                            const std::optional<std::size_t> capture =
+                                currentLambdaThisCapture();
+                            if (!capture.has_value())
+                            {
+                                error = "Stage 43 implicit instance receiver has no captured this";
+                                rollbackMatchCleanups();
+                                return nullptr;
+                            }
+                            frame.first = makeNode(
+                                isStructValueType(binding.receiverTypeKey)
+                                    ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                                    : ProjectOopHirNodeKind::ClosureCaptureValue,
+                                binding.receiverSyntax,
+                                binding.receiverTypeKey);
+                            frame.first->integerValue = *capture;
+                        }
+                        else
+                        {
+                            frame.first = makeNode(
+                                ProjectOopHirNodeKind::ThisValue,
+                                binding.receiverSyntax,
+                                binding.receiverTypeKey);
+                        }
+                        frame.stage = 1U;
+                    }
+                    else if (!binding.staticEvent)
+                    {
+                        frame.materializeReceiverTemporary =
+                            isStructValueType(binding.receiverTypeKey) &&
+                            !isNaturallyAddressable(binding.receiverSyntax);
+                    }
+                    if (binding.staticEvent) frame.stage = 1U;
+                    if (frame.stage == 1U &&
+                        !binding.customAccessorMemberOrdinal.has_value())
+                    {
+                        const ClassMemberSymbol& backing =
+                            memberModel_->members()[binding.backingMemberOrdinal];
+                        auto addressNode = makeNode(
+                            binding.staticEvent
+                                ? ProjectOopHirNodeKind::StaticFieldAddress
+                                : ProjectOopHirNodeKind::FieldAddress,
+                            current,
+                            backing.declaredTypeKey);
+                        addressNode->memberOrdinal = binding.backingMemberOrdinal;
+                        if (!binding.staticEvent)
+                            addressNode->children.push_back(std::move(frame.first));
+                        frame.first = std::move(addressNode);
+                    }
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -848,6 +934,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->first();
                 else if (*currentKind == IterativeExpressionKind::DeconstructionAssignment)
                     current = current->second();
+                else if (*currentKind == IterativeExpressionKind::EventSubscription)
+                    current = frames.back().stage == 0U
+                        ? frames.back().eventSubscriptionBinding->receiverSyntax
+                        : current->second();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -929,6 +1019,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frames.back().deconstructionBinding->selectedMemberOrdinal.has_value() &&
                         isStructValueType(
                             frames.back().deconstructionBinding->sourceTypeKey) &&
+                        !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::EventSubscription)
+                {
+                    currentAddressContext = frames.back().stage == 0U &&
+                        isStructValueType(
+                            frames.back().eventSubscriptionBinding->receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
@@ -2191,6 +2288,78 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentAddressContext = true;
                     descend = true;
                     break;
+                }
+                if (frame.kind == IterativeExpressionKind::EventSubscription)
+                {
+                    const MethodEventBinding& binding = *frame.eventSubscriptionBinding;
+                    if (frame.stage == 0U)
+                    {
+                        if (frame.materializeReceiverTemporary)
+                        {
+                            auto temporary = makeNode(
+                                ProjectOopHirNodeKind::TemporaryAddress,
+                                binding.receiverSyntax,
+                                binding.receiverTypeKey);
+                            temporary->elementTypeKey = binding.receiverTypeKey;
+                            temporary->children.push_back(std::move(lowered));
+                            lowered = std::move(temporary);
+                        }
+                        if (!binding.customAccessorMemberOrdinal.has_value())
+                        {
+                            const ClassMemberSymbol& backing =
+                                memberModel_->members()[binding.backingMemberOrdinal];
+                            auto addressNode = makeNode(
+                                ProjectOopHirNodeKind::FieldAddress,
+                                frame.syntax,
+                                backing.declaredTypeKey);
+                            addressNode->memberOrdinal = binding.backingMemberOrdinal;
+                            addressNode->children.push_back(std::move(lowered));
+                            lowered = std::move(addressNode);
+                        }
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    if (!binding.argumentConversions.empty() &&
+                        binding.argumentConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered),
+                            binding.argumentConversions.front(),
+                            frame.syntax->second());
+                    }
+                    auto subscription = makeNode(
+                        binding.customAccessorMemberOrdinal.has_value()
+                            ? ProjectOopHirNodeKind::InstanceCall
+                            : binding.kind == MethodEventOperationKind::Add
+                                ? ProjectOopHirNodeKind::EventAdd
+                                : ProjectOopHirNodeKind::EventRemove,
+                        frame.syntax,
+                        "builtin:void");
+                    if (binding.customAccessorMemberOrdinal.has_value())
+                    {
+                        subscription->memberOrdinal =
+                            *binding.customAccessorMemberOrdinal;
+                        if (!binding.staticEvent)
+                            subscription->children.push_back(std::move(frame.first));
+                        subscription->argumentParameterOrdinals.push_back(0U);
+                        subscription->argumentTypeKeys.push_back(binding.delegateTypeKey);
+                    }
+                    else
+                    {
+                        subscription->elementTypeKey = binding.delegateTypeKey;
+                        subscription->memberOrdinal = binding.backingMemberOrdinal;
+                        subscription->children.push_back(std::move(frame.first));
+                    }
+                    subscription->children.push_back(std::move(lowered));
+                    lowered = std::move(subscription);
+                    frames.pop_back();
+                    continue;
                 }
                 if (frame.kind == IterativeExpressionKind::ResultPropagation)
                 {
