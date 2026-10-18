@@ -69,29 +69,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
     {
         case ast::AstNodeKind::BreakStatement:
         {
+            if (statement->first() != nullptr)
+                return lowerExitValueStatement(statement, memberOrdinal, error);
             auto node = makeNode(ProjectOopHirNodeKind::Break, statement, "builtin:void");
             attachStructuredExit(*node);
             node->stringValue = statement->text();
-            if (statement->first() != nullptr)
-            {
-                const MethodLoopBreakBinding* binding = methodBodyModel_ != nullptr
-                    ? methodBodyModel_->loopBreakBinding(statement) : nullptr;
-                if (binding == nullptr)
-                {
-                    error = "T07-F05 break value has no loop-expression semantic binding";
-                    return nullptr;
-                }
-                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
-                if (value == nullptr) return nullptr;
-                if (binding->conversion.exists() &&
-                    binding->conversion.kind != ProjectConversionKind::Identity)
-                {
-                    value = wrapImplicitConversion(
-                        std::move(value), binding->conversion, statement->first());
-                }
-                node->children.push_back(std::move(value));
-                node->elementTypeKey = binding->resultTypeKey;
-            }
             return node;
         }
         case ast::AstNodeKind::ContinueStatement:
@@ -103,98 +85,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
         }
         case ast::AstNodeKind::ReturnStatement:
         {
+            if (statement->first() != nullptr)
+                return lowerExitValueStatement(statement, memberOrdinal, error);
             auto node = makeNode(ProjectOopHirNodeKind::Return, statement, "builtin:void");
             attachStructuredExit(*node);
-            if (statement->first() != nullptr)
-            {
-                bool referenceReturn = false;
-                bool valueReturningCallable = false;
-                std::string declaredTypeKey;
-                sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
-                if (memberModel_ != nullptr && memberOrdinal < memberModel_->members().size())
-                {
-                    const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-                    referenceReturn = member.isReferenceReturn;
-                    valueReturningCallable = member.kind == ClassMemberKind::Method;
-                    declaredTypeKey = member.declaredTypeKey;
-                    declaredOwnership = member.declaredOwnership;
-                }
-                else
-                {
-                    const std::size_t callableBase =
-                        memberModel_ != nullptr ? memberModel_->members().size() : 0;
-                    const std::size_t functionOrdinal =
-                        memberOrdinal >= callableBase ? memberOrdinal - callableBase :
-                        std::numeric_limits<std::size_t>::max();
-                    if (namespaceFunctionModel_ == nullptr ||
-                        functionOrdinal >= namespaceFunctionModel_->functions().size())
-                    {
-                        error = "Stage 34 return refers to invalid callable";
-                        return nullptr;
-                    }
-                    const NamespaceFunctionSymbol& function =
-                        namespaceFunctionModel_->functions()[functionOrdinal];
-                    referenceReturn = function.isReferenceReturn;
-                    valueReturningCallable = true;
-                    declaredTypeKey = function.declaredTypeKey;
-                    declaredOwnership = function.declaredOwnership;
-                }
-
-                auto value = lowerExpression(
-                    statement->first(), memberOrdinal, referenceReturn, error);
-                if (value == nullptr)
-                {
-                    return nullptr;
-                }
-                if (valueReturningCallable && declaredTypeKey != "builtin:void" && !referenceReturn)
-                {
-                    const MethodExpressionTypeBinding* type = expressionType(statement->first());
-                    const ProjectImplicitConversion conversion = classifyImplicit(
-                        value->typeKey,
-                        declaredTypeKey,
-                        type != nullptr ? type->integerConstant : std::nullopt);
-                    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
-                    {
-                        value = wrapImplicitConversion(std::move(value), conversion, statement->first());
-                    }
-                    if (declaredOwnership == sema::OwnershipKind::Borrowed)
-                    {
-                        const MethodBorrowBinding* borrow = borrowBinding(statement->first());
-                        if (borrow == nullptr)
-                        {
-                            error = "Stage 50.8 borrowed return has no frozen borrow binding";
-                            return nullptr;
-                        }
-                        auto borrowed = makeNode(
-                            ProjectOopHirNodeKind::BorrowValue,
-                            statement->first(),
-                            declaredTypeKey);
-                        borrowed->borrowKind = borrow->kind;
-                        borrowed->localOrdinal = borrow->sourceLocalOrdinal;
-                        borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
-                        borrowed->children.push_back(std::move(value));
-                        value = std::move(borrowed);
-                    }
-                }
-                if (statement->flag())
-                {
-                    switch (value->kind)
-                    {
-                        case ProjectOopHirNodeKind::InstanceCall:
-                        case ProjectOopHirNodeKind::StaticCall:
-                            value->mustTailCall = true;
-                            break;
-                        default:
-                            error = "T08-F06 validated must_tail return did not lower to a direct call";
-                            return nullptr;
-                    }
-                }
-                node->children.push_back(std::move(value));
-            }
             return node;
         }
         case ast::AstNodeKind::ThrowStatement:
         {
+            if (statement->first() != nullptr)
+                return lowerExitValueStatement(statement, memberOrdinal, error);
             const MethodExceptionBinding* binding = exceptionBinding(statement);
             if (binding == nullptr)
             {
@@ -218,12 +118,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
             if (!activeHirExceptionHandlers_.empty())
                 node->exceptionTargetRegionOrdinal = activeHirExceptionHandlers_.back().hirRegionOrdinal;
 
-            if (statement->first() != nullptr)
-            {
-                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
-                if (value == nullptr) return nullptr;
-                node->children.push_back(std::move(value));
-            }
             return node;
         }
 

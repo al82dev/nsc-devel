@@ -466,6 +466,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return lowerForeachStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::BreakStatement:
+            if (statement->first() != nullptr)
+                return lowerExitValueStatement(statement, memberOrdinal, error);
+            return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::ContinueStatement:
             return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::SuspendStatement:
@@ -474,6 +477,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return lowerCoroutineStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::ReturnStatement:
         case ast::AstNodeKind::ThrowStatement:
+            if (statement->first() != nullptr)
+                return lowerExitValueStatement(statement, memberOrdinal, error);
+            return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::UsingStatement:
         case ast::AstNodeKind::TryStatement:
             return lowerExceptionOrExitStatement(statement, memberOrdinal, error);

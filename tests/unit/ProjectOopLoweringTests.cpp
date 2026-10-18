@@ -1579,6 +1579,65 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerExitValueStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        ProjectMemberModel& memberModel,
+        const ast::AstNode* statement,
+        std::vector<ClassMemberSymbol> members,
+        std::vector<MethodLoopExpressionBinding> loops,
+        std::vector<MethodLoopBreakBinding> breaks,
+        const std::vector<MethodExceptionBinding>& exceptions,
+        const std::vector<MethodStructuredExitBinding>& structuredExits,
+        const std::vector<MethodBorrowBinding>& borrows,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::optional<std::pair<std::size_t, std::size_t>> activeExceptionHandler,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+            index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        methodBodyModel.loopBreakBindings_ = std::move(breaks);
+        methodBodyModel.loopBreakBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+            index < methodBodyModel.loopBreakBindings_.size(); ++index)
+        {
+            methodBodyModel.loopBreakBindingBySyntax_[
+                methodBodyModel.loopBreakBindings_[index].syntax] = index;
+        }
+        memberModel.members_ = std::move(members);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = &memberModel;
+        model.exceptionBindingBySyntax_.clear();
+        for (const MethodExceptionBinding& binding : exceptions)
+            model.exceptionBindingBySyntax_[binding.syntax] = &binding;
+        model.structuredExitBySyntax_.clear();
+        for (const MethodStructuredExitBinding& binding : structuredExits)
+            model.structuredExitBySyntax_[binding.syntax] = &binding;
+        model.borrowBindingBySyntax_.clear();
+        for (const MethodBorrowBinding& binding : borrows)
+            model.borrowBindingBySyntax_[binding.syntax] = &binding;
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        model.activeHirExceptionHandlers_.clear();
+        if (activeExceptionHandler.has_value())
+        {
+            model.activeHirExceptionHandlers_.push_back({
+                activeExceptionHandler->first,
+                activeExceptionHandler->second});
+        }
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -16253,6 +16312,336 @@ void testDeepForeachStatementLowering(TestContext& tests)
         "foreach delegates selected candidate shape diagnostics to block lowering");
 }
 
+struct DeepExitValueStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> exits;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<nativesharp::frontend::MethodLoopBreakBinding> breaks;
+    std::vector<nativesharp::frontend::MethodExceptionBinding> exceptions;
+    std::vector<nativesharp::frontend::MethodStructuredExitBinding> structuredExits;
+    const nativesharp::ast::AstNode* root = nullptr;
+    const nativesharp::ast::AstNode* terminal = nullptr;
+};
+
+DeepExitValueStatementFixture makeDeepExitValueStatementFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using ExceptionKind = nativesharp::frontend::MethodExceptionOperationKind;
+    using ExitKind = nativesharp::frontend::MethodStructuredExitKind;
+    DeepExitValueStatementFixture fixture;
+    fixture.nodes.reserve(depth * 3U);
+    fixture.exits.reserve(depth);
+    fixture.loops.reserve(depth > 0U ? depth - 1U : 0U);
+    fixture.breaks.reserve((depth + 2U) / 3U);
+    fixture.exceptions.reserve((depth + 2U) / 3U);
+    fixture.structuredExits.reserve(depth - (depth / 3U));
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    fixture.terminal = append(AstKind::IntegerLiteralExpression);
+    const_cast<nativesharp::ast::AstNode*>(fixture.terminal)->setIntegerValue(17U);
+
+    nativesharp::ast::AstNode* currentValue =
+        const_cast<nativesharp::ast::AstNode*>(fixture.terminal);
+    nativesharp::ast::AstNode* currentExit = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (index != 0U)
+        {
+            auto* body = append(AstKind::BlockStatement);
+            body->addChild(currentExit);
+            auto* loop = append(AstKind::LoopExpression);
+            loop->setFirst(body);
+            nativesharp::frontend::MethodLoopExpressionBinding loopBinding;
+            loopBinding.syntax = loop;
+            loopBinding.methodMemberOrdinal = 0U;
+            loopBinding.scopeOrdinal = index;
+            loopBinding.label = "exit-loop-" + std::to_string(index);
+            loopBinding.resultTypeKey = "builtin:int";
+            fixture.loops.push_back(std::move(loopBinding));
+            currentValue = loop;
+        }
+
+        const AstKind kind = index % 3U == 0U
+            ? AstKind::BreakStatement
+            : (index % 3U == 1U ? AstKind::ReturnStatement : AstKind::ThrowStatement);
+        currentExit = append(kind);
+        currentExit->setFirst(currentValue);
+        fixture.exits.push_back(currentExit);
+
+        if (kind == AstKind::BreakStatement)
+        {
+            currentExit->setText("deep-break");
+            nativesharp::frontend::MethodLoopBreakBinding binding;
+            binding.syntax = currentExit;
+            binding.resultTypeKey = "builtin:int";
+            binding.conversion.kind = ConversionKind::Identity;
+            binding.conversion.sourceTypeKey = "builtin:int";
+            binding.conversion.targetTypeKey = "builtin:int";
+            fixture.breaks.push_back(std::move(binding));
+        }
+        else if (kind == AstKind::ThrowStatement)
+        {
+            nativesharp::frontend::MethodExceptionBinding binding;
+            binding.kind = ExceptionKind::Throw;
+            binding.syntax = currentExit;
+            binding.exceptionTypeKey = "type:H02S16K.Error";
+            binding.exceptionTypeOrdinal = 13U;
+            fixture.exceptions.push_back(std::move(binding));
+        }
+
+        if (kind != AstKind::ThrowStatement)
+        {
+            nativesharp::frontend::MethodStructuredExitBinding binding;
+            binding.kind = kind == AstKind::BreakStatement
+                ? ExitKind::Break : ExitKind::Return;
+            binding.syntax = currentExit;
+            binding.targetScopeOrdinal = 11U;
+            binding.cleanupRegionOrdinals = {9U, 7U};
+            fixture.structuredExits.push_back(std::move(binding));
+        }
+    }
+    fixture.root = currentExit;
+    return fixture;
+}
+
+bool deepExitValueStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepExitValueStatementFixture& fixture)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ContinuationKind = nativesharp::frontend::MethodCleanupContinuationKind;
+    for (std::size_t remaining = fixture.exits.size(); remaining > 0U; --remaining)
+    {
+        const std::size_t index = remaining - 1U;
+        const nativesharp::ast::AstNode* syntax = fixture.exits[index];
+        if (node == nullptr || node->syntax != syntax || node->children.size() != 1U)
+            return false;
+        if (syntax->kind() == AstKind::BreakStatement)
+        {
+            if (node->kind != HirKind::Break || node->typeKey != "builtin:void" ||
+                node->stringValue != "deep-break" ||
+                node->elementTypeKey != "builtin:int" ||
+                node->cleanupContinuationKind != ContinuationKind::Break ||
+                node->targetScopeOrdinal != 11U ||
+                node->cleanupRegionOrdinals != std::vector<std::size_t>({9U, 7U}))
+                return false;
+        }
+        else if (syntax->kind() == AstKind::ReturnStatement)
+        {
+            if (node->kind != HirKind::Return || node->typeKey != "builtin:void" ||
+                node->cleanupContinuationKind != ContinuationKind::Return ||
+                node->targetScopeOrdinal != 11U ||
+                node->cleanupRegionOrdinals != std::vector<std::size_t>({9U, 7U}))
+                return false;
+        }
+        else if (node->kind != HirKind::Throw ||
+            node->typeKey != "type:H02S16K.Error" ||
+            node->exceptionTypeOrdinal != 13U ||
+            node->cleanupContinuationKind != ContinuationKind::Exception ||
+            node->exceptionTargetRegionOrdinal != 17U ||
+            node->cleanupRegionOrdinals != std::vector<std::size_t>({5U, 3U}))
+        {
+            return false;
+        }
+
+        const auto* value = node->children.front().get();
+        if (index == 0U)
+        {
+            return value != nullptr && value->kind == HirKind::IntegerConstant &&
+                value->syntax == fixture.terminal && value->typeKey == "builtin:int" &&
+                value->integerValue == 17U;
+        }
+        if (value == nullptr || value->kind != HirKind::LoopExpression ||
+            value->typeKey != "builtin:int" || value->children.size() != 1U ||
+            value->children.front()->kind != HirKind::Block ||
+            value->children.front()->children.size() != 1U)
+        {
+            return false;
+        }
+        node = value->children.front()->children.front().get();
+    }
+    return false;
+}
+
+void testDeepExitValueStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using BorrowKind = nativesharp::frontend::MethodBorrowKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    nativesharp::frontend::ClassMemberSymbol callable;
+    callable.kind = nativesharp::frontend::ClassMemberKind::Method;
+    callable.name = "ExitValue";
+    callable.signatureKey = "ExitValue()";
+    callable.declaredTypeKey = "builtin:int";
+
+    auto fixture = makeDeepExitValueStatementFixture(nestingDepth);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            model, methodBodyModel, memberModel, fixture.root, {callable},
+            fixture.loops, fixture.breaks, fixture.exceptions,
+            fixture.structuredExits, {}, {{fixture.terminal, &integerType}},
+            {3U, 5U}, std::pair<std::size_t, std::size_t>{17U, 0U}, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 mixed exit-value edges lower on one worklist (" + error + ")");
+    tests.expect(deepExitValueStatementChainMatches(lowered.get(), fixture),
+        "iterative exit lowering preserves break, return, throw, loop and cleanup contracts");
+    tests.expect(nativesharp::frontend::ProjectOopHirModelTestAccess::
+            activeCleanupDepth(model) == 2U,
+        "exit-value lowering leaves the active cleanup stack unchanged");
+    destroyHirTreeIteratively(lowered);
+
+    const auto makeNode = [](AstKind kind)
+    {
+        return std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{});
+    };
+    auto poison = makeNode(static_cast<AstKind>(0xFFFF));
+    auto missingBreak = makeNode(AstKind::BreakStatement);
+    missingBreak->setFirst(poison.get());
+    ProjectOopHirModel missingBreakModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingBreakBody;
+    nativesharp::frontend::ProjectMemberModel missingBreakMembers;
+    error.clear();
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            missingBreakModel, missingBreakBody, missingBreakMembers,
+            missingBreak.get(), {callable}, {}, {}, {}, {}, {}, {}, {},
+            std::nullopt, error);
+    tests.expect(missing == nullptr &&
+            error == "T07-F05 break value has no loop-expression semantic binding",
+        "break binding failure wins before lowering its value");
+
+    auto invalidReturn = makeNode(AstKind::ReturnStatement);
+    invalidReturn->setFirst(poison.get());
+    ProjectOopHirModel invalidReturnModel;
+    nativesharp::frontend::ProjectMethodBodyModel invalidReturnBody;
+    nativesharp::frontend::ProjectMemberModel invalidReturnMembers;
+    error.clear();
+    missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            invalidReturnModel, invalidReturnBody, invalidReturnMembers,
+            invalidReturn.get(), {}, {}, {}, {}, {}, {}, {}, {},
+            std::nullopt, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 34 return refers to invalid callable",
+        "return callable failure wins before lowering its value");
+
+    auto missingThrow = makeNode(AstKind::ThrowStatement);
+    missingThrow->setFirst(poison.get());
+    ProjectOopHirModel missingThrowModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingThrowBody;
+    nativesharp::frontend::ProjectMemberModel missingThrowMembers;
+    error.clear();
+    missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            missingThrowModel, missingThrowBody, missingThrowMembers,
+            missingThrow.get(), {callable}, {}, {}, {}, {}, {}, {}, {},
+            std::nullopt, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 45.6 throw statement has no Stage 45.2 exception binding",
+        "throw binding failure wins before lowering its value");
+
+    auto literal = makeNode(AstKind::IntegerLiteralExpression);
+    literal->setIntegerValue(29U);
+    auto convertedBreak = makeNode(AstKind::BreakStatement);
+    convertedBreak->setFirst(literal.get());
+    nativesharp::frontend::MethodLoopBreakBinding convertedBinding;
+    convertedBinding.syntax = convertedBreak.get();
+    convertedBinding.resultTypeKey = "builtin:long";
+    convertedBinding.conversion.kind = ConversionKind::Numeric;
+    convertedBinding.conversion.sourceTypeKey = "builtin:int";
+    convertedBinding.conversion.targetTypeKey = "builtin:long";
+    ProjectOopHirModel convertedModel;
+    nativesharp::frontend::ProjectMethodBodyModel convertedBody;
+    nativesharp::frontend::ProjectMemberModel convertedMembers;
+    error.clear();
+    auto converted = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            convertedModel, convertedBody, convertedMembers, convertedBreak.get(),
+            {callable}, {}, {convertedBinding}, {}, {}, {},
+            {{literal.get(), &integerType}}, {}, std::nullopt, error);
+    tests.expect(converted != nullptr && error.empty() &&
+            converted->kind == HirKind::Break &&
+            converted->elementTypeKey == "builtin:long" &&
+            converted->children.size() == 1U &&
+            converted->children.front()->kind == HirKind::Conversion &&
+            converted->children.front()->typeKey == "builtin:long" &&
+            converted->children.front()->children.size() == 1U &&
+            converted->children.front()->children.front()->syntax == literal.get(),
+        "break finalization applies its frozen conversion after lowering the value");
+    destroyHirTreeIteratively(converted);
+
+    auto borrowedReturn = makeNode(AstKind::ReturnStatement);
+    borrowedReturn->setFirst(literal.get());
+    nativesharp::frontend::ClassMemberSymbol borrowedCallable = callable;
+    borrowedCallable.declaredOwnership = nativesharp::sema::OwnershipKind::Borrowed;
+    nativesharp::frontend::MethodBorrowBinding borrow;
+    borrow.kind = BorrowKind::BorrowedLocalToBorrowedReturn;
+    borrow.syntax = literal.get();
+    borrow.sourceLocalOrdinal = 4U;
+    ProjectOopHirModel borrowedModel;
+    nativesharp::frontend::ProjectMethodBodyModel borrowedBody;
+    nativesharp::frontend::ProjectMemberModel borrowedMembers;
+    error.clear();
+    auto borrowed = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            borrowedModel, borrowedBody, borrowedMembers, borrowedReturn.get(),
+            {borrowedCallable}, {}, {}, {}, {}, {borrow},
+            {{literal.get(), &integerType}}, {}, std::nullopt, error);
+    tests.expect(borrowed != nullptr && error.empty() &&
+            borrowed->kind == HirKind::Return && borrowed->children.size() == 1U &&
+            borrowed->children.front()->kind == HirKind::BorrowValue &&
+            borrowed->children.front()->typeKey == "builtin:int" &&
+            borrowed->children.front()->borrowKind == BorrowKind::BorrowedLocalToBorrowedReturn &&
+            borrowed->children.front()->localOrdinal == 4U,
+        "borrowed return finalization preserves frozen borrow provenance");
+    destroyHirTreeIteratively(borrowed);
+
+    borrowedReturn->setFlag(true);
+    ProjectOopHirModel tailModel;
+    nativesharp::frontend::ProjectMethodBodyModel tailBody;
+    nativesharp::frontend::ProjectMemberModel tailMembers;
+    error.clear();
+    auto tail = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            tailModel, tailBody, tailMembers, borrowedReturn.get(), {callable},
+            {}, {}, {}, {}, {}, {{literal.get(), &integerType}}, {},
+            std::nullopt, error);
+    tests.expect(tail == nullptr &&
+            error == "T08-F06 validated must_tail return did not lower to a direct call",
+        "must_tail validation remains after value conversion and borrow handling");
+
+    auto emptyReturn = makeNode(AstKind::ReturnStatement);
+    emptyReturn->setFlag(true);
+    ProjectOopHirModel emptyModel;
+    nativesharp::frontend::ProjectMethodBodyModel emptyBody;
+    nativesharp::frontend::ProjectMemberModel emptyMembers;
+    error.clear();
+    auto empty = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExitValueStatementForTest(
+            emptyModel, emptyBody, emptyMembers, emptyReturn.get(), {}, {}, {},
+            {}, {}, {}, {}, {}, std::nullopt, error);
+    tests.expect(empty != nullptr && error.empty() &&
+            empty->kind == HirKind::Return && empty->children.empty(),
+        "valueless return preserves its historical leaf path without callable validation");
+    destroyHirTreeIteratively(empty);
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -20216,6 +20605,10 @@ int main()
     else if (focusValue == "hir-foreach-statement-depth")
     {
         testDeepForeachStatementLowering(tests);
+    }
+    else if (focusValue == "hir-exit-value-depth")
+    {
+        testDeepExitValueStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
