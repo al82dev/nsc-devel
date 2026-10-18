@@ -560,6 +560,29 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerLoopExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<MethodLoopExpressionBinding>& bindings,
+        const std::vector<std::pair<
+            const ast::AstNode*, const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = bindings;
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0; index < bindings.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[bindings[index].syntax] = index;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerExpression(root, memberOrdinal, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerUserIndexerGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -4408,6 +4431,263 @@ void testDeepDirectCompoundAssignmentLowering(TestContext& tests)
     testDirectCompoundAssignmentContracts(tests);
 }
 
+struct DeepLoopExpressionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> bindings;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typedSyntax;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepLoopExpressionSyntax makeDeepLoopExpressionSyntax(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& terminalType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepLoopExpressionSyntax fixture;
+    fixture.nodes.reserve(depth * 3U + 1U);
+    fixture.bindings.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(17U);
+    fixture.typedSyntax.emplace_back(fixture.nodes.back().get(), &terminalType);
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::ExpressionStatement, nativesharp::SourceRange{}));
+        auto* statement = fixture.nodes.back().get();
+        statement->setFirst(current);
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        auto* block = fixture.nodes.back().get();
+        block->addChild(statement);
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::LoopExpression, nativesharp::SourceRange{}));
+        auto* loop = fixture.nodes.back().get();
+        loop->setFirst(block);
+        fixture.bindings.emplace_back();
+        auto& binding = fixture.bindings.back();
+        binding.syntax = loop;
+        binding.methodMemberOrdinal = 17U;
+        binding.scopeOrdinal = index;
+        binding.label = index % 2U == 0U ? "" : "loop-" + std::to_string(index);
+        binding.resultTypeKey = index % 2U == 0U ? "builtin:int" : "builtin:long";
+        current = loop;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerLoopExpressionFixture(
+    DeepLoopExpressionSyntax& fixture,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::lowerLoopExpression(
+        model,
+        methodBodyModel,
+        fixture.root,
+        fixture.bindings,
+        fixture.typedSyntax,
+        17U,
+        addressContext,
+        error);
+}
+
+bool loopExpressionChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t depth)
+{
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = depth; remaining > 0U; --remaining)
+    {
+        const std::size_t sourceIndex = remaining - 1U;
+        const std::string expectedType = sourceIndex % 2U == 0U
+            ? "builtin:int" : "builtin:long";
+        const std::string expectedLabel = sourceIndex % 2U == 0U
+            ? "" : "loop-" + std::to_string(sourceIndex);
+        if (node == nullptr || node->kind != Kind::LoopExpression ||
+            node->typeKey != expectedType || node->stringValue != expectedLabel ||
+            node->children.size() != 1U)
+            return false;
+        const auto* block = node->children.front().get();
+        if (block->kind != Kind::Block || block->typeKey != "builtin:void" ||
+            block->children.size() != 1U)
+            return false;
+        const auto* statement = block->children.front().get();
+        if (statement->kind != Kind::ExpressionStatement ||
+            statement->typeKey != "builtin:void" || statement->children.size() != 1U)
+            return false;
+        node = statement->children.front().get();
+    }
+    return node != nullptr && node->kind == Kind::IntegerConstant &&
+        node->typeKey == "builtin:int" && node->integerValue == 17U;
+}
+
+void testLoopExpressionContracts(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    std::string error;
+
+    auto addressSyntax = makeDeepLoopExpressionSyntax(1U, integerType);
+    auto lowered = lowerLoopExpressionFixture(addressSyntax, true, error);
+    tests.expect(lowered == nullptr && error ==
+            "a loop expression produces a value, not addressable storage",
+        "iterative loop lowering preserves its exact address-context diagnostic");
+
+    auto missingBindingSyntax = makeDeepLoopExpressionSyntax(1U, integerType);
+    missingBindingSyntax.bindings.clear();
+    error.clear();
+    lowered = lowerLoopExpressionFixture(missingBindingSyntax, false, error);
+    tests.expect(lowered == nullptr &&
+            error == "T07-F05 loop expression has no semantic binding",
+        "iterative loop lowering preserves its exact missing-binding diagnostic");
+
+    auto invalidBodySyntax = makeDeepLoopExpressionSyntax(1U, integerType);
+    auto* invalidLoop = const_cast<nativesharp::ast::AstNode*>(invalidBodySyntax.root);
+    invalidLoop->setFirst(invalidBodySyntax.nodes.front().get());
+    error.clear();
+    lowered = lowerLoopExpressionFixture(invalidBodySyntax, false, error);
+    tests.expect(lowered == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body",
+        "iterative loop lowering preserves its exact non-block-body diagnostic");
+
+    DeepLoopExpressionSyntax blockSyntax;
+    blockSyntax.nodes.reserve(5U);
+    blockSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    blockSyntax.nodes.back()->setIntegerValue(23U);
+    auto* literal = blockSyntax.nodes.back().get();
+    blockSyntax.typedSyntax.emplace_back(literal, &integerType);
+    blockSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ExpressionStatement, nativesharp::SourceRange{}));
+    auto* statement = blockSyntax.nodes.back().get();
+    statement->setFirst(literal);
+    blockSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{}));
+    auto* emptyBlock = blockSyntax.nodes.back().get();
+    blockSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{}));
+    auto* body = blockSyntax.nodes.back().get();
+    body->addChild(emptyBlock);
+    body->addChild(statement);
+    blockSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, nativesharp::SourceRange{}));
+    auto* loop = blockSyntax.nodes.back().get();
+    loop->setFirst(body);
+    blockSyntax.bindings.push_back({loop, 17U, 4U, "outer", "builtin:int"});
+    blockSyntax.root = loop;
+    error.clear();
+    lowered = lowerLoopExpressionFixture(blockSyntax, false, error);
+    const auto* loweredBody = lowered != nullptr && lowered->children.size() == 1U
+        ? lowered->children.front().get() : nullptr;
+    tests.expect(lowered != nullptr && error.empty() && lowered->kind == HirKind::LoopExpression &&
+            lowered->stringValue == "outer" && loweredBody != nullptr &&
+            loweredBody->kind == HirKind::Block && loweredBody->children.size() == 2U &&
+            loweredBody->children[0]->kind == HirKind::Block &&
+            loweredBody->children[0]->children.empty() &&
+            loweredBody->children[1]->kind == HirKind::ExpressionStatement,
+        "iterative loop blocks preserve empty nested blocks and source statement order");
+    destroyHirTreeIteratively(lowered);
+
+    DeepLoopExpressionSyntax cleanupSyntax;
+    cleanupSyntax.nodes.reserve(4U);
+    cleanupSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, nativesharp::SourceRange{}));
+    auto* declaration = cleanupSyntax.nodes.back().get();
+    cleanupSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{}));
+    auto* cleanupBody = cleanupSyntax.nodes.back().get();
+    cleanupBody->addChild(declaration);
+    cleanupSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, nativesharp::SourceRange{}));
+    auto* cleanupLoop = cleanupSyntax.nodes.back().get();
+    cleanupLoop->setFirst(cleanupBody);
+    cleanupSyntax.bindings.push_back({cleanupLoop, 17U, 5U, "cleanup", "builtin:int"});
+    cleanupSyntax.root = cleanupLoop;
+    nativesharp::frontend::ProjectMethodBodyModel cleanupMethod;
+    ProjectOopHirModel cleanupModel;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::configureMatchCleanupLocal(
+        cleanupModel, cleanupMethod, declaration);
+    error.clear();
+    lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerLoopExpression(
+        cleanupModel, cleanupMethod, cleanupSyntax.root, cleanupSyntax.bindings,
+        cleanupSyntax.typedSyntax, 17U, false, error);
+    loweredBody = lowered != nullptr && lowered->children.size() == 1U
+        ? lowered->children.front().get() : nullptr;
+    tests.expect(loweredBody != nullptr && loweredBody->children.size() == 1U &&
+            loweredBody->children.front()->kind == HirKind::LocalDeclaration &&
+            loweredBody->children.front()->cleanupRegionOrdinal == 0U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                cleanupModel) == 0U,
+        "iterative loop blocks activate local cleanup only inside the body and restore it on success");
+    destroyHirTreeIteratively(lowered);
+
+    DeepLoopExpressionSyntax failingSyntax;
+    failingSyntax.nodes.reserve(6U);
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::VariableDeclarationStatement, nativesharp::SourceRange{}));
+    auto* failingDeclaration = failingSyntax.nodes.back().get();
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{}));
+    auto* nestedBody = failingSyntax.nodes.back().get();
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, nativesharp::SourceRange{}));
+    auto* unboundLoop = failingSyntax.nodes.back().get();
+    unboundLoop->setFirst(nestedBody);
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ExpressionStatement, nativesharp::SourceRange{}));
+    auto* failingStatement = failingSyntax.nodes.back().get();
+    failingStatement->setFirst(unboundLoop);
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{}));
+    auto* failingBody = failingSyntax.nodes.back().get();
+    failingBody->addChild(failingDeclaration);
+    failingBody->addChild(failingStatement);
+    failingSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, nativesharp::SourceRange{}));
+    auto* failingLoop = failingSyntax.nodes.back().get();
+    failingLoop->setFirst(failingBody);
+    failingSyntax.bindings.push_back({failingLoop, 17U, 6U, "outer", "builtin:int"});
+    failingSyntax.root = failingLoop;
+    nativesharp::frontend::ProjectMethodBodyModel failingMethod;
+    ProjectOopHirModel failingModel;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::configureMatchCleanupLocal(
+        failingModel, failingMethod, failingDeclaration);
+    error.clear();
+    lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerLoopExpression(
+        failingModel, failingMethod, failingSyntax.root, failingSyntax.bindings,
+        failingSyntax.typedSyntax, 17U, false, error);
+    tests.expect(lowered == nullptr &&
+            error == "T07-F05 loop expression has no semantic binding" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(
+                failingModel) == 0U,
+        "iterative loop blocks restore active cleanup depth on the first nested error");
+}
+
+void testDeepLoopExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    auto syntax = makeDeepLoopExpressionSyntax(nestingDepth, integerType);
+    std::string error;
+    auto lowered = lowerLoopExpressionFixture(syntax, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level loop-block-expression chain lowers on one worklist (" + error + ")");
+    tests.expect(loopExpressionChainMatches(lowered.get(), nestingDepth),
+        "iterative loop lowering preserves every type, label, block and expression-statement edge");
+    destroyHirTreeIteratively(lowered);
+    testLoopExpressionContracts(tests);
+}
+
 struct UserIndexerTarget final
 {
     std::size_t getterOrdinal = 0;
@@ -7121,6 +7401,10 @@ int main()
     {
         testDeepDirectCompoundAssignmentLowering(tests);
     }
+    else if (focusValue == "hir-loop-expression-depth")
+    {
+        testDeepLoopExpressionLowering(tests);
+    }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
         testDeepUserIndexerGetterLowering(tests, root);
@@ -7300,6 +7584,7 @@ int main()
         testDeepExtensionPropertySetterLowering(tests, root);
         testDeepNullConditionalAssignmentLowering(tests, root);
         testDeepDirectCompoundAssignmentLowering(tests);
+        testDeepLoopExpressionLowering(tests);
         testDeepUserIndexerGetterLowering(tests, root);
         testDeepInterpolationHandlerLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);

@@ -131,6 +131,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
     enum class IterativeExpressionKind : std::uint8_t
     {
         ExpressionStatement,
+        LoopExpression,
+        LoopBlock,
+        LoopBlockExpressionStatement,
         OverflowPolicy,
         BuiltinUnary,
         UserUnaryOperator,
@@ -191,6 +194,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodResultPropagationBinding* resultPropagation = nullptr;
         const MethodStructuredExitBinding* structuredExit = nullptr;
         const MethodMoveBinding* move = nullptr;
+        const MethodLoopExpressionBinding* loopExpressionBinding = nullptr;
         const MethodExpressionTypeBinding* operandType = nullptr;
         const MethodMatchExpressionBinding* matchBinding = nullptr;
         const MethodDeconstructionBinding* deconstructionBinding = nullptr;
@@ -200,6 +204,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<HirTuplePatternFrame> deconstructionLeaves;
         std::unique_ptr<ProjectOopHirNode> deconstructionNode;
         std::unique_ptr<ProjectOopHirNode> setterCombinedValue;
+        std::unique_ptr<ProjectOopHirNode> loopBlockNode;
         lexer::TokenKind compoundOperator = lexer::TokenKind::Invalid;
         bool compoundSetter = false;
         std::size_t namespaceFunctionOrdinal = 0U;
@@ -221,10 +226,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool hasOwnedTemporary = false;
         std::vector<language::InterpolationPart> interpolationParts;
     };
+    enum class IterativeInputKind : std::uint8_t
+    {
+        Expression,
+        LoopBlock,
+    };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
         -> std::optional<IterativeExpressionKind>
     {
         if (syntax == nullptr) return std::nullopt;
+        if (syntax->kind() == ast::AstNodeKind::LoopExpression)
+            return IterativeExpressionKind::LoopExpression;
         if (!address && syntax->kind() == ast::AstNodeKind::InterpolatedStringExpression &&
             !syntax->children().empty())
         {
@@ -692,13 +704,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const ast::AstNode* current = expression;
         bool currentAddressContext = addressContext;
         std::size_t currentMemberOrdinal = memberOrdinal;
+        IterativeInputKind currentInputKind = IterativeInputKind::Expression;
+        const std::size_t rootCleanupDepth = activeHirCleanupRegions_.size();
         const auto rollbackMatchCleanups = [&]()
         {
+            bool loopBlockActive = false;
             for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
             {
                 if (frame->kind == IterativeExpressionKind::Match && frame->cleanupActive)
                     activeHirCleanupRegions_.resize(frame->cleanupDepth);
+                if (frame->kind == IterativeExpressionKind::LoopBlock)
+                    loopBlockActive = true;
             }
+            if (loopBlockActive) activeHirCleanupRegions_.resize(rootCleanupDepth);
         };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
@@ -743,18 +761,127 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             }
             return true;
         };
+        enum class LoopBlockAdvance : std::uint8_t
+        {
+            Descend,
+            Complete,
+            Error,
+        };
+        const auto advanceLoopBlock = [&](std::size_t frameIndex) -> LoopBlockAdvance
+        {
+            while (true)
+            {
+                IterativeExpressionFrame& frame = frames[frameIndex];
+                if (frame.armIndex >= frame.syntax->children().size())
+                {
+                    activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                    lowered = std::move(frame.loopBlockNode);
+                    frames.pop_back();
+                    return LoopBlockAdvance::Complete;
+                }
+
+                const ast::AstNode* statement = frame.syntax->children()[frame.armIndex++];
+                if (statement != nullptr &&
+                    statement->kind() == ast::AstNodeKind::BlockStatement)
+                {
+                    current = statement;
+                    currentMemberOrdinal = frame.memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::LoopBlock;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement != nullptr &&
+                    statement->kind() == ast::AstNodeKind::ExpressionStatement)
+                {
+                    IterativeExpressionFrame statementFrame;
+                    statementFrame.kind = IterativeExpressionKind::LoopBlockExpressionStatement;
+                    statementFrame.syntax = statement;
+                    statementFrame.memberOrdinal = frame.memberOrdinal;
+                    frames.push_back(std::move(statementFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+
+                std::unique_ptr<ProjectOopHirNode> statementNode =
+                    lowerStatement(statement, frame.memberOrdinal, error);
+                if (statementNode == nullptr) return LoopBlockAdvance::Error;
+                if (statementNode->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+                    statementNode->cleanupRegionOrdinal.has_value())
+                {
+                    activeHirCleanupRegions_.push_back(
+                        *statementNode->cleanupRegionOrdinal);
+                }
+                frame.loopBlockNode->children.push_back(std::move(statementNode));
+            }
+        };
         while (true)
         {
-            const std::optional<IterativeExpressionKind> currentKind =
-                iterativeKind(current, currentAddressContext);
-            if (currentKind.has_value())
+            if (currentInputKind == IterativeInputKind::LoopBlock)
             {
+                if (current == nullptr || current->kind() != ast::AstNodeKind::BlockStatement)
+                {
+                    error = "Stage 34 OOP HIR requires block statement body";
+                    if (!lastErrorRange_.isValid() && current != nullptr)
+                        lastErrorRange_ = current->range();
+                    rollbackMatchCleanups();
+                    return nullptr;
+                }
+                IterativeExpressionFrame blockFrame;
+                blockFrame.kind = IterativeExpressionKind::LoopBlock;
+                blockFrame.syntax = current;
+                blockFrame.memberOrdinal = currentMemberOrdinal;
+                blockFrame.cleanupDepth = activeHirCleanupRegions_.size();
+                blockFrame.loopBlockNode = makeNode(
+                    ProjectOopHirNodeKind::Block, current, "builtin:void");
+                frames.push_back(std::move(blockFrame));
+                const LoopBlockAdvance advance = advanceLoopBlock(frames.size() - 1U);
+                if (advance == LoopBlockAdvance::Descend) continue;
+                if (advance == LoopBlockAdvance::Error)
+                {
+                    rollbackMatchCleanups();
+                    if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                    return nullptr;
+                }
+            }
+            else
+            {
+                const std::optional<IterativeExpressionKind> currentKind =
+                    iterativeKind(current, currentAddressContext);
+                if (currentKind.has_value())
+                {
                 IterativeExpressionFrame frame;
                 frame.kind = *currentKind;
                 frame.syntax = current;
                 frame.addressContext = currentAddressContext;
                 frame.memberOrdinal = currentMemberOrdinal;
-                if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
+                if (*currentKind == IterativeExpressionKind::LoopExpression)
+                {
+                    if (currentAddressContext)
+                    {
+                        error = "a loop expression produces a value, not addressable storage";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    frame.loopExpressionBinding = methodBodyModel_ != nullptr
+                        ? methodBodyModel_->loopExpressionBinding(current) : nullptr;
+                    if (frame.loopExpressionBinding == nullptr)
+                    {
+                        error = "T07-F05 loop expression has no semantic binding";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    frame.first = makeNode(
+                        ProjectOopHirNodeKind::LoopExpression,
+                        current,
+                        frame.loopExpressionBinding->resultTypeKey);
+                    frame.first->stringValue = frame.loopExpressionBinding->label;
+                }
+                else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
                 {
                     frame.operatorCallBinding = callBinding(current);
                     const ClassMemberSymbol* target = callableSymbol(
@@ -1186,7 +1313,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.stage = 0U;
                 }
                 frames.push_back(std::move(frame));
-                if (*currentKind == IterativeExpressionKind::PropertyGetter)
+                if (*currentKind == IterativeExpressionKind::LoopExpression)
+                    current = current->first();
+                else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
                     current = current->first();
@@ -1239,7 +1368,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->first()->first();
                 else
                     current = current->first();
-                if (*currentKind == IterativeExpressionKind::PropertyGetter)
+                if (*currentKind == IterativeExpressionKind::LoopExpression)
+                {
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::LoopBlock;
+                }
+                else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     currentAddressContext =
                         isStructValueType(frames.back().callTarget.receiverTypeKey) &&
@@ -1353,6 +1487,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     currentAddressContext = false;
                 }
+                if (*currentKind != IterativeExpressionKind::LoopExpression)
+                    currentInputKind = IterativeInputKind::Expression;
                 continue;
             }
 
@@ -1372,11 +1508,49 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     lastErrorRange_ = frames.back().syntax->range();
                 break;
             }
+            }
 
+            currentInputKind = IterativeInputKind::Expression;
             bool descend = false;
             while (!frames.empty())
             {
                 IterativeExpressionFrame& frame = frames.back();
+                if (frame.kind == IterativeExpressionKind::LoopBlockExpressionStatement)
+                {
+                    auto statement = makeNode(
+                        ProjectOopHirNodeKind::ExpressionStatement,
+                        frame.syntax,
+                        "builtin:void");
+                    statement->children.push_back(std::move(lowered));
+                    lowered = std::move(statement);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::LoopBlock)
+                {
+                    frame.loopBlockNode->children.push_back(std::move(lowered));
+                    const ast::AstNode* blockSyntax = frame.syntax;
+                    const LoopBlockAdvance advance = advanceLoopBlock(frames.size() - 1U);
+                    if (advance == LoopBlockAdvance::Error)
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = blockSyntax->range();
+                        return nullptr;
+                    }
+                    if (advance == LoopBlockAdvance::Descend)
+                    {
+                        descend = true;
+                        break;
+                    }
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::LoopExpression)
+                {
+                    frame.first->children.push_back(std::move(lowered));
+                    lowered = std::move(frame.first);
+                    frames.pop_back();
+                    continue;
+                }
                 if (frame.kind == IterativeExpressionKind::ExpressionStatement)
                 {
                     auto statement = makeNode(
@@ -3731,27 +3905,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     switch (expression->kind())
     {
         case ast::AstNodeKind::LoopExpression:
-        {
-            if (addressContext)
-            {
-                error = "a loop expression produces a value, not addressable storage";
-                return nullptr;
-            }
-            const MethodLoopExpressionBinding* binding = methodBodyModel_ != nullptr
-                ? methodBodyModel_->loopExpressionBinding(expression) : nullptr;
-            if (binding == nullptr)
-            {
-                error = "T07-F05 loop expression has no semantic binding";
-                return nullptr;
-            }
-            auto node = makeNode(
-                ProjectOopHirNodeKind::LoopExpression, expression, binding->resultTypeKey);
-            node->stringValue = binding->label;
-            auto body = lowerBlock(expression->first(), memberOrdinal, error);
-            if (body == nullptr) return nullptr;
-            node->children.push_back(std::move(body));
-            return node;
-        }
+            return lowerExpressionWithStatementFrame(
+                expression, memberOrdinal, addressContext, nullptr, error);
         case ast::AstNodeKind::ThisExpression:
         {
             if (currentLambda_ != nullptr)
