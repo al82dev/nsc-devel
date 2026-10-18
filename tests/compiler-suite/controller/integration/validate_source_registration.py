@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -15,6 +16,10 @@ PRODUCT_CPP_PATTERN = re.compile(r"(?<![A-Za-z0-9_])(src/[A-Za-z0-9_./-]+\.cpp)"
 PRODUCT_INCLUDE_PATTERN = re.compile(
     r'^\s*#\s*include\s+"(?:\.\./)+(?P<path>src/[A-Za-z0-9_./-]+\.cpp)"',
     re.MULTILINE,
+)
+LITERAL_CASE_REGISTRATION_PATTERN = re.compile(
+    r'\badd[A-Za-z0-9_]*Case\s*\(\s*registry\s*,\s*"'
+    r'(?P<case_id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9]{3,})"'
 )
 
 
@@ -115,6 +120,29 @@ def _definitions_by_source(suite_root: Path) -> dict[str, list[str]]:
     return dict(definitions)
 
 
+def _active_literal_case_sources(
+    suite_root: Path,
+    definitions: dict[str, list[str]],
+    active: set[str],
+) -> dict[str, set[str]]:
+    cases: dict[str, set[str]] = defaultdict(set)
+    active_sources = {definitions[name][0] for name in active}
+    for relative in sorted(active_sources):
+        text = (suite_root / relative).read_text(encoding="utf-8-sig")
+        for match in LITERAL_CASE_REGISTRATION_PATTERN.finditer(text):
+            cases[match.group("case_id")].add(relative)
+    return dict(cases)
+
+
+def _manifest_case_ids(suite_root: Path) -> set[str]:
+    manifest = suite_root / "manifest/cases.jsonl"
+    return {
+        json.loads(line)["case_id"]
+        for line in manifest.read_text(encoding="utf-8-sig").splitlines()
+        if line.strip()
+    }
+
+
 def _assert_equal(label: str, actual: set[str], expected: set[str]) -> None:
     missing = sorted(expected - actual)
     unexpected = sorted(actual - expected)
@@ -196,6 +224,18 @@ def validate(repository_root: Path, suite_root: Path) -> None:
     if unbuilt_active:
         raise RuntimeError(
             "active registry modules are absent from CMake: " + ", ".join(unbuilt_active)
+        )
+    literal_cases = _active_literal_case_sources(suite_root, definitions, active)
+    manifest_cases = _manifest_case_ids(suite_root)
+    missing_literal_cases = sorted(set(literal_cases) - manifest_cases)
+    if missing_literal_cases:
+        details = ", ".join(
+            f"{case_id} ({'; '.join(sorted(literal_cases[case_id]))})"
+            for case_id in missing_literal_cases
+        )
+        raise RuntimeError(
+            "active literal addCase registrations are absent from cases.jsonl: "
+            + details
         )
     inactive_sources = {
         sources[0] for name, sources in definitions.items() if name not in active
