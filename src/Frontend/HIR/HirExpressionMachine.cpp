@@ -1187,7 +1187,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         auto temporary = makeNode(
                             ProjectOopHirNodeKind::TemporaryAddress,
                             frame.callTarget.receiverSyntax,
-                            frame.callTarget.receiverTypeKey);
+                            std::string(frame.callTarget.receiverTypeKey));
                         temporary->elementTypeKey = frame.callTarget.receiverTypeKey;
                         temporary->children.push_back(std::move(lowered));
                         lowered = std::move(temporary);
