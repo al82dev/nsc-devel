@@ -21,6 +21,15 @@ struct HirCoreOperandCallPlan final
 std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlan(
     MethodCoreOperationKind kind);
 
+struct HirAtomicCallPlan final
+{
+    std::size_t valueArgumentCount;
+    ProjectOopHirNodeKind hirKind;
+};
+
+std::optional<HirAtomicCallPlan> hirAtomicCallPlan(
+    MethodCoreOperationKind kind);
+
 inline std::unique_ptr<ProjectOopHirNode> makeNode(
     ProjectOopHirNodeKind kind,
     const ast::AstNode* syntax,

@@ -33,6 +33,13 @@
 #include <unordered_set>
 #include <vector>
 
+#ifdef InterlockedExchangePointer
+#undef InterlockedExchangePointer
+#endif
+#ifdef InterlockedCompareExchangePointer
+#undef InterlockedCompareExchangePointer
+#endif
+
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess final
@@ -6758,6 +6765,348 @@ void testDeepSpanStringCoreCallLowering(TestContext& tests)
     testCoreOperandPrevalidation(tests);
 }
 
+std::string atomicTypeKey(nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    if (kind == CoreKind::AtomicLoadInt64 || kind == CoreKind::AtomicStoreInt64 ||
+        kind == CoreKind::InterlockedIncrementInt64 ||
+        kind == CoreKind::InterlockedDecrementInt64 || kind == CoreKind::InterlockedAddInt64 ||
+        kind == CoreKind::InterlockedExchangeInt64 ||
+        kind == CoreKind::InterlockedCompareExchangeInt64)
+        return "builtin:long";
+    if (kind == CoreKind::AtomicLoadPointer || kind == CoreKind::AtomicStorePointer ||
+        kind == CoreKind::InterlockedExchangePointer ||
+        kind == CoreKind::InterlockedCompareExchangePointer)
+        return "builtin:nint";
+    return "builtin:int";
+}
+
+void appendAtomicBindings(
+    CoreOperandCallSyntax& fixture,
+    nativesharp::ast::AstNode* call,
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    bool explicitLocation,
+    const nativesharp::ast::AstNode* receiver)
+{
+    appendCoreOperandBindings(fixture, call, kind, atomicTypeKey(kind));
+    auto& core = fixture.cores.back();
+    core.elementTypeKey = atomicTypeKey(kind);
+    if (!explicitLocation) core.implicitFieldMemberOrdinal = 7U;
+    auto& binding = fixture.calls.back();
+    binding.staticCall = explicitLocation;
+    binding.receiverSyntax = receiver;
+}
+
+CoreOperandCallSyntax makeAtomicCallSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    std::size_t valueCount,
+    bool explicitLocation,
+    std::optional<std::uint8_t> successOrder = std::nullopt,
+    std::optional<std::uint8_t> failureOrder = std::nullopt)
+{
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(valueCount + 5U);
+    fixture.cores.reserve(1U);
+    fixture.calls.reserve(1U);
+    fixture.names.reserve(1U);
+    auto* receiver = appendCoreOperandLocal(fixture, atomicTypeKey(kind));
+    auto* call = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    if (explicitLocation) call->addChild(receiver);
+    for (std::size_t index = 0; index < valueCount; ++index)
+        call->addChild(appendCoreOperandInteger(fixture, index + 11U));
+    if (successOrder.has_value())
+        call->addChild(appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression));
+    if (failureOrder.has_value())
+        call->addChild(appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression));
+    appendAtomicBindings(fixture, call, kind, explicitLocation, receiver);
+    fixture.cores.back().atomicMemoryOrder = successOrder;
+    fixture.cores.back().atomicFailureMemoryOrder = failureOrder;
+    fixture.root = call;
+    return fixture;
+}
+
+CoreOperandCallSyntax makeDeepAtomicExchangeSyntax(std::size_t depth)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(depth + 2U);
+    fixture.cores.reserve(depth);
+    fixture.calls.reserve(depth);
+    fixture.names.reserve(1U);
+    auto* receiver = appendCoreOperandLocal(fixture, "type:AtomicInt32");
+    auto* current = appendCoreOperandInteger(fixture, 1U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* call = appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        call->addChild(current);
+        appendAtomicBindings(
+            fixture, call, CoreKind::InterlockedExchangeInt32, false, receiver);
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepAtomicExchangeMatches(const ProjectOopHirNode* node, std::size_t expectedDepth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::CoreInterlockedExchangeInt32)
+    {
+        if (node->typeKey != "builtin:int" || node->children.size() != 2U ||
+            node->children[0]->kind != HirKind::FieldAddress ||
+            node->children[0]->typeKey != "builtin:int" ||
+            node->children[0]->memberOrdinal != 7U ||
+            node->children[0]->children.size() != 1U ||
+            node->children[0]->children.front()->kind != HirKind::LocalValue)
+            return false;
+        ++observedDepth;
+        node = node->children[1].get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::IntegerConstant && node->integerValue == 1U;
+}
+
+void testAtomicMappingTable(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct Mapping final
+    {
+        CoreKind coreKind;
+        HirKind hirKind;
+        std::size_t valueCount;
+    };
+    const std::array<Mapping, 18U> mappings{{
+        {CoreKind::AtomicLoadInt32, HirKind::CoreAtomicLoadInt32, 0U},
+        {CoreKind::AtomicStoreInt32, HirKind::CoreAtomicStoreInt32, 1U},
+        {CoreKind::InterlockedIncrementInt32, HirKind::CoreInterlockedIncrementInt32, 0U},
+        {CoreKind::InterlockedDecrementInt32, HirKind::CoreInterlockedDecrementInt32, 0U},
+        {CoreKind::InterlockedAddInt32, HirKind::CoreInterlockedAddInt32, 1U},
+        {CoreKind::InterlockedExchangeInt32, HirKind::CoreInterlockedExchangeInt32, 1U},
+        {CoreKind::InterlockedCompareExchangeInt32,
+            HirKind::CoreInterlockedCompareExchangeInt32, 2U},
+        {CoreKind::AtomicLoadInt64, HirKind::CoreAtomicLoadInt64, 0U},
+        {CoreKind::AtomicStoreInt64, HirKind::CoreAtomicStoreInt64, 1U},
+        {CoreKind::InterlockedIncrementInt64, HirKind::CoreInterlockedIncrementInt64, 0U},
+        {CoreKind::InterlockedDecrementInt64, HirKind::CoreInterlockedDecrementInt64, 0U},
+        {CoreKind::InterlockedAddInt64, HirKind::CoreInterlockedAddInt64, 1U},
+        {CoreKind::InterlockedExchangeInt64, HirKind::CoreInterlockedExchangeInt64, 1U},
+        {CoreKind::InterlockedCompareExchangeInt64,
+            HirKind::CoreInterlockedCompareExchangeInt64, 2U},
+        {CoreKind::AtomicLoadPointer, HirKind::CoreAtomicLoadPointer, 0U},
+        {CoreKind::AtomicStorePointer, HirKind::CoreAtomicStorePointer, 1U},
+        {CoreKind::InterlockedExchangePointer, HirKind::CoreInterlockedExchangePointer, 1U},
+        {CoreKind::InterlockedCompareExchangePointer,
+            HirKind::CoreInterlockedCompareExchangePointer, 2U},
+    }};
+    std::string error;
+    for (const Mapping& mapping : mappings)
+    {
+        auto fixture = makeAtomicCallSyntax(
+            mapping.coreKind, mapping.valueCount, false);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == mapping.hirKind &&
+                lowered->typeKey == atomicTypeKey(mapping.coreKind) &&
+                lowered->integerValue == 0U &&
+                lowered->children.size() == mapping.valueCount + 1U &&
+                lowered->children.front()->kind == HirKind::FieldAddress &&
+                lowered->children.front()->typeKey == atomicTypeKey(mapping.coreKind),
+            std::string(nativesharp::frontend::methodCoreOperationKindName(mapping.coreKind)) +
+                " preserves its explicit HIR kind, type, and value arity");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+}
+
+void testAtomicExplicitLocationAndOrders(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    auto explicitCall = makeAtomicCallSyntax(
+        CoreKind::InterlockedExchangeInt32, 1U, true);
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = ConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:int";
+    conversion.targetTypeKey = "builtin:int";
+    explicitCall.calls.front().selectedConversions = {conversion, conversion};
+    auto explicitNode = lowerCoreOperandCallFixture(explicitCall, false, error);
+    tests.expect(explicitNode != nullptr && error.empty() &&
+            explicitNode->children.size() == 2U &&
+            explicitNode->children[0]->kind == HirKind::LocalValue &&
+            explicitNode->children[1]->kind == HirKind::Conversion &&
+            explicitNode->children[1]->children.front()->kind == HirKind::IntegerConstant,
+        "explicit Interlocked keeps location direct and applies conversion at shifted index one");
+    destroyHirTreeIteratively(explicitNode);
+
+    error.clear();
+    auto orderedStore = makeAtomicCallSyntax(
+        CoreKind::AtomicStoreInt32, 1U, false, 2U);
+    auto storeNode = lowerCoreOperandCallFixture(orderedStore, false, error);
+    tests.expect(storeNode != nullptr && error.empty() && storeNode->integerValue == 3U &&
+            storeNode->children.size() == 2U,
+        "success MemoryOrder is packed as ABI value plus one and never becomes a HIR child");
+    destroyHirTreeIteratively(storeNode);
+
+    error.clear();
+    auto orderedCompare = makeAtomicCallSyntax(
+        CoreKind::InterlockedCompareExchangeInt64, 2U, false, 3U, 1U);
+    auto compareNode = lowerCoreOperandCallFixture(orderedCompare, false, error);
+    tests.expect(compareNode != nullptr && error.empty() &&
+            compareNode->integerValue == (4U | (2U << 8U)) &&
+            compareNode->children.size() == 3U,
+        "compare-exchange packs failure order in byte one without lowering either order syntax");
+    destroyHirTreeIteratively(compareNode);
+}
+
+void testAtomicFences(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct FenceExpectation final
+    {
+        CoreKind coreKind;
+        HirKind hirKind;
+    };
+    const std::array<FenceExpectation, 2U> fences{{
+        {CoreKind::AtomicThreadFence, HirKind::CoreAtomicThreadFence},
+        {CoreKind::AtomicCompilerFence, HirKind::CoreAtomicCompilerFence},
+    }};
+    std::string error;
+    for (const FenceExpectation& expectation : fences)
+    {
+        CoreOperandCallSyntax fixture;
+        auto* call = appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        call->addChild(appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression));
+        fixture.cores.emplace_back();
+        auto& core = fixture.cores.back();
+        core.syntax = call;
+        core.kind = expectation.coreKind;
+        core.resultTypeKey = "builtin:void";
+        core.atomicMemoryOrder = 4U;
+        fixture.root = call;
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == expectation.hirKind && lowered->typeKey == "builtin:void" &&
+                lowered->integerValue == 5U && lowered->children.empty(),
+            std::string(nativesharp::frontend::methodCoreOperationKindName(
+                expectation.coreKind)) + " remains a zero-child metadata leaf");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    CoreOperandCallSyntax address;
+    auto* addressCall = appendCoreOperandSyntax(
+        address, nativesharp::ast::AstNodeKind::CallExpression);
+    addressCall->addChild(appendCoreOperandInteger(address, 0U));
+    address.cores.emplace_back();
+    address.cores.back().syntax = addressCall;
+    address.cores.back().kind = CoreKind::AtomicThreadFence;
+    address.cores.back().atomicMemoryOrder = 0U;
+    address.root = addressCall;
+    auto addressNode = lowerCoreOperandCallFixture(address, true, error);
+    tests.expect(addressNode == nullptr && error == "AtomicFence result is not addressable",
+        "atomic fence preserves its exact address diagnostic");
+
+    error.clear();
+    CoreOperandCallSyntax invalid;
+    auto* invalidCall = appendCoreOperandSyntax(
+        invalid, nativesharp::ast::AstNodeKind::CallExpression);
+    invalid.cores.emplace_back();
+    invalid.cores.back().syntax = invalidCall;
+    invalid.cores.back().kind = CoreKind::AtomicCompilerFence;
+    invalid.root = invalidCall;
+    auto invalidNode = lowerCoreOperandCallFixture(invalid, false, error);
+    tests.expect(invalidNode == nullptr &&
+            error == "AtomicFence requires exactly one validated compile-time MemoryOrder",
+        "atomic fence preserves its exact folded-order validation diagnostic");
+}
+
+void testAtomicPrevalidation(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto address = makeAtomicCallSyntax(CoreKind::AtomicLoadInt32, 0U, false);
+    auto addressNode = lowerCoreOperandCallFixture(address, true, error);
+    tests.expect(addressNode == nullptr &&
+            error == "Stage 54.2 Atomic operation result is not addressable",
+        "atomic operation rejects address context before lowering its receiver");
+
+    error.clear();
+    auto missingCall = makeAtomicCallSyntax(CoreKind::AtomicLoadInt32, 0U, false);
+    missingCall.calls.clear();
+    auto missingCallNode = lowerCoreOperandCallFixture(missingCall, false, error);
+    tests.expect(missingCallNode == nullptr &&
+            error == "Stage 54.2 Atomic core operation requires a resolved call",
+        "atomic operation rejects a missing call binding before location lowering");
+
+    error.clear();
+    auto invalidExplicit = makeAtomicCallSyntax(
+        CoreKind::InterlockedIncrementInt32, 0U, true);
+    invalidExplicit.calls.front().staticCall = false;
+    auto invalidExplicitNode = lowerCoreOperandCallFixture(invalidExplicit, false, error);
+    tests.expect(invalidExplicitNode == nullptr &&
+            error == "Stage 54.2 Interlocked operation requires an explicit ref location",
+        "Interlocked requires a static call with an explicit ref location");
+
+    error.clear();
+    auto missingReceiver = makeAtomicCallSyntax(CoreKind::AtomicLoadInt32, 0U, false);
+    missingReceiver.calls.front().receiverSyntax = nullptr;
+    auto missingReceiverNode = lowerCoreOperandCallFixture(missingReceiver, false, error);
+    tests.expect(missingReceiverNode == nullptr &&
+            error == "Stage 54.2 Atomic wrapper operation requires a resolved receiver",
+        "atomic wrapper requires its resolved receiver before location lowering");
+
+    error.clear();
+    auto wrongCount = makeAtomicCallSyntax(CoreKind::AtomicStoreInt32, 0U, false);
+    auto wrongCountNode = lowerCoreOperandCallFixture(wrongCount, false, error);
+    tests.expect(wrongCountNode == nullptr && error ==
+            "Stage 54.2 Atomic core operation received an invalid explicit argument count",
+        "atomic count validation runs after lowering a valid wrapper receiver");
+
+    error.clear();
+    auto precedence = makeAtomicCallSyntax(CoreKind::AtomicStoreInt32, 0U, false);
+    auto* sentinel = appendCoreOperandSyntax(
+        precedence, nativesharp::ast::AstNodeKind::CallExpression);
+    precedence.calls.front().receiverSyntax = sentinel;
+    precedence.cores.emplace_back();
+    precedence.cores.back().syntax = sentinel;
+    precedence.cores.back().kind = CoreKind::StringConcat;
+    precedence.cores.back().resultTypeKey = "builtin:string";
+    auto precedenceNode = lowerCoreOperandCallFixture(precedence, false, error);
+    tests.expect(precedenceNode == nullptr &&
+            error == "Stage 51 string intrinsic requires a resolved Core.String call",
+        "an invalid location diagnostic precedes atomic explicit-argument count validation");
+}
+
+void testDeepAtomicInterlockedCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::string error;
+    auto fixture = makeDeepAtomicExchangeSyntax(nestingDepth);
+    auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a valid 32768-level AtomicInt32.Exchange chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(deepAtomicExchangeMatches(lowered.get(), nestingDepth),
+        "atomic frames preserve FieldAddress, receiver, value order, ordinal, and type at every level");
+    destroyHirTreeIteratively(lowered);
+
+    testAtomicMappingTable(tests);
+    testAtomicExplicitLocationAndOrders(tests);
+    testAtomicFences(tests);
+    testAtomicPrevalidation(tests);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -10782,6 +11131,10 @@ int main()
     {
         testDeepSpanStringCoreCallLowering(tests);
     }
+    else if (focusValue == "hir-atomic-interlocked-call-depth")
+    {
+        testDeepAtomicInterlockedCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -10993,6 +11346,7 @@ int main()
         testDeepPanicAssertCallLowering(tests);
         testDeepIteratorCoreCallLowering(tests);
         testDeepSpanStringCoreCallLowering(tests);
+        testDeepAtomicInterlockedCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

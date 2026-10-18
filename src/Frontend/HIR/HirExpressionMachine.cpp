@@ -174,6 +174,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         AssertionCore,
         IteratorCoreCall,
         CoreOperandCall,
+        AtomicCoreCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -261,6 +262,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::size_t nextOperand = 0U;
         bool appliesConversions = false;
     };
+    enum class AtomicCoreCallFrameStage : std::uint8_t
+    {
+        Location,
+        Values,
+        Ready,
+    };
+    struct AtomicCoreCallFrameState final
+    {
+        const MethodCallBinding* binding = nullptr;
+        HirAtomicCallPlan plan{};
+        std::unique_ptr<ProjectOopHirNode> node;
+        const ast::AstNode* locationSyntax = nullptr;
+        AtomicCoreCallFrameStage stage = AtomicCoreCallFrameStage::Location;
+        std::size_t argumentOffset = 0U;
+        std::size_t nextValue = 0U;
+        bool explicitLocation = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -279,6 +297,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<EventInvokeFrameState> eventInvoke;
         std::optional<DelegateInvokeFrameState> delegateInvoke;
         std::optional<CoreOperandCallFrameState> coreOperandCall;
+        std::optional<AtomicCoreCallFrameState> atomicCoreCall;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -434,6 +453,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 if (plan.has_value() && !directZeroOperandLeaf)
                     return IterativeExpressionKind::CoreOperandCall;
             }
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* atomicCore = coreBinding(syntax);
+            if (atomicCore != nullptr && hirAtomicCallPlan(atomicCore->kind).has_value())
+                return IterativeExpressionKind::AtomicCoreCall;
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -1665,6 +1690,131 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             }
             call.node->children.push_back(std::move(child));
         };
+        const auto initializeAtomicCoreCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            const std::optional<HirAtomicCallPlan> plan =
+                hirAtomicCallPlan(frame.core->kind);
+            if (!plan.has_value())
+            {
+                error = "Stage 34 atomic core call escaped iterative classification";
+                return false;
+            }
+            if (frame.addressContext)
+            {
+                error = "Stage 54.2 Atomic operation result is not addressable";
+                return false;
+            }
+            AtomicCoreCallFrameState call;
+            call.binding = callBinding(frame.syntax);
+            if (call.binding == nullptr)
+            {
+                error = "Stage 54.2 Atomic core operation requires a resolved call";
+                return false;
+            }
+            call.plan = *plan;
+            call.explicitLocation = !frame.core->implicitFieldMemberOrdinal.has_value();
+            call.argumentOffset = call.explicitLocation ? 1U : 0U;
+            if (call.explicitLocation)
+            {
+                if (!call.binding->staticCall || frame.syntax->children().empty())
+                {
+                    error = "Stage 54.2 Interlocked operation requires an explicit ref location";
+                    return false;
+                }
+                call.locationSyntax = frame.syntax->children().front();
+            }
+            else
+            {
+                if (call.binding->receiverSyntax == nullptr)
+                {
+                    error = "Stage 54.2 Atomic wrapper operation requires a resolved receiver";
+                    return false;
+                }
+                call.locationSyntax = call.binding->receiverSyntax;
+            }
+            frame.atomicCoreCall.emplace(std::move(call));
+            return true;
+        };
+        struct AtomicCoreCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+        };
+        const auto nextAtomicCoreCallChild = [](const IterativeExpressionFrame& frame)
+            -> std::optional<AtomicCoreCallChild>
+        {
+            const AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
+            if (call.stage == AtomicCoreCallFrameStage::Location)
+                return AtomicCoreCallChild{call.locationSyntax};
+            if (call.stage == AtomicCoreCallFrameStage::Values &&
+                call.nextValue < call.plan.valueArgumentCount)
+            {
+                return AtomicCoreCallChild{
+                    frame.syntax->children()[call.argumentOffset + call.nextValue]};
+            }
+            return std::nullopt;
+        };
+        const auto acceptAtomicCoreCallChild = [&](IterativeExpressionFrame& frame,
+                                                   std::unique_ptr<ProjectOopHirNode> child)
+            -> bool
+        {
+            AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
+            if (call.stage == AtomicCoreCallFrameStage::Location)
+            {
+                if (!call.explicitLocation)
+                {
+                    auto location = makeNode(
+                        ProjectOopHirNodeKind::FieldAddress,
+                        frame.syntax,
+                        frame.core->elementTypeKey);
+                    location->memberOrdinal = *frame.core->implicitFieldMemberOrdinal;
+                    location->children.push_back(std::move(child));
+                    child = std::move(location);
+                }
+                const std::size_t expectedExplicitArguments =
+                    call.argumentOffset + call.plan.valueArgumentCount +
+                    (frame.core->atomicMemoryOrder.has_value() ? 1U : 0U) +
+                    (frame.core->atomicFailureMemoryOrder.has_value() ? 1U : 0U);
+                if (frame.syntax->children().size() != expectedExplicitArguments)
+                {
+                    error =
+                        "Stage 54.2 Atomic core operation received an invalid explicit argument count";
+                    return false;
+                }
+                call.node = makeNode(call.plan.hirKind, frame.syntax, frame.core->resultTypeKey);
+                if (frame.core->atomicMemoryOrder.has_value())
+                {
+                    call.node->integerValue =
+                        static_cast<std::uint64_t>(*frame.core->atomicMemoryOrder) + 1U;
+                    if (frame.core->atomicFailureMemoryOrder.has_value())
+                    {
+                        call.node->integerValue |=
+                            (static_cast<std::uint64_t>(
+                                *frame.core->atomicFailureMemoryOrder) + 1U) << 8U;
+                    }
+                }
+                call.node->children.push_back(std::move(child));
+                call.stage = call.plan.valueArgumentCount == 0U
+                    ? AtomicCoreCallFrameStage::Ready
+                    : AtomicCoreCallFrameStage::Values;
+                return true;
+            }
+
+            const std::size_t sourceIndex = call.argumentOffset + call.nextValue++;
+            if (sourceIndex < call.binding->selectedConversions.size() &&
+                call.binding->selectedConversions[sourceIndex].kind !=
+                    ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    call.binding->selectedConversions[sourceIndex],
+                    frame.syntax->children()[sourceIndex]);
+            }
+            call.node->children.push_back(std::move(child));
+            if (call.nextValue == call.plan.valueArgumentCount)
+                call.stage = AtomicCoreCallFrameStage::Ready;
+            return true;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1937,6 +2087,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::CoreOperandCall)
                 {
                     if (!initializeCoreOperandCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
+                {
+                    if (!initializeAtomicCoreCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2468,6 +2627,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = child->addressContext;
                 }
+                else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
+                {
+                    const std::optional<AtomicCoreCallChild> child =
+                        nextAtomicCoreCallChild(frames.back());
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 atomic core-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = false;
+                }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
                     current = frames.back().receiverFrame.syntax;
@@ -2614,6 +2787,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::CoreOperandCall)
                 {
                     // The core-operand frame selected value versus address context above.
+                }
+                else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
+                {
+                    // Atomic locations and values are already resolved value expressions.
                 }
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
@@ -3443,6 +3620,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         current = child->syntax;
                         currentMemberOrdinal = frame.memberOrdinal;
                         currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = std::move(call.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::AtomicCoreCall)
+                {
+                    if (!acceptAtomicCoreCallChild(frame, std::move(lowered)))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
+                    const std::optional<AtomicCoreCallChild> child =
+                        nextAtomicCoreCallChild(frame);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
                         descend = true;
                         break;
                     }

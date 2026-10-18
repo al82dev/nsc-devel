@@ -439,6 +439,47 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlan(
     return hirCoreOperandCallPlanImpl(kind);
 }
 
+std::optional<HirAtomicCallPlan> hirAtomicCallPlan(MethodCoreOperationKind kind)
+{
+    if (kind == MethodCoreOperationKind::AtomicLoadInt32)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreAtomicLoadInt32};
+    if (kind == MethodCoreOperationKind::AtomicStoreInt32)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreAtomicStoreInt32};
+    if (kind == MethodCoreOperationKind::InterlockedIncrementInt32)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreInterlockedIncrementInt32};
+    if (kind == MethodCoreOperationKind::InterlockedDecrementInt32)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreInterlockedDecrementInt32};
+    if (kind == MethodCoreOperationKind::InterlockedAddInt32)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreInterlockedAddInt32};
+    if (kind == MethodCoreOperationKind::InterlockedExchangeInt32)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreInterlockedExchangeInt32};
+    if (kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32)
+        return HirAtomicCallPlan{2U, ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32};
+    if (kind == MethodCoreOperationKind::AtomicLoadInt64)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreAtomicLoadInt64};
+    if (kind == MethodCoreOperationKind::AtomicStoreInt64)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreAtomicStoreInt64};
+    if (kind == MethodCoreOperationKind::InterlockedIncrementInt64)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreInterlockedIncrementInt64};
+    if (kind == MethodCoreOperationKind::InterlockedDecrementInt64)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreInterlockedDecrementInt64};
+    if (kind == MethodCoreOperationKind::InterlockedAddInt64)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreInterlockedAddInt64};
+    if (kind == MethodCoreOperationKind::InterlockedExchangeInt64)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreInterlockedExchangeInt64};
+    if (kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64)
+        return HirAtomicCallPlan{2U, ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64};
+    if (kind == MethodCoreOperationKind::AtomicLoadPointer)
+        return HirAtomicCallPlan{0U, ProjectOopHirNodeKind::CoreAtomicLoadPointer};
+    if (kind == MethodCoreOperationKind::AtomicStorePointer)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreAtomicStorePointer};
+    if (kind == MethodCoreOperationKind::InterlockedExchangePointer)
+        return HirAtomicCallPlan{1U, ProjectOopHirNodeKind::CoreInterlockedExchangePointer};
+    if (kind == MethodCoreOperationKind::InterlockedCompareExchangePointer)
+        return HirAtomicCallPlan{2U, ProjectOopHirNodeKind::CoreInterlockedCompareExchangePointer};
+    return std::nullopt;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -1224,25 +1265,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     // explicit first `ref T` argument, whose parsed address-of expression lowers directly
     // to the location pointer. Both forms deliberately converge here on the same core HIR
     // nodes, so MIR and LLVM have one ordering/ABI implementation.
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::AtomicLoadInt32 ||
-         core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
-         core->kind == MethodCoreOperationKind::InterlockedIncrementInt32 ||
-         core->kind == MethodCoreOperationKind::InterlockedDecrementInt32 ||
-         core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
-         core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
-         core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
-         core->kind == MethodCoreOperationKind::AtomicLoadInt64 ||
-         core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
-         core->kind == MethodCoreOperationKind::InterlockedIncrementInt64 ||
-         core->kind == MethodCoreOperationKind::InterlockedDecrementInt64 ||
-         core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
-         core->kind == MethodCoreOperationKind::InterlockedExchangeInt64 ||
-         core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64 ||
-         core->kind == MethodCoreOperationKind::AtomicLoadPointer ||
-         core->kind == MethodCoreOperationKind::AtomicStorePointer ||
-         core->kind == MethodCoreOperationKind::InterlockedExchangePointer ||
-         core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer))
+    if (core != nullptr && hirAtomicCallPlan(core->kind).has_value())
     {
         if (addressContext)
         {
@@ -1255,112 +1278,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "Stage 54.2 Atomic core operation requires a resolved call";
             return nullptr;
         }
-        const bool explicitLocation = !core->implicitFieldMemberOrdinal.has_value();
-        const std::size_t argumentOffset = explicitLocation ? 1U : 0U;
-        std::unique_ptr<ProjectOopHirNode> location;
-        if (explicitLocation)
-        {
-            if (!call->staticCall || expression->children().empty())
-            {
-                error = "Stage 54.2 Interlocked operation requires an explicit ref location";
-                return nullptr;
-            }
-            location = lowerExpression(expression->children().front(), memberOrdinal, false, error);
-            if (location == nullptr) return nullptr;
-        }
-        else
-        {
-            if (call->receiverSyntax == nullptr)
-            {
-                error = "Stage 54.2 Atomic wrapper operation requires a resolved receiver";
-                return nullptr;
-            }
-            auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
-            if (receiver == nullptr) return nullptr;
-            location = makeNode(
-                ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
-            location->memberOrdinal = *core->implicitFieldMemberOrdinal;
-            location->children.push_back(std::move(receiver));
-        }
-
-        std::size_t expectedValueArguments = 0U;
-        if (core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
-            core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
-            core->kind == MethodCoreOperationKind::AtomicStorePointer ||
-            core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
-            core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
-            core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
-            core->kind == MethodCoreOperationKind::InterlockedExchangeInt64 ||
-            core->kind == MethodCoreOperationKind::InterlockedExchangePointer)
-        {
-            expectedValueArguments = 1U;
-        }
-        else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
-            core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64 ||
-            core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer)
-        {
-            expectedValueArguments = 2U;
-        }
-        const std::size_t expectedExplicitArguments = argumentOffset + expectedValueArguments +
-            (core->atomicMemoryOrder.has_value() ? 1U : 0U) +
-            (core->atomicFailureMemoryOrder.has_value() ? 1U : 0U);
-        if (expression->children().size() != expectedExplicitArguments)
-        {
-            error = "Stage 54.2 Atomic core operation received an invalid explicit argument count";
-            return nullptr;
-        }
-
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreAtomicLoadInt32;
-        if (core->kind == MethodCoreOperationKind::AtomicLoadInt32) kind = ProjectOopHirNodeKind::CoreAtomicLoadInt32;
-        else if (core->kind == MethodCoreOperationKind::AtomicStoreInt32) kind = ProjectOopHirNodeKind::CoreAtomicStoreInt32;
-        else if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
-        else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt32;
-        else if (core->kind == MethodCoreOperationKind::InterlockedAddInt32) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt32;
-        else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt32;
-        else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32;
-        else if (core->kind == MethodCoreOperationKind::AtomicLoadInt64) kind = ProjectOopHirNodeKind::CoreAtomicLoadInt64;
-        else if (core->kind == MethodCoreOperationKind::AtomicStoreInt64) kind = ProjectOopHirNodeKind::CoreAtomicStoreInt64;
-        else if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt64;
-        else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt64;
-        else if (core->kind == MethodCoreOperationKind::InterlockedAddInt64) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt64;
-        else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt64;
-        else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64;
-        else if (core->kind == MethodCoreOperationKind::AtomicLoadPointer) kind = ProjectOopHirNodeKind::CoreAtomicLoadPointer;
-        else if (core->kind == MethodCoreOperationKind::AtomicStorePointer) kind = ProjectOopHirNodeKind::CoreAtomicStorePointer;
-        else if (core->kind == MethodCoreOperationKind::InterlockedExchangePointer) kind = ProjectOopHirNodeKind::CoreInterlockedExchangePointer;
-        else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangePointer;
-
-        auto node = makeNode(kind, expression, core->resultTypeKey);
-        if (core->atomicMemoryOrder.has_value())
-        {
-            // Zero means "legacy overload" on the MIR node, so ordered values are carried
-            // as ABI value + 1. LLVM lowering performs the explicit NativeSharp->LLVM map.
-            node->integerValue =
-                static_cast<std::uint64_t>(*core->atomicMemoryOrder) + 1U;
-            if (core->atomicFailureMemoryOrder.has_value())
-            {
-                // CompareExchange packs its independent failure order in the next byte.
-                // This is internal HIR/MIR metadata, not part of the public enum ABI.
-                node->integerValue |=
-                    (static_cast<std::uint64_t>(*core->atomicFailureMemoryOrder) + 1U) << 8U;
-            }
-        }
-        node->children.push_back(std::move(location));
-        for (std::size_t index = 0; index < expectedValueArguments; ++index)
-        {
-            const std::size_t sourceIndex = argumentOffset + index;
-            const ast::AstNode* argumentSyntax = expression->children()[sourceIndex];
-            auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            if (sourceIndex < call->selectedConversions.size() &&
-                call->selectedConversions[sourceIndex].kind != ProjectConversionKind::Identity)
-            {
-                argument = wrapImplicitConversion(
-                    std::move(argument), call->selectedConversions[sourceIndex], argumentSyntax);
-            }
-            node->children.push_back(std::move(argument));
-        }
-        return node;
+        error = "Stage 34 atomic core call escaped iterative lowering";
+        return nullptr;
     }
     // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor's five
     // instance methods. Enter/Exit/Pulse/PulseAll rejoin the EXACT same "one implicit
