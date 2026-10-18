@@ -5,6 +5,7 @@
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -43,7 +44,9 @@ public:
         const source::SourceManager& sourceManager,
         DebugInformationKind debugInformation,
         LlvmOptimizationLevel optimizationLevel,
-        std::span<const DebugPrefixMap> debugPrefixMaps = {});
+        std::span<const DebugPrefixMap> debugPrefixMaps = {},
+        std::span<const std::uint8_t> reachableDefinitions = {},
+        std::span<const std::uint8_t> staticFieldDeclarations = {});
 
     static ProjectOopLlvmLoweringRequest partition(
         const frontend::ProjectNameLookup& nameLookup,
@@ -56,7 +59,9 @@ public:
         bool ownsModuleGlobals,
         std::string_view moduleName,
         std::span<const DebugPrefixMap> debugPrefixMaps = {},
-        std::span<const std::size_t> declarationOrdinals = {});
+        std::span<const std::size_t> declarationOrdinals = {},
+        std::span<const std::uint8_t> reachableDefinitions = {},
+        std::span<const std::uint8_t> staticFieldDeclarations = {});
 
 private:
     friend class ProjectOopLlvmLowerer;
@@ -69,6 +74,8 @@ private:
     std::span<const DebugPrefixMap> debugPrefixMaps_;
     std::span<const std::size_t> functionOrdinals_;
     std::span<const std::size_t> declarationOrdinals_;
+    std::span<const std::uint8_t> reachableDefinitions_;
+    std::span<const std::uint8_t> staticFieldDeclarations_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
     std::string_view moduleName_ = "NativeSharp.Stage34.OOP";

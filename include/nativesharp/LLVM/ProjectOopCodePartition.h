@@ -42,12 +42,14 @@ public:
         std::size_t requestedUnitCount,
         std::string& error,
         ProjectOopCodePartitionPolicy policy = ProjectOopCodePartitionPolicy::Balanced,
-        std::string_view cachedPlan = {});
+        std::string_view cachedPlan = {},
+        std::span<const std::uint8_t> reachableDefinitions = {});
 
     // NSC305-L05. The key excludes bodies so a body-only edit can restore the same balanced plan.
     static std::string persistentPlanKey(
         const frontend::ProjectOopMirModel& mirModel,
-        std::size_t requestedUnitCount);
+        std::size_t requestedUnitCount,
+        std::span<const std::uint8_t> reachableDefinitions = {});
 
     std::span<const ProjectOopCodeUnit> units() const noexcept;
     std::optional<std::size_t> unitForFunction(std::size_t functionOrdinal) const noexcept;

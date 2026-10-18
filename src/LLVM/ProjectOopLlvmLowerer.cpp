@@ -1315,6 +1315,8 @@ public:
         bool ownsModuleGlobals = true,
         std::span<const std::size_t> functionOrdinals = {},
         std::span<const std::size_t> declarationOrdinals = {},
+        std::span<const std::uint8_t> reachableDefinitions = {},
+        std::span<const std::uint8_t> staticFieldDeclarations = {},
         std::string_view moduleName = "NativeSharp.Stage34.OOP")
         : nameLookup_(nameLookup),
           memberModel_(memberModel),
@@ -1325,12 +1327,22 @@ public:
           debugPrefixMaps_(debugPrefixMaps.begin(), debugPrefixMaps.end()),
           partitioned_(partitioned),
           ownsModuleGlobals_(ownsModuleGlobals),
-          reachableDefinitions_(projectOopReachableDefinitionMask(mirModel)),
+          ownedReachableDefinitions_(reachableDefinitions.empty()
+                  ? projectOopReachableDefinitionMask(mirModel)
+                  : std::vector<std::uint8_t>{}),
+          reachableDefinitions_(reachableDefinitions.empty()
+                  ? std::span<const std::uint8_t>(ownedReachableDefinitions_)
+                  : reachableDefinitions),
           functionDefinitions_(mirModel.functions().size(), false),
           functionDeclarations_(mirModel.functions().size(), false),
           restrictFunctionDeclarations_(!declarationOrdinals.empty()),
-          staticFieldDeclarations_(projectOopStaticFieldDeclarationMask(
-              mirModel, functionOrdinals, partitioned, ownsModuleGlobals)),
+          ownedStaticFieldDeclarations_(staticFieldDeclarations.empty()
+                  ? projectOopStaticFieldDeclarationMask(
+                        mirModel, functionOrdinals, partitioned, ownsModuleGlobals)
+                  : std::vector<std::uint8_t>{}),
+          staticFieldDeclarations_(staticFieldDeclarations.empty()
+                  ? std::span<const std::uint8_t>(ownedStaticFieldDeclarations_)
+                  : staticFieldDeclarations),
           moduleName_(moduleName)
     {
         for (const std::size_t ordinal : functionOrdinals)
@@ -22459,11 +22471,13 @@ private:
     std::vector<DebugPrefixMap> debugPrefixMaps_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
-    std::vector<std::uint8_t> reachableDefinitions_;
+    std::vector<std::uint8_t> ownedReachableDefinitions_;
+    std::span<const std::uint8_t> reachableDefinitions_;
     std::vector<bool> functionDefinitions_;
     std::vector<bool> functionDeclarations_;
     bool restrictFunctionDeclarations_ = false;
-    std::vector<std::uint8_t> staticFieldDeclarations_;
+    std::vector<std::uint8_t> ownedStaticFieldDeclarations_;
+    std::span<const std::uint8_t> staticFieldDeclarations_;
     inline static std::once_flag loweringTraceReset_;
     inline static std::mutex loweringTraceMutex_;
     std::string moduleName_;
@@ -22826,7 +22840,9 @@ ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::withDebug(
     const source::SourceManager& sourceManager,
     DebugInformationKind debugInformation,
     LlvmOptimizationLevel optimizationLevel,
-    std::span<const DebugPrefixMap> debugPrefixMaps)
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::uint8_t> reachableDefinitions,
+    std::span<const std::uint8_t> staticFieldDeclarations)
 {
     ProjectOopLlvmLoweringRequest request = withoutDebug(nameLookup, mirModel);
     request.memberModel_ = &memberModel;
@@ -22834,6 +22850,8 @@ ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::withDebug(
     request.debugInformation_ = debugInformation;
     request.optimizationLevel_ = optimizationLevel;
     request.debugPrefixMaps_ = debugPrefixMaps;
+    request.reachableDefinitions_ = reachableDefinitions;
+    request.staticFieldDeclarations_ = staticFieldDeclarations;
     return request;
 }
 
@@ -22848,14 +22866,19 @@ ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::partition(
     bool ownsModuleGlobals,
     std::string_view moduleName,
     std::span<const DebugPrefixMap> debugPrefixMaps,
-    std::span<const std::size_t> declarationOrdinals)
+    std::span<const std::size_t> declarationOrdinals,
+    std::span<const std::uint8_t> reachableDefinitions,
+    std::span<const std::uint8_t> staticFieldDeclarations)
 {
     ProjectOopLlvmLoweringRequest request = withDebug(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-        optimizationLevel, debugPrefixMaps);
+        optimizationLevel, debugPrefixMaps, reachableDefinitions,
+        staticFieldDeclarations);
     request.partitioned_ = true;
     request.functionOrdinals_ = functionOrdinals;
     request.declarationOrdinals_ = declarationOrdinals;
+    request.reachableDefinitions_ = reachableDefinitions;
+    request.staticFieldDeclarations_ = staticFieldDeclarations;
     request.ownsModuleGlobals_ = ownsModuleGlobals;
     request.moduleName_ = moduleName;
     return request;
@@ -22893,7 +22916,8 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
         *request.nameLookup_, request.memberModel_, *request.mirModel_, request.sourceManager_,
         request.debugInformation_, request.optimizationLevel_, request.debugPrefixMaps_,
         request.partitioned_, request.ownsModuleGlobals_, request.functionOrdinals_,
-        request.declarationOrdinals_,
+        request.declarationOrdinals_, request.reachableDefinitions_,
+        request.staticFieldDeclarations_,
         request.moduleName_);
     if (!implementation.lower(error_)) return nullptr;
     return std::unique_ptr<LlvmModule>(

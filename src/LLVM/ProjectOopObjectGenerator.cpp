@@ -4,6 +4,7 @@
 #include "nativesharp/LLVM/FloatingPointMode.h"
 
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/LLVM/CodegenIdentity.h"
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -112,24 +113,45 @@ private:
     std::chrono::steady_clock::time_point started_;
 };
 
+struct ColdLlvmPreambleTelemetry final
+{
+    std::uint64_t reachabilityMicros = 0;
+    std::uint64_t partitionKeyMicros = 0;
+    std::uint64_t partitionRestoreMicros = 0;
+    std::uint64_t partitionBuildMicros = 0;
+    std::uint64_t coordinatorClosureMicros = 0;
+    std::uint64_t identityIndexBuildMicros = 0;
+    std::uint64_t lineTableIdentityMicros = 0;
+    std::uint64_t moduleKeyComposeMicros = 0;
+    std::uint64_t staticFieldMaskMicros = 0;
+    std::uint64_t workerWallMicros = 0;
+    std::uint64_t planStoreMicros = 0;
+};
+
 // INSTRUMENTATION CODE: NSC305-L06. Temporary, file-backed attribution for GUI builds that
 // cannot add --time. Keep this marker until the real-project cold LLVM bottleneck is corrected.
 class ColdLlvmTrace final
 {
 public:
     ColdLlvmTrace(
+        std::string_view codegenIdentity,
+        std::string_view projectFingerprint,
         DebugInformationKind debugInformation,
         LlvmOptimizationLevel optimization,
         std::size_t moduleCount,
         bool partitioned,
         bool preLlvmCache,
-        CachePruneTelemetry pruneTelemetry)
+        CachePruneTelemetry pruneTelemetry,
+        const ColdLlvmPreambleTelemetry& preamble)
         : output_(R"(A:\temp\nsc-llvm-code-unit-timing.log)",
-              std::ios::binary | std::ios::trunc)
+              std::ios::binary | std::ios::trunc),
+          preamble_(preamble)
     {
         if (!output_) return;
-        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=3\n"
-                << "debug=" << debugInformationKindName(debugInformation)
+        output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=4\n"
+                << "codegen-id=" << codegenIdentity
+                << " project=" << projectFingerprint
+                << " debug=" << debugInformationKindName(debugInformation)
                 << " optimization=" << llvmOptimizationLevelName(optimization)
                 << " modules=" << moduleCount
                 << " partitioned=" << (partitioned ? 1 : 0)
@@ -140,6 +162,25 @@ public:
                 << " prune-bytes=" << pruneTelemetry.inspectedBytes
                 << " prune-evicted-entries=" << pruneTelemetry.evictedEntries
                 << " prune-evicted-bytes=" << pruneTelemetry.evictedBytes << '\n';
+        output_.flush();
+    }
+
+    ~ColdLlvmTrace()
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (!output_) return;
+        output_ << "preamble"
+                << " reachability-us=" << preamble_.reachabilityMicros
+                << " partition-key-us=" << preamble_.partitionKeyMicros
+                << " partition-restore-us=" << preamble_.partitionRestoreMicros
+                << " partition-build-us=" << preamble_.partitionBuildMicros
+                << " coordinator-closure-us=" << preamble_.coordinatorClosureMicros
+                << " identity-index-build-us=" << preamble_.identityIndexBuildMicros
+                << " line-table-identity-us=" << preamble_.lineTableIdentityMicros
+                << " module-key-compose-us=" << preamble_.moduleKeyComposeMicros
+                << " static-field-mask-us=" << preamble_.staticFieldMaskMicros
+                << " worker-wall-us=" << preamble_.workerWallMicros
+                << " plan-store-us=" << preamble_.planStoreMicros << '\n';
         output_.flush();
     }
 
@@ -161,6 +202,7 @@ public:
                 << " definitions=" << telemetry.definitionCount
                 << " declarations=" << telemetry.declarationCount
                 << " static-fields=" << telemetry.staticFieldCount
+                << " static-field-mask-us=" << telemetry.staticFieldMaskMicros
                 << " fingerprint-us=" << telemetry.fingerprintMicros
                 << " lookup-us=" << telemetry.lookupMicros
                 << " lowering-us=" << telemetry.loweringMicros
@@ -177,6 +219,7 @@ public:
 private:
     std::mutex mutex_;
     std::ofstream output_;
+    const ColdLlvmPreambleTelemetry& preamble_;
 };
 
 class ColdLlvmTraceScope final
@@ -367,6 +410,12 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         ? std::min(workerCount, maxColdO0CodeUnits)
         : workerCount;
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
+    ColdLlvmPreambleTelemetry preambleTelemetry;
+    const PhaseClock reachabilityClock;
+    const ProjectOopFunctionReachabilityAnalysis functionAnalysis(mirModel);
+    preambleTelemetry.reachabilityMicros = reachabilityClock.elapsedMicros();
+    const std::span<const std::uint8_t> reachableDefinitions =
+        functionAnalysis.reachableDefinitions();
 
     ProjectOopCodePartition partition;
     std::string partitionPlanKey;
@@ -374,9 +423,15 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     bool partitionPlanHit = false;
     if (cache != nullptr && cache->enabled())
     {
-        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(mirModel, partitionCount);
-        if (!cache->restoreCodePartitionPlan(
-                partitionPlanKey, partitionPlanPayload, partitionPlanHit, error))
+        const PhaseClock partitionKeyClock;
+        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(
+            mirModel, partitionCount, reachableDefinitions);
+        preambleTelemetry.partitionKeyMicros = partitionKeyClock.elapsedMicros();
+        const PhaseClock partitionRestoreClock;
+        const bool restored = cache->restoreCodePartitionPlan(
+            partitionPlanKey, partitionPlanPayload, partitionPlanHit, error);
+        preambleTelemetry.partitionRestoreMicros = partitionRestoreClock.elapsedMicros();
+        if (!restored)
             return nullptr;
     }
     const ProjectOopCodePartitionPolicy partitionPolicy =
@@ -385,14 +440,18 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         : linkTimeOptimization == LinkTimeOptimizationMode::Thin
             ? ProjectOopCodePartitionPolicy::StableIncremental
             : ProjectOopCodePartitionPolicy::Balanced;
-    if (!partition.build(
+    const PhaseClock partitionBuildClock;
+    const bool partitionBuilt = partition.build(
             mirModel, partitionCount, error, partitionPolicy,
-            partitionPlanHit ? partitionPlanPayload : std::string_view{}))
+            partitionPlanHit ? partitionPlanPayload : std::string_view{},
+            reachableDefinitions);
+    preambleTelemetry.partitionBuildMicros = partitionBuildClock.elapsedMicros();
+    if (!partitionBuilt)
         return nullptr;
-    const std::vector<std::uint8_t> reachableDefinitions =
-        projectOopReachableDefinitionMask(mirModel);
+    const PhaseClock coordinatorClosureClock;
     const std::vector<std::size_t> coordinatorFunctionDeclarations =
-        projectOopCoordinatorFunctionDeclarations(mirModel);
+        functionAnalysis.coordinatorFunctionDeclarations();
+    preambleTelemetry.coordinatorClosureMicros = coordinatorClosureClock.elapsedMicros();
     // LLVM can only inline a call while caller and callee coexist in the same module. Until
     // code-unit summary import is available, splitting a full-debug optimized build silently
     // removes its CodeView/PDB inline scopes. More importantly, splitting any build containing a
@@ -445,17 +504,26 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
         debugInformation != DebugInformationKind::Full &&
         linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    ColdLlvmTrace coldLlvmTrace(
+        kCodegenCacheIdentity, functionAnalysis.projectFingerprint(), debugInformation,
+        optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
+        cache != nullptr ? cache->lastPruneTelemetry() : CachePruneTelemetry{},
+        preambleTelemetry);
     std::vector<std::string> cacheKeys(moduleCount);
     if (usePreLlvmCache)
     {
+        const PhaseClock identityIndexClock;
         const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
+        preambleTelemetry.identityIndexBuildMicros = identityIndexClock.elapsedMicros();
         std::string lineTableSourceIdentity;
         if (debugInformation == DebugInformationKind::LineTablesOnly)
         {
+            const PhaseClock lineTableIdentityClock;
             const std::vector<SourceRange> sourceRanges =
                 collectLineTableSourceRanges(nameLookup, memberModel, mirModel);
             lineTableSourceIdentity = projectOopLineTableSourceIdentity(
                 sourceManager, debugPrefixMaps, sourceRanges);
+            preambleTelemetry.lineTableIdentityMicros = lineTableIdentityClock.elapsedMicros();
         }
         std::vector<std::size_t> allFunctionOrdinals;
         allFunctionOrdinals.reserve(mirModel.functions().size());
@@ -467,6 +535,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 continue;
             allFunctionOrdinals.push_back(ordinal);
         }
+        const PhaseClock moduleKeyComposeClock;
         for (std::size_t moduleOrdinal = 0; moduleOrdinal < moduleCount; ++moduleOrdinal)
         {
             std::span<const std::size_t> definitions;
@@ -499,6 +568,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 optimizationLevel, debugInformation);
             codeUnitTelemetry[moduleOrdinal].fingerprintMicros += fingerprint.elapsedMicros();
         }
+        preambleTelemetry.moduleKeyComposeMicros = moduleKeyComposeClock.elapsedMicros();
     }
     // Textual IR used to be serialized for every code unit even though the Windows import
     // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
@@ -507,10 +577,6 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const bool preserveModuleText =
         (cache != nullptr && cache->enabled() && !usePreLlvmCache) ||
         linkTimeOptimization == LinkTimeOptimizationMode::Thin;
-
-    ColdLlvmTrace coldLlvmTrace(
-        debugInformation, optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
-        cache != nullptr ? cache->lastPruneTelemetry() : CachePruneTelemetry{});
 
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
@@ -542,9 +608,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         const std::span<const std::size_t> telemetryDefinitions = !usePartitions || ordinal == 0
             ? std::span<const std::size_t>{}
             : std::span<const std::size_t>(partition.units()[ordinal - 1].functionOrdinals);
+        const PhaseClock staticFieldMaskClock;
         const std::vector<std::uint8_t> selectedStaticFields =
-            projectOopStaticFieldDeclarationMask(
-                mirModel, telemetryDefinitions, usePartitions, usePartitions && ordinal == 0);
+            functionAnalysis.staticFieldDeclarationMask(
+                telemetryDefinitions, usePartitions, usePartitions && ordinal == 0);
+        telemetry.staticFieldMaskMicros = staticFieldMaskClock.elapsedMicros();
         telemetry.staticFieldCount = static_cast<std::size_t>(std::count(
             selectedStaticFields.begin(), selectedStaticFields.end(), std::uint8_t{1U}));
         const ColdLlvmTraceScope coldTraceScope(
@@ -593,14 +661,16 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         {
             module = lowerer.lower(ProjectOopLlvmLoweringRequest::withDebug(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-                optimizationLevel, debugPrefixMaps));
+                optimizationLevel, debugPrefixMaps, reachableDefinitions,
+                selectedStaticFields));
         }
         else if (ordinal == 0)
         {
             module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
                 optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps,
-                coordinatorFunctionDeclarations));
+                coordinatorFunctionDeclarations, reachableDefinitions,
+                selectedStaticFields));
         }
         else
         {
@@ -609,7 +679,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
                 optimizationLevel, unit.functionOrdinals, false,
                 "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps,
-                unit.declarationOrdinals));
+                unit.declarationOrdinals, reachableDefinitions,
+                selectedStaticFields));
         }
         telemetry.loweringMicros += lowering.elapsedMicros();
         if (module == nullptr || !lowerer.error().empty())
@@ -711,6 +782,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const auto initializeWorkerFloatingPoint = [workerFloatingPointState](std::size_t) {
         initializeFloatingPointStateForWorker(workerFloatingPointState);
     };
+    const PhaseClock workerWallClock;
     if (usePartitions)
     {
         driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
@@ -746,6 +818,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     {
         processModule(0);
     }
+    preambleTelemetry.workerWallMicros = workerWallClock.elapsedMicros();
+    for (const CodeUnitTelemetry& telemetry : codeUnitTelemetry)
+        preambleTelemetry.staticFieldMaskMicros += telemetry.staticFieldMaskMicros;
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {
         if (!moduleErrors[ordinal].empty())
@@ -780,8 +855,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             error = "cache-aware code partition did not produce a persistent plan";
             return nullptr;
         }
-        if (!cache->storeCodePartitionPlan(
-                partitionPlanKey, partitionPlanPayload, error))
+        const PhaseClock planStoreClock;
+        const bool stored = cache->storeCodePartitionPlan(
+            partitionPlanKey, partitionPlanPayload, error);
+        preambleTelemetry.planStoreMicros = planStoreClock.elapsedMicros();
+        if (!stored)
             return nullptr;
     }
     result->codeUnitTelemetry_ = std::move(codeUnitTelemetry);

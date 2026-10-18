@@ -1910,6 +1910,107 @@ class Catalog
         "a code unit declares the static field it reads and omits the unrelated field");
 }
 
+void testSharedLlvmAnalysis(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "SharedLlvmAnalysis";
+    writeProject(directory, "SharedLlvmAnalysis");
+    writeFile(directory / "Program.ns", R"NS(
+class Catalog
+{
+    public static int Used = 41;
+    public static int Unused = 99;
+    public static int Read() { return Used; }
+    public static int Other() { return Unused; }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool built = compilation.compileProjectOopMir(
+        directory / "SharedLlvmAnalysis.nsproj", error);
+    tests.expect(built && compilation.oopMirModel() != nullptr,
+        "shared LLVM analysis fixture compiles through MIR (" + error + ")");
+    if (!built || compilation.oopMirModel() == nullptr) return;
+
+    const ProjectOopMirModel& mir = *compilation.oopMirModel();
+    const std::vector<std::uint8_t> legacyReachable =
+        nativesharp::llvm_backend::projectOopReachableDefinitionMask(mir);
+    const nativesharp::llvm_backend::ProjectOopFunctionReachabilityAnalysis analysis(mir);
+    tests.expect(std::ranges::equal(legacyReachable, analysis.reachableDefinitions()),
+        "shared analysis preserves the exact reachable-definition mask");
+    tests.expect(
+        nativesharp::llvm_backend::projectOopCoordinatorFunctionDeclarations(mir) ==
+            analysis.coordinatorFunctionDeclarations(),
+        "shared analysis preserves the exact coordinator declaration closure");
+
+    const std::string legacyKey =
+        nativesharp::llvm_backend::ProjectOopCodePartition::persistentPlanKey(mir, 2U);
+    const std::string sharedKey =
+        nativesharp::llvm_backend::ProjectOopCodePartition::persistentPlanKey(
+            mir, 2U, analysis.reachableDefinitions());
+    tests.expect(legacyKey == sharedKey,
+        "shared reachability does not change the persistent partition key");
+
+    nativesharp::llvm_backend::ProjectOopCodePartition legacyPartition;
+    nativesharp::llvm_backend::ProjectOopCodePartition sharedPartition;
+    std::string legacyError;
+    std::string sharedError;
+    const bool legacyBuilt = legacyPartition.build(mir, 2U, legacyError);
+    const bool sharedBuilt = sharedPartition.build(
+        mir, 2U, sharedError,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::Balanced, {},
+        analysis.reachableDefinitions());
+    tests.expect(legacyBuilt && sharedBuilt && legacyError.empty() && sharedError.empty() &&
+            legacyPartition.dump() == sharedPartition.dump() &&
+            legacyPartition.persistentPlanPayload() == sharedPartition.persistentPlanPayload(),
+        "shared reachability preserves partition assignment, declarations, weights and payload");
+    if (!legacyBuilt || !sharedBuilt || sharedPartition.units().empty()) return;
+
+    const auto coordinatorLegacy =
+        nativesharp::llvm_backend::projectOopStaticFieldDeclarationMask(mir, {}, true, true);
+    const auto coordinatorShared = analysis.staticFieldDeclarationMask({}, true, true);
+    bool masksMatch = coordinatorLegacy == coordinatorShared;
+    for (const auto& unit : sharedPartition.units())
+    {
+        masksMatch = masksMatch &&
+            nativesharp::llvm_backend::projectOopStaticFieldDeclarationMask(
+                mir, unit.functionOrdinals, true, false) ==
+            analysis.staticFieldDeclarationMask(unit.functionOrdinals, true, false);
+    }
+    tests.expect(masksMatch,
+        "shared analysis preserves coordinator and per-unit static-field masks");
+
+    const auto& unit = sharedPartition.units().front();
+    const std::vector<std::uint8_t> sharedStaticFields =
+        analysis.staticFieldDeclarationMask(unit.functionOrdinals, true, false);
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer legacyLowerer;
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer sharedLowerer;
+    auto legacyModule = legacyLowerer.lower(
+        nativesharp::llvm_backend::ProjectOopLlvmLoweringRequest::partition(
+            *compilation.nameLookup(), *compilation.memberModel(), mir,
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+            unit.functionOrdinals, false, "SharedLlvmAnalysis.unit", {},
+            unit.declarationOrdinals));
+    auto sharedModule = sharedLowerer.lower(
+        nativesharp::llvm_backend::ProjectOopLlvmLoweringRequest::partition(
+            *compilation.nameLookup(), *compilation.memberModel(), mir,
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+            unit.functionOrdinals, false, "SharedLlvmAnalysis.unit", {},
+            unit.declarationOrdinals, analysis.reachableDefinitions(), sharedStaticFields));
+    tests.expect(legacyModule != nullptr && sharedModule != nullptr &&
+            legacyLowerer.error().empty() && sharedLowerer.error().empty(),
+        "legacy and shared lowering paths both produce a module");
+    if (legacyModule != nullptr && sharedModule != nullptr)
+    {
+        tests.expect(legacyModule->text() == sharedModule->text(),
+            "shared reachability and field masks preserve byte-identical LLVM text");
+    }
+    tests.expect(!analysis.projectFingerprint().empty(),
+        "shared analysis publishes a private project fingerprint for trace authentication");
+}
+
 void testImportedConstantCoordinatorReachability(TestContext& tests)
 {
     nativesharp::frontend::ProjectOopMirStaticField localMutable;
@@ -8425,6 +8526,10 @@ int main()
     {
         testImportedConstantCoordinatorReachability(tests);
     }
+    else if (focusValue == "llvm-shared-analysis")
+    {
+        testSharedLlvmAnalysis(tests, root);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -8434,6 +8539,7 @@ int main()
         testPreciseIncrementalInvalidation(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testImportedConstantCoordinatorReachability(tests);
+        testSharedLlvmAnalysis(tests, root);
         testDeepOptionalDefaultHir(tests, root);
         testDeepYieldStateAssignment(tests);
         testDeepGeneratorThrowRewrite(tests);

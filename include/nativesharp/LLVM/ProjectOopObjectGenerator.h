@@ -39,6 +39,7 @@ struct CodeUnitTelemetry final
     std::size_t definitionCount = 0;
     std::size_t declarationCount = 0;
     std::size_t staticFieldCount = 0;
+    std::uint64_t staticFieldMaskMicros = 0;
     std::uint64_t fingerprintMicros = 0;
     std::uint64_t lookupMicros = 0;
     std::uint64_t loweringMicros = 0;
