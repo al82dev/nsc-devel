@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -324,6 +325,174 @@ private:
     std::vector<Work> work_;
     std::vector<ast::AstNode*> values_;
     std::unordered_map<const Pattern*, bool> conditionOnly_;
+};
+
+class Parser::PatternBindingEmitter final
+{
+public:
+    PatternBindingEmitter(
+        Parser& parser,
+        const Pattern& root,
+        PatternExpressionFactory source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+
+    void run();
+
+private:
+    enum class SourceKind
+    {
+        Root,
+        Identifier,
+        MatchValue,
+        Member,
+        FixedIndex,
+        FromEndIndex,
+        RestSlice
+    };
+
+    struct SourcePlan final
+    {
+        std::size_t parent = 0;
+        SourceKind kind = SourceKind::Root;
+        SourceRange range;
+        SourceRange containerRange;
+        std::string text;
+        std::size_t value = 0;
+        std::size_t extent = 0;
+    };
+
+    enum class SourceWorkKind
+    {
+        Build,
+        FinishMember,
+        FinishFixedIndex,
+        FinishFromEndFirst,
+        FinishFromEndSecond,
+        FinishRestFirst,
+        FinishRestSecond
+    };
+
+    struct SourceWork final
+    {
+        SourceWorkKind kind = SourceWorkKind::Build;
+        std::size_t sourcePlan = 0;
+        ast::AstNode* first = nullptr;
+    };
+
+    enum class WorkKind
+    {
+        Emit,
+        ContinuePositional,
+        FinishPositionalChild,
+        ContinueOrBinding,
+        ContinueOrAlternative,
+        FinishOrAlternative,
+        FinishOrBinding
+    };
+
+    struct Work final
+    {
+        WorkKind kind = WorkKind::Emit;
+        const Pattern* pattern = nullptr;
+        std::size_t sourcePlan = 0;
+        ast::AstNode* destination = nullptr;
+        std::size_t state = 0;
+    };
+
+    struct PositionalState final
+    {
+        const Pattern* pattern = nullptr;
+        ast::AstNode* destination = nullptr;
+        std::vector<std::string> names;
+        std::size_t nextChild = 0;
+        ast::AstNode* condition = nullptr;
+    };
+
+    struct OrState final
+    {
+        const Pattern* pattern = nullptr;
+        std::size_t sourcePlan = 0;
+        ast::AstNode* destination = nullptr;
+        std::vector<Pattern> alternatives;
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::size_t nextBinding = 0;
+        std::size_t nextAlternative = 0;
+        ast::AstNode* selector = nullptr;
+        ast::AstNode* arm = nullptr;
+    };
+
+    void schedule(Work work);
+    void scheduleEmit(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void dispatch(Work work);
+    std::size_t addSource(
+        std::size_t parent,
+        SourceKind kind,
+        SourceRange range,
+        SourceRange containerRange = {},
+        std::string text = {},
+        std::size_t value = 0,
+        std::size_t extent = 0);
+    ast::AstNode* evaluateSource(std::size_t sourcePlan);
+    void dispatchSourceWork(
+        SourceWork work,
+        std::vector<SourceWork>& pending,
+        std::vector<ast::AstNode*>& values);
+    void finishFromEndSource(
+        const SourceWork& work,
+        std::vector<ast::AstNode*>& values);
+    void finishRestSource(
+        const SourceWork& work,
+        std::vector<ast::AstNode*>& values);
+    PatternExpressionFactory makeSourceFactory(std::size_t sourcePlan);
+    void emit(const Pattern& pattern, std::size_t sourcePlan, ast::AstNode* destination);
+    void emitSingle(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void emitTuple(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void startPositional(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void continuePositional(std::size_t state);
+    void finishPositionalChild(std::size_t state, std::size_t sourcePlan);
+    void emitStruct(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void emitList(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void emitVariant(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void startOr(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        ast::AstNode* destination);
+    void continueOrBinding(std::size_t state);
+    void continueOrAlternative(std::size_t state);
+    void finishOrAlternative(std::size_t state);
+    void finishOrBinding(std::size_t state);
+
+    Parser& parser_;
+    const Pattern& root_;
+    PatternExpressionFactory rootSource_;
+    ast::AstNode* destination_ = nullptr;
+    std::string temporaryPrefix_;
+    std::vector<SourcePlan> sources_;
+    std::vector<Work> work_;
+    std::deque<PositionalState> positionalStates_;
+    std::deque<OrState> orStates_;
 };
 
 Parser::Pattern Parser::PatternIterationParser::run()
@@ -1897,245 +2066,447 @@ void Parser::applyPatternBindingMode(
         declaration->setAuxiliaryText("local:pattern-ref-mut");
 }
 
-void Parser::emitOrPatternBindings(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source,
+Parser::PatternBindingEmitter::PatternBindingEmitter(
+    Parser& parser,
+    const Pattern& root,
+    PatternExpressionFactory source,
     ast::AstNode* destination,
     std::string_view temporaryPrefix)
+    : parser_(parser),
+      root_(root),
+      rootSource_(std::move(source)),
+      destination_(destination),
+      temporaryPrefix_(temporaryPrefix)
 {
-    const std::vector<Pattern> alternatives = expandPatternAlternatives(pattern);
-    std::vector<std::pair<std::string, PatternBindingMode>> bindings;
-    if (!alternatives.empty())
-        collectUniquePatternBindings(alternatives.front(), bindings);
+    sources_.push_back(SourcePlan{});
+}
 
-    for (const auto& [name, mode] : bindings)
+void Parser::PatternBindingEmitter::run()
+{
+    scheduleEmit(root_, 0, destination_);
+    while (!work_.empty())
     {
-        ast::AstNode* selector = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::MatchExpression, pattern.range);
-        selector->setFirst(source());
-        selector->setText(std::string(temporaryPrefix) + "_or_binding_" +
-            std::to_string(nextMatchTemporary_++));
-        for (const Pattern& alternative : alternatives)
-        {
-            ast::AstNode* arm = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::MatchArmExpression, alternative.range);
-            PatternExpressionFactory matchValue = [&, range = alternative.range]
-            {
-                return arena_.make<ast::AstNode>(
-                    ast::AstNodeKind::MatchValueExpression, range);
-            };
-            arm->setFirst(makePatternCondition(alternative, matchValue));
-            emitPatternBindings(alternative, matchValue, arm, temporaryPrefix);
-            arm->setThird(makeIdentifierExpression(alternative.range, name));
-            arm->setFlag(mode == PatternBindingMode::Reference ||
-                mode == PatternBindingMode::ReferenceMutable);
-            selector->addChild(arm);
-        }
-
-        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
-            pattern.range, TokenKind::KwVar, "var");
-        ast::AstNode* declaration = makeVariableDeclaration(
-            type, name, selector, false,
-            mode == PatternBindingMode::Value || mode == PatternBindingMode::Copy ||
-                mode == PatternBindingMode::Reference);
-        applyPatternBindingMode(declaration, mode);
-        destination->addChild(declaration);
+        Work work = std::move(work_.back());
+        work_.pop_back();
+        dispatch(std::move(work));
     }
 }
 
-void Parser::emitSinglePatternBinding(
+void Parser::PatternBindingEmitter::schedule(Work work)
+{
+    work_.push_back(std::move(work));
+}
+
+void Parser::PatternBindingEmitter::scheduleEmit(
     const Pattern& pattern,
-    const PatternExpressionFactory& source,
+    std::size_t sourcePlan,
     ast::AstNode* destination)
 {
-    ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+    Work work;
+    work.pattern = &pattern;
+    work.sourcePlan = sourcePlan;
+    work.destination = destination;
+    schedule(std::move(work));
+}
+
+void Parser::PatternBindingEmitter::dispatch(Work work)
+{
+    switch (work.kind)
+    {
+        case WorkKind::Emit: return emit(*work.pattern, work.sourcePlan, work.destination);
+        case WorkKind::ContinuePositional: return continuePositional(work.state);
+        case WorkKind::FinishPositionalChild:
+            return finishPositionalChild(work.state, work.sourcePlan);
+        case WorkKind::ContinueOrBinding: return continueOrBinding(work.state);
+        case WorkKind::ContinueOrAlternative: return continueOrAlternative(work.state);
+        case WorkKind::FinishOrAlternative: return finishOrAlternative(work.state);
+        case WorkKind::FinishOrBinding: return finishOrBinding(work.state);
+    }
+}
+
+std::size_t Parser::PatternBindingEmitter::addSource(
+    std::size_t parent,
+    SourceKind kind,
+    SourceRange range,
+    SourceRange containerRange,
+    std::string text,
+    std::size_t value,
+    std::size_t extent)
+{
+    sources_.push_back(SourcePlan{
+        parent, kind, range, containerRange, std::move(text), value, extent});
+    return sources_.size() - 1U;
+}
+
+ast::AstNode* Parser::PatternBindingEmitter::evaluateSource(std::size_t sourcePlan)
+{
+    std::vector<SourceWork> pending{{SourceWorkKind::Build, sourcePlan, nullptr}};
+    std::vector<ast::AstNode*> values;
+    while (!pending.empty())
+    {
+        SourceWork work = pending.back();
+        pending.pop_back();
+        dispatchSourceWork(work, pending, values);
+    }
+    return values.back();
+}
+
+void Parser::PatternBindingEmitter::dispatchSourceWork(
+    SourceWork work,
+    std::vector<SourceWork>& pending,
+    std::vector<ast::AstNode*>& values)
+{
+    const SourcePlan& source = sources_[work.sourcePlan];
+    if (work.kind == SourceWorkKind::Build && source.kind == SourceKind::Root)
+        return values.push_back(rootSource_());
+    if (work.kind == SourceWorkKind::Build && source.kind == SourceKind::Identifier)
+        return values.push_back(parser_.makeIdentifierExpression(source.range, source.text));
+    if (work.kind == SourceWorkKind::Build && source.kind == SourceKind::MatchValue)
+        return values.push_back(parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MatchValueExpression, source.range));
+    if (work.kind == SourceWorkKind::FinishFromEndFirst)
+    {
+        SourceWork finish{SourceWorkKind::FinishFromEndSecond, work.sourcePlan, values.back()};
+        values.pop_back();
+        pending.push_back(finish);
+        return pending.push_back({SourceWorkKind::Build, source.parent, nullptr});
+    }
+    if (work.kind == SourceWorkKind::FinishRestFirst)
+    {
+        SourceWork finish{SourceWorkKind::FinishRestSecond, work.sourcePlan, values.back()};
+        values.pop_back();
+        pending.push_back(finish);
+        return pending.push_back({SourceWorkKind::Build, source.parent, nullptr});
+    }
+    if (work.kind == SourceWorkKind::FinishFromEndSecond)
+        return finishFromEndSource(work, values);
+    if (work.kind == SourceWorkKind::FinishRestSecond)
+        return finishRestSource(work, values);
+    if (work.kind == SourceWorkKind::FinishMember)
+        values.back() = parser_.makeMemberExpression(values.back(), source.text);
+    else if (work.kind == SourceWorkKind::FinishFixedIndex)
+        values.back() = parser_.makeIndexExpression(values.back(),
+            parser_.makeIntegerLiteralExpression(source.containerRange, source.value));
+    else
+    {
+        SourceWorkKind finish = SourceWorkKind::FinishMember;
+        if (source.kind == SourceKind::FixedIndex) finish = SourceWorkKind::FinishFixedIndex;
+        else if (source.kind == SourceKind::FromEndIndex)
+            finish = SourceWorkKind::FinishFromEndFirst;
+        else if (source.kind == SourceKind::RestSlice)
+            finish = SourceWorkKind::FinishRestFirst;
+        pending.push_back({finish, work.sourcePlan, nullptr});
+        pending.push_back({SourceWorkKind::Build, source.parent, nullptr});
+    }
+}
+
+void Parser::PatternBindingEmitter::finishFromEndSource(
+    const SourceWork& work,
+    std::vector<ast::AstNode*>& values)
+{
+    const SourcePlan& source = sources_[work.sourcePlan];
+    ast::AstNode* receiver = values.back();
+    values.pop_back();
+    ast::AstNode* length = parser_.makeMemberExpression(work.first, "Length");
+    length->setAuxiliaryText("list-pattern-length");
+    ast::AstNode* index = parser_.makeBinaryExpression(
+        TokenKind::Minus, length,
+        parser_.makeIntegerLiteralExpression(source.containerRange, source.value));
+    values.push_back(parser_.makeIndexExpression(receiver, index));
+}
+
+void Parser::PatternBindingEmitter::finishRestSource(
+    const SourceWork& work,
+    std::vector<ast::AstNode*>& values)
+{
+    const SourcePlan& source = sources_[work.sourcePlan];
+    ast::AstNode* lengthBase = values.back();
+    values.pop_back();
+    ast::AstNode* call = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::CallExpression, source.range);
+    call->setFirst(parser_.makeMemberExpression(work.first, "Slice"));
+    call->setAuxiliaryText("list-pattern-rest");
+    call->addChild(parser_.makeIntegerLiteralExpression(source.containerRange, source.value));
+    ast::AstNode* length = parser_.makeMemberExpression(lengthBase, "Length");
+    length->setAuxiliaryText("list-pattern-length");
+    call->addChild(parser_.makeBinaryExpression(
+        TokenKind::Minus, length,
+        parser_.makeIntegerLiteralExpression(source.containerRange, source.extent)));
+    values.push_back(call);
+}
+
+Parser::PatternExpressionFactory Parser::PatternBindingEmitter::makeSourceFactory(
+    std::size_t sourcePlan)
+{
+    return [this, sourcePlan] { return evaluateSource(sourcePlan); };
+}
+
+void Parser::PatternBindingEmitter::emit(
+    const Pattern& pattern,
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
+{
+    if (pattern.kind == PatternKind::Or && parser_.patternHasBindings(pattern))
+        return startOr(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::Binding)
+        return emitSingle(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::Tuple)
+        return emitTuple(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::Positional)
+        return startPositional(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::Struct)
+        return emitStruct(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::List)
+        return emitList(pattern, sourcePlan, destination);
+    if (pattern.kind == PatternKind::Variant && !pattern.children.empty())
+        emitVariant(pattern, sourcePlan, destination);
+}
+
+void Parser::PatternBindingEmitter::emitSingle(
+    const Pattern& pattern,
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
+{
+    ast::TypeSyntax* type = parser_.arena_.make<ast::TypeSyntax>(
         pattern.range, TokenKind::KwVar, "var");
-    ast::AstNode* initializer = source();
-    // A rest value is a borrowed view. Its local cell is compiler-generated, but making that
-    // cell const would also make a mutable Span receiver readonly and incorrectly suppress
-    // writes to the referenced storage. Readonly sources already produce ReadOnlySpan<T>.
+    ast::AstNode* initializer = evaluateSource(sourcePlan);
     const bool mutableRestView =
-        pattern.bindingMode == PatternBindingMode::Value &&
-        initializer != nullptr &&
+        pattern.bindingMode == PatternBindingMode::Value && initializer != nullptr &&
         initializer->kind() == ast::AstNodeKind::CallExpression &&
         initializer->auxiliaryText() == "list-pattern-rest";
-    ast::AstNode* declaration = makeVariableDeclaration(
-        type, pattern.name, initializer, false,
-        !mutableRestView &&
-            (pattern.bindingMode == PatternBindingMode::Value ||
-             pattern.bindingMode == PatternBindingMode::Copy ||
-             pattern.bindingMode == PatternBindingMode::Reference));
-    applyPatternBindingMode(declaration, pattern.bindingMode);
+    const bool immutable = !mutableRestView &&
+        (pattern.bindingMode == PatternBindingMode::Value ||
+         pattern.bindingMode == PatternBindingMode::Copy ||
+         pattern.bindingMode == PatternBindingMode::Reference);
+    ast::AstNode* declaration = parser_.makeVariableDeclaration(
+        type, pattern.name, initializer, false, immutable);
+    parser_.applyPatternBindingMode(declaration, pattern.bindingMode);
     destination->addChild(declaration);
 }
 
-void Parser::emitTuplePatternBindings(
+void Parser::PatternBindingEmitter::emitTuple(
     const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    ast::AstNode* destination,
-    std::string_view temporaryPrefix)
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
 {
-    ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+    ast::AstNode* deconstruction = parser_.arena_.make<ast::AstNode>(
         ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
-    deconstruction->setFirst(source());
-    std::vector<std::string> elementNames;
+    deconstruction->setFirst(evaluateSource(sourcePlan));
+    std::vector<std::size_t> childSources;
     for (std::size_t index = 0; index < pattern.children.size(); ++index)
     {
-        const std::string name = std::string(temporaryPrefix) + "_tuple_" +
-            std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
-        elementNames.push_back(name);
-        deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        const std::string name = temporaryPrefix_ + "_tuple_" +
+            std::to_string(parser_.nextMatchTemporary_++) + "_" + std::to_string(index);
+        deconstruction->addChild(parser_.makeIdentifierExpression(pattern.range, name));
+        childSources.push_back(addSource(
+            0, SourceKind::Identifier, pattern.range, {}, name));
     }
     destination->addChild(deconstruction);
-    for (std::size_t index = 0; index < pattern.children.size(); ++index)
-    {
-        const std::string name = elementNames[index];
-        PatternExpressionFactory element = [&, name]
-        {
-            return makeIdentifierExpression(pattern.range, name);
-        };
-        emitPatternBindings(
-            pattern.children[index], element, destination, temporaryPrefix);
-    }
+    for (std::size_t index = pattern.children.size(); index-- > 0U;)
+        scheduleEmit(pattern.children[index], childSources[index], destination);
 }
 
-void Parser::emitPositionalPatternBindings(
+void Parser::PatternBindingEmitter::startPositional(
     const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    ast::AstNode* destination,
-    std::string_view temporaryPrefix)
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
 {
-    // Deconstruct once inside the selected arm. The arm guard runs after its declarations, so
-    // child predicates can consume these temporaries without repeating a stateful Deconstruct.
-    ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+    ast::AstNode* deconstruction = parser_.arena_.make<ast::AstNode>(
         ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
-    deconstruction->setFirst(source());
-    deconstruction->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+    deconstruction->setFirst(evaluateSource(sourcePlan));
+    deconstruction->setTypeSyntax(parser_.arena_.make<ast::TypeSyntax>(
         pattern.range, TokenKind::Identifier, pattern.name));
-    std::vector<std::string> elementNames;
+    PositionalState state;
+    state.pattern = &pattern;
+    state.destination = destination;
+    state.condition = parser_.makeBooleanLiteral(pattern.range, true);
     for (std::size_t index = 0; index < pattern.children.size(); ++index)
     {
-        const std::string name = std::string(temporaryPrefix) + "_pos_" +
-            std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
-        elementNames.push_back(name);
-        deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        state.names.push_back(temporaryPrefix_ + "_pos_" +
+            std::to_string(parser_.nextMatchTemporary_++) + "_" + std::to_string(index));
+        deconstruction->addChild(
+            parser_.makeIdentifierExpression(pattern.range, state.names.back()));
     }
     destination->addChild(deconstruction);
-    ast::AstNode* positionalCondition = makeBooleanLiteral(pattern.range, true);
-    for (std::size_t index = 0; index < pattern.children.size(); ++index)
-    {
-        const std::string name = elementNames[index];
-        PatternExpressionFactory element = [&, name]
-        {
-            return makeIdentifierExpression(pattern.range, name);
-        };
-        emitPatternBindings(
-            pattern.children[index], element, destination, temporaryPrefix);
-        positionalCondition = makeBinaryExpression(
-            TokenKind::AmpAmp,
-            positionalCondition,
-            makePatternCondition(pattern.children[index], element));
-    }
-    if (destination->kind() == ast::AstNodeKind::MatchArmExpression)
-    {
-        if (ast::AstNode* guard = destination->second(); guard != nullptr)
-        {
-            positionalCondition = makeBinaryExpression(
-                TokenKind::AmpAmp, positionalCondition, guard);
-        }
-        destination->setSecond(positionalCondition);
-    }
+    positionalStates_.push_back(std::move(state));
+    schedule({WorkKind::ContinuePositional, nullptr, 0, nullptr,
+        positionalStates_.size() - 1U});
 }
 
-void Parser::emitStructPatternBindings(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    ast::AstNode* destination,
-    std::string_view temporaryPrefix)
+void Parser::PatternBindingEmitter::continuePositional(std::size_t stateIndex)
 {
-    for (std::size_t index = 0; index < pattern.children.size(); ++index)
+    PositionalState& state = positionalStates_[stateIndex];
+    if (state.nextChild == state.pattern->children.size())
     {
-        const std::string field = pattern.fieldNames[index];
-        PatternExpressionFactory member = [&, source, field]
+        if (state.destination->kind() == ast::AstNodeKind::MatchArmExpression)
         {
-            return makeMemberExpression(source(), field);
-        };
-        emitPatternBindings(
-            pattern.children[index], member, destination, temporaryPrefix);
+            if (ast::AstNode* guard = state.destination->second(); guard != nullptr)
+                state.condition = parser_.makeBinaryExpression(
+                    TokenKind::AmpAmp, state.condition, guard);
+            state.destination->setSecond(state.condition);
+        }
+        return;
     }
+    const std::size_t source = addSource(
+        0, SourceKind::Identifier, state.pattern->range, {}, state.names[state.nextChild]);
+    schedule({WorkKind::FinishPositionalChild, nullptr, source, nullptr, stateIndex});
+    scheduleEmit(state.pattern->children[state.nextChild], source, state.destination);
 }
 
-void Parser::emitListPatternBindings(
+void Parser::PatternBindingEmitter::finishPositionalChild(
+    std::size_t stateIndex,
+    std::size_t sourcePlan)
+{
+    PositionalState& state = positionalStates_[stateIndex];
+    const std::size_t child = state.nextChild;
+    state.condition = parser_.makeBinaryExpression(
+        TokenKind::AmpAmp, state.condition,
+        parser_.makePatternCondition(
+            state.pattern->children[child], makeSourceFactory(sourcePlan)));
+    ++state.nextChild;
+    schedule({WorkKind::ContinuePositional, nullptr, 0, nullptr, stateIndex});
+}
+
+void Parser::PatternBindingEmitter::emitStruct(
     const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    ast::AstNode* destination,
-    std::string_view temporaryPrefix)
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
+{
+    std::vector<std::size_t> childSources;
+    childSources.reserve(pattern.children.size());
+    for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        childSources.push_back(addSource(
+            sourcePlan, SourceKind::Member, pattern.range, {}, pattern.fieldNames[index]));
+    for (std::size_t index = pattern.children.size(); index-- > 0U;)
+        scheduleEmit(pattern.children[index], childSources[index], destination);
+}
+
+void Parser::PatternBindingEmitter::emitList(
+    const Pattern& pattern,
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
 {
     const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
+    std::vector<std::size_t> childSources;
+    childSources.reserve(pattern.children.size());
     for (std::size_t index = 0; index < pattern.children.size(); ++index)
     {
+        SourceKind kind = SourceKind::FixedIndex;
+        std::size_t value = index;
+        std::size_t fixedCount = 0;
         if (pattern.restIndex == index)
         {
-            PatternExpressionFactory rest = [&, source]
-            {
-                const std::size_t fixedCount = pattern.children.size() - 1U;
-                ast::AstNode* call = arena_.make<ast::AstNode>(
-                    ast::AstNodeKind::CallExpression, pattern.children[index].range);
-                call->setFirst(makeMemberExpression(source(), "Slice"));
-                call->setAuxiliaryText("list-pattern-rest");
-                call->addChild(makeIntegerLiteralExpression(pattern.range, restOffset));
-                ast::AstNode* lengthMember = makeMemberExpression(source(), "Length");
-                lengthMember->setAuxiliaryText("list-pattern-length");
-                call->addChild(makeBinaryExpression(
-                    TokenKind::Minus, lengthMember,
-                    makeIntegerLiteralExpression(pattern.range, fixedCount)));
-                return call;
-            };
-            emitPatternBindings(
-                pattern.children[index], rest, destination, temporaryPrefix);
-            continue;
+            kind = SourceKind::RestSlice;
+            value = restOffset;
+            fixedCount = pattern.children.size() - 1U;
         }
-        PatternExpressionFactory element = [&, source, index, restOffset]
+        else if (pattern.restIndex.has_value() && index > restOffset)
         {
-            ast::AstNode* elementIndex = nullptr;
-            if (!pattern.restIndex.has_value() || index < restOffset)
-                elementIndex = makeIntegerLiteralExpression(pattern.range, index);
-            else
-            {
-                const std::size_t fromEnd = pattern.children.size() - index;
-                ast::AstNode* lengthMember = makeMemberExpression(source(), "Length");
-                lengthMember->setAuxiliaryText("list-pattern-length");
-                elementIndex = makeBinaryExpression(
-                    TokenKind::Minus, lengthMember,
-                    makeIntegerLiteralExpression(pattern.range, fromEnd));
-            }
-            return makeIndexExpression(source(), elementIndex);
-        };
-        emitPatternBindings(
-            pattern.children[index], element, destination, temporaryPrefix);
+            kind = SourceKind::FromEndIndex;
+            value = pattern.children.size() - index;
+        }
+        childSources.push_back(addSource(
+            sourcePlan, kind, pattern.children[index].range,
+            pattern.range, {}, value, fixedCount));
     }
+    for (std::size_t index = pattern.children.size(); index-- > 0U;)
+        scheduleEmit(pattern.children[index], childSources[index], destination);
 }
 
-void Parser::emitVariantPatternBindings(
+void Parser::PatternBindingEmitter::emitVariant(
     const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    ast::AstNode* destination,
-    std::string_view temporaryPrefix)
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
 {
-    const std::string payloadName = std::string(temporaryPrefix) + "_payload_" +
-        std::to_string(nextMatchTemporary_++);
-    ast::AstNode* extract = makeZeroArgCallExpression(
-        makeMemberExpression(source(), "__nsc_variant_extract_" + pattern.name));
+    const std::string payloadName = temporaryPrefix_ + "_payload_" +
+        std::to_string(parser_.nextMatchTemporary_++);
+    ast::AstNode* extract = parser_.makeZeroArgCallExpression(parser_.makeMemberExpression(
+        evaluateSource(sourcePlan), "__nsc_variant_extract_" + pattern.name));
     extract->setAuxiliaryText("variant-pattern-extract");
-    ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+    ast::TypeSyntax* type = parser_.arena_.make<ast::TypeSyntax>(
         pattern.range, TokenKind::KwVar, "var");
-    destination->addChild(makeVariableDeclaration(type, payloadName, extract, false, true));
-    PatternExpressionFactory payload = [&, payloadName]
+    destination->addChild(
+        parser_.makeVariableDeclaration(type, payloadName, extract, false, true));
+    const std::size_t payload = addSource(
+        0, SourceKind::Identifier, pattern.range, {}, payloadName);
+    scheduleEmit(pattern.children.front(), payload, destination);
+}
+
+void Parser::PatternBindingEmitter::startOr(
+    const Pattern& pattern,
+    std::size_t sourcePlan,
+    ast::AstNode* destination)
+{
+    OrState state;
+    state.pattern = &pattern;
+    state.sourcePlan = sourcePlan;
+    state.destination = destination;
+    state.alternatives = parser_.expandPatternAlternatives(pattern);
+    if (!state.alternatives.empty())
+        parser_.collectUniquePatternBindings(state.alternatives.front(), state.bindings);
+    orStates_.push_back(std::move(state));
+    schedule({WorkKind::ContinueOrBinding, nullptr, 0, nullptr, orStates_.size() - 1U});
+}
+
+void Parser::PatternBindingEmitter::continueOrBinding(std::size_t stateIndex)
+{
+    OrState& state = orStates_[stateIndex];
+    if (state.nextBinding == state.bindings.size()) return;
+    state.selector = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MatchExpression, state.pattern->range);
+    state.selector->setFirst(evaluateSource(state.sourcePlan));
+    state.selector->setText(temporaryPrefix_ + "_or_binding_" +
+        std::to_string(parser_.nextMatchTemporary_++));
+    state.nextAlternative = 0;
+    schedule({WorkKind::ContinueOrAlternative, nullptr, 0, nullptr, stateIndex});
+}
+
+void Parser::PatternBindingEmitter::continueOrAlternative(std::size_t stateIndex)
+{
+    OrState& state = orStates_[stateIndex];
+    if (state.nextAlternative == state.alternatives.size())
     {
-        return makeIdentifierExpression(pattern.range, payloadName);
-    };
-    emitPatternBindings(
-        pattern.children.front(), payload, destination, temporaryPrefix);
+        schedule({WorkKind::FinishOrBinding, nullptr, 0, nullptr, stateIndex});
+        return;
+    }
+    const Pattern& alternative = state.alternatives[state.nextAlternative];
+    state.arm = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MatchArmExpression, alternative.range);
+    const std::size_t matchValue = addSource(
+        0, SourceKind::MatchValue, alternative.range);
+    state.arm->setFirst(
+        parser_.makePatternCondition(alternative, makeSourceFactory(matchValue)));
+    schedule({WorkKind::FinishOrAlternative, nullptr, 0, nullptr, stateIndex});
+    scheduleEmit(alternative, matchValue, state.arm);
+}
+
+void Parser::PatternBindingEmitter::finishOrAlternative(std::size_t stateIndex)
+{
+    OrState& state = orStates_[stateIndex];
+    const Pattern& alternative = state.alternatives[state.nextAlternative];
+    const auto& [name, mode] = state.bindings[state.nextBinding];
+    state.arm->setThird(parser_.makeIdentifierExpression(alternative.range, name));
+    state.arm->setFlag(mode == PatternBindingMode::Reference ||
+        mode == PatternBindingMode::ReferenceMutable);
+    state.selector->addChild(state.arm);
+    ++state.nextAlternative;
+    schedule({WorkKind::ContinueOrAlternative, nullptr, 0, nullptr, stateIndex});
+}
+
+void Parser::PatternBindingEmitter::finishOrBinding(std::size_t stateIndex)
+{
+    OrState& state = orStates_[stateIndex];
+    const auto& [name, mode] = state.bindings[state.nextBinding];
+    ast::TypeSyntax* type = parser_.arena_.make<ast::TypeSyntax>(
+        state.pattern->range, TokenKind::KwVar, "var");
+    const bool immutable = mode == PatternBindingMode::Value ||
+        mode == PatternBindingMode::Copy || mode == PatternBindingMode::Reference;
+    ast::AstNode* declaration = parser_.makeVariableDeclaration(
+        type, name, state.selector, false, immutable);
+    parser_.applyPatternBindingMode(declaration, mode);
+    state.destination->addChild(declaration);
+    ++state.nextBinding;
+    schedule({WorkKind::ContinueOrBinding, nullptr, 0, nullptr, stateIndex});
 }
 
 void Parser::emitPatternBindings(
@@ -2144,19 +2515,6 @@ void Parser::emitPatternBindings(
     ast::AstNode* destination,
     std::string_view temporaryPrefix)
 {
-    if (pattern.kind == PatternKind::Or && patternHasBindings(pattern))
-        return emitOrPatternBindings(pattern, source, destination, temporaryPrefix);
-    if (pattern.kind == PatternKind::Binding)
-        return emitSinglePatternBinding(pattern, source, destination);
-    if (pattern.kind == PatternKind::Tuple)
-        return emitTuplePatternBindings(pattern, source, destination, temporaryPrefix);
-    if (pattern.kind == PatternKind::Positional)
-        return emitPositionalPatternBindings(pattern, source, destination, temporaryPrefix);
-    if (pattern.kind == PatternKind::Struct)
-        return emitStructPatternBindings(pattern, source, destination, temporaryPrefix);
-    if (pattern.kind == PatternKind::List)
-        return emitListPatternBindings(pattern, source, destination, temporaryPrefix);
-    if (pattern.kind == PatternKind::Variant && !pattern.children.empty())
-        emitVariantPatternBindings(pattern, source, destination, temporaryPrefix);
+    PatternBindingEmitter(*this, pattern, source, destination, temporaryPrefix).run();
 }
 }

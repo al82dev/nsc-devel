@@ -1247,6 +1247,7 @@ private:
     class PatternAlternativeExpander;
     class PatternConditionBuilder;
     class PatternLoweringMachine;
+    class PatternBindingEmitter;
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>
@@ -1275,40 +1276,6 @@ private:
     void applyPatternBindingMode(
         ast::AstNode* declaration,
         PatternBindingMode mode) const;
-    void emitOrPatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
-    void emitSinglePatternBinding(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination);
-    void emitTuplePatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
-    void emitPositionalPatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
-    void emitStructPatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
-    void emitListPatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
-    void emitVariantPatternBindings(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* destination,
-        std::string_view temporaryPrefix);
     void emitPatternBindings(
         const Pattern& pattern,
         const PatternExpressionFactory& source,
