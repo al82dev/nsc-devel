@@ -526,7 +526,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     const std::vector<const ast::AstNode*>& argumentSyntaxes,
     std::unique_ptr<ProjectOopHirNode> preloweredLast,
     bool nullConditional,
-    std::unique_ptr<ProjectOopHirNode> preloweredReceiver)
+    std::unique_ptr<ProjectOopHirNode> preloweredReceiver,
+    std::vector<std::unique_ptr<ProjectOopHirNode>>* preloweredArguments)
 {
     if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
         !binding->selectedMemberOrdinal.has_value())
@@ -577,10 +578,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
             operatorMember->isUserOperator &&
             index < operatorMember->parameters.size() &&
             operatorMember->parameters[index].passKind != ParameterPassKind::Value;
-        auto argument = preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
-            ? std::move(preloweredLast)
-            : lowerExpression(
-                argumentSyntax, memberOrdinal, implicitOperatorReference, error);
+        auto argument = preloweredArguments != nullptr
+            ? std::move((*preloweredArguments)[index])
+            : preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
+                ? std::move(preloweredLast)
+                : lowerExpression(
+                    argumentSyntax, memberOrdinal, implicitOperatorReference, error);
         if (argument == nullptr) return nullptr;
         if (index < binding->selectedConversions.size() &&
             binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
@@ -672,6 +675,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerPropertyGetterWithRe
     if (call == nullptr || !validateNoHeapDirectCall(memberOrdinal, binding, error))
         return nullptr;
     if (flowProvenNonNull) call->stringValue = "flow-nonnull";
+    return call;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexerGetterWithOperands(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error,
+    const MethodCallBinding& binding,
+    const std::vector<const ast::AstNode*>& argumentSyntaxes,
+    bool nullConditional,
+    std::unique_ptr<ProjectOopHirNode> receiver,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments)
+{
+    auto call = lowerBoundCall(
+        expression,
+        memberOrdinal,
+        addressContext,
+        error,
+        expressionType(expression),
+        &binding,
+        argumentSyntaxes,
+        nullptr,
+        nullConditional,
+        std::move(receiver),
+        &arguments);
+    if (call == nullptr || !validateNoHeapDirectCall(memberOrdinal, binding, error))
+        return nullptr;
     return call;
 }
 

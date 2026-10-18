@@ -315,6 +315,32 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerUserIndexerGetterExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const std::vector<MethodCoreBinding>& cores,
+        const MethodExpressionTypeBinding& nodeType,
+        const MethodExpressionTypeBinding& indexType,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax)
+        {
+            model.expressionTypeBySyntax_[node.get()] =
+                node->kind() == ast::AstNodeKind::IntegerLiteralExpression
+                    ? &indexType : &nodeType;
+        }
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerExpression(root, callerMemberOrdinal, false, error);
+    }
+
     static void setRuntimeTypeBinding(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2239,6 +2265,191 @@ void testDeepExtensionPropertyGetterLowering(
     destroyHirTreeIteratively(lowered);
 }
 
+struct UserIndexerTarget final
+{
+    std::size_t getterOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string nodeType;
+    std::string indexType;
+};
+
+bool prepareUserIndexerFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    UserIndexerTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepUserIndexer";
+    writeProject(directory, "DeepUserIndexer");
+    writeFile(
+        directory / "Main.ns",
+        "namespace Deep { public class Node { "
+        "public Node this[int row, int column] { get { return this; } } } "
+        "public class Probe { public Node Run(Node node) { return node[1, 2]; } } }");
+    if (!compilation.compileProjectOopHir(directory / "DeepUserIndexer.nsproj", error) ||
+        compilation.memberModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundGetter = false;
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const auto& member = members[ordinal];
+        if (member.isIndexerAccessor && member.isGetter && member.parameters.size() == 2U)
+        {
+            output.getterOrdinal = ordinal;
+            output.nodeType = member.declaredTypeKey;
+            output.indexType = member.parameters.front().typeKey;
+            foundGetter = true;
+        }
+        if (!member.isPropertyAccessor && !member.isIndexerAccessor && member.name == "Run")
+        {
+            output.callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundGetter && foundCaller && !output.nodeType.empty() &&
+        output.indexType == "builtin:int";
+}
+
+struct DeepUserIndexerSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepUserIndexerSyntax makeDeepUserIndexerSyntax(
+    std::size_t depth,
+    const UserIndexerTarget& target)
+{
+    DeepUserIndexerSyntax fixture;
+    fixture.nodes.reserve(depth * 3U + 1U);
+    fixture.calls.reserve(depth);
+    fixture.cores.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        fixture.nodes.back()->setIntegerValue(1U);
+        auto* row = fixture.nodes.back().get();
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+            nativesharp::SourceRange{}));
+        fixture.nodes.back()->setIntegerValue(2U);
+        auto* column = fixture.nodes.back().get();
+        const bool nullConditional = index % 2U != 0U;
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nullConditional
+                ? nativesharp::ast::AstNodeKind::NullConditionalIndexExpression
+                : nativesharp::ast::AstNodeKind::IndexExpression,
+            nativesharp::SourceRange{}));
+        auto* indexer = fixture.nodes.back().get();
+        indexer->setFirst(current);
+        indexer->addChild(row);
+        indexer->addChild(column);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = indexer;
+        call.receiverSyntax = current;
+        call.receiverTypeKey = target.nodeType;
+        call.selectedMemberOrdinal = target.getterOrdinal;
+        call.resultTypeKey = target.nodeType;
+        if (nullConditional)
+        {
+            fixture.cores.emplace_back();
+            auto& core = fixture.cores.back();
+            core.kind = nativesharp::frontend::MethodCoreOperationKind::NullConditionalUserIndex;
+            core.syntax = indexer;
+            core.resultTypeKey = target.nodeType;
+        }
+        current = indexer;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool userIndexerChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const UserIndexerTarget& target)
+{
+    std::size_t observedDepth = 0;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall)
+    {
+        const bool expectedNullConditional =
+            (expectedDepth - observedDepth - 1U) % 2U != 0U;
+        if (node->memberOrdinal != target.getterOrdinal || node->typeKey != target.nodeType ||
+            node->children.size() != 3U || node->interfaceDispatch || node->baseReceiver ||
+            node->nullConditionalCall != expectedNullConditional || node->referenceResult ||
+            node->argumentCount != 0U)
+        {
+            return false;
+        }
+        const auto& row = node->children[1];
+        const auto& column = node->children[2];
+        if (row->kind != nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant ||
+            column->kind != nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant ||
+            row->typeKey != target.indexType || column->typeKey != target.indexType ||
+            row->integerValue != 1U || column->integerValue != 2U)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue;
+}
+
+void testDeepUserIndexerGetterLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    UserIndexerTarget target;
+    std::string error;
+    const bool prepared = prepareUserIndexerFixture(root, compilation, target, error);
+    tests.expect(prepared, "the user-indexer fixture builds its real two-argument getter (" +
+        error + ")");
+    if (!prepared) return;
+
+    DeepUserIndexerSyntax syntax = makeDeepUserIndexerSyntax(nestingDepth, target);
+    nativesharp::frontend::MethodExpressionTypeBinding nodeType;
+    nodeType.typeKey = target.nodeType;
+    nativesharp::frontend::MethodExpressionTypeBinding indexType;
+    indexType.typeKey = target.indexType;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUserIndexerGetterExpression(
+            model,
+            *compilation.memberModel(),
+            target.callerOrdinal,
+            syntax.root,
+            syntax.nodes,
+            syntax.calls,
+            syntax.cores,
+            nodeType,
+            indexType,
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level user-indexer chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(userIndexerChainMatches(lowered.get(), nestingDepth, target),
+        "iterative user-indexer lowering preserves receiver/index order and null-call metadata");
+    destroyHirTreeIteratively(lowered);
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -3156,6 +3367,10 @@ int main()
     {
         testDeepExtensionPropertyGetterLowering(tests, root);
     }
+    else if (focusValue == "hir-user-indexer-getter-depth")
+    {
+        testDeepUserIndexerGetterLowering(tests, root);
+    }
     else if (focusValue == "hir-overflow-policy-depth")
     {
         testDeepOverflowPolicyExpressionLowering(tests);
@@ -3230,6 +3445,7 @@ int main()
         testDeepClassFieldExpressionLowering(tests);
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);
+        testDeepUserIndexerGetterLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);

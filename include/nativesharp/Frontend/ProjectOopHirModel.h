@@ -942,7 +942,8 @@ private:
         const std::vector<const ast::AstNode*>& argumentSyntaxes,
         std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr,
         bool nullConditional = false,
-        std::unique_ptr<ProjectOopHirNode> preloweredReceiver = nullptr);
+        std::unique_ptr<ProjectOopHirNode> preloweredReceiver = nullptr,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>* preloweredArguments = nullptr);
 
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
@@ -959,6 +960,19 @@ private:
         bool nullConditional,
         bool flowProvenNonNull,
         std::unique_ptr<ProjectOopHirNode> receiver);
+
+    // Completes an indexer getter after the worklist has visited its receiver and every explicit
+    // index in source order. lowerBoundCall remains the single owner of conversions and borrows.
+    std::unique_ptr<ProjectOopHirNode> lowerIndexerGetterWithOperands(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error,
+        const MethodCallBinding& binding,
+        const std::vector<const ast::AstNode*>& argumentSyntaxes,
+        bool nullConditional,
+        std::unique_ptr<ProjectOopHirNode> receiver,
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments);
 
     // Describes the forwarded receiver contract before the worklist descends into it, then
     // completes the historical namespace-call HIR from the already-lowered receiver.
