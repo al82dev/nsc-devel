@@ -1,5 +1,7 @@
 #include "nativesharp/Parser/Parser.h"
 
+#include "nativesharp/Language/Language3Surface.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -66,6 +68,12 @@ private:
         FinishForeachCollection,
         FinishForeachProbe,
         FinishForeachBody,
+        FinishSwitchGoverning,
+        ContinueSwitch,
+        ContinueSwitchLabels,
+        FinishSwitchLabel,
+        ContinueSwitchSection,
+        AppendSwitchStatement,
         Try,
         ContinueTry,
         FinishTryBlock,
@@ -101,6 +109,7 @@ private:
         DoWhile,
         For,
         Foreach,
+        Switch,
         Try,
         Using,
         Defer
@@ -184,6 +193,18 @@ private:
         std::size_t resultSlot = 0;
         std::size_t collectionStart = 0;
         std::size_t collectionEnd = 0;
+    };
+
+    struct SwitchFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        std::size_t sectionBegin = 0;
+        std::size_t beforeStatement = 0;
+        ast::AstNode* conditionDeclaration = nullptr;
+        ast::AstNode* node = nullptr;
+        ast::AstNode* section = nullptr;
+        std::uint64_t labelCount = 0;
     };
 
     struct TryFrame final
@@ -330,6 +351,15 @@ private:
     void finishForeachCollection(const Work& work);
     void finishForeachProbe(const Work& work);
     void finishForeachBody(const Work& work);
+    void startSwitch(const Work& work);
+    void finishSwitchGoverning(const Work& work);
+    void continueSwitch(const Work& work);
+    void startSwitchSection(std::size_t frameIndex);
+    void continueSwitchLabels(const Work& work);
+    void finishSwitchLabel(const Work& work);
+    void continueSwitchSection(const Work& work);
+    void appendSwitchStatement(const Work& work);
+    void completeSwitch(SwitchFrame& frame);
     ast::AstNode* parseCatchHeader(std::size_t beginIndex);
     void startTry(const Work& work);
     void continueTry(const Work& work);
@@ -379,6 +409,7 @@ private:
     std::deque<ForFrame> forFrames_;
     std::deque<ForExpressionFrame> forExpressionFrames_;
     std::deque<ForeachFrame> foreachFrames_;
+    std::deque<SwitchFrame> switchFrames_;
     std::deque<TryFrame> tryFrames_;
     std::deque<CatchFrame> catchFrames_;
     std::deque<UsingFrame> usingFrames_;
@@ -482,6 +513,12 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishForeachCollection: finishForeachCollection(work); return;
     case WorkKind::FinishForeachProbe: finishForeachProbe(work); return;
     case WorkKind::FinishForeachBody: finishForeachBody(work); return;
+    case WorkKind::FinishSwitchGoverning: finishSwitchGoverning(work); return;
+    case WorkKind::ContinueSwitch: continueSwitch(work); return;
+    case WorkKind::ContinueSwitchLabels: continueSwitchLabels(work); return;
+    case WorkKind::FinishSwitchLabel: finishSwitchLabel(work); return;
+    case WorkKind::ContinueSwitchSection: continueSwitchSection(work); return;
+    case WorkKind::AppendSwitchStatement: appendSwitchStatement(work); return;
     case WorkKind::Try: startTry(work); return;
     case WorkKind::ContinueTry: continueTry(work); return;
     case WorkKind::FinishTryBlock: finishTryBlock(work); return;
@@ -659,6 +696,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
     if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
+    if (parser_.at(TokenKind::KwSwitch)) return StatementKind::Switch;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
     if (parser_.at(TokenKind::KwUsing)) return StatementKind::Using;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
@@ -705,6 +743,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::DoWhile: startDoWhile(work); return;
     case StatementKind::For: startFor(work); return;
     case StatementKind::Foreach: startForeach(work); return;
+    case StatementKind::Switch: startSwitch(work); return;
     case StatementKind::Try: startTry(work); return;
     case StatementKind::Using: startUsing(work); return;
     case StatementKind::Defer: startDefer(work); return;
@@ -1733,6 +1772,197 @@ void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
     ForeachFrame& frame = foreachFrames_[work.frameIndex];
     complete(frame.resultSlot, parser_.lowerForeachStatement(
         std::move(frame.state), childValue(work)));
+}
+
+// Opens one switch frame and schedules its governing expression or declaration.
+void Parser::ParseContinuationCoordinator::startSwitch(const Work& work)
+{
+    const std::size_t frameIndex = switchFrames_.size();
+    switchFrames_.emplace_back();
+    SwitchFrame& frame = switchFrames_.back();
+    frame.beginIndex = parser_.index_;
+    frame.resultSlot = work.resultSlot;
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'(' after 'switch'");
+    Work finish{WorkKind::FinishSwitchGoverning, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.flag = parser_.looksLikeConditionDeclaration();
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    if (finish.flag)
+        startVariableDeclaration(Work{WorkKind::Statement, childSlot}, false, false);
+    else
+        work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Completes the switch header and creates the canonical governing node shape.
+void Parser::ParseContinuationCoordinator::finishSwitchGoverning(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    ast::AstNode* governing = childValue(work);
+    if (work.flag)
+    {
+        frame.conditionDeclaration = governing;
+        governing = conditionFromDeclaration(frame.conditionDeclaration);
+    }
+    parser_.expect(TokenKind::RightParen, "')' after the switch governing expression");
+    parser_.expect(TokenKind::LeftBrace, "'{' to open the switch body");
+    frame.node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::SwitchStatement,
+        parser_.tokenRangeFrom(frame.beginIndex));
+    frame.node->setFirst(governing);
+    Work next{WorkKind::ContinueSwitch, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Selects the next section, performs one-token recovery, or closes the switch.
+void Parser::ParseContinuationCoordinator::continueSwitch(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+    {
+        completeSwitch(frame);
+        return;
+    }
+    if (!parser_.atSwitchLabel())
+    {
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "expected 'case' or 'default' at the start of a switch section");
+        parser_.consume();
+        work_.push_back(work);
+        return;
+    }
+    startSwitchSection(work.frameIndex);
+}
+
+// Creates one section and schedules its first label without a nested parser facade.
+void Parser::ParseContinuationCoordinator::startSwitchSection(std::size_t frameIndex)
+{
+    SwitchFrame& frame = switchFrames_[frameIndex];
+    frame.sectionBegin = parser_.index_;
+    frame.section = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::SwitchSection,
+        parser_.current().range());
+    frame.labelCount = 0;
+    Work next{WorkKind::ContinueSwitchLabels, frame.resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(next);
+}
+
+// Schedules one case value at a time and preserves grouped-label ordering.
+void Parser::ParseContinuationCoordinator::continueSwitchLabels(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    if (!parser_.atSwitchLabel())
+    {
+        frame.section->setIntegerValue(frame.labelCount);
+        Work next{WorkKind::ContinueSwitch, frame.resultSlot};
+        next.frameIndex = work.frameIndex;
+        Work section{WorkKind::ContinueSwitchSection, frame.resultSlot};
+        section.frameIndex = work.frameIndex;
+        work_.push_back(next);
+        work_.push_back(section);
+        return;
+    }
+    Work finish{WorkKind::FinishSwitchLabel, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.beginIndex = parser_.index_;
+    finish.flag = parser_.at(TokenKind::KwDefault);
+    parser_.consume();
+    if (!finish.flag && parser_.at(TokenKind::LeftBracket))
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::NS3049DeferredLanguageSurface,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            language::language3SurfaceDiagnostic(language::Language3Feature::ListPatterns));
+    if (!finish.flag)
+    {
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Expression, childSlot});
+        return;
+    }
+    work_.push_back(finish);
+}
+
+// Materializes one label after its optional value and resumes the label run.
+void Parser::ParseContinuationCoordinator::finishSwitchLabel(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    parser_.expect(
+        TokenKind::Colon,
+        work.flag ? "':' after 'default'" : "':' after the case value");
+    ast::AstNode* label = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::SwitchLabel,
+        parser_.tokenRangeFrom(work.beginIndex));
+    label->setFlag(work.flag);
+    label->setFirst(childValue(work));
+    frame.section->addChild(label);
+    ++frame.labelCount;
+    Work next{WorkKind::ContinueSwitchLabels, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Schedules one section statement or publishes the completed labels-first section.
+void Parser::ParseContinuationCoordinator::continueSwitchSection(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    if (parser_.atSwitchLabel() || parser_.at(TokenKind::RightBrace) ||
+        parser_.at(TokenKind::EndOfFile))
+    {
+        frame.section->setRange(parser_.tokenRangeFrom(frame.sectionBegin));
+        frame.node->addChild(frame.section);
+        return;
+    }
+    frame.beforeStatement = parser_.index_;
+    Work append{WorkKind::AppendSwitchStatement, frame.resultSlot};
+    append.frameIndex = work.frameIndex;
+    append.childSlot = makeResultSlot();
+    const std::size_t childSlot = append.childSlot;
+    work_.push_back(append);
+    work_.push_back({WorkKind::Statement, childSlot});
+}
+
+// Preserves the historical conditional-pattern flattening and progress guard.
+void Parser::ParseContinuationCoordinator::appendSwitchStatement(const Work& work)
+{
+    SwitchFrame& frame = switchFrames_[work.frameIndex];
+    ast::AstNode* statement = childValue(work);
+    if (statement != nullptr && statement->kind() == ast::AstNodeKind::BlockStatement &&
+        statement->auxiliaryText() == "conditional-pattern-inline")
+        for (ast::AstNode* child : statement->children()) frame.section->addChild(child);
+    else if (statement != nullptr)
+        frame.section->addChild(statement);
+    if (parser_.index_ == frame.beforeStatement) parser_.consume();
+    Work next{WorkKind::ContinueSwitchSection, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Consumes the closing delimiter and publishes either the switch or its declaration wrapper.
+void Parser::ParseContinuationCoordinator::completeSwitch(SwitchFrame& frame)
+{
+    parser_.expect(TokenKind::RightBrace, "'}' to close the switch");
+    frame.node->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    if (frame.conditionDeclaration == nullptr)
+    {
+        complete(frame.resultSlot, frame.node);
+        return;
+    }
+    ast::AstNode* wrapper = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement,
+        frame.node->range());
+    wrapper->setAuxiliaryText("condition-declaration");
+    wrapper->addChild(frame.conditionDeclaration);
+    wrapper->addChild(frame.node);
+    complete(frame.resultSlot, wrapper);
 }
 
 // Parses the non-recursive catch declaration prefix and leaves any filter/body at the cursor.
