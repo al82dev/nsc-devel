@@ -14,6 +14,7 @@
 #include <vector>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 
 namespace nativesharp::language
 {
@@ -1007,19 +1008,131 @@ private:
     Pattern parsePattern(bool implicitBinding);
     Pattern parseAndPattern(bool implicitBinding);
     Pattern parsePatternPrimary(bool implicitBinding);
+    bool patternLiteralStartsHere() const noexcept;
+    std::pair<ast::AstNode*, std::optional<std::int64_t>>
+        parseSignedPatternIntegerLiteral();
+    Pattern parseListPattern(std::size_t patternBegin);
+    Pattern parseBindingPattern(std::size_t patternBegin);
+    Pattern parseRelationalPattern(std::size_t patternBegin);
+    Pattern parseLiteralOrRangePattern(
+        std::size_t patternBegin,
+        SourceRange start);
+    Pattern parseParenthesizedPattern(std::size_t patternBegin);
+    void parseStructPatternBody(Pattern& pattern);
+    Pattern parseNamedPattern(std::size_t patternBegin, bool implicitBinding);
     bool patternHasBindings(const Pattern& pattern) const;
     std::vector<Pattern> expandPatternAlternatives(const Pattern& pattern) const;
     ast::AstNode* makeBooleanLiteral(const SourceRange& range, bool value);
     bool patternIsConditionOnly(const Pattern& pattern) const;
+    ast::AstNode* makeRelationalPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
+    ast::AstNode* makeStructPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
+    ast::AstNode* makeVariantPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
+    ast::AstNode* makeLogicalPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        lexer::TokenKind operation);
+    ast::AstNode* makeListPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
+    ast::AstNode* makeNotPatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
     ast::AstNode* makePatternCondition(
         const Pattern& pattern,
         const PatternExpressionFactory& source);
+    ast::AstNode* lowerBindingPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        bool emitBindings);
+    ast::AstNode* lowerOrPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
+    ast::AstNode* lowerTuplePattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
+    ast::AstNode* lowerStructPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
+    ast::AstNode* lowerListPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
+    ast::AstNode* lowerPositionalPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
+    ast::AstNode* lowerVariantPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings);
     ast::AstNode* lowerPattern(
         const Pattern& pattern,
         const PatternExpressionFactory& source,
         ast::AstNode* continuation,
         std::string_view temporaryPrefix,
         bool emitBindings = true);
+    void collectUniquePatternBindings(
+        const Pattern& pattern,
+        std::vector<std::pair<std::string, PatternBindingMode>>& bindings) const;
+    void applyPatternBindingMode(
+        ast::AstNode* declaration,
+        PatternBindingMode mode) const;
+    void emitOrPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    void emitSinglePatternBinding(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination);
+    void emitTuplePatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    void emitPositionalPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    void emitStructPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    void emitListPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    void emitVariantPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
     void emitPatternBindings(
         const Pattern& pattern,
         const PatternExpressionFactory& source,

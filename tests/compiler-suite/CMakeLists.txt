@@ -258,6 +258,13 @@ add_executable(
     host/modules/ParserConstructionCloneFinalModule.cpp
     host/modules/ParserStateRobustnessFinalModule.cpp
     host/modules/ParserProductTestShim.cpp
+    host/modules/ParserContextProductTestShim.cpp
+    host/modules/ParserDeclarationProductTestShim.cpp
+    host/modules/ParserMemberProductTestShim.cpp
+    host/modules/ParserTypeProductTestShim.cpp
+    host/modules/ParserStatementProductTestShim.cpp
+    host/modules/ParserExpressionProductTestShim.cpp
+    host/modules/ParserPatternProductTestShim.cpp
     host/modules/SemaConstantConversionModule.cpp
     host/modules/SemaEffectsExpressionModule.cpp
     host/modules/SemaScopeSymbolModule.cpp
