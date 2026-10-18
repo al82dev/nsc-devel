@@ -137,6 +137,15 @@ ProjectOopHirModel::lowerDeconstructionDeclarationStatement(
         nullptr, memberOrdinal, false, statement, error);
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInlineAssemblyStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        nullptr, memberOrdinal, false, statement, error);
+}
+
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
@@ -152,6 +161,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         ExpressionStatement,
         VariableDeclaration,
         DeconstructionDeclaration,
+        InlineAssemblyStatement,
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
@@ -485,6 +495,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             DeconstructionDeclarationFrameStage::Source;
         bool materializeReceiverTemporary = false;
     };
+    struct InlineAssemblyFrameState final
+    {
+        std::unique_ptr<ProjectOopHirNode> node;
+        const ast::AstNode* pendingOperand = nullptr;
+        std::size_t nextRecord = 0U;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -513,6 +529,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<VariableDeclarationFrameState> variableDeclaration;
         std::optional<DeconstructionDeclarationFrameState>
             deconstructionDeclaration;
+        std::optional<InlineAssemblyFrameState> inlineAssembly;
         std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
         std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
@@ -1239,7 +1256,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         return std::nullopt;
     };
 
-    const auto applyVariableChildPostconditions = [&]
+    const auto applyExpressionBoundaryPostconditions = [&]
         (std::unique_ptr<ProjectOopHirNode>& child,
          const ast::AstNode* childSyntax,
          std::size_t childMemberOrdinal) -> bool
@@ -1361,6 +1378,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 ast::AstNodeKind::DeconstructionDeclarationStatement)
             {
                 frame.kind = IterativeExpressionKind::DeconstructionDeclaration;
+            }
+            else if (statementContinuation->kind() ==
+                ast::AstNodeKind::InlineAssemblyStatement)
+            {
+                frame.kind = IterativeExpressionKind::InlineAssemblyStatement;
             }
             else
             {
@@ -4243,6 +4265,117 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             block->children.push_back(std::move(deconstruct));
             return block;
         };
+        struct InlineAssemblyOperandChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto initializeInlineAssemblyFrame =
+            [&](IterativeExpressionFrame& frame)
+        {
+            InlineAssemblyFrameState state;
+            state.node = makeNode(
+                ProjectOopHirNodeKind::InlineAssembly,
+                frame.syntax,
+                "builtin:void");
+            state.node->stringValue = frame.syntax->text();
+            frame.inlineAssembly.emplace(std::move(state));
+        };
+        const auto advanceInlineAssemblyFrame =
+            [&](IterativeExpressionFrame& frame)
+                -> std::optional<InlineAssemblyOperandChild>
+        {
+            InlineAssemblyFrameState& state = *frame.inlineAssembly;
+            while (state.nextRecord < frame.syntax->children().size())
+            {
+                const ast::AstNode* record =
+                    frame.syntax->children()[state.nextRecord++];
+                if (record == nullptr)
+                {
+                    error = "integrated assembly contains a null contract record";
+                    return std::nullopt;
+                }
+                if (record->kind() == ast::AstNodeKind::InlineAssemblyLine)
+                {
+                    auto line = makeNode(
+                        ProjectOopHirNodeKind::InlineAssemblyLine,
+                        record,
+                        "builtin:void");
+                    line->stringValue = record->text();
+                    line->elementTypeKey = record->auxiliaryText();
+                    state.node->children.push_back(std::move(line));
+                    continue;
+                }
+                if (record->kind() == ast::AstNodeKind::InlineAssemblyClobber)
+                {
+                    auto clobber = makeNode(
+                        ProjectOopHirNodeKind::InlineAssemblyClobber,
+                        record,
+                        "builtin:void");
+                    clobber->stringValue = record->text();
+                    clobber->elementTypeKey = record->auxiliaryText();
+                    clobber->integerValue = record->integerValue();
+                    clobber->booleanValue = record->flag();
+                    state.node->children.push_back(std::move(clobber));
+                    continue;
+                }
+                const bool input = record->kind() ==
+                    ast::AstNodeKind::InlineAssemblyInputOperand;
+                const bool output = record->kind() ==
+                    ast::AstNodeKind::InlineAssemblyOutputOperand;
+                if (!input && !output)
+                {
+                    error = "integrated assembly contains an unknown contract record";
+                    return std::nullopt;
+                }
+                if (record->first() == nullptr)
+                {
+                    error =
+                        "integrated assembly operand lost its NativeSharp expression";
+                    return std::nullopt;
+                }
+                state.pendingOperand = record;
+                return InlineAssemblyOperandChild{
+                    record->first(),
+                    output || (input && record->auxiliaryText() == "m")};
+            }
+            return std::nullopt;
+        };
+        const auto acceptInlineAssemblyOperand =
+            [&](IterativeExpressionFrame& frame,
+                std::unique_ptr<ProjectOopHirNode> child) -> bool
+        {
+            InlineAssemblyFrameState& state = *frame.inlineAssembly;
+            const ast::AstNode* record = state.pendingOperand;
+            const MethodExpressionTypeBinding* operandType =
+                record != nullptr ? expressionType(record->first()) : nullptr;
+            if (operandType == nullptr || operandType->typeKey.empty())
+            {
+                error =
+                    "integrated assembly operand lost its resolved NativeSharp type";
+                return false;
+            }
+            const bool input = record->kind() ==
+                ast::AstNodeKind::InlineAssemblyInputOperand;
+            auto operand = makeNode(
+                input ? ProjectOopHirNodeKind::InlineAssemblyInput
+                      : ProjectOopHirNodeKind::InlineAssemblyOutput,
+                record,
+                operandType->typeKey);
+            operand->stringValue = record->auxiliaryText();
+            operand->integerValue = record->integerValue();
+            operand->booleanValue = record->flag();
+            operand->children.push_back(std::move(child));
+            state.node->children.push_back(std::move(operand));
+            state.pendingOperand = nullptr;
+            return true;
+        };
+        const auto finishInlineAssemblyFrame =
+            [&](IterativeExpressionFrame& frame)
+                -> std::unique_ptr<ProjectOopHirNode>
+        {
+            return std::move(frame.inlineAssembly->node);
+        };
         const auto activateLocalCleanup =
             [&](const std::unique_ptr<ProjectOopHirNode>& node)
         {
@@ -4371,6 +4504,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentInputKind = IterativeInputKind::Expression;
                     return LoopBlockAdvance::Descend;
                 }
+                if (statement != nullptr &&
+                    statement->kind() == ast::AstNodeKind::InlineAssemblyStatement)
+                {
+                    IterativeExpressionFrame assemblyFrame;
+                    assemblyFrame.kind =
+                        IterativeExpressionKind::InlineAssemblyStatement;
+                    assemblyFrame.syntax = statement;
+                    assemblyFrame.memberOrdinal = frame.memberOrdinal;
+                    initializeInlineAssemblyFrame(assemblyFrame);
+                    const auto child = advanceInlineAssemblyFrame(assemblyFrame);
+                    if (!error.empty()) return LoopBlockAdvance::Error;
+                    if (!child.has_value())
+                    {
+                        frame.loopBlockNode->children.push_back(
+                            finishInlineAssemblyFrame(assemblyFrame));
+                        continue;
+                    }
+                    const std::size_t assemblyMemberOrdinal =
+                        assemblyFrame.memberOrdinal;
+                    frames.push_back(std::move(assemblyFrame));
+                    current = child->syntax;
+                    currentMemberOrdinal = assemblyMemberOrdinal;
+                    currentAddressContext = child->addressContext;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
 
                 std::unique_ptr<ProjectOopHirNode> statementNode =
                     lowerStatement(statement, frame.memberOrdinal, error);
@@ -4383,13 +4542,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         if (frames.size() == 1U &&
             (frames.back().kind == IterativeExpressionKind::VariableDeclaration ||
              frames.back().kind ==
-                IterativeExpressionKind::DeconstructionDeclaration))
+                IterativeExpressionKind::DeconstructionDeclaration ||
+             frames.back().kind ==
+                IterativeExpressionKind::InlineAssemblyStatement))
         {
             const bool variable = frames.back().kind ==
                 IterativeExpressionKind::VariableDeclaration;
-            if (variable
-                    ? !initializeVariableDeclarationFrame(frames.back())
-                    : !initializeDeconstructionDeclarationFrame(frames.back()))
+            const bool deconstruction = frames.back().kind ==
+                IterativeExpressionKind::DeconstructionDeclaration;
+            if ((variable && !initializeVariableDeclarationFrame(frames.back())) ||
+                (deconstruction &&
+                    !initializeDeconstructionDeclarationFrame(frames.back())))
             {
                 if (!lastErrorRange_.isValid())
                     lastErrorRange_ = frames.back().syntax->range();
@@ -4410,7 +4573,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     worklistComplete = true;
                 }
             }
-            else
+            else if (deconstruction)
             {
                 const auto child =
                     nextDeconstructionDeclarationChild(frames.back());
@@ -4430,6 +4593,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             lastErrorRange_ = statementContinuation->range();
                         return nullptr;
                     }
+                }
+            }
+            else
+            {
+                initializeInlineAssemblyFrame(frames.back());
+                const auto child = advanceInlineAssemblyFrame(frames.back());
+                if (!error.empty())
+                {
+                    if (!lastErrorRange_.isValid())
+                        lastErrorRange_ = frames.back().syntax->range();
+                    return nullptr;
+                }
+                if (child.has_value())
+                {
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
+                }
+                else
+                {
+                    lowered = finishInlineAssemblyFrame(frames.back());
+                    frames.pop_back();
+                    worklistComplete = true;
                 }
             }
         }
@@ -5651,8 +5836,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     !frames.empty() &&
                     frames.back().kind ==
                         IterativeExpressionKind::DeconstructionDeclaration;
+                const bool isInlineAssemblyOperandChild =
+                    !frames.empty() &&
+                    frames.back().kind ==
+                        IterativeExpressionKind::InlineAssemblyStatement;
                 lowered = isExpressionStatementRoot || isVariableDeclarationChild ||
-                        isDeconstructionDeclarationChild
+                        isDeconstructionDeclarationChild ||
+                        isInlineAssemblyOperandChild
                     ? lowerExpressionImpl(
                         current, currentMemberOrdinal, currentAddressContext, error)
                     : lowerExpression(
@@ -5665,7 +5855,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         if ((frames.back().kind ==
                                  IterativeExpressionKind::VariableDeclaration ||
                              frames.back().kind ==
-                                 IterativeExpressionKind::DeconstructionDeclaration) &&
+                                 IterativeExpressionKind::DeconstructionDeclaration ||
+                             frames.back().kind ==
+                                 IterativeExpressionKind::InlineAssemblyStatement) &&
                             current != nullptr)
                         {
                             lastErrorRange_ = current->range();
@@ -5691,7 +5883,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     const auto pendingChild =
                         nextVariableDeclarationChild(frame);
                     if (!pendingChild.has_value() ||
-                        !applyVariableChildPostconditions(
+                        !applyExpressionBoundaryPostconditions(
                             lowered,
                             pendingChild->syntax,
                             frame.memberOrdinal))
@@ -5741,6 +5933,46 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             lastErrorRange_ = frame.syntax->range();
                         return nullptr;
                     }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::InlineAssemblyStatement)
+                {
+                    InlineAssemblyFrameState& state = *frame.inlineAssembly;
+                    const ast::AstNode* record = state.pendingOperand;
+                    const ast::AstNode* operandSyntax =
+                        record != nullptr ? record->first() : nullptr;
+                    if (record == nullptr || operandSyntax == nullptr ||
+                        !applyExpressionBoundaryPostconditions(
+                            lowered, operandSyntax, frame.memberOrdinal) ||
+                        !acceptInlineAssemblyOperand(frame, std::move(lowered)))
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid())
+                        {
+                            lastErrorRange_ = operandSyntax != nullptr
+                                ? operandSyntax->range()
+                                : frame.syntax->range();
+                        }
+                        return nullptr;
+                    }
+                    const auto child = advanceInlineAssemblyFrame(frame);
+                    if (!error.empty())
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        return nullptr;
+                    }
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishInlineAssemblyFrame(frame);
                     frames.pop_back();
                     continue;
                 }
@@ -6034,6 +6266,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                                 frames.push_back(std::move(declarationFrame));
                                 current = child->syntax;
                                 currentMemberOrdinal = declarationMemberOrdinal;
+                                currentAddressContext = child->addressContext;
+                                return true;
+                            }
+                            if (declaration != nullptr &&
+                                declaration->kind() ==
+                                    ast::AstNodeKind::InlineAssemblyStatement)
+                            {
+                                IterativeExpressionFrame assemblyFrame;
+                                assemblyFrame.kind =
+                                    IterativeExpressionKind::InlineAssemblyStatement;
+                                assemblyFrame.syntax = declaration;
+                                assemblyFrame.memberOrdinal = frame.memberOrdinal;
+                                initializeInlineAssemblyFrame(assemblyFrame);
+                                const auto child =
+                                    advanceInlineAssemblyFrame(assemblyFrame);
+                                if (!error.empty()) return false;
+                                if (!child.has_value())
+                                {
+                                    frame.matchArm->children.push_back(
+                                        finishInlineAssemblyFrame(assemblyFrame));
+                                    continue;
+                                }
+                                const std::size_t assemblyMemberOrdinal =
+                                    assemblyFrame.memberOrdinal;
+                                frame.stage = 3U;
+                                frames.push_back(std::move(assemblyFrame));
+                                current = child->syntax;
+                                currentMemberOrdinal = assemblyMemberOrdinal;
                                 currentAddressContext = child->addressContext;
                                 return true;
                             }

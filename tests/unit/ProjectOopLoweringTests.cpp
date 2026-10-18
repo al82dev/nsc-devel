@@ -1408,6 +1408,47 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerInlineAssemblyStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodLocalSymbol> locals,
+        std::vector<MethodMatchExpressionBinding> matches,
+        const std::vector<MethodNameBinding>& names,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const std::vector<MethodCallBinding>& calls,
+        const std::vector<MethodBorrowBinding>& borrows,
+        const ProjectMemberModel* memberModel,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.locals_ = std::move(locals);
+        methodBodyModel.matchExpressionBindings_ = std::move(matches);
+        methodBodyModel.matchExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.matchExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.matchExpressionBindingBySyntax_[
+                methodBodyModel.matchExpressionBindings_[index].syntax] = index;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = memberModel;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        for (const MethodBorrowBinding& borrow : borrows)
+            model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -14045,6 +14086,619 @@ void testDeepDeconstructionDeclarationLowering(TestContext& tests)
         "nested shape loss keeps the historical diagnostic and rolls back every prior leaf");
 }
 
+struct InlineAssemblyDepthFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    std::vector<const nativesharp::ast::AstNode*> loopSyntax;
+    std::vector<const nativesharp::ast::AstNode*> assemblySyntax;
+    std::vector<const nativesharp::ast::AstNode*> lineSyntax;
+    std::vector<const nativesharp::ast::AstNode*> operandSyntax;
+    const nativesharp::ast::AstNode* root = nullptr;
+    const nativesharp::ast::AstNode* terminal = nullptr;
+};
+
+nativesharp::ast::AstNode* appendInlineAssemblyNode(
+    InlineAssemblyDepthFixture& fixture,
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::SourceRange range = {})
+{
+    fixture.nodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(kind, range));
+    return fixture.nodes.back().get();
+}
+
+InlineAssemblyDepthFixture makeDeepInlineAssemblyFixture(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& integerType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    InlineAssemblyDepthFixture fixture;
+    fixture.nodes.reserve(depth * 4U + 1U);
+    fixture.loops.reserve(depth);
+    fixture.typed.reserve(depth + 1U);
+    fixture.loopSyntax.reserve(depth);
+    fixture.assemblySyntax.reserve(depth);
+    fixture.lineSyntax.reserve(depth);
+    fixture.operandSyntax.reserve(depth);
+
+    auto* current = appendInlineAssemblyNode(
+        fixture, AstKind::IntegerLiteralExpression);
+    current->setIntegerValue(17U);
+    fixture.terminal = current;
+    fixture.typed.push_back({current, &integerType});
+    for (std::size_t remaining = depth; remaining > 0U; --remaining)
+    {
+        const std::size_t ordinal = remaining - 1U;
+        auto* line = appendInlineAssemblyNode(fixture, AstKind::InlineAssemblyLine);
+        line->setText("mov %0, %0");
+        line->setAuxiliaryText("depth-line");
+        auto* operand = appendInlineAssemblyNode(
+            fixture, AstKind::InlineAssemblyInputOperand);
+        operand->setFirst(current);
+        operand->setAuxiliaryText("r");
+        operand->setIntegerValue(0U);
+        operand->setFlag(true);
+        auto* assembly = appendInlineAssemblyNode(
+            fixture, AstKind::InlineAssemblyStatement);
+        assembly->setText("mov %0, %0\n");
+        assembly->addChild(line);
+        assembly->addChild(operand);
+        auto* block = appendInlineAssemblyNode(fixture, AstKind::BlockStatement);
+        block->addChild(assembly);
+        auto* loop = appendInlineAssemblyNode(fixture, AstKind::LoopExpression);
+        loop->setFirst(block);
+        fixture.loops.push_back({
+            loop, 0U, ordinal,
+            "inline-assembly-loop-" + std::to_string(ordinal), "builtin:int"});
+        fixture.typed.push_back({loop, &integerType});
+        fixture.loopSyntax.push_back(loop);
+        fixture.assemblySyntax.push_back(assembly);
+        fixture.lineSyntax.push_back(line);
+        fixture.operandSyntax.push_back(operand);
+        current = loop;
+    }
+    std::reverse(fixture.loopSyntax.begin(), fixture.loopSyntax.end());
+    std::reverse(fixture.assemblySyntax.begin(), fixture.assemblySyntax.end());
+    std::reverse(fixture.lineSyntax.begin(), fixture.lineSyntax.end());
+    std::reverse(fixture.operandSyntax.begin(), fixture.operandSyntax.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepInlineAssemblyChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const InlineAssemblyDepthFixture& fixture,
+    std::size_t depth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::LoopExpression ||
+            node->syntax != fixture.loopSyntax[index] ||
+            node->typeKey != "builtin:int" || node->children.size() != 1U)
+            return false;
+        const auto* block = node->children.front().get();
+        const auto* assembly = block != nullptr && block->children.size() == 1U
+            ? block->children.front().get() : nullptr;
+        if (block == nullptr || block->kind != HirKind::Block ||
+            assembly == nullptr || assembly->kind != HirKind::InlineAssembly ||
+            assembly->syntax != fixture.assemblySyntax[index] ||
+            assembly->typeKey != "builtin:void" ||
+            assembly->stringValue != "mov %0, %0\n" ||
+            assembly->children.size() != 2U)
+            return false;
+        const auto* line = assembly->children[0].get();
+        const auto* operand = assembly->children[1].get();
+        if (line == nullptr || line->kind != HirKind::InlineAssemblyLine ||
+            line->syntax != fixture.lineSyntax[index] ||
+            line->stringValue != "mov %0, %0" ||
+            line->elementTypeKey != "depth-line" ||
+            operand == nullptr || operand->kind != HirKind::InlineAssemblyInput ||
+            operand->syntax != fixture.operandSyntax[index] ||
+            operand->typeKey != "builtin:int" || operand->stringValue != "r" ||
+            operand->integerValue != 0U || !operand->booleanValue ||
+            operand->children.size() != 1U)
+            return false;
+        node = operand->children.front().get();
+    }
+    return node != nullptr && node->kind == HirKind::IntegerConstant &&
+        node->syntax == fixture.terminal && node->typeKey == "builtin:int" &&
+        node->integerValue == 17U;
+}
+
+void testDeepInlineAssemblyOperandLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using nativesharp::frontend::ClassMemberKind;
+    using nativesharp::frontend::ClassMemberSymbol;
+    using nativesharp::frontend::MethodCoreBinding;
+    using nativesharp::frontend::MethodCoreOperationKind;
+    using nativesharp::frontend::MethodExpressionTypeBinding;
+    using nativesharp::frontend::MethodLocalSymbol;
+    using nativesharp::frontend::MethodMatchExpressionBinding;
+    using nativesharp::frontend::MethodNameBinding;
+    using nativesharp::frontend::MethodNameBindingKind;
+    using nativesharp::frontend::ProjectMemberModel;
+    using nativesharp::frontend::ProjectOopHirModelTestAccess;
+
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(61U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(61U), offset + 5U));
+    };
+    MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+    constexpr std::size_t nestingDepth = 32768U;
+
+    auto deep = makeDeepInlineAssemblyFixture(nestingDepth, integerType);
+    ProjectOopHirModel deepModel;
+    nativesharp::frontend::ProjectMethodBodyModel deepBody;
+    std::string error;
+    auto deepLowered = ProjectOopHirModelTestAccess::lowerLoopExpression(
+        deepModel, deepBody, deep.root, deep.loops, deep.typed,
+        0U, false, error);
+    tests.expect(deepLowered != nullptr && error.empty(),
+        "32768 loop->block->inline-assembly->operand transitions lower on one worklist (" +
+            error + ")");
+    tests.expect(deepInlineAssemblyChainMatches(
+            deepLowered.get(), deep, nestingDepth),
+        "iterative inline assembly preserves body bytes, record source identity, "
+        "metadata and operand type at every level");
+    destroyHirTreeIteratively(deepLowered);
+
+    struct AssemblyCase final
+    {
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        std::vector<MethodLocalSymbol> locals;
+        std::vector<MethodNameBinding> names;
+        std::vector<std::pair<const nativesharp::ast::AstNode*,
+            const MethodExpressionTypeBinding*>> typed;
+        std::vector<MethodCoreBinding> cores;
+        std::vector<nativesharp::frontend::MethodCallBinding> calls;
+        std::vector<nativesharp::frontend::MethodBorrowBinding> borrows;
+        const nativesharp::ast::AstNode* statement = nullptr;
+    };
+    const auto append = [](AssemblyCase& fixture, AstKind kind,
+                           nativesharp::SourceRange sourceRange = {})
+    {
+        fixture.nodes.push_back(
+            std::make_unique<nativesharp::ast::AstNode>(kind, sourceRange));
+        return fixture.nodes.back().get();
+    };
+    const auto addLocal = [&](AssemblyCase& fixture, std::string name,
+                              std::size_t ordinal, std::uint32_t offset)
+    {
+        auto* syntax = append(fixture, AstKind::IdentifierExpression, range(offset));
+        syntax->setText(name);
+        MethodLocalSymbol local;
+        local.name = name;
+        local.typeKey = "builtin:int";
+        fixture.locals.push_back(std::move(local));
+        MethodNameBinding binding;
+        binding.kind = MethodNameBindingKind::Local;
+        binding.syntax = syntax;
+        binding.name = name;
+        binding.typeKey = "builtin:int";
+        binding.localOrdinal = ordinal;
+        fixture.names.push_back(std::move(binding));
+        fixture.typed.push_back({syntax, &integerType});
+        return syntax;
+    };
+    const auto addOperand = [&](AssemblyCase& fixture, AstKind kind,
+                                const nativesharp::ast::AstNode* expression,
+                                std::string constraint, std::size_t ordinal,
+                                bool explicitConstraint, std::uint32_t offset)
+    {
+        auto* record = append(fixture, kind, range(offset));
+        record->setFirst(const_cast<nativesharp::ast::AstNode*>(expression));
+        record->setAuxiliaryText(std::move(constraint));
+        record->setIntegerValue(ordinal);
+        record->setFlag(explicitConstraint);
+        return record;
+    };
+    const auto lowerAssembly = [&](AssemblyCase& fixture,
+                                   ProjectOopHirModel& model,
+                                   nativesharp::frontend::ProjectMethodBodyModel& body,
+                                   std::vector<MethodMatchExpressionBinding> matches,
+                                   const ProjectMemberModel* members,
+                                   std::vector<std::size_t> cleanup,
+                                   std::string& caseError)
+    {
+        return ProjectOopHirModelTestAccess::lowerInlineAssemblyStatementForTest(
+            model, body, fixture.statement, std::move(fixture.locals),
+            std::move(matches), fixture.names, fixture.typed, fixture.cores,
+            fixture.calls, fixture.borrows, members, std::move(cleanup), caseError);
+    };
+
+    AssemblyCase records;
+    auto* line = append(records, AstKind::InlineAssemblyLine, range(100U));
+    line->setText("add eax, ebx");
+    line->setAuxiliaryText("entry");
+    auto* secondLine = append(records, AstKind::InlineAssemblyLine, range(105U));
+    secondLine->setText("xor ecx, ecx");
+    secondLine->setAuxiliaryText("fallthrough");
+    auto* outRValue = addLocal(records, "out-r", 0U, 110U);
+    auto* outRWValue = addLocal(records, "out-rw", 1U, 120U);
+    auto* outMValue = addLocal(records, "out-m", 2U, 130U);
+    auto* outMWValue = addLocal(records, "out-mw", 3U, 140U);
+    auto* outFixedValue = addLocal(records, "out-fixed", 4U, 150U);
+    auto* inRValue = addLocal(records, "in-r", 5U, 160U);
+    auto* inFixedValue = addLocal(records, "in-fixed", 6U, 170U);
+    auto* immediate = append(records, AstKind::IntegerLiteralExpression, range(180U));
+    immediate->setIntegerValue(23U);
+    records.typed.push_back({immediate, &integerType});
+    auto* inMValue = addLocal(records, "in-m", 7U, 190U);
+    std::array<nativesharp::ast::AstNode*, 9U> operands{
+        addOperand(records, AstKind::InlineAssemblyOutputOperand, outRValue,
+            "=r", 0U, true, 210U),
+        addOperand(records, AstKind::InlineAssemblyOutputOperand, outRWValue,
+            "+r", 1U, true, 220U),
+        addOperand(records, AstKind::InlineAssemblyOutputOperand, outMValue,
+            "=m", 2U, true, 230U),
+        addOperand(records, AstKind::InlineAssemblyOutputOperand, outMWValue,
+            "+m", 3U, true, 240U),
+        addOperand(records, AstKind::InlineAssemblyOutputOperand, outFixedValue,
+            "={r10}", 4U, true, 250U),
+        addOperand(records, AstKind::InlineAssemblyInputOperand, inRValue,
+            "r", 0U, false, 260U),
+        addOperand(records, AstKind::InlineAssemblyInputOperand, inFixedValue,
+            "{r11}", 1U, true, 270U),
+        addOperand(records, AstKind::InlineAssemblyInputOperand, immediate,
+            "i", 2U, true, 280U),
+        addOperand(records, AstKind::InlineAssemblyInputOperand, inMValue,
+            "m", 3U, true, 290U)};
+    auto* registerClobber = append(records, AstKind::InlineAssemblyClobber, range(300U));
+    registerClobber->setText("r12");
+    registerClobber->setAuxiliaryText("register");
+    registerClobber->setIntegerValue(0U);
+    registerClobber->setFlag(true);
+    auto* flagsClobber = append(records, AstKind::InlineAssemblyClobber, range(310U));
+    flagsClobber->setText("cc");
+    flagsClobber->setAuxiliaryText("flags");
+    flagsClobber->setIntegerValue(1U);
+    auto* memoryClobber = append(records, AstKind::InlineAssemblyClobber, range(320U));
+    memoryClobber->setText("memory");
+    memoryClobber->setAuxiliaryText("memory");
+    memoryClobber->setIntegerValue(2U);
+    auto* statement = append(records, AstKind::InlineAssemblyStatement, range(330U));
+    statement->setText("  add eax, ebx\r\n");
+    statement->addChild(line);
+    statement->addChild(secondLine);
+    for (auto* operand : operands) statement->addChild(operand);
+    statement->addChild(registerClobber);
+    statement->addChild(flagsClobber);
+    statement->addChild(memoryClobber);
+    records.statement = statement;
+    ProjectOopHirModel recordsModel;
+    nativesharp::frontend::ProjectMethodBodyModel recordsBody;
+    error.clear();
+    auto recordsHir = lowerAssembly(
+        records, recordsModel, recordsBody, {}, nullptr, {41U, 42U}, error);
+    bool recordsValid = recordsHir != nullptr && error.empty() &&
+        recordsHir->kind == HirKind::InlineAssembly &&
+        recordsHir->syntax == statement &&
+        recordsHir->stringValue == "  add eax, ebx\r\n" &&
+        recordsHir->children.size() == 14U &&
+        recordsHir->children[0]->kind == HirKind::InlineAssemblyLine &&
+        recordsHir->children[0]->syntax == line &&
+        recordsHir->children[0]->stringValue == "add eax, ebx" &&
+        recordsHir->children[0]->elementTypeKey == "entry" &&
+        recordsHir->children[1]->kind == HirKind::InlineAssemblyLine &&
+        recordsHir->children[1]->syntax == secondLine &&
+        recordsHir->children[1]->stringValue == "xor ecx, ecx" &&
+        recordsHir->children[1]->elementTypeKey == "fallthrough";
+    const std::array<std::string_view, 9U> constraints{
+        "=r", "+r", "=m", "+m", "={r10}", "r", "{r11}", "i", "m"};
+    for (std::size_t index = 0U; index < operands.size() && recordsValid; ++index)
+    {
+        const auto* operand = recordsHir->children[index + 2U].get();
+        const bool output = index < 5U;
+        const bool address = output || index == 8U;
+        recordsValid = operand->kind == (output
+                ? HirKind::InlineAssemblyOutput : HirKind::InlineAssemblyInput) &&
+            operand->syntax == operands[index] && operand->typeKey == "builtin:int" &&
+            operand->stringValue == constraints[index] &&
+            operand->integerValue == (output ? index : index - 5U) &&
+            operand->booleanValue == (index != 5U) &&
+            operand->children.size() == 1U &&
+            operand->children[0]->kind == (index == 7U
+                ? HirKind::IntegerConstant
+                : address ? HirKind::LocalAddress : HirKind::LocalValue);
+    }
+    recordsValid = recordsValid &&
+        recordsHir->children[11]->syntax == registerClobber &&
+        recordsHir->children[11]->stringValue == "r12" &&
+        recordsHir->children[11]->elementTypeKey == "register" &&
+        recordsHir->children[11]->integerValue == 0U &&
+        recordsHir->children[11]->booleanValue &&
+        recordsHir->children[12]->syntax == flagsClobber &&
+        recordsHir->children[12]->stringValue == "cc" &&
+        recordsHir->children[12]->elementTypeKey == "flags" &&
+        recordsHir->children[12]->integerValue == 1U &&
+        !recordsHir->children[12]->booleanValue &&
+        recordsHir->children[13]->syntax == memoryClobber &&
+        recordsHir->children[13]->stringValue == "memory" &&
+        recordsHir->children[13]->elementTypeKey == "memory" &&
+        recordsHir->children[13]->integerValue == 2U &&
+        !recordsHir->children[13]->booleanValue &&
+        !recordsHir->cleanupRegionOrdinal.has_value() &&
+        recordsHir->ownership == nativesharp::sema::OwnershipKind::None &&
+        ProjectOopHirModelTestAccess::activeCleanupDepth(recordsModel) == 2U;
+    tests.expect(recordsValid,
+        "inline assembly preserves exact record order, bytes, source, metadata, "
+        "value/address contexts, single read-write targets and cleanup ownership");
+    destroyHirTreeIteratively(recordsHir);
+
+    AssemblyCase empty;
+    auto* emptyStatement = append(empty, AstKind::InlineAssemblyStatement, range(340U));
+    emptyStatement->setText("");
+    empty.statement = emptyStatement;
+    ProjectOopHirModel emptyModel;
+    nativesharp::frontend::ProjectMethodBodyModel emptyBody;
+    error.clear();
+    auto emptyHir = lowerAssembly(empty, emptyModel, emptyBody, {}, nullptr, {}, error);
+    tests.expect(emptyHir != nullptr && error.empty() &&
+            emptyHir->kind == HirKind::InlineAssembly && emptyHir->children.empty(),
+        "an empty inline assembly completes synchronously without inventing records");
+    destroyHirTreeIteratively(emptyHir);
+
+    AssemblyCase matchCase;
+    auto* innerLiteral = append(matchCase, AstKind::IntegerLiteralExpression, range(350U));
+    innerLiteral->setIntegerValue(7U);
+    auto* innerOperand = addOperand(matchCase, AstKind::InlineAssemblyInputOperand,
+        innerLiteral, "r", 0U, true, 351U);
+    auto* innerAssembly = append(matchCase, AstKind::InlineAssemblyStatement, range(352U));
+    innerAssembly->setText("inner");
+    innerAssembly->addChild(innerOperand);
+    auto* condition = append(matchCase, AstKind::BooleanLiteralExpression, range(353U));
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* value = append(matchCase, AstKind::BooleanLiteralExpression, range(354U));
+    value->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* arm = append(matchCase, AstKind::MatchArmExpression, range(355U));
+    arm->setFirst(condition);
+    arm->setThird(value);
+    arm->addChild(innerAssembly);
+    auto* governing = append(matchCase, AstKind::BooleanLiteralExpression, range(356U));
+    governing->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* match = append(matchCase, AstKind::MatchExpression, range(357U));
+    match->setFirst(governing);
+    match->addChild(arm);
+    auto* outerOperand = addOperand(matchCase, AstKind::InlineAssemblyInputOperand,
+        match, "r", 0U, true, 358U);
+    auto* outerAssembly = append(matchCase, AstKind::InlineAssemblyStatement, range(359U));
+    outerAssembly->setText("outer");
+    outerAssembly->addChild(outerOperand);
+    matchCase.statement = outerAssembly;
+    matchCase.typed = {{innerLiteral, &integerType}, {condition, &booleanType},
+        {value, &booleanType}, {governing, &booleanType}, {match, &booleanType}};
+    MethodMatchExpressionBinding matchBinding;
+    matchBinding.syntax = match;
+    matchBinding.governingTypeKey = "builtin:bool";
+    matchBinding.resultTypeKey = "builtin:bool";
+    matchBinding.armConversions.push_back({
+        nativesharp::frontend::ProjectConversionKind::Identity, 0,
+        "builtin:bool", "builtin:bool", std::nullopt});
+    ProjectOopHirModel matchModel;
+    nativesharp::frontend::ProjectMethodBodyModel matchBody;
+    error.clear();
+    auto matchHir = lowerAssembly(
+        matchCase, matchModel, matchBody, {matchBinding}, nullptr, {}, error);
+    const auto* matchNode = matchHir != nullptr && !matchHir->children.empty() &&
+            !matchHir->children[0]->children.empty()
+        ? matchHir->children[0]->children[0].get() : nullptr;
+    const auto* matchArm = matchNode != nullptr && matchNode->children.size() == 2U
+        ? matchNode->children[1].get() : nullptr;
+    tests.expect(matchHir != nullptr && error.empty() && matchArm != nullptr &&
+            matchArm->kind == HirKind::MatchArm && matchArm->children.size() == 4U &&
+            matchArm->children[2]->kind == HirKind::InlineAssembly &&
+            matchArm->children[2]->syntax == innerAssembly,
+        "Match declarations reuse the active inline-assembly continuation without recursive reentry");
+    destroyHirTreeIteratively(matchHir);
+
+    auto borrowedCall = makeKCoreCallSyntax(
+        nativesharp::frontend::MethodCoreOperationKind::ConsoleWrite, 1U, false);
+    AssemblyCase borrowedOperand;
+    auto* borrowRecord = addOperand(
+        borrowedOperand, AstKind::InlineAssemblyInputOperand,
+        borrowedCall.root, "r", 0U, true, 370U);
+    auto* borrowStatement = append(
+        borrowedOperand, AstKind::InlineAssemblyStatement, range(371U));
+    borrowStatement->setText("borrow-cleanup");
+    borrowStatement->addChild(borrowRecord);
+    borrowedOperand.statement = borrowStatement;
+    borrowedOperand.cores = borrowedCall.cores;
+    borrowedOperand.calls = borrowedCall.calls;
+    borrowedOperand.names = borrowedCall.names;
+    MethodExpressionTypeBinding stringType;
+    stringType.typeKey = "builtin:string";
+    for (const auto& node : borrowedCall.nodes)
+        borrowedOperand.typed.push_back({node.get(), &stringType});
+    nativesharp::frontend::MethodBorrowBinding freshBorrow;
+    freshBorrow.syntax = borrowedCall.root->children().front();
+    freshBorrow.kind = nativesharp::frontend::MethodBorrowKind::
+        FreshOwnedTemporaryToBorrowedParameter;
+    freshBorrow.targetMemberOrdinal =
+        *borrowedOperand.calls.front().selectedMemberOrdinal;
+    freshBorrow.targetParameterOrdinal = 0U;
+    freshBorrow.typeKey = "builtin:string";
+    borrowedOperand.borrows.push_back(freshBorrow);
+    ProjectOopHirModel borrowedModel;
+    nativesharp::frontend::ProjectMethodBodyModel borrowedBody;
+    error.clear();
+    auto borrowedHir = lowerAssembly(
+        borrowedOperand, borrowedModel, borrowedBody, {}, nullptr, {}, error);
+    const auto* borrowedInput = borrowedHir != nullptr &&
+            borrowedHir->children.size() == 1U
+        ? borrowedHir->children.front().get() : nullptr;
+    const auto* cleanup = borrowedInput != nullptr &&
+            borrowedInput->children.size() == 1U
+        ? borrowedInput->children.front().get() : nullptr;
+    const auto* call = cleanup != nullptr && cleanup->children.size() == 1U
+        ? cleanup->children.front().get() : nullptr;
+    const auto* temporary = call != nullptr && call->children.size() == 1U
+        ? call->children.front().get() : nullptr;
+    tests.expect(borrowedHir != nullptr && error.empty() &&
+            borrowedInput != nullptr &&
+            borrowedInput->kind == HirKind::InlineAssemblyInput &&
+            borrowedInput->syntax == borrowRecord &&
+            cleanup != nullptr && cleanup->kind == HirKind::FullExpressionCleanup &&
+            call != nullptr && call->kind == HirKind::CoreConsoleWriteLine &&
+            temporary != nullptr && temporary->kind == HirKind::OwnedTemporaryBorrow &&
+            temporary->children.size() == 1U &&
+            temporary->children.front()->kind == HirKind::BorrowValue &&
+            !borrowedHir->cleanupRegionOrdinal.has_value(),
+        "an inline-assembly operand preserves its real borrow, owned temporary and "
+        "full-expression cleanup subtree without moving cleanup to the parent");
+    destroyHirTreeIteratively(borrowedHir);
+
+    AssemblyCase prefixFailure;
+    auto* prefixLine = append(prefixFailure, AstKind::InlineAssemblyLine, range(380U));
+    prefixLine->setText("prefix");
+    auto* prefixValue = append(
+        prefixFailure, AstKind::IntegerLiteralExpression, range(381U));
+    prefixValue->setIntegerValue(5U);
+    auto* prefixOperand = addOperand(
+        prefixFailure, AstKind::InlineAssemblyInputOperand,
+        prefixValue, "r", 0U, true, 382U);
+    auto* invalidRecord = append(prefixFailure, AstKind::BreakStatement, range(383U));
+    auto* prefixStatement = append(
+        prefixFailure, AstKind::InlineAssemblyStatement, range(384U));
+    prefixStatement->setText("prefix-rollback");
+    prefixStatement->addChild(prefixLine);
+    prefixStatement->addChild(prefixOperand);
+    prefixStatement->addChild(invalidRecord);
+    prefixFailure.statement = prefixStatement;
+    prefixFailure.typed.push_back({prefixValue, &integerType});
+    ProjectOopHirModel prefixModel;
+    nativesharp::frontend::ProjectMethodBodyModel prefixBody;
+    error.clear();
+    auto prefixResult = lowerAssembly(
+        prefixFailure, prefixModel, prefixBody, {}, nullptr, {77U}, error);
+    tests.expect(prefixResult == nullptr &&
+            error == "integrated assembly contains an unknown contract record" &&
+            ProjectOopHirModelTestAccess::activeCleanupDepth(prefixModel) == 1U,
+        "a valid line and operand prefix is destroyed transactionally when a later record fails");
+
+    const auto expectFailure = [&](AstKind recordKind,
+                                   bool nullRecord,
+                                   bool attachExpression,
+                                   const MethodExpressionTypeBinding* type,
+                                   std::string_view expected,
+                                   std::uint32_t operandOffset,
+                                   bool expectInnerRange)
+    {
+        AssemblyCase fixture;
+        auto* statementNode = append(
+            fixture, AstKind::InlineAssemblyStatement, range(operandOffset + 10U));
+        statementNode->setText("failure");
+        if (nullRecord)
+        {
+            statementNode->addChild(nullptr);
+        }
+        else
+        {
+            auto* record = append(fixture, recordKind, range(operandOffset + 5U));
+            if (attachExpression)
+            {
+                auto* expression = append(
+                    fixture,
+                    expectInnerRange ? AstKind::LoopExpression
+                                     : AstKind::IntegerLiteralExpression,
+                    range(operandOffset));
+                expression->setIntegerValue(3U);
+                record->setFirst(expression);
+                if (type != nullptr) fixture.typed.push_back({expression, type});
+            }
+            record->setAuxiliaryText("r");
+            statementNode->addChild(record);
+        }
+        fixture.statement = statementNode;
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string caseError;
+        auto result = lowerAssembly(fixture, model, body, {}, nullptr, {}, caseError);
+        bool valid = result == nullptr && caseError == expected;
+        if (expectInnerRange)
+        {
+            valid = valid && model.lastErrorRange().begin() == range(operandOffset).begin() &&
+                model.lastErrorRange().end() == range(operandOffset).end();
+        }
+        tests.expect(valid, std::string("inline assembly preserves diagnostic precedence: ") +
+            std::string(expected));
+    };
+    expectFailure(AstKind::InlineAssemblyInputOperand, true, false, nullptr,
+        "integrated assembly contains a null contract record", 400U, false);
+    expectFailure(AstKind::BreakStatement, false, false, nullptr,
+        "integrated assembly contains an unknown contract record", 410U, false);
+    expectFailure(AstKind::InlineAssemblyInputOperand, false, false, nullptr,
+        "integrated assembly operand lost its NativeSharp expression", 420U, false);
+    expectFailure(AstKind::InlineAssemblyInputOperand, false, true, &integerType,
+        "T07-F05 loop expression has no semantic binding", 430U, true);
+    expectFailure(AstKind::InlineAssemblyInputOperand, false, true, nullptr,
+        "integrated assembly operand lost its resolved NativeSharp type", 440U, false);
+    MethodExpressionTypeBinding emptyType;
+    expectFailure(AstKind::InlineAssemblyInputOperand, false, true, &emptyType,
+        "integrated assembly operand lost its resolved NativeSharp type", 450U, false);
+
+    AssemblyCase noheap;
+    auto* innocent = append(noheap, AstKind::IntegerLiteralExpression, range(460U));
+    innocent->setIntegerValue(1U);
+    auto* firstOperand = addOperand(noheap, AstKind::InlineAssemblyInputOperand,
+        innocent, "r", 0U, true, 461U);
+    auto* element = append(noheap, AstKind::IntegerLiteralExpression, range(462U));
+    element->setIntegerValue(9U);
+    auto* allocation = append(noheap, AstKind::CollectionExpression, range(463U));
+    allocation->setAuxiliaryText("inferred-array-initializer");
+    allocation->addChild(element);
+    auto* secondOperand = addOperand(noheap, AstKind::InlineAssemblyInputOperand,
+        allocation, "r", 1U, true, 464U);
+    auto* noheapStatement = append(noheap, AstKind::InlineAssemblyStatement, range(465U));
+    noheapStatement->setText("noheap");
+    noheapStatement->addChild(firstOperand);
+    noheapStatement->addChild(secondOperand);
+    noheap.statement = noheapStatement;
+    MethodExpressionTypeBinding arrayType;
+    arrayType.typeKey = "builtin:int[]";
+    noheap.typed = {{innocent, &integerType}, {element, &integerType},
+        {allocation, &arrayType}};
+    MethodCoreBinding allocationCore;
+    allocationCore.syntax = allocation;
+    allocationCore.kind = MethodCoreOperationKind::ArrayAllocation;
+    allocationCore.resultTypeKey = "builtin:int[]";
+    allocationCore.elementTypeKey = "builtin:int";
+    noheap.cores.push_back(allocationCore);
+    ClassMemberSymbol caller;
+    caller.kind = ClassMemberKind::Method;
+    caller.name = "NoHeapAsm";
+    caller.signatureKey = "H02S16D.NoHeapAsm()";
+    caller.isNoHeap = true;
+    caller.effects = nativesharp::sema::EffectSet(nativesharp::sema::Effect::NoHeap);
+    ProjectMemberModel members;
+    ProjectOopHirModelTestAccess::configureOrdinaryConstructionMembers(
+        members, {caller}, {{0U}});
+    ProjectOopHirModel noheapModel;
+    nativesharp::frontend::ProjectMethodBodyModel noheapBody;
+    error.clear();
+    auto noheapHir = lowerAssembly(
+        noheap, noheapModel, noheapBody, {}, &members, {}, error);
+    const std::string expectedNoheap =
+        "NS3030: noheap callable 'NoHeapAsm' cannot contain direct heap allocation "
+        "'array-allocation'";
+    tests.expect(noheapHir == nullptr && error == expectedNoheap,
+        "the second inline-assembly operand receives its own noheap boundary and "
+        "does not publish the valid prefix (" + error + ")");
+    tests.expect(noheapModel.lastErrorRange().begin() == range(463U).begin() &&
+            noheapModel.lastErrorRange().end() == range(463U).end(),
+        "the second inline-assembly operand keeps the allocation's inner range");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -17723,6 +18377,10 @@ int main()
     else if (focusValue == "hir-deconstruction-declaration-depth")
     {
         testDeepDeconstructionDeclarationLowering(tests);
+    }
+    else if (focusValue == "hir-inline-assembly-operand-depth")
+    {
+        testDeepInlineAssemblyOperandLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
