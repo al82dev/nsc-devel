@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <deque>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -1981,6 +1982,692 @@ ast::AstNode* Parser::parsePostfixBaseExpression()
     return expression;
 }
 
+class Parser::PostfixIterationMachine final
+{
+public:
+    explicit PostfixIterationMachine(Parser& parser) noexcept : parser_(parser) {}
+    ast::AstNode* parse();
+
+private:
+    static constexpr std::size_t noSlot = std::numeric_limits<std::size_t>::max();
+    enum class WorkKind : std::uint8_t {
+        Expression, ExpressionTail, Unary, FinishUnary, FinishBinary,
+        FinishAssignment, FinishConditionalTrue, FinishConditionalFalse,
+        FinishTypeRelation, FinishRangeEnd, FinishRangeStep,
+        Postfix, Call, Index, With
+    };
+    struct Result final { ast::AstNode* value = nullptr; bool ready = false; };
+    struct Work final {
+        Work() = default;
+        Work(WorkKind workKind, std::size_t result, std::size_t child = noSlot,
+            ast::AstNode* current = nullptr, ast::AstNode* prior = nullptr) noexcept
+            : kind(workKind), resultSlot(result), childSlot(child), node(current), first(prior)
+        {
+        }
+
+        WorkKind kind = WorkKind::Postfix;
+        std::size_t resultSlot = 0;
+        std::size_t childSlot = noSlot;
+        ast::AstNode* node = nullptr;
+        ast::AstNode* first = nullptr;
+        SourceRange range;
+        std::string text;
+        bool flag = false;
+        std::uint8_t precedence = 0;
+        TokenKind tokenKind = TokenKind::Invalid;
+        std::string auxiliaryText;
+        std::vector<ast::AstNode*> children;
+    };
+
+    std::size_t makeSlot();
+    void complete(std::size_t slot, ast::AstNode* value);
+    void scheduleChild(std::size_t slot);
+    void startExpression(Work work);
+    void continueExpression(Work work);
+    void startUnary(Work work);
+    void finishUnary(Work work);
+    void finishBinary(Work work);
+    void finishAssignment(Work work);
+    void finishConditionalTrue(Work work);
+    void finishConditionalFalse(Work work);
+    void finishTypeRelation(Work work);
+    void finishRangeEnd(Work work);
+    void finishRangeStep(Work work);
+    void validateConstantRange(ast::AstNode* range) const;
+    void startPostfix(Work work);
+    void continueCall(Work work);
+    void continueIndex(Work work);
+    void continueWith(Work work);
+    ast::AstNode* finishArgument(Work& work);
+    void finishCall(Work& work);
+    void appendIndex(Work& work, ast::AstNode* value);
+    void finishIndex(Work& work);
+
+    Parser& parser_;
+    std::deque<Result> results_;
+    std::vector<Work> work_;
+};
+
+std::size_t Parser::PostfixIterationMachine::makeSlot()
+{
+    const std::size_t slot = results_.size();
+    results_.push_back({});
+    return slot;
+}
+
+void Parser::PostfixIterationMachine::complete(std::size_t slot, ast::AstNode* value)
+{
+    results_[slot] = {value, true};
+}
+
+void Parser::PostfixIterationMachine::scheduleChild(std::size_t slot)
+{
+    Work expression{WorkKind::Expression, slot};
+    expression.precedence = 1;
+    work_.push_back(std::move(expression));
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::parse()
+{
+    const std::size_t root = makeSlot();
+    work_.push_back({WorkKind::Postfix, root});
+    while (!results_[root].ready)
+    {
+        Work work = std::move(work_.back());
+        work_.pop_back();
+        switch (work.kind)
+        {
+        case WorkKind::Expression: startExpression(std::move(work)); break;
+        case WorkKind::ExpressionTail: continueExpression(std::move(work)); break;
+        case WorkKind::Unary: startUnary(std::move(work)); break;
+        case WorkKind::FinishUnary: finishUnary(std::move(work)); break;
+        case WorkKind::FinishBinary: finishBinary(std::move(work)); break;
+        case WorkKind::FinishAssignment: finishAssignment(std::move(work)); break;
+        case WorkKind::FinishConditionalTrue: finishConditionalTrue(std::move(work)); break;
+        case WorkKind::FinishConditionalFalse: finishConditionalFalse(std::move(work)); break;
+        case WorkKind::FinishTypeRelation: finishTypeRelation(std::move(work)); break;
+        case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
+        case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
+        case WorkKind::Postfix: startPostfix(std::move(work)); break;
+        case WorkKind::Call: continueCall(std::move(work)); break;
+        case WorkKind::Index: continueIndex(std::move(work)); break;
+        case WorkKind::With: continueWith(std::move(work)); break;
+        }
+    }
+    return results_[root].value;
+}
+
+namespace
+{
+std::uint8_t postfixBridgePrecedence(TokenKind kind) noexcept
+{
+    if (lexer::isAssignmentOperator(kind)) return 1;
+    if (kind == TokenKind::Question) return 2;
+    if (kind == TokenKind::QuestionQuestion) return 3;
+    if (kind == TokenKind::DotDot || kind == TokenKind::DotDotEqual) return 4;
+    if (kind == TokenKind::PipePipe) return 5;
+    if (kind == TokenKind::AmpAmp) return 6;
+    if (kind == TokenKind::Pipe) return 7;
+    if (kind == TokenKind::Caret) return 8;
+    if (kind == TokenKind::Amp) return 9;
+    if (kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual) return 10;
+    if (containsExpressionToken(kRelational, kind) || kind == TokenKind::KwIs || kind == TokenKind::KwAs)
+        return 11;
+    if (containsExpressionToken(kShift, kind)) return 12;
+    if (containsExpressionToken(kAdditive, kind)) return 13;
+    if (containsExpressionToken(kMultiplicative, kind)) return 14;
+    return 0;
+}
+
+bool postfixBridgeRightAssociative(TokenKind kind) noexcept
+{
+    return lexer::isAssignmentOperator(kind) || kind == TokenKind::QuestionQuestion;
+}
+
+bool rangeOperandEnds(TokenKind kind) noexcept
+{
+    return kind == TokenKind::EndOfFile || kind == TokenKind::RightParen ||
+        kind == TokenKind::RightBracket || kind == TokenKind::Comma ||
+        kind == TokenKind::Semicolon;
+}
+}
+
+void Parser::PostfixIterationMachine::startExpression(Work work)
+{
+    if (work.precedence <= 1 && parser_.looksLikeLambdaExpression())
+    {
+        ast::AstNode* lambda = parser_.parseLambdaExpressionHead();
+        if (parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.finishLambdaExpression(lambda, parser_.parseBlock(), true);
+            complete(work.resultSlot, lambda);
+            return;
+        }
+        const std::size_t child = makeSlot();
+        Work finish{WorkKind::FinishAssignment, work.resultSlot, child, lambda};
+        finish.text = "lambda";
+        work_.push_back(std::move(finish));
+        scheduleChild(child);
+        return;
+    }
+    if (work.precedence <= 4 &&
+        (parser_.at(TokenKind::DotDot) || parser_.at(TokenKind::DotDotEqual)))
+    {
+        Work range{WorkKind::FinishRangeEnd, work.resultSlot};
+        range.range = parser_.consume().range();
+        range.tokenKind = parser_.tokens_[parser_.index_ - 1].kind();
+        range.precedence = work.precedence;
+        if (rangeOperandEnds(parser_.current().kind())) { finishRangeEnd(std::move(range)); return; }
+        range.childSlot = makeSlot();
+        work_.push_back(range);
+        Work rhs{WorkKind::Expression, range.childSlot};
+        rhs.precedence = 5;
+        work_.push_back(rhs);
+        return;
+    }
+    const std::size_t child = makeSlot();
+    Work tail{WorkKind::ExpressionTail, work.resultSlot, child};
+    tail.precedence = work.precedence;
+    work_.push_back(std::move(tail));
+    work_.push_back({WorkKind::Unary, child});
+}
+
+void Parser::PostfixIterationMachine::continueExpression(Work work)
+{
+    ast::AstNode* left = work.node != nullptr ? work.node : results_[work.childSlot].value;
+    const TokenKind operation = parser_.current().kind();
+    const std::uint8_t precedence = postfixBridgePrecedence(operation);
+    if (precedence == 0 || precedence < work.precedence ||
+        (operation == TokenKind::Question && !parser_.questionBeginsConditional()))
+    {
+        complete(work.resultSlot, left);
+        return;
+    }
+    if (operation == TokenKind::Question)
+    {
+        parser_.consume();
+        const std::size_t child = makeSlot();
+        work_.push_back({WorkKind::FinishConditionalTrue, work.resultSlot, child, left});
+        scheduleChild(child);
+        return;
+    }
+    if (operation == TokenKind::KwIs || operation == TokenKind::KwAs)
+    {
+        parser_.consume();
+        Work finish{WorkKind::FinishTypeRelation, work.resultSlot, noSlot, left};
+        finish.tokenKind = operation;
+        finish.precedence = work.precedence;
+        work_.push_back(std::move(finish));
+        return;
+    }
+    if (operation == TokenKind::DotDot || operation == TokenKind::DotDotEqual)
+    {
+        Work range{WorkKind::FinishRangeEnd, work.resultSlot, noSlot, nullptr, left};
+        range.range = parser_.consume().range();
+        range.tokenKind = operation;
+        range.precedence = work.precedence;
+        if (rangeOperandEnds(parser_.current().kind())) { finishRangeEnd(std::move(range)); return; }
+        range.childSlot = makeSlot();
+        work_.push_back(range);
+        Work rhs{WorkKind::Expression, range.childSlot};
+        rhs.precedence = 5;
+        work_.push_back(rhs);
+        return;
+    }
+    parser_.consume();
+    const bool reference = lexer::isAssignmentOperator(operation) && operation == TokenKind::Equal &&
+        parser_.atContextualKeyword("ref");
+    if (reference) parser_.consume();
+    const std::size_t child = makeSlot();
+    const WorkKind finishKind = lexer::isAssignmentOperator(operation)
+        ? WorkKind::FinishAssignment : WorkKind::FinishBinary;
+    Work finish{finishKind, work.resultSlot, child, left};
+    finish.tokenKind = operation;
+    finish.flag = reference;
+    finish.precedence = work.precedence;
+    work_.push_back(std::move(finish));
+    Work rhs{WorkKind::Expression, child};
+    rhs.precedence = postfixBridgeRightAssociative(operation) ? precedence : precedence + 1;
+    work_.push_back(std::move(rhs));
+}
+
+void Parser::PostfixIterationMachine::startUnary(Work work)
+{
+    const TokenKind kind = parser_.current().kind();
+    const bool ordinary = kind == TokenKind::Plus || kind == TokenKind::Minus ||
+        kind == TokenKind::Bang || kind == TokenKind::Tilde || kind == TokenKind::Amp ||
+        kind == TokenKind::Star || kind == TokenKind::PlusPlus || kind == TokenKind::MinusMinus;
+    const bool awaiting = parser_.atContextualKeyword("await") && parser_.peek().kind() != TokenKind::Equal &&
+        parser_.peek().kind() != TokenKind::LeftParen;
+    if (ordinary || awaiting || kind == TokenKind::Caret)
+    {
+        const lexer::Token& token = parser_.consume();
+        const std::size_t child = makeSlot();
+        Work finish{WorkKind::FinishUnary, work.resultSlot, child};
+        finish.tokenKind = awaiting ? TokenKind::Invalid : kind;
+        finish.range = token.range();
+        finish.flag = awaiting;
+        work_.push_back(std::move(finish));
+        work_.push_back({WorkKind::Unary, child});
+        return;
+    }
+    ast::AstNode* delegated = nullptr;
+    if ((parser_.at(TokenKind::KwMove) || parser_.atContextualKeyword("move")) &&
+        parser_.peek().kind() == TokenKind::LeftParen)
+        delegated = parser_.parseMoveUnaryExpression();
+    else if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Less &&
+        (parser_.current().lexeme() == "static_cast" ||
+         parser_.current().lexeme() == "reinterpret_cast" ||
+         parser_.current().lexeme() == "const_cast"))
+        delegated = parser_.parseNamedCastExpression();
+    else if (parser_.at(TokenKind::LeftParen) && parser_.looksLikeParenthesizedType())
+        delegated = parser_.parseParenthesizedCastExpression();
+    else if (parser_.at(TokenKind::KwOffsetof)) delegated = parser_.parseOffsetofExpression();
+    else if (parser_.at(TokenKind::KwSizeof) || parser_.at(TokenKind::KwAlignof))
+        delegated = parser_.parseSizeofOrAlignofExpression();
+    else if (parser_.at(TokenKind::KwDefault)) delegated = parser_.parseDefaultValueExpression();
+    else if (parser_.at(TokenKind::KwNew)) delegated = parser_.parseNewExpression();
+    else if (parser_.at(TokenKind::KwDelete)) delegated = parser_.parseDeleteExpression();
+    else if (parser_.at(TokenKind::KwDestroy)) delegated = parser_.parseDestroyExpression();
+    else if (parser_.at(TokenKind::KwStackalloc)) delegated = parser_.parseStackallocExpression();
+    if (delegated != nullptr) { complete(work.resultSlot, delegated); return; }
+    work_.push_back({WorkKind::Postfix, work.resultSlot});
+}
+
+void Parser::PostfixIterationMachine::finishUnary(Work work)
+{
+    ast::AstNode* operand = results_[work.childSlot].value;
+    ast::AstNodeKind kind = work.flag
+        ? ast::AstNodeKind::AwaitExpression : ast::AstNodeKind::UnaryExpression;
+    if (work.tokenKind == TokenKind::Caret) kind = ast::AstNodeKind::FromEndExpression;
+    const SourceRange range = work.flag ? work.range :
+        parser_.join(work.range, operand != nullptr ? operand->range() : work.range);
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(kind, range);
+    if (!work.flag) node->setTokenKind(work.tokenKind);
+    node->setFirst(operand);
+    complete(work.resultSlot, node);
+}
+
+void Parser::PostfixIterationMachine::finishBinary(Work work)
+{
+    ast::AstNode* right = results_[work.childSlot].value;
+    const ast::AstNodeKind kind = work.tokenKind == TokenKind::QuestionQuestion
+        ? ast::AstNodeKind::NullCoalescingExpression : ast::AstNodeKind::BinaryExpression;
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        kind, parser_.join(work.node->range(), right->range()));
+    node->setTokenKind(work.tokenKind);
+    node->setFirst(work.node);
+    node->setSecond(right);
+    Work tail{WorkKind::ExpressionTail, work.resultSlot, noSlot, node};
+    tail.precedence = work.precedence;
+    work_.push_back(std::move(tail));
+}
+
+void Parser::PostfixIterationMachine::finishAssignment(Work work)
+{
+    ast::AstNode* value = results_[work.childSlot].value;
+    if (work.text == "lambda")
+    {
+        parser_.finishLambdaExpression(work.node, value, false);
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::AssignmentExpression, parser_.join(work.node->range(), value->range()));
+    node->setTokenKind(work.tokenKind);
+    node->setFirst(work.node);
+    node->setSecond(value);
+    node->setReference(work.flag);
+    complete(work.resultSlot, node);
+}
+
+void Parser::PostfixIterationMachine::finishConditionalTrue(Work work)
+{
+    parser_.expect(TokenKind::Colon, "':' in a conditional expression");
+    Work finish{WorkKind::FinishConditionalFalse, work.resultSlot, makeSlot(), work.node,
+        results_[work.childSlot].value};
+    work_.push_back(finish);
+    scheduleChild(finish.childSlot);
+}
+
+void Parser::PostfixIterationMachine::finishConditionalFalse(Work work)
+{
+    ast::AstNode* value = results_[work.childSlot].value;
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::ConditionalExpression,
+        parser_.join(work.node->range(), value != nullptr ? value->range() : work.node->range()));
+    node->setFirst(work.node);
+    node->setSecond(work.first);
+    node->setThird(value);
+    complete(work.resultSlot, node);
+}
+
+void Parser::PostfixIterationMachine::finishTypeRelation(Work work)
+{
+    ast::TypeSyntax* type = parser_.parseType();
+    if (type == nullptr) { complete(work.resultSlot, work.node); return; }
+    const ast::AstNodeKind kind = work.tokenKind == TokenKind::KwIs
+        ? ast::AstNodeKind::TypeTestExpression : ast::AstNodeKind::SafeCastExpression;
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        kind, parser_.join(work.node->range(), type->range()));
+    node->setTokenKind(work.tokenKind);
+    node->setTypeSyntax(type);
+    node->setFirst(work.node);
+    Work tail{WorkKind::ExpressionTail, work.resultSlot, noSlot, node};
+    tail.precedence = work.precedence;
+    work_.push_back(std::move(tail));
+}
+
+void Parser::PostfixIterationMachine::finishRangeEnd(Work work)
+{
+    ast::AstNode* end = work.childSlot == noSlot ? nullptr : results_[work.childSlot].value;
+    if (parser_.atContextualKeyword("step"))
+    {
+        const SourceRange stepKeyword = parser_.consume().range();
+        if (rangeOperandEnds(parser_.current().kind()))
+            parser_.diagnostics_.report(diagnostics::DiagnosticId::ExpectedExpression,
+                diagnostics::DiagnosticSeverity::Error, stepKeyword,
+                "expected an integral expression after range step");
+        else
+        {
+            Work finish{WorkKind::FinishRangeStep, work.resultSlot, makeSlot(), nullptr, work.first};
+            finish.node = end;
+            finish.range = work.range;
+            finish.tokenKind = work.tokenKind;
+            finish.precedence = work.precedence;
+            work_.push_back(finish);
+            Work step{WorkKind::Expression, finish.childSlot};
+            step.precedence = 5;
+            work_.push_back(step);
+            return;
+        }
+    }
+    Work finish{WorkKind::FinishRangeStep, work.resultSlot, noSlot, end, work.first};
+    finish.range = work.range;
+    finish.tokenKind = work.tokenKind;
+    finish.precedence = work.precedence;
+    finishRangeStep(std::move(finish));
+}
+
+void Parser::PostfixIterationMachine::finishRangeStep(Work work)
+{
+    ast::AstNode* step = work.childSlot == noSlot ? nullptr : results_[work.childSlot].value;
+    const bool inclusive = work.tokenKind == TokenKind::DotDotEqual;
+    if (inclusive && work.node == nullptr)
+        parser_.diagnostics_.report(diagnostics::DiagnosticId::InvalidIndex,
+            diagnostics::DiagnosticSeverity::Error, work.range,
+            "an inclusive range requires an end endpoint");
+    ast::AstNode* range = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::RangeExpression,
+        SourceRange(work.first != nullptr ? work.first->range().begin() : work.range.begin(),
+            step != nullptr ? step->range().end() :
+            (work.node != nullptr ? work.node->range().end() : work.range.end())));
+    range->setTokenKind(work.tokenKind);
+    range->setFirst(work.first);
+    range->setSecond(work.node);
+    range->setThird(step);
+    range->setFlag(inclusive);
+    validateConstantRange(range);
+    Work tail{WorkKind::ExpressionTail, work.resultSlot, noSlot, range};
+    tail.precedence = work.precedence;
+    work_.push_back(std::move(tail));
+}
+
+void Parser::PostfixIterationMachine::validateConstantRange(ast::AstNode* range) const
+{
+    const std::optional<std::int64_t> begin = signedIntegerLiteral(range->first());
+    const std::optional<std::int64_t> end = signedIntegerLiteral(range->second());
+    const std::optional<std::int64_t> step = range->third() != nullptr
+        ? signedIntegerLiteral(range->third()) : std::optional<std::int64_t>(1);
+    if (!begin.has_value() || !end.has_value() || !step.has_value()) return;
+
+    std::string error;
+    if (language::lazyRangeCount({*begin, *end, *step, range->flag()}, error).has_value()) return;
+    parser_.diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        range->range(),
+        error);
+}
+
+void Parser::PostfixIterationMachine::startPostfix(Work work)
+{
+    ast::AstNode* expression = work.node != nullptr ? work.node : parser_.parsePostfixBaseExpression();
+    std::vector<ast::TypeSyntax*> genericArguments;
+    const bool explicitGenerics = parser_.looksLikeGenericCallTypeArguments();
+    if (explicitGenerics) parser_.parseTypeArgumentList(genericArguments);
+    if (parser_.consumeIf(TokenKind::LeftParen))
+    {
+        ast::AstNode* call = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::CallExpression, expression->range());
+        call->setFirst(expression);
+        call->setFlag(explicitGenerics);
+        for (ast::TypeSyntax* type : genericArguments) call->addTypeSyntax(type);
+        work_.push_back({WorkKind::Call, work.resultSlot, noSlot, call});
+        return;
+    }
+    if (!genericArguments.empty())
+    {
+        parser_.diagnostics_.report(diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error, parser_.current().range(),
+            "generic type arguments in an expression must be followed by a call in Stage 44");
+        complete(work.resultSlot, expression);
+        return;
+    }
+    work.node = expression;
+    if (parser_.consumeIf(TokenKind::LeftBracket))
+        work_.push_back(Work{WorkKind::Index, work.resultSlot, noSlot, expression});
+    else if (parser_.at(TokenKind::QuestionBracket))
+    {
+        parser_.consume();
+        Work index{WorkKind::Index, work.resultSlot, noSlot, expression};
+        index.flag = true;
+        work_.push_back(std::move(index));
+    }
+    else if (parser_.at(TokenKind::QuestionDot))
+        work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot,
+            parser_.parseNullConditionalMemberSuffix(expression)});
+    else if (parser_.at(TokenKind::Dot) || parser_.at(TokenKind::Arrow))
+        work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot,
+            parser_.parseMemberSuffix(expression)});
+    else if (parser_.at(TokenKind::PlusPlus) || parser_.at(TokenKind::MinusMinus))
+        work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot,
+            parser_.parsePostfixOperatorSuffix(expression)});
+    else if (parser_.at(TokenKind::Question) && !parser_.questionBeginsConditional())
+        work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot,
+            parser_.parseResultPropagationSuffix(expression)});
+    else if (parser_.atContextualKeyword("with"))
+    {
+        const SourceRange keyword = parser_.consume().range();
+        ast::AstNode* with = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::WithExpression, parser_.join(expression->range(), keyword));
+        with->setFirst(expression);
+        parser_.expect(TokenKind::LeftBrace, "'{' after with");
+        work_.push_back({WorkKind::With, work.resultSlot, noSlot, with});
+    }
+    else complete(work.resultSlot, expression);
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::finishArgument(Work& work)
+{
+    ast::AstNode* argument = results_[work.childSlot].value;
+    if (work.flag)
+    {
+        ast::AstNode* wrapper = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::UnaryExpression, work.range);
+        wrapper->setTokenKind(TokenKind::Amp);
+        wrapper->setFirst(argument);
+        wrapper->setAuxiliaryText("pass:" + work.text);
+        if (argument != nullptr) wrapper->setRange(parser_.join(work.range, argument->range()));
+        argument = wrapper;
+    }
+    if (argument != nullptr && !work.auxiliaryText.empty())
+        argument->setArgumentName(work.auxiliaryText);
+    return argument;
+}
+
+void Parser::PostfixIterationMachine::finishCall(Work& work)
+{
+    parser_.expect(TokenKind::RightParen, "')'");
+    work.node->setRange(SourceRange(work.node->first()->range().begin(),
+        parser_.tokens_[parser_.index_ - 1].range().end()));
+    ast::AstNode* callee = work.node->first();
+    if (callee->kind() == ast::AstNodeKind::IdentifierExpression && callee->typeSyntax() == nullptr)
+    {
+        const std::string& name = callee->text();
+        if (name == "assert" || name == "unreachable" || name == "assume" || name == "panic")
+            work.node->setAuxiliaryText("builtin-" + name);
+    }
+    work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot, work.node});
+}
+
+void Parser::PostfixIterationMachine::continueCall(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        ast::AstNode* argument = finishArgument(work);
+        if (argument != nullptr) work.node->addChild(argument);
+        work.childSlot = noSlot;
+        work.text.clear();
+        work.auxiliaryText.clear();
+        work.flag = false;
+        if (!parser_.consumeIf(TokenKind::Comma)) { finishCall(work); return; }
+    }
+    if (parser_.at(TokenKind::RightParen) || parser_.at(TokenKind::EndOfFile))
+    { finishCall(work); return; }
+    if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Colon)
+    {
+        work.auxiliaryText = std::string(parser_.consume().lexeme());
+        parser_.consume();
+    }
+    const bool reference = (parser_.atContextualKeyword("ref") || parser_.atContextualKeyword("out") ||
+        parser_.at(TokenKind::KwIn)) && parser_.peek().kind() != TokenKind::Comma &&
+        parser_.peek().kind() != TokenKind::RightParen;
+    if (reference)
+    {
+        const lexer::Token& keyword = parser_.consume();
+        work.range = keyword.range();
+        work.text = keyword.kind() == TokenKind::KwIn ? "in" : std::string(keyword.lexeme());
+        work.flag = true;
+    }
+    work.childSlot = makeSlot();
+    work_.push_back(work);
+    scheduleChild(work.childSlot);
+}
+
+void Parser::PostfixIterationMachine::appendIndex(Work& work, ast::AstNode* value)
+{
+    if (value != nullptr) work.children.push_back(value);
+    work.childSlot = noSlot;
+    work.first = nullptr;
+}
+
+void Parser::PostfixIterationMachine::finishIndex(Work& work)
+{
+    parser_.expect(TokenKind::RightBracket, "']'");
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        work.flag ? ast::AstNodeKind::NullConditionalIndexExpression
+                  : ast::AstNodeKind::IndexExpression,
+        SourceRange(work.node->range().begin(), parser_.tokens_[parser_.index_ - 1].range().end()));
+    if (work.flag) node->setTokenKind(TokenKind::QuestionBracket);
+    node->setFirst(work.node);
+    if (!work.children.empty()) node->setSecond(work.children.front());
+    for (ast::AstNode* index : work.children) node->addChild(index);
+    work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot, node});
+}
+
+void Parser::PostfixIterationMachine::continueIndex(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        ast::AstNode* value = results_[work.childSlot].value;
+        if (work.first == nullptr && parser_.at(TokenKind::DotDot))
+        {
+            work.first = value;
+            work.range = parser_.consume().range();
+            work.text = "range";
+            if (!parser_.at(TokenKind::Comma) && !parser_.at(TokenKind::RightBracket))
+            {
+                work.childSlot = makeSlot();
+                work_.push_back(work);
+                scheduleChild(work.childSlot);
+                return;
+            }
+            value = nullptr;
+        }
+        if (work.text == "range")
+        {
+            ast::AstNode* range = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::RangeExpression,
+                SourceRange(work.first != nullptr ? work.first->range().begin() : work.range.begin(),
+                    value != nullptr ? value->range().end() : work.range.end()));
+            range->setTokenKind(TokenKind::DotDot);
+            range->setFirst(work.first);
+            range->setSecond(value);
+            value = range;
+            work.range = {};
+            work.text.clear();
+        }
+        appendIndex(work, value);
+        if (!parser_.consumeIf(TokenKind::Comma)) { finishIndex(work); return; }
+    }
+    if (parser_.at(TokenKind::RightBracket) || parser_.at(TokenKind::EndOfFile))
+    { finishIndex(work); return; }
+    if (parser_.at(TokenKind::DotDot))
+    {
+        work.range = parser_.consume().range();
+        work.text = "range";
+        if (parser_.at(TokenKind::Comma) || parser_.at(TokenKind::RightBracket))
+        {
+            work.childSlot = makeSlot();
+            complete(work.childSlot, nullptr);
+            work_.push_back(work);
+            return;
+        }
+    }
+    work.childSlot = makeSlot();
+    work_.push_back(work);
+    scheduleChild(work.childSlot);
+}
+
+void Parser::PostfixIterationMachine::continueWith(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        ast::AstNode* value = results_[work.childSlot].value;
+        if (value != nullptr)
+        {
+            value->setArgumentName(work.text);
+            work.node->addChild(value);
+        }
+        work.childSlot = noSlot;
+        if (!parser_.consumeIf(TokenKind::Comma))
+        {
+            parser_.expect(TokenKind::RightBrace, "'}' after with expression");
+            work.node->setRange(SourceRange(work.node->first()->range().begin(),
+                parser_.tokens_[parser_.index_ - 1].range().end()));
+            work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot, work.node});
+            return;
+        }
+    }
+    if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightBrace, "'}' after with expression");
+        work.node->setRange(SourceRange(work.node->first()->range().begin(),
+            parser_.tokens_[parser_.index_ - 1].range().end()));
+        work_.push_back({WorkKind::Postfix, work.resultSlot, noSlot, work.node});
+        return;
+    }
+    if (!parser_.at(TokenKind::Identifier))
+    {
+        parser_.expect(TokenKind::Identifier, "member name in with expression");
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    work.text = std::string(parser_.consume().lexeme());
+    parser_.expect(TokenKind::Equal, "'=' after with member name");
+    work.childSlot = makeSlot();
+    work_.push_back(work);
+    scheduleChild(work.childSlot);
+}
+
 ast::AstNode* Parser::parseCallSuffix(
     ast::AstNode* expression,
     std::vector<ast::TypeSyntax*> genericArguments,
@@ -2119,66 +2806,7 @@ ast::AstNode* Parser::parseResultPropagationSuffix(ast::AstNode* expression)
 
 ast::AstNode* Parser::parsePostfixExpression()
 {
-    ast::AstNode* expression = parsePostfixBaseExpression();
-    while (true)
-    {
-        std::vector<ast::TypeSyntax*> genericArguments;
-        const bool explicitGenericArguments = looksLikeGenericCallTypeArguments();
-        if (explicitGenericArguments) parseTypeArgumentList(genericArguments);
-        if (consumeIf(TokenKind::LeftParen))
-        {
-            expression = parseCallSuffix(
-                expression, std::move(genericArguments), explicitGenericArguments);
-            continue;
-        }
-        if (!genericArguments.empty())
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedToken,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                "generic type arguments in an expression must be followed by a call in Stage 44");
-            return expression;
-        }
-        if (consumeIf(TokenKind::LeftBracket))
-        {
-            expression = parseIndexSuffix(expression, false);
-            continue;
-        }
-        if (at(TokenKind::QuestionBracket))
-        {
-            consume();
-            expression = parseIndexSuffix(expression, true);
-            continue;
-        }
-        if (at(TokenKind::QuestionDot))
-        {
-            expression = parseNullConditionalMemberSuffix(expression);
-            continue;
-        }
-        if (at(TokenKind::Dot) || at(TokenKind::Arrow))
-        {
-            expression = parseMemberSuffix(expression);
-            continue;
-        }
-        if (at(TokenKind::PlusPlus) || at(TokenKind::MinusMinus))
-        {
-            expression = parsePostfixOperatorSuffix(expression);
-            continue;
-        }
-        if (at(TokenKind::Question) && !questionBeginsConditional())
-        {
-            expression = parseResultPropagationSuffix(expression);
-            continue;
-        }
-        if (atContextualKeyword("with"))
-        {
-            expression = parseWithExpression(expression);
-            continue;
-        }
-        break;
-    }
-    return expression;
+    return PostfixIterationMachine(*this).parse();
 }
 
 // Builds the immutable question-role cache from delimiter pairs, transitive crossing closures and

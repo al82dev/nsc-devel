@@ -1579,6 +1579,7 @@ private:
     ast::AstNode* parseDestroyExpression();
     ast::AstNode* parseStackallocExpression();
     ast::AstNode* parseUnaryExpression();
+    class PostfixIterationMachine;
     ast::AstNode* parsePostfixBaseExpression();
     ast::AstNode* parseCallSuffix(
         ast::AstNode* expression,
