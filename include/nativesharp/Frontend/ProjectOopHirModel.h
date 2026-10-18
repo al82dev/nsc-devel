@@ -974,6 +974,17 @@ private:
         std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
         bool hasOwnedTemporary);
 
+    // Completes a namespace call after the common expression worklist has lowered its forwarded
+    // receiver and explicit arguments. This finalizer never descends into expression syntax.
+    std::unique_ptr<ProjectOopHirNode> finishNamespaceCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        std::string& error,
+        const NamespaceFunctionCallBinding& binding,
+        const NamespaceFunctionSymbol& target,
+        std::unique_ptr<ProjectOopHirNode> node,
+        bool hasOwnedTemporary);
+
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
         const MethodCallBinding& binding,

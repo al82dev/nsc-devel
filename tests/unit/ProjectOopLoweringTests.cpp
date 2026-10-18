@@ -561,6 +561,29 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerNamespaceCallExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<NamespaceFunctionCallBinding>& calls,
+        const std::vector<MethodBorrowBinding>& borrows,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        model.namespaceFunctionModel_ = &namespaceFunctionModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const NamespaceFunctionCallBinding& call : calls)
+            model.namespaceFunctionCallBySyntax_[call.syntax] = &call;
+        for (const MethodBorrowBinding& borrow : borrows)
+            model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
+        return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertySetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -4079,6 +4102,608 @@ void testBoundCallFrameLowering(
 {
     testDeepUserBinaryOperatorLowering(tests, root);
     testDeepUserConversionLowering(tests, root);
+}
+
+struct NamespaceCallTarget final
+{
+    std::size_t functionOrdinal = 0U;
+    std::size_t packFunctionOrdinal = 0U;
+    std::size_t referenceFunctionOrdinal = 0U;
+    std::size_t callerOrdinal = 0U;
+    std::string resultType;
+    std::string parameterType;
+    std::string mangledName;
+    std::string packType;
+    std::string packElementType;
+    std::string packMangledName;
+    std::string referenceMangledName;
+};
+
+bool prepareNamespaceCallFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    NamespaceCallTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepNamespaceCall";
+    writeProject(directory, "DeepNamespaceCall");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public int Identity(int value) { return value; }
+public class Probe {
+    public int Run(int value) { return Identity(value); }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepNamespaceCall.nsproj", error) ||
+        compilation.memberModel() == nullptr || compilation.namespaceFunctionModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundFunction = false;
+    for (std::size_t ordinal = 0;
+         ordinal < compilation.namespaceFunctionModel()->functions().size();
+         ++ordinal)
+    {
+        const auto& function = compilation.namespaceFunctionModel()->functions()[ordinal];
+        if (function.name == "Identity" && function.parameters.size() == 1U)
+        {
+            output.functionOrdinal = ordinal;
+            output.resultType = function.declaredTypeKey;
+            output.parameterType = function.parameters.front().typeKey;
+            output.mangledName = function.mangledName;
+            output.packFunctionOrdinal = ordinal;
+            output.referenceFunctionOrdinal = ordinal;
+            output.packType = function.parameters.front().typeKey;
+            output.packElementType = "builtin:int";
+            output.packMangledName = function.mangledName;
+            output.referenceMangledName = function.mangledName;
+            foundFunction = true;
+        }
+    }
+    bool foundCaller = false;
+    for (std::size_t ordinal = 0; ordinal < compilation.memberModel()->members().size(); ++ordinal)
+    {
+        if (compilation.memberModel()->members()[ordinal].name != "Run") continue;
+        output.callerOrdinal = ordinal;
+        foundCaller = true;
+    }
+    const bool complete = foundFunction && foundCaller &&
+        !output.resultType.empty() && !output.parameterType.empty() &&
+        !output.mangledName.empty() && !output.packType.empty() &&
+        !output.packElementType.empty() && !output.packMangledName.empty() &&
+        !output.referenceMangledName.empty();
+    if (!complete)
+    {
+        error = "identity=" + std::to_string(foundFunction) +
+            ", caller=" + std::to_string(foundCaller);
+        for (const auto& function : compilation.namespaceFunctionModel()->functions())
+            error += "; " + function.name;
+    }
+    return complete;
+}
+
+struct DeepNamespaceCallSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::NamespaceFunctionCallBinding> calls;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepNamespaceCallSyntax makeDeepNamespaceCallSyntax(
+    std::size_t depth,
+    const NamespaceCallTarget& target)
+{
+    DeepNamespaceCallSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.calls.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(7U);
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        auto* callSyntax = fixture.nodes.back().get();
+        callSyntax->addChild(current);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = callSyntax;
+        call.selectedFunctionOrdinal = target.functionOrdinal;
+        call.selectedArgumentParameterOrdinals.push_back(0U);
+        call.resultTypeKey = target.resultType;
+        current = callSyntax;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool namespaceCallChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const NamespaceCallTarget& target)
+{
+    std::size_t observedDepth = 0U;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::StaticCall)
+    {
+        if (node->namespaceFunctionOrdinal != target.functionOrdinal ||
+            node->stringValue != target.mangledName || node->typeKey != target.resultType ||
+            node->children.size() != 1U || node->argumentCount != 1U ||
+            node->argumentParameterOrdinals != std::vector<std::size_t>{0U} ||
+            node->argumentTypeKeys != std::vector<std::string>{target.parameterType} ||
+            node->referenceResult)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+        node->integerValue == 7U;
+}
+
+nativesharp::ast::AstNode* appendNamespaceInteger(
+    DeepNamespaceCallSyntax& fixture,
+    std::uint64_t value)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(value);
+    return fixture.nodes.back().get();
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerNamespaceFixture(
+    ProjectCompilation& compilation,
+    const NamespaceCallTarget& target,
+    DeepNamespaceCallSyntax& fixture,
+    const std::vector<nativesharp::frontend::MethodBorrowBinding>& borrows,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.resultType;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerNamespaceCallExpression(
+            model,
+            *compilation.memberModel(),
+            *compilation.namespaceFunctionModel(),
+            target.callerOrdinal,
+            fixture.root,
+            fixture.nodes,
+            fixture.calls,
+            borrows,
+            type,
+            addressContext,
+            error);
+}
+
+void testNamespaceCallContracts(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const NamespaceCallTarget& target)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using Resolution = nativesharp::frontend::MethodCallResolutionKind;
+
+    DeepNamespaceCallSyntax converted;
+    auto* convertedValue = appendNamespaceInteger(converted, 3U);
+    converted.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    converted.root = converted.nodes.back().get();
+    converted.nodes.back()->addChild(convertedValue);
+    converted.calls.emplace_back();
+    auto& convertedCall = converted.calls.back();
+    convertedCall.resolution = Resolution::Resolved;
+    convertedCall.syntax = converted.root;
+    convertedCall.selectedFunctionOrdinal = target.functionOrdinal;
+    convertedCall.selectedArgumentParameterOrdinals = {0U};
+    convertedCall.resultTypeKey = target.resultType;
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = nativesharp::frontend::ProjectConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:byte";
+    conversion.targetTypeKey = target.parameterType;
+    convertedCall.selectedConversions.push_back(conversion);
+    nativesharp::frontend::MethodBorrowBinding borrow;
+    borrow.kind =
+        nativesharp::frontend::MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+    borrow.syntax = convertedValue;
+    borrow.methodMemberOrdinal = target.callerOrdinal;
+    borrow.targetMemberOrdinal = compilation.memberModel()->members().size() +
+        target.functionOrdinal;
+    borrow.targetParameterOrdinal = 0U;
+    borrow.typeKey = target.parameterType;
+    std::string error;
+    auto prepared = lowerNamespaceFixture(
+        compilation, target, converted, {borrow}, false, error);
+    const auto* preparedCall = prepared != nullptr && prepared->kind == HirKind::FullExpressionCleanup &&
+        prepared->children.size() == 1U ? prepared->children.front().get() : nullptr;
+    const auto* owned = preparedCall != nullptr && preparedCall->kind == HirKind::StaticCall &&
+        preparedCall->children.size() == 1U ? preparedCall->children.front().get() : nullptr;
+    const auto* borrowed = owned != nullptr && owned->kind == HirKind::OwnedTemporaryBorrow &&
+        owned->children.size() == 1U ? owned->children.front().get() : nullptr;
+    const auto* convertedNode = borrowed != nullptr && borrowed->kind == HirKind::BorrowValue &&
+        borrowed->children.size() == 1U ? borrowed->children.front().get() : nullptr;
+    tests.expect(prepared != nullptr && error.empty() && preparedCall != nullptr &&
+            preparedCall->argumentCount == 1U && owned != nullptr && borrowed != nullptr &&
+            convertedNode != nullptr && convertedNode->kind == HirKind::Conversion &&
+            convertedNode->conversion.has_value() &&
+            convertedNode->conversion->kind ==
+                nativesharp::frontend::ProjectConversionKind::Numeric,
+        "namespace arguments apply conversion, owned borrow, and one full-expression cleanup");
+    destroyHirTreeIteratively(prepared);
+
+    auto& semanticTarget = const_cast<nativesharp::frontend::NamespaceFunctionSymbol&>(
+        compilation.namespaceFunctionModel()->functions()[target.functionOrdinal]);
+    semanticTarget.parameters.front().parameterPackElementTypeKey = target.packElementType;
+
+    DeepNamespaceCallSyntax packed;
+    auto* first = appendNamespaceInteger(packed, 4U);
+    auto* second = appendNamespaceInteger(packed, 9U);
+    packed.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    packed.root = packed.nodes.back().get();
+    packed.nodes.back()->addChild(first);
+    packed.nodes.back()->addChild(second);
+    packed.calls.emplace_back();
+    auto& packedCall = packed.calls.back();
+    packedCall.resolution = Resolution::Resolved;
+    packedCall.syntax = packed.root;
+    packedCall.selectedFunctionOrdinal = target.packFunctionOrdinal;
+    packedCall.selectedArgumentParameterOrdinals = {0U, 0U};
+    packedCall.selectedParameterPackElements = {true, true};
+    packedCall.selectedParameterPackOrdinal = 0U;
+    packedCall.selectedUsesExpandedParameterPack = true;
+    packedCall.resultTypeKey = target.resultType;
+    error.clear();
+    auto pack = lowerNamespaceFixture(compilation, target, packed, {}, false, error);
+    const auto* packNode = pack != nullptr && pack->children.size() == 1U
+        ? pack->children.front().get() : nullptr;
+    tests.expect(pack != nullptr && error.empty() && pack->kind == HirKind::StaticCall &&
+            pack->namespaceFunctionOrdinal == target.packFunctionOrdinal &&
+            pack->stringValue == target.packMangledName && pack->argumentCount == 1U &&
+            pack->argumentParameterOrdinals == std::vector<std::size_t>{0U} &&
+            pack->argumentTypeKeys == std::vector<std::string>{target.packType} &&
+            packNode != nullptr && packNode->kind == HirKind::ParameterPack &&
+            packNode->elementTypeKey == target.packElementType &&
+            packNode->children.size() == 2U &&
+            packNode->children[0]->integerValue == 4U &&
+            packNode->children[1]->integerValue == 9U,
+        "namespace parameter-pack elements remain grouped once and in source order");
+    destroyHirTreeIteratively(pack);
+
+    DeepNamespaceCallSyntax emptyPack;
+    emptyPack.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    emptyPack.root = emptyPack.nodes.back().get();
+    emptyPack.calls.emplace_back();
+    auto& emptyPackCall = emptyPack.calls.back();
+    emptyPackCall.resolution = Resolution::Resolved;
+    emptyPackCall.syntax = emptyPack.root;
+    emptyPackCall.selectedFunctionOrdinal = target.packFunctionOrdinal;
+    emptyPackCall.selectedParameterPackOrdinal = 0U;
+    emptyPackCall.selectedSynthesizesEmptyParameterPack = true;
+    emptyPackCall.resultTypeKey = target.resultType;
+    error.clear();
+    auto empty = lowerNamespaceFixture(compilation, target, emptyPack, {}, false, error);
+    tests.expect(empty != nullptr && error.empty() && empty->kind == HirKind::StaticCall &&
+            empty->argumentCount == 1U && empty->children.size() == 1U &&
+            empty->children.front()->kind == HirKind::ParameterPack &&
+            empty->children.front()->children.empty() &&
+            empty->children.front()->elementTypeKey == target.packElementType,
+        "namespace calls synthesize the selected empty parameter pack exactly once");
+    destroyHirTreeIteratively(empty);
+    semanticTarget.parameters.front().parameterPackElementTypeKey.clear();
+
+    DeepNamespaceCallSyntax defaulted;
+    auto* defaultValue = appendNamespaceInteger(defaulted, 13U);
+    defaulted.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    defaulted.root = defaulted.nodes.back().get();
+    defaulted.calls.emplace_back();
+    auto& defaultCall = defaulted.calls.back();
+    defaultCall.resolution = Resolution::Resolved;
+    defaultCall.syntax = defaulted.root;
+    defaultCall.selectedFunctionOrdinal = target.functionOrdinal;
+    defaultCall.selectedDefaultArguments = {defaultValue};
+    defaultCall.selectedDefaultArgumentParameterOrdinals = {0U};
+    defaultCall.resultTypeKey = target.resultType;
+    error.clear();
+    auto defaultNode = lowerNamespaceFixture(
+        compilation, target, defaulted, {}, false, error);
+    tests.expect(defaultNode != nullptr && error.empty() &&
+            defaultNode->kind == HirKind::StaticCall && defaultNode->argumentCount == 1U &&
+            defaultNode->children.size() == 1U &&
+            defaultNode->children.front()->kind == HirKind::IntegerConstant &&
+            defaultNode->children.front()->integerValue == 13U,
+        "namespace default arguments append after explicit arguments without borrow");
+    destroyHirTreeIteratively(defaultNode);
+
+    const auto makeReferenceFixture = [&]()
+    {
+        DeepNamespaceCallSyntax fixture;
+        auto* value = appendNamespaceInteger(fixture, 17U);
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        fixture.root = fixture.nodes.back().get();
+        fixture.nodes.back()->addChild(value);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = Resolution::Resolved;
+        call.syntax = fixture.root;
+        call.selectedFunctionOrdinal = target.referenceFunctionOrdinal;
+        call.selectedArgumentParameterOrdinals = {0U};
+        call.resultTypeKey = target.resultType;
+        return fixture;
+    };
+    semanticTarget.isReferenceReturn = true;
+    auto referenceValue = makeReferenceFixture();
+    error.clear();
+    auto loadedReference = lowerNamespaceFixture(
+        compilation, target, referenceValue, {}, false, error);
+    tests.expect(loadedReference != nullptr && error.empty() &&
+            loadedReference->kind == HirKind::PointerLoad &&
+            loadedReference->children.size() == 1U &&
+            loadedReference->children.front()->kind == HirKind::StaticCall &&
+            loadedReference->children.front()->referenceResult &&
+            loadedReference->children.front()->children.size() == 1U &&
+            loadedReference->children.front()->children.front()->kind == HirKind::IntegerConstant,
+        "namespace ref returns load once in value context while explicit ref arguments stay values");
+    destroyHirTreeIteratively(loadedReference);
+    auto referenceAddress = makeReferenceFixture();
+    error.clear();
+    auto address = lowerNamespaceFixture(
+        compilation, target, referenceAddress, {}, true, error);
+    tests.expect(address != nullptr && error.empty() && address->kind == HirKind::StaticCall &&
+            address->referenceResult && address->children.size() == 1U,
+        "namespace ref returns remain an addressable call in address context");
+    destroyHirTreeIteratively(address);
+    semanticTarget.isReferenceReturn = false;
+
+    DeepNamespaceCallSyntax extensionValue;
+    auto* receiver = appendNamespaceInteger(extensionValue, 21U);
+    extensionValue.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    extensionValue.root = extensionValue.nodes.back().get();
+    extensionValue.calls.emplace_back();
+    auto& extensionCall = extensionValue.calls.back();
+    extensionCall.resolution = Resolution::Resolved;
+    extensionCall.syntax = extensionValue.root;
+    extensionCall.forwardedReceiver = true;
+    extensionCall.receiverSyntax = receiver;
+    extensionCall.selectedFunctionOrdinal = target.functionOrdinal;
+    extensionCall.selectedArgumentParameterOrdinals = {0U};
+    extensionCall.selectedConversions.push_back(conversion);
+    extensionCall.resultTypeKey = target.resultType;
+    error.clear();
+    auto extension = lowerNamespaceFixture(
+        compilation, target, extensionValue, {}, false, error);
+    tests.expect(extension != nullptr && error.empty() &&
+            extension->kind == HirKind::StaticCall && extension->children.size() == 1U &&
+            extension->children.front()->kind == HirKind::Conversion &&
+            extension->argumentParameterOrdinals == std::vector<std::size_t>{0U} &&
+            extension->argumentTypeKeys == std::vector<std::string>{target.parameterType},
+        "forwarded namespace receiver is first and converts only in value context");
+    destroyHirTreeIteratively(extension);
+
+    semanticTarget.parameters.front().passKind =
+        nativesharp::frontend::ParameterPassKind::Ref;
+    DeepNamespaceCallSyntax referenceReceiver;
+    referenceReceiver.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression,
+        nativesharp::SourceRange{}));
+    auto* thisReceiver = referenceReceiver.nodes.back().get();
+    referenceReceiver.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    referenceReceiver.root = referenceReceiver.nodes.back().get();
+    referenceReceiver.calls.emplace_back();
+    auto& referenceReceiverCall = referenceReceiver.calls.back();
+    referenceReceiverCall.resolution = Resolution::Resolved;
+    referenceReceiverCall.syntax = referenceReceiver.root;
+    referenceReceiverCall.forwardedReceiver = true;
+    referenceReceiverCall.receiverSyntax = thisReceiver;
+    referenceReceiverCall.selectedFunctionOrdinal = target.functionOrdinal;
+    referenceReceiverCall.selectedArgumentParameterOrdinals = {0U};
+    referenceReceiverCall.resultTypeKey = target.resultType;
+    error.clear();
+    auto refExtension = lowerNamespaceFixture(
+        compilation, target, referenceReceiver, {}, false, error);
+    tests.expect(refExtension != nullptr && error.empty() &&
+            refExtension->kind == HirKind::StaticCall &&
+            refExtension->children.size() == 1U &&
+            refExtension->children.front()->kind != HirKind::Conversion &&
+            refExtension->argumentParameterOrdinals == std::vector<std::size_t>{0U},
+        "forwarded ref receiver lowers in address context without value conversion");
+    destroyHirTreeIteratively(refExtension);
+    semanticTarget.parameters.front().passKind =
+        nativesharp::frontend::ParameterPassKind::Value;
+}
+
+void testNamespaceCallDiagnostics(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const NamespaceCallTarget& target)
+{
+    using Resolution = nativesharp::frontend::MethodCallResolutionKind;
+    const auto makeCall = [&](bool withArgument)
+    {
+        DeepNamespaceCallSyntax fixture;
+        nativesharp::ast::AstNode* argument = nullptr;
+        if (withArgument) argument = appendNamespaceInteger(fixture, 1U);
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        fixture.root = fixture.nodes.back().get();
+        if (argument != nullptr) fixture.nodes.back()->addChild(argument);
+        fixture.calls.emplace_back();
+        fixture.calls.back().syntax = fixture.root;
+        fixture.calls.back().resultTypeKey = target.resultType;
+        return fixture;
+    };
+    const auto reject = [&](DeepNamespaceCallSyntax fixture,
+                            bool addressContext,
+                            std::string_view expected,
+                            std::string_view label)
+    {
+        std::string error;
+        auto lowered = lowerNamespaceFixture(
+            compilation, target, fixture, {}, addressContext, error);
+        tests.expect(lowered == nullptr && error == expected,
+            std::string(label) + " preserves its exact namespace-call diagnostic (" +
+                error + ")");
+        destroyHirTreeIteratively(lowered);
+    };
+
+    auto unresolved = makeCall(true);
+    reject(std::move(unresolved), false,
+        "namespace function call reached HIR without a resolved target",
+        "unresolved target");
+
+    auto nonAddressable = makeCall(true);
+    nonAddressable.calls.front().resolution = Resolution::Resolved;
+    nonAddressable.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    nonAddressable.calls.front().selectedArgumentParameterOrdinals = {0U};
+    reject(std::move(nonAddressable), true,
+        "namespace function call result is not addressable unless it returns ref",
+        "non-ref address context");
+
+    auto missingOrdinal = makeCall(true);
+    missingOrdinal.calls.front().resolution = Resolution::Resolved;
+    missingOrdinal.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    reject(std::move(missingOrdinal), false,
+        "namespace function argument has no selected parameter ordinal",
+        "missing explicit parameter ordinal");
+
+    auto badOrdinal = makeCall(true);
+    badOrdinal.calls.front().resolution = Resolution::Resolved;
+    badOrdinal.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    badOrdinal.calls.front().selectedArgumentParameterOrdinals = {99U};
+    reject(std::move(badOrdinal), false,
+        "namespace function argument has no matching parameter",
+        "out-of-range explicit parameter ordinal");
+
+    auto lostReceiver = makeCall(false);
+    lostReceiver.calls.front().resolution = Resolution::Resolved;
+    lostReceiver.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    lostReceiver.calls.front().forwardedReceiver = true;
+    reject(std::move(lostReceiver), false,
+        "extension call lost its synthetic receiver contract",
+        "missing forwarded receiver");
+
+    auto badReceiver = makeCall(false);
+    auto* receiver = appendNamespaceInteger(badReceiver, 2U);
+    badReceiver.calls.front().resolution = Resolution::Resolved;
+    badReceiver.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    badReceiver.calls.front().forwardedReceiver = true;
+    badReceiver.calls.front().receiverSyntax = receiver;
+    badReceiver.calls.front().selectedArgumentParameterOrdinals = {99U};
+    reject(std::move(badReceiver), false,
+        "extension receiver has no matching parameter",
+        "out-of-range forwarded receiver ordinal");
+
+    auto defaultMissingOrdinal = makeCall(false);
+    auto* firstDefault = appendNamespaceInteger(defaultMissingOrdinal, 3U);
+    defaultMissingOrdinal.calls.front().resolution = Resolution::Resolved;
+    defaultMissingOrdinal.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    defaultMissingOrdinal.calls.front().selectedDefaultArguments = {firstDefault};
+    reject(std::move(defaultMissingOrdinal), false,
+        "namespace function default argument has no parameter ordinal",
+        "missing default parameter ordinal");
+
+    auto defaultBadOrdinal = makeCall(false);
+    auto* secondDefault = appendNamespaceInteger(defaultBadOrdinal, 4U);
+    defaultBadOrdinal.calls.front().resolution = Resolution::Resolved;
+    defaultBadOrdinal.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    defaultBadOrdinal.calls.front().selectedDefaultArguments = {secondDefault};
+    defaultBadOrdinal.calls.front().selectedDefaultArgumentParameterOrdinals = {99U};
+    reject(std::move(defaultBadOrdinal), false,
+        "namespace function default argument has no matching parameter",
+        "out-of-range default parameter ordinal");
+
+    auto packLostType = makeCall(true);
+    packLostType.calls.front().resolution = Resolution::Resolved;
+    packLostType.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    packLostType.calls.front().selectedArgumentParameterOrdinals = {0U};
+    packLostType.calls.front().selectedParameterPackElements = {true};
+    reject(std::move(packLostType), false,
+        "T01-F02 namespace parameter pack lost its element type",
+        "expanded pack without element type");
+
+    auto emptyPackMissing = makeCall(false);
+    emptyPackMissing.calls.front().resolution = Resolution::Resolved;
+    emptyPackMissing.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    emptyPackMissing.calls.front().selectedSynthesizesEmptyParameterPack = true;
+    reject(std::move(emptyPackMissing), false,
+        "T01-F02 empty namespace parameter pack has no parameter",
+        "empty pack without parameter ordinal");
+
+    auto emptyPackLostType = makeCall(false);
+    emptyPackLostType.calls.front().resolution = Resolution::Resolved;
+    emptyPackLostType.calls.front().selectedFunctionOrdinal = target.functionOrdinal;
+    emptyPackLostType.calls.front().selectedSynthesizesEmptyParameterPack = true;
+    emptyPackLostType.calls.front().selectedParameterPackOrdinal = 0U;
+    reject(std::move(emptyPackLostType), false,
+        "T01-F02 empty namespace parameter pack lost its element type",
+        "empty pack without element type");
+}
+
+void testDeepNamespaceCallLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    NamespaceCallTarget target;
+    std::string error;
+    const bool prepared = prepareNamespaceCallFixture(
+        root, compilation, target, error);
+    tests.expect(prepared,
+        "the namespace-call depth fixture builds a real namespace function target (" +
+            error + ")");
+    if (!prepared) return;
+
+    testNamespaceCallContracts(tests, compilation, target);
+    testNamespaceCallDiagnostics(tests, compilation, target);
+
+    DeepNamespaceCallSyntax syntax =
+        makeDeepNamespaceCallSyntax(nestingDepth, target);
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.resultType;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerNamespaceCallExpression(
+            model,
+            *compilation.memberModel(),
+            *compilation.namespaceFunctionModel(),
+            target.callerOrdinal,
+            syntax.root,
+            syntax.nodes,
+            syntax.calls,
+            {},
+            type,
+            false,
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level namespace-call chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(namespaceCallChainMatches(
+            lowered.get(), nestingDepth, target),
+        "iterative namespace-call lowering preserves targets, argument order, and metadata");
+    destroyHirTreeIteratively(lowered);
 }
 
 struct DeepDelegateCreationSyntax final
@@ -8340,6 +8965,10 @@ int main()
     {
         testBoundCallFrameLowering(tests, root);
     }
+    else if (focusValue == "hir-namespace-call-depth")
+    {
+        testDeepNamespaceCallLowering(tests, root);
+    }
     else if (focusValue == "hir-delegate-lambda-receiver-depth")
     {
         testDeepDelegateLambdaReceiverLowering(tests, root);
@@ -8548,6 +9177,7 @@ int main()
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepUserUnaryOperatorLowering(tests, root);
         testBoundCallFrameLowering(tests, root);
+        testDeepNamespaceCallLowering(tests, root);
         testDeepDelegateLambdaReceiverLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);

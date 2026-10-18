@@ -168,6 +168,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         ExtensionPropertyGetter,
         UserIndexerGetter,
         DelegateCreationReceiver,
+        NamespaceCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -199,6 +200,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool nullConditional = false;
         bool hasOwnedTemporary = false;
     };
+    enum class NamespaceCallFrameStage : std::uint8_t
+    {
+        Receiver,
+        Arguments,
+        Ready,
+    };
+    struct NamespaceCallFrameState final
+    {
+        const NamespaceFunctionCallBinding* binding = nullptr;
+        const NamespaceFunctionSymbol* target = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        ProjectOopHirNode* expandedPack = nullptr;
+        NamespaceCallFrameStage stage = NamespaceCallFrameStage::Ready;
+        std::size_t targetCallableOrdinal = 0U;
+        std::size_t receiverParameterOrdinal = 0U;
+        std::size_t nextArgument = 0U;
+        std::size_t argumentOffset = 0U;
+        bool receiverNeedsAddress = false;
+        bool hasOwnedTemporary = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -213,6 +234,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
         std::optional<BoundCallFrameState> boundCall;
+        std::optional<NamespaceCallFrameState> namespaceCall;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -281,6 +303,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             !delegateCreation->receiverTypeKey.empty())
         {
             return IterativeExpressionKind::DelegateCreationReceiver;
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const NamespaceFunctionCallBinding* namespaceCall =
+                namespaceFunctionCallBinding(syntax);
+            if (namespaceCall != nullptr &&
+                (namespaceCall->forwardedReceiver || !syntax->children().empty()))
+            {
+                return IterativeExpressionKind::NamespaceCall;
+            }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -902,6 +934,190 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             if (call.nextArgument == call.argumentSyntaxes.size())
                 call.stage = BoundCallFrameStage::Ready;
         };
+        const auto initializeNamespaceCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            const NamespaceFunctionCallBinding* binding =
+                namespaceFunctionCallBinding(frame.syntax);
+            if (binding == nullptr ||
+                binding->resolution != MethodCallResolutionKind::Resolved ||
+                !binding->selectedFunctionOrdinal.has_value() ||
+                namespaceFunctionModel_ == nullptr ||
+                *binding->selectedFunctionOrdinal >= namespaceFunctionModel_->functions().size())
+            {
+                error = "namespace function call reached HIR without a resolved target";
+                return false;
+            }
+            NamespaceCallFrameState call;
+            call.binding = binding;
+            const std::size_t functionOrdinal = *binding->selectedFunctionOrdinal;
+            call.target = &namespaceFunctionModel_->functions()[functionOrdinal];
+            if (frame.addressContext && !call.target->isReferenceReturn)
+            {
+                error = "namespace function call result is not addressable unless it returns ref";
+                return false;
+            }
+            call.node = makeNode(
+                ProjectOopHirNodeKind::StaticCall,
+                frame.syntax,
+                binding->resultTypeKey);
+            call.node->namespaceFunctionOrdinal = functionOrdinal;
+            call.node->stringValue = call.target->mangledName;
+            call.targetCallableOrdinal =
+                (memberModel_ != nullptr ? memberModel_->members().size() : 0U) +
+                functionOrdinal;
+            if (binding->forwardedReceiver)
+            {
+                if (binding->receiverSyntax == nullptr || call.target->parameters.empty() ||
+                    binding->selectedArgumentParameterOrdinals.empty())
+                {
+                    error = "extension call lost its synthetic receiver contract";
+                    return false;
+                }
+                call.receiverParameterOrdinal =
+                    binding->selectedArgumentParameterOrdinals.front();
+                if (call.receiverParameterOrdinal >= call.target->parameters.size())
+                {
+                    error = "extension receiver has no matching parameter";
+                    return false;
+                }
+                call.receiverNeedsAddress =
+                    call.target->parameters[call.receiverParameterOrdinal].passKind !=
+                    ParameterPassKind::Value;
+                call.argumentOffset = 1U;
+                call.stage = NamespaceCallFrameStage::Receiver;
+            }
+            else
+            {
+                call.stage = frame.syntax->children().empty()
+                    ? NamespaceCallFrameStage::Ready
+                    : NamespaceCallFrameStage::Arguments;
+            }
+            frame.namespaceCall.emplace(std::move(call));
+            return true;
+        };
+        struct NamespaceCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextNamespaceCallChild = [&](const NamespaceCallFrameState& call)
+            -> std::optional<NamespaceCallChild>
+        {
+            if (call.stage == NamespaceCallFrameStage::Receiver)
+            {
+                return NamespaceCallChild{
+                    call.binding->receiverSyntax,
+                    call.receiverNeedsAddress};
+            }
+            if (call.stage != NamespaceCallFrameStage::Arguments ||
+                call.nextArgument >= call.node->syntax->children().size())
+            {
+                return std::nullopt;
+            }
+            return NamespaceCallChild{
+                call.node->syntax->children()[call.nextArgument],
+                false};
+        };
+        const auto acceptNamespaceCallChild = [&](NamespaceCallFrameState& call,
+                                                   std::unique_ptr<ProjectOopHirNode> child)
+            -> bool
+        {
+            if (call.stage == NamespaceCallFrameStage::Receiver)
+            {
+                if (!call.receiverNeedsAddress && !call.binding->selectedConversions.empty() &&
+                    call.binding->selectedConversions.front().kind !=
+                        ProjectConversionKind::Identity)
+                {
+                    child = wrapImplicitConversion(
+                        std::move(child),
+                        call.binding->selectedConversions.front(),
+                        call.binding->receiverSyntax);
+                }
+                child = wrapCallArgumentBorrow(
+                    std::move(child),
+                    call.binding->receiverSyntax,
+                    call.targetCallableOrdinal,
+                    call.receiverParameterOrdinal,
+                    call.hasOwnedTemporary);
+                call.node->children.push_back(std::move(child));
+                call.node->argumentParameterOrdinals.push_back(
+                    call.receiverParameterOrdinal);
+                call.node->argumentTypeKeys.push_back(
+                    call.target->parameters[call.receiverParameterOrdinal].typeKey);
+                call.stage = call.node->syntax->children().empty()
+                    ? NamespaceCallFrameStage::Ready
+                    : NamespaceCallFrameStage::Arguments;
+                return true;
+            }
+
+            const std::size_t index = call.nextArgument++;
+            const std::size_t selectedIndex = index + call.argumentOffset;
+            if (selectedIndex >= call.binding->selectedArgumentParameterOrdinals.size())
+            {
+                error = "namespace function argument has no selected parameter ordinal";
+                return false;
+            }
+            const std::size_t parameterOrdinal =
+                call.binding->selectedArgumentParameterOrdinals[selectedIndex];
+            if (parameterOrdinal >= call.target->parameters.size())
+            {
+                error = "namespace function argument has no matching parameter";
+                return false;
+            }
+            const ast::AstNode* argumentSyntax = call.node->syntax->children()[index];
+            if (selectedIndex < call.binding->selectedConversions.size() &&
+                call.binding->selectedConversions[selectedIndex].kind !=
+                    ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    call.binding->selectedConversions[selectedIndex],
+                    argumentSyntax);
+            }
+            const bool packElement =
+                selectedIndex < call.binding->selectedParameterPackElements.size() &&
+                call.binding->selectedParameterPackElements[selectedIndex];
+            if (packElement)
+            {
+                const std::string& elementType =
+                    call.target->parameters[parameterOrdinal].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error = "T01-F02 namespace parameter pack lost its element type";
+                    return false;
+                }
+                if (call.expandedPack == nullptr)
+                {
+                    auto pack = makeNode(
+                        ProjectOopHirNodeKind::ParameterPack,
+                        argumentSyntax,
+                        call.target->parameters[parameterOrdinal].typeKey);
+                    pack->elementTypeKey = elementType;
+                    call.expandedPack = pack.get();
+                    call.node->children.push_back(std::move(pack));
+                    call.node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    call.node->argumentTypeKeys.push_back(
+                        call.target->parameters[parameterOrdinal].typeKey);
+                }
+                call.expandedPack->children.push_back(std::move(child));
+            }
+            else
+            {
+                child = wrapCallArgumentBorrow(
+                    std::move(child),
+                    argumentSyntax,
+                    call.targetCallableOrdinal,
+                    parameterOrdinal,
+                    call.hasOwnedTemporary);
+                call.node->children.push_back(std::move(child));
+                call.node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                call.node->argumentTypeKeys.push_back(
+                    call.target->parameters[parameterOrdinal].typeKey);
+            }
+            if (call.nextArgument == call.node->syntax->children().size())
+                call.stage = NamespaceCallFrameStage::Ready;
+            return true;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1120,6 +1336,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     if (!initializeBoundCallFrame(
                             frame, callBinding(current), {current->first()}, false))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::NamespaceCall)
+                {
+                    if (!initializeNamespaceCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -1578,6 +1803,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     if (!child.has_value())
                     {
                         error = "Stage 34 bound-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
+                }
+                else if (*currentKind == IterativeExpressionKind::NamespaceCall)
+                {
+                    const std::optional<NamespaceCallChild> child =
+                        nextNamespaceCallChild(*frames.back().namespaceCall);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 namespace-call frame has no child to lower";
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
                         return nullptr;
@@ -2406,6 +2645,45 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             core.resultTypeKey);
                         value->children.push_back(std::move(base));
                         lowered = std::move(value);
+                    }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NamespaceCall)
+                {
+                    NamespaceCallFrameState& namespaceCall = *frame.namespaceCall;
+                    if (!acceptNamespaceCallChild(namespaceCall, std::move(lowered)))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    const std::optional<NamespaceCallChild> child =
+                        nextNamespaceCallChild(namespaceCall);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishNamespaceCall(
+                        frame.syntax,
+                        frame.addressContext,
+                        error,
+                        *namespaceCall.binding,
+                        *namespaceCall.target,
+                        std::move(namespaceCall.node),
+                        namespaceCall.hasOwnedTemporary);
+                    if (lowered == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        frames.clear();
+                        break;
                     }
                     frames.pop_back();
                     continue;

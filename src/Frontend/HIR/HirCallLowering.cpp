@@ -838,6 +838,76 @@ ProjectOopHirModel::lowerExtensionPropertyGetterWithReceiver(
     return node;
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishNamespaceCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    std::string& error,
+    const NamespaceFunctionCallBinding& binding,
+    const NamespaceFunctionSymbol& target,
+    std::unique_ptr<ProjectOopHirNode> node,
+    bool hasOwnedTemporary)
+{
+    for (std::size_t index = 0; index < binding.selectedDefaultArguments.size(); ++index)
+    {
+        if (index >= binding.selectedDefaultArgumentParameterOrdinals.size())
+        {
+            error = "namespace function default argument has no parameter ordinal";
+            return nullptr;
+        }
+        const std::size_t parameterOrdinal =
+            binding.selectedDefaultArgumentParameterOrdinals[index];
+        if (parameterOrdinal >= target.parameters.size())
+        {
+            error = "namespace function default argument has no matching parameter";
+            return nullptr;
+        }
+        auto argument = lowerDefaultArgument(
+            binding.selectedDefaultArguments[index],
+            target.parameters[parameterOrdinal].typeKey,
+            error);
+        if (argument == nullptr) return nullptr;
+        node->children.push_back(std::move(argument));
+        node->argumentParameterOrdinals.push_back(parameterOrdinal);
+        node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
+    }
+    if (binding.selectedSynthesizesEmptyParameterPack)
+    {
+        if (!binding.selectedParameterPackOrdinal.has_value() ||
+            *binding.selectedParameterPackOrdinal >= target.parameters.size())
+        {
+            error = "T01-F02 empty namespace parameter pack has no parameter";
+            return nullptr;
+        }
+        const std::size_t parameterOrdinal = *binding.selectedParameterPackOrdinal;
+        const std::string& elementType =
+            target.parameters[parameterOrdinal].parameterPackElementTypeKey;
+        if (elementType.empty())
+        {
+            error = "T01-F02 empty namespace parameter pack lost its element type";
+            return nullptr;
+        }
+        auto pack = makeNode(
+            ProjectOopHirNodeKind::ParameterPack,
+            expression,
+            target.parameters[parameterOrdinal].typeKey);
+        pack->elementTypeKey = elementType;
+        node->children.push_back(std::move(pack));
+        node->argumentParameterOrdinals.push_back(parameterOrdinal);
+        node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
+    }
+    node->argumentCount = node->children.size();
+    node->referenceResult = target.isReferenceReturn;
+    auto loweredCall = wrapFullExpressionCleanup(
+        std::move(node), expression, hasOwnedTemporary);
+    if (!target.isReferenceReturn || addressContext) return loweredCall;
+    auto load = makeNode(
+        ProjectOopHirNodeKind::PointerLoad,
+        expression,
+        target.declaredTypeKey);
+    load->children.push_back(std::move(loweredCall));
+    return load;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -984,186 +1054,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "namespace function call result is not addressable unless it returns ref";
             return nullptr;
         }
-
+        if (namespaceCall->forwardedReceiver || !expression->children().empty())
+        {
+            error = "Stage 34 namespace-call expression escaped iterative lowering";
+            return nullptr;
+        }
         auto node = makeNode(
             ProjectOopHirNodeKind::StaticCall,
             expression,
             namespaceCall->resultTypeKey);
         node->namespaceFunctionOrdinal = functionOrdinal;
         node->stringValue = target.mangledName;
-        const std::size_t targetCallableOrdinal =
-            (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
-            functionOrdinal;
-        bool hasOwnedTemporary = false;
-        ProjectOopHirNode* expandedPack = nullptr;
-        std::size_t argumentOffset = 0;
-        if (namespaceCall->forwardedReceiver)
-        {
-            if (namespaceCall->receiverSyntax == nullptr || target.parameters.empty() ||
-                namespaceCall->selectedArgumentParameterOrdinals.empty())
-            {
-                error = "extension call lost its synthetic receiver contract";
-                return nullptr;
-            }
-            const std::size_t parameterOrdinal =
-                namespaceCall->selectedArgumentParameterOrdinals.front();
-            if (parameterOrdinal >= target.parameters.size())
-            {
-                error = "extension receiver has no matching parameter";
-                return nullptr;
-            }
-            const bool addressReceiver =
-                target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
-            auto receiver = lowerExpression(
-                namespaceCall->receiverSyntax, memberOrdinal, addressReceiver, error);
-            if (receiver == nullptr) return nullptr;
-            if (!addressReceiver && !namespaceCall->selectedConversions.empty() &&
-                namespaceCall->selectedConversions.front().kind !=
-                    ProjectConversionKind::Identity)
-            {
-                receiver = wrapImplicitConversion(
-                    std::move(receiver), namespaceCall->selectedConversions.front(),
-                    namespaceCall->receiverSyntax);
-            }
-            receiver = wrapCallArgumentBorrow(
-                std::move(receiver), namespaceCall->receiverSyntax,
-                targetCallableOrdinal, parameterOrdinal, hasOwnedTemporary);
-            node->children.push_back(std::move(receiver));
-            node->argumentParameterOrdinals.push_back(parameterOrdinal);
-            node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
-            argumentOffset = 1;
-        }
-        for (std::size_t index = 0; index < expression->children().size(); ++index)
-        {
-            const ast::AstNode* argumentSyntax = expression->children()[index];
-            auto argument = lowerExpression(
-                argumentSyntax, memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            const std::size_t selectedIndex = index + argumentOffset;
-            if (selectedIndex >= namespaceCall->selectedArgumentParameterOrdinals.size())
-            {
-                error = "namespace function argument has no selected parameter ordinal";
-                return nullptr;
-            }
-            const std::size_t parameterOrdinal =
-                namespaceCall->selectedArgumentParameterOrdinals[selectedIndex];
-            if (parameterOrdinal >= target.parameters.size())
-            {
-                error = "namespace function argument has no matching parameter";
-                return nullptr;
-            }
-            if (selectedIndex < namespaceCall->selectedConversions.size() &&
-                namespaceCall->selectedConversions[selectedIndex].kind !=
-                    ProjectConversionKind::Identity)
-            {
-                argument = wrapImplicitConversion(
-                    std::move(argument),
-                    namespaceCall->selectedConversions[selectedIndex],
-                    argumentSyntax);
-            }
-            const bool packElement =
-                selectedIndex < namespaceCall->selectedParameterPackElements.size() &&
-                namespaceCall->selectedParameterPackElements[selectedIndex];
-            if (packElement)
-            {
-                const std::string& elementType =
-                    target.parameters[parameterOrdinal].parameterPackElementTypeKey;
-                if (elementType.empty())
-                {
-                    error = "T01-F02 namespace parameter pack lost its element type";
-                    return nullptr;
-                }
-                if (expandedPack == nullptr)
-                {
-                    auto pack = makeNode(
-                        ProjectOopHirNodeKind::ParameterPack,
-                        argumentSyntax,
-                        target.parameters[parameterOrdinal].typeKey);
-                    pack->elementTypeKey = elementType;
-                    expandedPack = pack.get();
-                    node->children.push_back(std::move(pack));
-                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
-                    node->argumentTypeKeys.push_back(
-                        target.parameters[parameterOrdinal].typeKey);
-                }
-                expandedPack->children.push_back(std::move(argument));
-                continue;
-            }
-            argument = wrapCallArgumentBorrow(
-                std::move(argument),
-                argumentSyntax,
-                targetCallableOrdinal,
-                parameterOrdinal,
-                hasOwnedTemporary);
-            node->children.push_back(std::move(argument));
-            node->argumentParameterOrdinals.push_back(parameterOrdinal);
-            node->argumentTypeKeys.push_back(
-                target.parameters[parameterOrdinal].typeKey);
-        }
-        for (std::size_t index = 0;
-             index < namespaceCall->selectedDefaultArguments.size();
-             ++index)
-        {
-            if (index >=
-                namespaceCall->selectedDefaultArgumentParameterOrdinals.size())
-            {
-                error = "namespace function default argument has no parameter ordinal";
-                return nullptr;
-            }
-            const std::size_t parameterOrdinal =
-                namespaceCall->selectedDefaultArgumentParameterOrdinals[index];
-            if (parameterOrdinal >= target.parameters.size())
-            {
-                error = "namespace function default argument has no matching parameter";
-                return nullptr;
-            }
-            auto argument = lowerDefaultArgument(
-                namespaceCall->selectedDefaultArguments[index],
-                target.parameters[parameterOrdinal].typeKey,
-                error);
-            if (argument == nullptr) return nullptr;
-            node->children.push_back(std::move(argument));
-            node->argumentParameterOrdinals.push_back(parameterOrdinal);
-            node->argumentTypeKeys.push_back(
-                target.parameters[parameterOrdinal].typeKey);
-        }
-        if (namespaceCall->selectedSynthesizesEmptyParameterPack)
-        {
-            if (!namespaceCall->selectedParameterPackOrdinal.has_value() ||
-                *namespaceCall->selectedParameterPackOrdinal >= target.parameters.size())
-            {
-                error = "T01-F02 empty namespace parameter pack has no parameter";
-                return nullptr;
-            }
-            const std::size_t parameterOrdinal =
-                *namespaceCall->selectedParameterPackOrdinal;
-            const std::string& elementType =
-                target.parameters[parameterOrdinal].parameterPackElementTypeKey;
-            if (elementType.empty())
-            {
-                error = "T01-F02 empty namespace parameter pack lost its element type";
-                return nullptr;
-            }
-            auto pack = makeNode(
-                ProjectOopHirNodeKind::ParameterPack,
-                expression,
-                target.parameters[parameterOrdinal].typeKey);
-            pack->elementTypeKey = elementType;
-            node->children.push_back(std::move(pack));
-            node->argumentParameterOrdinals.push_back(parameterOrdinal);
-            node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
-        }
-        node->argumentCount = node->children.size();
-        node->referenceResult = target.isReferenceReturn;
-        auto loweredCall = wrapFullExpressionCleanup(
-            std::move(node), expression, hasOwnedTemporary);
-        if (!target.isReferenceReturn || addressContext) return loweredCall;
-        auto load = makeNode(
-            ProjectOopHirNodeKind::PointerLoad,
+        return finishNamespaceCall(
             expression,
-            target.declaredTypeKey);
-        load->children.push_back(std::move(loweredCall));
-        return load;
+            addressContext,
+            error,
+            *namespaceCall,
+            target,
+            std::move(node),
+            false);
     }
     const MethodEventBinding* stage42Event = eventBinding(expression);
     if (stage42Event != nullptr && stage42Event->kind == MethodEventOperationKind::Invoke)
