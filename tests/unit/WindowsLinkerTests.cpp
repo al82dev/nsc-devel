@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -108,6 +109,88 @@ bool importsSymbol(
             return imported.library == library && imported.name == symbol;
         });
 }
+
+#ifdef _WIN32
+class ScopedEnvironmentVariable final
+{
+public:
+    ScopedEnvironmentVariable(std::string name, std::string value)
+        : name_(std::move(name))
+    {
+        char* previous = nullptr;
+        std::size_t length = 0;
+        if (_dupenv_s(&previous, &length, name_.c_str()) == 0 && previous != nullptr)
+        {
+            hadPrevious_ = true;
+            previous_ = previous;
+        }
+        std::free(previous);
+        _putenv_s(name_.c_str(), value.c_str());
+    }
+
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable&) = delete;
+    ScopedEnvironmentVariable& operator=(const ScopedEnvironmentVariable&) = delete;
+
+    ~ScopedEnvironmentVariable()
+    {
+        _putenv_s(name_.c_str(), hadPrevious_ ? previous_.c_str() : "");
+    }
+
+private:
+    std::string name_;
+    std::string previous_;
+    bool hadPrevious_ = false;
+};
+
+void testConfiguredLinkerDiscoveryByName(
+    nativesharp::tests::TestContext& tests,
+    const std::filesystem::path& root)
+{
+    using nativesharp::linker::LldLinker;
+    if (root.root_name() != std::filesystem::path("A:"))
+    {
+        tests.expect(false, "NSC_LINKER PATH discovery fixture must remain on A:");
+        return;
+    }
+
+    std::error_code filesystemError;
+    std::filesystem::remove_all(root, filesystemError);
+    std::filesystem::create_directories(root, filesystemError);
+    const std::filesystem::path executable = root / "nslink.exe";
+    writeBytes(executable, std::vector<unsigned char>{'M', 'Z'});
+
+    {
+        ScopedEnvironmentVariable path("PATH", root.string());
+        ScopedEnvironmentVariable configured("NSC_LINKER", "nslink.exe");
+        std::string error;
+        std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+        tests.expect(linker != nullptr && linker->executablePath() == executable,
+            "NSC_LINKER resolves nslink.exe by name from the native Windows PATH");
+        tests.expect(error.empty(), "named NSC_LINKER discovery keeps its diagnostic empty");
+    }
+
+    {
+        ScopedEnvironmentVariable path("PATH", (root / "missing").string());
+        ScopedEnvironmentVariable configured("NSC_LINKER", executable.string());
+        std::string error;
+        std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+        tests.expect(linker != nullptr && linker->executablePath() == executable,
+            "NSC_LINKER preserves an explicit executable path without consulting PATH");
+    }
+
+    {
+        ScopedEnvironmentVariable path("PATH", (root / "missing").string());
+        ScopedEnvironmentVariable configured("NSC_LINKER", "nslink.exe");
+        std::string error;
+        std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+        tests.expect(linker == nullptr &&
+                error == "NSC_LINKER executable 'nslink.exe' was not found in PATH",
+            "a missing named NSC_LINKER reports the exact PATH lookup failure");
+    }
+
+    std::filesystem::remove_all(root, filesystemError);
+}
+#endif
 }
 
 int main()
@@ -117,6 +200,12 @@ int main()
 
     TestContext tests;
     std::error_code cleanupError;
+
+#ifdef _WIN32
+    testConfiguredLinkerDiscoveryByName(
+        tests,
+        std::filesystem::current_path() / "nativesharp_nsc_linker_path_discovery");
+#endif
 
     std::string discoveryError;
     std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);

@@ -195,18 +195,47 @@ std::filesystem::path currentExecutablePath()
     return {};
 }
 
-std::filesystem::path findNsLink()
+std::filesystem::path resolveConfiguredNsLink(
+    std::string_view configured,
+    std::string& error)
+{
+    const std::filesystem::path candidate(configured);
+    if (!isNsLinkExecutable(candidate))
+    {
+        error = "NSC_LINKER must name nslink.exe: '" + std::string(configured) + "'";
+        return {};
+    }
+    if (candidate.has_parent_path())
+    {
+        std::error_code filesystemError;
+        if (std::filesystem::is_regular_file(candidate, filesystemError) && !filesystemError)
+            return candidate;
+        error = "NSC_LINKER executable does not exist: '" + utf8Path(candidate) + "'";
+        return {};
+    }
+
+    std::vector<std::string> names{candidate.string()};
+#ifdef _WIN32
+    if (!candidate.has_extension()) names.push_back(candidate.string() + ".exe");
+#endif
+    for (const std::string& name : names)
+    {
+        for (const std::filesystem::path& pathCandidate : pathCandidates(name))
+        {
+            std::error_code filesystemError;
+            if (std::filesystem::is_regular_file(pathCandidate, filesystemError) && !filesystemError)
+                return pathCandidate;
+        }
+    }
+    error = "NSC_LINKER executable '" + std::string(configured) + "' was not found in PATH";
+    return {};
+}
+
+std::filesystem::path findNsLink(std::string& error)
 {
     const std::string overridePath = getEnvironmentVariable("NSC_LINKER");
     if (!overridePath.empty())
-    {
-        const std::filesystem::path candidate(overridePath);
-        if (isNsLinkExecutable(candidate) && std::filesystem::is_regular_file(candidate))
-        {
-            return candidate;
-        }
-        return {};
-    }
+        return resolveConfiguredNsLink(overridePath, error);
 
     const std::filesystem::path compiler = currentExecutablePath();
     if (!compiler.empty())
@@ -341,10 +370,11 @@ LldLinker::LldLinker(std::filesystem::path executablePath) noexcept
 std::unique_ptr<LldLinker> LldLinker::discover(std::string& error)
 {
     error.clear();
-    const std::filesystem::path executable = findNsLink();
+    const std::filesystem::path executable = findNsLink(error);
     if (executable.empty())
     {
-        error = "NSLink was not found beside nsc.exe or in PATH; set NSC_LINKER to nslink.exe";
+        if (error.empty())
+            error = "NSLink was not found beside nsc.exe or in PATH; set NSC_LINKER to nslink.exe";
         return nullptr;
     }
     if (containsQuote(executable))
