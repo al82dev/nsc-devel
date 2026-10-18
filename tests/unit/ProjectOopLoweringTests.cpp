@@ -1348,6 +1348,32 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerStaticAssertStatement(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        const std::vector<MethodLoopExpressionBinding>& loops,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const ProjectMemberModel* memberModel,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = loops;
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U; index < loops.size(); ++index)
+            methodBodyModel.loopExpressionBindingBySyntax_[loops[index].syntax] = index;
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = memberModel;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerVariableDeclarationStatement(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -15572,6 +15598,267 @@ void testDeepMixedExpressionLowering(TestContext& tests)
     destroyHirTreeIteratively(lowered);
 }
 
+struct DeepStaticAssertStatementSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepStaticAssertStatementSyntax makeDeepStaticAssertStatementSyntax(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& boolType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepStaticAssertStatementSyntax fixture;
+    fixture.nodes.reserve(depth * 3U);
+    fixture.loops.reserve(depth > 0U ? depth - 1U : 0U);
+    fixture.typed.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BooleanLiteralExpression, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    fixture.typed.emplace_back(fixture.nodes.back().get(), &boolType);
+    auto* condition = fixture.nodes.back().get();
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::StaticAssertStatement, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setFirst(condition);
+    auto* statement = fixture.nodes.back().get();
+    for (std::size_t index = 1U; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        fixture.nodes.back()->addChild(statement);
+        auto* block = fixture.nodes.back().get();
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::LoopExpression, nativesharp::SourceRange{}));
+        fixture.nodes.back()->setFirst(block);
+        auto* loop = fixture.nodes.back().get();
+        fixture.typed.emplace_back(loop, &boolType);
+        fixture.loops.push_back({loop, 0U, index, "", "builtin:bool"});
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::StaticAssertStatement, nativesharp::SourceRange{}));
+        fixture.nodes.back()->setFirst(loop);
+        statement = fixture.nodes.back().get();
+    }
+    fixture.root = statement;
+    return fixture;
+}
+
+void testDeepStaticAssertStatementLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    auto syntax = makeDeepStaticAssertStatementSyntax(nestingDepth, boolType);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel body;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerStaticAssertStatement(
+            model, body, syntax.root, syntax.loops, syntax.typed,
+            {}, nullptr, {}, error);
+    tests.expect(lowered == nullptr && error ==
+            "static_assert condition is not a compile-time bool constant",
+        "a 32768-level static_assert-loop SCC terminates iteratively with its exact error");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(model) == 0U,
+        "failed deep static_assert lowering restores its cleanup depth");
+    destroyHirTreeIteratively(lowered);
+}
+
+struct StaticAssertFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    const nativesharp::ast::AstNode* statement = nullptr;
+};
+
+std::unique_ptr<ProjectOopHirNode> lowerStaticAssertFixture(
+    StaticAssertFixture& fixture,
+    ProjectOopHirModel& model,
+    nativesharp::frontend::ProjectMethodBodyModel& body,
+    const nativesharp::frontend::ProjectMemberModel* members,
+    std::string& error)
+{
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerStaticAssertStatement(
+            model, body, fixture.statement, {}, fixture.typed,
+            fixture.cores, members, {}, error);
+}
+
+StaticAssertFixture makeStaticAssertLiteralFixture(
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::lexer::TokenKind token,
+    const nativesharp::frontend::MethodExpressionTypeBinding& type,
+    std::string message = {})
+{
+    StaticAssertFixture fixture;
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        kind, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setTokenKind(token);
+    fixture.typed.emplace_back(fixture.nodes.back().get(), &type);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::StaticAssertStatement,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setFirst(fixture.nodes.front().get());
+    fixture.nodes.back()->setText(std::move(message));
+    fixture.statement = fixture.nodes.back().get();
+    return fixture;
+}
+
+void testStaticAssertStatementContracts(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using TokenKind = nativesharp::lexer::TokenKind;
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    const auto evaluate = [&](StaticAssertFixture& fixture, std::string expected)
+    {
+        ProjectOopHirModel model;
+        nativesharp::frontend::ProjectMethodBodyModel body;
+        std::string error;
+        auto lowered = lowerStaticAssertFixture(fixture, model, body, nullptr, error);
+        tests.expect(error == expected,
+            "static_assert preserves its exact result or diagnostic (" + error + ")");
+        return lowered;
+    };
+    auto trueCase = makeStaticAssertLiteralFixture(
+        AstKind::BooleanLiteralExpression, TokenKind::KwTrue, boolType);
+    const auto* trueSyntax = trueCase.statement;
+    auto lowered = evaluate(trueCase, "");
+    tests.expect(lowered != nullptr && lowered->kind ==
+            nativesharp::frontend::ProjectOopHirNodeKind::Block &&
+            lowered->syntax == trueSyntax && lowered->typeKey == "builtin:void" &&
+            lowered->children.empty(),
+        "static_assert true remains an empty compile-time-only HIR block");
+    destroyHirTreeIteratively(lowered);
+    auto falseCase = makeStaticAssertLiteralFixture(
+        AstKind::BooleanLiteralExpression, TokenKind::KwFalse, boolType);
+    lowered = evaluate(falseCase, "static assertion failed");
+    destroyHirTreeIteratively(lowered);
+    auto messageCase = makeStaticAssertLiteralFixture(
+        AstKind::BooleanLiteralExpression, TokenKind::KwFalse, boolType,
+        "expected layout");
+    lowered = evaluate(messageCase, "static assertion failed: expected layout");
+    destroyHirTreeIteratively(lowered);
+    auto integerCase = makeStaticAssertLiteralFixture(
+        AstKind::IntegerLiteralExpression, TokenKind::IntegerLiteral, intType);
+    lowered = evaluate(integerCase,
+        "static_assert condition is not a compile-time bool constant");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testStaticAssertStatementFailures(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(67U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(67U), offset + 4U));
+    };
+    StaticAssertFixture missing;
+    missing.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::StaticAssertStatement, range(10U)));
+    missing.statement = missing.nodes.back().get();
+    ProjectOopHirModel missingModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingBody;
+    std::string error;
+    auto lowered = lowerStaticAssertFixture(
+        missing, missingModel, missingBody, nullptr, error);
+    tests.expect(lowered == nullptr && error ==
+            "null expression reached Stage 34 OOP HIR",
+        "static_assert preserves the exact missing-condition diagnostic");
+
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    StaticAssertFixture internal;
+    internal.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::LoopExpression, range(20U)));
+    internal.typed.emplace_back(internal.nodes.back().get(), &boolType);
+    internal.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::StaticAssertStatement, range(30U)));
+    internal.nodes.back()->setFirst(internal.nodes.front().get());
+    internal.statement = internal.nodes.back().get();
+    ProjectOopHirModel internalModel;
+    nativesharp::frontend::ProjectMethodBodyModel internalBody;
+    error.clear();
+    lowered = lowerStaticAssertFixture(
+        internal, internalModel, internalBody, nullptr, error);
+    tests.expect(lowered == nullptr && error ==
+            "T07-F05 loop expression has no semantic binding" &&
+            internalModel.lastErrorRange().begin() == range(20U).begin() &&
+            internalModel.lastErrorRange().end() == range(20U).end(),
+        "static_assert preserves the inner lowering error and exact range");
+}
+
+void testStaticAssertNoHeapCondition(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using nativesharp::frontend::ClassMemberKind;
+    using nativesharp::frontend::ClassMemberSymbol;
+    using nativesharp::frontend::MethodCoreBinding;
+    using nativesharp::frontend::MethodCoreOperationKind;
+    using nativesharp::frontend::ProjectMemberModel;
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(68U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(68U), offset + 5U));
+    };
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding arrayType;
+    arrayType.typeKey = "builtin:int[]";
+    StaticAssertFixture fixture;
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, range(40U)));
+    fixture.nodes.back()->setIntegerValue(1U);
+    auto* element = fixture.nodes.back().get();
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::CollectionExpression, range(50U)));
+    fixture.nodes.back()->setAuxiliaryText("inferred-array-initializer");
+    fixture.nodes.back()->addChild(element);
+    auto* allocation = fixture.nodes.back().get();
+    fixture.typed = {{element, &intType}, {allocation, &arrayType}};
+    MethodCoreBinding core;
+    core.syntax = allocation;
+    core.kind = MethodCoreOperationKind::ArrayAllocation;
+    core.resultTypeKey = "builtin:int[]";
+    core.elementTypeKey = "builtin:int";
+    fixture.cores.push_back(core);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::StaticAssertStatement, range(60U)));
+    fixture.nodes.back()->setFirst(allocation);
+    fixture.statement = fixture.nodes.back().get();
+    ClassMemberSymbol caller;
+    caller.kind = ClassMemberKind::Method;
+    caller.name = "NoHeapStaticAssert";
+    caller.signatureKey = "H02S16E.NoHeapStaticAssert()";
+    caller.isNoHeap = true;
+    caller.effects = nativesharp::sema::EffectSet(nativesharp::sema::Effect::NoHeap);
+    ProjectMemberModel members;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(members, {caller}, {{0U}});
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel body;
+    std::string error;
+    auto lowered = lowerStaticAssertFixture(fixture, model, body, &members, error);
+    tests.expect(lowered == nullptr && error ==
+            "NS3030: noheap callable 'NoHeapStaticAssert' cannot contain direct "
+            "heap allocation 'array-allocation'",
+        "static_assert applies noheap to its condition before discarding the HIR");
+    tests.expect(model.lastErrorRange().begin() == range(50U).begin() &&
+            model.lastErrorRange().end() == range(50U).end(),
+        "static_assert noheap failure preserves the condition's exact range");
+}
+
 void testDeepStaticAssertEvaluation(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -18502,6 +18789,15 @@ int main()
     else if (focusValue == "hir-static-assert-depth")
     {
         testDeepStaticAssertEvaluation(tests);
+    }
+    else if (focusValue == "hir-static-assert-statement-depth")
+    {
+        testDeepStaticAssertStatementLowering(tests);
+        testDeepStaticAssertEvaluation(tests);
+        testStaticAssertShortCircuitEvaluation(tests);
+        testStaticAssertStatementContracts(tests);
+        testStaticAssertStatementFailures(tests);
+        testStaticAssertNoHeapCondition(tests);
     }
     else if (focusValue == "hir-static-assert-short-circuit")
     {

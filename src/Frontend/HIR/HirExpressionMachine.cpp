@@ -146,6 +146,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInlineAssemblyStatem
         nullptr, memberOrdinal, false, statement, error);
 }
 
+std::unique_ptr<ProjectOopHirNode>
+ProjectOopHirModel::lowerStaticAssertStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        statement != nullptr ? statement->first() : nullptr,
+        memberOrdinal,
+        false,
+        statement,
+        error);
+}
+
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
@@ -162,6 +176,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         VariableDeclaration,
         DeconstructionDeclaration,
         InlineAssemblyStatement,
+        StaticAssertStatement,
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
@@ -1383,6 +1398,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 ast::AstNodeKind::InlineAssemblyStatement)
             {
                 frame.kind = IterativeExpressionKind::InlineAssemblyStatement;
+            }
+            else if (statementContinuation->kind() ==
+                ast::AstNodeKind::StaticAssertStatement)
+            {
+                frame.kind = IterativeExpressionKind::StaticAssertStatement;
             }
             else
             {
@@ -4530,6 +4550,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentInputKind = IterativeInputKind::Expression;
                     return LoopBlockAdvance::Descend;
                 }
+                if (statement != nullptr &&
+                    statement->kind() == ast::AstNodeKind::StaticAssertStatement)
+                {
+                    IterativeExpressionFrame assertionFrame;
+                    assertionFrame.kind = IterativeExpressionKind::StaticAssertStatement;
+                    assertionFrame.syntax = statement;
+                    assertionFrame.memberOrdinal = frame.memberOrdinal;
+                    frames.push_back(std::move(assertionFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
 
                 std::unique_ptr<ProjectOopHirNode> statementNode =
                     lowerStatement(statement, frame.memberOrdinal, error);
@@ -5844,9 +5878,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     !frames.empty() &&
                     frames.back().kind ==
                         IterativeExpressionKind::InlineAssemblyStatement;
+                const bool isStaticAssertChild =
+                    !frames.empty() &&
+                    frames.back().kind == IterativeExpressionKind::StaticAssertStatement;
                 lowered = isExpressionStatementRoot || isVariableDeclarationChild ||
                         isDeconstructionDeclarationChild ||
-                        isInlineAssemblyOperandChild
+                        isInlineAssemblyOperandChild || isStaticAssertChild
                     ? lowerExpressionImpl(
                         current, currentMemberOrdinal, currentAddressContext, error)
                     : lowerExpression(
@@ -5978,6 +6015,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     lowered = finishInlineAssemblyFrame(frame);
                     frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StaticAssertStatement)
+                {
+                    const ast::AstNode* assertionSyntax = frame.syntax;
+                    if (!applyExpressionBoundaryPostconditions(
+                            lowered,
+                            assertionSyntax->first(),
+                            frame.memberOrdinal))
+                    {
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    lowered = finishStaticAssertStatement(
+                        assertionSyntax, std::move(lowered), error);
+                    frames.pop_back();
+                    if (lowered == nullptr)
+                    {
+                        rollbackMatchCleanups();
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = assertionSyntax->range();
+                        return nullptr;
+                    }
                     continue;
                 }
                 if (frame.kind == IterativeExpressionKind::LoopBlockExpressionStatement)
@@ -8595,7 +8655,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
     {
         loweredExpression = loweredExpression->children.front().get();
     }
-    if (lowered != nullptr && effects.allows(sema::Effect::NoHeap) &&
+    const bool statementChildPolicyApplied = statementContinuation != nullptr &&
+        statementContinuation->kind() == ast::AstNodeKind::StaticAssertStatement;
+    if (!statementChildPolicyApplied && lowered != nullptr &&
+        effects.allows(sema::Effect::NoHeap) &&
         loweredExpression != nullptr && directlyAllocatesHeap(loweredExpression->kind))
     {
         error = "NS3030: noheap callable '" + activeMember->name +
@@ -8603,7 +8666,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             std::string(projectOopHirNodeKindName(loweredExpression->kind)) + "'";
         lowered.reset();
     }
-    if (lowered != nullptr && effects.allows(sema::Effect::NoHeap))
+    if (!statementChildPolicyApplied && lowered != nullptr &&
+        effects.allows(sema::Effect::NoHeap))
     {
         const ClassMemberSymbol& caller = *activeMember;
         const MethodCallBinding* call = callBinding(expression);

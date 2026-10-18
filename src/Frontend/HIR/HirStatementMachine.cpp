@@ -389,6 +389,29 @@ std::optional<StaticAssertConstant> evaluateStaticAssertConstant(const ProjectOo
 
 }
 
+std::unique_ptr<ProjectOopHirNode>
+ProjectOopHirModel::finishStaticAssertStatement(
+    const ast::AstNode* statement,
+    std::unique_ptr<ProjectOopHirNode> condition,
+    std::string& error)
+{
+    const std::optional<StaticAssertConstant> value =
+        evaluateStaticAssertConstant(*condition);
+    destroyHirTreeIteratively(condition);
+    if (!value.has_value() || value->kind != StaticAssertConstantKind::Boolean)
+    {
+        error = "static_assert condition is not a compile-time bool constant";
+        return nullptr;
+    }
+    if (!value->booleanValue)
+    {
+        error = "static assertion failed";
+        if (!statement->text().empty()) error += ": " + statement->text();
+        return nullptr;
+    }
+    return makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
     const ast::AstNode* statement,
     std::size_t memberOrdinal,
@@ -419,28 +442,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return lowerInlineAssemblyStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::StaticAssertStatement:
-        {
-            std::unique_ptr<ProjectOopHirNode> condition = lowerExpression(
-                statement->first(), memberOrdinal, false, error);
-            if (condition == nullptr) return nullptr;
-            const std::optional<StaticAssertConstant> value =
-                evaluateStaticAssertConstant(*condition);
-            if (!value.has_value() || value->kind != StaticAssertConstantKind::Boolean)
-            {
-                destroyHirTreeIteratively(condition);
-                error = "static_assert condition is not a compile-time bool constant";
-                return nullptr;
-            }
-            if (!value->booleanValue)
-            {
-                destroyHirTreeIteratively(condition);
-                error = "static assertion failed";
-                if (!statement->text().empty()) error += ": " + statement->text();
-                return nullptr;
-            }
-            destroyHirTreeIteratively(condition);
-            return makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
-        }
+            return lowerStaticAssertStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::IfStatement:
         {

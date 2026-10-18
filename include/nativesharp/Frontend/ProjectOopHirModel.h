@@ -905,6 +905,14 @@ private:
         const ast::AstNode* statement,
         std::size_t memberOrdinal,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerStaticAssertStatement(
+        const ast::AstNode* statement,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishStaticAssertStatement(
+        const ast::AstNode* statement,
+        std::unique_ptr<ProjectOopHirNode> condition,
+        std::string& error);
 
     // Runs the expression worklist with an optional statement wrapper at its
     // bottom; a null wrapper preserves the ordinary expression entry point.
