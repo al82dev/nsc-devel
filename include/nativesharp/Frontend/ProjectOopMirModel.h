@@ -955,6 +955,8 @@ public:
     void restoreMirFunctions();
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     class MirNodeMachine;
     class MirVerifier;
 

@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -144,11 +145,6 @@ private:
         const ProjectOopHirNode* node,
         ProjectOopMirNode* result,
         std::string& error);
-    bool lowerChildren(
-        const ProjectOopHirNode* node,
-        ProjectOopMirNode* result,
-        std::string& error);
-
     ProjectOopMirModel& model_;
 };
 
@@ -2199,50 +2195,58 @@ bool ProjectOopMirModel::MirNodeMachine::lowerKind(
     return true;
 }
 
-bool ProjectOopMirModel::MirNodeMachine::lowerChildren(
-    const ProjectOopHirNode* node,
-    ProjectOopMirNode* result,
-    std::string& error)
-{
-    for (const auto& child : node->children)
-    {
-        if (child == nullptr)
-        {
-            result->children.push_back(nullptr);
-            continue;
-        }
-        auto lowered = lower(child.get(), error);
-        if (lowered == nullptr)
-        {
-            return false;
-        }
-        // AggregateElement normally uses secondaryImmediate for its scalar byte width.  A
-        // childless AggregateElement owned by AggregateSpread is different: HIR already stored
-        // the source-relative byte offset there while `immediate` remains the destination offset.
-        // Restore that parent-specific meaning after lowering the descriptor; otherwise every
-        // field is copied from `sizeof(field)` (four for int) instead of offsets 0, 4, 8, ... .
-        if (node->kind == ProjectOopHirNodeKind::AggregateSpread &&
-            child->kind == ProjectOopHirNodeKind::AggregateElement && child->children.empty())
-        {
-            lowered->secondaryImmediate = child->secondaryIntegerValue;
-        }
-        result->children.push_back(std::move(lowered));
-    }
-    return true;
-}
-
 std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::MirNodeMachine::lower(
     const ProjectOopHirNode* node,
     std::string& error)
 {
     if (node == nullptr) return nullptr;
-    auto result = std::make_unique<ProjectOopMirNode>();
-    copyIdentity(node, result.get());
-    copyControlState(node, result.get());
-    copyAttributes(node, result.get());
-    if (!lowerKind(node, result.get(), error)) return nullptr;
-    if (!lowerChildren(node, result.get(), error)) return nullptr;
-    return result;
+    const auto makeNode = [&](const ProjectOopHirNode* source)
+    {
+        auto result = std::make_unique<ProjectOopMirNode>();
+        copyIdentity(source, result.get());
+        copyControlState(source, result.get());
+        copyAttributes(source, result.get());
+        if (!lowerKind(source, result.get(), error)) result.reset();
+        return result;
+    };
+    std::unique_ptr<ProjectOopMirNode> root = makeNode(node);
+    if (root == nullptr) return nullptr;
+    std::vector<const ProjectOopHirNode*> sources{node};
+    std::vector<std::unique_ptr<ProjectOopMirNode>> results;
+    results.push_back(std::move(root));
+    std::vector<std::size_t> childIndices{0U};
+    while (!sources.empty())
+    {
+        const std::size_t frame = sources.size() - 1U;
+        const ProjectOopHirNode* source = sources[frame];
+        if (childIndices[frame] < source->children.size())
+        {
+            const auto& child = source->children[childIndices[frame]++];
+            if (child == nullptr)
+            {
+                results[frame]->children.push_back(nullptr);
+                continue;
+            }
+            std::unique_ptr<ProjectOopMirNode> lowered = makeNode(child.get());
+            if (lowered == nullptr) return nullptr;
+            sources.push_back(child.get());
+            results.push_back(std::move(lowered));
+            childIndices.push_back(0U);
+            continue;
+        }
+        const ProjectOopHirNode* finishedSource = sources.back();
+        std::unique_ptr<ProjectOopMirNode> finished = std::move(results.back());
+        sources.pop_back();
+        results.pop_back();
+        childIndices.pop_back();
+        if (sources.empty()) return finished;
+        if (sources.back()->kind == ProjectOopHirNodeKind::AggregateSpread &&
+            finishedSource->kind == ProjectOopHirNodeKind::AggregateElement &&
+            finishedSource->children.empty())
+            finished->secondaryImmediate = finishedSource->secondaryIntegerValue;
+        results.back()->children.push_back(std::move(finished));
+    }
+    return nullptr;
 }
 
 std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(

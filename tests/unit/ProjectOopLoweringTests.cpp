@@ -471,6 +471,14 @@ struct ProjectOopHirModelTestAccess final
         ProjectOopHirModel::applyParallelOrdinalOffsets(
             node, localFloor, cleanupFloor, localOffset, cleanupOffset, regionOffset);
     }
+
+    static std::unique_ptr<ProjectOopMirNode> lowerMirNode(
+        ProjectOopMirModel& model,
+        const ProjectOopHirNode* node,
+        std::string& error)
+    {
+        return model.lowerNode(node, error);
+    }
 };
 }
 
@@ -3745,6 +3753,95 @@ void testDeepAggregateElements(TestContext& tests)
             elements.front()->children.front()->integerValue == 7U,
         "deep aggregate lowering preserves the leaf value, provenance, and absolute offset");
 }
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> makeDeepMirHirChain(
+    std::size_t depth)
+{
+    using Node = nativesharp::frontend::ProjectOopHirNode;
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    auto root = std::make_unique<Node>();
+    Node* current = root.get();
+    for (std::size_t ordinal = 0; ordinal < depth; ++ordinal)
+    {
+        current->kind = Kind::Block;
+        current->typeKey = "builtin:void";
+        current->localOrdinal = ordinal;
+        if (ordinal + 1U == depth) break;
+        current->children.push_back(std::make_unique<Node>());
+        current = current->children.back().get();
+    }
+    root->children.push_back(nullptr);
+    return root;
+}
+
+bool deepMirChainMatches(const ProjectOopMirNode* root, std::size_t depth)
+{
+    const ProjectOopMirNode* current = root;
+    for (std::size_t ordinal = 0; ordinal < depth; ++ordinal)
+    {
+        if (current == nullptr || current->kind != ProjectOopMirNodeKind::Block ||
+            current->localOrdinal != ordinal) return false;
+        const std::size_t expectedChildren = ordinal == 0U ? 2U : ordinal + 1U < depth ? 1U : 0U;
+        if (current->children.size() != expectedChildren) return false;
+        if (ordinal == 0U && current->children[1] != nullptr) return false;
+        current = ordinal + 1U < depth ? current->children[0].get() : nullptr;
+    }
+    return current == nullptr;
+}
+
+void destroyMirTreeIteratively(std::unique_ptr<ProjectOopMirNode> root)
+{
+    std::vector<std::unique_ptr<ProjectOopMirNode>> work;
+    if (root != nullptr) work.push_back(std::move(root));
+    while (!work.empty())
+    {
+        std::unique_ptr<ProjectOopMirNode> current = std::move(work.back());
+        work.pop_back();
+        for (auto& child : current->children)
+            if (child != nullptr) work.push_back(std::move(child));
+        current->children.clear();
+    }
+}
+
+void testDeepMirNodeLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    auto hir = makeDeepMirHirChain(nestingDepth);
+    ProjectOopMirModel model;
+    std::string error;
+    auto mir = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerMirNode(
+        model, hir.get(), error);
+    tests.expect(mir != nullptr && error.empty(),
+        "a 32768-level HIR tree lowers to MIR without process-stack recursion (" + error + ")");
+    tests.expect(deepMirChainMatches(mir.get(), nestingDepth),
+        "iterative MIR lowering preserves preorder, node identity, child order, and null slots");
+    destroyMirTreeIteratively(std::move(mir));
+}
+
+void testMirAggregateSpreadDescriptor(TestContext& tests)
+{
+    using HirNode = nativesharp::frontend::ProjectOopHirNode;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    auto spread = std::make_unique<HirNode>();
+    spread->kind = HirKind::AggregateSpread;
+    auto element = std::make_unique<HirNode>();
+    element->kind = HirKind::AggregateElement;
+    element->typeKey = "builtin:int";
+    element->integerValue = 19U;
+    element->secondaryIntegerValue = 73U;
+    spread->children.push_back(std::move(element));
+    ProjectOopMirModel model;
+    std::string error;
+    auto mir = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerMirNode(
+        model, spread.get(), error);
+    const ProjectOopMirNode* lowered = mir != nullptr && mir->children.size() == 1U
+        ? mir->children.front().get() : nullptr;
+    tests.expect(mir != nullptr && error.empty() &&
+            mir->kind == ProjectOopMirNodeKind::AggregateSpreadStore &&
+            lowered != nullptr && lowered->kind == ProjectOopMirNodeKind::AggregateElementStore &&
+            lowered->immediate == 19U && lowered->secondaryImmediate == 73U,
+        "iterative MIR lowering preserves the completed AggregateSpread descriptor override");
+}
 }
 
 int main()
@@ -3877,6 +3974,11 @@ int main()
     {
         testDeepAggregateElements(tests);
     }
+    else if (focusValue == "mir-node-lowering-depth")
+    {
+        testDeepMirNodeLowering(tests);
+        testMirAggregateSpreadDescriptor(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -3903,6 +4005,8 @@ int main()
         testDeepMixedExpressionLowering(tests);
         testDeepStaticAssertEvaluation(tests);
         testStaticAssertShortCircuitEvaluation(tests);
+        testDeepMirNodeLowering(tests);
+        testMirAggregateSpreadDescriptor(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
