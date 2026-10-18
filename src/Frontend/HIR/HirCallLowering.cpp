@@ -1338,32 +1338,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "SHR-022 NativeSharp.Core.Console output requires one value argument";
             return nullptr;
         }
-        const MethodCallBinding* call = callBinding(expression);
-        auto argument = lowerExpression(expression->children().front(), memberOrdinal, false, error);
-        if (argument == nullptr) return nullptr;
-        if (call != nullptr && !call->selectedConversions.empty() &&
-            call->selectedConversions.front().kind != ProjectConversionKind::Identity)
-        {
-            argument = wrapImplicitConversion(
-                std::move(argument), call->selectedConversions.front(), expression->children().front());
-        }
-        bool hasOwnedTemporary = false;
-        if (call != nullptr && call->selectedMemberOrdinal.has_value())
-        {
-            argument = wrapCallArgumentBorrow(
-                std::move(argument), expression->children().front(),
-                *call->selectedMemberOrdinal, 0, hasOwnedTemporary);
-        }
-        const bool appendNewline =
-            core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
-            core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine;
-        const bool useStandardError =
-            core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
-            core->kind == MethodCoreOperationKind::ConsoleErrorWrite;
-        auto node = makeNode(ProjectOopHirNodeKind::CoreConsoleWriteLine, expression, "builtin:void");
-        node->integerValue = (appendNewline ? 1u : 0u) | (useStandardError ? 2u : 0u);
-        node->children.push_back(std::move(argument));
-        return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+        error = "Stage 34 console output call escaped iterative lowering";
+        return nullptr;
     }
     if (core != nullptr && core->kind == MethodCoreOperationKind::ConsoleReadLine)
     {
@@ -1372,13 +1348,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "NativeSharp.Core.Console.ReadLine requires one out status argument";
             return nullptr;
         }
-        auto status = lowerExpression(
-            expression->children().front(), memberOrdinal, false, error);
-        if (status == nullptr) return nullptr;
-        auto node = makeNode(
-            ProjectOopHirNodeKind::CoreConsoleReadLine, expression, "builtin:string");
-        node->children.push_back(std::move(status));
-        return node;
+        error = "Stage 34 console ReadLine call escaped iterative lowering";
+        return nullptr;
     }
     // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
     //
@@ -1446,46 +1417,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             return nullptr;
         }
 
-        std::vector<std::pair<std::int64_t, std::string>> enumerators;
-        for (const ClassMemberSymbol& member : memberModel_->members())
-        {
-            if (member.isEnumConstant && member.declaringTypeOrdinal == *enumOrdinal)
-            {
-                enumerators.emplace_back(member.enumConstantValue, member.name);
-            }
-        }
-
-        // EL NODO. children[0] es el valor, children[1] la cadena de reserva, y de ahi
-        // en adelante PARES (constante, nombre) en orden de declaracion -- que es el
-        // orden en que se comparan, y por tanto el que decide quien gana cuando dos
-        // enumeradores comparten valor (un alias).
-        //
-        // EL RECEPTOR SE BAJA UNA SOLA VEZ. La primera version de esto era una cadena de
-        // condicionales que lo bajaba una vez POR ENUMERADOR, y para no repetir efectos
-        // exigia un receptor re-evaluable: `Dame().ToString()` se rechazaba. Eso era una
-        // limitacion del compilador escrita como si fuera una regla del lenguaje.
-        auto node = makeNode(ProjectOopHirNodeKind::EnumName, expression, "builtin:string");
-        auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
-        if (receiverNode == nullptr) return nullptr;
-        node->children.push_back(std::move(receiverNode));
-
-        auto fallback =
-            makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
-        fallback->stringValue = shortTypeName(core->elementTypeKey);
-        node->children.push_back(std::move(fallback));
-
-        for (const auto& enumerator : enumerators)
-        {
-            auto constant = makeNode(
-                ProjectOopHirNodeKind::IntegerConstant, expression, core->elementTypeKey);
-            constant->integerValue = static_cast<std::uint64_t>(enumerator.first);
-            auto name = makeNode(
-                ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
-            name->stringValue = enumerator.second;
-            node->children.push_back(std::move(constant));
-            node->children.push_back(std::move(name));
-        }
-        return node;
+        error = "Stage 34 enum ToString call escaped iterative lowering";
+        return nullptr;
     }
 
     // C8 "type root", struct half. ToString on a struct is a COMPILE-TIME constant -- a
@@ -1516,7 +1449,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "NativeSharp 3.0 record Clone() has no receiver";
             return nullptr;
         }
-        return lowerExpression(receiverSyntax, memberOrdinal, false, error);
+        error = "Stage 34 struct Clone call escaped iterative lowering";
+        return nullptr;
     }
     if (core != nullptr &&
         (core->kind == MethodCoreOperationKind::StructEquals ||
@@ -1528,12 +1462,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "C8 struct root member received an invalid operand count";
             return nullptr;
         }
-        auto node = makeNode(
-            isEquals ? ProjectOopHirNodeKind::AggregateEquals
-                     : ProjectOopHirNodeKind::AggregateHash,
-            expression,
-            core->resultTypeKey);
-        node->elementTypeKey = core->elementTypeKey;
         // Operand order: the receiver first, then Equals' argument. argumentCount is what
         // separates them from the leaf descriptors that follow.
         const ast::AstNode* receiverSyntax = expression->first() != nullptr
@@ -1543,22 +1471,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "C8 struct root member has no receiver";
             return nullptr;
         }
-        auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
-        if (receiverNode == nullptr) return nullptr;
-        node->children.push_back(std::move(receiverNode));
-        if (isEquals)
-        {
-            auto argument = lowerExpression(
-                expression->children().front(), memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            node->children.push_back(std::move(argument));
-        }
-        node->argumentCount = node->children.size();
-        if (!appendAggregateLeaves(core->elementTypeKey, 0, expression, node->children, error))
-        {
-            return nullptr;
-        }
-        return node;
+        error = "Stage 34 struct aggregate call escaped iterative lowering";
+        return nullptr;
     }
     if (core != nullptr &&
         (core->kind == MethodCoreOperationKind::ClockQueryCounter ||
@@ -1729,18 +1643,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument";
             return nullptr;
         }
-        const MethodCallBinding* call = callBinding(expression);
-        auto argument = lowerExpression(expression->children().front(), memberOrdinal, false, error);
-        if (argument == nullptr) return nullptr;
-        if (call != nullptr && !call->selectedConversions.empty() &&
-            call->selectedConversions.front().kind != ProjectConversionKind::Identity)
-        {
-            argument = wrapImplicitConversion(
-                std::move(argument), call->selectedConversions.front(), expression->children().front());
-        }
-        auto node = makeNode(ProjectOopHirNodeKind::CoreEnvironmentExit, expression, "builtin:void");
-        node->children.push_back(std::move(argument));
-        return node;
+        error = "Stage 34 Environment.Exit call escaped iterative lowering";
+        return nullptr;
     }
     const MethodCallBinding* binding = callBinding(expression);
     if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())

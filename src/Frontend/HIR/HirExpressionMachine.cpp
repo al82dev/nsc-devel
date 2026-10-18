@@ -176,6 +176,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         CoreOperandCall,
         AtomicCoreCall,
         MonitorCoreCall,
+        ConsoleOutputCall,
+        ConsoleReadLineCall,
+        EnumToStringCall,
+        StructCloneCall,
+        StructAggregateCall,
+        EnvironmentExitCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -295,6 +301,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const ast::AstNode* timeoutSyntax = nullptr;
         MonitorCoreCallFrameStage stage = MonitorCoreCallFrameStage::Receiver;
     };
+    struct ConsoleOutputCallFrameState final
+    {
+        const MethodCallBinding* binding = nullptr;
+        std::uint64_t mask = 0U;
+        bool hasOwnedTemporary = false;
+    };
+    struct EnumToStringCallFrameState final
+    {
+        const ast::AstNode* receiverSyntax = nullptr;
+        std::vector<std::pair<std::int64_t, std::string>> enumerators;
+    };
+    enum class StructAggregateCallFrameStage : std::uint8_t
+    {
+        Receiver,
+        Argument,
+        Ready,
+    };
+    struct StructAggregateCallFrameState final
+    {
+        const ast::AstNode* receiverSyntax = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        StructAggregateCallFrameStage stage = StructAggregateCallFrameStage::Receiver;
+        bool equals = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -315,6 +345,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<CoreOperandCallFrameState> coreOperandCall;
         std::optional<AtomicCoreCallFrameState> atomicCoreCall;
         std::optional<MonitorCoreCallFrameState> monitorCoreCall;
+        std::optional<ConsoleOutputCallFrameState> consoleOutputCall;
+        std::optional<EnumToStringCallFrameState> enumToStringCall;
+        std::optional<StructAggregateCallFrameState> structAggregateCall;
+        const MethodCallBinding* environmentExitBinding = nullptr;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -482,6 +516,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             const MethodCoreBinding* monitorCore = coreBinding(syntax);
             if (monitorCore != nullptr && hirMonitorCallPlan(monitorCore->kind).has_value())
                 return IterativeExpressionKind::MonitorCoreCall;
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr)
+            {
+                if (core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
+                    core->kind == MethodCoreOperationKind::ConsoleWrite ||
+                    core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
+                    core->kind == MethodCoreOperationKind::ConsoleErrorWrite)
+                    return IterativeExpressionKind::ConsoleOutputCall;
+                if (core->kind == MethodCoreOperationKind::ConsoleReadLine)
+                    return IterativeExpressionKind::ConsoleReadLineCall;
+                if (core->kind == MethodCoreOperationKind::EnumToString)
+                    return IterativeExpressionKind::EnumToStringCall;
+                if (core->kind == MethodCoreOperationKind::StructClone)
+                    return IterativeExpressionKind::StructCloneCall;
+                if (core->kind == MethodCoreOperationKind::StructEquals ||
+                    core->kind == MethodCoreOperationKind::StructHashCode)
+                    return IterativeExpressionKind::StructAggregateCall;
+                if (core->kind == MethodCoreOperationKind::EnvironmentExit)
+                    return IterativeExpressionKind::EnvironmentExitCall;
+            }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -1952,6 +2009,141 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             call.node->children.push_back(std::move(child));
             call.stage = MonitorCoreCallFrameStage::Ready;
         };
+        const auto initializeConsoleOutputCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.addressContext || frame.syntax->children().size() != 1U)
+            {
+                error = "SHR-022 NativeSharp.Core.Console output requires one value argument";
+                return false;
+            }
+            ConsoleOutputCallFrameState call;
+            call.binding = callBinding(frame.syntax);
+            const bool appendNewline =
+                frame.core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
+                frame.core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine;
+            const bool useStandardError =
+                frame.core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
+                frame.core->kind == MethodCoreOperationKind::ConsoleErrorWrite;
+            call.mask = (appendNewline ? 1U : 0U) | (useStandardError ? 2U : 0U);
+            frame.consoleOutputCall.emplace(std::move(call));
+            return true;
+        };
+        const auto initializeConsoleReadLineCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.addressContext || frame.syntax->children().size() != 1U)
+            {
+                error = "NativeSharp.Core.Console.ReadLine requires one out status argument";
+                return false;
+            }
+            return true;
+        };
+        const auto initializeEnumToStringCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.addressContext)
+            {
+                error = "ID 129 enum ToString() has no address";
+                return false;
+            }
+            EnumToStringCallFrameState call;
+            call.receiverSyntax = frame.syntax->first() != nullptr
+                ? frame.syntax->first()->first() : nullptr;
+            if (call.receiverSyntax == nullptr)
+            {
+                error = "ID 129 enum ToString() has no receiver";
+                return false;
+            }
+            if (memberModel_ == nullptr || nameLookup_ == nullptr)
+            {
+                error = "ID 129 enum ToString() needs the member model";
+                return false;
+            }
+            std::optional<std::size_t> enumOrdinal;
+            if (frame.core->elementTypeKey.starts_with("type:"))
+            {
+                const std::string_view identity =
+                    std::string_view(frame.core->elementTypeKey).substr(5);
+                for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
+                     ++ordinal)
+                {
+                    if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
+                    {
+                        enumOrdinal = ordinal;
+                        break;
+                    }
+                }
+            }
+            if (!enumOrdinal.has_value())
+            {
+                error = "ID 129 enum ToString() cannot find the enum type";
+                return false;
+            }
+            for (const ClassMemberSymbol& member : memberModel_->members())
+            {
+                if (member.isEnumConstant && member.declaringTypeOrdinal == *enumOrdinal)
+                    call.enumerators.emplace_back(member.enumConstantValue, member.name);
+            }
+            frame.enumToStringCall.emplace(std::move(call));
+            return true;
+        };
+        const auto initializeStructCloneCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.addressContext || !frame.syntax->children().empty())
+            {
+                error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+                return false;
+            }
+            const ast::AstNode* receiver = frame.syntax->first() != nullptr
+                ? frame.syntax->first()->first() : nullptr;
+            if (receiver == nullptr)
+            {
+                error = "NativeSharp 3.0 record Clone() has no receiver";
+                return false;
+            }
+            frame.operandSyntaxes.push_back(receiver);
+            return true;
+        };
+        const auto initializeStructAggregateCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            StructAggregateCallFrameState call;
+            call.equals = frame.core->kind == MethodCoreOperationKind::StructEquals;
+            if (frame.addressContext ||
+                frame.syntax->children().size() != (call.equals ? 1U : 0U))
+            {
+                error = "C8 struct root member received an invalid operand count";
+                return false;
+            }
+            call.receiverSyntax = frame.syntax->first() != nullptr
+                ? frame.syntax->first()->first() : nullptr;
+            if (call.receiverSyntax == nullptr)
+            {
+                error = "C8 struct root member has no receiver";
+                return false;
+            }
+            call.node = makeNode(
+                call.equals ? ProjectOopHirNodeKind::AggregateEquals
+                            : ProjectOopHirNodeKind::AggregateHash,
+                frame.syntax,
+                frame.core->resultTypeKey);
+            call.node->elementTypeKey = frame.core->elementTypeKey;
+            frame.structAggregateCall.emplace(std::move(call));
+            return true;
+        };
+        const auto initializeEnvironmentExitCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.addressContext || frame.syntax->children().size() != 1U)
+            {
+                error = "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument";
+                return false;
+            }
+            frame.environmentExitBinding = callBinding(frame.syntax);
+            return true;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -2242,6 +2434,60 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::MonitorCoreCall)
                 {
                     if (!initializeMonitorCoreCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::ConsoleOutputCall)
+                {
+                    if (!initializeConsoleOutputCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::ConsoleReadLineCall)
+                {
+                    if (!initializeConsoleReadLineCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::EnumToStringCall)
+                {
+                    if (!initializeEnumToStringCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::StructCloneCall)
+                {
+                    if (!initializeStructCloneCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::StructAggregateCall)
+                {
+                    if (!initializeStructAggregateCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::EnvironmentExitCall)
+                {
+                    if (!initializeEnvironmentExitCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2749,6 +2995,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = false;
                 }
+                else if (*currentKind == IterativeExpressionKind::ConsoleOutputCall ||
+                    *currentKind == IterativeExpressionKind::ConsoleReadLineCall ||
+                    *currentKind == IterativeExpressionKind::EnvironmentExitCall)
+                {
+                    current = frames.back().syntax->children().front();
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::EnumToStringCall)
+                {
+                    current = frames.back().enumToStringCall->receiverSyntax;
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::StructCloneCall)
+                {
+                    current = frames.back().operandSyntaxes.front();
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::StructAggregateCall)
+                {
+                    current = frames.back().structAggregateCall->receiverSyntax;
+                    currentAddressContext = false;
+                }
                 else if (*currentKind == IterativeExpressionKind::AssertionCore)
                 {
                     current = current->children().front();
@@ -2955,6 +3223,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::MonitorCoreCall)
                 {
                     // Monitor receivers and Wait timeouts are value expressions.
+                }
+                else if (*currentKind == IterativeExpressionKind::ConsoleOutputCall ||
+                    *currentKind == IterativeExpressionKind::ConsoleReadLineCall ||
+                    *currentKind == IterativeExpressionKind::EnumToStringCall ||
+                    *currentKind == IterativeExpressionKind::StructCloneCall ||
+                    *currentKind == IterativeExpressionKind::StructAggregateCall ||
+                    *currentKind == IterativeExpressionKind::EnvironmentExitCall)
+                {
+                    // H02S14K frames finalize or schedule their next value child below.
                 }
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
@@ -3831,6 +4108,145 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     lowered = std::move(call.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::ConsoleOutputCall)
+                {
+                    ConsoleOutputCallFrameState& call = *frame.consoleOutputCall;
+                    const ast::AstNode* argumentSyntax = frame.syntax->children().front();
+                    if (call.binding != nullptr &&
+                        !call.binding->selectedConversions.empty() &&
+                        call.binding->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered),
+                            call.binding->selectedConversions.front(),
+                            argumentSyntax);
+                    }
+                    if (call.binding != nullptr &&
+                        call.binding->selectedMemberOrdinal.has_value())
+                    {
+                        lowered = wrapCallArgumentBorrow(
+                            std::move(lowered),
+                            argumentSyntax,
+                            *call.binding->selectedMemberOrdinal,
+                            0U,
+                            call.hasOwnedTemporary);
+                    }
+                    auto node = makeNode(
+                        ProjectOopHirNodeKind::CoreConsoleWriteLine,
+                        frame.syntax,
+                        "builtin:void");
+                    node->integerValue = call.mask;
+                    node->children.push_back(std::move(lowered));
+                    lowered = wrapFullExpressionCleanup(
+                        std::move(node), frame.syntax, call.hasOwnedTemporary);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::ConsoleReadLineCall)
+                {
+                    auto node = makeNode(
+                        ProjectOopHirNodeKind::CoreConsoleReadLine,
+                        frame.syntax,
+                        "builtin:string");
+                    node->children.push_back(std::move(lowered));
+                    lowered = std::move(node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::EnumToStringCall)
+                {
+                    EnumToStringCallFrameState& call = *frame.enumToStringCall;
+                    auto node = makeNode(
+                        ProjectOopHirNodeKind::EnumName,
+                        frame.syntax,
+                        "builtin:string");
+                    node->children.push_back(std::move(lowered));
+                    auto fallback = makeNode(
+                        ProjectOopHirNodeKind::StringLiteral,
+                        frame.syntax,
+                        "builtin:string");
+                    fallback->stringValue = shortTypeName(frame.core->elementTypeKey);
+                    node->children.push_back(std::move(fallback));
+                    for (const auto& enumerator : call.enumerators)
+                    {
+                        auto constant = makeNode(
+                            ProjectOopHirNodeKind::IntegerConstant,
+                            frame.syntax,
+                            frame.core->elementTypeKey);
+                        constant->integerValue =
+                            static_cast<std::uint64_t>(enumerator.first);
+                        auto name = makeNode(
+                            ProjectOopHirNodeKind::StringLiteral,
+                            frame.syntax,
+                            "builtin:string");
+                        name->stringValue = enumerator.second;
+                        node->children.push_back(std::move(constant));
+                        node->children.push_back(std::move(name));
+                    }
+                    lowered = std::move(node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StructCloneCall)
+                {
+                    // Clone is intentionally transparent: return the exact receiver HIR.
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StructAggregateCall)
+                {
+                    StructAggregateCallFrameState& call = *frame.structAggregateCall;
+                    call.node->children.push_back(std::move(lowered));
+                    if (call.stage == StructAggregateCallFrameStage::Receiver && call.equals)
+                    {
+                        call.stage = StructAggregateCallFrameStage::Argument;
+                        current = frame.syntax->children().front();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    call.node->argumentCount = call.node->children.size();
+                    if (!appendAggregateLeaves(
+                            frame.core->elementTypeKey,
+                            0,
+                            frame.syntax,
+                            call.node->children,
+                            error))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    call.stage = StructAggregateCallFrameStage::Ready;
+                    lowered = std::move(call.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::EnvironmentExitCall)
+                {
+                    if (frame.environmentExitBinding != nullptr &&
+                        !frame.environmentExitBinding->selectedConversions.empty() &&
+                        frame.environmentExitBinding->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        lowered = wrapImplicitConversion(
+                            std::move(lowered),
+                            frame.environmentExitBinding->selectedConversions.front(),
+                            frame.syntax->children().front());
+                    }
+                    auto node = makeNode(
+                        ProjectOopHirNodeKind::CoreEnvironmentExit,
+                        frame.syntax,
+                        "builtin:void");
+                    node->children.push_back(std::move(lowered));
+                    lowered = std::move(node);
                     frames.pop_back();
                     continue;
                 }

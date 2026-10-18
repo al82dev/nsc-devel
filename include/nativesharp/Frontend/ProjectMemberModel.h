@@ -398,6 +398,8 @@ public:
     static std::optional<std::string> flexibleArrayElementTypeKey(std::string_view typeKey);
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     struct TransparentStringHash final
     {
         using is_transparent = void;
