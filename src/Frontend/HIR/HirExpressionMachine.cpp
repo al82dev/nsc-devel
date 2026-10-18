@@ -148,6 +148,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         NamespaceExtensionSetter,
         NullConditionalFieldAssignment,
         NullConditionalArrayAssignment,
+        DirectAssignment,
+        CompoundAssignment,
+        StringCompoundAssignment,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -200,6 +203,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         lexer::TokenKind compoundOperator = lexer::TokenKind::Invalid;
         bool compoundSetter = false;
         std::size_t namespaceFunctionOrdinal = 0U;
+        std::optional<std::size_t> assignmentLocalOrdinal;
+        std::string assignmentResultType;
+        lexer::TokenKind assignmentOperation = lexer::TokenKind::Invalid;
+        bool assignmentOwnsStorage = false;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -391,6 +398,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     return IterativeExpressionKind::NullConditionalArrayAssignment;
                 }
             }
+        }
+        if (syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->first() != nullptr && syntax->second() != nullptr &&
+            syntax->tokenKind() != lexer::TokenKind::QuestionQuestionEqual &&
+            syntax->first()->kind() != ast::AstNodeKind::TupleExpression &&
+            syntax->first()->kind() != ast::AstNodeKind::NullConditionalMemberExpression &&
+            syntax->first()->kind() != ast::AstNodeKind::NullConditionalIndexExpression &&
+            eventBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
+            namespaceFunctionCallBinding(syntax) == nullptr &&
+            (methodBodyModel_ == nullptr || methodBodyModel_->deconstructionBinding(syntax) == nullptr))
+        {
+            if (syntax->tokenKind() == lexer::TokenKind::Equal)
+                return IterativeExpressionKind::DirectAssignment;
+            const MethodExpressionTypeBinding* assignmentType = expressionType(syntax);
+            if (syntax->tokenKind() == lexer::TokenKind::PlusEqual &&
+                assignmentType != nullptr && assignmentType->typeKey == "builtin:string")
+            {
+                return IterativeExpressionKind::StringCompoundAssignment;
+            }
+            return IterativeExpressionKind::CompoundAssignment;
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
         {
@@ -1097,6 +1124,67 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.core = coreBinding(current->first());
                     frame.stage = 0U;
                 }
+                else if (*currentKind == IterativeExpressionKind::DirectAssignment ||
+                    *currentKind == IterativeExpressionKind::CompoundAssignment ||
+                    *currentKind == IterativeExpressionKind::StringCompoundAssignment)
+                {
+                    const MethodExpressionTypeBinding* assignmentType = expressionType(current);
+                    const MethodDelegateBinding* assignmentDelegate = delegateBinding(current);
+                    frame.assignmentResultType = assignmentType != nullptr
+                        ? assignmentType->typeKey
+                        : assignmentDelegate != nullptr ? assignmentDelegate->resultTypeKey : "<error>";
+                    frame.assignmentOperation = current->tokenKind();
+                    frame.assignmentOwnsStorage = assignmentType != nullptr &&
+                        assignmentType->ownsStorageDestination;
+                    if (*currentKind == IterativeExpressionKind::DirectAssignment)
+                    {
+                        const MethodNameBinding* targetBinding = nameBinding(current->first());
+                        if (current->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                            targetBinding != nullptr && targetBinding->localOrdinal.has_value() &&
+                            methodBodyModel_ != nullptr &&
+                            *targetBinding->localOrdinal < methodBodyModel_->locals().size() &&
+                            (methodBodyModel_->locals()[*targetBinding->localOrdinal].isRaii ||
+                             methodBodyModel_->locals()[*targetBinding->localOrdinal].requiresValueDrop))
+                        {
+                            frame.assignmentOwnsStorage = true;
+                            frame.assignmentLocalOrdinal = targetBinding->localOrdinal;
+                        }
+                        if (!frame.assignmentOwnsStorage && memberModel_ != nullptr &&
+                            memberModel_->typeRequiresValueDrop(frame.assignmentResultType))
+                            frame.assignmentOwnsStorage = true;
+                    }
+                    else
+                    {
+                        if (currentAddressContext)
+                        {
+                            error = "the result of a compound assignment is a value, not addressable storage";
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        if (*currentKind == IterativeExpressionKind::StringCompoundAssignment)
+                        {
+                            const MethodNameBinding* targetBinding = nameBinding(current->first());
+                            if (targetBinding == nullptr || !targetBinding->localOrdinal.has_value())
+                            {
+                                error = "string += requires an identifier-backed RAII string destination";
+                                rollbackMatchCleanups();
+                                return nullptr;
+                            }
+                            frame.assignmentLocalOrdinal = targetBinding->localOrdinal;
+                        }
+                        else
+                        {
+                            frame.operandType = expressionType(current->first());
+                            if (frame.operandType == nullptr)
+                            {
+                                error = "Stage 34 compound assignment target has no resolved semantic type";
+                                rollbackMatchCleanups();
+                                return nullptr;
+                            }
+                        }
+                    }
+                    frame.stage = 0U;
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -1140,6 +1228,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
                     current = current->first()->first();
+                else if (*currentKind == IterativeExpressionKind::DirectAssignment ||
+                    *currentKind == IterativeExpressionKind::CompoundAssignment ||
+                    *currentKind == IterativeExpressionKind::StringCompoundAssignment)
+                    current = current->first();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -1250,6 +1342,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
                 {
                     currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::DirectAssignment ||
+                    *currentKind == IterativeExpressionKind::CompoundAssignment ||
+                    *currentKind == IterativeExpressionKind::StringCompoundAssignment)
+                {
+                    currentAddressContext = true;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -2852,6 +2950,126 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     store->children.push_back(std::move(frame.second));
                     store->children.push_back(std::move(lowered));
                     lowered = std::move(store);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::DirectAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const MethodExpressionTypeBinding* rhsType = expressionType(frame.syntax->second());
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        lowered->typeKey, frame.first->typeKey,
+                        rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                        lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
+                    auto assignment = makeNode(
+                        ProjectOopHirNodeKind::Assignment, frame.syntax, frame.assignmentResultType);
+                    assignment->operation = frame.assignmentOperation;
+                    assignment->booleanValue = frame.assignmentOwnsStorage;
+                    assignment->localOrdinal = frame.assignmentLocalOrdinal;
+                    assignment->children.push_back(std::move(frame.first));
+                    assignment->children.push_back(std::move(lowered));
+                    lowered = std::move(assignment);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::StringCompoundAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->first();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    if (frame.stage == 1U)
+                    {
+                        frame.second = std::move(lowered);
+                        frame.stage = 2U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    auto concatenated = makeNode(
+                        ProjectOopHirNodeKind::StringConcat, frame.syntax, "builtin:string");
+                    concatenated->operation = lexer::TokenKind::Plus;
+                    concatenated->children.push_back(std::move(frame.second));
+                    concatenated->children.push_back(std::move(lowered));
+                    auto assignment = makeNode(
+                        ProjectOopHirNodeKind::Assignment, frame.syntax, frame.assignmentResultType);
+                    assignment->operation = lexer::TokenKind::Equal;
+                    assignment->booleanValue = true;
+                    assignment->localOrdinal = frame.assignmentLocalOrdinal;
+                    assignment->children.push_back(std::move(frame.first));
+                    assignment->children.push_back(std::move(concatenated));
+                    lowered = std::move(assignment);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CompoundAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    auto compound = makeNode(
+                        ProjectOopHirNodeKind::CompoundStore, frame.syntax, frame.operandType->typeKey);
+                    compound->operation = lexer::compoundAssignmentBaseOperator(frame.assignmentOperation);
+                    if (compound->operation == lexer::TokenKind::Invalid)
+                    {
+                        error = "unsupported compound assignment operator";
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    compound->booleanValue = false;
+                    if (ProjectTypeConversion::isPointer(frame.operandType->typeKey))
+                    {
+                        compound->elementTypeKey = frame.operandType->typeKey.substr(
+                            0U, frame.operandType->typeKey.size() - 1U);
+                    }
+                    else
+                    {
+                        const MethodExpressionTypeBinding* rhsType = expressionType(frame.syntax->second());
+                        const ProjectImplicitConversion conversion = classifyImplicit(
+                            lowered->typeKey, frame.operandType->typeKey,
+                            rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                        const bool shift = compound->operation == lexer::TokenKind::LessLess ||
+                            compound->operation == lexer::TokenKind::GreaterGreater;
+                        if (!shift && !conversion.exists())
+                        {
+                            error = "compound assignment cannot convert its right-hand side from '" +
+                                lowered->typeKey + "' to '" + frame.operandType->typeKey + "'";
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        if (!shift && conversion.kind != ProjectConversionKind::Identity)
+                            lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
+                    }
+                    compound->children.push_back(std::move(frame.first));
+                    compound->children.push_back(std::move(lowered));
+                    lowered = std::move(compound);
                     frames.pop_back();
                     continue;
                 }

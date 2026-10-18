@@ -539,6 +539,27 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerDirectCompoundAssignmentExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<MethodNameBinding>& names,
+        const std::vector<std::pair<
+            const ast::AstNode*, const MethodExpressionTypeBinding*>>& typedSyntax,
+        MethodLocalSymbol local,
+        bool addressContext,
+        std::string& error)
+    {
+        methodBodyModel.locals_.clear();
+        methodBodyModel.locals_.push_back(std::move(local));
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerUserIndexerGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -4145,6 +4166,248 @@ void testDeepNullConditionalAssignmentLowering(
     testNullConditionalAssignmentDiagnostics(tests, compilation, target);
 }
 
+struct DeepDirectCompoundAssignmentSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typedSyntax;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepDirectCompoundAssignmentSyntax makeDeepDirectCompoundAssignmentSyntax(
+    std::size_t depth,
+    const std::vector<nativesharp::lexer::TokenKind>& operations,
+    const nativesharp::frontend::MethodExpressionTypeBinding& type)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepDirectCompoundAssignmentSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.names.reserve(depth);
+    fixture.typedSyntax.reserve(depth * 2U + 1U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(7U);
+    fixture.typedSyntax.emplace_back(fixture.nodes.back().get(), &type);
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IdentifierExpression, nativesharp::SourceRange{}));
+        auto* destination = fixture.nodes.back().get();
+        fixture.names.emplace_back();
+        fixture.names.back().kind = nativesharp::frontend::MethodNameBindingKind::Local;
+        fixture.names.back().syntax = destination;
+        fixture.names.back().name = "value";
+        fixture.names.back().typeKey = type.typeKey;
+        fixture.names.back().localOrdinal = 0U;
+        fixture.typedSyntax.emplace_back(destination, &type);
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AssignmentExpression, nativesharp::SourceRange{}));
+        auto* assignment = fixture.nodes.back().get();
+        assignment->setTokenKind(operations[index % operations.size()]);
+        assignment->setFirst(destination);
+        assignment->setSecond(current);
+        fixture.typedSyntax.emplace_back(assignment, &type);
+        current = assignment;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerDirectCompoundAssignmentFixture(
+    DeepDirectCompoundAssignmentSyntax& syntax,
+    const nativesharp::frontend::MethodExpressionTypeBinding& type,
+    bool addressContext,
+    bool localRaii,
+    bool localRequiresDrop,
+    std::string& error)
+{
+    nativesharp::frontend::MethodLocalSymbol local;
+    local.name = "value";
+    local.typeKey = type.typeKey;
+    local.isRaii = localRaii;
+    local.requiresValueDrop = localRequiresDrop;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDirectCompoundAssignmentExpression(
+            model, methodBodyModel, syntax.root, syntax.names, syntax.typedSyntax,
+            std::move(local), addressContext, error);
+}
+
+bool directAssignmentChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t depth,
+    std::string_view typeKey)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observed = 0U;
+    while (node != nullptr && node->kind == HirKind::Assignment)
+    {
+        if (node->typeKey != typeKey || node->operation != nativesharp::lexer::TokenKind::Equal ||
+            node->booleanValue || node->localOrdinal.has_value() || node->children.size() != 2U ||
+            node->children[0]->kind != HirKind::LocalAddress ||
+            node->children[0]->localOrdinal != 0U)
+            return false;
+        ++observed;
+        node = node->children[1].get();
+    }
+    return observed == depth && node != nullptr && node->kind == HirKind::IntegerConstant;
+}
+
+bool compoundAssignmentChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t depth,
+    const std::vector<nativesharp::lexer::TokenKind>& operations,
+    std::string_view typeKey)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = depth; remaining > 0U; --remaining)
+    {
+        const std::size_t sourceIndex = remaining - 1U;
+        if (node == nullptr || node->kind != HirKind::CompoundStore ||
+            node->typeKey != typeKey || node->booleanValue || node->children.size() != 2U ||
+            node->operation != nativesharp::lexer::compoundAssignmentBaseOperator(
+                operations[sourceIndex % operations.size()]) ||
+            node->children[0]->kind != HirKind::LocalAddress ||
+            node->children[0]->localOrdinal != 0U)
+            return false;
+        node = node->children[1].get();
+    }
+    return node != nullptr && node->kind == HirKind::IntegerConstant;
+}
+
+void testDirectCompoundAssignmentContracts(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using TokenKind = nativesharp::lexer::TokenKind;
+    nativesharp::frontend::MethodExpressionTypeBinding stringType;
+    stringType.typeKey = "builtin:string";
+    auto stringSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::PlusEqual}, stringType);
+    auto* stringAssignment = const_cast<nativesharp::ast::AstNode*>(stringSyntax.root);
+    stringSyntax.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IdentifierExpression, nativesharp::SourceRange{}));
+    auto* suffix = stringSyntax.nodes.back().get();
+    stringSyntax.names.emplace_back();
+    stringSyntax.names.back().kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    stringSyntax.names.back().syntax = suffix;
+    stringSyntax.names.back().name = "value";
+    stringSyntax.names.back().typeKey = stringType.typeKey;
+    stringSyntax.names.back().localOrdinal = 0U;
+    stringSyntax.typedSyntax.emplace_back(suffix, &stringType);
+    stringAssignment->setSecond(suffix);
+    std::string error;
+    auto lowered = lowerDirectCompoundAssignmentFixture(
+        stringSyntax, stringType, false, true, false, error);
+    tests.expect(lowered != nullptr && error.empty() && lowered->kind == HirKind::Assignment &&
+            lowered->operation == TokenKind::Equal && lowered->booleanValue &&
+            lowered->localOrdinal == 0U && lowered->children.size() == 2U &&
+            lowered->children[0]->kind == HirKind::LocalAddress &&
+            lowered->children[1]->kind == HirKind::StringConcat &&
+            lowered->children[1]->operation == TokenKind::Plus &&
+            lowered->children[1]->children.size() == 2U &&
+            lowered->children[1]->children[0]->kind == HirKind::LocalValue &&
+            lowered->children[1]->children[1]->kind == HirKind::LocalValue,
+        "iterative string += preserves address/current/suffix order and RAII replacement metadata");
+    destroyHirTreeIteratively(lowered);
+
+    nativesharp::frontend::MethodExpressionTypeBinding ownedType;
+    ownedType.typeKey = "builtin:int";
+    ownedType.ownsStorageDestination = true;
+    auto ownedSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::Equal}, ownedType);
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        ownedSyntax, ownedType, false, false, false, error);
+    tests.expect(lowered != nullptr && error.empty() && lowered->kind == HirKind::Assignment &&
+            lowered->booleanValue && !lowered->localOrdinal.has_value(),
+        "direct assignment preserves ownsStorageDestination without inventing a local owner ordinal");
+    destroyHirTreeIteratively(lowered);
+
+    auto dropSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::Equal}, ownedType);
+    ownedType.ownsStorageDestination = false;
+    for (auto& [syntax, type] : dropSyntax.typedSyntax) type = &ownedType;
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        dropSyntax, ownedType, false, false, true, error);
+    tests.expect(lowered != nullptr && error.empty() && lowered->booleanValue &&
+            lowered->localOrdinal == 0U,
+        "direct assignment preserves requiresValueDrop ownership and its local ordinal");
+    destroyHirTreeIteratively(lowered);
+
+    auto addressSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::PlusEqual}, ownedType);
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        addressSyntax, ownedType, true, false, false, error);
+    tests.expect(lowered == nullptr && error ==
+            "the result of a compound assignment is a value, not addressable storage",
+        "compound assignment preserves its exact address-context diagnostic");
+
+    auto missingTypeSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::PlusEqual}, ownedType);
+    const auto* missingTarget = missingTypeSyntax.names.front().syntax;
+    std::erase_if(missingTypeSyntax.typedSyntax, [missingTarget](const auto& entry)
+    {
+        return entry.first == missingTarget;
+    });
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        missingTypeSyntax, ownedType, false, false, false, error);
+    tests.expect(lowered == nullptr && error ==
+            "Stage 34 compound assignment target has no resolved semantic type",
+        "compound assignment preserves its missing-target-type diagnostic before descent");
+
+    auto invalidOperatorSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        1U, {TokenKind::Plus}, ownedType);
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        invalidOperatorSyntax, ownedType, false, false, false, error);
+    tests.expect(lowered == nullptr && error == "unsupported compound assignment operator",
+        "compound assignment preserves its invalid-operator diagnostic after lowering operands");
+}
+
+void testDeepDirectCompoundAssignmentLowering(TestContext& tests)
+{
+    using TokenKind = nativesharp::lexer::TokenKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    const std::vector<TokenKind> directOperations{TokenKind::Equal};
+    const std::vector<TokenKind> compoundOperations{
+        TokenKind::PlusEqual, TokenKind::MinusEqual, TokenKind::StarEqual,
+        TokenKind::SlashEqual, TokenKind::PercentEqual, TokenKind::AmpEqual,
+        TokenKind::PipeEqual, TokenKind::CaretEqual, TokenKind::LessLessEqual,
+        TokenKind::GreaterGreaterEqual};
+    std::string error;
+    auto directSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        nestingDepth, directOperations, integerType);
+    auto lowered = lowerDirectCompoundAssignmentFixture(
+        directSyntax, integerType, false, false, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level direct-assignment chain lowers without process-stack recursion (" + error + ")");
+    tests.expect(directAssignmentChainMatches(lowered.get(), nestingDepth, integerType.typeKey),
+        "iterative direct assignment preserves address-before-RHS shape and metadata");
+    destroyHirTreeIteratively(lowered);
+
+    auto compoundSyntax = makeDeepDirectCompoundAssignmentSyntax(
+        nestingDepth, compoundOperations, integerType);
+    error.clear();
+    lowered = lowerDirectCompoundAssignmentFixture(
+        compoundSyntax, integerType, false, false, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level ten-operator compound chain lowers without process-stack recursion (" + error + ")");
+    tests.expect(compoundAssignmentChainMatches(
+            lowered.get(), nestingDepth, compoundOperations, integerType.typeKey),
+        "iterative compound assignment preserves all ten operators and single-evaluation stores");
+    destroyHirTreeIteratively(lowered);
+    testDirectCompoundAssignmentContracts(tests);
+}
+
 struct UserIndexerTarget final
 {
     std::size_t getterOrdinal = 0;
@@ -6854,6 +7117,10 @@ int main()
     {
         testDeepNullConditionalAssignmentLowering(tests, root);
     }
+    else if (focusValue == "hir-direct-compound-assignment-depth")
+    {
+        testDeepDirectCompoundAssignmentLowering(tests);
+    }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
         testDeepUserIndexerGetterLowering(tests, root);
@@ -7032,6 +7299,7 @@ int main()
         testDeepExtensionPropertyGetterLowering(tests, root);
         testDeepExtensionPropertySetterLowering(tests, root);
         testDeepNullConditionalAssignmentLowering(tests, root);
+        testDeepDirectCompoundAssignmentLowering(tests);
         testDeepUserIndexerGetterLowering(tests, root);
         testDeepInterpolationHandlerLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
