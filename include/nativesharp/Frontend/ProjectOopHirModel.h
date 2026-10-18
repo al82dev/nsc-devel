@@ -944,6 +944,28 @@ private:
         bool nullConditional = false,
         std::unique_ptr<ProjectOopHirNode> preloweredReceiver = nullptr,
         std::vector<std::unique_ptr<ProjectOopHirNode>>* preloweredArguments = nullptr);
+    bool boundCallArgumentNeedsAddress(
+        std::size_t selectedMemberOrdinal,
+        std::size_t argumentIndex) const noexcept;
+    std::unique_ptr<ProjectOopHirNode> prepareBoundCallArgument(
+        const MethodCallBinding& binding,
+        std::size_t selectedMemberOrdinal,
+        std::size_t argumentIndex,
+        const ast::AstNode* argumentSyntax,
+        std::unique_ptr<ProjectOopHirNode> argument,
+        bool& hasOwnedTemporary);
+    std::unique_ptr<ProjectOopHirNode> finishBoundCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        std::string& error,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding& binding,
+        const BoundCallTarget& target,
+        std::size_t explicitArgumentCount,
+        bool nullConditional,
+        std::unique_ptr<ProjectOopHirNode> receiver,
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+        bool hasOwnedTemporary);
 
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,

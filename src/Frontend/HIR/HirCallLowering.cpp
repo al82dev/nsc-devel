@@ -516,6 +516,103 @@ ProjectOopHirModel::BoundCallTarget ProjectOopHirModel::resolveBoundCallTarget(
     return target;
 }
 
+bool ProjectOopHirModel::boundCallArgumentNeedsAddress(
+    std::size_t selectedMemberOrdinal,
+    std::size_t argumentIndex) const noexcept
+{
+    const ClassMemberSymbol* target = callableSymbol(selectedMemberOrdinal);
+    return target != nullptr && argumentIndex < target->parameters.size() &&
+        target->parameters[argumentIndex].passKind != ParameterPassKind::Value;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::prepareBoundCallArgument(
+    const MethodCallBinding& binding,
+    std::size_t selectedMemberOrdinal,
+    std::size_t argumentIndex,
+    const ast::AstNode* argumentSyntax,
+    std::unique_ptr<ProjectOopHirNode> argument,
+    bool& hasOwnedTemporary)
+{
+    if (argumentIndex < binding.selectedConversions.size() &&
+        binding.selectedConversions[argumentIndex].kind != ProjectConversionKind::Identity)
+    {
+        argument = wrapImplicitConversion(
+            std::move(argument), binding.selectedConversions[argumentIndex], argumentSyntax);
+    }
+    return wrapCallArgumentBorrow(
+        std::move(argument), argumentSyntax, selectedMemberOrdinal,
+        argumentIndex, hasOwnedTemporary);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishBoundCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    std::string& error,
+    const MethodExpressionTypeBinding* typeBinding,
+    const MethodCallBinding& binding,
+    const BoundCallTarget& target,
+    std::size_t explicitArgumentCount,
+    bool nullConditional,
+    std::unique_ptr<ProjectOopHirNode> receiver,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+    bool hasOwnedTemporary)
+{
+    const std::size_t selectedMemberOrdinal = target.memberOrdinal;
+    auto node = makeNode(
+        binding.staticCall ? ProjectOopHirNodeKind::StaticCall :
+            ProjectOopHirNodeKind::InstanceCall,
+        expression,
+        binding.resultTypeKey);
+    if (binding.staticCall && memberModel_ != nullptr &&
+        selectedMemberOrdinal >= memberModel_->members().size())
+    {
+        node->namespaceFunctionOrdinal = selectedMemberOrdinal - memberModel_->members().size();
+        node->memberOrdinal.reset();
+    }
+    else
+    {
+        node->memberOrdinal = selectedMemberOrdinal;
+    }
+    node->baseReceiver = binding.baseReceiver;
+    node->interfaceDispatch = target.interfaceDispatch;
+    node->nullConditionalCall = nullConditional;
+    node->booleanValue = typeBinding != nullptr && typeBinding->flowActiveVariantCase.has_value();
+    if (target.interfaceDispatch) node->targetTypeOrdinal = binding.receiverTypeOrdinal;
+    if (!binding.staticCall) node->children.push_back(std::move(receiver));
+    for (auto& argument : arguments) node->children.push_back(std::move(argument));
+
+    const ClassMemberSymbol* selectedMemberPtr = callableSymbol(selectedMemberOrdinal);
+    if (selectedMemberPtr == nullptr)
+    {
+        error = "NSC-LIMIT-020 selected call has no callable metadata";
+        return nullptr;
+    }
+    const ClassMemberSymbol& selectedMember = *selectedMemberPtr;
+    for (std::size_t index = 0; index < binding.selectedDefaultArguments.size(); ++index)
+    {
+        const std::size_t parameterIndex = explicitArgumentCount + index;
+        if (parameterIndex >= selectedMember.parameters.size())
+        {
+            error = "NSC-LIMIT-020 selected default argument has no matching parameter";
+            return nullptr;
+        }
+        auto argument = lowerDefaultArgument(
+            binding.selectedDefaultArguments[index],
+            selectedMember.parameters[parameterIndex].typeKey,
+            error);
+        if (argument == nullptr) return nullptr;
+        node->children.push_back(std::move(argument));
+    }
+    node->referenceResult = selectedMember.isReferenceReturn;
+    auto loweredCall = wrapFullExpressionCleanup(
+        std::move(node), expression, hasOwnedTemporary);
+    if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;
+    auto load = makeNode(
+        ProjectOopHirNodeKind::PointerLoad, expression, selectedMember.declaredTypeKey);
+    load->children.push_back(std::move(loweredCall));
+    return load;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -537,93 +634,51 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     }
     const BoundCallTarget target = resolveBoundCallTarget(*binding);
     const std::size_t selectedMemberOrdinal = target.memberOrdinal;
-    auto node = makeNode(
-        binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
-        expression,
-        binding->resultTypeKey);
-    // NS304-T08-F04: a namespace-callable adapter (extension operator) targets the namespace
-    // function, not a class member (memberOrdinal >= members().size()).
-    if (binding->staticCall && memberModel_ != nullptr &&
-        selectedMemberOrdinal >= memberModel_->members().size())
-    {
-        node->namespaceFunctionOrdinal =
-            selectedMemberOrdinal - memberModel_->members().size();
-        node->memberOrdinal.reset();
-    }
-    else
-    {
-        node->memberOrdinal = selectedMemberOrdinal;
-    }
-    node->baseReceiver = binding->baseReceiver;
-    node->interfaceDispatch = target.interfaceDispatch;
-    node->nullConditionalCall = nullConditional;
-    node->booleanValue = typeBinding != nullptr &&
-        typeBinding->flowActiveVariantCase.has_value();
-    if (target.interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+    std::unique_ptr<ProjectOopHirNode> receiver;
     if (!binding->staticCall)
     {
-        auto receiver = preloweredReceiver != nullptr
+        receiver = preloweredReceiver != nullptr
             ? std::move(preloweredReceiver)
             : lowerReceiver(
                 target.receiverSyntax, target.receiverTypeKey, memberOrdinal, error);
         if (receiver == nullptr) return nullptr;
-        node->children.push_back(std::move(receiver));
     }
     bool hasOwnedTemporary = false;
+    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
+    arguments.reserve(argumentSyntaxes.size());
     for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
     {
         const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
-        const ClassMemberSymbol* operatorMember = callableSymbol(selectedMemberOrdinal);
-        const bool implicitOperatorReference = operatorMember != nullptr &&
-            operatorMember->isUserOperator &&
-            index < operatorMember->parameters.size() &&
-            operatorMember->parameters[index].passKind != ParameterPassKind::Value;
         auto argument = preloweredArguments != nullptr
             ? std::move((*preloweredArguments)[index])
             : preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
                 ? std::move(preloweredLast)
                 : lowerExpression(
-                    argumentSyntax, memberOrdinal, implicitOperatorReference, error);
+                    argumentSyntax,
+                    memberOrdinal,
+                    boundCallArgumentNeedsAddress(selectedMemberOrdinal, index),
+                    error);
         if (argument == nullptr) return nullptr;
-        if (index < binding->selectedConversions.size() &&
-            binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
-        {
-            argument = wrapImplicitConversion(
-                std::move(argument), binding->selectedConversions[index], argumentSyntax);
-        }
-        argument = wrapCallArgumentBorrow(
-            std::move(argument), argumentSyntax, selectedMemberOrdinal, index,
-            hasOwnedTemporary);
-        node->children.push_back(std::move(argument));
+        arguments.push_back(prepareBoundCallArgument(
+            *binding,
+            selectedMemberOrdinal,
+            index,
+            argumentSyntax,
+            std::move(argument),
+            hasOwnedTemporary));
     }
-    const ClassMemberSymbol* selectedMemberPtr = callableSymbol(selectedMemberOrdinal);
-    if (selectedMemberPtr == nullptr)
-    {
-        error = "NSC-LIMIT-020 selected call has no callable metadata";
-        return nullptr;
-    }
-    const ClassMemberSymbol& selectedMember = *selectedMemberPtr;
-    for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
-    {
-        const std::size_t parameterIndex = argumentSyntaxes.size() + index;
-        if (parameterIndex >= selectedMember.parameters.size())
-        {
-            error = "NSC-LIMIT-020 selected default argument has no matching parameter";
-            return nullptr;
-        }
-        auto argument = lowerDefaultArgument(
-            binding->selectedDefaultArguments[index],
-            selectedMember.parameters[parameterIndex].typeKey,
-            error);
-        if (argument == nullptr) return nullptr;
-        node->children.push_back(std::move(argument));
-    }
-    node->referenceResult = selectedMember.isReferenceReturn;
-    auto loweredCall = wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
-    if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;
-    auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, selectedMember.declaredTypeKey);
-    load->children.push_back(std::move(loweredCall));
-    return load;
+    return finishBoundCall(
+        expression,
+        addressContext,
+        error,
+        typeBinding,
+        *binding,
+        target,
+        argumentSyntaxes.size(),
+        nullConditional,
+        std::move(receiver),
+        std::move(arguments),
+        hasOwnedTemporary);
 }
 
 bool ProjectOopHirModel::validateNoHeapDirectCall(
