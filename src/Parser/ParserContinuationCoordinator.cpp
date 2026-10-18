@@ -72,6 +72,11 @@ private:
         FinishForeachCollection,
         FinishForeachProbe,
         FinishForeachBody,
+        FinishConditionalPatternSource,
+        FinishConditionalPatternSuccess,
+        FinishConditionalPatternFailure,
+        FinishConditionalPatternWhile,
+        FinishConditionalPatternLetElse,
         FinishSwitchGoverning,
         ContinueSwitch,
         ContinueSwitchLabels,
@@ -117,6 +122,7 @@ private:
         DoWhile,
         For,
         Foreach,
+        ConditionalPattern,
         Switch,
         Match,
         Try,
@@ -202,6 +208,34 @@ private:
         std::size_t resultSlot = 0;
         std::size_t collectionStart = 0;
         std::size_t collectionEnd = 0;
+    };
+
+    enum class ConditionalPatternForm : std::uint8_t
+    {
+        If,
+        While,
+        LetElse
+    };
+
+    struct ConditionalPatternFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ConditionalPatternForm form = ConditionalPatternForm::LetElse;
+        SourceRange featureRange;
+        Pattern pattern;
+        ast::AstNode* sourceExpression = nullptr;
+        ast::AstNode* successBody = nullptr;
+        ast::AstNode* failureBody = nullptr;
+        bool hasReferenceBinding = false;
+        bool hasMoveBinding = false;
+    };
+
+    struct ConditionalPatternLoweringContext final
+    {
+        SourceRange statementRange;
+        std::string temporary;
+        std::string matched;
     };
 
     struct SwitchFrame final
@@ -387,6 +421,43 @@ private:
     void finishForeachCollection(const Work& work);
     void finishForeachProbe(const Work& work);
     void finishForeachBody(const Work& work);
+    void startConditionalPattern(const Work& work);
+    void parseConditionalPatternPrefix(ConditionalPatternFrame& frame);
+    void analyzeConditionalPattern(ConditionalPatternFrame& frame);
+    void finishConditionalPatternSource(const Work& work);
+    void scheduleConditionalPatternBody(
+        std::size_t frameIndex,
+        WorkKind finishKind,
+        WorkKind bodyKind);
+    void finishConditionalPatternSuccess(const Work& work);
+    void finishConditionalPatternFailure(const Work& work);
+    void finishConditionalPatternWhile(const Work& work);
+    void finishConditionalPatternLetElse(const Work& work);
+    PatternExpressionFactory makeConditionalPatternRoot(
+        const ConditionalPatternLoweringContext& context);
+    void addConditionalPatternPrelude(
+        const ConditionalPatternFrame& frame,
+        const ConditionalPatternLoweringContext& context,
+        ast::AstNode* destination);
+    ast::AstNode* makeConditionalPatternSuccess(
+        const ConditionalPatternFrame& frame,
+        const ConditionalPatternLoweringContext& context,
+        bool includeBody);
+    ast::AstNode* lowerConditionalPatternWhile(
+        ConditionalPatternFrame& frame,
+        const ConditionalPatternLoweringContext& context);
+    ast::AstNode* lowerConditionalPatternSelection(
+        ConditionalPatternFrame& frame,
+        const ConditionalPatternLoweringContext& context);
+    ast::AstNode* lowerConditionalPattern(ConditionalPatternFrame& frame);
+    ast::AstNode* makeConditionalPatternNotMatched(
+        SourceRange range,
+        const std::string& matched);
+    void finishConditionalPatternLowering(
+        ConditionalPatternFrame& frame,
+        const PatternExpressionFactory& root,
+        ast::AstNode* lowered,
+        const ConditionalPatternLoweringContext& context);
     void startSwitch(const Work& work);
     void finishSwitchGoverning(const Work& work);
     void continueSwitch(const Work& work);
@@ -506,6 +577,7 @@ private:
     std::deque<ForFrame> forFrames_;
     std::deque<ForExpressionFrame> forExpressionFrames_;
     std::deque<ForeachFrame> foreachFrames_;
+    std::deque<ConditionalPatternFrame> conditionalPatternFrames_;
     std::deque<SwitchFrame> switchFrames_;
     std::deque<MatchFrame> matchFrames_;
     std::deque<TryFrame> tryFrames_;
@@ -612,6 +684,16 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishForeachCollection: finishForeachCollection(work); return;
     case WorkKind::FinishForeachProbe: finishForeachProbe(work); return;
     case WorkKind::FinishForeachBody: finishForeachBody(work); return;
+    case WorkKind::FinishConditionalPatternSource:
+        finishConditionalPatternSource(work); return;
+    case WorkKind::FinishConditionalPatternSuccess:
+        finishConditionalPatternSuccess(work); return;
+    case WorkKind::FinishConditionalPatternFailure:
+        finishConditionalPatternFailure(work); return;
+    case WorkKind::FinishConditionalPatternWhile:
+        finishConditionalPatternWhile(work); return;
+    case WorkKind::FinishConditionalPatternLetElse:
+        finishConditionalPatternLetElse(work); return;
     case WorkKind::FinishSwitchGoverning: finishSwitchGoverning(work); return;
     case WorkKind::ContinueSwitch: continueSwitch(work); return;
     case WorkKind::ContinueSwitchLabels: continueSwitchLabels(work); return;
@@ -800,6 +882,11 @@ Parser::ParseContinuationCoordinator::StatementKind
 Parser::ParseContinuationCoordinator::classifyStatement() const
 {
     if (parser_.at(TokenKind::LeftBrace)) return StatementKind::Block;
+    if (parser_.atContextualKeyword("let") ||
+        ((parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile)) &&
+         parser_.peek().kind() == TokenKind::LeftParen &&
+         parser_.peek(2).kind() == TokenKind::Identifier &&
+         parser_.peek(2).lexeme() == "let")) return StatementKind::ConditionalPattern;
     if (ordinaryIfStarts()) return StatementKind::If;
     if (ordinaryWhileStarts()) return StatementKind::While;
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
@@ -853,6 +940,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::DoWhile: startDoWhile(work); return;
     case StatementKind::For: startFor(work); return;
     case StatementKind::Foreach: startForeach(work); return;
+    case StatementKind::ConditionalPattern: startConditionalPattern(work); return;
     case StatementKind::Switch: startSwitch(work); return;
     case StatementKind::Match: startMatch(work); return;
     case StatementKind::Try: startTry(work); return;
@@ -1883,6 +1971,291 @@ void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
     ForeachFrame& frame = foreachFrames_[work.frameIndex];
     complete(frame.resultSlot, parser_.lowerForeachStatement(
         std::move(frame.state), childValue(work)));
+}
+
+// Opens one conditional-pattern frame and schedules its assignment-expression source.
+void Parser::ParseContinuationCoordinator::startConditionalPattern(const Work& work)
+{
+    const std::size_t frameIndex = conditionalPatternFrames_.size();
+    conditionalPatternFrames_.emplace_back();
+    ConditionalPatternFrame& frame = conditionalPatternFrames_.back();
+    frame.resultSlot = work.resultSlot;
+    parseConditionalPatternPrefix(frame);
+    frame.pattern = parser_.parsePattern(false);
+    parser_.expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
+    analyzeConditionalPattern(frame);
+
+    Work finish{WorkKind::FinishConditionalPatternSource, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Consumes the three historical prefixes and preserves their exact diagnostics.
+void Parser::ParseContinuationCoordinator::parseConditionalPatternPrefix(
+    ConditionalPatternFrame& frame)
+{
+    frame.beginIndex = parser_.index_;
+    frame.featureRange = parser_.current().range();
+    if (parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile))
+    {
+        frame.form = parser_.at(TokenKind::KwIf)
+            ? ConditionalPatternForm::If : ConditionalPatternForm::While;
+        frame.featureRange = parser_.consume().range();
+        parser_.expect(TokenKind::LeftParen, frame.form == ConditionalPatternForm::If
+            ? "'(' after 'if'" : "'(' after 'while'");
+        parser_.expectContextualKeyword("let", "'let' in conditional pattern");
+        return;
+    }
+    frame.form = ConditionalPatternForm::LetElse;
+    parser_.expectContextualKeyword("let", "'let'");
+}
+
+// Runs the shared iterative pattern analysis exactly once and records ownership requirements.
+void Parser::ParseContinuationCoordinator::analyzeConditionalPattern(
+    ConditionalPatternFrame& frame)
+{
+    const Parser::ConditionalPatternAnalysis analysis =
+        parser_.analyzeConditionalPattern(frame.pattern);
+    frame.hasReferenceBinding = analysis.hasReferenceBinding;
+    frame.hasMoveBinding = analysis.hasMoveBinding;
+}
+
+// Completes the header and schedules only the body required by the selected form.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternSource(const Work& work)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[work.frameIndex];
+    frame.sourceExpression = childValue(work);
+    if (frame.form != ConditionalPatternForm::LetElse)
+        parser_.expect(TokenKind::RightParen, "')' after conditional pattern");
+    if (frame.form == ConditionalPatternForm::If)
+    {
+        scheduleConditionalPatternBody(
+            work.frameIndex, WorkKind::FinishConditionalPatternSuccess, WorkKind::Embedded);
+        return;
+    }
+    if (frame.form == ConditionalPatternForm::While)
+    {
+        scheduleConditionalPatternBody(
+            work.frameIndex, WorkKind::FinishConditionalPatternWhile, WorkKind::Embedded);
+        return;
+    }
+    parser_.expect(TokenKind::KwElse, "'else' after let pattern initializer");
+    if (parser_.at(TokenKind::LeftBrace))
+        scheduleConditionalPatternBody(
+            work.frameIndex, WorkKind::FinishConditionalPatternLetElse, WorkKind::Block);
+    else
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' to open the divergent let-else body");
+        Work finish{WorkKind::FinishConditionalPatternLetElse, frame.resultSlot};
+        finish.frameIndex = work.frameIndex;
+        work_.push_back(finish);
+    }
+}
+
+// Schedules one child body and its stable frame continuation.
+void Parser::ParseContinuationCoordinator::scheduleConditionalPatternBody(
+    std::size_t frameIndex,
+    WorkKind finishKind,
+    WorkKind bodyKind)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[frameIndex];
+    Work finish{finishKind, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({bodyKind, childSlot});
+}
+
+// Stores an if-let success body and preserves nearest-if failure scheduling.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternSuccess(const Work& work)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[work.frameIndex];
+    frame.successBody = childValue(work);
+    if (!parser_.consumeIf(TokenKind::KwElse))
+    {
+        complete(frame.resultSlot, lowerConditionalPattern(frame));
+        return;
+    }
+    const WorkKind failureKind = parser_.at(TokenKind::KwIf)
+        ? WorkKind::Statement : WorkKind::Embedded;
+    scheduleConditionalPatternBody(
+        work.frameIndex, WorkKind::FinishConditionalPatternFailure, failureKind);
+}
+
+// Stores the optional if-let failure and publishes the canonical lowering.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternFailure(const Work& work)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[work.frameIndex];
+    frame.failureBody = childValue(work);
+    complete(frame.resultSlot, lowerConditionalPattern(frame));
+}
+
+// Stores the while-let body and publishes its per-iteration lowering.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternWhile(const Work& work)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[work.frameIndex];
+    frame.successBody = childValue(work);
+    complete(frame.resultSlot, lowerConditionalPattern(frame));
+}
+
+// Validates divergence, consumes the trailing semicolon, and publishes let-else.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternLetElse(const Work& work)
+{
+    ConditionalPatternFrame& frame = conditionalPatternFrames_[work.frameIndex];
+    frame.failureBody = childValue(work);
+    if (!parser_.statementAlwaysDiverges(frame.failureBody))
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            frame.failureBody != nullptr ? frame.failureBody->range() : frame.featureRange,
+            "the else body of a let-else statement must diverge with return, throw, break, "
+            "continue, or an if whose branches both diverge");
+    parser_.expect(TokenKind::Semicolon, "';' after let-else statement");
+    complete(frame.resultSlot, lowerConditionalPattern(frame));
+}
+
+// Produces a fresh identifier expression for each iterative pattern-lowering request.
+Parser::PatternExpressionFactory
+Parser::ParseContinuationCoordinator::makeConditionalPatternRoot(
+    const ConditionalPatternLoweringContext& context)
+{
+    return [this, range = context.statementRange, temporary = context.temporary]
+    {
+        return parser_.makeIdentifierExpression(range, temporary);
+    };
+}
+
+// Emits source and matched locals in their historical order and ownership mode.
+void Parser::ParseContinuationCoordinator::addConditionalPatternPrelude(
+    const ConditionalPatternFrame& frame,
+    const ConditionalPatternLoweringContext& context,
+    ast::AstNode* destination)
+{
+    ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
+        frame.featureRange, TokenKind::KwVar, "var");
+    ast::AstNode* declaration = parser_.makeVariableDeclaration(
+        inferred, context.temporary, frame.sourceExpression, false,
+        !frame.hasReferenceBinding && !frame.hasMoveBinding);
+    if (frame.hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
+    destination->addChild(declaration);
+    ast::TypeSyntax* boolType = parser_.arena_.make<ast::TypeSyntax>(
+        frame.featureRange, TokenKind::KwBool, "bool");
+    destination->addChild(parser_.makeVariableDeclaration(
+        boolType, context.matched,
+        parser_.makeBooleanLiteral(frame.featureRange, false), false, false));
+}
+
+// Builds the matched=true block and optionally appends the parsed success body.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeConditionalPatternSuccess(
+    const ConditionalPatternFrame& frame,
+    const ConditionalPatternLoweringContext& context,
+    bool includeBody)
+{
+    ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, context.statementRange);
+    body->addChild(parser_.makeExpressionStatement(parser_.makeAssignmentExpression(
+        parser_.makeIdentifierExpression(context.statementRange, context.matched),
+        parser_.makeBooleanLiteral(context.statementRange, true))));
+    if (includeBody && frame.successBody != nullptr)
+        for (ast::AstNode* child : frame.successBody->children()) body->addChild(child);
+    return body;
+}
+
+// Recreates while-let as while(true) with one source evaluation per iteration.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerConditionalPatternWhile(
+    ConditionalPatternFrame& frame,
+    const ConditionalPatternLoweringContext& context)
+{
+    PatternExpressionFactory root = makeConditionalPatternRoot(context);
+    ast::AstNode* iteration = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, context.statementRange);
+    addConditionalPatternPrelude(frame, context, iteration);
+    iteration->addChild(parser_.lowerPattern(
+        frame.pattern, root, makeConditionalPatternSuccess(frame, context, true),
+        context.temporary));
+    ast::AstNode* stopBody = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, context.statementRange);
+    stopBody->addChild(parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BreakStatement, context.statementRange));
+    ast::AstNode* stop = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, context.statementRange);
+    stop->setFirst(makeConditionalPatternNotMatched(context.statementRange, context.matched));
+    stop->setSecond(stopBody);
+    iteration->addChild(stop);
+    ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::WhileStatement, context.statementRange);
+    loop->setFirst(parser_.makeBooleanLiteral(frame.featureRange, true));
+    loop->setSecond(iteration);
+    return loop;
+}
+
+// Recreates if-let and let-else selection without reanalyzing the pattern.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerConditionalPatternSelection(
+    ConditionalPatternFrame& frame,
+    const ConditionalPatternLoweringContext& context)
+{
+    PatternExpressionFactory root = makeConditionalPatternRoot(context);
+    ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, context.statementRange);
+    addConditionalPatternPrelude(frame, context, lowered);
+    lowered->addChild(parser_.lowerPattern(
+        frame.pattern, root,
+        makeConditionalPatternSuccess(
+            frame, context, frame.form == ConditionalPatternForm::If),
+        context.temporary, frame.form != ConditionalPatternForm::LetElse));
+    finishConditionalPatternLowering(frame, root, lowered, context);
+    return lowered;
+}
+
+// Allocates one monotonic temporary pair and selects the canonical lowering family.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerConditionalPattern(
+    ConditionalPatternFrame& frame)
+{
+    ConditionalPatternLoweringContext context;
+    context.statementRange = parser_.tokenRangeFrom(frame.beginIndex);
+    context.temporary =
+        "$__nsc_conditional_pattern_" + std::to_string(parser_.nextMatchTemporary_++);
+    context.matched = context.temporary + "_matched";
+    if (frame.form == ConditionalPatternForm::While)
+        return lowerConditionalPatternWhile(frame, context);
+    return lowerConditionalPatternSelection(frame, context);
+}
+
+// Creates the canonical !matched condition used by failure and stop branches.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeConditionalPatternNotMatched(
+    SourceRange range,
+    const std::string& matched)
+{
+    ast::AstNode* result = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UnaryExpression, range);
+    result->setTokenKind(TokenKind::Bang);
+    result->setFirst(parser_.makeIdentifierExpression(range, matched));
+    return result;
+}
+
+// Appends failure and post-success let-else bindings in their observable order.
+void Parser::ParseContinuationCoordinator::finishConditionalPatternLowering(
+    ConditionalPatternFrame& frame,
+    const PatternExpressionFactory& root,
+    ast::AstNode* lowered,
+    const ConditionalPatternLoweringContext& context)
+{
+    if (frame.failureBody != nullptr)
+    {
+        ast::AstNode* failure = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, context.statementRange);
+        failure->setFirst(makeConditionalPatternNotMatched(
+            context.statementRange, context.matched));
+        failure->setSecond(frame.failureBody);
+        lowered->addChild(failure);
+    }
+    if (frame.form != ConditionalPatternForm::LetElse) return;
+    parser_.emitPatternBindings(frame.pattern, root, lowered, context.temporary);
+    lowered->setAuxiliaryText("conditional-pattern-inline");
 }
 
 // Opens one switch frame and schedules its governing expression or declaration.
