@@ -449,23 +449,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
 
         case ast::AstNodeKind::DoWhileStatement:
         case ast::AstNodeKind::WhileStatement:
-        {
-            auto node = makeNode(
-                statement->kind() == ast::AstNodeKind::DoWhileStatement
-                    ? ProjectOopHirNodeKind::DoWhile
-                    : ProjectOopHirNodeKind::While,
-                statement,
-                "builtin:void");
-            auto condition = lowerExpression(statement->first(), memberOrdinal, false, error);
-            auto body = lowerBlock(statement->second(), memberOrdinal, error);
-            if (condition == nullptr || body == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(condition));
-            node->children.push_back(std::move(body));
-            return node;
-        }
+            return lowerLoopStatement(statement, memberOrdinal, error);
 
         // `switch`. The label EXPRESSIONS are not lowered at all: the body model folded them to
         // integers, checked them against the governing type and rejected duplicates, and left the

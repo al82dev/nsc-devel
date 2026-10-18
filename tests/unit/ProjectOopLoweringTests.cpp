@@ -1503,6 +1503,31 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerLoopStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodLoopExpressionBinding> loops,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -15141,6 +15166,272 @@ void testDeepIfStatementLowering(TestContext& tests)
         "32768 failed if conditions unwind through the shared worklist without recursion");
 }
 
+struct DeepLoopStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    std::vector<const nativesharp::ast::AstNode*> statements;
+    std::vector<bool> nestedInCondition;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepLoopStatementFixture makeDeepLoopStatementFixture(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& boolType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepLoopStatementFixture fixture;
+    fixture.nodes.reserve(depth * 4U + 2U);
+    fixture.loops.reserve(depth / 2U + 1U);
+    fixture.typed.reserve(depth * 2U);
+    fixture.statements.reserve(depth);
+    fixture.nestedInCondition.reserve(depth);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    const auto makeTrue = [&]()
+    {
+        auto* literal = append(AstKind::BooleanLiteralExpression);
+        literal->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        fixture.typed.push_back({literal, &boolType});
+        return literal;
+    };
+    const auto makeBlock = [&]() { return append(AstKind::BlockStatement); };
+
+    auto* terminal = append(AstKind::WhileStatement);
+    terminal->setFirst(makeTrue());
+    terminal->setSecond(makeBlock());
+    nativesharp::ast::AstNode* current = terminal;
+    fixture.statements.push_back(terminal);
+    fixture.nestedInCondition.push_back(false);
+    for (std::size_t index = 1U; index < depth; ++index)
+    {
+        auto* statement = append(index % 2U == 0U
+            ? AstKind::WhileStatement
+            : AstKind::DoWhileStatement);
+        if (index % 2U == 0U)
+        {
+            auto* conditionBlock = makeBlock();
+            conditionBlock->addChild(current);
+            auto* loop = append(AstKind::LoopExpression);
+            loop->setFirst(conditionBlock);
+            fixture.loops.push_back(
+                {loop, 0U, index, "loop-statement-condition", "builtin:bool"});
+            fixture.typed.push_back({loop, &boolType});
+            statement->setFirst(loop);
+            statement->setSecond(makeBlock());
+            fixture.nestedInCondition.push_back(true);
+        }
+        else
+        {
+            statement->setFirst(makeTrue());
+            auto* body = makeBlock();
+            body->addChild(current);
+            statement->setSecond(body);
+            fixture.nestedInCondition.push_back(false);
+        }
+        current = statement;
+        fixture.statements.push_back(statement);
+    }
+    std::reverse(fixture.statements.begin(), fixture.statements.end());
+    std::reverse(fixture.nestedInCondition.begin(), fixture.nestedInCondition.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepLoopStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepLoopStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.statements.size(); ++index)
+    {
+        const HirKind expectedKind = fixture.statements[index]->kind() ==
+                nativesharp::ast::AstNodeKind::DoWhileStatement
+            ? HirKind::DoWhile
+            : HirKind::While;
+        if (node == nullptr || node->kind != expectedKind ||
+            node->syntax != fixture.statements[index] ||
+            node->typeKey != "builtin:void" || node->children.size() != 2U ||
+            node->children[1]->kind != HirKind::Block)
+        {
+            return false;
+        }
+        if (index + 1U == fixture.statements.size())
+        {
+            return node->children[0]->kind == HirKind::BooleanConstant &&
+                node->children[1]->children.empty();
+        }
+        if (fixture.nestedInCondition[index])
+        {
+            if (node->children[0]->kind != HirKind::LoopExpression ||
+                node->children[0]->children.size() != 1U ||
+                node->children[0]->children[0]->kind != HirKind::Block ||
+                node->children[0]->children[0]->children.size() != 1U ||
+                !node->children[1]->children.empty())
+            {
+                return false;
+            }
+            node = node->children[0]->children[0]->children[0].get();
+        }
+        else
+        {
+            if (node->children[0]->kind != HirKind::BooleanConstant ||
+                node->children[1]->children.size() != 1U)
+            {
+                return false;
+            }
+            node = node->children[1]->children[0].get();
+        }
+    }
+    return false;
+}
+
+void testDeepLoopStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    constexpr std::size_t nestingDepth = 32768U;
+    auto fixture = makeDeepLoopStatementFixture(nestingDepth, boolType);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel body;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerLoopStatementForTest(
+            model, body, fixture.root, fixture.loops, fixture.typed, {}, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 alternating while/do condition/body edges lower on one worklist (" +
+            error + ")");
+    tests.expect(deepLoopStatementChainMatches(lowered.get(), fixture),
+        "iterative while/do lowering preserves exact kind, syntax and condition/body order");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(model) == 0U,
+        "iterative while/do lowering restores cleanup depth after every body block");
+    destroyHirTreeIteratively(lowered);
+
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(75U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(75U), offset + 5U));
+    };
+    auto validCondition = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BooleanLiteralExpression, range(10U));
+    validCondition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto invalidCondition = std::make_unique<nativesharp::ast::AstNode>(
+        static_cast<AstKind>(0xFFFF), range(20U));
+    auto validBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, range(30U));
+    auto invalidBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, range(40U));
+    const auto lowerCase = [&](AstKind kind,
+                               const nativesharp::ast::AstNode* condition,
+                               const nativesharp::ast::AstNode* loopBody,
+                               ProjectOopHirModel& caseModel,
+                               nativesharp::frontend::ProjectMethodBodyModel& caseBody,
+                               std::string& caseError)
+    {
+        auto statement = std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{});
+        statement->setFirst(const_cast<nativesharp::ast::AstNode*>(condition));
+        statement->setSecond(const_cast<nativesharp::ast::AstNode*>(loopBody));
+        auto result = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerLoopStatementForTest(
+                caseModel, caseBody, statement.get(), {},
+                condition == validCondition.get()
+                    ? std::vector<std::pair<const nativesharp::ast::AstNode*,
+                        const nativesharp::frontend::MethodExpressionTypeBinding*>>{
+                            {validCondition.get(), &boolType}}
+                    : std::vector<std::pair<const nativesharp::ast::AstNode*,
+                        const nativesharp::frontend::MethodExpressionTypeBinding*>>{},
+                {}, caseError);
+        return result;
+    };
+
+    ProjectOopHirModel doModel;
+    nativesharp::frontend::ProjectMethodBodyModel doBody;
+    error.clear();
+    auto simpleDo = lowerCase(
+        AstKind::DoWhileStatement, validCondition.get(), validBody.get(),
+        doModel, doBody, error);
+    tests.expect(simpleDo != nullptr && error.empty() &&
+            simpleDo->kind == HirKind::DoWhile && simpleDo->children.size() == 2U &&
+            simpleDo->children[0]->kind == HirKind::BooleanConstant &&
+            simpleDo->children[1]->kind == HirKind::Block,
+        "do-while preserves the historical HIR order condition then body");
+    destroyHirTreeIteratively(simpleDo);
+
+    ProjectOopHirModel conditionModel;
+    nativesharp::frontend::ProjectMethodBodyModel conditionBody;
+    error.clear();
+    auto conditionRejected = lowerCase(
+        AstKind::WhileStatement, invalidCondition.get(), validBody.get(),
+        conditionModel, conditionBody, error);
+    tests.expect(conditionRejected == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode" &&
+            conditionModel.lastErrorRange().begin() == range(20U).begin() &&
+            conditionModel.lastErrorRange().end() == range(20U).end(),
+        "while preserves a failed condition after still lowering its valid body");
+
+    ProjectOopHirModel bodyModel;
+    nativesharp::frontend::ProjectMethodBodyModel bodyBody;
+    error.clear();
+    auto bodyRejected = lowerCase(
+        AstKind::DoWhileStatement, validCondition.get(), invalidBody.get(),
+        bodyModel, bodyBody, error);
+    tests.expect(bodyRejected == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body",
+        "do-while preserves its exact invalid-body diagnostic");
+
+    ProjectOopHirModel doubleModel;
+    nativesharp::frontend::ProjectMethodBodyModel doubleBody;
+    error.clear();
+    auto doubleRejected = lowerCase(
+        AstKind::WhileStatement, invalidCondition.get(), invalidBody.get(),
+        doubleModel, doubleBody, error);
+    tests.expect(doubleRejected == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body" &&
+            doubleModel.lastErrorRange().begin() == range(20U).begin() &&
+            doubleModel.lastErrorRange().end() == range(20U).end(),
+        "while preserves condition-body double-failure text and first range");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> failingNodes;
+    failingNodes.reserve(nestingDepth * 3U);
+    nativesharp::ast::AstNode* failingRoot = nullptr;
+    for (std::size_t index = 0U; index < nestingDepth; ++index)
+    {
+        failingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            static_cast<AstKind>(0xFFFF), range(50U)));
+        auto* failedCondition = failingNodes.back().get();
+        failingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        auto* failedBody = failingNodes.back().get();
+        if (failingRoot != nullptr) failedBody->addChild(failingRoot);
+        failingNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            index % 2U == 0U ? AstKind::WhileStatement : AstKind::DoWhileStatement,
+            nativesharp::SourceRange{}));
+        failingNodes.back()->setFirst(failedCondition);
+        failingNodes.back()->setSecond(failedBody);
+        failingRoot = failingNodes.back().get();
+    }
+    ProjectOopHirModel failingModel;
+    nativesharp::frontend::ProjectMethodBodyModel failingBodyModel;
+    error.clear();
+    auto deepRejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerLoopStatementForTest(
+            failingModel, failingBodyModel, failingRoot, {}, {}, {}, error);
+    tests.expect(deepRejected == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode",
+        "32768 failed while/do conditions unwind on the shared worklist without recursion");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -19088,6 +19379,10 @@ int main()
     else if (focusValue == "hir-if-statement-depth")
     {
         testDeepIfStatementLowering(tests);
+    }
+    else if (focusValue == "hir-loop-statement-depth")
+    {
+        testDeepLoopStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
