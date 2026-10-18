@@ -448,6 +448,37 @@ struct ProjectOopHirModelTestAccess final
         return result;
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerPropertyIndexerSetterExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& valueType,
+        const MethodExpressionTypeBinding& receiverType,
+        bool addressContext,
+        const MethodLambdaBinding* currentLambda,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax)
+        {
+            model.expressionTypeBySyntax_[node.get()] =
+                node->kind() == ast::AstNodeKind::ThisExpression
+                    ? &receiverType : &valueType;
+        }
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        model.currentLambda_ = currentLambda;
+        auto result = model.lowerExpression(
+            root, callerMemberOrdinal, addressContext, error);
+        model.currentLambda_ = nullptr;
+        return result;
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertyGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -2869,6 +2900,286 @@ void testDeepEventSubscriptionLowering(
     destroyHirTreeIteratively(lowered);
     testEventSubscriptionContracts(tests, compilation, targets);
     testEventSubscriptionDiagnostics(tests, compilation, targets);
+}
+
+struct PropertyIndexerSetterTargets final
+{
+    nativesharp::frontend::MethodCallBinding propertyGetter;
+    nativesharp::frontend::MethodCallBinding propertySetter;
+    nativesharp::frontend::MethodCallBinding indexerGetter;
+    nativesharp::frontend::MethodCallBinding indexerSetter;
+    std::size_t callerOrdinal = 0U;
+    std::string receiverType;
+    std::string valueType;
+};
+
+bool preparePropertyIndexerSetterFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    PropertyIndexerSetterTargets& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepPropertyIndexerSetter";
+    writeProject(directory, "DeepPropertyIndexerSetter");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public class Box {
+    private int slot;
+    public int Value { get { return slot; } set { slot = value; } }
+    public int this[int row, int column] {
+        get { return slot + row + column; }
+        set { slot = value - row - column; }
+    }
+    public int Run(int x) {
+        Value = x; Value += x; this[1, 2] = x; this[3, 4] += x; return x;
+    }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(
+            directory / "DeepPropertyIndexerSetter.nsproj", error) ||
+        compilation.memberModel() == nullptr || compilation.methodBodyModel() == nullptr)
+        return false;
+    bool found[4] = {};
+    const auto& members = compilation.memberModel()->members();
+    for (const auto& call : compilation.methodBodyModel()->calls())
+    {
+        if (!call.selectedMemberOrdinal.has_value() ||
+            *call.selectedMemberOrdinal >= members.size()) continue;
+        const auto& member = members[*call.selectedMemberOrdinal];
+        const std::size_t slot = member.isIndexerAccessor ? (member.isSetter ? 3U : 2U)
+            : member.isPropertyAccessor ? (member.isSetter ? 1U : 0U) : 4U;
+        if (slot >= 4U || found[slot]) continue;
+        auto* target = slot == 0U ? &output.propertyGetter
+            : slot == 1U ? &output.propertySetter
+            : slot == 2U ? &output.indexerGetter : &output.indexerSetter;
+        *target = call;
+        target->resultTypeKey = member.isSetter
+            ? member.parameters.back().typeKey : member.declaredTypeKey;
+        found[slot] = true;
+        output.callerOrdinal = call.callerMethodMemberOrdinal;
+        output.receiverType = call.receiverTypeKey;
+        if (member.isGetter) output.valueType = member.declaredTypeKey;
+    }
+    return found[0] && found[1] && found[2] && found[3] &&
+        !output.receiverType.empty() && !output.valueType.empty();
+}
+
+struct DeepPropertyIndexerSetterSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendSetterInteger(
+    DeepPropertyIndexerSetterSyntax& fixture,
+    std::uint64_t value)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(value);
+    return fixture.nodes.back().get();
+}
+
+DeepPropertyIndexerSetterSyntax makeDeepPropertyIndexerSetterSyntax(
+    std::size_t depth,
+    const PropertyIndexerSetterTargets& targets)
+{
+    DeepPropertyIndexerSetterSyntax fixture;
+    fixture.nodes.reserve(depth * 5U + 1U);
+    fixture.calls.reserve(depth);
+    auto* current = appendSetterInteger(fixture, 7U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        const bool indexer = index % 2U != 0U;
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            indexer ? nativesharp::ast::AstNodeKind::IndexExpression
+                    : nativesharp::ast::AstNodeKind::IdentifierExpression,
+            nativesharp::SourceRange{}));
+        auto* destination = fixture.nodes.back().get();
+        if (indexer)
+        {
+            fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                nativesharp::ast::AstNodeKind::ThisExpression,
+                nativesharp::SourceRange{}));
+            destination->setFirst(fixture.nodes.back().get());
+            destination->addChild(appendSetterInteger(fixture, 1U));
+            destination->addChild(appendSetterInteger(fixture, 2U));
+        }
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::AssignmentExpression,
+            nativesharp::SourceRange{}));
+        auto* assignment = fixture.nodes.back().get();
+        assignment->setTokenKind(nativesharp::lexer::TokenKind::Equal);
+        assignment->setFirst(destination);
+        assignment->setSecond(current);
+        fixture.calls.push_back(indexer ? targets.indexerSetter : targets.propertySetter);
+        auto& call = fixture.calls.back();
+        call.syntax = assignment;
+        call.receiverSyntax = nullptr;
+        current = assignment;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool propertyIndexerSetterChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const PropertyIndexerSetterTargets& targets)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = expectedDepth; remaining > 0U; --remaining)
+    {
+        const bool indexer = (remaining - 1U) % 2U != 0U;
+        const auto& binding = indexer ? targets.indexerSetter : targets.propertySetter;
+        const std::size_t expectedChildren = indexer ? 4U : 2U;
+        if (node == nullptr || node->kind != HirKind::InstanceCall ||
+            node->memberOrdinal != binding.selectedMemberOrdinal ||
+            node->children.size() != expectedChildren || !node->returnsAssignedValue ||
+            node->children.front()->kind != HirKind::ThisValue)
+            return false;
+        if (indexer && (node->children[1]->integerValue != 1U ||
+                node->children[2]->integerValue != 2U))
+            return false;
+        node = node->children.back().get();
+    }
+    return node != nullptr && node->kind == HirKind::IntegerConstant &&
+        node->integerValue == 7U;
+}
+
+DeepPropertyIndexerSetterSyntax makeCompoundSetterSyntax(
+    const PropertyIndexerSetterTargets& targets,
+    bool indexer,
+    nativesharp::lexer::TokenKind operation)
+{
+    DeepPropertyIndexerSetterSyntax fixture;
+    fixture.nodes.reserve(6U);
+    fixture.calls.reserve(2U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* receiver = fixture.nodes.back().get();
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        indexer ? nativesharp::ast::AstNodeKind::IndexExpression
+                : nativesharp::ast::AstNodeKind::MemberExpression,
+        nativesharp::SourceRange{}));
+    auto* destination = fixture.nodes.back().get();
+    destination->setFirst(receiver);
+    if (indexer)
+    {
+        destination->addChild(appendSetterInteger(fixture, 3U));
+        destination->addChild(appendSetterInteger(fixture, 4U));
+    }
+    auto getter = indexer ? targets.indexerGetter : targets.propertyGetter;
+    getter.syntax = destination;
+    getter.receiverSyntax = receiver;
+    fixture.calls.push_back(std::move(getter));
+    auto* right = appendSetterInteger(fixture, 5U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::AssignmentExpression,
+        nativesharp::SourceRange{}));
+    auto* assignment = fixture.nodes.back().get();
+    assignment->setTokenKind(operation);
+    assignment->setFirst(destination);
+    assignment->setSecond(right);
+    auto setter = indexer ? targets.indexerSetter : targets.propertySetter;
+    setter.syntax = assignment;
+    setter.receiverSyntax = receiver;
+    fixture.calls.push_back(std::move(setter));
+    fixture.root = assignment;
+    return fixture;
+}
+
+bool compoundSetterMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const PropertyIndexerSetterTargets& targets,
+    bool indexer)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    const auto& setter = indexer ? targets.indexerSetter : targets.propertySetter;
+    const auto& getter = indexer ? targets.indexerGetter : targets.propertyGetter;
+    const std::size_t setterChildren = indexer ? 4U : 2U;
+    if (node == nullptr || node->kind != HirKind::InstanceCall ||
+        node->memberOrdinal != setter.selectedMemberOrdinal ||
+        node->children.size() != setterChildren || !node->returnsAssignedValue)
+        return false;
+    const auto* binary = node->children.back().get();
+    if (binary->kind != HirKind::Binary ||
+        binary->operation != nativesharp::lexer::TokenKind::Plus ||
+        binary->children.size() != 2U ||
+        binary->children[1]->kind != HirKind::IntegerConstant)
+        return false;
+    const auto* getterCall = binary->children.front().get();
+    return getterCall->kind == HirKind::InstanceCall &&
+        getterCall->memberOrdinal == getter.selectedMemberOrdinal &&
+        getterCall->children.size() == (indexer ? 3U : 1U) &&
+        getterCall->children.front()->kind == HirKind::ThisValue;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerSetterFixture(
+    ProjectCompilation& compilation,
+    const PropertyIndexerSetterTargets& targets,
+    DeepPropertyIndexerSetterSyntax& fixture,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding valueType;
+    valueType.typeKey = targets.valueType;
+    nativesharp::frontend::MethodExpressionTypeBinding receiverType;
+    receiverType.typeKey = targets.receiverType;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerPropertyIndexerSetterExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(),
+            targets.callerOrdinal, fixture.root, fixture.nodes, fixture.calls,
+            valueType, receiverType, addressContext, nullptr, error);
+}
+
+void testDeepPropertyIndexerSetterLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    PropertyIndexerSetterTargets targets;
+    std::string error;
+    const bool prepared = preparePropertyIndexerSetterFixture(
+        root, compilation, targets, error);
+    tests.expect(prepared,
+        "the property/indexer setter fixture exposes four real accessor bindings (" +
+            error + ")");
+    if (!prepared) return;
+    auto deep = makeDeepPropertyIndexerSetterSyntax(nestingDepth, targets);
+    auto lowered = lowerSetterFixture(compilation, targets, deep, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level property/indexer setter chain lowers without stack recursion (" +
+            error + ")");
+    tests.expect(propertyIndexerSetterChainMatches(lowered.get(), nestingDepth, targets),
+        "iterative setter lowering preserves receiver, index, value, ordinal, and assignment result");
+    destroyHirTreeIteratively(lowered);
+    for (const bool indexer : {false, true})
+    {
+        error.clear();
+        auto compound = makeCompoundSetterSyntax(
+            targets, indexer, nativesharp::lexer::TokenKind::PlusEqual);
+        auto compoundNode = lowerSetterFixture(
+            compilation, targets, compound, false, error);
+        tests.expect(compoundNode != nullptr && error.empty() &&
+                compoundSetterMatches(compoundNode.get(), targets, indexer),
+            (indexer ? "iterative compound indexer lowering preserves getter/index/RHS order ("
+                     : "iterative compound property lowering preserves getter/RHS order (") +
+                error + ")");
+        destroyHirTreeIteratively(compoundNode);
+    }
+    error.clear();
+    auto address = makeCompoundSetterSyntax(
+        targets, false, nativesharp::lexer::TokenKind::PlusEqual);
+    auto addressNode = lowerSetterFixture(compilation, targets, address, true, error);
+    tests.expect(addressNode == nullptr && error ==
+            "the result of a compound assignment is a value, not addressable storage",
+        "iterative compound setter lowering preserves the addressability diagnostic exactly");
 }
 
 void testDeepConversionExpressionLowering(TestContext& tests)
@@ -6039,6 +6350,10 @@ int main()
     {
         testDeepEventSubscriptionLowering(tests, root);
     }
+    else if (focusValue == "hir-property-indexer-setter-depth")
+    {
+        testDeepPropertyIndexerSetterLowering(tests, root);
+    }
     else if (focusValue == "hir-conversion-depth")
     {
         testDeepConversionExpressionLowering(tests);
@@ -6227,6 +6542,7 @@ int main()
         testDeepUserUnaryOperatorLowering(tests, root);
         testDeepUserBinaryOperatorLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
+        testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);

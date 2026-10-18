@@ -144,6 +144,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         NullCoalescingAssignment,
         DeconstructionAssignment,
         EventSubscription,
+        PropertyIndexerSetter,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -188,8 +189,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodMatchExpressionBinding* matchBinding = nullptr;
         const MethodDeconstructionBinding* deconstructionBinding = nullptr;
         const MethodEventBinding* eventSubscriptionBinding = nullptr;
+        const MethodCallBinding* propertySetterBinding = nullptr;
         std::vector<HirTuplePatternFrame> deconstructionLeaves;
         std::unique_ptr<ProjectOopHirNode> deconstructionNode;
+        std::unique_ptr<ProjectOopHirNode> setterCombinedValue;
+        lexer::TokenKind compoundOperator = lexer::TokenKind::Invalid;
+        bool compoundSetter = false;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -329,6 +334,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  binding->kind == MethodEventOperationKind::Remove))
             {
                 return IterativeExpressionKind::EventSubscription;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->second() != nullptr)
+        {
+            const MethodCallBinding* setterCall = callBinding(syntax);
+            if (setterCall != nullptr &&
+                setterCall->resolution == MethodCallResolutionKind::Resolved &&
+                setterCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *setterCall->selectedMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& setter =
+                    memberModel_->members()[*setterCall->selectedMemberOrdinal];
+                if ((setter.isPropertyAccessor || setter.isIndexerAccessor) && setter.isSetter)
+                    return IterativeExpressionKind::PropertyIndexerSetter;
             }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
@@ -611,6 +631,49 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 if (frame->kind == IterativeExpressionKind::Match && frame->cleanupActive)
                     activeHirCleanupRegions_.resize(frame->cleanupDepth);
             }
+        };
+        const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
+            -> std::optional<bool>
+        {
+            const MethodCallBinding& binding = *frame.propertySetterBinding;
+            if (binding.staticCall) return true;
+            if (frame.callTarget.receiverTypeKey.empty())
+            {
+                error = "Stage 40 receiver has no semantic class/interface/struct type";
+                return std::nullopt;
+            }
+            const ast::AstNode* receiver = frame.callTarget.receiverSyntax;
+            if (receiver != nullptr && receiver->kind() != ast::AstNodeKind::BaseExpression)
+            {
+                frame.materializeReceiverTemporary =
+                    isStructValueType(frame.callTarget.receiverTypeKey) &&
+                    !isNaturallyAddressable(receiver);
+                return false;
+            }
+            if (currentLambda_ != nullptr)
+            {
+                const std::optional<std::size_t> capture = currentLambdaThisCapture();
+                if (!capture.has_value())
+                {
+                    error = "Stage 43 implicit instance receiver has no captured this";
+                    return std::nullopt;
+                }
+                frame.first = makeNode(
+                    isStructValueType(frame.callTarget.receiverTypeKey)
+                        ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                        : ProjectOopHirNodeKind::ClosureCaptureValue,
+                    receiver,
+                    std::string(frame.callTarget.receiverTypeKey));
+                frame.first->integerValue = *capture;
+            }
+            else
+            {
+                frame.first = makeNode(
+                    ProjectOopHirNodeKind::ThisValue,
+                    receiver,
+                    std::string(frame.callTarget.receiverTypeKey));
+            }
+            return true;
         };
         while (true)
         {
@@ -908,6 +971,58 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.first = std::move(addressNode);
                     }
                 }
+                else if (*currentKind == IterativeExpressionKind::PropertyIndexerSetter)
+                {
+                    frame.propertySetterBinding = callBinding(current);
+                    frame.callTarget = resolveBoundCallTarget(*frame.propertySetterBinding);
+                    const ClassMemberSymbol& setter = memberModel_->members()[
+                        *frame.propertySetterBinding->selectedMemberOrdinal];
+                    if (setter.isIndexerAccessor && current->first() != nullptr &&
+                        current->first()->kind() == ast::AstNodeKind::IndexExpression)
+                    {
+                        const ast::AstNode* indexExpression = current->first();
+                        if (!indexExpression->children().empty())
+                        {
+                            frame.operandSyntaxes.assign(
+                                indexExpression->children().begin(),
+                                indexExpression->children().end());
+                        }
+                        else if (indexExpression->second() != nullptr)
+                        {
+                            frame.operandSyntaxes.push_back(indexExpression->second());
+                        }
+                    }
+                    frame.operandSyntaxes.push_back(current->second());
+                    frame.operands.reserve(frame.operandSyntaxes.size());
+                    frame.compoundSetter = current->tokenKind() != lexer::TokenKind::Equal;
+                    if (frame.compoundSetter)
+                    {
+                        if (currentAddressContext)
+                        {
+                            error = "the result of a compound assignment is a value, not addressable storage";
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        frame.compoundOperator =
+                            lexer::compoundAssignmentBaseOperator(current->tokenKind());
+                        if (frame.compoundOperator == lexer::TokenKind::Invalid)
+                        {
+                            error = "unsupported compound assignment operator on a property/indexer";
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                    }
+                    else
+                    {
+                        const std::optional<bool> receiverReady = prepareSetterReceiver(frame);
+                        if (!receiverReady.has_value())
+                        {
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        frame.stage = *receiverReady ? 1U : 0U;
+                    }
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -938,6 +1053,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().stage == 0U
                         ? frames.back().eventSubscriptionBinding->receiverSyntax
                         : current->second();
+                else if (*currentKind == IterativeExpressionKind::PropertyIndexerSetter)
+                    current = frames.back().compoundSetter
+                        ? current->first()
+                        : frames.back().stage == 0U
+                            ? frames.back().callTarget.receiverSyntax
+                            : frames.back().operandSyntaxes.front();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -1027,6 +1148,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         isStructValueType(
                             frames.back().eventSubscriptionBinding->receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::PropertyIndexerSetter)
+                {
+                    currentAddressContext = !frames.back().compoundSetter &&
+                        frames.back().stage == 0U &&
+                        isStructValueType(frames.back().callTarget.receiverTypeKey) &&
+                        !frames.back().materializeReceiverTemporary;
+                    if (!frames.back().compoundSetter && frames.back().stage != 0U)
+                    {
+                        currentAddressContext = boundCallArgumentNeedsAddress(
+                            frames.back().callTarget.memberOrdinal, 0U);
+                    }
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -2358,6 +2491,137 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     subscription->children.push_back(std::move(lowered));
                     lowered = std::move(subscription);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::PropertyIndexerSetter)
+                {
+                    const auto materializeReceiver = [&]()
+                    {
+                        frame.first = std::move(lowered);
+                        if (!frame.materializeReceiverTemporary) return;
+                        auto temporary = makeNode(
+                            ProjectOopHirNodeKind::TemporaryAddress,
+                            frame.callTarget.receiverSyntax,
+                            std::string(frame.callTarget.receiverTypeKey));
+                        temporary->elementTypeKey = frame.callTarget.receiverTypeKey;
+                        temporary->children.push_back(std::move(frame.first));
+                        frame.first = std::move(temporary);
+                    };
+                    if (frame.compoundSetter && frame.stage == 0U)
+                    {
+                        frame.second = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    if (frame.compoundSetter && frame.stage == 1U)
+                    {
+                        const MethodExpressionTypeBinding* rhsType =
+                            expressionType(frame.syntax->second());
+                        const ProjectImplicitConversion conversion = classifyImplicit(
+                            lowered->typeKey,
+                            frame.second->typeKey,
+                            rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                        const bool shift = frame.compoundOperator == lexer::TokenKind::LessLess ||
+                            frame.compoundOperator == lexer::TokenKind::GreaterGreater;
+                        if (!shift && !conversion.exists())
+                        {
+                            error = "compound assignment to a property/indexer cannot convert its "
+                                "right-hand side from '" + lowered->typeKey + "' to '" +
+                                frame.second->typeKey + "'";
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        if (!shift && conversion.kind != ProjectConversionKind::Identity)
+                        {
+                            lowered = wrapImplicitConversion(
+                                std::move(lowered), conversion, frame.syntax->second());
+                        }
+                        frame.setterCombinedValue = makeNode(
+                            ProjectOopHirNodeKind::Binary,
+                            frame.syntax,
+                            frame.second->typeKey);
+                        frame.setterCombinedValue->operation = frame.compoundOperator;
+                        frame.setterCombinedValue->children.push_back(std::move(frame.second));
+                        frame.setterCombinedValue->children.push_back(std::move(lowered));
+                        const std::optional<bool> receiverReady = prepareSetterReceiver(frame);
+                        if (!receiverReady.has_value())
+                        {
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        frame.stage = *receiverReady ? 3U : 2U;
+                        if (!*receiverReady)
+                        {
+                            current = frame.callTarget.receiverSyntax;
+                            currentMemberOrdinal = frame.memberOrdinal;
+                            currentAddressContext =
+                                isStructValueType(frame.callTarget.receiverTypeKey) &&
+                                !frame.materializeReceiverTemporary;
+                            descend = true;
+                            break;
+                        }
+                    }
+                    else if (frame.compoundSetter && frame.stage == 2U)
+                    {
+                        materializeReceiver();
+                        frame.stage = 3U;
+                    }
+                    else if (frame.compoundSetter && frame.stage == 3U)
+                    {
+                        frame.operands.push_back(std::move(lowered));
+                    }
+                    else if (!frame.compoundSetter && frame.stage == 0U)
+                    {
+                        materializeReceiver();
+                        frame.stage = 1U;
+                    }
+                    else if (!frame.compoundSetter)
+                    {
+                        frame.operands.push_back(std::move(lowered));
+                    }
+                    const std::size_t targetCount = frame.compoundSetter
+                        ? frame.operandSyntaxes.size() - 1U
+                        : frame.operandSyntaxes.size();
+                    if (frame.operands.size() < targetCount)
+                    {
+                        current = frame.operandSyntaxes[frame.operands.size()];
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = boundCallArgumentNeedsAddress(
+                            frame.callTarget.memberOrdinal, frame.operands.size());
+                        descend = true;
+                        break;
+                    }
+                    if (frame.compoundSetter)
+                        frame.operands.push_back(std::move(frame.setterCombinedValue));
+                    auto setterNode = lowerBoundCall(
+                        frame.syntax,
+                        frame.memberOrdinal,
+                        frame.addressContext,
+                        error,
+                        expressionType(frame.syntax),
+                        frame.propertySetterBinding,
+                        frame.operandSyntaxes,
+                        nullptr,
+                        false,
+                        std::move(frame.first),
+                        &frame.operands);
+                    if (setterNode == nullptr || !validateNoHeapDirectCall(
+                            frame.memberOrdinal, *frame.propertySetterBinding, error))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    setterNode->returnsAssignedValue = true;
+                    lowered = std::move(setterNode);
                     frames.pop_back();
                     continue;
                 }
