@@ -46,7 +46,22 @@ private:
         Aggregate,
         ContinueAggregate,
         FinishAggregateElement,
-        FinishLocalFunction
+        FinishLocalFunction,
+        Embedded,
+        FinishEmbedded,
+        FinishIfCondition,
+        FinishIfThen,
+        FinishIfElse,
+        FinishWhileCondition,
+        FinishWhileBody,
+        FinishDoBody,
+        FinishDoCondition,
+        FinishForInitializer,
+        FinishForCondition,
+        FinishForIncrement,
+        FinishForBody,
+        ContinueForExpressionList,
+        FinishForExpression
     };
 
     enum class StatementKind : std::uint8_t
@@ -64,7 +79,11 @@ private:
         Deconstruction,
         VariableDeclaration,
         StaticLocal,
-        LocalFunction
+        LocalFunction,
+        If,
+        While,
+        DoWhile,
+        For
     };
 
     struct ResultSlot final
@@ -96,6 +115,7 @@ private:
         bool isReferenceLocal = false;
         bool isPinned = false;
         bool isScope = false;
+        bool expectSemicolon = true;
     };
 
     struct AggregateFrame final
@@ -103,6 +123,39 @@ private:
         std::size_t beginIndex = 0;
         std::size_t resultSlot = 0;
         ast::AstNode* node = nullptr;
+    };
+
+    struct IfFrame final
+    {
+        IfParseState state;
+        std::size_t resultSlot = 0;
+    };
+
+    struct WhileFrame final
+    {
+        WhileParseState state;
+        std::size_t resultSlot = 0;
+    };
+
+    struct DoWhileFrame final
+    {
+        DoWhileParseState state;
+        std::size_t resultSlot = 0;
+        ast::AstNode* body = nullptr;
+    };
+
+    struct ForFrame final
+    {
+        ForParseState state;
+        std::size_t resultSlot = 0;
+    };
+
+    struct ForExpressionFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::AstNode* first = nullptr;
+        ast::AstNode* sequence = nullptr;
     };
 
     struct Work final
@@ -141,6 +194,8 @@ private:
     StatementKind classifyStatement() const;
     bool scopedStatementStarts() const noexcept;
     bool controlStatementStarts() const noexcept;
+    bool ordinaryIfStarts() const noexcept;
+    bool ordinaryWhileStarts() const noexcept;
     bool declarationStatementStarts() const noexcept;
     void startStatement(const Work& work);
     void startMustTailReturn(const Work& work);
@@ -159,7 +214,10 @@ private:
     void startAwaitExpression(const Work& work);
     void startDeconstruction(const Work& work);
     void finishDeconstruction(const Work& work);
-    void startVariableDeclaration(const Work& work, bool isStaticLocal);
+    void startVariableDeclaration(
+        const Work& work,
+        bool isStaticLocal,
+        bool expectSemicolon = true);
     void parseVariablePrefix(VariableFrame& frame);
     void continueVariableDeclaration(const Work& work);
     ast::AstNode* makeVariableDeclarator(VariableFrame& frame, bool cloneType);
@@ -173,6 +231,31 @@ private:
     void finishAggregate(AggregateFrame& frame);
     void startLocalFunction(const Work& work);
     void finishLocalFunction(const Work& work);
+    void startEmbedded(const Work& work);
+    void finishEmbedded(const Work& work);
+    ast::AstNode* wrapEmbedded(ast::AstNode* statement);
+    ast::AstNode* conditionFromDeclaration(ast::AstNode* declaration);
+    void startIf(const Work& work);
+    void finishIfCondition(const Work& work);
+    void finishIfThen(const Work& work);
+    void finishIfElse(const Work& work);
+    void startWhile(const Work& work);
+    void finishWhileCondition(const Work& work);
+    void finishWhileBody(const Work& work);
+    void startDoWhile(const Work& work);
+    void finishDoBody(const Work& work);
+    void finishDoCondition(const Work& work);
+    void startFor(const Work& work);
+    void finishForInitializer(const Work& work);
+    void scheduleForCondition(std::size_t frameIndex);
+    void finishForCondition(const Work& work);
+    void scheduleForIncrement(std::size_t frameIndex);
+    void finishForIncrement(const Work& work);
+    void scheduleForBody(std::size_t frameIndex);
+    void finishForBody(const Work& work);
+    void startForExpressionList(std::size_t resultSlot, std::size_t beginIndex);
+    void continueForExpressionList(const Work& work);
+    void finishForExpression(const Work& work);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -180,6 +263,11 @@ private:
     std::deque<BlockFrame> blockFrames_;
     std::deque<VariableFrame> variableFrames_;
     std::deque<AggregateFrame> aggregateFrames_;
+    std::deque<IfFrame> ifFrames_;
+    std::deque<WhileFrame> whileFrames_;
+    std::deque<DoWhileFrame> doWhileFrames_;
+    std::deque<ForFrame> forFrames_;
+    std::deque<ForExpressionFrame> forExpressionFrames_;
     std::vector<Work> work_;
 };
 
@@ -260,6 +348,21 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::ContinueAggregate: continueAggregate(work); return;
     case WorkKind::FinishAggregateElement: finishAggregateElement(work); return;
     case WorkKind::FinishLocalFunction: finishLocalFunction(work); return;
+    case WorkKind::Embedded: startEmbedded(work); return;
+    case WorkKind::FinishEmbedded: finishEmbedded(work); return;
+    case WorkKind::FinishIfCondition: finishIfCondition(work); return;
+    case WorkKind::FinishIfThen: finishIfThen(work); return;
+    case WorkKind::FinishIfElse: finishIfElse(work); return;
+    case WorkKind::FinishWhileCondition: finishWhileCondition(work); return;
+    case WorkKind::FinishWhileBody: finishWhileBody(work); return;
+    case WorkKind::FinishDoBody: finishDoBody(work); return;
+    case WorkKind::FinishDoCondition: finishDoCondition(work); return;
+    case WorkKind::FinishForInitializer: finishForInitializer(work); return;
+    case WorkKind::FinishForCondition: finishForCondition(work); return;
+    case WorkKind::FinishForIncrement: finishForIncrement(work); return;
+    case WorkKind::FinishForBody: finishForBody(work); return;
+    case WorkKind::ContinueForExpressionList: continueForExpressionList(work); return;
+    case WorkKind::FinishForExpression: finishForExpression(work); return;
     }
 }
 
@@ -381,6 +484,24 @@ bool Parser::ParseContinuationCoordinator::controlStatementStarts() const noexce
         parser_.startsParenthesizedBlock("match");
 }
 
+// Distinguishes ordinary if from the conditional-pattern form owned by R03C2C2E.
+bool Parser::ParseContinuationCoordinator::ordinaryIfStarts() const noexcept
+{
+    const bool conditional = parser_.peek().kind() == TokenKind::LeftParen &&
+        parser_.peek(2).kind() == TokenKind::Identifier &&
+        parser_.peek(2).lexeme() == "let";
+    return parser_.at(TokenKind::KwIf) && !conditional;
+}
+
+// Distinguishes ordinary while from the conditional-pattern form owned by R03C2C2E.
+bool Parser::ParseContinuationCoordinator::ordinaryWhileStarts() const noexcept
+{
+    const bool conditional = parser_.peek().kind() == TokenKind::LeftParen &&
+        parser_.peek(2).kind() == TokenKind::Identifier &&
+        parser_.peek(2).lexeme() == "let";
+    return parser_.at(TokenKind::KwWhile) && !conditional;
+}
+
 // Mirrors variable-declaration disambiguation after C-owned special forms are classified.
 bool Parser::ParseContinuationCoordinator::declarationStatementStarts() const noexcept
 {
@@ -402,6 +523,10 @@ Parser::ParseContinuationCoordinator::StatementKind
 Parser::ParseContinuationCoordinator::classifyStatement() const
 {
     if (parser_.at(TokenKind::LeftBrace)) return StatementKind::Block;
+    if (ordinaryIfStarts()) return StatementKind::If;
+    if (ordinaryWhileStarts()) return StatementKind::While;
+    if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
+    if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
     if (parser_.atContextualKeyword("yield"))
         return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
@@ -442,6 +567,10 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::VariableDeclaration: startVariableDeclaration(work, false); return;
     case StatementKind::StaticLocal: startVariableDeclaration(work, true); return;
     case StatementKind::LocalFunction: startLocalFunction(work); return;
+    case StatementKind::If: startIf(work); return;
+    case StatementKind::While: startWhile(work); return;
+    case StatementKind::DoWhile: startDoWhile(work); return;
+    case StatementKind::For: startFor(work); return;
     }
 }
 
@@ -698,7 +827,8 @@ void Parser::ParseContinuationCoordinator::finishDeconstruction(const Work& work
 // Validates static-local syntax before sharing the ordinary variable-declaration machine.
 void Parser::ParseContinuationCoordinator::startVariableDeclaration(
     const Work& work,
-    bool isStaticLocal)
+    bool isStaticLocal,
+    bool expectSemicolon)
 {
     const std::size_t beginIndex = parser_.index_;
     if (isStaticLocal)
@@ -720,6 +850,7 @@ void Parser::ParseContinuationCoordinator::startVariableDeclaration(
     const std::size_t frameIndex = variableFrames_.size();
     variableFrames_.push_back({beginIndex, work.resultSlot});
     variableFrames_.back().isStaticLocal = isStaticLocal;
+    variableFrames_.back().expectSemicolon = expectSemicolon;
     parseVariablePrefix(variableFrames_.back());
     Work next{WorkKind::ContinueVariableDeclaration, work.resultSlot};
     next.frameIndex = frameIndex;
@@ -877,7 +1008,7 @@ void Parser::ParseContinuationCoordinator::acceptVariableDeclarator(
 // Consumes the statement delimiter and publishes either one declarator or its list wrapper.
 void Parser::ParseContinuationCoordinator::finishVariableDeclaration(VariableFrame& frame)
 {
-    parser_.expect(TokenKind::Semicolon, "';'");
+    if (frame.expectSemicolon) parser_.expect(TokenKind::Semicolon, "';'");
     ast::AstNode* result = frame.declarationList != nullptr
         ? frame.declarationList : frame.first;
     if (result != nullptr) result->setRange(parser_.tokenRangeFrom(frame.beginIndex));
@@ -997,6 +1128,410 @@ void Parser::ParseContinuationCoordinator::finishLocalFunction(const Work& work)
     if (body != nullptr) work.node->setRange(parser_.join(work.node->range(), body->range()));
     complete(work.resultSlot, parser_.lowerLocalFunctionDeclaration(
         work.node, work.flag, work.beginIndex));
+}
+
+// Wraps one non-block embedded statement in the canonical block shape and preserves diagnostics.
+ast::AstNode* Parser::ParseContinuationCoordinator::wrapEmbedded(ast::AstNode* statement)
+{
+    if (statement != nullptr &&
+        (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
+         statement->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement ||
+         (statement->kind() == ast::AstNodeKind::BlockStatement &&
+          statement->auxiliaryText() == "conditional-pattern-inline")))
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "a declaration used as an if or else body requires an explicit '{ ... }' block");
+    const SourceRange range = statement != nullptr
+        ? statement->range() : parser_.current().range();
+    ast::AstNode* block = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, range);
+    if (statement != nullptr) block->addChild(statement);
+    return block;
+}
+
+// Schedules one embedded body without invoking a nested facade or nested drain.
+void Parser::ParseContinuationCoordinator::startEmbedded(const Work& work)
+{
+    if (parser_.at(TokenKind::LeftBrace))
+    {
+        work_.push_back({WorkKind::Block, work.resultSlot});
+        return;
+    }
+    if (parser_.at(TokenKind::Semicolon))
+    {
+        complete(work.resultSlot, parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, parser_.consume().range()));
+        return;
+    }
+    Work finish{WorkKind::FinishEmbedded, work.resultSlot};
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Statement, childSlot});
+}
+
+// Publishes the canonical block wrapper around one completed embedded statement.
+void Parser::ParseContinuationCoordinator::finishEmbedded(const Work& work)
+{
+    complete(work.resultSlot, wrapEmbedded(childValue(work)));
+}
+
+// Selects the single declaration binding and reproduces its exact invalid-list diagnostic.
+ast::AstNode* Parser::ParseContinuationCoordinator::conditionFromDeclaration(
+    ast::AstNode* declaration)
+{
+    if (declaration == nullptr) return nullptr;
+    const ast::AstNode* binding = declaration;
+    if (declaration->kind() == ast::AstNodeKind::BlockStatement &&
+        declaration->auxiliaryText() == "declaration-list")
+    {
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidCondition,
+            diagnostics::DiagnosticSeverity::Error,
+            declaration->range(),
+            "a condition declaration must declare exactly one local");
+        if (declaration->children().empty()) return nullptr;
+        binding = declaration->children().front();
+    }
+    return parser_.makeIdentifierExpression(binding->range(), binding->text());
+}
+
+// Opens an ordinary if header and schedules its condition through one stable child slot.
+void Parser::ParseContinuationCoordinator::startIf(const Work& work)
+{
+    const std::size_t frameIndex = ifFrames_.size();
+    ifFrames_.push_back({{}, work.resultSlot});
+    IfFrame& frame = ifFrames_.back();
+    frame.state.beginIndex = parser_.index_;
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'('");
+    Work finish{WorkKind::FinishIfCondition, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.flag = parser_.looksLikeConditionDeclaration();
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    if (finish.flag)
+        startVariableDeclaration(Work{WorkKind::Statement, childSlot}, false, false);
+    else
+        work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Completes the if header and schedules exactly one embedded then body.
+void Parser::ParseContinuationCoordinator::finishIfCondition(const Work& work)
+{
+    IfFrame& frame = ifFrames_[work.frameIndex];
+    if (work.flag)
+    {
+        frame.state.conditionDeclaration = childValue(work);
+        frame.state.condition = conditionFromDeclaration(frame.state.conditionDeclaration);
+    }
+    else frame.state.condition = childValue(work);
+    parser_.expect(TokenKind::RightParen, "')'");
+    Work finish{WorkKind::FinishIfThen, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Embedded, childSlot});
+}
+
+// Attaches the then body and preserves nearest-if binding for a following else clause.
+void Parser::ParseContinuationCoordinator::finishIfThen(const Work& work)
+{
+    IfFrame& frame = ifFrames_[work.frameIndex];
+    frame.state.thenBlock = childValue(work);
+    if (!parser_.consumeIf(TokenKind::KwElse))
+    {
+        complete(frame.resultSlot, parser_.lowerIfStatement(frame.state, nullptr));
+        return;
+    }
+    Work finish{WorkKind::FinishIfElse, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({parser_.at(TokenKind::KwIf)
+        ? WorkKind::Statement : WorkKind::Embedded, childSlot});
+}
+
+// Publishes the completed ordinary if after its optional else subtree is ready.
+void Parser::ParseContinuationCoordinator::finishIfElse(const Work& work)
+{
+    IfFrame& frame = ifFrames_[work.frameIndex];
+    complete(frame.resultSlot, parser_.lowerIfStatement(frame.state, childValue(work)));
+}
+
+// Opens an ordinary while header and schedules its condition without native reentry.
+void Parser::ParseContinuationCoordinator::startWhile(const Work& work)
+{
+    const std::size_t frameIndex = whileFrames_.size();
+    whileFrames_.push_back({{}, work.resultSlot});
+    WhileFrame& frame = whileFrames_.back();
+    frame.state.beginIndex = parser_.index_;
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'('");
+    Work finish{WorkKind::FinishWhileCondition, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.flag = parser_.looksLikeConditionDeclaration();
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    if (finish.flag)
+        startVariableDeclaration(Work{WorkKind::Statement, childSlot}, false, false);
+    else
+        work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Completes the while header and requires the same explicit block body as the legacy path.
+void Parser::ParseContinuationCoordinator::finishWhileCondition(const Work& work)
+{
+    WhileFrame& frame = whileFrames_[work.frameIndex];
+    if (work.flag)
+    {
+        frame.state.conditionDeclaration = childValue(work);
+        frame.state.condition = conditionFromDeclaration(frame.state.conditionDeclaration);
+    }
+    else frame.state.condition = childValue(work);
+    parser_.expect(TokenKind::RightParen, "')'");
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after while condition");
+        complete(frame.resultSlot, parser_.lowerWhileStatement(frame.state, nullptr));
+        return;
+    }
+    Work finish{WorkKind::FinishWhileBody, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches the completed body to the canonical while lowering.
+void Parser::ParseContinuationCoordinator::finishWhileBody(const Work& work)
+{
+    WhileFrame& frame = whileFrames_[work.frameIndex];
+    complete(frame.resultSlot, parser_.lowerWhileStatement(frame.state, childValue(work)));
+}
+
+// Opens a do-while and schedules its required block body on the shared worklist.
+void Parser::ParseContinuationCoordinator::startDoWhile(const Work& work)
+{
+    const std::size_t frameIndex = doWhileFrames_.size();
+    doWhileFrames_.push_back({{parser_.index_}, work.resultSlot, nullptr});
+    parser_.consume();
+    Work finish{WorkKind::FinishDoBody, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after 'do'");
+        work_.push_back(finish);
+        return;
+    }
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Consumes the trailing do-while prefix and schedules its condition expression.
+void Parser::ParseContinuationCoordinator::finishDoBody(const Work& work)
+{
+    DoWhileFrame& frame = doWhileFrames_[work.frameIndex];
+    frame.body = childValue(work);
+    parser_.expect(TokenKind::KwWhile, "'while' after the do-loop body");
+    parser_.expect(TokenKind::LeftParen, "'('");
+    Work finish{WorkKind::FinishDoCondition, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Builds the do-while node after its condition and contractual trailing semicolon.
+void Parser::ParseContinuationCoordinator::finishDoCondition(const Work& work)
+{
+    DoWhileFrame& frame = doWhileFrames_[work.frameIndex];
+    parser_.expect(TokenKind::RightParen, "')'");
+    parser_.expect(TokenKind::Semicolon, "';' after the do-while condition");
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::DoWhileStatement,
+        parser_.tokenRangeFrom(frame.state.beginIndex));
+    node->setFirst(childValue(work));
+    node->setSecond(frame.body);
+    complete(frame.resultSlot, node);
+}
+
+// Opens a for header and schedules only the first present clause.
+void Parser::ParseContinuationCoordinator::startFor(const Work& work)
+{
+    const std::size_t frameIndex = forFrames_.size();
+    forFrames_.push_back({{}, work.resultSlot});
+    ForFrame& frame = forFrames_.back();
+    frame.state.beginIndex = parser_.index_;
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'('");
+    if (parser_.at(TokenKind::Semicolon))
+    {
+        parser_.consume();
+        scheduleForCondition(frameIndex);
+        return;
+    }
+    Work finish{WorkKind::FinishForInitializer, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    if (parser_.at(TokenKind::KwRaii) || parser_.at(TokenKind::KwConst) ||
+        parser_.at(TokenKind::KwVolatile) || parser_.at(TokenKind::KwVar) ||
+        parser_.canStartTypeAt(parser_.index_))
+        startVariableDeclaration(Work{WorkKind::Statement, childSlot}, false, false);
+    else
+        startForExpressionList(childSlot, frame.state.beginIndex);
+}
+
+// Stores the completed initializer, consumes its delimiter, and advances to the condition.
+void Parser::ParseContinuationCoordinator::finishForInitializer(const Work& work)
+{
+    ForFrame& frame = forFrames_[work.frameIndex];
+    frame.state.initializer = childValue(work);
+    parser_.expect(TokenKind::Semicolon, "';'");
+    scheduleForCondition(work.frameIndex);
+}
+
+// Schedules the optional for condition or advances directly across its delimiter.
+void Parser::ParseContinuationCoordinator::scheduleForCondition(std::size_t frameIndex)
+{
+    ForFrame& frame = forFrames_[frameIndex];
+    if (parser_.at(TokenKind::Semicolon))
+    {
+        parser_.consume();
+        scheduleForIncrement(frameIndex);
+        return;
+    }
+    Work finish{WorkKind::FinishForCondition, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Stores the completed for condition, consumes ';', and advances to the increment clause.
+void Parser::ParseContinuationCoordinator::finishForCondition(const Work& work)
+{
+    forFrames_[work.frameIndex].state.condition = childValue(work);
+    parser_.expect(TokenKind::Semicolon, "';'");
+    scheduleForIncrement(work.frameIndex);
+}
+
+// Schedules the optional increment expression list or advances directly to the body.
+void Parser::ParseContinuationCoordinator::scheduleForIncrement(std::size_t frameIndex)
+{
+    ForFrame& frame = forFrames_[frameIndex];
+    if (parser_.at(TokenKind::RightParen))
+    {
+        parser_.consume();
+        scheduleForBody(frameIndex);
+        return;
+    }
+    Work finish{WorkKind::FinishForIncrement, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    startForExpressionList(childSlot, frame.state.beginIndex);
+}
+
+// Stores the completed increment list and closes the parenthesized for header.
+void Parser::ParseContinuationCoordinator::finishForIncrement(const Work& work)
+{
+    forFrames_[work.frameIndex].state.increment = childValue(work);
+    parser_.expect(TokenKind::RightParen, "')'");
+    scheduleForBody(work.frameIndex);
+}
+
+// Requires the canonical block body and schedules it without nested parser invocation.
+void Parser::ParseContinuationCoordinator::scheduleForBody(std::size_t frameIndex)
+{
+    ForFrame& frame = forFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after for clause");
+        complete(frame.resultSlot, parser_.lowerForStatement(frame.state, nullptr));
+        return;
+    }
+    Work finish{WorkKind::FinishForBody, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches the completed block to the canonical for lowering.
+void Parser::ParseContinuationCoordinator::finishForBody(const Work& work)
+{
+    ForFrame& frame = forFrames_[work.frameIndex];
+    complete(frame.resultSlot, parser_.lowerForStatement(frame.state, childValue(work)));
+}
+
+// Creates one explicit frame for a comma-separated for-clause expression list.
+void Parser::ParseContinuationCoordinator::startForExpressionList(
+    std::size_t resultSlot,
+    std::size_t beginIndex)
+{
+    const std::size_t frameIndex = forExpressionFrames_.size();
+    forExpressionFrames_.push_back({beginIndex, resultSlot, nullptr, nullptr});
+    Work next{WorkKind::ContinueForExpressionList, resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(next);
+}
+
+// Schedules exactly one expression from the current for-clause list.
+void Parser::ParseContinuationCoordinator::continueForExpressionList(const Work& work)
+{
+    ForExpressionFrame& frame = forExpressionFrames_[work.frameIndex];
+    Work finish{WorkKind::FinishForExpression, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Appends one expression and either publishes the list or schedules its next element.
+void Parser::ParseContinuationCoordinator::finishForExpression(const Work& work)
+{
+    ForExpressionFrame& frame = forExpressionFrames_[work.frameIndex];
+    ast::AstNode* expression = childValue(work);
+    if (frame.first == nullptr) frame.first = expression;
+    if (frame.sequence != nullptr && expression != nullptr)
+        frame.sequence->addChild(parser_.makeExpressionStatement(expression));
+    if (!parser_.at(TokenKind::Comma))
+    {
+        ast::AstNode* result = frame.sequence != nullptr ? frame.sequence : frame.first;
+        if (frame.sequence != nullptr)
+            frame.sequence->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+        complete(frame.resultSlot, result);
+        return;
+    }
+    if (frame.sequence == nullptr)
+    {
+        frame.sequence = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            frame.first != nullptr ? frame.first->range() : parser_.current().range());
+        if (frame.first != nullptr)
+            frame.sequence->addChild(parser_.makeExpressionStatement(frame.first));
+    }
+    parser_.consume();
+    Work next{WorkKind::ContinueForExpressionList, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)

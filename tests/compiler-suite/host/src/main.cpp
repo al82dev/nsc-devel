@@ -292,6 +292,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerParserNullCoalescingIterationCounterfactualModule(registry);
         nsc::suite::registerParserConditionalTrampolineCounterfactualModule(registry);
         nsc::suite::registerParserLambdaBlockContinuationCounterfactualModule(registry);
+        nsc::suite::registerParserStructuredControlContinuationCounterfactualModule(registry);
         nsc::suite::registerSemaConstantConversionModule(registry);
         nsc::suite::registerSemaEffectsExpressionModule(registry);
         nsc::suite::registerSemaScopeSymbolModule(registry);
