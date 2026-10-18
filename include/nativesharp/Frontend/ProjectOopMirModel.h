@@ -1010,6 +1010,13 @@ private:
         std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
         std::unordered_map<std::size_t, std::uint64_t>& parameterLastUse,
         std::vector<std::uint64_t>& suspendOrders);
+    static void collectMoveNextLiveness(
+        const ProjectOopMirNode* root,
+        std::uint64_t& order,
+        std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::unordered_map<std::size_t, std::uint64_t>& parameterLastUse,
+        std::vector<std::uint64_t>& yieldOrders);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

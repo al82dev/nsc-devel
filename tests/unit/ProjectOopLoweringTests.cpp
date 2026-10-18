@@ -520,6 +520,18 @@ struct ProjectOopHirModelTestAccess final
             root, order, localDefinition, localLastUse, parameterLastUse, suspendOrders);
     }
 
+    static void collectMirMoveNextLiveness(
+        const ProjectOopMirNode* root,
+        std::uint64_t& order,
+        std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::unordered_map<std::size_t, std::uint64_t>& parameterLastUse,
+        std::vector<std::uint64_t>& yieldOrders)
+    {
+        ProjectOopMirModel::collectMoveNextLiveness(
+            root, order, localDefinition, localLastUse, parameterLastUse, yieldOrders);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4376,6 +4388,61 @@ void testDeepMirPollLiveness(TestContext& tests)
         "MIR poll liveness preserves SuspendPoint and AsyncYieldValue boundaries only");
     destroyMirTreeIteratively(std::move(root));
 }
+
+void testDeepMirMoveNextLiveness(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        switch (depth % 8U)
+        {
+            case 0U: case 1U:
+                node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+                node->localOrdinal = 7U;
+                break;
+            case 2U: case 7U:
+                node->kind = ProjectOopMirNodeKind::ParameterValue;
+                node->parameterOrdinal = 3U;
+                break;
+            case 3U: node->kind = ProjectOopMirNodeKind::YieldValue; break;
+            case 4U:
+                node->kind = ProjectOopMirNodeKind::LocalValue;
+                node->localOrdinal = 7U;
+                break;
+            case 5U: node->kind = ProjectOopMirNodeKind::AsyncYieldValue; break;
+            default:
+                node->kind = ProjectOopMirNodeKind::LocalAddress;
+                node->localOrdinal = 7U;
+                break;
+        }
+        if (root != nullptr) node->children.push_back(std::move(root));
+        node->children.emplace_back();
+        root = std::move(node);
+    }
+    auto suspend = std::make_unique<ProjectOopMirNode>();
+    suspend->kind = ProjectOopMirNodeKind::SuspendPoint;
+    root->children.push_back(std::move(suspend));
+    std::uint64_t order = 0;
+    std::unordered_map<std::size_t, std::uint64_t> localDefinition;
+    std::unordered_map<std::size_t, std::uint64_t> localLastUse;
+    std::unordered_map<std::size_t, std::uint64_t> parameterLastUse;
+    std::vector<std::uint64_t> yieldOrders;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::collectMirMoveNextLiveness(
+        root.get(), order, localDefinition, localLastUse, parameterLastUse, yieldOrders);
+    tests.expect(order == nestingDepth + 1U && localDefinition.size() == 1U &&
+            localDefinition.at(7U) == 0U && localLastUse.size() == 1U &&
+            localLastUse.at(7U) == 32766U && parameterLastUse.size() == 1U &&
+            parameterLastUse.at(3U) == 32767U,
+        "MIR moveNext liveness preserves preorder, first definitions, last uses, and null slots");
+    tests.expect(yieldOrders.size() == nestingDepth / 8U &&
+            yieldOrders.front() == 3U && yieldOrders[1] == 11U &&
+            yieldOrders[yieldOrders.size() - 2U] == 32755U &&
+            yieldOrders.back() == 32763U,
+        "MIR moveNext liveness treats only YieldValue as a frame boundary");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4554,6 +4621,10 @@ int main()
     {
         testDeepMirPollLiveness(tests);
     }
+    else if (focusValue == "mir-move-next-liveness-depth")
+    {
+        testDeepMirMoveNextLiveness(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4593,6 +4664,7 @@ int main()
         testDeepMirCleanupReferenceValidation(tests);
         testDeepMirAwaitedFrameSize(tests);
         testDeepMirPollLiveness(tests);
+        testDeepMirMoveNextLiveness(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
