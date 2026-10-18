@@ -75,20 +75,27 @@ bool ProjectOopMirModel::importLayouts(
                 work.push_back(std::move(*element));
         }
     };
-    const auto collectNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
+    const auto collectNode = [&](const ProjectOopHirNode* root)
     {
-        if (node == nullptr) return;
-        collectTypeKey(node->typeKey);
-        collectTypeKey(node->elementTypeKey);
-        for (const std::string& key : node->argumentTypeKeys) collectTypeKey(key);
-        for (const auto& child : node->children) self(self, child.get());
+        std::vector<const ProjectOopHirNode*> work{root};
+        while (!work.empty())
+        {
+            const ProjectOopHirNode* node = work.back();
+            work.pop_back();
+            if (node == nullptr) continue;
+            collectTypeKey(node->typeKey);
+            collectTypeKey(node->elementTypeKey);
+            for (const std::string& key : node->argumentTypeKeys) collectTypeKey(key);
+            for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+                work.push_back(child->get());
+        }
     };
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectTypeKey(function.returnTypeKey);
         for (const std::string& key : function.parameterTypeKeys) collectTypeKey(key);
         for (const std::string& key : function.captureTypeKeys) collectTypeKey(key);
-        collectNode(collectNode, function.body.get());
+        collectNode(function.body.get());
     }
     std::ranges::sort(tupleKeys);
     tupleKeys.erase(std::unique(tupleKeys.begin(), tupleKeys.end()), tupleKeys.end());
