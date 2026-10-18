@@ -1245,6 +1245,7 @@ private:
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     class PatternIterationParser;
     class PatternAlternativeExpander;
+    class PatternConditionBuilder;
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>
@@ -1258,25 +1259,6 @@ private:
     std::vector<Pattern> expandPatternAlternatives(const Pattern& pattern) const;
     ast::AstNode* makeBooleanLiteral(const SourceRange& range, bool value);
     bool patternIsConditionOnly(const Pattern& pattern) const;
-    ast::AstNode* makeRelationalPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source);
-    ast::AstNode* makeStructPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source);
-    ast::AstNode* makeVariantPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source);
-    ast::AstNode* makeLogicalPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        lexer::TokenKind operation);
-    ast::AstNode* makeListPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source);
-    ast::AstNode* makeNotPatternCondition(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source);
     ast::AstNode* makePatternCondition(
         const Pattern& pattern,
         const PatternExpressionFactory& source);

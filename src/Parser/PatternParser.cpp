@@ -124,6 +124,91 @@ private:
     const Pattern& root_;
 };
 
+class Parser::PatternConditionBuilder final
+{
+public:
+    PatternConditionBuilder(
+        Parser& parser,
+        const Pattern& root,
+        PatternExpressionFactory source);
+
+    ast::AstNode* run();
+
+private:
+    enum class SourceStepKind
+    {
+        Root,
+        Member,
+        VariantPayload,
+        Index
+    };
+
+    struct SourcePlan final
+    {
+        std::size_t parent = 0;
+        SourceStepKind kind = SourceStepKind::Root;
+        std::string text;
+        ast::AstNode* index = nullptr;
+    };
+
+    enum class WorkKind
+    {
+        Build,
+        FinishNot,
+        FinishVariant,
+        FinishLogical,
+        ContinueStruct,
+        FinishStruct,
+        ContinueList,
+        FinishList
+    };
+
+    struct Work final
+    {
+        WorkKind kind = WorkKind::Build;
+        const Pattern* pattern = nullptr;
+        std::size_t sourcePlan = 0;
+        std::size_t nextChild = 0;
+        ast::AstNode* result = nullptr;
+        TokenKind operation = TokenKind::AmpAmp;
+    };
+
+    void schedule(Work work);
+    void scheduleBuild(const Pattern& pattern, std::size_t sourcePlan);
+    void dispatch(Work work);
+    ast::AstNode* takeValue();
+    std::size_t addSourcePlan(
+        std::size_t parent,
+        SourceStepKind kind,
+        std::string text = {},
+        ast::AstNode* index = nullptr);
+    ast::AstNode* evaluateSource(std::size_t sourcePlan);
+    ast::AstNode* buildLeaf(const Pattern& pattern, std::size_t sourcePlan);
+    void build(const Pattern& pattern, std::size_t sourcePlan);
+    void startNot(const Pattern& pattern, std::size_t sourcePlan);
+    void finishNot(Work work);
+    void startVariant(const Pattern& pattern, std::size_t sourcePlan);
+    void finishVariant(Work work);
+    void startLogical(
+        const Pattern& pattern,
+        std::size_t sourcePlan,
+        TokenKind operation);
+    void finishLogical(Work work);
+    void startStruct(const Pattern& pattern, std::size_t sourcePlan);
+    void continueStruct(Work work);
+    void finishStruct(Work work);
+    void startList(const Pattern& pattern, std::size_t sourcePlan);
+    void continueList(Work work);
+    void finishList(Work work);
+
+    Parser& parser_;
+    const Pattern& root_;
+    PatternExpressionFactory rootSource_;
+    std::vector<SourcePlan> sources_;
+    std::vector<Work> work_;
+    std::vector<ast::AstNode*> values_;
+};
+
 Parser::Pattern Parser::PatternIterationParser::run()
 {
     schedule(WorkKind::ParseOr, implicitBinding_);
@@ -677,6 +762,336 @@ std::vector<Parser::Pattern> Parser::PatternAlternativeExpander::run()
     return {};
 }
 
+Parser::PatternConditionBuilder::PatternConditionBuilder(
+    Parser& parser,
+    const Pattern& root,
+    PatternExpressionFactory source)
+    : parser_(parser), root_(root), rootSource_(std::move(source))
+{
+    sources_.push_back(SourcePlan{});
+}
+
+ast::AstNode* Parser::PatternConditionBuilder::run()
+{
+    scheduleBuild(root_, 0);
+    while (!work_.empty())
+    {
+        Work work = std::move(work_.back());
+        work_.pop_back();
+        dispatch(std::move(work));
+    }
+    return takeValue();
+}
+
+void Parser::PatternConditionBuilder::schedule(Work work)
+{
+    work_.push_back(std::move(work));
+}
+
+void Parser::PatternConditionBuilder::scheduleBuild(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    Work work;
+    work.pattern = &pattern;
+    work.sourcePlan = sourcePlan;
+    schedule(std::move(work));
+}
+
+ast::AstNode* Parser::PatternConditionBuilder::takeValue()
+{
+    ast::AstNode* const value = values_.back();
+    values_.pop_back();
+    return value;
+}
+
+void Parser::PatternConditionBuilder::dispatch(Work work)
+{
+    switch (work.kind)
+    {
+        case WorkKind::Build: return build(*work.pattern, work.sourcePlan);
+        case WorkKind::FinishNot: return finishNot(std::move(work));
+        case WorkKind::FinishVariant: return finishVariant(std::move(work));
+        case WorkKind::FinishLogical: return finishLogical(std::move(work));
+        case WorkKind::ContinueStruct: return continueStruct(std::move(work));
+        case WorkKind::FinishStruct: return finishStruct(std::move(work));
+        case WorkKind::ContinueList: return continueList(std::move(work));
+        case WorkKind::FinishList: return finishList(std::move(work));
+    }
+}
+
+std::size_t Parser::PatternConditionBuilder::addSourcePlan(
+    std::size_t parent,
+    SourceStepKind kind,
+    std::string text,
+    ast::AstNode* index)
+{
+    SourcePlan plan;
+    plan.parent = parent;
+    plan.kind = kind;
+    plan.text = std::move(text);
+    plan.index = index;
+    sources_.push_back(std::move(plan));
+    return sources_.size() - 1U;
+}
+
+ast::AstNode* Parser::PatternConditionBuilder::evaluateSource(std::size_t sourcePlan)
+{
+    std::vector<std::size_t> path;
+    while (sourcePlan != 0U)
+    {
+        path.push_back(sourcePlan);
+        sourcePlan = sources_[sourcePlan].parent;
+    }
+    ast::AstNode* result = rootSource_();
+    for (auto stepIndex = path.rbegin(); stepIndex != path.rend(); ++stepIndex)
+    {
+        const SourcePlan& step = sources_[*stepIndex];
+        if (step.kind == SourceStepKind::Member)
+            result = parser_.makeMemberExpression(result, step.text);
+        else if (step.kind == SourceStepKind::VariantPayload)
+        {
+            result = parser_.makeZeroArgCallExpression(
+                parser_.makeMemberExpression(result, "__nsc_variant_extract_" + step.text));
+            result->setAuxiliaryText("variant-pattern-extract");
+        }
+        else if (step.kind == SourceStepKind::Index)
+            result = parser_.makeIndexExpression(
+                result, parser_.cloneDeclarationNode(step.index));
+    }
+    return result;
+}
+
+ast::AstNode* Parser::PatternConditionBuilder::buildLeaf(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding ||
+        pattern.kind == PatternKind::Positional)
+        return parser_.makeBooleanLiteral(pattern.range, true);
+    if (pattern.kind == PatternKind::Tuple)
+        return parser_.makeBooleanLiteral(pattern.range, false);
+    if (pattern.kind == PatternKind::Literal)
+        return parser_.makeBinaryExpression(
+            TokenKind::EqualEqual, evaluateSource(sourcePlan), pattern.firstValue);
+    if (pattern.kind == PatternKind::Range)
+    {
+        ast::AstNode* lower = parser_.makeBinaryExpression(
+            TokenKind::GreaterEqual, evaluateSource(sourcePlan), pattern.firstValue);
+        ast::AstNode* upper = parser_.makeBinaryExpression(
+            pattern.name == "..=" ? TokenKind::LessEqual : TokenKind::Less,
+            evaluateSource(sourcePlan),
+            pattern.secondValue);
+        return parser_.makeBinaryExpression(TokenKind::AmpAmp, lower, upper);
+    }
+    TokenKind operation = TokenKind::Less;
+    if (pattern.name == "<=") operation = TokenKind::LessEqual;
+    else if (pattern.name == ">") operation = TokenKind::Greater;
+    else if (pattern.name == ">=") operation = TokenKind::GreaterEqual;
+    if (pattern.kind == PatternKind::Relational)
+        return parser_.makeBinaryExpression(
+            operation, evaluateSource(sourcePlan), pattern.firstValue);
+    return parser_.makeBooleanLiteral(pattern.range, false);
+}
+
+void Parser::PatternConditionBuilder::build(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    if (pattern.kind == PatternKind::Struct)
+        return startStruct(pattern, sourcePlan);
+    if (pattern.kind == PatternKind::Variant)
+        return startVariant(pattern, sourcePlan);
+    if (pattern.kind == PatternKind::Or)
+        return startLogical(pattern, sourcePlan, TokenKind::PipePipe);
+    if (pattern.kind == PatternKind::List)
+        return startList(pattern, sourcePlan);
+    if (pattern.kind == PatternKind::Not)
+        return startNot(pattern, sourcePlan);
+    if (pattern.kind == PatternKind::And)
+        return startLogical(pattern, sourcePlan, TokenKind::AmpAmp);
+    values_.push_back(buildLeaf(pattern, sourcePlan));
+}
+
+void Parser::PatternConditionBuilder::startNot(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    Work finish;
+    finish.kind = WorkKind::FinishNot;
+    finish.pattern = &pattern;
+    schedule(std::move(finish));
+    scheduleBuild(pattern.children.front(), sourcePlan);
+}
+
+void Parser::PatternConditionBuilder::finishNot(Work work)
+{
+    ast::AstNode* unary = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UnaryExpression, work.pattern->range);
+    unary->setTokenKind(TokenKind::Bang);
+    unary->setFirst(takeValue());
+    values_.push_back(unary);
+}
+
+void Parser::PatternConditionBuilder::startVariant(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    ast::AstNode* test = parser_.makeZeroArgCallExpression(
+        parser_.makeMemberExpression(evaluateSource(sourcePlan), "Is" + pattern.name));
+    if (pattern.children.empty())
+    {
+        values_.push_back(test);
+        return;
+    }
+    Work finish;
+    finish.kind = WorkKind::FinishVariant;
+    finish.result = test;
+    schedule(std::move(finish));
+    const std::size_t payload = addSourcePlan(
+        sourcePlan, SourceStepKind::VariantPayload, pattern.name);
+    scheduleBuild(pattern.children.front(), payload);
+}
+
+void Parser::PatternConditionBuilder::finishVariant(Work work)
+{
+    values_.push_back(parser_.makeBinaryExpression(
+        TokenKind::AmpAmp, work.result, takeValue()));
+}
+
+void Parser::PatternConditionBuilder::startLogical(
+    const Pattern& pattern,
+    std::size_t sourcePlan,
+    TokenKind operation)
+{
+    Work finish;
+    finish.kind = WorkKind::FinishLogical;
+    finish.pattern = &pattern;
+    finish.sourcePlan = sourcePlan;
+    finish.nextChild = 1U;
+    finish.operation = operation;
+    schedule(std::move(finish));
+    scheduleBuild(pattern.children.front(), sourcePlan);
+}
+
+void Parser::PatternConditionBuilder::finishLogical(Work work)
+{
+    ast::AstNode* const child = takeValue();
+    work.result = work.result == nullptr
+        ? child
+        : parser_.makeBinaryExpression(work.operation, work.result, child);
+    if (work.nextChild == work.pattern->children.size())
+    {
+        values_.push_back(work.result);
+        return;
+    }
+    const Pattern& next = work.pattern->children[work.nextChild++];
+    const std::size_t sourcePlan = work.sourcePlan;
+    schedule(std::move(work));
+    scheduleBuild(next, sourcePlan);
+}
+
+void Parser::PatternConditionBuilder::startStruct(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    Work work;
+    work.kind = WorkKind::ContinueStruct;
+    work.pattern = &pattern;
+    work.sourcePlan = sourcePlan;
+    work.result = parser_.makeBooleanLiteral(pattern.range, true);
+    schedule(std::move(work));
+}
+
+void Parser::PatternConditionBuilder::continueStruct(Work work)
+{
+    if (work.nextChild == work.pattern->children.size())
+    {
+        values_.push_back(work.result);
+        return;
+    }
+    const std::size_t childIndex = work.nextChild++;
+    const std::size_t member = addSourcePlan(
+        work.sourcePlan,
+        SourceStepKind::Member,
+        work.pattern->fieldNames[childIndex]);
+    const Pattern* const child = &work.pattern->children[childIndex];
+    work.kind = WorkKind::FinishStruct;
+    schedule(std::move(work));
+    scheduleBuild(*child, member);
+}
+
+void Parser::PatternConditionBuilder::finishStruct(Work work)
+{
+    work.result = parser_.makeBinaryExpression(
+        TokenKind::AmpAmp, work.result, takeValue());
+    work.kind = WorkKind::ContinueStruct;
+    schedule(std::move(work));
+}
+
+void Parser::PatternConditionBuilder::startList(
+    const Pattern& pattern,
+    std::size_t sourcePlan)
+{
+    const std::size_t fixedCount = pattern.children.size() -
+        (pattern.restIndex.has_value() ? 1U : 0U);
+    ast::AstNode* length = parser_.makeMemberExpression(
+        evaluateSource(sourcePlan), "Length");
+    length->setAuxiliaryText("list-pattern-length");
+    Work work;
+    work.kind = WorkKind::ContinueList;
+    work.pattern = &pattern;
+    work.sourcePlan = sourcePlan;
+    work.result = parser_.makeBinaryExpression(
+        pattern.restIndex.has_value() ? TokenKind::GreaterEqual : TokenKind::EqualEqual,
+        length,
+        parser_.makeIntegerLiteralExpression(pattern.range, fixedCount));
+    schedule(std::move(work));
+}
+
+void Parser::PatternConditionBuilder::continueList(Work work)
+{
+    while (work.nextChild < work.pattern->children.size() &&
+           work.pattern->restIndex == work.nextChild)
+        ++work.nextChild;
+    if (work.nextChild == work.pattern->children.size())
+    {
+        values_.push_back(work.result);
+        return;
+    }
+    const std::size_t childIndex = work.nextChild++;
+    ast::AstNode* elementIndex = nullptr;
+    const std::size_t restOffset =
+        work.pattern->restIndex.value_or(work.pattern->children.size());
+    if (!work.pattern->restIndex.has_value() || childIndex < restOffset)
+        elementIndex = parser_.makeIntegerLiteralExpression(work.pattern->range, childIndex);
+    else
+    {
+        ast::AstNode* length = parser_.makeMemberExpression(
+            evaluateSource(work.sourcePlan), "Length");
+        length->setAuxiliaryText("list-pattern-length");
+        elementIndex = parser_.makeBinaryExpression(
+            TokenKind::Minus,
+            length,
+            parser_.makeIntegerLiteralExpression(
+                work.pattern->range, work.pattern->children.size() - childIndex));
+    }
+    const std::size_t element = addSourcePlan(
+        work.sourcePlan, SourceStepKind::Index, {}, elementIndex);
+    const Pattern* const child = &work.pattern->children[childIndex];
+    work.kind = WorkKind::FinishList;
+    schedule(std::move(work));
+    scheduleBuild(*child, element);
+}
+
+void Parser::PatternConditionBuilder::finishList(Work work)
+{
+    work.result = parser_.makeBinaryExpression(
+        TokenKind::AmpAmp, work.result, takeValue());
+    work.kind = WorkKind::ContinueList;
+    schedule(std::move(work));
+}
+
 bool Parser::patternLiteralStartsHere() const noexcept
 {
     const TokenKind kind = current().kind();
@@ -899,162 +1314,11 @@ bool Parser::patternIsConditionOnly(const Pattern& pattern) const
     return true;
 }
 
-ast::AstNode* Parser::makeRelationalPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source)
-{
-    TokenKind operation = TokenKind::Less;
-    if (pattern.name == "<=") operation = TokenKind::LessEqual;
-    else if (pattern.name == ">") operation = TokenKind::Greater;
-    else if (pattern.name == ">=") operation = TokenKind::GreaterEqual;
-    return makeBinaryExpression(operation, source(), pattern.firstValue);
-}
-
-ast::AstNode* Parser::makeStructPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source)
-{
-    ast::AstNode* result = makeBooleanLiteral(pattern.range, true);
-    for (std::size_t index = 0; index < pattern.children.size(); ++index)
-    {
-        const std::string field = pattern.fieldNames[index];
-        PatternExpressionFactory member = [&, source, field]
-        {
-            return makeMemberExpression(source(), field);
-        };
-        result = makeBinaryExpression(
-            TokenKind::AmpAmp,
-            result,
-            makePatternCondition(pattern.children[index], member));
-    }
-    return result;
-}
-
-ast::AstNode* Parser::makeVariantPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source)
-{
-    ast::AstNode* test = makeZeroArgCallExpression(
-        makeMemberExpression(source(), "Is" + pattern.name));
-    if (pattern.children.empty()) return test;
-    PatternExpressionFactory payload = [&, source, caseName = pattern.name]
-    {
-        ast::AstNode* extract = makeZeroArgCallExpression(
-            makeMemberExpression(source(), "__nsc_variant_extract_" + caseName));
-        extract->setAuxiliaryText("variant-pattern-extract");
-        return extract;
-    };
-    return makeBinaryExpression(
-        TokenKind::AmpAmp,
-        test,
-        makePatternCondition(pattern.children.front(), payload));
-}
-
-ast::AstNode* Parser::makeLogicalPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source,
-    TokenKind operation)
-{
-    ast::AstNode* result = makePatternCondition(pattern.children.front(), source);
-    for (std::size_t index = 1; index < pattern.children.size(); ++index)
-        result = makeBinaryExpression(
-            operation,
-            result,
-            makePatternCondition(pattern.children[index], source));
-    return result;
-}
-
-ast::AstNode* Parser::makeListPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source)
-{
-    const std::size_t restOffset = pattern.restIndex.value_or(pattern.children.size());
-    const std::size_t fixedCount = pattern.children.size() -
-        (pattern.restIndex.has_value() ? 1U : 0U);
-    ast::AstNode* lengthMember = makeMemberExpression(source(), "Length");
-    lengthMember->setAuxiliaryText("list-pattern-length");
-    ast::AstNode* condition = makeBinaryExpression(
-        pattern.restIndex.has_value() ? TokenKind::GreaterEqual : TokenKind::EqualEqual,
-        lengthMember,
-        makeIntegerLiteralExpression(pattern.range, fixedCount));
-    for (std::size_t index = 0; index < pattern.children.size(); ++index)
-    {
-        if (pattern.restIndex == index) continue;
-        ast::AstNode* elementIndex = nullptr;
-        if (!pattern.restIndex.has_value() || index < restOffset)
-            elementIndex = makeIntegerLiteralExpression(pattern.range, index);
-        else
-        {
-            const std::size_t fromEnd = pattern.children.size() - index;
-            ast::AstNode* trailingLength = makeMemberExpression(source(), "Length");
-            trailingLength->setAuxiliaryText("list-pattern-length");
-            elementIndex = makeBinaryExpression(
-                TokenKind::Minus,
-                trailingLength,
-                makeIntegerLiteralExpression(pattern.range, fromEnd));
-        }
-        PatternExpressionFactory element = [&, source, elementIndex]
-        {
-            return makeIndexExpression(source(), cloneDeclarationNode(elementIndex));
-        };
-        condition = makeBinaryExpression(
-            TokenKind::AmpAmp,
-            condition,
-            makePatternCondition(pattern.children[index], element));
-    }
-    return condition;
-}
-
-ast::AstNode* Parser::makeNotPatternCondition(
-    const Pattern& pattern,
-    const PatternExpressionFactory& source)
-{
-    ast::AstNode* negated = makePatternCondition(pattern.children.front(), source);
-    ast::AstNode* unary = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::UnaryExpression, pattern.range);
-    unary->setTokenKind(TokenKind::Bang);
-    unary->setFirst(negated);
-    return unary;
-}
-
 ast::AstNode* Parser::makePatternCondition(
     const Pattern& pattern,
     const PatternExpressionFactory& source)
 {
-    switch (pattern.kind)
-    {
-        case PatternKind::Wildcard:
-        case PatternKind::Binding:
-        case PatternKind::Positional:
-            return makeBooleanLiteral(pattern.range, true);
-        case PatternKind::Tuple:
-            return makeBooleanLiteral(pattern.range, false);
-        case PatternKind::Literal:
-            return makeBinaryExpression(TokenKind::EqualEqual, source(), pattern.firstValue);
-        case PatternKind::Range:
-            return makeBinaryExpression(
-                TokenKind::AmpAmp,
-                makeBinaryExpression(TokenKind::GreaterEqual, source(), pattern.firstValue),
-                makeBinaryExpression(
-                    pattern.name == "..=" ? TokenKind::LessEqual : TokenKind::Less,
-                    source(),
-                    pattern.secondValue));
-        case PatternKind::Relational:
-            return makeRelationalPatternCondition(pattern, source);
-        case PatternKind::Struct:
-            return makeStructPatternCondition(pattern, source);
-        case PatternKind::Variant:
-            return makeVariantPatternCondition(pattern, source);
-        case PatternKind::Or:
-            return makeLogicalPatternCondition(pattern, source, TokenKind::PipePipe);
-        case PatternKind::List:
-            return makeListPatternCondition(pattern, source);
-        case PatternKind::Not:
-            return makeNotPatternCondition(pattern, source);
-        case PatternKind::And:
-            return makeLogicalPatternCondition(pattern, source, TokenKind::AmpAmp);
-    }
-    return makeBooleanLiteral(pattern.range, false);
+    return PatternConditionBuilder(*this, pattern, source).run();
 }
 
 ast::AstNode* Parser::lowerBindingPattern(
