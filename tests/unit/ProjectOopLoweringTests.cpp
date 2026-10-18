@@ -296,6 +296,25 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertyGetterExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<NamespaceFunctionCallBinding>& calls,
+        const MethodExpressionTypeBinding& type,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        model.namespaceFunctionModel_ = &namespaceFunctionModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const NamespaceFunctionCallBinding& call : calls)
+            model.namespaceFunctionCallBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, callerMemberOrdinal, false, error);
+    }
+
     static void setRuntimeTypeBinding(
         ProjectOopHirModel& model,
         const ast::AstNode* syntax,
@@ -2067,6 +2086,159 @@ void testDeepPropertyGetterExpressionLowering(
     destroyHirTreeIteratively(lowered);
 }
 
+struct ExtensionPropertyTarget final
+{
+    std::size_t functionOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string nodeType;
+    std::string parameterType;
+    std::string mangledName;
+};
+
+bool prepareExtensionPropertyFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    ExtensionPropertyTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepExtensionProperty";
+    writeProject(directory, "DeepExtensionProperty");
+    writeFile(
+        directory / "Main.ns",
+        "namespace Deep { public class Node {} extension Node { "
+        "public Node Next { get { return this; } } } "
+        "public class Probe { public Node Run(Node node) { return node.Next; } } }");
+    if (!compilation.compileProjectOopHir(directory / "DeepExtensionProperty.nsproj", error) ||
+        compilation.memberModel() == nullptr || compilation.namespaceFunctionModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundFunction = false;
+    const auto& functions = compilation.namespaceFunctionModel()->functions();
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        const auto& function = functions[ordinal];
+        if (!function.isExtension || function.name != "Next" || function.parameters.size() != 1U)
+            continue;
+        output.functionOrdinal = ordinal;
+        output.nodeType = function.declaredTypeKey;
+        output.parameterType = function.parameters.front().typeKey;
+        output.mangledName = function.mangledName;
+        foundFunction = true;
+    }
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        if (members[ordinal].name != "Run") continue;
+        output.callerOrdinal = ordinal;
+        foundCaller = true;
+    }
+    return foundFunction && foundCaller && !output.nodeType.empty() &&
+        !output.parameterType.empty() && !output.mangledName.empty();
+}
+
+struct DeepExtensionPropertySyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::NamespaceFunctionCallBinding> calls;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepExtensionPropertySyntax makeDeepExtensionPropertySyntax(
+    std::size_t depth,
+    const ExtensionPropertyTarget& target)
+{
+    DeepExtensionPropertySyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.calls.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::MemberExpression, nativesharp::SourceRange{}));
+        fixture.nodes.back()->setFirst(current);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = fixture.nodes.back().get();
+        call.writtenName = "Next";
+        call.forwardedReceiver = true;
+        call.receiverSyntax = current;
+        call.selectedFunctionOrdinal = target.functionOrdinal;
+        call.selectedArgumentParameterOrdinals.push_back(0U);
+        call.resultTypeKey = target.nodeType;
+        current = fixture.nodes.back().get();
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool extensionPropertyChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const ExtensionPropertyTarget& target)
+{
+    std::size_t observedDepth = 0;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::StaticCall)
+    {
+        if (node->namespaceFunctionOrdinal != target.functionOrdinal ||
+            node->stringValue != target.mangledName || node->typeKey != target.nodeType ||
+            node->children.size() != 1U || node->argumentCount != 0U || node->referenceResult ||
+            node->argumentParameterOrdinals.size() != 1U ||
+            node->argumentParameterOrdinals.front() != 0U ||
+            node->argumentTypeKeys.size() != 1U ||
+            node->argumentTypeKeys.front() != target.parameterType)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue;
+}
+
+void testDeepExtensionPropertyGetterLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    ExtensionPropertyTarget target;
+    std::string error;
+    const bool prepared = prepareExtensionPropertyFixture(root, compilation, target, error);
+    tests.expect(prepared, "the extension-property fixture builds its real namespace getter (" +
+        error + ")");
+    if (!prepared) return;
+
+    DeepExtensionPropertySyntax syntax =
+        makeDeepExtensionPropertySyntax(nestingDepth, target);
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.nodeType;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerExtensionPropertyGetterExpression(
+            model,
+            *compilation.memberModel(),
+            *compilation.namespaceFunctionModel(),
+            target.callerOrdinal,
+            syntax.root,
+            syntax.nodes,
+            syntax.calls,
+            type,
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level extension-property chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(extensionPropertyChainMatches(lowered.get(), nestingDepth, target),
+        "iterative extension-property lowering preserves every forwarded receiver contract");
+    destroyHirTreeIteratively(lowered);
+}
+
 void testDeepOverflowPolicyExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -2980,6 +3152,10 @@ int main()
     {
         testDeepPropertyGetterExpressionLowering(tests, root);
     }
+    else if (focusValue == "hir-extension-property-getter-depth")
+    {
+        testDeepExtensionPropertyGetterLowering(tests, root);
+    }
     else if (focusValue == "hir-overflow-policy-depth")
     {
         testDeepOverflowPolicyExpressionLowering(tests);
@@ -3053,6 +3229,7 @@ int main()
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepClassFieldExpressionLowering(tests);
         testDeepPropertyGetterExpressionLowering(tests, root);
+        testDeepExtensionPropertyGetterLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);

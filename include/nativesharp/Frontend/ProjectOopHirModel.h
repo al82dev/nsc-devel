@@ -960,6 +960,17 @@ private:
         bool flowProvenNonNull,
         std::unique_ptr<ProjectOopHirNode> receiver);
 
+    // Describes the forwarded receiver contract before the worklist descends into it, then
+    // completes the historical namespace-call HIR from the already-lowered receiver.
+    std::optional<bool> extensionPropertyReceiverAddress(
+        const NamespaceFunctionCallBinding& binding) const noexcept;
+    std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertyGetterWithReceiver(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::string& error,
+        const NamespaceFunctionCallBinding& binding,
+        std::unique_ptr<ProjectOopHirNode> receiver = nullptr);
+
     std::unique_ptr<ProjectOopHirNode> lowerEventBackingField(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,

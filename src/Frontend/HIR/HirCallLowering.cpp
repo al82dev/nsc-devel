@@ -675,6 +675,83 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerPropertyGetterWithRe
     return call;
 }
 
+std::optional<bool> ProjectOopHirModel::extensionPropertyReceiverAddress(
+    const NamespaceFunctionCallBinding& binding) const noexcept
+{
+    if (binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedFunctionOrdinal.has_value() || namespaceFunctionModel_ == nullptr ||
+        *binding.selectedFunctionOrdinal >= namespaceFunctionModel_->functions().size() ||
+        !binding.forwardedReceiver || binding.receiverSyntax == nullptr ||
+        binding.selectedArgumentParameterOrdinals.empty())
+    {
+        return std::nullopt;
+    }
+    const NamespaceFunctionSymbol& target =
+        namespaceFunctionModel_->functions()[*binding.selectedFunctionOrdinal];
+    const std::size_t parameterOrdinal = binding.selectedArgumentParameterOrdinals.front();
+    if (target.parameters.empty() || parameterOrdinal >= target.parameters.size())
+        return std::nullopt;
+    return target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
+}
+
+std::unique_ptr<ProjectOopHirNode>
+ProjectOopHirModel::lowerExtensionPropertyGetterWithReceiver(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    std::string& error,
+    const NamespaceFunctionCallBinding& binding,
+    std::unique_ptr<ProjectOopHirNode> receiver)
+{
+    if (binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedFunctionOrdinal.has_value() || namespaceFunctionModel_ == nullptr ||
+        *binding.selectedFunctionOrdinal >= namespaceFunctionModel_->functions().size())
+    {
+        error = "extension property getter reached HIR without a resolved target";
+        return nullptr;
+    }
+    const std::size_t functionOrdinal = *binding.selectedFunctionOrdinal;
+    const NamespaceFunctionSymbol& target =
+        namespaceFunctionModel_->functions()[functionOrdinal];
+    auto node = makeNode(ProjectOopHirNodeKind::StaticCall, expression, binding.resultTypeKey);
+    node->namespaceFunctionOrdinal = functionOrdinal;
+    node->stringValue = target.mangledName;
+    if (!binding.forwardedReceiver) return node;
+
+    if (binding.receiverSyntax == nullptr || target.parameters.empty() ||
+        binding.selectedArgumentParameterOrdinals.empty())
+    {
+        error = "extension property getter lost its receiver contract";
+        return nullptr;
+    }
+    const std::size_t parameterOrdinal = binding.selectedArgumentParameterOrdinals.front();
+    if (parameterOrdinal >= target.parameters.size())
+    {
+        error = "extension receiver has no matching parameter";
+        return nullptr;
+    }
+    const bool addressReceiver =
+        target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
+    if (receiver == nullptr)
+        receiver = lowerExpression(binding.receiverSyntax, memberOrdinal, addressReceiver, error);
+    if (receiver == nullptr) return nullptr;
+    if (!addressReceiver && !binding.selectedConversions.empty() &&
+        binding.selectedConversions.front().kind != ProjectConversionKind::Identity)
+    {
+        receiver = wrapImplicitConversion(
+            std::move(receiver), binding.selectedConversions.front(), binding.receiverSyntax);
+    }
+    const std::size_t targetCallableOrdinal =
+        (memberModel_ != nullptr ? memberModel_->members().size() : 0) + functionOrdinal;
+    bool hasOwnedTemporary = false;
+    receiver = wrapCallArgumentBorrow(
+        std::move(receiver), binding.receiverSyntax,
+        targetCallableOrdinal, parameterOrdinal, hasOwnedTemporary);
+    node->children.push_back(std::move(receiver));
+    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+    node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
+    return node;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,

@@ -85,6 +85,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         CoreIndex,
         RawIndex,
         PropertyGetter,
+        ExtensionPropertyGetter,
         InstanceField,
         NullConditionalField,
         RangeSlice,
@@ -101,6 +102,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
         const MethodCallBinding* propertyGetterBinding = nullptr;
+        const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
         BoundCallTarget callTarget;
         const MethodRangeSliceBinding* rangeBinding = nullptr;
         const MethodCoreBinding* core = nullptr;
@@ -313,6 +315,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
             }
         }
+        if (syntax->kind() == ast::AstNodeKind::IdentifierExpression ||
+            syntax->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            const NamespaceFunctionCallBinding* extension =
+                namespaceFunctionCallBinding(syntax);
+            if (extension != nullptr && extensionPropertyReceiverAddress(*extension).has_value())
+                return IterativeExpressionKind::ExtensionPropertyGetter;
+        }
         if (!address && syntax->kind() == ast::AstNodeKind::NullConditionalMemberExpression &&
             accessorGetterBinding(syntax) == nullptr)
         {
@@ -455,6 +465,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.flowProvenNonNull = receiverFlow != nullptr &&
                         receiverFlow->flowProvenNonNull;
                 }
+                else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
+                {
+                    frame.extensionPropertyBinding = namespaceFunctionCallBinding(current);
+                    frame.operandAddressContext =
+                        *extensionPropertyReceiverAddress(*frame.extensionPropertyBinding);
+                }
                 else if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
@@ -551,6 +567,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
+                    current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
                     current = frames.back().fieldBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::RangeSlice)
@@ -572,6 +590,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentAddressContext =
                         isStructValueType(frames.back().callTarget.receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
+                {
+                    currentAddressContext = frames.back().operandAddressContext;
                 }
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
                 {
@@ -1007,6 +1029,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         *frame.propertyGetterBinding,
                         frame.nullConditionalCall && !frame.flowProvenNonNull,
                         frame.flowProvenNonNull,
+                        std::move(lowered));
+                    if (getter == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    lowered = std::move(getter);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::ExtensionPropertyGetter)
+                {
+                    auto getter = lowerExtensionPropertyGetterWithReceiver(
+                        frame.syntax,
+                        memberOrdinal,
+                        error,
+                        *frame.extensionPropertyBinding,
                         std::move(lowered));
                     if (getter == nullptr)
                     {
@@ -2210,62 +2252,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     namespaceFunctionCallBinding(expression);
                 namespaceCall != nullptr)
             {
-                if (namespaceCall->resolution != MethodCallResolutionKind::Resolved ||
-                    !namespaceCall->selectedFunctionOrdinal.has_value() ||
-                    namespaceFunctionModel_ == nullptr ||
-                    *namespaceCall->selectedFunctionOrdinal >=
-                        namespaceFunctionModel_->functions().size())
-                {
-                    error = "extension property getter reached HIR without a resolved target";
-                    return nullptr;
-                }
-                const std::size_t functionOrdinal = *namespaceCall->selectedFunctionOrdinal;
-                const NamespaceFunctionSymbol& target =
-                    namespaceFunctionModel_->functions()[functionOrdinal];
-                auto node = makeNode(
-                    ProjectOopHirNodeKind::StaticCall, expression, namespaceCall->resultTypeKey);
-                node->namespaceFunctionOrdinal = functionOrdinal;
-                node->stringValue = target.mangledName;
-                const std::size_t targetCallableOrdinal =
-                    (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
-                    functionOrdinal;
-                bool hasOwnedTemporary = false;
-                if (namespaceCall->forwardedReceiver)
-                {
-                    if (namespaceCall->receiverSyntax == nullptr || target.parameters.empty() ||
-                        namespaceCall->selectedArgumentParameterOrdinals.empty())
-                    {
-                        error = "extension property getter lost its receiver contract";
-                        return nullptr;
-                    }
-                    const std::size_t parameterOrdinal =
-                        namespaceCall->selectedArgumentParameterOrdinals.front();
-                    if (parameterOrdinal >= target.parameters.size())
-                    {
-                        error = "extension receiver has no matching parameter";
-                        return nullptr;
-                    }
-                    const bool addressReceiver =
-                        target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
-                    auto receiver = lowerExpression(
-                        namespaceCall->receiverSyntax, memberOrdinal, addressReceiver, error);
-                    if (receiver == nullptr) return nullptr;
-                    if (!addressReceiver && !namespaceCall->selectedConversions.empty() &&
-                        namespaceCall->selectedConversions.front().kind !=
-                            ProjectConversionKind::Identity)
-                    {
-                        receiver = wrapImplicitConversion(
-                            std::move(receiver), namespaceCall->selectedConversions.front(),
-                            namespaceCall->receiverSyntax);
-                    }
-                    receiver = wrapCallArgumentBorrow(
-                        std::move(receiver), namespaceCall->receiverSyntax,
-                        targetCallableOrdinal, parameterOrdinal, hasOwnedTemporary);
-                    node->children.push_back(std::move(receiver));
-                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
-                    node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
-                }
-                return node;
+                return lowerExtensionPropertyGetterWithReceiver(
+                    expression, memberOrdinal, error, *namespaceCall);
             }
             if (currentLambda_ != nullptr)
             {
