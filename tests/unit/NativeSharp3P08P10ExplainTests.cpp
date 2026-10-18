@@ -18,6 +18,53 @@ std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> node(
     result->kind = kind;
     return result;
 }
+
+std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> deepCostTree(std::size_t depth)
+{
+    using namespace nativesharp::frontend;
+    auto root = node(ProjectOopMirNodeKind::Block);
+    ProjectOopMirNode* current = root.get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        current->children.push_back(node(ProjectOopMirNodeKind::MoveValue));
+        current->children.emplace_back();
+        current = current->children.front().get();
+    }
+    return root;
+}
+
+void destroyMirTreeIteratively(
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> root)
+{
+    using nativesharp::frontend::ProjectOopMirNode;
+    std::vector<std::unique_ptr<ProjectOopMirNode>> pending;
+    pending.push_back(std::move(root));
+    while (!pending.empty())
+    {
+        std::unique_ptr<ProjectOopMirNode> current = std::move(pending.back());
+        pending.pop_back();
+        for (auto& child : current->children)
+            if (child != nullptr) pending.push_back(std::move(child));
+    }
+}
+
+void testDeepCostTraversal(nativesharp::tests::TestContext& tests)
+{
+    using namespace nativesharp::frontend;
+    constexpr std::size_t depth = 32768U;
+    ProjectOopMirFunction function;
+    function.debugDisplayName = "Costs.Deep";
+    function.body = deepCostTree(depth);
+    std::vector<ProjectOopMirFunction> functions;
+    functions.push_back(std::move(function));
+    const ProjectCostReport report = exploreProjectCosts(functions);
+    tests.expect(report.functions.size() == 1 &&
+            report.functions.front().moveSites == depth &&
+            report.functions.front().causes.size() == depth &&
+            report.totals.moveSites == depth,
+        "cost explorer visits 32768 MIR levels and ignores null slots without recursion");
+    destroyMirTreeIteratively(std::move(functions.front().body));
+}
 }
 
 int main()
@@ -77,6 +124,7 @@ int main()
             json.find("\"dynamicDispatchSites\":1") != std::string::npos &&
             json.find("\"function\":\"Costs.Sample\"") != std::string::npos,
         "JSON cost report carries the same machine-readable facts");
+    testDeepCostTraversal(tests);
 
     nativesharp::driver::Driver driver;
     std::ostringstream output;

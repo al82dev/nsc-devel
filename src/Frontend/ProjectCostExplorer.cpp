@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectCostExplorer.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -72,7 +73,7 @@ void addCause(ProjectFunctionCosts& costs, std::string_view category, ProjectOop
     costs.causes.push_back(std::string(category) + " <- " + projectOopMirNodeKindName(kind));
 }
 
-void visit(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
+void accumulateNodeCost(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
 {
     switch (node.kind)
     {
@@ -146,8 +147,19 @@ void visit(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
         ++costs.lockSites;
         addCause(costs, "lock", node.kind);
     }
-    for (const auto& child : node.children)
-        if (child != nullptr) visit(*child, costs);
+}
+
+void visit(const ProjectOopMirNode& root, ProjectFunctionCosts& costs)
+{
+    std::vector<const ProjectOopMirNode*> pending{&root};
+    while (!pending.empty())
+    {
+        const ProjectOopMirNode* node = pending.back();
+        pending.pop_back();
+        accumulateNodeCost(*node, costs);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            if (*child != nullptr) pending.push_back(child->get());
+    }
 }
 
 void add(ProjectFunctionCosts& target, const ProjectFunctionCosts& source)
