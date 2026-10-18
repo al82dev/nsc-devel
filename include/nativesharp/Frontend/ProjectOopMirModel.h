@@ -1022,6 +1022,12 @@ private:
         const ProjectOopMirNode* root,
         std::unordered_map<std::size_t, std::size_t>& borrowSource,
         std::unordered_set<std::size_t>& borrowNonLocalSource);
+    static void collectLivePollLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::span<const std::uint64_t> suspendOrders,
+        std::unordered_set<std::size_t>& liveSet);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

@@ -426,24 +426,27 @@ void collectBorrowSourcesNodes(
     }
 }
 
-void collectLivePollLocals(
-    const ProjectOopMirNode* node,
+void collectLivePollLocalNodes(
+    const ProjectOopMirNode* root,
     const PositionMap& localDefinition,
     const PositionMap& localLastUse,
     std::span<const std::uint64_t> suspendOrders,
     OrdinalSet& liveSet)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-        node->localOrdinal.has_value() &&
-        liveAcrossBoundary(
-            *node->localOrdinal, localDefinition, localLastUse, suspendOrders))
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        liveSet.insert(*node->localOrdinal);
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            node->localOrdinal.has_value() &&
+            liveAcrossBoundary(
+                *node->localOrdinal, localDefinition, localLastUse, suspendOrders))
+            liveSet.insert(*node->localOrdinal);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        collectLivePollLocals(
-            child.get(), localDefinition, localLastUse, suspendOrders, liveSet);
 }
 
 void closeLiveBorrowSources(
@@ -594,7 +597,7 @@ bool buildPollFrame(
     OrdinalSet borrowNonLocalSource;
     collectBorrowSourcesNodes(function.body.get(), borrowSource, borrowNonLocalSource);
     OrdinalSet liveSet;
-    collectLivePollLocals(
+    collectLivePollLocalNodes(
         function.body.get(), localDefinition, localLastUse, suspendOrders, liveSet);
     closeLiveBorrowSources(borrowSource, liveSet);
     if (!validateNonLocalBorrowSources(
@@ -741,6 +744,17 @@ void ProjectOopMirModel::collectBorrowSources(
     std::unordered_set<std::size_t>& borrowNonLocalSource)
 {
     collectBorrowSourcesNodes(root, borrowSource, borrowNonLocalSource);
+}
+
+void ProjectOopMirModel::collectLivePollLocals(
+    const ProjectOopMirNode* root,
+    const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+    const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+    std::span<const std::uint64_t> suspendOrders,
+    std::unordered_set<std::size_t>& liveSet)
+{
+    collectLivePollLocalNodes(
+        root, localDefinition, localLastUse, suspendOrders, liveSet);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(

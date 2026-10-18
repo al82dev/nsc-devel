@@ -541,6 +541,17 @@ struct ProjectOopHirModelTestAccess final
         ProjectOopMirModel::collectBorrowSources(root, borrowSource, borrowNonLocalSource);
     }
 
+    static void collectMirLivePollLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::span<const std::uint64_t> suspendOrders,
+        std::unordered_set<std::size_t>& liveSet)
+    {
+        ProjectOopMirModel::collectLivePollLocals(
+            root, localDefinition, localLastUse, suspendOrders, liveSet);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4513,6 +4524,41 @@ void testDeepMirBorrowSourceCollection(TestContext& tests)
         "MIR borrow source collection preserves non-local, first-initializer, and null-slot rules");
     destroyMirTreeIteratively(std::move(root));
 }
+
+void testDeepMirLivePollLocalCollection(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+        switch (depth % 5U)
+        {
+            case 0U: node->localOrdinal = 7U; break;
+            case 1U: node->localOrdinal = 8U; break;
+            case 2U: node->localOrdinal = 9U; break;
+            case 3U: node->localOrdinal = 10U; break;
+            default: break;
+        }
+        if (root != nullptr) node->children.push_back(std::move(root));
+        node->children.emplace_back();
+        root = std::move(node);
+    }
+    const std::unordered_map<std::size_t, std::uint64_t> localDefinition{
+        {7U, 0U}, {8U, 5U}, {9U, 0U}, {10U, 0U}};
+    const std::unordered_map<std::size_t, std::uint64_t> localLastUse{
+        {7U, 10U}, {8U, 10U}, {10U, 4U}};
+    const std::vector<std::uint64_t> suspendOrders{5U};
+    std::unordered_set<std::size_t> liveSet{42U};
+    nativesharp::frontend::ProjectOopHirModelTestAccess::collectMirLivePollLocals(
+        root.get(), localDefinition, localLastUse, suspendOrders, liveSet);
+    tests.expect(liveSet.size() == 2U && liveSet.contains(7U) && liveSet.contains(42U),
+        "MIR poll local collection preserves strict boundary liveness and existing entries");
+    tests.expect(!liveSet.contains(8U) && !liveSet.contains(9U) && !liveSet.contains(10U),
+        "MIR poll local collection preserves missing-use, equality, deduplication, and null rules");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4699,6 +4745,10 @@ int main()
     {
         testDeepMirBorrowSourceCollection(tests);
     }
+    else if (focusValue == "mir-live-poll-local-depth")
+    {
+        testDeepMirLivePollLocalCollection(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4740,6 +4790,7 @@ int main()
         testDeepMirPollLiveness(tests);
         testDeepMirMoveNextLiveness(tests);
         testDeepMirBorrowSourceCollection(tests);
+        testDeepMirLivePollLocalCollection(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
