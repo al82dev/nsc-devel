@@ -140,6 +140,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         UserUnaryOperator,
         UserBinaryOperator,
         Conversion,
+        UserConversion,
         BuiltinBinary,
         CoreBinary,
         Conditional,
@@ -289,7 +290,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 conversionCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
                 *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
                 memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion;
-            if (!userDefined) return IterativeExpressionKind::Conversion;
+            return userDefined
+                ? IterativeExpressionKind::UserConversion
+                : IterativeExpressionKind::Conversion;
         }
         if (syntax->kind() == ast::AstNodeKind::BinaryExpression &&
             coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
@@ -930,6 +933,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.operandSyntaxes = {current->first(), current->second()};
                     frame.operands.reserve(frame.operandSyntaxes.size());
                 }
+                else if (*currentKind == IterativeExpressionKind::UserConversion)
+                {
+                    frame.operatorCallBinding = callBinding(current);
+                    frame.operandSyntaxes = {current->first()};
+                    frame.operands.reserve(1U);
+                }
                 else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     frame.propertyGetterBinding = accessorGetterBinding(current);
@@ -1357,6 +1366,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->first();
                 else if (*currentKind == IterativeExpressionKind::UserBinaryOperator)
                     current = frames.back().operandSyntaxes.front();
+                else if (*currentKind == IterativeExpressionKind::UserConversion)
+                    current = frames.back().operandSyntaxes.front();
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
@@ -1423,6 +1434,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     currentAddressContext = boundCallArgumentNeedsAddress(
                         frames.back().callTarget.memberOrdinal, 0U);
+                }
+                else if (*currentKind == IterativeExpressionKind::UserConversion)
+                {
+                    currentAddressContext = false;
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
@@ -1708,6 +1723,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         nullptr,
                         std::move(frame.operands),
                         frame.hasOwnedTemporary);
+                    if (call == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    lowered = std::move(call);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::UserConversion)
+                {
+                    frame.operands.push_back(std::move(lowered));
+                    auto call = lowerBoundCall(
+                        frame.syntax,
+                        frame.memberOrdinal,
+                        frame.addressContext,
+                        error,
+                        expressionType(frame.syntax),
+                        frame.operatorCallBinding,
+                        frame.operandSyntaxes,
+                        nullptr,
+                        false,
+                        nullptr,
+                        &frame.operands);
                     if (call == nullptr)
                     {
                         if (!lastErrorRange_.isValid())

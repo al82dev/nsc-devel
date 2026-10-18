@@ -447,6 +447,30 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerUserConversionExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const std::vector<MethodBorrowBinding>& borrows,
+        const std::vector<MethodExpressionTypeBinding>& types,
+        bool addressContext,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        for (const MethodBorrowBinding& borrow : borrows)
+            model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
+        for (std::size_t index = 0; index < syntax.size(); ++index)
+            model.expressionTypeBySyntax_[syntax[index].get()] = &types[index];
+        return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerEventSubscriptionExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -904,6 +928,7 @@ struct ProjectOopHirModelTestAccess final
 namespace
 {
 using nativesharp::frontend::ProjectCompilation;
+using nativesharp::frontend::ProjectOopHirNode;
 using nativesharp::frontend::ProjectOopHirModel;
 using nativesharp::frontend::ProjectOopMirModel;
 using nativesharp::frontend::ProjectOopMirNode;
@@ -3550,6 +3575,265 @@ void testDeepConversionExpressionLowering(TestContext& tests)
             missingBindingError ==
                 "Stage 39 runtime type operation lost its semantic binding",
         "missing runtime binding fails before visiting the conversion operand");
+}
+
+struct UserConversionTargets final
+{
+    std::size_t implicitOrdinal = 0U;
+    std::size_t explicitOrdinal = 0U;
+    std::size_t callerOrdinal = 0U;
+    std::string numberType;
+};
+
+bool prepareUserConversionFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    UserConversionTargets& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepUserConversion";
+    writeProject(directory, "DeepUserConversion");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public struct Number {
+    public int Value;
+    public Number(int value) { Value = value; }
+    public static implicit operator int(Number value) { return value.Value; }
+    public static explicit operator Number(int value) { return new Number(value); }
+    public Number Run(int value) { return (Number)(int)(Number)value; }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepUserConversion.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+        return false;
+    bool foundImplicit = false;
+    bool foundExplicit = false;
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const auto& member = members[ordinal];
+        if (member.isUserConversion && member.name == "op_Implicit")
+        {
+            output.implicitOrdinal = ordinal;
+            foundImplicit = true;
+        }
+        else if (member.isUserConversion && member.name == "op_Explicit")
+        {
+            output.explicitOrdinal = ordinal;
+            output.numberType = member.declaredTypeKey;
+            foundExplicit = true;
+        }
+        else if (!member.isUserConversion && member.name == "Run")
+        {
+            output.callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundImplicit && foundExplicit && foundCaller && !output.numberType.empty();
+}
+
+struct DeepUserConversionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    std::vector<nativesharp::frontend::MethodExpressionTypeBinding> types;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepUserConversionSyntax makeDeepUserConversionSyntax(
+    std::size_t depth,
+    const UserConversionTargets& targets)
+{
+    DeepUserConversionSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.calls.reserve(depth);
+    fixture.types.reserve(depth + 1U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(17U);
+    fixture.types.push_back({});
+    fixture.types.back().typeKey = "builtin:int";
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        const bool toNumber = index % 2U == 0U;
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CastExpression,
+            nativesharp::SourceRange{}));
+        auto* conversion = fixture.nodes.back().get();
+        conversion->setFirst(current);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = conversion;
+        call.staticCall = true;
+        call.selectedMemberOrdinal = toNumber
+            ? targets.explicitOrdinal : targets.implicitOrdinal;
+        call.resultTypeKey = toNumber ? targets.numberType : "builtin:int";
+        fixture.types.push_back({});
+        fixture.types.back().typeKey = call.resultTypeKey;
+        current = conversion;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerUserConversionFixture(
+    ProjectCompilation& compilation,
+    const UserConversionTargets& targets,
+    DeepUserConversionSyntax& fixture,
+    const std::vector<nativesharp::frontend::MethodBorrowBinding>& borrows,
+    bool addressContext,
+    std::string& error)
+{
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUserConversionExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(),
+            targets.callerOrdinal, fixture.root, fixture.nodes, fixture.calls,
+            borrows, fixture.types, addressContext, error);
+}
+
+bool userConversionChainMatches(
+    const ProjectOopHirNode* node,
+    const DeepUserConversionSyntax& fixture,
+    const UserConversionTargets& targets)
+{
+    std::size_t observedDepth = 0U;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::StaticCall)
+    {
+        const std::size_t sourceIndex = fixture.calls.size() - observedDepth - 1U;
+        const auto& call = fixture.calls[sourceIndex];
+        if (node->memberOrdinal != call.selectedMemberOrdinal ||
+            node->typeKey != call.resultTypeKey || node->children.size() != 1U ||
+            node->interfaceDispatch || node->baseReceiver || node->nullConditionalCall ||
+            node->referenceResult)
+            return false;
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == fixture.calls.size() && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+        node->integerValue == 17U && !targets.numberType.empty();
+}
+
+bool userConversionPreparationMatches(const ProjectOopHirNode* node)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    if (node == nullptr || node->kind != HirKind::FullExpressionCleanup ||
+        node->children.size() != 1U)
+        return false;
+    node = node->children.front().get();
+    if (node->kind != HirKind::StaticCall || node->children.size() != 1U)
+        return false;
+    node = node->children.front().get();
+    if (node->kind != HirKind::OwnedTemporaryBorrow || node->children.size() != 1U)
+        return false;
+    node = node->children.front().get();
+    if (node->kind != HirKind::BorrowValue || node->children.size() != 1U)
+        return false;
+    node = node->children.front().get();
+    return node->kind == HirKind::Conversion && node->conversion.has_value() &&
+        node->conversion->kind == nativesharp::frontend::ProjectConversionKind::Numeric &&
+        node->children.size() == 1U &&
+        node->children.front()->kind == HirKind::IntegerConstant;
+}
+
+void testUserConversionArgumentContracts(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const UserConversionTargets& targets)
+{
+    auto shallow = makeDeepUserConversionSyntax(1U, targets);
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = nativesharp::frontend::ProjectConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:int";
+    conversion.targetTypeKey = "builtin:int";
+    shallow.calls.front().selectedConversions.push_back(conversion);
+    nativesharp::frontend::MethodBorrowBinding borrow;
+    borrow.kind = nativesharp::frontend::MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+    borrow.syntax = shallow.nodes.front().get();
+    borrow.methodMemberOrdinal = targets.callerOrdinal;
+    borrow.targetMemberOrdinal = targets.explicitOrdinal;
+    borrow.targetParameterOrdinal = 0U;
+    borrow.typeKey = "builtin:int";
+    std::string error;
+    auto prepared = lowerUserConversionFixture(
+        compilation, targets, shallow, {borrow}, false, error);
+    tests.expect(prepared != nullptr && error.empty() &&
+            userConversionPreparationMatches(prepared.get()),
+        "user conversion applies selected conversion, borrow, and cleanup exactly once");
+    destroyHirTreeIteratively(prepared);
+
+    auto invalidDefault = makeDeepUserConversionSyntax(1U, targets);
+    invalidDefault.calls.front().selectedDefaultArguments.push_back(
+        invalidDefault.nodes.front().get());
+    error.clear();
+    auto rejected = lowerUserConversionFixture(
+        compilation, targets, invalidDefault, {}, false, error);
+    tests.expect(rejected == nullptr && error ==
+            "NSC-LIMIT-020 selected default argument has no matching parameter",
+        "user conversion preserves the exact default-parameter diagnostic");
+}
+
+void testUserConversionReferenceResult(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const UserConversionTargets& targets)
+{
+    auto& member = const_cast<nativesharp::frontend::ClassMemberSymbol&>(
+        compilation.memberModel()->members()[targets.explicitOrdinal]);
+    member.isReferenceReturn = true;
+    auto valueFixture = makeDeepUserConversionSyntax(1U, targets);
+    std::string error;
+    auto value = lowerUserConversionFixture(
+        compilation, targets, valueFixture, {}, false, error);
+    const bool valueExact = value != nullptr && error.empty() &&
+        value->kind == nativesharp::frontend::ProjectOopHirNodeKind::PointerLoad &&
+        value->children.size() == 1U && value->children.front()->referenceResult;
+    destroyHirTreeIteratively(value);
+    auto addressFixture = makeDeepUserConversionSyntax(1U, targets);
+    error.clear();
+    auto address = lowerUserConversionFixture(
+        compilation, targets, addressFixture, {}, true, error);
+    const bool addressExact = address != nullptr && error.empty() &&
+        address->kind == nativesharp::frontend::ProjectOopHirNodeKind::StaticCall &&
+        address->referenceResult;
+    tests.expect(valueExact && addressExact,
+        "user conversion preserves reference-result loading and exterior address context");
+    destroyHirTreeIteratively(address);
+    member.isReferenceReturn = false;
+}
+
+void testDeepUserConversionLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    UserConversionTargets targets;
+    std::string error;
+    const bool prepared = prepareUserConversionFixture(
+        root, compilation, targets, error);
+    tests.expect(prepared,
+        "the user-conversion fixture exposes implicit, explicit, and caller members (" +
+            error + ")");
+    if (!prepared) return;
+    auto deep = makeDeepUserConversionSyntax(nestingDepth, targets);
+    auto lowered = lowerUserConversionFixture(
+        compilation, targets, deep, {}, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level user-conversion chain lowers without stack recursion (" +
+            error + ")");
+    tests.expect(userConversionChainMatches(lowered.get(), deep, targets),
+        "iterative user-conversion lowering preserves order, ordinals, result types, and leaf");
+    destroyHirTreeIteratively(lowered);
+    testUserConversionArgumentContracts(tests, compilation, targets);
+    testUserConversionReferenceResult(tests, compilation, targets);
 }
 
 void testDeepClassFieldExpressionLowering(TestContext& tests)
@@ -7539,6 +7823,10 @@ int main()
     else if (focusValue == "hir-conversion-depth")
     {
         testDeepConversionExpressionLowering(tests);
+    }
+    else if (focusValue == "hir-user-conversion-depth")
+    {
+        testDeepUserConversionLowering(tests, root);
     }
     else if (focusValue == "hir-class-field-depth")
     {

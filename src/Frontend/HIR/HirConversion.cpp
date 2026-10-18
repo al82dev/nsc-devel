@@ -146,9 +146,9 @@ ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConversionExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
-    bool addressContext,
+    bool,
     std::string& error,
-    const MethodExpressionTypeBinding* typeBinding,
+    const MethodExpressionTypeBinding*,
     std::string_view resultType)
 {
     if (expression->kind() == ast::AstNodeKind::TypeTestExpression ||
@@ -200,10 +200,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConversionExpression
         *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
         memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion)
     {
-        const std::vector<const ast::AstNode*> arguments{expression->first()};
-        return lowerBoundCall(
-            expression, memberOrdinal, addressContext, error, typeBinding, conversionCall,
-            arguments);
+        error = "user conversion escaped iterative Stage 34 OOP HIR lowering";
+        return nullptr;
     }
     auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
     if (operand == nullptr)
