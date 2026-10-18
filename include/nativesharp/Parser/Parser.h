@@ -172,16 +172,115 @@ private:
         SourceRange& completeRange);
     std::string parseOptionalLifetimeAnnotation(std::string_view context);
     ast::TypeSyntax* parseAllocationElementType();
+
+    enum class GenericConstraintBranchResult : std::uint8_t
+    {
+        NotMatched,
+        Parsed,
+        Failed
+    };
+
+    enum class GenericCapabilityKind : std::uint8_t
+    {
+        Class,
+        Struct,
+        DefaultConstructor,
+        Copy,
+        Move,
+        Lifetime,
+        Unmanaged,
+        NotNull,
+        RefLike
+    };
+
+    struct GenericConstraintParseState final
+    {
+        std::size_t clauseBegin = 0;
+        SourceRange parameterRange{};
+        std::string rootParameter;
+        ast::GenericConstraintClause clause;
+        const ast::GenericParameterSyntax* parameterSyntax = nullptr;
+        bool known = false;
+        bool knownLifetime = false;
+        bool associatedEquality = false;
+    };
+
     bool parseGenericParameterList(ast::AstNode* declaration);
+    bool parseGenericParameter(
+        ast::AstNode* declaration,
+        std::unordered_set<std::string>& names);
+    bool parseGenericParameterKind(
+        ast::GenericParameterSyntax& syntax,
+        bool& lifetimeParameter);
+    bool parseConstGenericParameterType(
+        ast::GenericParameterSyntax& syntax,
+        bool pack);
+    static bool supportsConstGenericParameterType(const ast::TypeSyntax* type) noexcept;
+    void finishGenericParameter(
+        ast::AstNode* declaration,
+        ast::GenericParameterSyntax syntax,
+        bool lifetimeParameter,
+        std::size_t parameterBegin,
+        std::unordered_set<std::string>& names);
+    void validateGenericPackPlacement(const ast::AstNode* declaration);
     // NSC-LIMIT-007. Cero o mas clausulas `where T : class, Base, IFoo`, en la posicion donde el
     // lenguaje las admite: despues de la lista de parametros de un metodo o funcion, despues de
     // las bases de una clase, despues de la lista de parametros de un delegado, y despues del
     // nombre en un struct. Devuelve false si alguna clausula estaba mal formada.
     bool parseGenericConstraintClauses(ast::AstNode* declaration);
+    bool beginGenericConstraintClause(
+        ast::AstNode* declaration,
+        std::unordered_set<std::string>& constrained,
+        GenericConstraintParseState& state,
+        bool& ok);
+    bool parseLifetimeConstraintClause(
+        ast::AstNode* declaration,
+        const GenericConstraintParseState& state,
+        bool& ok);
+    bool parseLifetimeConstraintItem(
+        ast::AstNode* declaration,
+        const GenericConstraintParseState& state,
+        std::unordered_set<std::string>& written,
+        bool& ok);
+    GenericConstraintBranchResult parseGenericEqualityConstraint(
+        ast::AstNode* declaration,
+        GenericConstraintParseState& state,
+        bool& ok);
+    ast::TypeSyntax* parseGenericEqualityTarget(
+        const GenericConstraintParseState& state,
+        bool parameterIsConstant);
+    void validateGenericEqualityTarget(
+        ast::AstNode* declaration,
+        const GenericConstraintParseState& state,
+        bool parameterIsConstant,
+        bool& ok);
+    bool parseGenericCapabilityConstraints(
+        ast::AstNode* declaration,
+        GenericConstraintParseState& state,
+        bool& ok);
+    std::optional<GenericCapabilityKind> currentGenericCapability() const noexcept;
+    bool parseGenericCapability(
+        ast::GenericConstraintClause& clause,
+        GenericCapabilityKind kind,
+        bool firstConstraint,
+        bool& ok);
+    bool parseGenericNominalConstraint(
+        const ast::AstNode* declaration,
+        ast::GenericConstraintClause& clause,
+        std::unordered_set<std::string>& written,
+        bool& ok);
     bool parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments);
+    bool parseTypeArgument(std::vector<ast::TypeSyntax*>& arguments);
+    bool looksLikeTupleTypeArgument() const noexcept;
+    ast::TypeSyntax* parseConstExpressionTypeArgument();
+    ast::TypeSyntax* parseConstLiteralTypeArgument();
     bool consumeGenericGreater();
     static bool canAppearInTypeArgumentList(lexer::TokenKind kind) noexcept;
+    bool genericLookaheadTokenIsAllowed(
+        std::size_t cursor,
+        int parenthesisDepth) const noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
+    bool scanClosedGenericTypePrefix(std::size_t& cursor) const noexcept;
     bool looksLikeClosedGenericTypeReference() const noexcept;
 
     ast::AstNode* parseNamespaceMember();
