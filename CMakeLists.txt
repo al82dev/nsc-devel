@@ -305,6 +305,7 @@ add_library(nsc_frontend STATIC
     src/AST/TypeSyntax.cpp
     src/AST/AstDumper.cpp
     src/Parser/Parser.cpp
+    src/Parser/ParserContinuationCoordinator.cpp
     src/Parser/ParserContext.cpp
     src/Parser/DeclarationParser.cpp
     src/Parser/MemberParser.cpp

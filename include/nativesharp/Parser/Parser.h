@@ -1143,6 +1143,15 @@ private:
     ast::AstNode* parseBlockImpl();
     ast::AstNode* parseStatement();
     ast::AstNode* parseStatementImpl();
+    enum class ContinuationRequestKind : std::uint8_t
+    {
+        Expression,
+        Block,
+        Statement
+    };
+    class ParseContinuationCoordinator;
+    ast::AstNode* parseWithContinuation(ContinuationRequestKind kind);
+    ParseContinuationCoordinator* activeContinuationCoordinator_ = nullptr;
     ast::AstNode* parseFloatingPointScopeStatement();
     ast::AstNode* parseUnsafeScopeStatement();
     std::optional<ast::AstNode*> tryParseScopedStatement();

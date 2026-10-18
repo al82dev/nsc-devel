@@ -498,12 +498,12 @@ ast::AstNode* Parser::parseClassMember(
 
 ast::AstNode* Parser::parseBlock()
 {
-    return parseBlockImpl();
+    return parseWithContinuation(ContinuationRequestKind::Block);
 }
 
 ast::AstNode* Parser::parseStatement()
 {
-    return parseStatementImpl();
+    return parseWithContinuation(ContinuationRequestKind::Statement);
 }
 // C7 "aggregate initializer". The C form, deliberately: `{}`, `{1, 2}`, a trailing comma, and
 // nested braces for a nested aggregate (`Matrix m = { {1, 0}, {0, 1} };`). Semantic analysis is
@@ -557,6 +557,6 @@ ast::AstNode* Parser::parseAggregateInitializer()
 
 ast::AstNode* Parser::parseExpression()
 {
-    return parseExpressionImpl();
+    return parseWithContinuation(ContinuationRequestKind::Expression);
 }
 }
