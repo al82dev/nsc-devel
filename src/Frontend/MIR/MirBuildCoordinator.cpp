@@ -318,6 +318,11 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
     {
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
+        if (node == nullptr)
+        {
+            appendMirU32(out, 0xFFFFFFFEu); // null child marker
+            continue;
+        }
         appendMirU32(out, 0xFFFFFFFFu); // node marker
         appendMirNodeFields(out, *node);
         appendMirU32(out, static_cast<std::uint32_t>(node->children.size()));
@@ -491,7 +496,9 @@ bool readMirNodeFields(MirByteReader& reader, ProjectOopMirNode& node)
     return readSizeVector(node.argumentParameterOrdinals);
 }
 
-bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
+bool readMirNodeRecord(
+    MirByteReader& reader,
+    std::unique_ptr<ProjectOopMirNode>& out)
 {
     std::uint32_t marker = 0;
     if (!reader.u32(marker)) return false;
@@ -506,11 +513,52 @@ bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
     std::uint32_t childCount = 0;
     if (!reader.u32(childCount)) return false;
     node->children.resize(childCount);
-    for (std::unique_ptr<ProjectOopMirNode>& child : node->children)
-    {
-        if (!readMirNode(reader, child)) return false;
-    }
     out = std::move(node);
+    return true;
+}
+
+void discardMirNodeTree(std::unique_ptr<ProjectOopMirNode>& root)
+{
+    std::vector<std::unique_ptr<ProjectOopMirNode>> work;
+    if (root != nullptr) work.push_back(std::move(root));
+    while (!work.empty())
+    {
+        std::unique_ptr<ProjectOopMirNode> node = std::move(work.back());
+        work.pop_back();
+        for (std::unique_ptr<ProjectOopMirNode>& child : node->children)
+            if (child != nullptr) work.push_back(std::move(child));
+        node->children.clear();
+    }
+}
+
+bool readMirNode(MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
+{
+    std::unique_ptr<ProjectOopMirNode> root;
+    if (!readMirNodeRecord(reader, root)) return false;
+    if (root == nullptr)
+    {
+        out.reset();
+        return true;
+    }
+    std::vector<std::pair<ProjectOopMirNode*, std::size_t>> work;
+    work.emplace_back(root.get(), 0U);
+    while (!work.empty())
+    {
+        auto& [node, childIndex] = work.back();
+        if (childIndex == node->children.size())
+        {
+            work.pop_back();
+            continue;
+        }
+        std::unique_ptr<ProjectOopMirNode>& child = node->children[childIndex++];
+        if (!readMirNodeRecord(reader, child))
+        {
+            discardMirNodeTree(root);
+            return false;
+        }
+        if (child != nullptr) work.emplace_back(child.get(), 0U);
+    }
+    out = std::move(root);
     return true;
 }
 
@@ -1977,6 +2025,18 @@ void ProjectOopMirModel::restoreMirFunctions()
     }
 }
 
+std::string ProjectOopMirModel::serializeMirNodeTreeForTesting(
+    const ProjectOopMirNode* root)
+{
+    return serializeMirNodeTree(root);
+}
+
+bool ProjectOopMirModel::restoreMirNodeTreeForTesting(
+    std::string_view bytes,
+    std::unique_ptr<ProjectOopMirNode>& root)
+{
+    return restoreMirNodeTree(bytes, root);
+}
 
 const ObjectFieldLayout* ProjectOopMirModel::fieldLayout(std::size_t memberOrdinal) const noexcept
 {

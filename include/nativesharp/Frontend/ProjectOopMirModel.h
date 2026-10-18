@@ -1044,6 +1044,10 @@ private:
         const ProjectNameLookup& nameLookup,
         ProjectOopMirFunction& function,
         std::uint64_t& frameSize);
+    static std::string serializeMirNodeTreeForTesting(const ProjectOopMirNode* root);
+    static bool restoreMirNodeTreeForTesting(
+        std::string_view bytes,
+        std::unique_ptr<ProjectOopMirNode>& root);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

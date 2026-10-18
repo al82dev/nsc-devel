@@ -580,6 +580,18 @@ struct ProjectOopHirModelTestAccess final
             objectLayoutModel, nameLookup, function, frameSize);
     }
 
+    static std::string serializeMirNodeTree(const ProjectOopMirNode* root)
+    {
+        return ProjectOopMirModel::serializeMirNodeTreeForTesting(root);
+    }
+
+    static bool restoreMirNodeTree(
+        std::string_view bytes,
+        std::unique_ptr<ProjectOopMirNode>& root)
+    {
+        return ProjectOopMirModel::restoreMirNodeTreeForTesting(bytes, root);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4695,6 +4707,68 @@ void testDeepMirMoveNextFrameLocalAppend(TestContext& tests)
         "MIR move-next frame locals preserve omissions, repeats, sibling order, and final size");
     destroyMirTreeIteratively(std::move(root));
 }
+
+void testDeepMirCacheRestore(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+        node->typeKey = "type:Node" + std::to_string(depth);
+        node->integerValue = depth;
+        if (depth % 2U == 0U) node->localOrdinal = depth;
+        if (root != nullptr) node->children.push_back(std::move(root));
+        else node->children.emplace_back();
+        node->children.emplace_back();
+        root = std::move(node);
+    }
+    const std::string payload =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::serializeMirNodeTree(root.get());
+    auto restored = std::make_unique<ProjectOopMirNode>();
+    restored->typeKey = "sentinel:replace";
+    const bool restoredOk =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::restoreMirNodeTree(payload, restored);
+    bool exact = restoredOk;
+    ProjectOopMirNode* current = restored.get();
+    for (std::size_t depth = 0U; exact && depth < nestingDepth; ++depth)
+    {
+        exact = current != nullptr && current->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            current->typeKey == "type:Node" + std::to_string(depth) &&
+            current->integerValue == depth && current->localOrdinal.has_value() == (depth % 2U == 0U) &&
+            (!current->localOrdinal.has_value() || *current->localOrdinal == depth) &&
+            current->children.size() == 2U && current->children[1] == nullptr;
+        if (exact) current = current->children[0].get();
+    }
+    tests.expect(exact && current == nullptr,
+        "MIR cache restore preserves 32768-node preorder, fields, child counts, and null slots");
+    restored->typeKey = "mutated:restored";
+    tests.expect(root->typeKey == "type:Node0",
+        "MIR cache restore owns an independent node tree");
+    auto nullBody = std::make_unique<ProjectOopMirNode>();
+    const bool nullOk = nativesharp::frontend::ProjectOopHirModelTestAccess::restoreMirNodeTree(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::serializeMirNodeTree(nullptr), nullBody);
+    std::string invalidMarker(4U, '\0');
+    auto invalidBody = std::make_unique<ProjectOopMirNode>();
+    invalidBody->typeKey = "sentinel:invalid";
+    const bool invalidOk =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::restoreMirNodeTree(
+            invalidMarker, invalidBody);
+    std::string truncated = payload;
+    truncated.resize(truncated.size() - 5U);
+    auto truncatedBody = std::make_unique<ProjectOopMirNode>();
+    truncatedBody->typeKey = "sentinel:truncated";
+    const bool truncatedOk =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::restoreMirNodeTree(
+            truncated, truncatedBody);
+    tests.expect(nullOk && nullBody == nullptr && !invalidOk &&
+            invalidBody->typeKey == "sentinel:invalid" && !truncatedOk &&
+            truncatedBody->typeKey == "sentinel:truncated",
+        "MIR cache restore preserves null-root and transactional read-error semantics");
+    destroyMirTreeIteratively(std::move(root));
+    destroyMirTreeIteratively(std::move(restored));
+}
 }
 
 int main()
@@ -4893,6 +4967,10 @@ int main()
     {
         testDeepMirMoveNextFrameLocalAppend(tests);
     }
+    else if (focusValue == "mir-cache-restore-depth")
+    {
+        testDeepMirCacheRestore(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4937,6 +5015,7 @@ int main()
         testDeepMirLivePollLocalCollection(tests);
         testDeepMirPollFrameLocalAppend(tests);
         testDeepMirMoveNextFrameLocalAppend(tests);
+        testDeepMirCacheRestore(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
