@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <string_view>
+#include <tuple>
 
 namespace nativesharp::frontend
 {
@@ -79,13 +80,11 @@ double normalizeFloating(double value, std::string_view typeKey) noexcept
 
 std::optional<std::uint64_t> integerConversionValue(
     const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
+    std::optional<std::uint64_t> value) noexcept
 {
     if (!ProjectTypeConversion::isIntegral(node->typeKey)) return std::nullopt;
     const ProjectOopHirNode* child = node->children.front().get();
     if (!ProjectTypeConversion::isIntegral(child->typeKey)) return std::nullopt;
-    const std::optional<std::uint64_t> value =
-        MirConstantEvaluator::integerValue(child, knownFields);
     return value.has_value()
         ? std::optional<std::uint64_t>(normalizeInteger(*value, node->typeKey))
         : std::nullopt;
@@ -93,10 +92,8 @@ std::optional<std::uint64_t> integerConversionValue(
 
 std::optional<std::uint64_t> integerUnaryValue(
     const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
+    std::optional<std::uint64_t> value) noexcept
 {
-    const std::optional<std::uint64_t> value =
-        MirConstantEvaluator::integerValue(node->children.front().get(), knownFields);
     if (!value.has_value()) return std::nullopt;
     switch (node->operation)
     {
@@ -133,12 +130,9 @@ std::optional<std::uint64_t> signedDivisionOrRemainder(
 
 std::optional<std::uint64_t> integerBinaryValue(
     const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
+    std::optional<std::uint64_t> leftValue,
+    std::optional<std::uint64_t> rightValue) noexcept
 {
-    const std::optional<std::uint64_t> leftValue =
-        MirConstantEvaluator::integerValue(node->children[0].get(), knownFields);
-    const std::optional<std::uint64_t> rightValue =
-        MirConstantEvaluator::integerValue(node->children[1].get(), knownFields);
     if (!leftValue.has_value() || !rightValue.has_value()) return std::nullopt;
     const unsigned width = integerBitWidth(node->typeKey);
     const std::uint64_t left = normalizeInteger(*leftValue, node->typeKey);
@@ -334,24 +328,70 @@ std::optional<std::uint64_t> MirConstantEvaluator::integerValue(
     const ProjectOopHirNode* node,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
 {
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::IntegerConstant)
-        return normalizeInteger(node->integerValue, node->typeKey);
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+    using Result = std::optional<std::uint64_t>;
+    using Frame = std::tuple<const ProjectOopHirNode*, unsigned, Result>;
+    std::vector<Frame> work{{node, 0U, std::nullopt}};
+    std::vector<Result> values;
+    const auto finish = [&](Result value)
     {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        return field != nullptr && ProjectTypeConversion::isIntegral(field->typeKey)
-            ? std::optional<std::uint64_t>(
-                normalizeInteger(field->constantIntegerValue, field->typeKey))
-            : std::nullopt;
+        work.pop_back();
+        values.push_back(std::move(value));
+    };
+    while (!work.empty())
+    {
+        auto& [current, state, left] = work.back();
+        if (state == 0U)
+        {
+            if (current == nullptr) { finish(std::nullopt); continue; }
+            if (current->kind == ProjectOopHirNodeKind::IntegerConstant)
+            {
+                finish(normalizeInteger(current->integerValue, current->typeKey));
+                continue;
+            }
+            if (current->kind == ProjectOopHirNodeKind::StaticFieldValue &&
+                current->memberOrdinal.has_value())
+            {
+                const ProjectOopMirStaticField* field =
+                    knownStaticField(*current->memberOrdinal, knownFields);
+                finish(field != nullptr && ProjectTypeConversion::isIntegral(field->typeKey)
+                    ? Result(normalizeInteger(field->constantIntegerValue, field->typeKey))
+                    : std::nullopt);
+                continue;
+            }
+            const bool conversion = current->kind == ProjectOopHirNodeKind::Conversion &&
+                !current->children.empty();
+            const bool unary = current->kind == ProjectOopHirNodeKind::Unary &&
+                !current->children.empty();
+            const bool binary = current->kind == ProjectOopHirNodeKind::Binary &&
+                current->children.size() == 2U;
+            if (!conversion && !unary && !binary) { finish(std::nullopt); continue; }
+            if (conversion && (!ProjectTypeConversion::isIntegral(current->typeKey) ||
+                !ProjectTypeConversion::isIntegral(current->children.front()->typeKey)))
+            {
+                finish(std::nullopt);
+                continue;
+            }
+            state = 1U;
+            work.emplace_back(current->children.front().get(), 0U, std::nullopt);
+            continue;
+        }
+        Result child = std::move(values.back());
+        values.pop_back();
+        if (state == 1U && current->kind == ProjectOopHirNodeKind::Binary)
+        {
+            left = std::move(child);
+            state = 2U;
+            work.emplace_back(current->children[1].get(), 0U, std::nullopt);
+            continue;
+        }
+        if (current->kind == ProjectOopHirNodeKind::Conversion)
+            finish(integerConversionValue(current, std::move(child)));
+        else if (current->kind == ProjectOopHirNodeKind::Unary)
+            finish(integerUnaryValue(current, std::move(child)));
+        else
+            finish(integerBinaryValue(current, std::move(left), std::move(child)));
     }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
-        return integerConversionValue(node, knownFields);
-    if (node->kind == ProjectOopHirNodeKind::Unary && !node->children.empty())
-        return integerUnaryValue(node, knownFields);
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->children.size() == 2)
-        return integerBinaryValue(node, knownFields);
-    return std::nullopt;
+    return values.empty() ? std::nullopt : std::move(values.back());
 }
 
 std::optional<double> MirConstantEvaluator::floatingValue(
