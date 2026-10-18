@@ -301,6 +301,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerParserMatchCoordinatorCounterfactualModule(registry);
         nsc::suite::registerParserConditionalPatternCoordinatorCounterfactualModule(registry);
         nsc::suite::registerParserSpecialStatementSccClosureCounterfactualModule(registry);
+        nsc::suite::registerParserPostfixPrimaryClosureCounterfactualModule(registry);
         nsc::suite::registerParserPostfixPrattCounterfactualModule(registry);
         nsc::suite::registerParserPrimaryPrattCounterfactualModule(registry);
         nsc::suite::registerSemaConstantConversionModule(registry);

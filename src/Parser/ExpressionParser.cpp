@@ -2079,17 +2079,52 @@ private:
     std::deque<Result> results_;
     std::deque<InterpolationFrame> interpolationFrames_;
     std::vector<Work> work_;
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    std::size_t outstandingResults_ = 0;
+#endif
 };
+
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+namespace scheduler_test_hooks
+{
+thread_local std::size_t activeDepth = 0;
+thread_local std::size_t maximumDepth = 0;
+thread_local std::size_t unfinishedResults = 0;
+
+void resetPostfixPrimaryMetrics() noexcept
+{
+    activeDepth = 0;
+    maximumDepth = 0;
+    unfinishedResults = 0;
+}
+
+std::size_t maximumPostfixPrimaryDepth() noexcept
+{
+    return maximumDepth;
+}
+
+std::size_t unfinishedPostfixPrimaryResults() noexcept
+{
+    return unfinishedResults;
+}
+}
+#endif
 
 std::size_t Parser::PostfixIterationMachine::makeSlot()
 {
     const std::size_t slot = results_.size();
     results_.push_back({});
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    ++outstandingResults_;
+#endif
     return slot;
 }
 
 void Parser::PostfixIterationMachine::complete(std::size_t slot, ast::AstNode* value)
 {
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    if (!results_[slot].ready && outstandingResults_ != 0U) --outstandingResults_;
+#endif
     results_[slot] = {value, true};
 }
 
@@ -2102,6 +2137,11 @@ void Parser::PostfixIterationMachine::scheduleChild(std::size_t slot)
 
 ast::AstNode* Parser::PostfixIterationMachine::parse()
 {
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    ++scheduler_test_hooks::activeDepth;
+    scheduler_test_hooks::maximumDepth = std::max(
+        scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
+#endif
     const std::size_t root = makeSlot();
     work_.push_back({WorkKind::Postfix, root});
     while (!results_[root].ready)
@@ -2133,7 +2173,12 @@ ast::AstNode* Parser::PostfixIterationMachine::parse()
         case WorkKind::With: continueWith(std::move(work)); break;
         }
     }
-    return results_[root].value;
+    ast::AstNode* result = results_[root].value;
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    scheduler_test_hooks::unfinishedResults = outstandingResults_;
+    --scheduler_test_hooks::activeDepth;
+#endif
+    return result;
 }
 
 namespace

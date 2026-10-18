@@ -225,6 +225,7 @@ void registerParserSwitchCoordinatorCounterfactualModule(TestRegistry& registry)
 void registerParserMatchCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerParserConditionalPatternCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerParserSpecialStatementSccClosureCounterfactualModule(TestRegistry& registry);
+void registerParserPostfixPrimaryClosureCounterfactualModule(TestRegistry& registry);
 void registerParserPostfixPrattCounterfactualModule(TestRegistry& registry);
 void registerParserPrimaryPrattCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);

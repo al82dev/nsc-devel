@@ -281,6 +281,7 @@ add_executable(
     host/modules/ParserMatchCoordinatorCounterfactualModule.cpp
     host/modules/ParserConditionalPatternCoordinatorCounterfactualModule.cpp
     host/modules/ParserSpecialStatementSccClosureCounterfactualModule.cpp
+    host/modules/ParserPostfixPrimaryClosureCounterfactualModule.cpp
     host/modules/ParserPostfixPrattCounterfactualModule.cpp
     host/modules/ParserPrimaryPrattCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
@@ -715,6 +716,7 @@ target_include_directories(
 target_compile_definitions(
     nsc_component_tests
     PRIVATE
+        NSC_PARSER_SCHEDULER_TEST_HOOKS=1
         "NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\""
         "NSC_SUITE_REPOSITORY_ROOT=\"${CMAKE_CURRENT_LIST_DIR}/../..\""
         "NSC_SUITE_NSC_EXECUTABLE=\"${NSC_COMPILER_SUITE_NSC_EXECUTABLE}\""
