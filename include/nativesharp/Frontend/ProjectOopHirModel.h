@@ -1030,7 +1030,8 @@ private:
         std::size_t memberOrdinal,
         std::string& error,
         const MethodEventBinding* binding,
-        bool address);
+        bool address,
+        std::unique_ptr<ProjectOopHirNode> preloweredReceiver = nullptr);
 
     std::unique_ptr<ProjectOopHirNode> lowerCallExpression(
         const ast::AstNode* expression,

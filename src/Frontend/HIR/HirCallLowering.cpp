@@ -441,7 +441,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
     std::size_t memberOrdinal,
     std::string& error,
     const MethodEventBinding* binding,
-    bool address)
+    bool address,
+    std::unique_ptr<ProjectOopHirNode> preloweredReceiver)
 {
     if (binding == nullptr || memberModel_ == nullptr ||
         binding->backingMemberOrdinal >= memberModel_->members().size())
@@ -458,8 +459,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
     node->memberOrdinal = binding->backingMemberOrdinal;
     if (!binding->staticEvent)
     {
-        auto receiver = lowerReceiver(
-            binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+        auto receiver = std::move(preloweredReceiver);
+        if (receiver == nullptr)
+            receiver = lowerReceiver(
+                binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
         if (receiver == nullptr) return nullptr;
         node->children.push_back(std::move(receiver));
     }
@@ -1082,29 +1085,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "Stage 42 event invocation is not addressable";
             return nullptr;
         }
+        const bool iterativeReceiver = !stage42Event->staticEvent &&
+            stage42Event->receiverSyntax != nullptr &&
+            stage42Event->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
+        if (iterativeReceiver || !expression->children().empty())
+        {
+            error = "Stage 34 event invocation escaped iterative lowering";
+            return nullptr;
+        }
         auto head = lowerEventBacking(stage42Event, false);
         if (head == nullptr) return nullptr;
         auto node = makeNode(ProjectOopHirNodeKind::EventInvoke, expression, stage42Event->resultTypeKey);
         node->elementTypeKey = stage42Event->delegateTypeKey;
         node->memberOrdinal = stage42Event->backingMemberOrdinal;
         node->children.push_back(std::move(head));
-        for (std::size_t index = 0; index < expression->children().size(); ++index)
-        {
-            const ast::AstNode* argumentSyntax = expression->children()[index];
-            auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            if (index < stage42Event->argumentConversions.size())
-            {
-                const ProjectImplicitConversion& conversion = stage42Event->argumentConversions[index];
-                node->argumentTypeKeys.push_back(conversion.targetTypeKey);
-                if (conversion.kind != ProjectConversionKind::Identity)
-                {
-                    argument = wrapImplicitConversion(std::move(argument), conversion, argumentSyntax);
-                }
-            }
-            node->children.push_back(std::move(argument));
-        }
-        node->argumentCount = expression->children().size();
+        node->argumentCount = 0U;
         return node;
     }
 

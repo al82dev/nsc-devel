@@ -511,6 +511,31 @@ struct ProjectOopHirModelTestAccess final
         return result;
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerEventInvokeExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodEventBinding>& bindings,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        const MethodLambdaBinding* currentLambda,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodEventBinding& binding : bindings)
+            model.eventBindingBySyntax_[binding.syntax] = &binding;
+        model.currentLambda_ = currentLambda;
+        auto result = model.lowerExpression(
+            root, callerMemberOrdinal, addressContext, error);
+        model.currentLambda_ = nullptr;
+        return result;
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerPropertyIndexerSetterExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -3429,6 +3454,358 @@ void testDeepEventSubscriptionLowering(
     destroyHirTreeIteratively(lowered);
     testEventSubscriptionContracts(tests, compilation, targets);
     testEventSubscriptionDiagnostics(tests, compilation, targets);
+}
+
+struct EventInvokeTargets final
+{
+    nativesharp::frontend::MethodEventBinding instanceInvoke;
+    nativesharp::frontend::MethodEventBinding staticInvoke;
+    nativesharp::frontend::MethodEventBinding structInvoke;
+    std::size_t instanceCallerOrdinal = 0U;
+    std::size_t staticCallerOrdinal = 0U;
+    std::size_t structCallerOrdinal = 0U;
+    std::string argumentType;
+};
+
+bool prepareEventInvokeFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    EventInvokeTargets& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepEventInvoke";
+    writeProject(directory, "DeepEventInvoke");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public delegate void Handler(int value);
+public class Publisher {
+    public event Handler Raised;
+    public static event Handler StaticRaised;
+    public void Fire(int value) { Raised(value); }
+    public static void FireStatic(int value) { StaticRaised(value); }
+}
+public struct StructPublisher {
+    public event Handler Raised;
+    public void Fire(int value) { Raised(value); }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepEventInvoke.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
+        compilation.methodBodyModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundInstance = false;
+    bool foundStatic = false;
+    bool foundStruct = false;
+    for (const auto& binding : compilation.methodBodyModel()->eventBindings())
+    {
+        if (binding.kind != nativesharp::frontend::MethodEventOperationKind::Invoke)
+            continue;
+        if (binding.staticEvent)
+        {
+            output.staticInvoke = binding;
+            output.staticCallerOrdinal = binding.methodMemberOrdinal;
+            foundStatic = true;
+        }
+        else if (binding.receiverTypeKey.find("StructPublisher") != std::string::npos)
+        {
+            output.structInvoke = binding;
+            output.structCallerOrdinal = binding.methodMemberOrdinal;
+            foundStruct = true;
+        }
+        else
+        {
+            output.instanceInvoke = binding;
+            output.instanceCallerOrdinal = binding.methodMemberOrdinal;
+            foundInstance = true;
+        }
+    }
+    if (foundStatic && !output.staticInvoke.argumentConversions.empty())
+        output.argumentType = output.staticInvoke.argumentConversions.front().targetTypeKey;
+    return foundInstance && foundStatic && foundStruct && !output.argumentType.empty();
+}
+
+struct EventInvokeSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodEventBinding> bindings;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendEventInvokeInteger(
+    EventInvokeSyntax& fixture,
+    std::uint64_t value)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(value);
+    return fixture.nodes.back().get();
+}
+
+EventInvokeSyntax makeDeepEventInvokeSyntax(
+    std::size_t depth,
+    const EventInvokeTargets& targets)
+{
+    EventInvokeSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.bindings.reserve(depth);
+    auto* current = appendEventInvokeInteger(fixture, 5U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        auto* callSyntax = fixture.nodes.back().get();
+        callSyntax->addChild(current);
+        fixture.bindings.push_back(targets.staticInvoke);
+        fixture.bindings.back().syntax = callSyntax;
+        current = callSyntax;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerEventInvokeFixture(
+    ProjectCompilation& compilation,
+    std::size_t callerOrdinal,
+    EventInvokeSyntax& fixture,
+    bool addressContext,
+    const nativesharp::frontend::MethodLambdaBinding* currentLambda,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = "builtin:int";
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerEventInvokeExpression(
+            model,
+            *compilation.nameLookup(),
+            *compilation.memberModel(),
+            callerOrdinal,
+            fixture.root,
+            fixture.nodes,
+            fixture.bindings,
+            type,
+            addressContext,
+            currentLambda,
+            error);
+}
+
+bool eventInvokeChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const EventInvokeTargets& targets)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::EventInvoke)
+    {
+        if (node->memberOrdinal != targets.staticInvoke.backingMemberOrdinal ||
+            node->typeKey != targets.staticInvoke.resultTypeKey ||
+            node->elementTypeKey != targets.staticInvoke.delegateTypeKey ||
+            node->argumentCount != 1U || node->children.size() != 2U ||
+            node->children[0]->kind != HirKind::StaticFieldValue ||
+            node->children[0]->memberOrdinal != targets.staticInvoke.backingMemberOrdinal ||
+            node->argumentTypeKeys != std::vector<std::string>{targets.argumentType})
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children[1].get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::IntegerConstant && node->integerValue == 5U;
+}
+
+EventInvokeSyntax makeSingleEventInvokeSyntax(
+    const nativesharp::frontend::MethodEventBinding& source,
+    bool explicitReceiver,
+    std::size_t argumentCount)
+{
+    EventInvokeSyntax fixture;
+    const nativesharp::ast::AstNode* receiver = nullptr;
+    if (explicitReceiver)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::NullLiteralExpression,
+            nativesharp::SourceRange{}));
+        receiver = fixture.nodes.back().get();
+    }
+    std::vector<nativesharp::ast::AstNode*> arguments;
+    for (std::size_t index = 0; index < argumentCount; ++index)
+        arguments.push_back(appendEventInvokeInteger(fixture, index + 1U));
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    fixture.root = fixture.nodes.back().get();
+    for (auto* argument : arguments) fixture.nodes.back()->addChild(argument);
+    fixture.bindings.push_back(source);
+    fixture.bindings.back().syntax = fixture.root;
+    fixture.bindings.back().receiverSyntax = receiver;
+    return fixture;
+}
+
+void testEventInvokeContracts(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const EventInvokeTargets& targets)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+
+    auto staticLeaf = makeSingleEventInvokeSyntax(targets.staticInvoke, false, 0U);
+    auto staticNode = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, staticLeaf, false, nullptr, error);
+    tests.expect(staticNode != nullptr && error.empty() &&
+            staticNode->kind == HirKind::EventInvoke && staticNode->argumentCount == 0U &&
+            staticNode->children.size() == 1U &&
+            staticNode->children.front()->kind == HirKind::StaticFieldValue,
+        "event invoke preserves a static zero-argument backing leaf");
+    destroyHirTreeIteratively(staticNode);
+
+    error.clear();
+    auto implicit = makeSingleEventInvokeSyntax(targets.instanceInvoke, false, 0U);
+    auto implicitNode = lowerEventInvokeFixture(
+        compilation, targets.instanceCallerOrdinal, implicit, false, nullptr, error);
+    const auto* implicitBacking = implicitNode != nullptr && !implicitNode->children.empty()
+        ? implicitNode->children.front().get() : nullptr;
+    tests.expect(implicitNode != nullptr && error.empty() &&
+            implicitBacking != nullptr && implicitBacking->kind == HirKind::FieldValue &&
+            implicitBacking->children.size() == 1U &&
+            implicitBacking->children.front()->kind == HirKind::ThisValue,
+        "event invoke preserves an implicit instance receiver");
+    destroyHirTreeIteratively(implicitNode);
+
+    error.clear();
+    auto explicitClass = makeSingleEventInvokeSyntax(targets.instanceInvoke, true, 0U);
+    auto classNode = lowerEventInvokeFixture(
+        compilation, targets.instanceCallerOrdinal, explicitClass, false, nullptr, error);
+    const auto* classBacking = classNode != nullptr && !classNode->children.empty()
+        ? classNode->children.front().get() : nullptr;
+    tests.expect(classNode != nullptr && error.empty() && classBacking != nullptr &&
+            classBacking->kind == HirKind::FieldValue && classBacking->children.size() == 1U &&
+            classBacking->children.front()->kind == HirKind::NullConstant,
+        "event invoke evaluates an explicit class receiver exactly once");
+    destroyHirTreeIteratively(classNode);
+
+    error.clear();
+    auto structTemporary = makeSingleEventInvokeSyntax(targets.structInvoke, true, 0U);
+    auto structNode = lowerEventInvokeFixture(
+        compilation, targets.structCallerOrdinal, structTemporary, false, nullptr, error);
+    const auto* structBacking = structNode != nullptr && !structNode->children.empty()
+        ? structNode->children.front().get() : nullptr;
+    const auto* temporary = structBacking != nullptr && !structBacking->children.empty()
+        ? structBacking->children.front().get() : nullptr;
+    tests.expect(structNode != nullptr && error.empty() && structBacking != nullptr &&
+            structBacking->kind == HirKind::FieldValue && temporary != nullptr &&
+            temporary->kind == HirKind::TemporaryAddress &&
+            temporary->elementTypeKey == targets.structInvoke.receiverTypeKey,
+        "event invoke materializes an explicit struct temporary exactly once");
+    destroyHirTreeIteratively(structNode);
+
+    EventInvokeSyntax structAddress;
+    structAddress.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression,
+        nativesharp::SourceRange{}));
+    auto* thisReceiver = structAddress.nodes.back().get();
+    structAddress.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    structAddress.root = structAddress.nodes.back().get();
+    structAddress.bindings.push_back(targets.structInvoke);
+    structAddress.bindings.back().syntax = structAddress.root;
+    structAddress.bindings.back().receiverSyntax = thisReceiver;
+    error.clear();
+    auto addressable = lowerEventInvokeFixture(
+        compilation, targets.structCallerOrdinal, structAddress, false, nullptr, error);
+    const auto* addressableBacking = addressable != nullptr && !addressable->children.empty()
+        ? addressable->children.front().get() : nullptr;
+    tests.expect(addressable != nullptr && error.empty() && addressableBacking != nullptr &&
+            addressableBacking->children.size() == 1U &&
+            addressableBacking->children.front()->kind != HirKind::TemporaryAddress,
+        "event invoke keeps a naturally addressable struct receiver without a temporary");
+    destroyHirTreeIteratively(addressable);
+
+    auto converted = makeSingleEventInvokeSyntax(targets.staticInvoke, false, 1U);
+    auto conversion = converted.bindings.front().argumentConversions.front();
+    conversion.kind = nativesharp::frontend::ProjectConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:byte";
+    converted.bindings.front().argumentConversions = {conversion};
+    error.clear();
+    auto convertedNode = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, converted, false, nullptr, error);
+    tests.expect(convertedNode != nullptr && error.empty() &&
+            convertedNode->children.size() == 2U &&
+            convertedNode->children[1]->kind == HirKind::Conversion &&
+            convertedNode->argumentTypeKeys == std::vector<std::string>{conversion.targetTypeKey},
+        "event invoke applies each recorded argument conversion exactly once");
+    destroyHirTreeIteratively(convertedNode);
+
+    auto shortConversions = makeSingleEventInvokeSyntax(targets.staticInvoke, false, 2U);
+    shortConversions.bindings.front().argumentConversions.resize(1U);
+    error.clear();
+    auto shortNode = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, shortConversions, false, nullptr, error);
+    tests.expect(shortNode != nullptr && error.empty() && shortNode->argumentCount == 2U &&
+            shortNode->children.size() == 3U && shortNode->argumentTypeKeys.size() == 1U,
+        "event invoke preserves a conversion vector shorter than its argument list");
+    destroyHirTreeIteratively(shortNode);
+
+    auto addressError = makeSingleEventInvokeSyntax(targets.staticInvoke, false, 1U);
+    error.clear();
+    auto rejectedAddress = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, addressError, true, nullptr, error);
+    tests.expect(rejectedAddress == nullptr &&
+            error == "Stage 42 event invocation is not addressable",
+        "event invoke rejects address context before lowering backing or arguments");
+
+    auto invalidBacking = makeSingleEventInvokeSyntax(targets.staticInvoke, false, 1U);
+    invalidBacking.bindings.front().backingMemberOrdinal =
+        compilation.memberModel()->members().size();
+    error.clear();
+    auto rejectedBacking = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, invalidBacking, false, nullptr, error);
+    tests.expect(rejectedBacking == nullptr &&
+            error == "Stage 42 event binding has invalid backing member",
+        "event invoke preserves the invalid-backing diagnostic exactly");
+
+    auto emptyReceiverType = makeSingleEventInvokeSyntax(targets.instanceInvoke, true, 0U);
+    emptyReceiverType.bindings.front().receiverTypeKey.clear();
+    error.clear();
+    auto rejectedReceiver = lowerEventInvokeFixture(
+        compilation, targets.instanceCallerOrdinal, emptyReceiverType, false, nullptr, error);
+    tests.expect(rejectedReceiver == nullptr &&
+            error == "Stage 40 receiver has no semantic class/interface/struct type",
+        "event invoke preserves the empty receiver-type diagnostic exactly");
+}
+
+void testDeepEventInvokeLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    EventInvokeTargets targets;
+    std::string error;
+    const bool prepared = prepareEventInvokeFixture(root, compilation, targets, error);
+    tests.expect(prepared,
+        "the event-invoke fixture exposes real instance, static, and struct bindings (" +
+            error + ")");
+    if (!prepared) return;
+
+    EventInvokeSyntax syntax = makeDeepEventInvokeSyntax(nestingDepth, targets);
+    auto lowered = lowerEventInvokeFixture(
+        compilation, targets.staticCallerOrdinal, syntax, false, nullptr, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level event-invoke argument chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(eventInvokeChainMatches(lowered.get(), nestingDepth, targets),
+        "iterative event-invoke lowering preserves backing-first order, conversions, and counts");
+    destroyHirTreeIteratively(lowered);
+    testEventInvokeContracts(tests, compilation, targets);
 }
 
 struct PropertyIndexerSetterTargets final
@@ -8969,6 +9346,10 @@ int main()
     {
         testDeepNamespaceCallLowering(tests, root);
     }
+    else if (focusValue == "hir-event-invoke-depth")
+    {
+        testDeepEventInvokeLowering(tests, root);
+    }
     else if (focusValue == "hir-delegate-lambda-receiver-depth")
     {
         testDeepDelegateLambdaReceiverLowering(tests, root);
@@ -9178,6 +9559,7 @@ int main()
         testDeepUserUnaryOperatorLowering(tests, root);
         testBoundCallFrameLowering(tests, root);
         testDeepNamespaceCallLowering(tests, root);
+        testDeepEventInvokeLowering(tests, root);
         testDeepDelegateLambdaReceiverLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
