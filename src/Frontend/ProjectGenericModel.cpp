@@ -6761,6 +6761,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneTypeGenericShallow(
 {
     ast::TypeSyntax* result =
         arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
+    result->setTuple(source->isTuple());
     result->setFunction(source->isFunction());
     result->setFunctionCarrier(source->functionCarrier());
     result->setFunctionCallingConvention(source->functionCallingConvention());
