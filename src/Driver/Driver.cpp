@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/Driver.h"
+#include "CompilerActionDispatcher.h"
 #include "CompilerInvocation.h"
 #include "nativesharp/Driver/ProjectCommands.h"
 #include "nativesharp/Driver/BreakingChangeLedger.h"
@@ -3948,7 +3949,196 @@ ExitCode openCompilerGenericsTrace(
 }
 #endif // INSTRUMENTATION CODE
 
-ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
+namespace
+{
+ExitCode parseAndConfigureInvocation(
+    std::span<const std::string_view> arguments,
+    DriverExecutionScope& executionScope,
+    CompilationJobPolicy& jobPolicy,
+    CompilerInvocation& invocation,
+    std::ostream& error)
+{
+    const ExitCode result = parseCompilerInvocation(
+        arguments, executionScope.projectLoader, invocation, error);
+    executionScope.reportTiming = invocation.reportTiming;
+    executionScope.reportProgress = invocation.reportProgress;
+    executionScope.progressFormat = invocation.progressFormat;
+    executionScope.projectLoadOptions = invocation.projectLoadOptions;
+    if (invocation.timeoutMilliseconds.has_value())
+    {
+        executionScope.deadline = executionScope.started +
+            std::chrono::milliseconds(*invocation.timeoutMilliseconds);
+    }
+    if (invocation.optimizationBudgetMilliseconds.has_value())
+        executionScope.o2Budget.setBudgetMilliseconds(
+            *invocation.optimizationBudgetMilliseconds);
+    if (invocation.requestedJobs.has_value())
+        jobPolicy.setRequestedJobs(*invocation.requestedJobs);
+    if (invocation.reservedCores.has_value())
+        jobPolicy.setReservedCores(*invocation.reservedCores);
+    return result;
+}
+
+void installAndReportFloatingPoint(
+    const CompilerInvocation& invocation,
+    llvm_backend::FloatingPointModeScope& floatingPointModeScope,
+    std::ostream& output)
+{
+    floatingPointModeScope.set(invocation.floatingPointMode);
+    floatingPointModeScope.setFmaContractPolicy(invocation.fmaContractPolicy);
+    floatingPointModeScope.setRoundingMode(invocation.floatingPointRoundingMode);
+    floatingPointModeScope.setDenormalMode(invocation.floatingPointDenormalMode);
+    if (invocation.floatingPointModeSeen)
+        output << "floating-point-mode: "
+               << llvm_backend::floatingPointModeName(invocation.floatingPointMode)
+               << '\n';
+    if (invocation.fmaContractPolicySeen)
+        output << "fma-contract-policy: "
+               << llvm_backend::fmaContractPolicyName(invocation.fmaContractPolicy)
+               << '\n';
+    if (invocation.floatingPointRoundingModeSeen)
+        output << "floating-point-rounding: "
+               << llvm_backend::floatingPointRoundingModeName(
+                      invocation.floatingPointRoundingMode)
+               << '\n';
+    if (invocation.floatingPointDenormalModeSeen)
+        output << "floating-point-denormal: "
+               << llvm_backend::floatingPointDenormalModeName(
+                      invocation.floatingPointDenormalMode)
+               << '\n';
+}
+
+ExitCode pruneInvocationArtifactCache(
+    const CompilerInvocation& invocation,
+    llvm_backend::CompilationArtifactCache& artifactCache,
+    std::ostream& output,
+    std::ostream& error)
+{
+    if (invocation.artifactCacheRoot.has_value())
+        artifactCache.setRoot(*invocation.artifactCacheRoot);
+    if (!invocation.artifactCacheMaximumSeen && !invocation.defaultArtifactCache)
+        return ExitCode::Success;
+    std::size_t evictedEntries = 0;
+    std::uintmax_t evictedBytes = 0;
+    std::string pruneError;
+    if (!artifactCache.prune(
+            invocation.artifactCacheMaximumBytes,
+            evictedEntries,
+            evictedBytes,
+            pruneError))
+    {
+        error << "nsc: error: artifact-cache eviction failed: "
+              << pruneError << '\n';
+        return ExitCode::CompilationError;
+    }
+    output << "artifact-cache-evicted-entries: " << evictedEntries << '\n'
+           << "artifact-cache-evicted-bytes: " << evictedBytes << '\n';
+    return ExitCode::Success;
+}
+
+ExitCode validateInvocationAndCache(
+    CompilerInvocation& invocation,
+    llvm_backend::CompilationArtifactCache& artifactCache,
+    std::ostream& output,
+    std::ostream& error)
+{
+    if (invocation.arguments.empty())
+    {
+        error << "nsc: error: compilation options require an action or input file\n";
+        return ExitCode::CommandLineError;
+    }
+    ExitCode result = validateCompilerInvocation(invocation, error);
+    if (result != ExitCode::Success) return result;
+    result = pruneInvocationArtifactCache(invocation, artifactCache, output, error);
+    if (result != ExitCode::Success) return result;
+    return validateCompilerLinkOptions(invocation, error);
+}
+
+void reportCompilationProfile(
+    const CompilerInvocation& invocation, std::ostream& output)
+{
+    if (!invocation.compilationProfile.has_value()) return;
+    output << "compilation-profile: "
+           << compilationProfileName(*invocation.compilationProfile) << '\n'
+           << "profile-optimization: "
+           << llvm_backend::llvmOptimizationLevelName(invocation.optimizationLevel)
+           << '\n'
+           << "profile-debug-information: "
+           << llvm_backend::debugInformationKindName(invocation.debugInformation)
+           << '\n';
+}
+
+ExitCode executeCompilerSession(
+    const Driver& driver,
+    std::span<const std::string_view> arguments,
+    DriverExecutionScope& executionScope,
+    CompilationJobPolicy& jobPolicy,
+    llvm_backend::CompilationArtifactCache& artifactCache,
+    llvm_backend::FloatingPointModeScope& floatingPointModeScope,
+    std::ostream& output,
+    std::ostream& error)
+{
+    if (arguments.empty())
+    {
+        CompilerActionDispatcher::showHelp(output);
+        return ExitCode::Success;
+    }
+    CompilerInvocation invocation;
+    ExitCode result = parseAndConfigureInvocation(
+        arguments, executionScope, jobPolicy, invocation, error);
+    if (result != ExitCode::Success) return result;
+    installAndReportFloatingPoint(invocation, floatingPointModeScope, output);
+    result = validateInvocationAndCache(invocation, artifactCache, output, error);
+    if (result != ExitCode::Success) return result;
+    reportCompilationProfile(invocation, output);
+    return CompilerActionDispatcher(
+        driver,
+        invocation.arguments,
+        invocation,
+        jobPolicy,
+        executionScope.projectLoadOptions,
+        kCompilerStage,
+        output,
+        error).dispatch();
+}
+
+ExitCode runCompilerSession(
+    const Driver& driver,
+    std::span<const std::string_view> arguments,
+    std::ostream& output,
+    std::ostream& error)
+{
+    DriverExecutionScope executionScope(output, error);
+    llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(
+        executionScope.o2Budget);
+    CompilationJobPolicy jobPolicy;
+    CompilationJobPolicyScope jobPolicyScope(jobPolicy);
+    llvm_backend::CompilationArtifactCache artifactCache;
+    artifactCache.setCodegenIdentity(std::string(llvm_backend::kCodegenCacheIdentity));
+    llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
+    llvm_backend::FloatingPointModeScope floatingPointModeScope;
+    DriverExecutionScope* previousScope = activeExecutionScope;
+    activeExecutionScope = &executionScope;
+    try
+    {
+        const ExitCode result = executeCompilerSession(
+            driver, arguments, executionScope, jobPolicy, artifactCache,
+            floatingPointModeScope, output, error);
+        activeExecutionScope = previousScope;
+        return result;
+    }
+    catch (...)
+    {
+        activeExecutionScope = previousScope;
+        throw;
+    }
+}
+} // namespace
+
+ExitCode Driver::run(
+    std::span<const std::string_view> arguments,
+    std::ostream& output,
+    std::ostream& error) const
 {
     CompilerConsoleArguments consoleArguments =
         parseCompilerConsoleArguments(arguments, activeCompilerLanguage());
@@ -3962,1073 +4152,17 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     arguments = std::span<const std::string_view>(consoleArguments.arguments);
     if (!arguments.empty() && isProjectCommand(arguments.front()))
     {
-        return runProjectCommand(arguments, output, error,
-            [this](std::span<const std::string_view> nested, std::ostream& nestedOutput,
+        return runProjectCommand(
+            arguments,
+            output,
+            error,
+            [this](std::span<const std::string_view> nested,
+                   std::ostream& nestedOutput,
                    std::ostream& nestedError) {
                 return run(nested, nestedOutput, nestedError);
             });
     }
-    DriverExecutionScope executionScope(output, error);
-    llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
-    CompilationJobPolicy jobPolicy;
-    CompilationJobPolicyScope jobPolicyScope(jobPolicy);
-    llvm_backend::CompilationArtifactCache artifactCache;
-    artifactCache.setCodegenIdentity(std::string(llvm_backend::kCodegenCacheIdentity));
-    llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
-    llvm_backend::FloatingPointModeScope floatingPointModeScope;
-    DriverExecutionScope* previousScope = activeExecutionScope;
-    activeExecutionScope = &executionScope;
-    struct RestoreScope final
-    {
-        DriverExecutionScope* previous;
-        ~RestoreScope() { activeExecutionScope = previous; }
-    } restoreScope{previousScope};
-    if (arguments.empty())
-    {
-        printHelp(output);
-        return ExitCode::Success;
-    }
-
-    CompilerInvocation invocation;
-    const ExitCode invocationResult = parseCompilerInvocation(
-        arguments, executionScope.projectLoader, invocation, error);
-
-    executionScope.reportTiming = invocation.reportTiming;
-    executionScope.reportProgress = invocation.reportProgress;
-    executionScope.progressFormat = invocation.progressFormat;
-    executionScope.projectLoadOptions = invocation.projectLoadOptions;
-    if (invocation.timeoutMilliseconds.has_value())
-    {
-        executionScope.deadline = executionScope.started +
-            std::chrono::milliseconds(*invocation.timeoutMilliseconds);
-    }
-    if (invocation.optimizationBudgetMilliseconds.has_value())
-    {
-        executionScope.o2Budget.setBudgetMilliseconds(
-            *invocation.optimizationBudgetMilliseconds);
-    }
-    if (invocation.requestedJobs.has_value())
-        jobPolicy.setRequestedJobs(*invocation.requestedJobs);
-    if (invocation.reservedCores.has_value())
-        jobPolicy.setReservedCores(*invocation.reservedCores);
-    if (invocationResult != ExitCode::Success) return invocationResult;
-
-    floatingPointModeScope.set(invocation.floatingPointMode);
-    floatingPointModeScope.setFmaContractPolicy(invocation.fmaContractPolicy);
-    floatingPointModeScope.setRoundingMode(invocation.floatingPointRoundingMode);
-    floatingPointModeScope.setDenormalMode(invocation.floatingPointDenormalMode);
-
-    if (invocation.floatingPointModeSeen)
-    {
-        output << "floating-point-mode: "
-               << llvm_backend::floatingPointModeName(invocation.floatingPointMode)
-               << '\n';
-    }
-    if (invocation.fmaContractPolicySeen)
-    {
-        output << "fma-contract-policy: "
-               << llvm_backend::fmaContractPolicyName(invocation.fmaContractPolicy)
-               << '\n';
-    }
-    if (invocation.floatingPointRoundingModeSeen)
-    {
-        output << "floating-point-rounding: "
-               << llvm_backend::floatingPointRoundingModeName(
-                      invocation.floatingPointRoundingMode)
-               << '\n';
-    }
-    if (invocation.floatingPointDenormalModeSeen)
-    {
-        output << "floating-point-denormal: "
-               << llvm_backend::floatingPointDenormalModeName(
-                      invocation.floatingPointDenormalMode)
-               << '\n';
-    }
-
-    if (invocation.arguments.empty())
-    {
-        error << "nsc: error: compilation options require an action or input file\n";
-        return ExitCode::CommandLineError;
-    }
-
-    const ExitCode validationResult =
-        validateCompilerInvocation(invocation, error);
-    if (validationResult != ExitCode::Success) return validationResult;
-
-    if (invocation.artifactCacheRoot.has_value())
-        artifactCache.setRoot(*invocation.artifactCacheRoot);
-    if (invocation.artifactCacheMaximumSeen || invocation.defaultArtifactCache)
-    {
-        std::size_t evictedEntries = 0;
-        std::uintmax_t evictedBytes = 0;
-        std::string pruneError;
-        if (!artifactCache.prune(
-                invocation.artifactCacheMaximumBytes,
-                evictedEntries,
-                evictedBytes,
-                pruneError))
-        {
-            error << "nsc: error: artifact-cache eviction failed: "
-                  << pruneError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "artifact-cache-evicted-entries: " << evictedEntries << '\n'
-               << "artifact-cache-evicted-bytes: " << evictedBytes << '\n';
-    }
-
-    const ExitCode linkValidationResult =
-        validateCompilerLinkOptions(invocation, error);
-    if (linkValidationResult != ExitCode::Success) return linkValidationResult;
-
-    if (invocation.compilationProfile.has_value())
-    {
-        output << "compilation-profile: "
-               << compilationProfileName(*invocation.compilationProfile) << '\n'
-               << "profile-optimization: "
-               << llvm_backend::llvmOptimizationLevelName(
-                      invocation.optimizationLevel)
-               << '\n'
-               << "profile-debug-information: "
-               << llvm_backend::debugInformationKindName(
-                      invocation.debugInformation)
-               << '\n';
-    }
-
-    const llvm_backend::LlvmOptimizationLevel optimizationLevel =
-        invocation.optimizationLevel;
-    const llvm_backend::DebugInformationKind debugInformation =
-        invocation.debugInformation;
-    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps =
-        invocation.debugPrefixMaps;
-    const llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
-        invocation.linkTimeOptimization;
-    const bool incrementalLink = invocation.incrementalLink;
-    const linker::WindowsExecutableSubsystem subsystem = invocation.subsystem;
-    const std::vector<std::filesystem::path>& extraLinkLibraries =
-        invocation.extraLinkLibraries;
-    const std::span<const std::string_view> args(invocation.arguments);
-    if (args.size() == 1)
-    {
-        const std::string_view argument = args.front();
-        if (argument == "--help" || argument == "-h")
-        {
-            printHelp(output);
-            return ExitCode::Success;
-        }
-        if (argument == "--version")
-        {
-            printVersion(output);
-            return ExitCode::Success;
-        }
-        if (argument == "--print-compiler-identity")
-        {
-            printCompilerIdentity(output);
-            return ExitCode::Success;
-        }
-        if (argument == "--print-target")
-        {
-            printTarget(output);
-            return ExitCode::Success;
-        }
-        if (argument == "--print-data-layout")
-        {
-            printDataLayout(output);
-            return ExitCode::Success;
-        }
-        if (argument == "--print-codegen")
-        {
-            return printCodeGeneration(optimizationLevel, output, error);
-        }
-        if (argument == "--print-llvm-pipeline")
-        {
-            printLlvmPipeline(optimizationLevel, output);
-            return ExitCode::Success;
-        }
-        if (argument == "--print-optimization-contract")
-        {
-            output << llvm_backend::llvmOptimizationContractManifest();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-llvm-version")
-        {
-            const llvm_backend::LlvmVersion version = llvm_backend::loadedLlvmVersion();
-            output << "LLVM " << llvm_backend::llvmVersionString(version)
-                   << " (supported: " << llvm_backend::kSupportedLlvmMajor << ".x)\n";
-            std::string versionError;
-            if (!llvm_backend::verifyLoadedLlvmVersion(versionError))
-            {
-                error << "nsc: internal error: " << versionError << '\n';
-                return ExitCode::InternalError;
-            }
-            return ExitCode::Success;
-        }
-        if (argument == "--print-toolchain-contract")
-        {
-            output << currentToolchainContract();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-runtime-abi-contract")
-        {
-            output << runtime::runtimeAbiContractManifest();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-smart-pointer-contract")
-        {
-            output << language::smartPointerContractManifest();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-concurrency-contract")
-        {
-            output << language::concurrencyContractManifest();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-language-3-surface")
-        {
-            output << language::language3SurfaceManifest();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-runtime-capabilities")
-        {
-            output << runtime::runtimeCapabilityReport();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-numeric-contract")
-        {
-            output << numericContractManifest(llvm_backend::captureFloatingPointState());
-            return ExitCode::Success;
-        }
-        if (argument == "--print-compatibility-policy")
-        {
-            output << currentCompatibilityPolicy();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-compatibility-matrix")
-        {
-            output << currentCompatibilityMatrix();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-breaking-change-ledger")
-        {
-            output << currentBreakingChangeLedger();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-job-policy")
-        {
-            output << "hardware-threads: " << jobPolicy.hardwareThreads() << '\n'
-                   << "requested-jobs: ";
-            if (jobPolicy.usesAutomaticJobs()) output << "auto";
-            else output << jobPolicy.requestedJobs();
-            output << '\n'
-                   << "reserved-cores: " << jobPolicy.reservedCores() << '\n'
-                   << "effective-jobs: " << jobPolicy.effectiveJobs() << '\n'
-                   << "scheduler: project-references\n";
-            return ExitCode::Success;
-        }
-        if (argument == "--print-migration-baseline")
-        {
-            output << currentMigrationBaseline();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-migration-guide")
-        {
-            output << currentMigrationGuide();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-deprecation-policy")
-        {
-            output << currentDeprecationPolicy();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-release-candidate-freeze")
-        {
-            output << currentReleaseCandidateFreeze();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-final-baseline-contract")
-        {
-            output << currentFinalBaselineContract();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-promotion-act")
-        {
-            output << currentPromotionAct();
-            return ExitCode::Success;
-        }
-        if (argument == "--print-linker")
-        {
-            return printLinker(output, error);
-        }
-        if (argument == "--dump-runtime-llvm")
-        {
-            return dumpRuntimeLlvm(output, error);
-        }
-        if (!argument.empty() && argument.front() == '-')
-        {
-            error << "nsc: error: " << compilerText("unknown option '", "opción desconocida '")
-                  << argument << "'\n";
-            return ExitCode::CommandLineError;
-        }
-        return runFrontend("--program", argument, optimizationLevel, output, error);
-    }
-
-    if (args.size() == 2)
-    {
-        const std::string_view action = args[0];
-        if (action == "--analyze-migration")
-        {
-            MigrationAnalysis analysis;
-            std::string migrationError;
-            if (!analyzeMigrationFile(std::filesystem::path(args[1]), analysis, migrationError))
-            {
-                error << "nsc: error: " << migrationError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << renderMigrationAnalysis(analysis);
-            return ExitCode::Success;
-        }
-        if (action == "--analyze-migration-strict")
-        {
-            MigrationAnalysis analysis;
-            std::string migrationError;
-            if (!analyzeMigrationFile(std::filesystem::path(args[1]), analysis, migrationError))
-            {
-                error << "nsc: error: " << migrationError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << renderMigrationAnalysis(analysis);
-            if (!analysis.findings.empty())
-            {
-                error << "nsc: error: migration warnings are errors; "
-                      << analysis.findings.size() << " finding(s)\n";
-                return ExitCode::CompilationError;
-            }
-            return ExitCode::Success;
-        }
-        if (action == "--check-runtime-capability")
-        {
-            std::string detail;
-            if (!runtime::runtimeCapabilityReady(args[1], detail))
-            {
-                error << "nsc: error: " << detail << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << detail << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-numeric-contract" || action == "--verify-numeric-contract")
-        {
-            std::string contractError;
-            const llvm_backend::FloatingPointState state =
-                llvm_backend::captureFloatingPointState();
-            const bool success = action == "--write-numeric-contract"
-                ? writeNumericContract(std::filesystem::path(args[1]), state, contractError)
-                : verifyNumericContractFile(std::filesystem::path(args[1]), state, contractError);
-            if (!success)
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << (action == "--write-numeric-contract"
-                ? "numeric contract written: " : "numeric contract verified: ")
-                   << args[1] << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-toolchain-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeToolchainContract(destination, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "toolchain contract written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-runtime-abi-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!runtime::writeRuntimeAbiContract(destination, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "runtime ABI contract written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-runtime-abi-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!runtime::verifyRuntimeAbiContractFile(source, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "runtime ABI contract verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-smart-pointer-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!language::writeSmartPointerContract(destination, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "smart pointer contract written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-smart-pointer-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!language::verifySmartPointerContractFile(source, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "smart pointer contract verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-concurrency-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!language::writeConcurrencyContract(destination, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "concurrency contract written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-concurrency-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!language::verifyConcurrencyContractFile(source, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "concurrency contract verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-windows-runtime-library")
-        {
-            std::string runtimeError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!linker::writeWindowsRuntimeLibrary(destination, runtimeError))
-            {
-                error << "nsc: error: " << runtimeError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "Windows runtime library written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-windows-runtime-library")
-        {
-            std::string runtimeError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!linker::verifyWindowsRuntimeLibrary(source, runtimeError))
-            {
-                error << "nsc: error: " << runtimeError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "Windows runtime library verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-pe")
-        {
-            const std::filesystem::path source{std::string(args[1])};
-            linker::PeExecutableVerifier verifier;
-            if (!verifier.verify(source))
-            {
-                error << "nsc: error: PE verification failed: " << verifier.error() << '\n';
-                return ExitCode::CompilationError;
-            }
-            const linker::PeExecutableInfo& info = verifier.info();
-            output << "PE executable verified: " << source.string()
-                   << " (machine=0x" << std::hex << info.machine << std::dec
-                   << ", sections=" << info.sectionCount
-                   << ", imports=" << info.importedSymbols.size() << ")\n";
-            return ExitCode::Success;
-        }
-        if (action == "--verify-toolchain-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyToolchainContract(source, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "toolchain contract verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-compatibility-policy")
-        {
-            std::string policyError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeCompatibilityPolicy(destination, policyError))
-            {
-                error << "nsc: error: " << policyError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "compatibility policy written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-compatibility-policy")
-        {
-            std::string policyError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyCompatibilityPolicy(source, policyError))
-            {
-                error << "nsc: error: " << policyError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "compatibility policy verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-compatibility-matrix")
-        {
-            std::string matrixError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeCompatibilityMatrix(destination, matrixError))
-            {
-                error << "nsc: error: " << matrixError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "compatibility matrix written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-compatibility-matrix")
-        {
-            std::string matrixError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyCompatibilityMatrix(source, matrixError))
-            {
-                error << "nsc: error: " << matrixError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "compatibility matrix verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--check-compiler-compatibility")
-        {
-            std::string explanation;
-            std::string compatibilityError;
-            const bool compatible = checkCompilerCompatibility(args[1], explanation, compatibilityError);
-            if (!compatible)
-            {
-                error << "nsc: error: " << (compatibilityError.empty() ? explanation : compatibilityError) << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << explanation << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-breaking-change-ledger")
-        {
-            std::string ledgerError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeBreakingChangeLedger(destination, ledgerError))
-            {
-                error << "nsc: error: " << ledgerError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "breaking-change ledger written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-breaking-change-ledger")
-        {
-            std::string ledgerError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyBreakingChangeLedger(source, ledgerError))
-            {
-                error << "nsc: error: " << ledgerError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "breaking-change ledger verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-migration-baseline")
-        {
-            std::string baselineError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeMigrationBaseline(destination, baselineError))
-            {
-                error << "nsc: error: " << baselineError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "migration baseline written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-migration-baseline")
-        {
-            std::string baselineError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyMigrationBaseline(source, baselineError))
-            {
-                error << "nsc: error: " << baselineError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "migration baseline verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-migration-guide")
-        {
-            std::string guideError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeMigrationGuide(destination, guideError))
-            {
-                error << "nsc: error: " << guideError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "migration guide written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-migration-guide")
-        {
-            std::string guideError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyMigrationGuide(source, guideError))
-            {
-                error << "nsc: error: " << guideError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "migration guide verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-release-candidate-freeze")
-        {
-            std::string freezeError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeReleaseCandidateFreeze(destination, freezeError))
-            {
-                error << "nsc: error: " << freezeError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "release-candidate freeze written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-release-candidate-freeze")
-        {
-            std::string freezeError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyReleaseCandidateFreeze(source, freezeError))
-            {
-                error << "nsc: error: " << freezeError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "release-candidate freeze verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-final-baseline-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writeFinalBaselineContract(destination, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "final baseline contract written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-final-baseline-contract")
-        {
-            std::string contractError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyFinalBaselineContract(source, contractError))
-            {
-                error << "nsc: error: " << contractError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "final baseline contract verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--write-promotion-act")
-        {
-            std::string actError;
-            const std::filesystem::path destination{std::string(args[1])};
-            if (!writePromotionAct(destination, actError))
-            {
-                error << "nsc: error: " << actError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "promotion act written: " << destination.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-promotion-act")
-        {
-            std::string actError;
-            const std::filesystem::path source{std::string(args[1])};
-            if (!verifyPromotionAct(source, actError))
-            {
-                error << "nsc: error: " << actError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "promotion act verified: " << source.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-installation")
-        {
-            std::string installationError;
-            const std::filesystem::path prefix{std::string(args[1])};
-            if (!verifyInstallation(prefix, installationError))
-            {
-                error << "nsc: error: " << installationError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << "NativeSharp installation verified: " << prefix.string() << '\n';
-            return ExitCode::Success;
-        }
-        if (action == "--verify-library-metadata")
-        {
-            return verifyLibraryMetadata(args[1], output, error);
-        }
-        if (action == "--audit-library-capabilities")
-        {
-            std::string report;
-            std::string auditError;
-            if (!interop::auditLibraryCapabilityDirectory(
-                    std::filesystem::path(args[1]), report, auditError))
-            {
-                error << "nsc: error: " << auditError << '\n';
-                return ExitCode::CompilationError;
-            }
-            output << report;
-            return ExitCode::Success;
-        }
-        if (action == "--dump-library-abi")
-        {
-            return dumpLibraryAbi(args[1], output, error);
-        }
-        if (action == "--dump-api-surface")
-        {
-            return dumpLibraryApiSurface(args[1], output, error);
-        }
-        if (action == "--check-project" || action == "--dump-project" || action == "--check-project-graph" ||
-            action == "--dump-project-graph" || action == "--check-project-syntax" ||
-            action == "--dump-project-compilation" || action == "--dump-project-comptime" ||
-            action == "--check-project-generics" ||
-            action == "--dump-project-generics" || action == "--check-project-names" ||
-            action == "--dump-project-names" || action == "--check-project-members" ||
-            action == "--dump-project-members" || action == "--check-project-inheritance" ||
-            action == "--dump-project-inheritance" || action == "--check-project-interfaces" ||
-            action == "--dump-project-interfaces" || action == "--check-project-generic-constraints" ||
-            action == "--check-project-method-bodies" || action == "--dump-project-method-bodies" ||
-            action == "--check-project-virtual-dispatch" || action == "--dump-project-virtual-dispatch" ||
-            action == "--check-project-destruction" || action == "--dump-project-destruction" ||
-            action == "--check-project-constructions" || action == "--dump-project-constructions" ||
-            action == "--check-project-layouts" || action == "--dump-project-layouts" ||
-            action == "--check-project-oop-hir" || action == "--dump-project-oop-hir" ||
-            action == "--check-project-oop-mir" || action == "--dump-project-oop-mir" ||
-            action == "--explain-project-costs" || action == "--explain-project-costs-json" ||
-            action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm")
-        {
-            return runProject(action, args[1], output, error);
-        }
-        if (action == "--check" || action == "--dump-source" || action == "--dump-tokens" || action == "--dump-ast" ||
-            action == "--dump-symbols" || action == "--dump-sema" || action == "--dump-hir" ||
-            action == "--verify-hir" || action == "--dump-mir" || action == "--verify-mir" || action == "--dump-cfg" ||
-            action == "--verify-cfg" || action == "--dump-dominance" || action == "--verify-dominance" ||
-            action == "--dump-ssa" || action == "--verify-ssa" || action == "--dump-opt" || action == "--verify-opt" ||
-            action == "--dump-pass-pipeline" || action == "--dump-llvm" || action == "--verify-llvm" ||
-            action == "--dump-llvm-opt" || action == "--verify-llvm-opt")
-        {
-            return runFrontend(action, args[1], optimizationLevel, output, error);
-        }
-    }
-
-    if (args.size() == 3 && args[0] == "--verify-library-artifacts")
-    {
-        return verifyLibraryArtifacts(args[1], args[2], {}, {}, output, error);
-    }
-
-    if (args.size() == 3 && args[0] == "--api-diff")
-    {
-        return diffLibraryApi(args[1], args[2], output, error);
-    }
-
-    if ((args.size() == 3 || args.size() == 4) &&
-        args[0] == "--simulate-deprecation-removal")
-    {
-        const DeprecatedFeature* feature = deprecatedFeature(args[1]);
-        const std::optional<DeprecationRelease> release = parseDeprecationRelease(args[2]);
-        const bool securityException = args.size() == 4 && args[3] == "--security-ub";
-        if (feature == nullptr || !release.has_value() ||
-            (args.size() == 4 && !securityException))
-        {
-            error << "nsc: error: invalid deprecation-removal simulation\n";
-            return ExitCode::CommandLineError;
-        }
-        const bool allowed = deprecationRemovalAllowed(
-            *feature, *release, true, securityException);
-        output << "deprecation removal feature=" << feature->identity
-               << " release=" << release->major << '.' << release->minor
-               << " security-ub=" << (securityException ? "yes" : "no")
-               << " allowed=" << (allowed ? "yes" : "no") << '\n';
-        return allowed ? ExitCode::Success : ExitCode::CompilationError;
-    }
-
-    if (args.size() == 3 && args[0] == "--migration-compatibility-matrix")
-    {
-        interop::LibraryMetadataCodec codec;
-        interop::LibraryMetadata oldMetadata;
-        interop::LibraryMetadata newMetadata;
-        std::string metadataError;
-        if (!codec.read(std::filesystem::path(args[1]), oldMetadata, metadataError) ||
-            !codec.verifyCurrentCompiler(oldMetadata, metadataError))
-        {
-            error << "nsc: error: invalid old NativeSharp library metadata: "
-                  << metadataError << '\n';
-            return ExitCode::CompilationError;
-        }
-        if (!codec.read(std::filesystem::path(args[2]), newMetadata, metadataError) ||
-            !codec.verifyCurrentCompiler(newMetadata, metadataError))
-        {
-            error << "nsc: error: invalid new NativeSharp library metadata: "
-                  << metadataError << '\n';
-            return ExitCode::CompilationError;
-        }
-        const interop::LibraryApiDiffReport apiDiff =
-            interop::LibraryApiDiffer::compare(oldMetadata, newMetadata);
-        const MigrationCompatibilityMatrix matrix = buildMigrationCompatibilityMatrix(
-            apiDiff,
-            interop::LibraryMetadataCodec::fingerprintHex(oldMetadata.abiFingerprint),
-            interop::LibraryMetadataCodec::fingerprintHex(newMetadata.abiFingerprint));
-        output << renderMigrationCompatibilityMatrix(matrix);
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 3 && args[0] == "--abi-diff")
-    {
-        return diffLibraryAbi(args[1], args[2], output, error);
-    }
-
-    if (args.size() == 3 && args[0] == "--verify-installation-manifest")
-    {
-        std::string manifestError;
-        const std::filesystem::path prefix{std::string(args[1])};
-        const std::filesystem::path manifest{std::string(args[2])};
-        if (!verifyInstallationManifest(prefix, manifest, manifestError))
-        {
-            error << "nsc: error: " << manifestError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "installation manifest verified: " << manifest.string() << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 3 && args[0] == "--compare-installation-manifests")
-    {
-        ReproducibilityComparison comparison;
-        std::string comparisonError;
-        if (!compareInstallationManifests(std::filesystem::path(std::string(args[1])),
-                std::filesystem::path(std::string(args[2])),
-                comparison,
-                comparisonError))
-        {
-            error << "nsc: error: " << comparisonError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << comparison.report;
-        if (!comparison.reproducible)
-        {
-            error << "nsc: error: installation builds differ in " << comparison.differences << " deterministic entr"
-                  << (comparison.differences == 1 ? "y" : "ies") << '\n';
-            return ExitCode::CompilationError;
-        }
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 3 && args[0] == "--write-installation-removal-plan")
-    {
-        std::string planError;
-        const std::filesystem::path destination{std::string(args[2])};
-        if (!writeInstallationRemovalPlan(std::filesystem::path(std::string(args[1])), destination, planError))
-        {
-            error << "nsc: error: " << planError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "installation removal plan written: " << destination.string() << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 4 && args[0] == "--verify-library-artifacts")
-    {
-        return verifyLibraryArtifacts(args[1], args[2], args[3], {}, output, error);
-    }
-
-    if (args.size() == 3 && args[0] == "--write-diagnostic-bundle")
-    {
-        std::ostringstream capturedOutput;
-        std::ostringstream capturedError;
-        const ExitCode result = runProject(
-            "--verify-project-oop-llvm", args[1], capturedOutput, capturedError);
-        const std::array<std::string_view, 2> bundleArguments = {
-            "--verify-project-oop-llvm", "-O0"};
-        std::string bundleError;
-        if (!writeDiagnosticBundle(std::filesystem::path(std::string(args[1])),
-                std::filesystem::path(std::string(args[2])), result,
-                capturedOutput.str(), capturedError.str(), activeProjectLoadOptions(),
-                bundleArguments, bundleError))
-        {
-            error << "nsc: error: " << bundleError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "diagnostic bundle written: " << args[2] << '\n';
-        return result;
-    }
-
-    if (args.size() == 4 && args[0] == "--apply-migration-fixes" && args[2] == "-o")
-    {
-        MigrationAnalysis analysis;
-        std::size_t appliedFixCount = 0;
-        std::string migrationError;
-        if (!applySafeMigrationFixesToFile(std::filesystem::path(args[1]),
-                std::filesystem::path(args[3]), analysis, appliedFixCount, migrationError))
-        {
-            error << "nsc: error: " << migrationError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "safe migration fixes applied: " << appliedFixCount << '\n'
-               << "migration output written: " << args[3] << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 4 && args[0] == "--write-source-migration-guide" && args[2] == "-o")
-    {
-        ExecutableMigrationGuide guide;
-        std::string migrationError;
-        if (!writeExecutableMigrationGuide(std::filesystem::path(args[1]),
-                std::filesystem::path(args[3]), guide, migrationError))
-        {
-            error << "nsc: error: " << migrationError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "migration guide chapters: " << guide.chapters.size() << '\n'
-               << "migration guide written: " << args[3] << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 5 && args[0] == "--verify-library-artifacts")
-    {
-        return verifyLibraryArtifacts(args[1], args[2], args[3], args[4], output, error);
-    }
-
-    if (args.size() == 4 && args[0] == "--write-installation-manifest")
-    {
-        std::string manifestError;
-        const std::filesystem::path prefix{std::string(args[1])};
-        const std::filesystem::path expectedFiles{std::string(args[2])};
-        const std::filesystem::path destination{std::string(args[3])};
-        if (!writeInstallationManifest(prefix, expectedFiles, destination, manifestError))
-        {
-            error << "nsc: error: " << manifestError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "installation manifest written: " << destination.string() << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 4 && args[0] == "--write-installation-update-plan")
-    {
-        std::string planError;
-        const std::filesystem::path destination{std::string(args[3])};
-        if (!writeInstallationUpdatePlan(std::filesystem::path(std::string(args[1])),
-                std::filesystem::path(std::string(args[2])),
-                destination,
-                planError))
-        {
-            error << "nsc: error: " << planError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "installation update plan written: " << destination.string() << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 5 && args[0] == "--apply-installation-removal-plan")
-    {
-        std::string planError;
-        const std::filesystem::path nextManifest =
-            args[3] == "none" ? std::filesystem::path{} : std::filesystem::path(std::string(args[3]));
-        if (!applyInstallationRemovalPlan(std::filesystem::path(std::string(args[1])),
-                std::filesystem::path(std::string(args[2])),
-                nextManifest,
-                std::filesystem::path(std::string(args[4])),
-                planError))
-        {
-            error << "nsc: error: " << planError << '\n';
-            return ExitCode::CompilationError;
-        }
-        output << "installation removal plan applied: " << args[4] << '\n';
-        return ExitCode::Success;
-    }
-
-    if (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-')
-    {
-        return runExecutableGeneration(args[0], args[2], optimizationLevel, subsystem, output, error);
-    }
-
-    if (args.size() == 4 && args[2] == "-o")
-    {
-        const std::string_view action = args[0];
-        if (action == "--emit-obj" || action == "--emit-asm")
-        {
-            return runCodeGeneration(action, args[1], args[3], optimizationLevel, output, error);
-        }
-        if (action == "--emit-project-oop-obj")
-        {
-            return runProjectOopCodeGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
-                output, error);
-        }
-        if (action == "--emit-project-oop-exe")
-        {
-            return runProjectOopExecutableGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
-                linkTimeOptimization,
-                incrementalLink,
-                subsystem, extraLinkLibraries, output, error);
-        }
-        if (action == "--emit-project-oop-lib")
-        {
-            return runProjectOopStaticLibraryGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
-                linkTimeOptimization, output, error);
-        }
-        if (action == "--emit-project-oop-dll")
-        {
-            return runProjectOopDynamicLibraryGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
-                linkTimeOptimization,
-                extraLinkLibraries, output, error);
-        }
-        if (action == "--emit-project-host-header")
-        {
-            return runProjectHostHeaderGeneration(args[1], args[3], output, error);
-        }
-        if (action == "--emit-project-library-metadata")
-        {
-            return runProjectLibraryMetadataGeneration(args[1], args[3], output, error);
-        }
-        if (action == "--emit-exe")
-        {
-            return runExecutableGeneration(args[1], args[3], optimizationLevel, subsystem, output, error);
-        }
-    }
-
-    error << "nsc: error: " << compilerText(
-                 "invalid command line; use --help for supported options ",
-                 "línea de comandos no válida; use --help para ver las opciones compatibles ")
-          << "(stage "
-          << kCompilerStage << ")\n";
-    return ExitCode::CommandLineError;
+    return runCompilerSession(*this, arguments, output, error);
 }
 
 void Driver::printHelp(std::ostream &output)

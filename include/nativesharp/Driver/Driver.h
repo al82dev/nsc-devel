@@ -15,6 +15,8 @@
 
 namespace nativesharp::driver
 {
+class CompilerActionDispatcher;
+
 class Driver final
 {
 public:
@@ -24,6 +26,8 @@ public:
         std::ostream& error) const;
 
 private:
+    friend class CompilerActionDispatcher;
+
     static void printHelp(std::ostream& output);
     static void printVersion(std::ostream& output);
     static void printCompilerIdentity(std::ostream& output);
