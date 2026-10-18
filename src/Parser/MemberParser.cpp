@@ -2923,7 +2923,7 @@ ast::AstNode* Parser::parseConstructorTail(
         ast::AstNodeKind::ConstructorDeclaration,
         name.range());
     constructor->setText(std::string(className));
-    constructor->setFlag(isStatic);
+    if (isStatic) constructor->addModifier(TokenKind::KwStatic);
     if (accessibility != TokenKind::Invalid)
     {
         constructor->setTokenKind(accessibility);
