@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -75,7 +76,8 @@ private:
         FinishStandaloneCatchFilter,
         FinishStandaloneCatchBlock,
         FinishUsingInitializer,
-        FinishUsingBody
+        FinishUsingBody,
+        FinishDeferBody
     };
 
     enum class StatementKind : std::uint8_t
@@ -100,7 +102,8 @@ private:
         For,
         Foreach,
         Try,
-        Using
+        Using,
+        Defer
     };
 
     struct ResultSlot final
@@ -207,6 +210,22 @@ private:
         ast::TypeSyntax* resourceType = nullptr;
         std::string resourceName;
         ast::AstNode* node = nullptr;
+    };
+
+    struct DeferCapture final
+    {
+        bool byReference = false;
+        bool receiver = false;
+        std::string name;
+        SourceRange range;
+    };
+
+    struct DeferFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        SourceRange deferRange;
+        std::vector<DeferCapture> captures;
     };
 
     struct Work final
@@ -331,6 +350,22 @@ private:
     void scheduleUsingBody(std::size_t frameIndex);
     void finishUsingBody(const Work& work);
     void completeUsing(UsingFrame& frame, ast::AstNode* body);
+    void startDefer(const Work& work);
+    void parseDeferCaptures(DeferFrame& frame);
+    void parseDeferCapture(
+        DeferFrame& frame,
+        std::unordered_set<std::string>& names);
+    void scheduleDeferBody(std::size_t frameIndex);
+    void finishDeferBody(const Work& work);
+    void configureDeferBody(const DeferFrame& frame, ast::AstNode* body);
+    ast::TypeSyntax* makeDeferVarType(SourceRange range);
+    ast::AstNode* makeDeferMoveExpression(SourceRange range, std::string name);
+    void addDeferCaptureLowering(
+        const DeferCapture& capture,
+        std::size_t deferOrdinal,
+        ast::AstNode* registration,
+        ast::AstNode* cleanup);
+    ast::AstNode* lowerDeferRegistration(DeferFrame& frame, ast::AstNode* body);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -347,6 +382,7 @@ private:
     std::deque<TryFrame> tryFrames_;
     std::deque<CatchFrame> catchFrames_;
     std::deque<UsingFrame> usingFrames_;
+    std::deque<DeferFrame> deferFrames_;
     std::vector<Work> work_;
 };
 
@@ -457,6 +493,7 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishStandaloneCatchBlock: finishStandaloneCatchBlock(work); return;
     case WorkKind::FinishUsingInitializer: finishUsingInitializer(work); return;
     case WorkKind::FinishUsingBody: finishUsingBody(work); return;
+    case WorkKind::FinishDeferBody: finishDeferBody(work); return;
     }
 }
 
@@ -633,7 +670,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwBreak) || parser_.at(TokenKind::KwContinue)) return StatementKind::Jump;
     if (parser_.atContextualKeyword("must_tail")) return StatementKind::MustTailReturn;
     if (parser_.at(TokenKind::KwReturn)) return StatementKind::Return;
-    if (parser_.atContextualKeyword("defer")) return StatementKind::Direct;
+    if (parser_.atContextualKeyword("defer")) return StatementKind::Defer;
     if (parser_.at(TokenKind::KwThrow)) return StatementKind::Throw;
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
     if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
@@ -670,6 +707,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::Foreach: startForeach(work); return;
     case StatementKind::Try: startTry(work); return;
     case StatementKind::Using: startUsing(work); return;
+    case StatementKind::Defer: startDefer(work); return;
     }
 }
 
@@ -2010,6 +2048,197 @@ void Parser::ParseContinuationCoordinator::completeUsing(
     frame.node->setSecond(body);
     frame.node->setRange(parser_.tokenRangeFrom(frame.beginIndex));
     complete(frame.resultSlot, frame.node);
+}
+
+// Opens one defer frame and parses its bounded capture list without nested parser reentry.
+void Parser::ParseContinuationCoordinator::startDefer(const Work& work)
+{
+    const std::size_t frameIndex = deferFrames_.size();
+    deferFrames_.push_back({parser_.index_, work.resultSlot, parser_.current().range(), {}});
+    DeferFrame& frame = deferFrames_.back();
+    parser_.consume();
+    parser_.expect(TokenKind::LeftBracket, "'[' after defer");
+    parseDeferCaptures(frame);
+    parser_.expect(TokenKind::RightBracket, "']' after defer captures");
+    scheduleDeferBody(frameIndex);
+}
+
+// Preserves source-order capture parsing and the historical duplicate-name diagnostic.
+void Parser::ParseContinuationCoordinator::parseDeferCaptures(DeferFrame& frame)
+{
+    std::unordered_set<std::string> names;
+    if (parser_.at(TokenKind::RightBracket)) return;
+    while (true)
+    {
+        parseDeferCapture(frame, names);
+        if (!parser_.consumeIf(TokenKind::Comma)) return;
+    }
+}
+
+// Parses one explicit ref/move capture, including receiver and malformed-name recovery.
+void Parser::ParseContinuationCoordinator::parseDeferCapture(
+    DeferFrame& frame,
+    std::unordered_set<std::string>& names)
+{
+    DeferCapture capture;
+    if (parser_.atContextualKeyword("ref"))
+    {
+        capture.byReference = true;
+        parser_.consume();
+    }
+    else if (parser_.at(TokenKind::KwMove) || parser_.atContextualKeyword("move"))
+        parser_.consume();
+    else
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "defer capture requires explicit 'ref' or 'move'");
+
+    capture.range = parser_.current().range();
+    if (parser_.at(TokenKind::KwThis))
+    {
+        capture.receiver = true;
+        capture.name = "this";
+        parser_.consume();
+        if (!capture.byReference)
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                capture.range,
+                "defer can capture this only by reference");
+    }
+    else if (parser_.at(TokenKind::Identifier))
+        capture.name = std::string(parser_.consume().lexeme());
+    else
+    {
+        parser_.expect(TokenKind::Identifier, "defer capture name");
+        capture.name = "__invalid_defer_capture";
+    }
+    if (!names.insert(capture.name).second)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::DuplicateSymbol,
+            diagnostics::DiagnosticSeverity::Error,
+            capture.range,
+            "duplicate defer capture '" + capture.name + "'");
+    frame.captures.push_back(std::move(capture));
+}
+
+// Schedules the braced cleanup body or completes the canonical malformed-body shape.
+void Parser::ParseContinuationCoordinator::scheduleDeferBody(std::size_t frameIndex)
+{
+    DeferFrame& frame = deferFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after defer capture list");
+        ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, frame.deferRange);
+        complete(frame.resultSlot, lowerDeferRegistration(frame, body));
+        return;
+    }
+    Work finish{WorkKind::FinishDeferBody, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Lowers the completed cleanup block and publishes it to the enclosing block continuation.
+void Parser::ParseContinuationCoordinator::finishDeferBody(const Work& work)
+{
+    DeferFrame& frame = deferFrames_[work.frameIndex];
+    complete(frame.resultSlot, lowerDeferRegistration(frame, childValue(work)));
+}
+
+// Records the exact capture boundary contract consumed by body binding.
+void Parser::ParseContinuationCoordinator::configureDeferBody(
+    const DeferFrame& frame,
+    ast::AstNode* body)
+{
+    std::string allowedNames;
+    for (std::size_t index = 0; index < frame.captures.size(); ++index)
+    {
+        if (index != 0) allowedNames.push_back(',');
+        allowedNames += frame.captures[index].name;
+    }
+    body->setAuxiliaryText("defer-capture-boundary");
+    body->setText(std::move(allowedNames));
+}
+
+// Builds the canonical inferred local type used by defer capture temporaries.
+ast::TypeSyntax* Parser::ParseContinuationCoordinator::makeDeferVarType(SourceRange range)
+{
+    return parser_.arena_.make<ast::TypeSyntax>(
+        range, TokenKind::KwVar, std::string("var"));
+}
+
+// Builds the canonical move expression for source and hidden defer values.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeDeferMoveExpression(
+    SourceRange range,
+    std::string name)
+{
+    ast::AstNode* move = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MoveExpression, range);
+    move->setFirst(parser_.makeIdentifierExpression(range, std::move(name)));
+    move->setAuxiliaryText("defer-value-capture");
+    return move;
+}
+
+// Materializes one capture's outer snapshot and cleanup-local binding in source order.
+void Parser::ParseContinuationCoordinator::addDeferCaptureLowering(
+    const DeferCapture& capture,
+    std::size_t deferOrdinal,
+    ast::AstNode* registration,
+    ast::AstNode* cleanup)
+{
+    if (capture.receiver) return;
+    const std::string hidden = "__nsc_defer_capture_" +
+        std::to_string(deferOrdinal) + "_" + capture.name;
+    if (!capture.byReference)
+    {
+        ast::AstNode* outer = parser_.makeVariableDeclaration(
+            makeDeferVarType(capture.range), hidden,
+            makeDeferMoveExpression(capture.range, capture.name), false);
+        outer->setAuxiliaryText("local:defer-value-capture");
+        registration->addChild(outer);
+    }
+    ast::AstNode* initializer = capture.byReference
+        ? parser_.makeIdentifierExpression(capture.range, capture.name)
+        : makeDeferMoveExpression(capture.range, hidden);
+    ast::AstNode* inner = parser_.makeVariableDeclaration(
+        makeDeferVarType(capture.range), capture.name, initializer, false);
+    inner->setAuxiliaryText(
+        capture.byReference ? "local:ref" : "local:defer-value-capture");
+    cleanup->addChild(inner);
+}
+
+// Recreates the historical registration block and nested try/finally lowering exactly once.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerDeferRegistration(
+    DeferFrame& frame,
+    ast::AstNode* body)
+{
+    configureDeferBody(frame, body);
+    const std::size_t deferOrdinal = parser_.nextDeferTemporary_++;
+    ast::AstNode* registration = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, frame.deferRange);
+    registration->setAuxiliaryText("defer-registration");
+    ast::AstNode* cleanup = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, body->range());
+    for (const DeferCapture& capture : frame.captures)
+        addDeferCaptureLowering(capture, deferOrdinal, registration, cleanup);
+    cleanup->addChild(body);
+
+    ast::AstNode* protectedBlock = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, frame.deferRange);
+    ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::TryStatement, parser_.tokenRangeFrom(frame.beginIndex));
+    lowered->setFirst(protectedBlock);
+    lowered->setSecond(cleanup);
+    lowered->setAuxiliaryText("defer-lowered");
+    registration->addChild(lowered);
+    registration->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    return registration;
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)
