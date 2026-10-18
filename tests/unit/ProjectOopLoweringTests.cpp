@@ -323,6 +323,38 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCallExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const std::vector<MethodNameBinding>& names,
+        const MethodExpressionTypeBinding& expressionType,
+        std::optional<std::size_t> exceptionHandlerOrdinal,
+        bool addressContext,
+        std::string& error)
+    {
+        MethodLocalSymbol local;
+        local.name = "iterator";
+        local.typeKey = expressionType.typeKey;
+        methodBodyModel.locals_.push_back(std::move(local));
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& node : syntax)
+            model.expressionTypeBySyntax_[node.get()] = &expressionType;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        if (exceptionHandlerOrdinal.has_value())
+        {
+            ProjectOopHirModel::HirExceptionHandlerContext handler;
+            handler.hirRegionOrdinal = *exceptionHandlerOrdinal;
+            model.activeHirExceptionHandlers_.push_back(handler);
+        }
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup* nameLookup,
@@ -5974,6 +6006,275 @@ void testDeepPanicAssertCallLowering(TestContext& tests)
     testAssertionCorePrevalidation(tests);
 }
 
+struct IteratorCoreCallSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendIteratorCoreSyntax(
+    IteratorCoreCallSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        kind, nativesharp::SourceRange{}));
+    return fixture.nodes.back().get();
+}
+
+nativesharp::frontend::MethodCoreBinding makeIteratorCoreBinding(
+    const nativesharp::ast::AstNode* syntax,
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    nativesharp::frontend::MethodCoreBinding binding;
+    binding.syntax = syntax;
+    binding.kind = kind;
+    binding.resultTypeKey = kind == CoreKind::IteratorGetEnumerator
+        ? "type:Deep.Iterator"
+        : kind == CoreKind::IteratorMoveNext
+            ? "builtin:bool"
+            : kind == CoreKind::IteratorMoveNextAsync
+                ? "type:Deep.FutureBool"
+                : "builtin:void";
+    binding.elementTypeKey = "builtin:int";
+    return binding;
+}
+
+nativesharp::ast::AstNode* appendIteratorLocal(IteratorCoreCallSyntax& fixture)
+{
+    auto* local = appendIteratorCoreSyntax(
+        fixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    fixture.names.emplace_back();
+    auto& binding = fixture.names.back();
+    binding.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    binding.syntax = local;
+    binding.name = "iterator";
+    binding.typeKey = "type:Deep.Iterator";
+    binding.localOrdinal = 0U;
+    return local;
+}
+
+nativesharp::ast::AstNode* appendIteratorCoreLayer(
+    IteratorCoreCallSyntax& fixture,
+    nativesharp::ast::AstNode* receiver,
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    auto* member = appendIteratorCoreSyntax(
+        fixture, nativesharp::ast::AstNodeKind::MemberExpression);
+    member->setFirst(receiver);
+    auto* call = appendIteratorCoreSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    call->setFirst(member);
+    fixture.cores.push_back(makeIteratorCoreBinding(call, kind));
+    return call;
+}
+
+IteratorCoreCallSyntax makeDeepIteratorCoreCallSyntax(
+    std::size_t depth,
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    IteratorCoreCallSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.cores.reserve(depth);
+    fixture.names.reserve(1U);
+    auto* current = appendIteratorLocal(fixture);
+    for (std::size_t index = 0; index < depth; ++index)
+        current = appendIteratorCoreLayer(fixture, current, kind);
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCallFixture(
+    IteratorCoreCallSyntax& fixture,
+    std::optional<std::size_t> exceptionHandlerOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding expressionType;
+    expressionType.typeKey = "type:Deep.Iterator";
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIteratorCoreCallExpression(
+            model,
+            methodBodyModel,
+            fixture.root,
+            fixture.nodes,
+            fixture.cores,
+            fixture.names,
+            expressionType,
+            exceptionHandlerOrdinal,
+            addressContext,
+            error);
+}
+
+bool deepIteratorGetEnumeratorMatches(
+    const ProjectOopHirNode* node,
+    std::size_t expectedDepth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::IteratorGetEnumerator)
+    {
+        if (node->typeKey != "type:Deep.Iterator" ||
+            node->elementTypeKey != "builtin:int" || node->children.size() != 1U ||
+            node->argumentCount != 0U || !node->argumentTypeKeys.empty())
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::LocalValue && node->localOrdinal == 0U;
+}
+
+nativesharp::frontend::ProjectOopHirNodeKind iteratorHirKind(
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    if (kind == CoreKind::IteratorMoveNext) return HirKind::IteratorMoveNext;
+    if (kind == CoreKind::IteratorGetEnumerator) return HirKind::IteratorGetEnumerator;
+    if (kind == CoreKind::IteratorDrop) return HirKind::IteratorDrop;
+    if (kind == CoreKind::IteratorMoveNextAsync) return HirKind::IteratorMoveNextAsync;
+    return HirKind::IteratorCancel;
+}
+
+void testIteratorCoreCallContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    const std::array<CoreKind, 5U> kinds{
+        CoreKind::IteratorMoveNext,
+        CoreKind::IteratorGetEnumerator,
+        CoreKind::IteratorDrop,
+        CoreKind::IteratorMoveNextAsync,
+        CoreKind::IteratorCancel,
+    };
+    std::string error;
+    for (const CoreKind kind : kinds)
+    {
+        auto fixture = makeDeepIteratorCoreCallSyntax(1U, kind);
+        const auto expectedBinding = fixture.cores.front();
+        auto lowered = lowerIteratorCoreCallFixture(fixture, 77U, false, error);
+        const bool valueReceiver = kind == CoreKind::IteratorGetEnumerator;
+        const std::string observed = lowered == nullptr
+            ? "null; error=" + error
+            : std::string(nativesharp::frontend::projectOopHirNodeKindName(lowered->kind)) +
+                "; child=" + (lowered->children.empty()
+                    ? "none"
+                    : nativesharp::frontend::projectOopHirNodeKindName(
+                        lowered->children.front()->kind)) +
+                "; handler=" + (lowered->exceptionTargetRegionOrdinal.has_value()
+                    ? std::to_string(*lowered->exceptionTargetRegionOrdinal) : "none");
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == iteratorHirKind(kind) &&
+                lowered->typeKey == expectedBinding.resultTypeKey &&
+                lowered->elementTypeKey == expectedBinding.elementTypeKey &&
+                lowered->children.size() == 1U &&
+                lowered->children.front()->kind ==
+                    (valueReceiver ? HirKind::LocalValue : HirKind::LocalAddress) &&
+                lowered->exceptionTargetRegionOrdinal == 77U &&
+                lowered->argumentCount == 0U && lowered->argumentTypeKeys.empty(),
+            std::string(nativesharp::frontend::methodCoreOperationKindName(kind)) +
+                " preserves receiver context, specialized kind, metadata, and exception target (" +
+                observed + ")");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    auto withoutHandler = makeDeepIteratorCoreCallSyntax(
+        1U, CoreKind::IteratorGetEnumerator);
+    auto noHandlerNode = lowerIteratorCoreCallFixture(
+        withoutHandler, std::nullopt, false, error);
+    tests.expect(noHandlerNode != nullptr && error.empty() &&
+            !noHandlerNode->exceptionTargetRegionOrdinal.has_value(),
+        "iterator core call leaves exception target absent without an active handler");
+    destroyHirTreeIteratively(noHandlerNode);
+}
+
+void testIteratorCoreCallInvalidShapes(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+
+    auto address = makeDeepIteratorCoreCallSyntax(1U, CoreKind::IteratorGetEnumerator);
+    auto* invalidReceiver = appendIteratorCoreSyntax(address, AstKind::CallExpression);
+    address.nodes[1]->setFirst(invalidReceiver);
+    auto addressNode = lowerIteratorCoreCallFixture(address, std::nullopt, true, error);
+    tests.expect(addressNode == nullptr &&
+            error == "iterator-get-enumerator() has an invalid call shape",
+        "iterator get-enumerator rejects address context before lowering its sentinel receiver");
+
+    error.clear();
+    auto argument = makeDeepIteratorCoreCallSyntax(1U, CoreKind::IteratorMoveNext);
+    auto* invalidArgument = appendIteratorCoreSyntax(argument, AstKind::CallExpression);
+    argument.nodes[2]->addChild(invalidArgument);
+    auto argumentNode = lowerIteratorCoreCallFixture(argument, std::nullopt, false, error);
+    tests.expect(argumentNode == nullptr &&
+            error == "iterator-move-next() has an invalid call shape",
+        "iterator move-next rejects explicit arguments before lowering its receiver");
+
+    error.clear();
+    IteratorCoreCallSyntax missingFirst;
+    auto* missingCall = appendIteratorCoreSyntax(missingFirst, AstKind::CallExpression);
+    missingFirst.cores.push_back(makeIteratorCoreBinding(missingCall, CoreKind::IteratorDrop));
+    missingFirst.root = missingCall;
+    auto missingFirstNode = lowerIteratorCoreCallFixture(
+        missingFirst, std::nullopt, false, error);
+    tests.expect(missingFirstNode == nullptr &&
+            error == "iterator-drop() has an invalid call shape",
+        "iterator drop preserves the exact missing-member diagnostic");
+
+    error.clear();
+    IteratorCoreCallSyntax missingReceiver;
+    auto* emptyMember = appendIteratorCoreSyntax(missingReceiver, AstKind::MemberExpression);
+    auto* missingReceiverCall = appendIteratorCoreSyntax(
+        missingReceiver, AstKind::CallExpression);
+    missingReceiverCall->setFirst(emptyMember);
+    missingReceiver.cores.push_back(makeIteratorCoreBinding(
+        missingReceiverCall, CoreKind::IteratorMoveNextAsync));
+    missingReceiver.root = missingReceiverCall;
+    auto missingReceiverNode = lowerIteratorCoreCallFixture(
+        missingReceiver, std::nullopt, false, error);
+    tests.expect(missingReceiverNode == nullptr &&
+            error == "iterator-move-next-async() has an invalid call shape",
+        "iterator move-next-async preserves the exact missing-receiver diagnostic");
+
+    error.clear();
+    auto mutating = makeDeepIteratorCoreCallSyntax(32768U, CoreKind::IteratorCancel);
+    auto mutatingNode = lowerIteratorCoreCallFixture(
+        mutating, std::nullopt, false, error);
+    tests.expect(mutatingNode == nullptr &&
+            error == "iterator-cancel() has an invalid call shape",
+        "a deep mutating iterator chain reaches its controlled address-shape diagnostic (" +
+            error + ")");
+}
+
+void testDeepIteratorCoreCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto fixture = makeDeepIteratorCoreCallSyntax(
+        nestingDepth, CoreKind::IteratorGetEnumerator);
+    auto lowered = lowerIteratorCoreCallFixture(
+        fixture, std::nullopt, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level iterator get-enumerator chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(deepIteratorGetEnumeratorMatches(lowered.get(), nestingDepth),
+        "iterator core frames preserve every specialized node, type, element type, and value edge");
+    destroyHirTreeIteratively(lowered);
+
+    testIteratorCoreCallContracts(tests);
+    testIteratorCoreCallInvalidShapes(tests);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -9990,6 +10291,10 @@ int main()
     {
         testDeepPanicAssertCallLowering(tests);
     }
+    else if (focusValue == "hir-iterator-core-call-depth")
+    {
+        testDeepIteratorCoreCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -10199,6 +10504,7 @@ int main()
         testDeepDelegateLambdaReceiverLowering(tests, root);
         testDeepDelegateLambdaInvokeLowering(tests, root);
         testDeepPanicAssertCallLowering(tests);
+        testDeepIteratorCoreCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

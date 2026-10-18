@@ -1011,31 +1011,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
                 "() has an invalid call shape";
             return nullptr;
         }
-        // MoveNext/Drop/MoveNextAsync mutate the iterator (state/frame), so the receiver is
-        // the ADDRESS.
-        auto receiver = lowerExpression(
-            expression->first()->first(), memberOrdinal,
-            iteratorCore->kind != MethodCoreOperationKind::IteratorGetEnumerator, error);
-        if (receiver == nullptr) return nullptr;
-        auto node = makeNode(
-            iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext
-                ? ProjectOopHirNodeKind::IteratorMoveNext
-                : iteratorCore->kind == MethodCoreOperationKind::IteratorDrop
-                    ? ProjectOopHirNodeKind::IteratorDrop
-                    : iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync
-                        ? ProjectOopHirNodeKind::IteratorMoveNextAsync
-                        : iteratorCore->kind == MethodCoreOperationKind::IteratorCancel
-                            ? ProjectOopHirNodeKind::IteratorCancel
-                            : ProjectOopHirNodeKind::IteratorGetEnumerator,
-            expression,
-            iteratorCore->resultTypeKey);
-        node->elementTypeKey = iteratorCore->elementTypeKey;
-        node->children.push_back(std::move(receiver));
-        // NS304-T06-F07: a MoveNext inside a try attaches the enclosing catch so a typed
-        // generator error (state == -2) rethrows into it instead of ending the loop.
-        if (!activeHirExceptionHandlers_.empty())
-            node->exceptionTargetRegionOrdinal = activeHirExceptionHandlers_.back().hirRegionOrdinal;
-        return node;
+        error = "Stage 34 iterator core call escaped iterative lowering";
+        return nullptr;
     }
     const NamespaceFunctionCallBinding* namespaceCall =
         namespaceFunctionCallBinding(expression);

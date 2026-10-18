@@ -172,6 +172,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         EventInvoke,
         DelegateInvoke,
         AssertionCore,
+        IteratorCoreCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -385,6 +386,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  assertionCore->kind == MethodCoreOperationKind::Assume ||
                  !syntax->children().empty());
             if (requiresOperandFrame) return IterativeExpressionKind::AssertionCore;
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* iteratorCore = coreBinding(syntax);
+            if (iteratorCore != nullptr &&
+                (iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorGetEnumerator ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorDrop ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync ||
+                 iteratorCore->kind == MethodCoreOperationKind::IteratorCancel))
+            {
+                return IterativeExpressionKind::IteratorCoreCall;
+            }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -1449,6 +1463,43 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             }
             return true;
         };
+        const auto initializeIteratorCoreCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.core == nullptr ||
+                (frame.core->kind != MethodCoreOperationKind::IteratorMoveNext &&
+                 frame.core->kind != MethodCoreOperationKind::IteratorGetEnumerator &&
+                 frame.core->kind != MethodCoreOperationKind::IteratorDrop &&
+                 frame.core->kind != MethodCoreOperationKind::IteratorMoveNextAsync &&
+                 frame.core->kind != MethodCoreOperationKind::IteratorCancel))
+            {
+                error = "Stage 34 iterator core call lost its semantic binding";
+                return false;
+            }
+            if (frame.addressContext || !frame.syntax->children().empty() ||
+                frame.syntax->first() == nullptr || frame.syntax->first()->first() == nullptr)
+            {
+                error = std::string(methodCoreOperationKindName(frame.core->kind)) +
+                    "() has an invalid call shape";
+                return false;
+            }
+            const ProjectOopHirNodeKind nodeKind =
+                frame.core->kind == MethodCoreOperationKind::IteratorMoveNext
+                ? ProjectOopHirNodeKind::IteratorMoveNext
+                : frame.core->kind == MethodCoreOperationKind::IteratorDrop
+                    ? ProjectOopHirNodeKind::IteratorDrop
+                    : frame.core->kind == MethodCoreOperationKind::IteratorMoveNextAsync
+                        ? ProjectOopHirNodeKind::IteratorMoveNextAsync
+                        : frame.core->kind == MethodCoreOperationKind::IteratorCancel
+                            ? ProjectOopHirNodeKind::IteratorCancel
+                            : ProjectOopHirNodeKind::IteratorGetEnumerator;
+            frame.first = makeNode(nodeKind, frame.syntax, frame.core->resultTypeKey);
+            frame.first->elementTypeKey = frame.core->elementTypeKey;
+            frame.operandSyntaxes.push_back(frame.syntax->first()->first());
+            frame.operandAddressContext =
+                frame.core->kind != MethodCoreOperationKind::IteratorGetEnumerator;
+            return true;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1703,6 +1754,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::AssertionCore)
                 {
                     if (!initializeAssertionCoreFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::IteratorCoreCall)
+                {
+                    if (!initializeIteratorCoreCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2215,6 +2275,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->children().front();
                     currentAddressContext = false;
                 }
+                else if (*currentKind == IterativeExpressionKind::IteratorCoreCall)
+                {
+                    current = frames.back().operandSyntaxes.front();
+                    currentAddressContext = frames.back().operandAddressContext;
+                }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
                     current = frames.back().receiverFrame.syntax;
@@ -2353,6 +2418,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::NamespaceExtensionSetter)
                 {
                     currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::IteratorCoreCall)
+                {
+                    // The iterator frame selected value versus address context above.
                 }
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
@@ -3155,6 +3224,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     frame.first->children.push_back(std::move(lowered));
+                    lowered = std::move(frame.first);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::IteratorCoreCall)
+                {
+                    frame.first->children.push_back(std::move(lowered));
+                    if (!activeHirExceptionHandlers_.empty())
+                    {
+                        frame.first->exceptionTargetRegionOrdinal =
+                            activeHirExceptionHandlers_.back().hirRegionOrdinal;
+                    }
                     lowered = std::move(frame.first);
                     frames.pop_back();
                     continue;
