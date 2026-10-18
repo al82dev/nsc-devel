@@ -2513,7 +2513,8 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
-    const bool includeTraitImpls = projected.formatMinor >= 40;
+    const bool includeTraitImpls =
+        projected.formatMinor >= 40 && !projected.traitImpls.empty();
     // Static closure and private imports describe how to link this particular archive; they do
     // not change the public NativeSharp ABI published by the module. Project every current
     // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public
