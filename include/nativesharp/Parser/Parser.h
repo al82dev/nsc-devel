@@ -46,6 +46,13 @@ private:
 
     bool canStartType(const lexer::Token& token) const noexcept;
     bool isAccessibilityModifier(lexer::TokenKind kind) const noexcept;
+    bool isInvalidMemberObjectType(const ast::TypeSyntax* type) const noexcept;
+    bool isMemberOperatorToken(lexer::TokenKind kind) const noexcept;
+    std::string_view memberOperatorSpelling(lexer::TokenKind kind) const noexcept;
+    std::string memberOperatorMethodName(lexer::TokenKind kind, std::size_t arity) const;
+    void applyMemberFloatingPointMode(
+        ast::AstNode* node,
+        ast::FloatingPointModeSyntaxKind mode);
     bool canStartTypeAt(std::size_t tokenIndex) const noexcept;
     bool scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool looksLikeVariableDeclaration() const noexcept;
@@ -292,11 +299,218 @@ private:
     ast::AstNode* parseDelegateDeclaration();
     void parseDelegateParameters(ast::AstNode* declaration);
     ast::AstNode* parseInterfaceMember(bool isTrait);
+    ast::AstNode* parseInterfaceMemberImpl(bool isTrait);
+    struct InterfaceMemberState final
+    {
+        lexer::TokenKind accessibility = lexer::TokenKind::KwPublic;
+        bool sawPublic = false;
+        bool sawAbstract = false;
+        bool sawNoHeap = false;
+        bool sawStatic = false;
+    };
+    void parseInterfaceMemberModifiers(
+        bool isTrait,
+        bool& sawPublic,
+        bool& sawAbstract,
+        bool& sawNoHeap,
+        bool& sawStatic);
+    ast::AstNode* parseInterfaceTypedMember(
+        bool isTrait,
+        std::size_t beginIndex,
+        InterfaceMemberState& state,
+        ast::TypeSyntax* returnType,
+        bool isReferenceReturn,
+        std::string returnLifetime);
+    ast::AstNode* parseInterfaceOperatorMember(
+        bool isTrait,
+        std::size_t beginIndex,
+        const InterfaceMemberState& state,
+        ast::TypeSyntax* returnType);
+    ast::AstNode* parseInterfaceNamedMember(
+        bool isTrait,
+        std::size_t beginIndex,
+        const InterfaceMemberState& state,
+        ast::TypeSyntax* returnType,
+        bool isReferenceReturn,
+        std::string returnLifetime);
     ast::AstNode* parseAssociatedItem(bool implementation);
     ast::AstNode* parseClassMember(
         std::string_view className,
         bool allowUnresolvedNamedTypes = false,
         bool structContext = false);
+    ast::AstNode* parseClassMemberImpl(
+        std::string_view className,
+        bool allowUnresolvedNamedTypes,
+        bool structContext);
+    struct MemberParseState final
+    {
+        std::size_t beginIndex = 0;
+        std::string frameStorage;
+        lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        bool isAsync = false;
+        bool isPartial = false;
+        bool isPartialMember = false;
+        bool isNew = false;
+        bool isStatic = false;
+        bool isReadonly = false;
+        bool isVolatile = false;
+        bool isConst = false;
+        bool isVirtual = false;
+        bool isOverride = false;
+        bool isAbstract = false;
+        bool isSealed = false;
+        bool isExported = false;
+        bool isExternC = false;
+        bool isInline = false;
+        bool isForceInline = false;
+        bool isNoInline = false;
+        bool isNoHeap = false;
+        bool isRequired = false;
+        bool isUnsafe = false;
+        bool isControlledSpecialization = false;
+        SourceRange controlledSpecializationRange{};
+        bool isBorrowedView = false;
+        bool isCopyType = false;
+        std::optional<std::uint64_t> nestedLayoutPack;
+        std::optional<std::uint64_t> nestedLayoutAlign;
+        std::optional<std::uint64_t> nestedLayoutSize;
+        std::optional<std::uint64_t> explicitFieldOffset;
+        ast::AstNode* completedDeclaration = nullptr;
+    };
+    void parseMemberFrameStorage(MemberParseState& state);
+    void parseMemberModifiers(MemberParseState& state);
+    void parseExplicitFieldOffsets(MemberParseState& state);
+    bool tryParseUnsafeMemberModifier(MemberParseState& state);
+    bool tryParseSpecializeMemberModifier(MemberParseState& state);
+    bool tryParsePartialMemberModifier(MemberParseState& state);
+    bool tryParseNestedLayoutModifier(MemberParseState& state);
+    bool tryParseNestedValueModifier(MemberParseState& state);
+    bool tryParseStandardMemberModifier(MemberParseState& state);
+    bool tryParseMemberStorageModifier(MemberParseState& state, const lexer::Token& modifier);
+    bool tryParseMemberDispatchModifier(MemberParseState& state, const lexer::Token& modifier);
+    bool tryParseMemberCodegenModifier(MemberParseState& state, const lexer::Token& modifier);
+    bool tryParseMemberInteropModifier(MemberParseState& state, const lexer::Token& modifier);
+    void setMemberFlag(
+        bool& flag,
+        const lexer::Token& modifier,
+        std::string_view duplicateMessage);
+    ast::AstNode* parseExternCMemberImportBlock(
+        MemberParseState& state,
+        const lexer::Token& modifier);
+    ast::AstNode* parseExternCImportedFunction(std::string_view dllName);
+    void parseExternCImportedParameters(ast::AstNode* imported);
+    void validateMemberModifiers(const MemberParseState& state);
+    void validateMemberInheritanceModifiers(const MemberParseState& state);
+    void validateMemberBodyModifiers(const MemberParseState& state);
+    void validateMemberFieldModifiers(const MemberParseState& state);
+    void rejectControlledSpecialization(
+        const MemberParseState& state,
+        std::string_view declarationKind);
+    ast::AstNode* dispatchClassMember(
+        std::string_view className,
+        bool structContext,
+        MemberParseState& state);
+    ast::AstNode* parseDestructorMember(
+        std::string_view className,
+        MemberParseState& state);
+    ast::AstNode* parseConstructorMember(
+        std::string_view className,
+        MemberParseState& state);
+    ast::AstNode* parseConversionMember(MemberParseState& state);
+    ast::AstNode* parseEventMember(MemberParseState& state);
+    ast::AstNode* parseAnonymousAggregateMember(
+        bool structContext,
+        MemberParseState& state);
+    void validateAnonymousAggregateMember(
+        bool structContext,
+        const lexer::Token& keyword,
+        const MemberParseState& state);
+    ast::AstNode* createAnonymousAggregateDeclaration(
+        bool anonymousUnion,
+        const lexer::Token& keyword,
+        std::string_view synthesizedName,
+        MemberParseState& state);
+    ast::AstNode* createAnonymousAggregateField(
+        ast::AstNode* declaration,
+        const lexer::Token& keyword,
+        std::string_view synthesizedName,
+        MemberParseState& state);
+    void applyAnonymousFieldModifiers(
+        ast::AstNode* field,
+        const MemberParseState& state);
+    ast::AstNode* parseNestedClassMember(MemberParseState& state);
+    ast::AstNode* parseTypedClassMember(
+        std::string_view className,
+        bool structContext,
+        MemberParseState& state);
+    ast::AstNode* parseUnnamedBitFieldMember(
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        MemberParseState& state);
+    ast::AstNode* parseOperatorClassMember(
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        MemberParseState& state);
+    ast::AstNode* parseIndexerClassMember(
+        ast::TypeSyntax* type,
+        bool structContext,
+        bool isReferenceReturn,
+        MemberParseState& state);
+    ast::AstNode* parseNamedClassMember(
+        std::string_view className,
+        bool structContext,
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        std::string returnLifetime,
+        MemberParseState& state);
+    ast::AstNode* parseMethodClassMember(
+        const lexer::Token& name,
+        bool structContext,
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        std::string returnLifetime,
+        MemberParseState& state);
+    void finalizeMethodClassMember(
+        ast::AstNode* method,
+        bool structContext,
+        bool isReferenceReturn,
+        std::string returnLifetime,
+        MemberParseState& state);
+    ast::AstNode* parsePropertyClassMember(
+        const lexer::Token& name,
+        bool structContext,
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        MemberParseState& state);
+    ast::AstNode* parseFieldClassMember(
+        const lexer::Token& name,
+        ast::TypeSyntax* type,
+        bool isReferenceReturn,
+        MemberParseState& state);
+    void validateFieldMember(
+        const lexer::Token& name,
+        ast::TypeSyntax* type,
+        const MemberParseState& state);
+    ast::AstNode* createFieldDeclaration(
+        const lexer::Token& name,
+        ast::TypeSyntax* type,
+        bool isReferenceReturn);
+    ast::AstNode* parseFieldBitWidth(
+        ast::AstNode* field,
+        const lexer::Token& name,
+        bool isReferenceReturn,
+        const MemberParseState& state);
+    void applyFieldMetadata(
+        ast::AstNode* field,
+        const MemberParseState& state);
+    void applyFieldModifiers(
+        ast::AstNode* field,
+        const MemberParseState& state);
+    void parseFieldInitializer(
+        ast::AstNode* field,
+        const lexer::Token& name,
+        ast::AstNode* bitWidth,
+        const MemberParseState& state);
     // NSC-LIMIT-009. Los modificadores que `parseClassMember` ya leyo cuando descubre que lo que
     // sigue no es un campo ni un metodo sino una DECLARACION DE TIPO. Viajan juntos porque el
     // diagnostico tiene que poder decir cual de ellos sobra, y decirlo por su nombre.
@@ -329,12 +543,48 @@ private:
     ast::AstNode* parseNestedTypeDeclaration(
         const NestedTypeModifiers& modifiers,
         std::size_t beginIndex);
+    ast::AstNode* parseNestedTypeDeclarationImpl(
+        const NestedTypeModifiers& modifiers,
+        std::size_t beginIndex);
+    void refuseNestedTypeModifier(
+        std::size_t beginIndex,
+        const char* modifierName,
+        const char* reason);
+    bool validateNestedTypeModifiers(
+        const NestedTypeModifiers& modifiers,
+        std::size_t beginIndex);
+    ast::AstNode* createNestedTypeDeclaration(const NestedTypeModifiers& modifiers);
+    void applyNestedTypeIdentity(
+        ast::AstNode* declaration,
+        const NestedTypeModifiers& modifiers,
+        bool nestedReadonlyStruct,
+        std::size_t beginIndex);
+    void applyNestedTypeLayout(
+        ast::AstNode* declaration,
+        const NestedTypeModifiers& modifiers);
     ast::AstNode* parseEventTail(
         lexer::TokenKind accessibility,
         bool isNew,
         bool isStatic,
         std::size_t beginIndex,
         bool isPartial = false);
+    void addEventBackingField(
+        ast::AstNode* event,
+        const lexer::Token& name,
+        ast::TypeSyntax* eventType,
+        bool isStatic);
+    void parseEventAccessors(
+        ast::AstNode* event,
+        const lexer::Token& name,
+        ast::TypeSyntax* eventType,
+        std::size_t beginIndex,
+        bool isPartial);
+    ast::AstNode* parseEventAccessor(
+        const lexer::Token& name,
+        ast::TypeSyntax* eventType,
+        std::size_t beginIndex,
+        bool isPartial,
+        bool isAdd);
     ast::AstNode* parseDestructorTail(std::string_view className, std::size_t beginIndex);
     ast::AstNode* parsePropertyTail(
         ast::TypeSyntax* propertyType,
@@ -351,6 +601,49 @@ private:
         bool allowReadonlyGetter,
         bool isReferenceReturn,
         bool isPartial = false);
+    struct PropertyParseState final
+    {
+        ast::AstNode* property = nullptr;
+        ast::TypeSyntax* type = nullptr;
+        const lexer::Token* name = nullptr;
+        lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        std::size_t beginIndex = 0;
+        bool isNew = false;
+        bool isStatic = false;
+        bool isVirtual = false;
+        bool isOverride = false;
+        bool isAbstract = false;
+        bool isSealed = false;
+        bool interfaceContext = false;
+        bool allowReadonlyGetter = false;
+        bool isReferenceReturn = false;
+        bool isPartial = false;
+        bool sawGet = false;
+        bool sawSet = false;
+        bool sawAutomatic = false;
+        bool sawExplicit = false;
+        std::vector<ast::AstNode*> accessors;
+        std::string propertyName;
+        std::string backingName;
+        ast::AstNode* initializer = nullptr;
+    };
+    ast::AstNode* createPropertyDeclaration(PropertyParseState& state);
+    void parsePropertyAccessors(PropertyParseState& state);
+    ast::AstNode* parsePropertyAccessor(PropertyParseState& state);
+    ast::AstNode* createPropertyAccessorNode(
+        PropertyParseState& state,
+        bool getter,
+        bool initOnly,
+        bool accessorReadonly,
+        lexer::TokenKind accessibility,
+        SourceRange range);
+    void parsePropertyAccessorBody(
+        PropertyParseState& state,
+        ast::AstNode* accessor,
+        bool getter,
+        SourceRange accessorRange);
+    void parsePropertyInitializer(PropertyParseState& state);
+    void finalizePropertyDeclaration(PropertyParseState& state);
     ast::AstNode* parseIndexerTail(
         ast::TypeSyntax* elementType,
         lexer::TokenKind accessibility,
@@ -363,12 +656,51 @@ private:
         std::size_t beginIndex,
         bool interfaceContext,
         bool allowReadonlyGetter);
+    struct IndexerParseState final
+    {
+        ast::AstNode* indexer = nullptr;
+        ast::TypeSyntax* type = nullptr;
+        lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        std::size_t beginIndex = 0;
+        bool isNew = false;
+        bool isVirtual = false;
+        bool isOverride = false;
+        bool isAbstract = false;
+        bool isSealed = false;
+        bool isReferenceReturn = false;
+        bool interfaceContext = false;
+        bool allowReadonlyGetter = false;
+        bool sawGet = false;
+        bool sawSet = false;
+        bool sawBody = false;
+        std::vector<ast::AstNode*> parameters;
+    };
+    ast::AstNode* createIndexerDeclaration(IndexerParseState& state);
+    void parseIndexerParameters(IndexerParseState& state);
+    void parseIndexerAccessors(IndexerParseState& state);
+    ast::AstNode* parseIndexerAccessor(IndexerParseState& state);
+    ast::AstNode* createIndexerAccessorNode(
+        IndexerParseState& state,
+        bool getter,
+        bool initOnly,
+        bool accessorReadonly,
+        lexer::TokenKind accessibility,
+        SourceRange range);
+    void parseIndexerAccessorBody(
+        IndexerParseState& state,
+        ast::AstNode* accessor,
+        SourceRange accessorRange);
     ast::AstNode* parseOperatorTail(
         ast::TypeSyntax* returnType,
         lexer::TokenKind accessibility,
         bool isStatic,
         std::size_t beginIndex,
         bool allowBodyless = false);
+    void parseCallableParameterList(ast::AstNode* callable);
+    void validateOperatorArity(
+        ast::AstNode* method,
+        const lexer::Token& operation);
+    void parseOperatorBody(ast::AstNode* method, bool allowBodyless);
     ast::AstNode* parseConversionOperatorTail(
         bool implicitConversion,
         lexer::TokenKind accessibility,
@@ -399,6 +731,10 @@ private:
         bool isNoHeap,
         std::size_t beginIndex,
         bool isPartial = false);
+    void parseConstructorInitializer(
+        ast::AstNode* constructor,
+        bool isStatic);
+    void parseConstructorBody(ast::AstNode* constructor, bool isPartial);
     ast::AstNode* parseMethodTail(
         ast::TypeSyntax* returnType,
         const lexer::Token& name,
@@ -419,16 +755,42 @@ private:
         std::size_t beginIndex,
         bool allowBodyless = false,
         bool isPartialMethod = false);
+    void applyMethodModifiers(
+        ast::AstNode* method,
+        lexer::TokenKind accessibility,
+        bool isNew,
+        bool isStatic,
+        bool isVirtual,
+        bool isOverride,
+        bool isAbstract,
+        bool isSealed,
+        bool isExported,
+        bool isExternC,
+        bool isInline,
+        bool isForceInline,
+        bool isNoInline,
+        bool isNoHeap,
+        bool isUnsafe);
+    void parseMethodBody(
+        ast::AstNode* method,
+        bool isAbstract,
+        bool allowBodyless,
+        bool isPartialMethod);
     ast::AstNode* parseEnumDeclaration();
     ast::AstNode* parseExternCDeclaration();
     void parseExternCBlock(ast::AstNode* declaration);
     bool parseExternCSingle(ast::AstNode* declaration);
     ast::AstNode* parseFunctionOrGlobalVariable();
     ast::AstNode* parseFunctionTail(ast::TypeSyntax* returnType, const lexer::Token& name, bool externalOnly);
+    bool parseVariadicCallableParameters(ast::AstNode* callable);
+    void validateGlobalFunctionConstraints(ast::AstNode* function);
+    void parseGlobalFunctionBody(ast::AstNode* function, bool externalOnly);
     void parseThrowsClause(ast::AstNode* callable);
     void parseFloatingPointModeClause(ast::AstNode* callable);
-      void parseFfiUnwindClause(ast::AstNode* callable);
+    void parseFfiUnwindClause(ast::AstNode* callable);
     ast::AstNode* parseParameter();
+    void parseParameterContracts(ast::AstNode* parameter);
+    void appendParameterContract(ast::AstNode* parameter, std::string contract);
 
     ast::AstNode* parseBlock();
     ast::AstNode* parseStatement();
