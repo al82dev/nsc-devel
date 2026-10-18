@@ -372,15 +372,25 @@ struct ProjectOopHirModelTestAccess final
         const std::vector<MethodNameBinding>& names,
         const MethodExpressionTypeBinding& expressionType,
         bool addressContext,
-        std::string& error)
+        std::string& error,
+        const ProjectNameLookup* nameLookup = nullptr,
+        const ProjectMemberModel* memberModel = nullptr,
+        const std::vector<MethodBorrowBinding>* borrows = nullptr)
     {
         model.methodBodyModel_ = &methodBodyModel;
+        model.nameLookup_ = nameLookup;
+        model.memberModel_ = memberModel;
         for (const auto& node : syntax)
             model.expressionTypeBySyntax_[node.get()] = &expressionType;
         for (const MethodCoreBinding& core : cores)
             model.coreBindingBySyntax_[core.syntax] = &core;
         for (const MethodCallBinding& call : calls)
             model.callBySyntax_[call.syntax] = &call;
+        if (borrows != nullptr)
+        {
+            for (const MethodBorrowBinding& borrow : *borrows)
+                model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
+        }
         for (const MethodNameBinding& name : names)
         {
             model.nameBindingBySyntax_[name.syntax] = &name;
@@ -393,6 +403,42 @@ struct ProjectOopHirModelTestAccess final
             }
         }
         return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
+    static std::string configureEnumCoreModels(
+        ProjectNameLookup& nameLookup,
+        ProjectMemberModel& memberModel,
+        std::vector<std::pair<std::int64_t, std::string>> enumerators)
+    {
+        NamedTypeDeclaration declaration{
+            compilation::TypeIdentity("H02S14K", {}, {}, "Shade"),
+            NamedTypeDeclarationKind::Enum,
+            NamedTypeAccessibility::Internal,
+            std::nullopt,
+            false,
+            false,
+            false,
+            false,
+            false,
+            0U,
+            0U,
+            FileId{},
+            SourceRange{},
+            nullptr,
+            {}};
+        const std::string typeKey = "type:" + declaration.identity.key();
+        nameLookup.namedTypes_.push_back(std::move(declaration));
+        nameLookup.built_ = true;
+        for (auto& [value, name] : enumerators)
+        {
+            ClassMemberSymbol member;
+            member.name = std::move(name);
+            member.declaringTypeOrdinal = 0U;
+            member.isEnumConstant = true;
+            member.enumConstantValue = value;
+            memberModel.members_.push_back(std::move(member));
+        }
+        return typeKey;
     }
 
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
@@ -713,6 +759,30 @@ struct ProjectOopHirModelTestAccess final
         for (const MethodBorrowBinding& borrow : borrows)
             model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
         return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
+    }
+
+    static void setOrdinaryCallMembers(
+        ProjectMemberModel& memberModel,
+        std::vector<ClassMemberSymbol> members)
+    {
+        memberModel.members_ = std::move(members);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerOrdinaryCallExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, 0U, addressContext, error);
     }
 
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertySetterExpression(
@@ -5189,6 +5259,98 @@ void testDeepNamespaceCallLowering(
     destroyHirTreeIteratively(lowered);
 }
 
+void testDeepOrdinaryCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    constexpr std::string_view typeKey = "type:H02S14L.C";
+
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    std::vector<nativesharp::frontend::ClassMemberSymbol> members(2U);
+    members[0].kind = nativesharp::frontend::ClassMemberKind::Method;
+    members[0].name = "Next";
+    members[0].declaredTypeKey = std::string(typeKey);
+    members[0].hasImplicitThis = true;
+    members[1].kind = nativesharp::frontend::ClassMemberKind::Method;
+    members[1].name = "Identity";
+    members[1].declaredTypeKey = std::string(typeKey);
+    members[1].isStatic = true;
+    nativesharp::frontend::MethodParameterSymbol parameter;
+    parameter.name = "value";
+    parameter.typeKey = std::string(typeKey);
+    members[1].parameters.push_back(std::move(parameter));
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setOrdinaryCallMembers(
+        memberModel, std::move(members));
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    syntax.reserve(nestingDepth + 1U);
+    calls.reserve(nestingDepth);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(7U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        nativesharp::frontend::MethodCallBinding call;
+        call.syntax = syntax.back().get();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.resultTypeKey = std::string(typeKey);
+        if ((index & 1U) == 0U)
+        {
+            call.selectedMemberOrdinal = 0U;
+            call.receiverSyntax = current;
+            call.receiverTypeKey = std::string(typeKey);
+        }
+        else
+        {
+            call.staticCall = true;
+            call.selectedMemberOrdinal = 1U;
+            call.selectedArgumentParameterOrdinals.push_back(0U);
+            syntax.back()->addChild(current);
+        }
+        calls.push_back(std::move(call));
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = std::string(typeKey);
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerOrdinaryCallExpression(
+            model, memberModel, current, syntax, calls, type, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a mixed 32768-level ordinary call chain lowers without process-stack recursion (" +
+            error + ")");
+
+    const ProjectOopHirNode* node = lowered.get();
+    bool layoutMatches = node != nullptr;
+    for (std::size_t remaining = nestingDepth; layoutMatches && remaining > 0U; --remaining)
+    {
+        const std::size_t sourceIndex = remaining - 1U;
+        const bool instance = (sourceIndex & 1U) == 0U;
+        layoutMatches = node->kind == (instance
+                ? nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall
+                : nativesharp::frontend::ProjectOopHirNodeKind::StaticCall) &&
+            node->memberOrdinal == (instance ? 0U : 1U) &&
+            node->children.size() == 1U &&
+            (instance
+                ? node->argumentParameterOrdinals.empty()
+                : node->argumentParameterOrdinals == std::vector<std::size_t>{0U});
+        node = layoutMatches ? node->children.front().get() : nullptr;
+    }
+    layoutMatches = layoutMatches && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+        node->integerValue == 7U;
+    tests.expect(layoutMatches,
+        "iterative ordinary calls preserve instance receivers, static arguments, targets, and order");
+    destroyHirTreeIteratively(lowered);
+}
+
 struct DeepDelegateCreationSyntax final
 {
     std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
@@ -6461,7 +6623,10 @@ CoreOperandCallSyntax makeViewCoreOperandSyntax(
 std::unique_ptr<ProjectOopHirNode> lowerCoreOperandCallFixture(
     CoreOperandCallSyntax& fixture,
     bool addressContext,
-    std::string& error)
+    std::string& error,
+    const nativesharp::frontend::ProjectNameLookup* nameLookup = nullptr,
+    const nativesharp::frontend::ProjectMemberModel* memberModel = nullptr,
+    const std::vector<nativesharp::frontend::MethodBorrowBinding>* borrows = nullptr)
 {
     nativesharp::frontend::MethodExpressionTypeBinding expressionType;
     expressionType.typeKey = "builtin:string";
@@ -6478,7 +6643,10 @@ std::unique_ptr<ProjectOopHirNode> lowerCoreOperandCallFixture(
             fixture.names,
             expressionType,
             addressContext,
-            error);
+            error,
+            nameLookup,
+            memberModel,
+            borrows);
 }
 
 bool deepStringConcatMatches(const ProjectOopHirNode* node, std::size_t expectedDepth)
@@ -7415,6 +7583,441 @@ void testDeepMonitorCallLowering(TestContext& tests)
     testMonitorNominalContracts(tests);
     testMonitorWaitConversions(tests);
     testMonitorPrevalidation(tests);
+}
+
+nativesharp::ast::AstNode* appendCoreMemberCall(
+    CoreOperandCallSyntax& fixture,
+    nativesharp::ast::AstNode* receiver)
+{
+    auto* member = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::MemberExpression);
+    member->setFirst(receiver);
+    auto* call = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    call->setFirst(member);
+    return call;
+}
+
+CoreOperandCallSyntax makeKCoreCallSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    std::size_t argumentCount,
+    bool receiver,
+    std::string resultType = "builtin:void",
+    std::string elementType = "builtin:int")
+{
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(argumentCount + 3U);
+    fixture.cores.reserve(1U);
+    fixture.calls.reserve(1U);
+    fixture.names.reserve(receiver ? 1U : 0U);
+    nativesharp::ast::AstNode* call = nullptr;
+    if (receiver)
+    {
+        auto* local = appendCoreOperandLocal(fixture, elementType);
+        call = appendCoreMemberCall(fixture, local);
+    }
+    else
+    {
+        call = appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    }
+    for (std::size_t index = 0; index < argumentCount; ++index)
+        call->addChild(appendCoreOperandInteger(fixture, index + 11U));
+    appendCoreOperandBindings(fixture, call, kind, std::move(resultType));
+    fixture.cores.back().elementTypeKey = std::move(elementType);
+    fixture.root = call;
+    return fixture;
+}
+
+CoreOperandCallSyntax makeDeepStructCloneSyntax(std::size_t depth)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.cores.reserve(depth);
+    fixture.calls.reserve(depth);
+    fixture.names.reserve(1U);
+    auto* current = appendCoreOperandLocal(fixture, "type:H02S14K::Record");
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* call = appendCoreMemberCall(fixture, current);
+        appendCoreOperandBindings(
+            fixture, call, CoreKind::StructClone, "type:H02S14K::Record");
+        fixture.cores.back().elementTypeKey = "type:H02S14K::Record";
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+void testConsoleCoreCallContracts(TestContext& tests)
+{
+    using BorrowKind = nativesharp::frontend::MethodBorrowKind;
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct ConsoleCase final
+    {
+        CoreKind kind;
+        std::uint64_t mask;
+    };
+    constexpr std::array<ConsoleCase, 4U> cases{{
+        {CoreKind::ConsoleWrite, 0U},
+        {CoreKind::ConsoleWriteLine, 1U},
+        {CoreKind::ConsoleErrorWrite, 2U},
+        {CoreKind::ConsoleErrorWriteLine, 3U},
+    }};
+    std::string error;
+    for (const ConsoleCase& item : cases)
+    {
+        auto fixture = makeKCoreCallSyntax(item.kind, 1U, false);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == HirKind::CoreConsoleWriteLine &&
+                lowered->typeKey == "builtin:void" &&
+                lowered->integerValue == item.mask && lowered->children.size() == 1U &&
+                lowered->children[0]->kind == HirKind::IntegerConstant,
+            std::string(nativesharp::frontend::methodCoreOperationKindName(item.kind)) +
+                " preserves the unified node and exact output mask");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    auto converted = makeKCoreCallSyntax(CoreKind::ConsoleWrite, 1U, false);
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = ConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:int";
+    conversion.targetTypeKey = "builtin:long";
+    converted.calls.front().selectedConversions.push_back(conversion);
+    auto convertedNode = lowerCoreOperandCallFixture(converted, false, error);
+    tests.expect(convertedNode != nullptr && error.empty() &&
+            convertedNode->children[0]->kind == HirKind::Conversion,
+        "Console output applies the selected non-identity conversion");
+    destroyHirTreeIteratively(convertedNode);
+
+    error.clear();
+    auto identity = makeKCoreCallSyntax(CoreKind::ConsoleWrite, 1U, false);
+    conversion.kind = ConversionKind::Identity;
+    identity.calls.front().selectedConversions.push_back(conversion);
+    auto identityNode = lowerCoreOperandCallFixture(identity, false, error);
+    tests.expect(identityNode != nullptr && error.empty() &&
+            identityNode->children[0]->kind == HirKind::IntegerConstant,
+        "Console output does not wrap an identity conversion");
+    destroyHirTreeIteratively(identityNode);
+
+    error.clear();
+    auto noCall = makeKCoreCallSyntax(CoreKind::ConsoleWriteLine, 1U, false);
+    noCall.calls.clear();
+    auto noCallNode = lowerCoreOperandCallFixture(noCall, false, error);
+    tests.expect(noCallNode != nullptr && error.empty() &&
+            noCallNode->kind == HirKind::CoreConsoleWriteLine,
+        "Console output keeps accepting an absent optional call binding");
+    destroyHirTreeIteratively(noCallNode);
+
+    for (std::size_t mode = 0U; mode < 2U; ++mode)
+    {
+        error.clear();
+        auto borrowed = makeKCoreCallSyntax(CoreKind::ConsoleWrite, 1U, false);
+        std::vector<nativesharp::frontend::MethodBorrowBinding> borrows(1U);
+        auto& borrow = borrows.front();
+        borrow.syntax = borrowed.root->children().front();
+        borrow.kind = mode == 0U
+            ? BorrowKind::OwnerLocalToBorrowedParameter
+            : BorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+        borrow.targetMemberOrdinal = *borrowed.calls.front().selectedMemberOrdinal;
+        borrow.targetParameterOrdinal = 0U;
+        borrow.sourceLocalOrdinal = 4U;
+        auto borrowedNode = lowerCoreOperandCallFixture(
+            borrowed, false, error, nullptr, nullptr, &borrows);
+        const bool fresh = mode == 1U;
+        const ProjectOopHirNode* call = fresh && borrowedNode != nullptr &&
+            borrowedNode->kind == HirKind::FullExpressionCleanup &&
+            borrowedNode->children.size() == 1U
+            ? borrowedNode->children.front().get()
+            : borrowedNode.get();
+        tests.expect(call != nullptr && error.empty() &&
+                call->kind == HirKind::CoreConsoleWriteLine &&
+                call->children.size() == 1U &&
+                call->children[0]->kind ==
+                    (fresh ? HirKind::OwnedTemporaryBorrow : HirKind::BorrowValue) &&
+                (!fresh || (call->children[0]->children.size() == 1U &&
+                    call->children[0]->children[0]->kind == HirKind::BorrowValue)),
+            fresh
+                ? "Console fresh-owned borrow keeps its full-expression cleanup"
+                : "Console ordinary borrow keeps its BorrowValue wrapper without cleanup");
+        destroyHirTreeIteratively(borrowedNode);
+    }
+}
+
+void testReadLineAndEnvironmentExitContracts(TestContext& tests)
+{
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    auto read = makeKCoreCallSyntax(CoreKind::ConsoleReadLine, 1U, false);
+    nativesharp::frontend::ProjectImplicitConversion ignoredConversion;
+    ignoredConversion.kind = ConversionKind::Numeric;
+    ignoredConversion.sourceTypeKey = "builtin:int";
+    ignoredConversion.targetTypeKey = "builtin:long";
+    read.calls.front().selectedConversions.push_back(ignoredConversion);
+    auto readNode = lowerCoreOperandCallFixture(read, false, error);
+    tests.expect(readNode != nullptr && error.empty() &&
+            readNode->kind == HirKind::CoreConsoleReadLine &&
+            readNode->typeKey == "builtin:string" && readNode->children.size() == 1U &&
+            readNode->children[0]->kind == HirKind::IntegerConstant,
+        "Console.ReadLine preserves its single unwrapped status child and fixed type");
+    destroyHirTreeIteratively(readNode);
+
+    error.clear();
+    auto exit = makeKCoreCallSyntax(CoreKind::EnvironmentExit, 1U, false);
+    nativesharp::frontend::ProjectImplicitConversion conversion;
+    conversion.kind = ConversionKind::Numeric;
+    conversion.sourceTypeKey = "builtin:int";
+    conversion.targetTypeKey = "builtin:int";
+    exit.calls.front().selectedConversions.push_back(conversion);
+    auto exitNode = lowerCoreOperandCallFixture(exit, false, error);
+    tests.expect(exitNode != nullptr && error.empty() &&
+            exitNode->kind == HirKind::CoreEnvironmentExit &&
+            exitNode->typeKey == "builtin:void" && exitNode->children.size() == 1U &&
+            exitNode->children[0]->kind == HirKind::Conversion,
+        "Environment.Exit alone applies its optional selected conversion");
+    destroyHirTreeIteratively(exitNode);
+
+    error.clear();
+    auto noCall = makeKCoreCallSyntax(CoreKind::EnvironmentExit, 1U, false);
+    noCall.calls.clear();
+    auto noCallNode = lowerCoreOperandCallFixture(noCall, false, error);
+    tests.expect(noCallNode != nullptr && error.empty() &&
+            noCallNode->children[0]->kind == HirKind::IntegerConstant,
+        "Environment.Exit keeps accepting an absent optional call binding");
+    destroyHirTreeIteratively(noCallNode);
+}
+
+void testEnumToStringContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    const std::string enumType =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureEnumCoreModels(
+            nameLookup,
+            memberModel,
+            {{-1, "Minus"}, {-1, "Alias"}, {2, "Two"}});
+    auto fixture = makeKCoreCallSyntax(
+        CoreKind::EnumToString, 0U, true, "builtin:string", enumType);
+    std::string error;
+    auto lowered = lowerCoreOperandCallFixture(
+        fixture, false, error, &nameLookup, &memberModel);
+    tests.expect(lowered != nullptr && error.empty() &&
+            lowered->kind == HirKind::EnumName && lowered->children.size() == 8U &&
+            lowered->children[0]->kind == HirKind::LocalValue &&
+            lowered->children[1]->kind == HirKind::StringLiteral &&
+            lowered->children[1]->stringValue == "Shade" &&
+            lowered->children[2]->integerValue == static_cast<std::uint64_t>(-1) &&
+            lowered->children[3]->stringValue == "Minus" &&
+            lowered->children[4]->integerValue == static_cast<std::uint64_t>(-1) &&
+            lowered->children[5]->stringValue == "Alias" &&
+            lowered->children[6]->integerValue == 2U &&
+            lowered->children[7]->stringValue == "Two",
+        "EnumToString preserves one receiver, fallback, negative bits, aliases, and declaration order");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testStructCoreCallContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    auto toString = makeKCoreCallSyntax(
+        CoreKind::StructToString, 0U, true, "builtin:string", "type:H02S14K::Record");
+    auto* sentinel = appendCoreOperandSyntax(
+        toString, nativesharp::ast::AstNodeKind::CallExpression);
+    toString.nodes[1]->setFirst(sentinel);
+    toString.cores.emplace_back();
+    toString.cores.back().syntax = sentinel;
+    toString.cores.back().kind = CoreKind::StringConcat;
+    auto toStringNode = lowerCoreOperandCallFixture(toString, false, error);
+    tests.expect(toStringNode != nullptr && error.empty() &&
+            toStringNode->kind == HirKind::StringLiteral &&
+            toStringNode->typeKey == "builtin:string" &&
+            toStringNode->stringValue == "Record",
+        "StructToString remains a constant and does not evaluate its sentinel receiver");
+    destroyHirTreeIteratively(toStringNode);
+
+    error.clear();
+    auto clone = makeKCoreCallSyntax(
+        CoreKind::StructClone, 0U, true, "type:H02S14K::Record", "type:H02S14K::Record");
+    auto cloneNode = lowerCoreOperandCallFixture(clone, false, error);
+    tests.expect(cloneNode != nullptr && error.empty() && cloneNode->kind == HirKind::LocalValue,
+        "StructClone remains transparent without a wrapper node");
+    destroyHirTreeIteratively(cloneNode);
+
+    for (const bool equals : {false, true})
+    {
+        error.clear();
+        auto aggregate = makeKCoreCallSyntax(
+            equals ? CoreKind::StructEquals : CoreKind::StructHashCode,
+            equals ? 1U : 0U,
+            true,
+            equals ? "builtin:bool" : "builtin:int",
+            "builtin:int");
+        auto node = lowerCoreOperandCallFixture(aggregate, false, error);
+        tests.expect(node != nullptr && error.empty() &&
+                node->kind == (equals ? HirKind::AggregateEquals : HirKind::AggregateHash) &&
+                node->argumentCount == (equals ? 2U : 1U) &&
+                node->children.size() == (equals ? 3U : 2U) &&
+                node->children[0]->kind == HirKind::LocalValue &&
+                (!equals || node->children[1]->kind == HirKind::IntegerConstant) &&
+                node->children.back()->kind == HirKind::AggregateElement &&
+                node->children.back()->typeKey == "builtin:int",
+            equals
+                ? "StructEquals preserves receiver-argument order and pre-leaf argumentCount"
+                : "StructHash preserves receiver and pre-leaf argumentCount");
+        destroyHirTreeIteratively(node);
+    }
+}
+
+void testCoreLeafNeighbors(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct Leaf final { CoreKind core; HirKind hir; const char* type; };
+    constexpr std::array<Leaf, 20U> leaves{{
+        {CoreKind::ClockQueryCounter, HirKind::CoreClockQueryCounter, "builtin:long"},
+        {CoreKind::ClockQueryFrequency, HirKind::CoreClockQueryFrequency, "builtin:long"},
+        {CoreKind::ClockQuerySystemFileTime, HirKind::CoreClockQuerySystemFileTime, "builtin:long"},
+        {CoreKind::EnvironmentTickCount64, HirKind::CoreEnvironmentTickCount64, "builtin:long"},
+        {CoreKind::EnvironmentProcessorCount, HirKind::CoreEnvironmentProcessorCount, "builtin:int"},
+        {CoreKind::EnvironmentGetCommandLineArgCount, HirKind::CoreEnvironmentGetCommandLineArgCount, "builtin:int"},
+        {CoreKind::EnvironmentCurrentDirectory, HirKind::CoreEnvironmentCurrentDirectory, "builtin:string"},
+        {CoreKind::ProcessGetCurrentProcessIdRaw, HirKind::CoreProcessGetCurrentProcessId, "builtin:long"},
+        {CoreKind::ProcessGetWorkingSetSizeRaw, HirKind::CoreProcessGetWorkingSetSize, "builtin:long"},
+        {CoreKind::ProcessGetKernelTimeRaw, HirKind::CoreProcessGetKernelTime, "builtin:long"},
+        {CoreKind::ProcessGetUserTimeRaw, HirKind::CoreProcessGetUserTime, "builtin:long"},
+        {CoreKind::ProcessGetPriorityClassRaw, HirKind::CoreProcessGetPriorityClass, "builtin:long"},
+        {CoreKind::SystemInfoGetPageSizeRaw, HirKind::CoreSystemInfoGetPageSize, "builtin:long"},
+        {CoreKind::SystemInfoGetProcessorArchitectureRaw, HirKind::CoreSystemInfoGetProcessorArchitecture, "builtin:long"},
+        {CoreKind::SystemInfoGetAllocationGranularityRaw, HirKind::CoreSystemInfoGetAllocationGranularity, "builtin:long"},
+        {CoreKind::SystemInfoGetTotalPhysicalMemoryBytesRaw, HirKind::CoreSystemInfoGetTotalPhysicalMemoryBytes, "builtin:long"},
+        {CoreKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw, HirKind::CoreSystemInfoGetAvailablePhysicalMemoryBytes, "builtin:long"},
+        {CoreKind::SystemInfoGetMemoryLoadPercentRaw, HirKind::CoreSystemInfoGetMemoryLoadPercent, "builtin:long"},
+        {CoreKind::DebugIsDebuggerPresentRaw, HirKind::CoreDebugIsDebuggerPresent, "builtin:long"},
+        {CoreKind::DebugCaptureStackFrameCountRaw, HirKind::CoreDebugCaptureStackFrameCount, "builtin:long"},
+    }};
+    std::string error;
+    for (const Leaf& leaf : leaves)
+    {
+        auto fixture = makeKCoreCallSyntax(leaf.core, 0U, false);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() && lowered->kind == leaf.hir &&
+                lowered->typeKey == leaf.type && lowered->children.empty(),
+            std::string(nativesharp::frontend::methodCoreOperationKindName(leaf.core)) +
+                " remains a zero-child neighboring leaf");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+}
+
+void testConsoleEnumStructPrevalidation(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto console = makeKCoreCallSyntax(CoreKind::ConsoleWrite, 0U, false);
+    auto node = lowerCoreOperandCallFixture(console, false, error);
+    tests.expect(node == nullptr &&
+            error == "SHR-022 NativeSharp.Core.Console output requires one value argument",
+        "Console output preserves its exact count diagnostic");
+    error.clear();
+    auto read = makeKCoreCallSyntax(CoreKind::ConsoleReadLine, 1U, false);
+    node = lowerCoreOperandCallFixture(read, true, error);
+    tests.expect(node == nullptr &&
+            error == "NativeSharp.Core.Console.ReadLine requires one out status argument",
+        "Console.ReadLine preserves its exact address diagnostic");
+    error.clear();
+    auto enumAddress = makeKCoreCallSyntax(CoreKind::EnumToString, 0U, true);
+    node = lowerCoreOperandCallFixture(enumAddress, true, error);
+    tests.expect(node == nullptr && error == "ID 129 enum ToString() has no address",
+        "EnumToString preserves its exact address diagnostic");
+    error.clear();
+    auto enumReceiver = makeKCoreCallSyntax(CoreKind::EnumToString, 0U, false);
+    node = lowerCoreOperandCallFixture(enumReceiver, false, error);
+    tests.expect(node == nullptr && error == "ID 129 enum ToString() has no receiver",
+        "EnumToString preserves its exact receiver diagnostic");
+    error.clear();
+    auto enumModel = makeKCoreCallSyntax(CoreKind::EnumToString, 0U, true);
+    node = lowerCoreOperandCallFixture(enumModel, false, error);
+    tests.expect(node == nullptr && error == "ID 129 enum ToString() needs the member model",
+        "EnumToString preserves its exact missing-model diagnostic");
+    error.clear();
+    nativesharp::frontend::ProjectNameLookup names;
+    nativesharp::frontend::ProjectMemberModel members;
+    const std::string validType =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureEnumCoreModels(
+            names, members, {});
+    auto enumType = makeKCoreCallSyntax(CoreKind::EnumToString, 0U, true);
+    enumType.cores.front().elementTypeKey = "builtin:int";
+    node = lowerCoreOperandCallFixture(enumType, false, error, &names, &members);
+    tests.expect(node == nullptr && error == "ID 129 enum ToString() cannot find the enum type",
+        "EnumToString preserves its exact invalid-type diagnostic");
+    (void)validType;
+    error.clear();
+    auto structText = makeKCoreCallSyntax(CoreKind::StructToString, 0U, true);
+    node = lowerCoreOperandCallFixture(structText, true, error);
+    tests.expect(node == nullptr && error == "C8 struct ToString() has no address",
+        "StructToString preserves its exact address diagnostic");
+    error.clear();
+    auto cloneCount = makeKCoreCallSyntax(CoreKind::StructClone, 1U, true);
+    node = lowerCoreOperandCallFixture(cloneCount, false, error);
+    tests.expect(node == nullptr && error ==
+            "NativeSharp 3.0 record Clone() received an invalid operand count",
+        "StructClone preserves its exact operand diagnostic");
+    error.clear();
+    auto cloneReceiver = makeKCoreCallSyntax(CoreKind::StructClone, 0U, false);
+    node = lowerCoreOperandCallFixture(cloneReceiver, false, error);
+    tests.expect(node == nullptr && error == "NativeSharp 3.0 record Clone() has no receiver",
+        "StructClone preserves its exact receiver diagnostic");
+    error.clear();
+    auto aggregateCount = makeKCoreCallSyntax(CoreKind::StructEquals, 0U, true);
+    node = lowerCoreOperandCallFixture(aggregateCount, false, error);
+    tests.expect(node == nullptr &&
+            error == "C8 struct root member received an invalid operand count",
+        "StructEquals preserves its exact count diagnostic");
+    error.clear();
+    auto aggregateReceiver = makeKCoreCallSyntax(CoreKind::StructHashCode, 0U, false);
+    node = lowerCoreOperandCallFixture(aggregateReceiver, false, error);
+    tests.expect(node == nullptr && error == "C8 struct root member has no receiver",
+        "StructHashCode preserves its exact receiver diagnostic");
+    error.clear();
+    auto exit = makeKCoreCallSyntax(CoreKind::EnvironmentExit, 0U, false);
+    node = lowerCoreOperandCallFixture(exit, false, error);
+    tests.expect(node == nullptr && error ==
+            "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument",
+        "Environment.Exit preserves its exact count diagnostic");
+}
+
+void testDeepConsoleEnumStructCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::string error;
+    auto fixture = makeDeepStructCloneSyntax(nestingDepth);
+    auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a valid 32768-level StructClone chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(lowered != nullptr &&
+            lowered->kind == nativesharp::frontend::ProjectOopHirNodeKind::LocalValue &&
+            lowered->localOrdinal == 0U,
+        "all StructClone frames collapse transparently to the original receiver leaf");
+    destroyHirTreeIteratively(lowered);
+
+    testConsoleCoreCallContracts(tests);
+    testReadLineAndEnvironmentExitContracts(tests);
+    testEnumToStringContracts(tests);
+    testStructCoreCallContracts(tests);
+    testCoreLeafNeighbors(tests);
+    testConsoleEnumStructPrevalidation(tests);
 }
 
 void testDeepClassFieldExpressionLowering(TestContext& tests)
@@ -11449,6 +12052,14 @@ int main()
     {
         testDeepMonitorCallLowering(tests);
     }
+    else if (focusValue == "hir-console-enum-struct-call-depth")
+    {
+        testDeepConsoleEnumStructCallLowering(tests);
+    }
+    else if (focusValue == "hir-ordinary-call-depth")
+    {
+        testDeepOrdinaryCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -11662,6 +12273,8 @@ int main()
         testDeepSpanStringCoreCallLowering(tests);
         testDeepAtomicInterlockedCallLowering(tests);
         testDeepMonitorCallLowering(tests);
+        testDeepConsoleEnumStructCallLowering(tests);
+        testDeepOrdinaryCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
