@@ -275,6 +275,7 @@ add_executable(
     host/modules/ParserStructuredControlContinuationCounterfactualModule.cpp
     host/modules/ParserForeachCoordinatorCounterfactualModule.cpp
     host/modules/ParserTryContinuationCounterfactualModule.cpp
+    host/modules/ParserUsingCoordinatorCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContinuationProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp

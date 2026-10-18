@@ -219,6 +219,7 @@ void registerParserLambdaBlockContinuationCounterfactualModule(TestRegistry& reg
 void registerParserStructuredControlContinuationCounterfactualModule(TestRegistry& registry);
 void registerParserForeachCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerParserTryContinuationCounterfactualModule(TestRegistry& registry);
+void registerParserUsingCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

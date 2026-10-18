@@ -73,7 +73,9 @@ private:
         FinishTryFinallyBlock,
         CatchClause,
         FinishStandaloneCatchFilter,
-        FinishStandaloneCatchBlock
+        FinishStandaloneCatchBlock,
+        FinishUsingInitializer,
+        FinishUsingBody
     };
 
     enum class StatementKind : std::uint8_t
@@ -97,7 +99,8 @@ private:
         DoWhile,
         For,
         Foreach,
-        Try
+        Try,
+        Using
     };
 
     struct ResultSlot final
@@ -195,6 +198,15 @@ private:
         std::size_t beginIndex = 0;
         std::size_t resultSlot = 0;
         ast::AstNode* clause = nullptr;
+    };
+
+    struct UsingFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::TypeSyntax* resourceType = nullptr;
+        std::string resourceName;
+        ast::AstNode* node = nullptr;
     };
 
     struct Work final
@@ -314,6 +326,11 @@ private:
     void finishStandaloneCatchFilter(const Work& work);
     void scheduleStandaloneCatchBody(std::size_t frameIndex);
     void finishStandaloneCatchBlock(const Work& work);
+    void startUsing(const Work& work);
+    void finishUsingInitializer(const Work& work);
+    void scheduleUsingBody(std::size_t frameIndex);
+    void finishUsingBody(const Work& work);
+    void completeUsing(UsingFrame& frame, ast::AstNode* body);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -329,6 +346,7 @@ private:
     std::deque<ForeachFrame> foreachFrames_;
     std::deque<TryFrame> tryFrames_;
     std::deque<CatchFrame> catchFrames_;
+    std::deque<UsingFrame> usingFrames_;
     std::vector<Work> work_;
 };
 
@@ -437,6 +455,8 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::CatchClause: startStandaloneCatch(work); return;
     case WorkKind::FinishStandaloneCatchFilter: finishStandaloneCatchFilter(work); return;
     case WorkKind::FinishStandaloneCatchBlock: finishStandaloneCatchBlock(work); return;
+    case WorkKind::FinishUsingInitializer: finishUsingInitializer(work); return;
+    case WorkKind::FinishUsingBody: finishUsingBody(work); return;
     }
 }
 
@@ -603,6 +623,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
     if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
+    if (parser_.at(TokenKind::KwUsing)) return StatementKind::Using;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
     if (parser_.atContextualKeyword("yield"))
         return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
@@ -612,8 +633,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwBreak) || parser_.at(TokenKind::KwContinue)) return StatementKind::Jump;
     if (parser_.atContextualKeyword("must_tail")) return StatementKind::MustTailReturn;
     if (parser_.at(TokenKind::KwReturn)) return StatementKind::Return;
-    if (parser_.atContextualKeyword("defer") || parser_.at(TokenKind::KwUsing))
-        return StatementKind::Direct;
+    if (parser_.atContextualKeyword("defer")) return StatementKind::Direct;
     if (parser_.at(TokenKind::KwThrow)) return StatementKind::Throw;
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
     if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
@@ -649,6 +669,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::For: startFor(work); return;
     case StatementKind::Foreach: startForeach(work); return;
     case StatementKind::Try: startTry(work); return;
+    case StatementKind::Using: startUsing(work); return;
     }
 }
 
@@ -1909,6 +1930,86 @@ void Parser::ParseContinuationCoordinator::finishStandaloneCatchBlock(const Work
     frame.clause->setFirst(childValue(work));
     frame.clause->setRange(parser_.tokenRangeFrom(frame.beginIndex));
     complete(frame.resultSlot, frame.clause);
+}
+
+// Parses the resource header and schedules its initializer on the shared expression worklist.
+void Parser::ParseContinuationCoordinator::startUsing(const Work& work)
+{
+    const std::size_t frameIndex = usingFrames_.size();
+    usingFrames_.emplace_back();
+    UsingFrame& frame = usingFrames_.back();
+    frame.beginIndex = parser_.index_;
+    frame.resultSlot = work.resultSlot;
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'(' after using");
+    if (parser_.canStartTypeAt(parser_.index_))
+        frame.resourceType = parser_.parseType();
+    else
+        parser_.expect(TokenKind::Identifier, "resource type");
+    if (parser_.at(TokenKind::Identifier))
+        frame.resourceName = std::string(parser_.consume().lexeme());
+    else
+        parser_.expect(TokenKind::Identifier, "resource variable name");
+
+    Work finish{WorkKind::FinishUsingInitializer, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    if (parser_.expect(TokenKind::Equal, "'=' in using resource declaration"))
+    {
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Expression, childSlot});
+        return;
+    }
+    work_.push_back(finish);
+}
+
+// Materializes the canonical UsingStatement after the initializer and before its body.
+void Parser::ParseContinuationCoordinator::finishUsingInitializer(const Work& work)
+{
+    UsingFrame& frame = usingFrames_[work.frameIndex];
+    parser_.expect(TokenKind::RightParen, "')' after using resource declaration");
+    frame.node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UsingStatement,
+        parser_.tokenRangeFrom(frame.beginIndex));
+    frame.node->setTypeSyntax(frame.resourceType);
+    frame.node->setText(std::move(frame.resourceName));
+    frame.node->setFirst(childValue(work));
+    scheduleUsingBody(work.frameIndex);
+}
+
+// Requires the historical braced body and publishes malformed headers without blocking drain.
+void Parser::ParseContinuationCoordinator::scheduleUsingBody(std::size_t frameIndex)
+{
+    UsingFrame& frame = usingFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after using declaration");
+        completeUsing(frame, nullptr);
+        return;
+    }
+    Work finish{WorkKind::FinishUsingBody, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches the completed body and publishes the resource statement.
+void Parser::ParseContinuationCoordinator::finishUsingBody(const Work& work)
+{
+    completeUsing(usingFrames_[work.frameIndex], childValue(work));
+}
+
+// Preserves the full historical range and AST field layout for using.
+void Parser::ParseContinuationCoordinator::completeUsing(
+    UsingFrame& frame,
+    ast::AstNode* body)
+{
+    frame.node->setSecond(body);
+    frame.node->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    complete(frame.resultSlot, frame.node);
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)
