@@ -263,6 +263,7 @@ add_executable(
     host/modules/ParserPatternConditionCounterfactualModule.cpp
     host/modules/ParserPatternLoweringCounterfactualModule.cpp
     host/modules/ParserPatternBindingEmissionCounterfactualModule.cpp
+    host/modules/ParserMatchExpressionAnalysisCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
     host/modules/ParserDeclarationProductTestShim.cpp

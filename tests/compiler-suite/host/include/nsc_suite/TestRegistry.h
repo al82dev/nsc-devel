@@ -207,6 +207,7 @@ void registerParserPatternTraversalCounterfactualModule(TestRegistry& registry);
 void registerParserPatternConditionCounterfactualModule(TestRegistry& registry);
 void registerParserPatternLoweringCounterfactualModule(TestRegistry& registry);
 void registerParserPatternBindingEmissionCounterfactualModule(TestRegistry& registry);
+void registerParserMatchExpressionAnalysisCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

@@ -1248,6 +1248,15 @@ private:
     class PatternConditionBuilder;
     class PatternLoweringMachine;
     class PatternBindingEmitter;
+    class MatchExpressionPatternAnalyzer;
+    struct MatchPatternAnalysis final
+    {
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::vector<std::string> cases;
+        std::vector<std::pair<std::size_t, bool>> listLengths;
+        bool wildcard = false;
+        bool partial = false;
+    };
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>
@@ -1343,18 +1352,11 @@ private:
     // tree over generated case tests and guarded payload extractors. The source expression is
     // therefore evaluated exactly once and no runtime allocation or boxing protocol is introduced.
     ast::AstNode* parseMatchStatement();
-    bool matchPatternIsCatchAll(const Pattern& pattern) const;
-    std::vector<std::pair<std::string, PatternBindingMode>> collectMatchPatternBindings(
-        const Pattern& pattern) const;
-    void validateMatchOrBindings(const Pattern& pattern);
-    void collectMatchCoverage(
+    MatchPatternAnalysis analyzeMatchExpressionPattern(
         const Pattern& pattern,
-        std::vector<std::string>& cases,
-        std::vector<std::pair<std::size_t, bool>>& listLengths,
-        bool& wildcard,
-        bool& partial) const;
+        bool reportOrDiagnostics);
     void appendMatchCoverage(
-        const Pattern& pattern,
+        MatchPatternAnalysis analysis,
         const ast::AstNode* guard,
         std::string& coverage,
         bool& firstArm) const;

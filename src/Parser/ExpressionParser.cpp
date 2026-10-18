@@ -19,6 +19,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <unordered_map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -83,130 +84,234 @@ bool endsConditionalQuestionScan(TokenKind kind) noexcept
 
 }
 
-bool Parser::matchPatternIsCatchAll(const Pattern& pattern) const
+class Parser::MatchExpressionPatternAnalyzer final
 {
-    if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding) return true;
-    return pattern.kind == PatternKind::Or &&
-        std::ranges::any_of(pattern.children, [&](const Pattern& child)
-        {
-            return matchPatternIsCatchAll(child);
-        });
-}
-
-std::vector<std::pair<std::string, Parser::PatternBindingMode>>
-Parser::collectMatchPatternBindings(const Pattern& pattern) const
-{
-    std::vector<std::pair<std::string, PatternBindingMode>> bindings;
-    if (pattern.kind == PatternKind::Binding)
-        bindings.emplace_back(pattern.name, pattern.bindingMode);
-    for (const Pattern& child : pattern.children)
+    using BindingKey = std::pair<std::string, PatternBindingMode>;
+    struct BindingKeyHash final
     {
-        auto nested = collectMatchPatternBindings(child);
-        bindings.insert(bindings.end(), nested.begin(), nested.end());
+        std::size_t operator()(const BindingKey& binding) const noexcept
+        {
+            const std::size_t name = std::hash<std::string>{}(binding.first);
+            const std::size_t mode = std::hash<unsigned>{}(
+                static_cast<unsigned>(binding.second));
+            return name ^ (mode + 0x9e3779b9U + (name << 6U) + (name >> 2U));
+        }
+    };
+    using BindingCounts = std::unordered_map<BindingKey, std::size_t, BindingKeyHash>;
+
+    struct Summary final
+    {
+        BindingCounts bindings;
+        std::vector<std::string> cases;
+        std::vector<std::pair<std::size_t, bool>> listLengths;
+        bool catchAll = false;
+        bool wildcard = false;
+        bool partial = false;
+    };
+
+    struct Frame final
+    {
+        const Pattern* pattern = nullptr;
+        std::size_t nextChild = 0;
+        std::size_t preorder = 0;
+        std::vector<Summary> children;
+    };
+
+public:
+    MatchExpressionPatternAnalyzer(Parser& parser, bool reportOrDiagnostics)
+        : parser_(parser), reportOrDiagnostics_(reportOrDiagnostics)
+    {
     }
-    std::ranges::sort(bindings);
-    return bindings;
-}
 
-void Parser::validateMatchOrBindings(const Pattern& pattern)
-{
-    if (pattern.kind == PatternKind::Or && !pattern.children.empty())
+    MatchPatternAnalysis analyze(const Pattern& root)
     {
-        const auto expected = collectMatchPatternBindings(pattern.children.front());
-        for (std::size_t index = 1; index < pattern.children.size(); ++index)
+        pushFrame(root);
+        while (!frames_.empty())
         {
-            if (collectMatchPatternBindings(pattern.children[index]) == expected) continue;
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                pattern.range,
-                "OR-pattern alternatives in a match expression must bind identical names "
-                "with identical value/ref/move modes");
-            break;
+            Frame& frame = frames_.back();
+            if (frame.nextChild < frame.pattern->children.size())
+            {
+                pushFrame(frame.pattern->children[frame.nextChild++]);
+                continue;
+            }
+            Summary summary = finishFrame(frame);
+            frames_.pop_back();
+            if (frames_.empty()) return finishAnalysis(std::move(summary));
+            frames_.back().children.push_back(std::move(summary));
+        }
+        return {};
+    }
+
+private:
+    void pushFrame(const Pattern& pattern)
+    {
+        const std::size_t preorder = patterns_.size();
+        patterns_.push_back(&pattern);
+        invalidOr_.push_back(false);
+        Frame frame{&pattern, 0, preorder, {}};
+        frame.children.reserve(pattern.children.size());
+        frames_.push_back(std::move(frame));
+    }
+
+    Summary finishFrame(Frame& frame)
+    {
+        Summary summary;
+        const Pattern& pattern = *frame.pattern;
+        summary.catchAll = pattern.kind == PatternKind::Wildcard ||
+            pattern.kind == PatternKind::Binding;
+        summary.wildcard = summary.catchAll;
+        if (pattern.kind == PatternKind::Binding)
+            summary.bindings[{pattern.name, pattern.bindingMode}] = 1U;
+        if (pattern.kind == PatternKind::Or) summarizeOr(frame, summary);
+        if (pattern.kind == PatternKind::Variant) summarizeVariant(frame, summary);
+        if (pattern.kind == PatternKind::List) summarizeList(frame, summary);
+        for (Summary& child : frame.children)
+            mergeBindings(summary.bindings, child.bindings);
+        return summary;
+    }
+
+    void summarizeOr(Frame& frame, Summary& summary)
+    {
+        if (!frame.children.empty())
+        {
+            const BindingCounts& expected = frame.children.front().bindings;
+            invalidOr_[frame.preorder] = std::ranges::any_of(
+                frame.children.begin() + 1, frame.children.end(),
+                [&](const Summary& child) { return child.bindings != expected; });
+        }
+        for (Summary& child : frame.children)
+        {
+            summary.catchAll = summary.catchAll || child.catchAll;
+            summary.wildcard = summary.wildcard || child.wildcard;
+            summary.partial = summary.partial || child.partial;
+            mergeVector(summary.cases, child.cases);
+            mergeVector(summary.listLengths, child.listLengths);
         }
     }
-    for (const Pattern& child : pattern.children) validateMatchOrBindings(child);
-}
 
-void Parser::collectMatchCoverage(
-    const Pattern& pattern,
-    std::vector<std::string>& cases,
-    std::vector<std::pair<std::size_t, bool>>& listLengths,
-    bool& wildcard,
-    bool& partial) const
-{
-    if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding)
+    static void summarizeVariant(const Frame& frame, Summary& summary)
     {
-        wildcard = true;
-        return;
+        summary.cases.push_back(frame.pattern->name);
+        if (!frame.children.empty() && !frame.children.front().catchAll)
+            summary.partial = true;
     }
-    if (pattern.kind == PatternKind::Variant)
+
+    static void summarizeList(const Frame& frame, Summary& summary)
     {
-        cases.push_back(pattern.name);
-        if (!pattern.children.empty() && !matchPatternIsCatchAll(pattern.children.front()))
-            partial = true;
-        return;
-    }
-    if (pattern.kind == PatternKind::List)
-    {
+        const Pattern& pattern = *frame.pattern;
         const std::size_t fixedCount = pattern.children.size() -
             (pattern.restIndex.has_value() ? 1U : 0U);
-        listLengths.emplace_back(fixedCount, pattern.restIndex.has_value());
-        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        summary.listLengths.emplace_back(fixedCount, pattern.restIndex.has_value());
+        for (std::size_t index = 0; index < frame.children.size(); ++index)
         {
             if (pattern.restIndex.has_value() && *pattern.restIndex == index) continue;
-            if (!matchPatternIsCatchAll(pattern.children[index])) { partial = true; break; }
+            if (!frame.children[index].catchAll) { summary.partial = true; return; }
         }
-        return;
     }
-    if (pattern.kind == PatternKind::Or)
-        for (const Pattern& child : pattern.children)
-            collectMatchCoverage(child, cases, listLengths, wildcard, partial);
+
+    static void mergeBindings(BindingCounts& target, BindingCounts& source)
+    {
+        if (target.size() < source.size()) target.swap(source);
+        for (const auto& [binding, count] : source) target[binding] += count;
+        source.clear();
+    }
+
+    template <typename Value>
+    static void mergeVector(std::vector<Value>& target, std::vector<Value>& source)
+    {
+        if (target.size() < source.size()) target.swap(source);
+        target.insert(
+            target.end(),
+            std::make_move_iterator(source.begin()),
+            std::make_move_iterator(source.end()));
+        source.clear();
+    }
+
+    MatchPatternAnalysis finishAnalysis(Summary summary)
+    {
+        reportInvalidOrPatterns();
+        MatchPatternAnalysis result;
+        for (const auto& [binding, count] : summary.bindings)
+            for (std::size_t index = 0; index < count; ++index)
+                result.bindings.push_back(binding);
+        std::ranges::sort(result.bindings);
+        result.cases = std::move(summary.cases);
+        result.listLengths = std::move(summary.listLengths);
+        result.wildcard = summary.wildcard;
+        result.partial = summary.partial;
+        return result;
+    }
+
+    void reportInvalidOrPatterns()
+    {
+        if (!reportOrDiagnostics_) return;
+        for (std::size_t index = 0; index < invalidOr_.size(); ++index)
+        {
+            if (!invalidOr_[index]) continue;
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                patterns_[index]->range,
+                "OR-pattern alternatives in a match expression must bind identical names "
+                "with identical value/ref/move modes");
+        }
+    }
+
+    Parser& parser_;
+    bool reportOrDiagnostics_ = false;
+    std::vector<Frame> frames_;
+    std::vector<const Pattern*> patterns_;
+    std::vector<bool> invalidOr_;
+};
+
+Parser::MatchPatternAnalysis Parser::analyzeMatchExpressionPattern(
+    const Pattern& pattern,
+    bool reportOrDiagnostics)
+{
+    return MatchExpressionPatternAnalyzer(*this, reportOrDiagnostics).analyze(pattern);
 }
 
 void Parser::appendMatchCoverage(
-    const Pattern& pattern,
+    MatchPatternAnalysis analysis,
     const ast::AstNode* guard,
     std::string& coverage,
     bool& firstArm) const
 {
     if (!firstArm) coverage += ';';
     firstArm = false;
-    std::vector<std::string> cases;
-    std::vector<std::pair<std::size_t, bool>> lengths;
-    bool wildcard = false;
-    bool partial = false;
-    collectMatchCoverage(pattern, cases, lengths, wildcard, partial);
     const bool restricted = guard != nullptr &&
         !(guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
           guard->tokenKind() == TokenKind::KwTrue);
-    if (wildcard)
+    if (analysis.wildcard)
     {
         if (restricted) coverage += '~';
         coverage += '*';
         return;
     }
-    if (!lengths.empty())
+    if (!analysis.listLengths.empty())
     {
-        std::ranges::sort(lengths);
-        lengths.erase(std::unique(lengths.begin(), lengths.end()), lengths.end());
-        if (partial || restricted) coverage += '~';
-        for (std::size_t index = 0; index < lengths.size(); ++index)
+        std::ranges::sort(analysis.listLengths);
+        analysis.listLengths.erase(
+            std::unique(analysis.listLengths.begin(), analysis.listLengths.end()),
+            analysis.listLengths.end());
+        if (analysis.partial || restricted) coverage += '~';
+        for (std::size_t index = 0; index < analysis.listLengths.size(); ++index)
         {
             if (index != 0) coverage += '|';
-            coverage += '#' + std::to_string(lengths[index].first);
-            if (lengths[index].second) coverage += '+';
+            coverage += '#' + std::to_string(analysis.listLengths[index].first);
+            if (analysis.listLengths[index].second) coverage += '+';
         }
         return;
     }
-    if (cases.empty()) { coverage += '?'; return; }
-    std::ranges::sort(cases);
-    cases.erase(std::unique(cases.begin(), cases.end()), cases.end());
-    if (partial || restricted) coverage += '~';
-    for (std::size_t index = 0; index < cases.size(); ++index)
+    if (analysis.cases.empty()) { coverage += '?'; return; }
+    std::ranges::sort(analysis.cases);
+    analysis.cases.erase(
+        std::unique(analysis.cases.begin(), analysis.cases.end()), analysis.cases.end());
+    if (analysis.partial || restricted) coverage += '~';
+    for (std::size_t index = 0; index < analysis.cases.size(); ++index)
     {
         if (index != 0) coverage += '|';
-        coverage += cases[index];
+        coverage += analysis.cases[index];
     }
 }
 
@@ -234,7 +339,8 @@ void Parser::appendMatchExpressionAlternative(
     arm->setFlag(referenceResult);
     emitPatternBindings(pattern, source, arm, temporary);
     match->addChild(arm);
-    appendMatchCoverage(pattern, guard, coverage, firstArm);
+    appendMatchCoverage(
+        analyzeMatchExpressionPattern(pattern, false), guard, coverage, firstArm);
 }
 
 void Parser::parseMatchExpressionArm(
@@ -246,10 +352,9 @@ void Parser::parseMatchExpressionArm(
 {
     const std::size_t armBegin = index_;
     Pattern pattern = parsePattern(false);
-    validateMatchOrBindings(pattern);
-    const auto bindings = collectMatchPatternBindings(pattern);
+    const MatchPatternAnalysis analysis = analyzeMatchExpressionPattern(pattern, true);
     hasReferenceBinding = hasReferenceBinding || std::ranges::any_of(
-        bindings, [](const auto& binding)
+        analysis.bindings, [](const auto& binding)
         {
             return binding.second == PatternBindingMode::Reference ||
                 binding.second == PatternBindingMode::ReferenceMutable;
