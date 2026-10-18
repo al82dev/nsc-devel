@@ -116,24 +116,30 @@ bool appendCleanupRegion(
     return true;
 }
 
-bool collectCleanupContract(
+bool collectCleanupContractNodes(
     ProjectOopMirFunction& function,
-    const ProjectOopMirNode* node,
+    const ProjectOopMirNode* root,
     language::PanicProfile panicProfile,
     std::string& error)
 {
-    if (node == nullptr) return true;
-    collectExceptionFlow(function, *node, panicProfile);
-    const std::optional<ProjectOopMirNonlocalExitKind> exitKind = nonlocalExitKind(node->kind);
-    if (exitKind.has_value())
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        function.exceptionFlow.nonlocalExits.push_back(ProjectOopMirNonlocalExit{
-            *exitKind, node, node->cleanupRegionOrdinals, node->targetScopeOrdinal,
-            node->exceptionTargetRegionOrdinal, node->cleanupContinuationKind});
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        collectExceptionFlow(function, *node, panicProfile);
+        const std::optional<ProjectOopMirNonlocalExitKind> exitKind = nonlocalExitKind(node->kind);
+        if (exitKind.has_value())
+        {
+            function.exceptionFlow.nonlocalExits.push_back(ProjectOopMirNonlocalExit{
+                *exitKind, node, node->cleanupRegionOrdinals, node->targetScopeOrdinal,
+                node->exceptionTargetRegionOrdinal, node->cleanupContinuationKind});
+        }
+        if (!appendCleanupRegion(function, *node, error)) return false;
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    if (!appendCleanupRegion(function, *node, error)) return false;
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        if (!collectCleanupContract(function, child.get(), panicProfile, error)) return false;
     return true;
 }
 
@@ -174,7 +180,7 @@ bool finalizeCleanupContract(
     language::PanicProfile panicProfile,
     std::string& error)
 {
-    if (!collectCleanupContract(function, function.body.get(), panicProfile, error)) return false;
+    if (!collectCleanupContractNodes(function, function.body.get(), panicProfile, error)) return false;
     std::ranges::sort(function.cleanupRegions, {}, &ProjectOopMirCleanupRegion::ordinal);
     std::ranges::sort(function.exceptionFlow.protectedRegionOrdinals);
     if (std::ranges::adjacent_find(function.exceptionFlow.protectedRegionOrdinals) !=
@@ -663,6 +669,15 @@ void inheritConstructorFrames(
         }
     }
 }
+}
+
+bool ProjectOopMirModel::collectCleanupContract(
+    ProjectOopMirFunction& function,
+    const ProjectOopMirNode* root,
+    language::PanicProfile panicProfile,
+    std::string& error)
+{
+    return collectCleanupContractNodes(function, root, panicProfile, error);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(

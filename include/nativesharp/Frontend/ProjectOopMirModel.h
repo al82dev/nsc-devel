@@ -989,6 +989,11 @@ private:
         std::span<const ProjectOopMirStructLayout> functionLayouts,
         language::PanicProfile panicProfile,
         std::string& error);
+    static bool collectCleanupContract(
+        ProjectOopMirFunction& function,
+        const ProjectOopMirNode* root,
+        language::PanicProfile panicProfile,
+        std::string& error);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

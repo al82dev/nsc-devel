@@ -481,6 +481,16 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerNode(node, error);
     }
 
+    static bool collectMirCleanupContract(
+        ProjectOopMirFunction& function,
+        const ProjectOopMirNode* root,
+        language::PanicProfile panicProfile,
+        std::string& error)
+    {
+        return ProjectOopMirModel::collectCleanupContract(
+            function, root, panicProfile, error);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4119,6 +4129,77 @@ void testDeepMirBooleanConstantEvaluation(TestContext& tests)
         "MIR boolean evaluation preserves 32768 mixed operations without stack recursion");
     destroyHirTreeIteratively(expression);
 }
+
+void testDeepMirCleanupContractCollection(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        if (depth % 4U == 0U)
+        {
+            node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+            node->cleanupRegionOrdinal = depth;
+            node->localOrdinal = depth;
+            node->typeKey = "builtin:int";
+        }
+        else if (depth % 4U == 1U)
+        {
+            node->kind = ProjectOopMirNodeKind::Return;
+            node->targetScopeOrdinal = depth;
+        }
+        else if (depth % 4U == 2U)
+        {
+            node->kind = ProjectOopMirNodeKind::TryRegion;
+            node->mirRegionOrdinal = depth;
+        }
+        else node->kind = ProjectOopMirNodeKind::CatchRegion;
+        if (root != nullptr) node->children.push_back(std::move(root));
+        root = std::move(node);
+    }
+    nativesharp::frontend::ProjectOopMirFunction function;
+    std::string error;
+    const bool collected =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectMirCleanupContract(
+            function, root.get(), nativesharp::language::PanicProfile::NativeUnwind, error);
+    bool orderPreserved = function.cleanupRegions.size() == nestingDepth / 4U &&
+        function.exceptionFlow.nonlocalExits.size() == nestingDepth / 4U &&
+        function.exceptionFlow.protectedRegionOrdinals.size() == nestingDepth / 4U;
+    for (std::size_t index = 0; orderPreserved && index < nestingDepth / 4U; ++index)
+    {
+        const std::size_t base = index * 4U;
+        orderPreserved = function.cleanupRegions[index].ordinal == base &&
+            function.cleanupRegions[index].action != nullptr &&
+            function.cleanupRegions[index].action->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            function.exceptionFlow.nonlocalExits[index].node != nullptr &&
+            function.exceptionFlow.nonlocalExits[index].node->kind == ProjectOopMirNodeKind::Return &&
+            function.exceptionFlow.protectedRegionOrdinals[index] == base + 2U;
+    }
+    tests.expect(collected && error.empty() && orderPreserved &&
+            function.exceptionFlow.catchRegionCount == nestingDepth / 4U &&
+            function.exceptionFlow.requiresPersonality,
+        "MIR cleanup collection preserves 32768-node preorder without stack recursion");
+    destroyMirTreeIteratively(std::move(root));
+
+    auto duplicateRoot = std::make_unique<ProjectOopMirNode>();
+    duplicateRoot->kind = ProjectOopMirNodeKind::LocalDeclaration;
+    duplicateRoot->cleanupRegionOrdinal = 7U;
+    auto duplicateChild = std::make_unique<ProjectOopMirNode>();
+    duplicateChild->kind = ProjectOopMirNodeKind::LocalDeclaration;
+    duplicateChild->cleanupRegionOrdinal = 7U;
+    duplicateRoot->children.push_back(std::move(duplicateChild));
+    nativesharp::frontend::ProjectOopMirFunction duplicateFunction;
+    std::string duplicateError;
+    const bool duplicateCollected =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectMirCleanupContract(
+            duplicateFunction, duplicateRoot.get(), nativesharp::language::PanicProfile::Abort,
+            duplicateError);
+    tests.expect(!duplicateCollected && duplicateFunction.cleanupRegions.size() == 1U &&
+            duplicateError == "OOP MIR contains duplicate cleanup-region identity #7",
+        "MIR cleanup collection preserves the first preorder duplicate diagnostic");
+    destroyMirTreeIteratively(std::move(duplicateRoot));
+}
 }
 
 int main()
@@ -4281,6 +4362,10 @@ int main()
     {
         testDeepMirBooleanConstantEvaluation(tests);
     }
+    else if (focusValue == "mir-cleanup-contract-depth")
+    {
+        testDeepMirCleanupContractCollection(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4316,6 +4401,7 @@ int main()
         testDeepMirIntegerConstantEvaluation(tests);
         testDeepMirFloatingConstantEvaluation(tests);
         testDeepMirBooleanConstantEvaluation(tests);
+        testDeepMirCleanupContractCollection(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
