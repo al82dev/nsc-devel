@@ -994,6 +994,10 @@ private:
         const ProjectOopMirNode* root,
         language::PanicProfile panicProfile,
         std::string& error);
+    static bool validateCleanupReferences(
+        const ProjectOopMirFunction& function,
+        const ProjectOopMirNode* root,
+        std::string& error);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

@@ -143,35 +143,41 @@ bool collectCleanupContractNodes(
     return true;
 }
 
-bool validateCleanupReferences(
+bool validateCleanupReferenceNodes(
     const ProjectOopMirFunction& function,
-    const ProjectOopMirNode* node,
+    const ProjectOopMirNode* root,
     std::string& error)
 {
-    if (node == nullptr) return true;
-    for (const std::size_t ordinal : node->cleanupRegionOrdinals)
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        const bool exists = std::ranges::any_of(
-            function.cleanupRegions,
-            [ordinal](const ProjectOopMirCleanupRegion& region) {
-                return region.ordinal == ordinal;
-            });
-        if (exists) continue;
-        error = "OOP MIR structured exit references missing cleanup region #" +
-            std::to_string(ordinal);
-        return false;
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        for (const std::size_t ordinal : node->cleanupRegionOrdinals)
+        {
+            const bool exists = std::ranges::any_of(
+                function.cleanupRegions,
+                [ordinal](const ProjectOopMirCleanupRegion& region) {
+                    return region.ordinal == ordinal;
+                });
+            if (exists) continue;
+            error = "OOP MIR structured exit references missing cleanup region #" +
+                std::to_string(ordinal);
+            return false;
+        }
+        if (node->exceptionTargetRegionOrdinal.has_value() &&
+            !std::ranges::binary_search(
+                function.exceptionFlow.protectedRegionOrdinals,
+                *node->exceptionTargetRegionOrdinal))
+        {
+            error = "OOP MIR nonlocal exit references missing exception region #" +
+                std::to_string(*node->exceptionTargetRegionOrdinal);
+            return false;
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    if (node->exceptionTargetRegionOrdinal.has_value() &&
-        !std::ranges::binary_search(
-            function.exceptionFlow.protectedRegionOrdinals,
-            *node->exceptionTargetRegionOrdinal))
-    {
-        error = "OOP MIR nonlocal exit references missing exception region #" +
-            std::to_string(*node->exceptionTargetRegionOrdinal);
-        return false;
-    }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        if (!validateCleanupReferences(function, child.get(), error)) return false;
     return true;
 }
 
@@ -191,7 +197,7 @@ bool finalizeCleanupContract(
     }
     function.exceptionFlow.requiresPersonality =
         function.exceptionFlow.requiresPersonality || !function.cleanupRegions.empty();
-    return validateCleanupReferences(function, function.body.get(), error);
+    return validateCleanupReferenceNodes(function, function.body.get(), error);
 }
 
 void copyFunctionMetadata(
@@ -678,6 +684,14 @@ bool ProjectOopMirModel::collectCleanupContract(
     std::string& error)
 {
     return collectCleanupContractNodes(function, root, panicProfile, error);
+}
+
+bool ProjectOopMirModel::validateCleanupReferences(
+    const ProjectOopMirFunction& function,
+    const ProjectOopMirNode* root,
+    std::string& error)
+{
+    return validateCleanupReferenceNodes(function, root, error);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(

@@ -491,6 +491,14 @@ struct ProjectOopHirModelTestAccess final
             function, root, panicProfile, error);
     }
 
+    static bool validateMirCleanupReferences(
+        const ProjectOopMirFunction& function,
+        const ProjectOopMirNode* root,
+        std::string& error)
+    {
+        return ProjectOopMirModel::validateCleanupReferences(function, root, error);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4200,6 +4208,63 @@ void testDeepMirCleanupContractCollection(TestContext& tests)
         "MIR cleanup collection preserves the first preorder duplicate diagnostic");
     destroyMirTreeIteratively(std::move(duplicateRoot));
 }
+
+void testDeepMirCleanupReferenceValidation(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::ProjectOopMirFunction function;
+    nativesharp::frontend::ProjectOopMirCleanupRegion cleanup;
+    cleanup.ordinal = 7U;
+    function.cleanupRegions.push_back(cleanup);
+    function.exceptionFlow.protectedRegionOrdinals.push_back(11U);
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = ProjectOopMirNodeKind::Block;
+        node->cleanupRegionOrdinals.push_back(7U);
+        node->exceptionTargetRegionOrdinal = 11U;
+        if (root != nullptr) node->children.push_back(std::move(root));
+        root = std::move(node);
+    }
+    std::string error;
+    const bool valid =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::validateMirCleanupReferences(
+            function, root.get(), error);
+    tests.expect(valid && error.empty(),
+        "MIR cleanup validation preserves 32768-node preorder without stack recursion");
+    destroyMirTreeIteratively(std::move(root));
+
+    auto cleanupFirst = std::make_unique<ProjectOopMirNode>();
+    cleanupFirst->cleanupRegionOrdinals = {7U, 99U};
+    cleanupFirst->exceptionTargetRegionOrdinal = 88U;
+    auto missingChild = std::make_unique<ProjectOopMirNode>();
+    missingChild->cleanupRegionOrdinals = {77U};
+    cleanupFirst->children.push_back(std::move(missingChild));
+    std::string cleanupError;
+    const bool cleanupValid =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::validateMirCleanupReferences(
+            function, cleanupFirst.get(), cleanupError);
+    tests.expect(!cleanupValid &&
+            cleanupError == "OOP MIR structured exit references missing cleanup region #99",
+        "MIR cleanup validation preserves cleanup-reference and preorder diagnostic priority");
+    destroyMirTreeIteratively(std::move(cleanupFirst));
+
+    auto exceptionFirst = std::make_unique<ProjectOopMirNode>();
+    exceptionFirst->cleanupRegionOrdinals = {7U};
+    exceptionFirst->exceptionTargetRegionOrdinal = 88U;
+    auto deferredChild = std::make_unique<ProjectOopMirNode>();
+    deferredChild->cleanupRegionOrdinals = {77U};
+    exceptionFirst->children.push_back(std::move(deferredChild));
+    std::string exceptionError;
+    const bool exceptionValid =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::validateMirCleanupReferences(
+            function, exceptionFirst.get(), exceptionError);
+    tests.expect(!exceptionValid &&
+            exceptionError == "OOP MIR nonlocal exit references missing exception region #88",
+        "MIR cleanup validation preserves exception-reference priority before child traversal");
+    destroyMirTreeIteratively(std::move(exceptionFirst));
+}
 }
 
 int main()
@@ -4366,6 +4431,10 @@ int main()
     {
         testDeepMirCleanupContractCollection(tests);
     }
+    else if (focusValue == "mir-cleanup-reference-depth")
+    {
+        testDeepMirCleanupReferenceValidation(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4402,6 +4471,7 @@ int main()
         testDeepMirFloatingConstantEvaluation(tests);
         testDeepMirBooleanConstantEvaluation(tests);
         testDeepMirCleanupContractCollection(tests);
+        testDeepMirCleanupReferenceValidation(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
