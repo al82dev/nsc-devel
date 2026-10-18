@@ -290,24 +290,18 @@ std::optional<bool> integerComparison(
 
 std::optional<bool> booleanBinaryValue(
     const ProjectOopHirNode* node,
+    std::optional<bool> left,
+    std::optional<bool> right,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
 {
     if (node->operation == lexer::TokenKind::AmpAmp || node->operation == lexer::TokenKind::PipePipe)
     {
-        const std::optional<bool> left =
-            MirConstantEvaluator::booleanValue(node->children[0].get(), knownFields);
-        const std::optional<bool> right =
-            MirConstantEvaluator::booleanValue(node->children[1].get(), knownFields);
         if (!left.has_value() || !right.has_value()) return std::nullopt;
         return node->operation == lexer::TokenKind::AmpAmp ? (*left && *right) : (*left || *right);
     }
     if (node->operation == lexer::TokenKind::EqualEqual ||
         node->operation == lexer::TokenKind::BangEqual)
     {
-        const std::optional<bool> left =
-            MirConstantEvaluator::booleanValue(node->children[0].get(), knownFields);
-        const std::optional<bool> right =
-            MirConstantEvaluator::booleanValue(node->children[1].get(), knownFields);
         if (left.has_value() && right.has_value())
             return node->operation == lexer::TokenKind::EqualEqual ? *left == *right : *left != *right;
     }
@@ -485,25 +479,63 @@ std::optional<bool> MirConstantEvaluator::booleanValue(
     const ProjectOopHirNode* node,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
 {
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::BooleanConstant) return node->booleanValue;
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+    using Result = std::optional<bool>;
+    using Frame = std::tuple<const ProjectOopHirNode*, unsigned, Result>;
+    std::vector<Frame> work{{node, 0U, std::nullopt}};
+    std::vector<Result> values;
+    const auto finish = [&](Result value)
     {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        return field != nullptr && field->typeKey == "builtin:bool"
-            ? std::optional<bool>(field->constantBooleanValue)
-            : std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
-        return booleanValue(node->children.front().get(), knownFields);
-    if (node->kind == ProjectOopHirNodeKind::Unary && node->operation == lexer::TokenKind::Bang &&
-        !node->children.empty())
+        work.pop_back();
+        values.push_back(std::move(value));
+    };
+    while (!work.empty())
     {
-        const std::optional<bool> value = booleanValue(node->children.front().get(), knownFields);
-        return value.has_value() ? std::optional<bool>(!*value) : std::nullopt;
+        auto& [current, state, left] = work.back();
+        if (state == 0U)
+        {
+            if (current == nullptr) { finish(std::nullopt); continue; }
+            if (current->kind == ProjectOopHirNodeKind::BooleanConstant)
+            {
+                finish(current->booleanValue);
+                continue;
+            }
+            if (current->kind == ProjectOopHirNodeKind::StaticFieldValue &&
+                current->memberOrdinal.has_value())
+            {
+                const ProjectOopMirStaticField* field =
+                    knownStaticField(*current->memberOrdinal, knownFields);
+                finish(field != nullptr && field->typeKey == "builtin:bool"
+                    ? Result(field->constantBooleanValue)
+                    : std::nullopt);
+                continue;
+            }
+            const bool conversion = current->kind == ProjectOopHirNodeKind::Conversion &&
+                !current->children.empty();
+            const bool unary = current->kind == ProjectOopHirNodeKind::Unary &&
+                current->operation == lexer::TokenKind::Bang && !current->children.empty();
+            const bool binary = current->kind == ProjectOopHirNodeKind::Binary &&
+                current->children.size() == 2U;
+            if (!conversion && !unary && !binary) { finish(std::nullopt); continue; }
+            state = 1U;
+            work.emplace_back(current->children.front().get(), 0U, std::nullopt);
+            continue;
+        }
+        Result child = std::move(values.back());
+        values.pop_back();
+        if (state == 1U && current->kind == ProjectOopHirNodeKind::Binary)
+        {
+            left = std::move(child);
+            state = 2U;
+            work.emplace_back(current->children[1].get(), 0U, std::nullopt);
+            continue;
+        }
+        if (current->kind == ProjectOopHirNodeKind::Conversion)
+            finish(std::move(child));
+        else if (current->kind == ProjectOopHirNodeKind::Unary)
+            finish(child.has_value() ? Result(!*child) : std::nullopt);
+        else
+            finish(booleanBinaryValue(current, std::move(left), std::move(child), knownFields));
     }
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->children.size() == 2)
-        return booleanBinaryValue(node, knownFields);
-    return std::nullopt;
+    return values.empty() ? std::nullopt : std::move(values.back());
 }
 }

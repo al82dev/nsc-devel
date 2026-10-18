@@ -4074,6 +4074,51 @@ void testDeepMirFloatingConstantEvaluation(TestContext& tests)
         "MIR floating evaluation preserves 32768 mixed operations without stack recursion");
     destroyHirTreeIteratively(expression);
 }
+
+void testDeepMirBooleanConstantEvaluation(TestContext& tests)
+{
+    using Node = nativesharp::frontend::ProjectOopHirNode;
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    auto expression = std::make_unique<Node>();
+    expression->kind = Kind::BooleanConstant;
+    expression->typeKey = "builtin:bool";
+    expression->booleanValue = true;
+    for (std::size_t depth = 0; depth < nestingDepth; ++depth)
+    {
+        auto parent = std::make_unique<Node>();
+        parent->typeKey = "builtin:bool";
+        if (depth % 4U == 0U) parent->kind = Kind::Conversion;
+        else if (depth % 4U == 1U)
+        {
+            parent->kind = Kind::Unary;
+            parent->operation = nativesharp::lexer::TokenKind::Bang;
+        }
+        else
+        {
+            parent->kind = Kind::Binary;
+            const bool equality = depth % 4U == 2U;
+            parent->operation = equality
+                ? nativesharp::lexer::TokenKind::EqualEqual
+                : nativesharp::lexer::TokenKind::AmpAmp;
+            auto right = std::make_unique<Node>();
+            right->kind = Kind::BooleanConstant;
+            right->typeKey = "builtin:bool";
+            right->booleanValue = !equality;
+            parent->children.push_back(std::move(expression));
+            parent->children.push_back(std::move(right));
+            expression = std::move(parent);
+            continue;
+        }
+        parent->children.push_back(std::move(expression));
+        expression = std::move(parent);
+    }
+    const std::optional<bool> value =
+        nativesharp::frontend::MirConstantEvaluator::booleanValue(expression.get(), {});
+    tests.expect(value.has_value() && *value,
+        "MIR boolean evaluation preserves 32768 mixed operations without stack recursion");
+    destroyHirTreeIteratively(expression);
+}
 }
 
 int main()
@@ -4232,6 +4277,10 @@ int main()
     {
         testDeepMirFloatingConstantEvaluation(tests);
     }
+    else if (focusValue == "mir-boolean-constant-depth")
+    {
+        testDeepMirBooleanConstantEvaluation(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4266,6 +4315,7 @@ int main()
         testDeepMirStringConstantEvaluation(tests);
         testDeepMirIntegerConstantEvaluation(tests);
         testDeepMirFloatingConstantEvaluation(tests);
+        testDeepMirBooleanConstantEvaluation(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
