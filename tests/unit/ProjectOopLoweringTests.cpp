@@ -499,6 +499,14 @@ struct ProjectOopHirModelTestAccess final
         ProjectOopMirModel::collectFutureLayoutKeys(root, keys);
         return keys;
     }
+
+    static std::vector<std::string> collectIteratorLayoutKeys(
+        const ProjectOopHirNode* root)
+    {
+        std::vector<std::string> keys;
+        ProjectOopMirModel::collectIteratorLayoutKeys(root, keys);
+        return keys;
+    }
 };
 }
 
@@ -3915,6 +3923,50 @@ void testMirFutureLayoutPublication(TestContext& tests)
         nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(hirModel);
     destroyHirTreeIteratively(retainedBody);
 }
+
+void testDeepMirIteratorLayoutDiscovery(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    auto body = makeDeepMirHirChain(nestingDepth);
+    nativesharp::frontend::ProjectOopHirNode* leaf = body.get();
+    while (!leaf->children.empty() && leaf->children.front() != nullptr)
+        leaf = leaf->children.front().get();
+    body->typeKey = "async-iterator:builtin:long";
+    body->elementTypeKey = "async-iterator:builtin:long";
+    leaf->typeKey = "iterator:builtin:int";
+    leaf->argumentTypeKeys.push_back("iterator:builtin:int");
+    const std::vector<std::string> keys =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectIteratorLayoutKeys(body.get());
+    tests.expect(keys == std::vector<std::string>{
+            "async-iterator:builtin:long", "async-iterator:builtin:long",
+            "iterator:builtin:int", "iterator:builtin:int"},
+        "iterator keys preserve preorder and duplicates through 32768 HIR levels");
+    ProjectOopHirModel hirModel;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setDumperBody(
+        hirModel, std::move(body));
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    ProjectOopMirModel mirModel;
+    std::string error;
+    const bool imported = nativesharp::frontend::ProjectOopHirModelTestAccess::importMirLayouts(
+        mirModel, nameLookup, memberModel, objectLayoutModel, hirModel, error);
+    const auto layouts = mirModel.structLayouts();
+    tests.expect(imported && error.empty(),
+        "iterator layouts publish through 32768 HIR levels without stack recursion (" +
+            error + ")");
+    tests.expect(layouts.size() == 2U &&
+            layouts[0].typeKey == "async-iterator:builtin:long" &&
+            layouts[1].typeKey == "iterator:builtin:int",
+        "iterative iterator discovery preserves deterministic sort/deduplication");
+    tests.expect(layouts.size() == 2U && layouts[0].fields.size() == 5U &&
+            layouts[1].fields.size() == 5U && layouts[0].fields[2].typeKey == "builtin:long" &&
+            layouts[1].fields[2].typeKey == "builtin:int",
+        "iterative iterator discovery preserves canonical physical item-field layouts");
+    auto retainedBody =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(hirModel);
+    destroyHirTreeIteratively(retainedBody);
+}
 }
 
 int main()
@@ -4057,6 +4109,10 @@ int main()
         testDeepMirFutureKeyDiscovery(tests);
         testMirFutureLayoutPublication(tests);
     }
+    else if (focusValue == "mir-iterator-layout-depth")
+    {
+        testDeepMirIteratorLayoutDiscovery(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4087,6 +4143,7 @@ int main()
         testMirAggregateSpreadDescriptor(tests);
         testDeepMirFutureKeyDiscovery(tests);
         testMirFutureLayoutPublication(tests);
+        testDeepMirIteratorLayoutDiscovery(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

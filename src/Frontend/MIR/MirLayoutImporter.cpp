@@ -47,6 +47,30 @@ void ProjectOopMirModel::collectFutureLayoutKeys(
     }
 }
 
+void ProjectOopMirModel::collectIteratorLayoutKeys(
+    const ProjectOopHirNode* root,
+    std::vector<std::string>& iteratorKeys)
+{
+    std::vector<const ProjectOopHirNode*> work{root};
+    const auto collectKey = [&](const std::string& key)
+    {
+        if (language::iteratorInnerTypeKey(key).has_value() ||
+            language::asyncIteratorInnerTypeKey(key).has_value())
+            iteratorKeys.push_back(key);
+    };
+    while (!work.empty())
+    {
+        const ProjectOopHirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        collectKey(node->typeKey);
+        collectKey(node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys) collectKey(key);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
 bool ProjectOopMirModel::importLayouts(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -286,20 +310,12 @@ bool ProjectOopMirModel::importLayouts(
             language::asyncIteratorInnerTypeKey(key).has_value())
             iteratorKeys.emplace_back(key);
     };
-    const auto collectIteratorNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
-    {
-        if (node == nullptr) return;
-        collectIteratorKey(node->typeKey);
-        collectIteratorKey(node->elementTypeKey);
-        for (const std::string& key : node->argumentTypeKeys) collectIteratorKey(key);
-        for (const auto& child : node->children) self(self, child.get());
-    };
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectIteratorKey(function.returnTypeKey);
         for (const std::string& key : function.parameterTypeKeys) collectIteratorKey(key);
         for (const std::string& key : function.captureTypeKeys) collectIteratorKey(key);
-        collectIteratorNode(collectIteratorNode, function.body.get());
+        collectIteratorLayoutKeys(function.body.get(), iteratorKeys);
     }
     std::ranges::sort(iteratorKeys);
     iteratorKeys.erase(std::unique(iteratorKeys.begin(), iteratorKeys.end()), iteratorKeys.end());

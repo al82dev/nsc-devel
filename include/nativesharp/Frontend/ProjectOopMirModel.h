@@ -969,6 +969,9 @@ private:
     static void collectFutureLayoutKeys(
         const ProjectOopHirNode* root,
         std::vector<std::string>& futureKeys);
+    static void collectIteratorLayoutKeys(
+        const ProjectOopHirNode* root,
+        std::vector<std::string>& iteratorKeys);
     bool lowerFunctions(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
