@@ -1558,28 +1558,13 @@ private:
     ast::AstNode* parseSizeofOrAlignofExpression();
     ast::AstNode* parseDefaultValueExpression();
     bool parenthesizedNewIsPlacement() const noexcept;
-    void appendCallArguments(ast::AstNode* node, lexer::TokenKind closingToken);
-    ast::AstNode* parseTargetTypedNew(const SourceRange& start);
-    void parsePlacementOptions(
-        ast::AstNode*& trailingCapacity,
-        std::string& failureProfile);
     void attachPlacementResultType(ast::AstNode* creation, ast::TypeSyntax* type);
-    ast::AstNode* parsePlacementNew(const SourceRange& start);
-    void parseArrayAllocationDimensions(
-        ast::AstNode* node,
-        std::vector<SourceRange>& omittedDimensions,
-        std::size_t& countedDimensions);
-    void finishArrayAllocation(
-        ast::AstNode* node,
-        ast::TypeSyntax* type,
-        const std::vector<SourceRange>& omittedDimensions,
-        std::size_t countedDimensions);
-    ast::AstNode* parseTypedNew(const SourceRange& start);
     ast::AstNode* parseNewExpression();
     ast::AstNode* parseDeleteExpression();
     ast::AstNode* parseDestroyExpression();
     ast::AstNode* parseStackallocExpression();
     ast::AstNode* parseUnaryExpression();
+    ast::AstNode* parseUnaryIterativeExpression();
     class PostfixIterationMachine;
     ast::AstNode* parsePostfixBaseExpression();
     ast::AstNode* parseCallSuffix(

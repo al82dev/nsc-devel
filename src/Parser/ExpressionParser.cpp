@@ -1471,88 +1471,32 @@ ast::AstNode* Parser::parseMultiplicativeExpression()
 
 ast::AstNode* Parser::parseAwaitUnaryExpression()
 {
-    const SourceRange range = consume().range();
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::AwaitExpression, range);
-    node->setFirst(parseUnaryExpression());
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseFromEndUnaryExpression()
 {
-    const SourceRange start = consume().range();
-    ast::AstNode* operand = parseUnaryExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::FromEndExpression,
-        join(start, operand != nullptr ? operand->range() : start));
-    node->setTokenKind(TokenKind::Caret);
-    node->setFirst(operand);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseMoveUnaryExpression()
 {
-    const SourceRange start = consume().range();
-    expect(TokenKind::LeftParen, "'(' after move");
-    ast::AstNode* operand = parseExpression();
-    expect(TokenKind::RightParen, "')' after move operand");
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::MoveExpression, join(start, tokens_[index_ - 1].range()));
-    node->setFirst(operand);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseOrdinaryUnaryExpression()
 {
-    struct Prefix final { TokenKind kind; SourceRange range; };
-    std::vector<Prefix> prefixes;
-    while (current().kind() == TokenKind::Plus || current().kind() == TokenKind::Minus ||
-           current().kind() == TokenKind::Bang || current().kind() == TokenKind::Tilde ||
-           current().kind() == TokenKind::Amp || current().kind() == TokenKind::Star ||
-           current().kind() == TokenKind::PlusPlus || current().kind() == TokenKind::MinusMinus)
-    {
-        const TokenKind kind = current().kind();
-        prefixes.push_back(Prefix{kind, consume().range()});
-    }
-    ast::AstNode* operand = parseUnaryExpression();
-    for (auto prefix = prefixes.rbegin(); prefix != prefixes.rend(); ++prefix)
-    {
-        ast::AstNode* node = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::UnaryExpression, join(prefix->range, operand->range()));
-        node->setTokenKind(prefix->kind);
-        node->setFirst(operand);
-        operand = node;
-    }
-    return operand;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseNamedCastExpression()
 {
-    const lexer::Token& castName = consume();
-    expect(TokenKind::Less, "'<' after named cast");
-    ast::TypeSyntax* type = parseType();
-    expect(TokenKind::Greater, "'>' after named cast target type");
-    expect(TokenKind::LeftParen, "'(' after named cast type");
-    ast::AstNode* operand = parseExpression();
-    expect(TokenKind::RightParen, "')' after named cast operand");
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::CastExpression, join(castName.range(), tokens_[index_ - 1].range()));
-    node->setTypeSyntax(type);
-    node->setFirst(operand);
-    node->setAuxiliaryText("cast:" + std::string(castName.lexeme()));
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseParenthesizedCastExpression()
 {
-    const SourceRange start = consume().range();
-    ast::TypeSyntax* type = parseType();
-    expect(TokenKind::RightParen, "')'");
-    ast::AstNode* operand = parseUnaryExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::CastExpression, join(start, operand->range()));
-    node->setTypeSyntax(type);
-    node->setFirst(operand);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseOffsetofExpression()
@@ -1601,30 +1545,7 @@ bool Parser::looksLikeSizeofTypeForm(std::size_t cursor) const noexcept
 
 ast::AstNode* Parser::parseSizeofOrAlignofExpression()
 {
-    const bool alignmentQuery = at(TokenKind::KwAlignof);
-    const SourceRange start = consume().range();
-    expect(TokenKind::LeftParen, "'('");
-    const std::size_t checkpoint = index_;
-    if (canStartTypeAt(index_) && looksLikeSizeofTypeForm(index_))
-    {
-        ast::TypeSyntax* type = parseType();
-        expect(TokenKind::RightParen, "')'");
-        ast::AstNode* node = arena_.make<ast::AstNode>(
-            alignmentQuery ? ast::AstNodeKind::AlignofTypeExpression
-                           : ast::AstNodeKind::SizeofTypeExpression,
-            tokenRangeFrom(checkpoint));
-        node->setTypeSyntax(type);
-        node->setRange(join(start, tokens_[index_ - 1].range()));
-        return node;
-    }
-    ast::AstNode* expression = parseExpression();
-    expect(TokenKind::RightParen, "')'");
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        alignmentQuery ? ast::AstNodeKind::AlignofExpression
-                       : ast::AstNodeKind::SizeofExpression,
-        join(start, tokens_[index_ - 1].range()));
-    node->setFirst(expression);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseDefaultValueExpression()
@@ -1652,55 +1573,6 @@ bool Parser::parenthesizedNewIsPlacement() const noexcept
     return cursor < tokens_.size() && canStartTypeAt(cursor);
 }
 
-void Parser::appendCallArguments(ast::AstNode* node, TokenKind closingToken)
-{
-    while (!at(closingToken) && !at(TokenKind::EndOfFile))
-    {
-        node->addChild(parseArgument());
-        if (!consumeIf(TokenKind::Comma)) break;
-    }
-}
-
-ast::AstNode* Parser::parseTargetTypedNew(const SourceRange& start)
-{
-    ast::AstNode* creation = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::ObjectCreationExpression, start);
-    creation->setAuxiliaryText("target-typed");
-    appendCallArguments(creation, TokenKind::RightParen);
-    expect(TokenKind::RightParen, "')' after target-typed new arguments");
-    creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
-    return creation;
-}
-
-void Parser::parsePlacementOptions(
-    ast::AstNode*& trailingCapacity,
-    std::string& failureProfile)
-{
-    while (consumeIf(TokenKind::Comma))
-    {
-        if (atContextualKeyword("trailing") && peek().kind() == TokenKind::Colon)
-        {
-            consume(); consume();
-            trailingCapacity = parseExpression();
-            continue;
-        }
-        if (atContextualKeyword("failure") && peek().kind() == TokenKind::Colon)
-        {
-            consume(); consume();
-            if (atContextualKeyword("panic") || atContextualKeyword("result") ||
-                atContextualKeyword("throws") || at(TokenKind::KwNull))
-            {
-                failureProfile = current().lexeme();
-                consume();
-            }
-            else expect(TokenKind::Colon, "'panic', 'null', 'result' or 'throws' after 'failure:'");
-            continue;
-        }
-        expect(TokenKind::Colon, "':' after placement option");
-        break;
-    }
-}
-
 void Parser::attachPlacementResultType(ast::AstNode* creation, ast::TypeSyntax* type)
 {
     ast::TypeSyntax* result = arena_.make<ast::TypeSyntax>(
@@ -1711,224 +1583,29 @@ void Parser::attachPlacementResultType(ast::AstNode* creation, ast::TypeSyntax* 
     creation->addTypeSyntax(result);
 }
 
-ast::AstNode* Parser::parsePlacementNew(const SourceRange& start)
-{
-    ast::AstNode* storage = parseExpression();
-    ast::AstNode* trailingCapacity = nullptr;
-    std::string failureProfile;
-    parsePlacementOptions(trailingCapacity, failureProfile);
-    expect(TokenKind::RightParen, "')' after placement storage");
-    ast::TypeSyntax* type = parseAllocationElementType();
-    ast::AstNode* creation = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::PlacementConstructionExpression, start);
-    creation->setFirst(storage);
-    creation->setTypeSyntax(type);
-    if (trailingCapacity != nullptr) creation->setAuxiliaryText("trailing");
-    if (!failureProfile.empty()) creation->setAllocatorFailureProfile(failureProfile);
-    if (failureProfile == "result") attachPlacementResultType(creation, type);
-    if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
-    {
-        appendCallArguments(creation, TokenKind::RightParen);
-        expect(TokenKind::RightParen, "')' after placement constructor arguments");
-    }
-    if (trailingCapacity != nullptr) creation->addChild(trailingCapacity);
-    creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
-    return creation;
-}
-
-void Parser::parseArrayAllocationDimensions(
-    ast::AstNode* node,
-    std::vector<SourceRange>& omittedDimensions,
-    std::size_t& countedDimensions)
-{
-    while (consumeIf(TokenKind::LeftBracket))
-    {
-        const SourceRange left = tokens_[index_ - 1].range();
-        if (at(TokenKind::RightBracket))
-        {
-            omittedDimensions.push_back(join(left, consume().range()));
-            continue;
-        }
-        std::vector<ast::AstNode*> dimensions{parseExpression()};
-        while (consumeIf(TokenKind::Comma)) dimensions.push_back(parseExpression());
-        countedDimensions += dimensions.size();
-        if (dimensions.size() > 1)
-        {
-            if (node->first() != nullptr || !omittedDimensions.empty())
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::UnexpectedToken,
-                    diagnostics::DiagnosticSeverity::Error,
-                    dimensions.front()->range(),
-                    "a rectangular allocation uses one counted bracket group");
-            node->setAuxiliaryText("range-array-allocation:" +
-                std::to_string(dimensions.size()));
-            node->setFirst(dimensions.front());
-            for (std::size_t index = 1; index < dimensions.size(); ++index)
-                node->addChild(dimensions[index]);
-        }
-        else if (node->first() == nullptr) node->setFirst(dimensions.front());
-        else diagnostics_.report(
-            diagnostics::DiagnosticId::UnexpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            dimensions.front()->range(),
-            "dynamic jagged allocation accepts exactly one counted dimension");
-        expect(TokenKind::RightBracket, "']'");
-    }
-}
-
-void Parser::finishArrayAllocation(
-    ast::AstNode* node,
-    ast::TypeSyntax* type,
-    const std::vector<SourceRange>& omittedDimensions,
-    std::size_t countedDimensions)
-{
-    const bool inferred = countedDimensions == 0 && !omittedDimensions.empty() &&
-        at(TokenKind::LeftBrace);
-    if (inferred)
-    {
-        for (std::size_t index = 1; index < omittedDimensions.size(); ++index)
-        {
-            const SourceRange& range = omittedDimensions[index - 1];
-            type->addModifier(ast::TypeModifierSyntax{
-                ast::TypeModifierSyntaxKind::DynamicArray, nullptr, range});
-            type->setRange(join(type->range(), range));
-        }
-        consume();
-        node->setAuxiliaryText("inferred-array-initializer");
-        while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
-        {
-            node->addChild(parseAssignmentExpression());
-            if (!consumeIf(TokenKind::Comma) || at(TokenKind::RightBrace)) break;
-        }
-        expect(TokenKind::RightBrace, "'}'");
-        return;
-    }
-    for (const SourceRange& range : omittedDimensions)
-    {
-        type->addModifier(ast::TypeModifierSyntax{
-            ast::TypeModifierSyntaxKind::DynamicArray, nullptr, range});
-        type->setRange(join(type->range(), range));
-    }
-    if (countedDimensions == 0)
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedExpression,
-            diagnostics::DiagnosticSeverity::Error,
-            node->range(),
-            "dynamic array allocation requires one count or an aggregate initializer");
-}
-
-ast::AstNode* Parser::parseTypedNew(const SourceRange& start)
-{
-    ast::TypeSyntax* type = parseAllocationElementType();
-    if (consumeIf(TokenKind::LeftParen))
-    {
-        ast::AstNode* creation = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::ObjectCreationExpression, start);
-        creation->setTypeSyntax(type);
-        appendCallArguments(creation, TokenKind::RightParen);
-        expect(TokenKind::RightParen, "')'");
-        creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
-        return creation;
-    }
-    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::NewExpression, start);
-    node->setTypeSyntax(type);
-    if (at(TokenKind::LeftBracket))
-    {
-        node->setFlag(true);
-        std::vector<SourceRange> omittedDimensions;
-        std::size_t countedDimensions = 0;
-        parseArrayAllocationDimensions(node, omittedDimensions, countedDimensions);
-        finishArrayAllocation(node, type, omittedDimensions, countedDimensions);
-    }
-    node->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
-    return node;
-}
-
 ast::AstNode* Parser::parseNewExpression()
 {
-    const SourceRange start = consume().range();
-    if (at(TokenKind::LeftParen) && peek().kind() == TokenKind::RightParen)
-    {
-        consume(); consume();
-        ast::AstNode* creation = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::ObjectCreationExpression, start);
-        creation->setAuxiliaryText("target-typed");
-        creation->setRange(join(start, tokens_[index_ - 1].range()));
-        return creation;
-    }
-    if (!consumeIf(TokenKind::LeftParen)) return parseTypedNew(start);
-    if (!parenthesizedNewIsPlacement()) return parseTargetTypedNew(start);
-    return parsePlacementNew(start);
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseDeleteExpression()
 {
-    const SourceRange start = consume().range();
-    bool arrayForm = false;
-    if (consumeIf(TokenKind::LeftBracket))
-    {
-        arrayForm = true;
-        expect(TokenKind::RightBracket, "']'");
-    }
-    ast::AstNode* operand = parseUnaryExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::DeleteExpression, join(start, operand->range()));
-    node->setFlag(arrayForm);
-    node->setFirst(operand);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseDestroyExpression()
 {
-    const SourceRange start = consume().range();
-    ast::AstNode* operand = parseUnaryExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::DestroyExpression, join(start, operand->range()));
-    node->setFirst(operand);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseStackallocExpression()
 {
-    const SourceRange start = consume().range();
-    ast::TypeSyntax* type = parseAllocationElementType();
-    expect(TokenKind::LeftBracket, "'['");
-    ast::AstNode* count = parseExpression();
-    expect(TokenKind::RightBracket, "']'");
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::StackallocExpression, join(start, tokens_[index_ - 1].range()));
-    node->setTypeSyntax(type);
-    node->setFirst(count);
-    return node;
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseUnaryExpression()
 {
-    if (atContextualKeyword("await") && peek().kind() != TokenKind::Equal &&
-        peek().kind() != TokenKind::LeftParen)
-        return parseAwaitUnaryExpression();
-    if (at(TokenKind::Caret)) return parseFromEndUnaryExpression();
-    if (at(TokenKind::KwMove)) return parseMoveUnaryExpression();
-    const TokenKind kind = current().kind();
-    if (kind == TokenKind::Plus || kind == TokenKind::Minus || kind == TokenKind::Bang ||
-        kind == TokenKind::Tilde || kind == TokenKind::Amp || kind == TokenKind::Star ||
-        kind == TokenKind::PlusPlus || kind == TokenKind::MinusMinus)
-        return parseOrdinaryUnaryExpression();
-    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Less &&
-        (current().lexeme() == "static_cast" || current().lexeme() == "reinterpret_cast" ||
-         current().lexeme() == "const_cast"))
-        return parseNamedCastExpression();
-    if (at(TokenKind::LeftParen) && looksLikeParenthesizedType())
-        return parseParenthesizedCastExpression();
-    if (at(TokenKind::KwOffsetof)) return parseOffsetofExpression();
-    if (at(TokenKind::KwSizeof) || at(TokenKind::KwAlignof))
-        return parseSizeofOrAlignofExpression();
-    if (at(TokenKind::KwDefault)) return parseDefaultValueExpression();
-    if (at(TokenKind::KwNew)) return parseNewExpression();
-    if (at(TokenKind::KwDelete)) return parseDeleteExpression();
-    if (at(TokenKind::KwDestroy)) return parseDestroyExpression();
-    if (at(TokenKind::KwStackalloc)) return parseStackallocExpression();
-    return parsePostfixExpression();
+    return parseUnaryIterativeExpression();
 }
 
 ast::AstNode* Parser::parseArgument()
@@ -1987,6 +1664,7 @@ class Parser::PostfixIterationMachine final
 public:
     explicit PostfixIterationMachine(Parser& parser) noexcept : parser_(parser) {}
     ast::AstNode* parse();
+    ast::AstNode* parseUnary();
 
 private:
     static constexpr std::size_t noSlot = std::numeric_limits<std::size_t>::max();
@@ -1995,7 +1673,8 @@ private:
         FinishAssignment, FinishConditionalTrue, FinishConditionalFalse,
         FinishTypeRelation, FinishRangeEnd, FinishRangeStep,
         Postfix, Primary, Grouping, Collection, FinishNameOf,
-        FinishOverflowPolicy, ContinueInterpolation, Call, Index, With
+        FinishOverflowPolicy, ContinueInterpolation, Call, Index, With,
+        NewArguments, PlacementNew, ArrayNew, ArrayInitializer
     };
     struct Result final { ast::AstNode* value = nullptr; bool ready = false; };
     struct Work final {
@@ -2020,6 +1699,10 @@ private:
         std::vector<ast::AstNode*> children;
         std::size_t frameIndex = noSlot;
         SourceRange outerRange;
+        ast::TypeSyntax* typeSyntax = nullptr;
+        std::vector<SourceRange> ranges;
+        std::size_t ordinal = 0;
+        std::string label;
     };
     struct InterpolationFrame final {
         std::optional<lexer::Token> token;
@@ -2074,6 +1757,18 @@ private:
     void finishCall(Work& work);
     void appendIndex(Work& work, ast::AstNode* value);
     void finishIndex(Work& work);
+    void continueNewArguments(Work work);
+    void continuePlacementNew(Work work);
+    void continueArrayNew(Work work);
+    void continueArrayInitializer(Work work);
+    void finishArrayGroup(Work& work);
+    void finishArrayNew(Work work);
+    bool startSimpleUnary(Work& work);
+    bool startDelimitedUnary(Work& work);
+    bool startAtomicUnary(Work& work);
+    void startNewExpression(Work work);
+    void finishDelimitedUnary(Work work);
+    ast::AstNode* buildUnaryNode(Work& work, ast::AstNode* operand);
 
     Parser& parser_;
     std::deque<Result> results_;
@@ -2171,6 +1866,60 @@ ast::AstNode* Parser::PostfixIterationMachine::parse()
         case WorkKind::Call: continueCall(std::move(work)); break;
         case WorkKind::Index: continueIndex(std::move(work)); break;
         case WorkKind::With: continueWith(std::move(work)); break;
+        case WorkKind::NewArguments: continueNewArguments(std::move(work)); break;
+        case WorkKind::PlacementNew: continuePlacementNew(std::move(work)); break;
+        case WorkKind::ArrayNew: continueArrayNew(std::move(work)); break;
+        case WorkKind::ArrayInitializer: continueArrayInitializer(std::move(work)); break;
+        }
+    }
+    ast::AstNode* result = results_[root].value;
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    scheduler_test_hooks::unfinishedResults = outstandingResults_;
+    --scheduler_test_hooks::activeDepth;
+#endif
+    return result;
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::parseUnary()
+{
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    ++scheduler_test_hooks::activeDepth;
+    scheduler_test_hooks::maximumDepth = std::max(
+        scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
+#endif
+    const std::size_t root = makeSlot();
+    work_.push_back({WorkKind::Unary, root});
+    while (!results_[root].ready)
+    {
+        Work work = std::move(work_.back());
+        work_.pop_back();
+        switch (work.kind)
+        {
+        case WorkKind::Expression: startExpression(std::move(work)); break;
+        case WorkKind::ExpressionTail: continueExpression(std::move(work)); break;
+        case WorkKind::Unary: startUnary(std::move(work)); break;
+        case WorkKind::FinishUnary: finishUnary(std::move(work)); break;
+        case WorkKind::FinishBinary: finishBinary(std::move(work)); break;
+        case WorkKind::FinishAssignment: finishAssignment(std::move(work)); break;
+        case WorkKind::FinishConditionalTrue: finishConditionalTrue(std::move(work)); break;
+        case WorkKind::FinishConditionalFalse: finishConditionalFalse(std::move(work)); break;
+        case WorkKind::FinishTypeRelation: finishTypeRelation(std::move(work)); break;
+        case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
+        case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
+        case WorkKind::Postfix: startPostfix(std::move(work)); break;
+        case WorkKind::Primary: startPrimary(std::move(work)); break;
+        case WorkKind::Grouping: continueGrouping(std::move(work)); break;
+        case WorkKind::Collection: continueCollection(std::move(work)); break;
+        case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
+        case WorkKind::FinishOverflowPolicy: finishOverflowPolicy(std::move(work)); break;
+        case WorkKind::ContinueInterpolation: finishInterpolationHole(std::move(work)); break;
+        case WorkKind::Call: continueCall(std::move(work)); break;
+        case WorkKind::Index: continueIndex(std::move(work)); break;
+        case WorkKind::With: continueWith(std::move(work)); break;
+        case WorkKind::NewArguments: continueNewArguments(std::move(work)); break;
+        case WorkKind::PlacementNew: continuePlacementNew(std::move(work)); break;
+        case WorkKind::ArrayNew: continueArrayNew(std::move(work)); break;
+        case WorkKind::ArrayInitializer: continueArrayInitializer(std::move(work)); break;
         }
     }
     ast::AstNode* result = results_[root].value;
@@ -2315,7 +2064,7 @@ void Parser::PostfixIterationMachine::continueExpression(Work work)
     work_.push_back(std::move(rhs));
 }
 
-void Parser::PostfixIterationMachine::startUnary(Work work)
+bool Parser::PostfixIterationMachine::startSimpleUnary(Work& work)
 {
     const TokenKind kind = parser_.current().kind();
     const bool ordinary = kind == TokenKind::Plus || kind == TokenKind::Minus ||
@@ -2330,46 +2079,177 @@ void Parser::PostfixIterationMachine::startUnary(Work work)
         Work finish{WorkKind::FinishUnary, work.resultSlot, child};
         finish.tokenKind = awaiting ? TokenKind::Invalid : kind;
         finish.range = token.range();
-        finish.flag = awaiting;
+        finish.text = awaiting ? "await" : (kind == TokenKind::Caret ? "from-end" : "ordinary");
         work_.push_back(std::move(finish));
         work_.push_back({WorkKind::Unary, child});
-        return;
+        return true;
     }
-    ast::AstNode* delegated = nullptr;
-    if ((parser_.at(TokenKind::KwMove) || parser_.atContextualKeyword("move")) &&
-        parser_.peek().kind() == TokenKind::LeftParen)
-        delegated = parser_.parseMoveUnaryExpression();
-    else if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Less &&
+    if (parser_.at(TokenKind::LeftParen) && parser_.looksLikeParenthesizedType())
+    {
+        Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
+        finish.range = parser_.consume().range();
+        finish.typeSyntax = parser_.parseType();
+        finish.text = "parenthesized-cast";
+        parser_.expect(TokenKind::RightParen, "')'");
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Unary, finish.childSlot});
+        return true;
+    }
+    if (parser_.at(TokenKind::KwDelete) || parser_.at(TokenKind::KwDestroy))
+    {
+        const bool deleting = parser_.at(TokenKind::KwDelete);
+        Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
+        finish.range = parser_.consume().range();
+        finish.text = deleting ? "delete" : "destroy";
+        if (deleting && parser_.consumeIf(TokenKind::LeftBracket))
+        {
+            finish.flag = true;
+            parser_.expect(TokenKind::RightBracket, "']'");
+        }
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Unary, finish.childSlot});
+        return true;
+    }
+    return false;
+}
+
+bool Parser::PostfixIterationMachine::startDelimitedUnary(Work& work)
+{
+    if (parser_.at(TokenKind::KwMove))
+    {
+        Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
+        finish.range = parser_.consume().range();
+        finish.text = "move";
+        parser_.expect(TokenKind::LeftParen, "'(' after move");
+        work_.push_back(finish);
+        scheduleChild(finish.childSlot);
+        return true;
+    }
+    if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::Less &&
         (parser_.current().lexeme() == "static_cast" ||
          parser_.current().lexeme() == "reinterpret_cast" ||
          parser_.current().lexeme() == "const_cast"))
-        delegated = parser_.parseNamedCastExpression();
-    else if (parser_.at(TokenKind::LeftParen) && parser_.looksLikeParenthesizedType())
-        delegated = parser_.parseParenthesizedCastExpression();
-    else if (parser_.at(TokenKind::KwOffsetof)) delegated = parser_.parseOffsetofExpression();
-    else if (parser_.at(TokenKind::KwSizeof) || parser_.at(TokenKind::KwAlignof))
-        delegated = parser_.parseSizeofOrAlignofExpression();
-    else if (parser_.at(TokenKind::KwDefault)) delegated = parser_.parseDefaultValueExpression();
-    else if (parser_.at(TokenKind::KwNew)) delegated = parser_.parseNewExpression();
-    else if (parser_.at(TokenKind::KwDelete)) delegated = parser_.parseDeleteExpression();
-    else if (parser_.at(TokenKind::KwDestroy)) delegated = parser_.parseDestroyExpression();
-    else if (parser_.at(TokenKind::KwStackalloc)) delegated = parser_.parseStackallocExpression();
-    if (delegated != nullptr) { complete(work.resultSlot, delegated); return; }
+    {
+        const lexer::Token& name = parser_.consume();
+        Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
+        finish.range = name.range();
+        finish.auxiliaryText = "cast:" + std::string(name.lexeme());
+        finish.text = "named-cast";
+        parser_.expect(TokenKind::Less, "'<' after named cast");
+        finish.typeSyntax = parser_.parseType();
+        parser_.expect(TokenKind::Greater, "'>' after named cast target type");
+        parser_.expect(TokenKind::LeftParen, "'(' after named cast type");
+        work_.push_back(finish);
+        scheduleChild(finish.childSlot);
+        return true;
+    }
+    if (parser_.at(TokenKind::KwStackalloc))
+    {
+        Work finish{WorkKind::FinishUnary, work.resultSlot, makeSlot()};
+        finish.range = parser_.consume().range();
+        finish.text = "stackalloc";
+        finish.typeSyntax = parser_.parseAllocationElementType();
+        parser_.expect(TokenKind::LeftBracket, "'['");
+        work_.push_back(finish);
+        scheduleChild(finish.childSlot);
+        return true;
+    }
+    return false;
+}
+
+bool Parser::PostfixIterationMachine::startAtomicUnary(Work& work)
+{
+    if (parser_.at(TokenKind::KwOffsetof))
+        { complete(work.resultSlot, parser_.parseOffsetofExpression()); return true; }
+    if (parser_.at(TokenKind::KwDefault))
+        { complete(work.resultSlot, parser_.parseDefaultValueExpression()); return true; }
+    if (parser_.at(TokenKind::KwSizeof) || parser_.at(TokenKind::KwAlignof))
+    {
+        const bool align = parser_.at(TokenKind::KwAlignof);
+        Work finish{WorkKind::FinishUnary, work.resultSlot};
+        finish.range = parser_.consume().range();
+        finish.text = align ? "alignof" : "sizeof";
+        parser_.expect(TokenKind::LeftParen, "'('");
+        const std::size_t checkpoint = parser_.index_;
+        if (parser_.canStartTypeAt(parser_.index_) && parser_.looksLikeSizeofTypeForm(parser_.index_))
+        {
+            finish.typeSyntax = parser_.parseType();
+            parser_.expect(TokenKind::RightParen, "')'");
+            ast::AstNode* node = parser_.arena_.make<ast::AstNode>(align
+                    ? ast::AstNodeKind::AlignofTypeExpression : ast::AstNodeKind::SizeofTypeExpression,
+                parser_.tokenRangeFrom(checkpoint));
+            node->setTypeSyntax(finish.typeSyntax);
+            node->setRange(parser_.join(finish.range, parser_.tokens_[parser_.index_ - 1].range()));
+            complete(work.resultSlot, node);
+            return true;
+        }
+        finish.childSlot = makeSlot();
+        work_.push_back(finish);
+        scheduleChild(finish.childSlot);
+        return true;
+    }
+    return false;
+}
+
+void Parser::PostfixIterationMachine::startUnary(Work work)
+{
+    if (startSimpleUnary(work) || startDelimitedUnary(work) || startAtomicUnary(work)) return;
+    if (parser_.at(TokenKind::KwNew)) { startNewExpression(std::move(work)); return; }
     work_.push_back({WorkKind::Postfix, work.resultSlot});
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::buildUnaryNode(
+    Work& work,
+    ast::AstNode* operand)
+{
+    ast::AstNodeKind kind = ast::AstNodeKind::UnaryExpression;
+    if (work.text == "await") kind = ast::AstNodeKind::AwaitExpression;
+    else if (work.text == "from-end") kind = ast::AstNodeKind::FromEndExpression;
+    else if (work.text == "parenthesized-cast") kind = ast::AstNodeKind::CastExpression;
+    else if (work.text == "delete") kind = ast::AstNodeKind::DeleteExpression;
+    else if (work.text == "destroy") kind = ast::AstNodeKind::DestroyExpression;
+    const SourceRange range = work.text == "await" ? work.range :
+        parser_.join(work.range, operand != nullptr ? operand->range() : work.range);
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(kind, range);
+    if (work.text == "ordinary" || work.text == "from-end") node->setTokenKind(work.tokenKind);
+    if (work.text == "parenthesized-cast") node->setTypeSyntax(work.typeSyntax);
+    if (work.text == "delete") node->setFlag(work.flag);
+    node->setFirst(operand);
+    return node;
+}
+
+void Parser::PostfixIterationMachine::finishDelimitedUnary(Work work)
+{
+    ast::AstNode* operand = results_[work.childSlot].value;
+    ast::AstNodeKind kind = ast::AstNodeKind::MoveExpression;
+    std::string_view closing = "')' after move operand";
+    if (work.text == "named-cast")
+        { kind = ast::AstNodeKind::CastExpression; closing = "')' after named cast operand"; }
+    else if (work.text == "sizeof")
+        { kind = ast::AstNodeKind::SizeofExpression; closing = "')'"; }
+    else if (work.text == "alignof")
+        { kind = ast::AstNodeKind::AlignofExpression; closing = "')'"; }
+    else if (work.text == "stackalloc")
+        { kind = ast::AstNodeKind::StackallocExpression; closing = "']'"; }
+    parser_.expect(work.text == "stackalloc" ? TokenKind::RightBracket : TokenKind::RightParen,
+        std::string(closing));
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(kind,
+        parser_.join(work.range, parser_.tokens_[parser_.index_ - 1].range()));
+    node->setFirst(operand);
+    if (work.typeSyntax != nullptr) node->setTypeSyntax(work.typeSyntax);
+    if (!work.auxiliaryText.empty()) node->setAuxiliaryText(work.auxiliaryText);
+    complete(work.resultSlot, node);
 }
 
 void Parser::PostfixIterationMachine::finishUnary(Work work)
 {
-    ast::AstNode* operand = results_[work.childSlot].value;
-    ast::AstNodeKind kind = work.flag
-        ? ast::AstNodeKind::AwaitExpression : ast::AstNodeKind::UnaryExpression;
-    if (work.tokenKind == TokenKind::Caret) kind = ast::AstNodeKind::FromEndExpression;
-    const SourceRange range = work.flag ? work.range :
-        parser_.join(work.range, operand != nullptr ? operand->range() : work.range);
-    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(kind, range);
-    if (!work.flag) node->setTokenKind(work.tokenKind);
-    node->setFirst(operand);
-    complete(work.resultSlot, node);
+    if (work.text == "move" || work.text == "named-cast" || work.text == "sizeof" ||
+        work.text == "alignof" || work.text == "stackalloc")
+    {
+        finishDelimitedUnary(std::move(work));
+        return;
+    }
+    complete(work.resultSlot, buildUnaryNode(work, results_[work.childSlot].value));
 }
 
 void Parser::PostfixIterationMachine::finishBinary(Work work)
@@ -3147,6 +3027,257 @@ void Parser::PostfixIterationMachine::continueWith(Work work)
     scheduleChild(work.childSlot);
 }
 
+void Parser::PostfixIterationMachine::continueNewArguments(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        ast::AstNode* argument = finishArgument(work);
+        if (argument != nullptr) work.node->addChild(argument);
+        work.childSlot = noSlot;
+        work.text.clear();
+        work.auxiliaryText.clear();
+        work.flag = false;
+        if (!parser_.consumeIf(TokenKind::Comma))
+        {
+            parser_.expect(TokenKind::RightParen, work.label);
+            work.node->setRange(SourceRange(
+                work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+            if (work.first != nullptr) work.node->addChild(work.first);
+            complete(work.resultSlot, work.node);
+            return;
+        }
+    }
+    if (parser_.at(TokenKind::RightParen) || parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightParen, work.label);
+        work.node->setRange(SourceRange(
+            work.outerRange.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        if (work.first != nullptr) work.node->addChild(work.first);
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    schedulePrimaryArgument(std::move(work), false);
+}
+
+void Parser::PostfixIterationMachine::continuePlacementNew(Work work)
+{
+    if (work.precedence == 0)
+    {
+        work.first = results_[work.childSlot].value;
+        work.childSlot = noSlot;
+        work.precedence = 1;
+    }
+    else if (work.precedence == 2)
+    {
+        work.node = results_[work.childSlot].value;
+        work.childSlot = noSlot;
+        work.precedence = 1;
+    }
+    while (parser_.consumeIf(TokenKind::Comma))
+    {
+        if (parser_.atContextualKeyword("trailing") && parser_.peek().kind() == TokenKind::Colon)
+        {
+            parser_.consume(); parser_.consume();
+            work.precedence = 2; work.childSlot = makeSlot();
+            const std::size_t child = work.childSlot;
+            work_.push_back(std::move(work)); scheduleChild(child); return;
+        }
+        if (parser_.atContextualKeyword("failure") && parser_.peek().kind() == TokenKind::Colon)
+        {
+            parser_.consume(); parser_.consume();
+            if (parser_.atContextualKeyword("panic") || parser_.atContextualKeyword("result") ||
+                parser_.atContextualKeyword("throws") || parser_.at(TokenKind::KwNull))
+                work.auxiliaryText = std::string(parser_.consume().lexeme());
+            else parser_.expect(TokenKind::Colon,
+                "'panic', 'null', 'result' or 'throws' after 'failure:'");
+            continue;
+        }
+        parser_.expect(TokenKind::Colon, "':' after placement option");
+        break;
+    }
+    parser_.expect(TokenKind::RightParen, "')' after placement storage");
+    work.typeSyntax = parser_.parseAllocationElementType();
+    ast::AstNode* creation = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::PlacementConstructionExpression, work.range);
+    creation->setFirst(work.first); creation->setTypeSyntax(work.typeSyntax);
+    if (work.node != nullptr) creation->setAuxiliaryText("trailing");
+    if (!work.auxiliaryText.empty()) creation->setAllocatorFailureProfile(work.auxiliaryText);
+    if (work.auxiliaryText == "result") parser_.attachPlacementResultType(creation, work.typeSyntax);
+    if (!parser_.expect(TokenKind::LeftParen, "'(' after placement construction type"))
+    {
+        if (work.node != nullptr) creation->addChild(work.node);
+        creation->setRange(SourceRange(
+            work.range.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        complete(work.resultSlot, creation);
+        return;
+    }
+    Work arguments{WorkKind::NewArguments, work.resultSlot, noSlot, creation, work.node};
+    arguments.range = work.range;
+    arguments.outerRange = work.range;
+    arguments.label = "')' after placement constructor arguments";
+    continueNewArguments(std::move(arguments));
+}
+
+void Parser::PostfixIterationMachine::finishArrayGroup(Work& work)
+{
+    work.ordinal += work.children.size();
+    if (work.children.size() > 1U)
+    {
+        if (work.node->first() != nullptr || !work.ranges.empty())
+            parser_.diagnostics_.report(diagnostics::DiagnosticId::UnexpectedToken,
+                diagnostics::DiagnosticSeverity::Error, work.children.front()->range(),
+                "a rectangular allocation uses one counted bracket group");
+        work.node->setAuxiliaryText("range-array-allocation:" +
+            std::to_string(work.children.size()));
+        work.node->setFirst(work.children.front());
+        for (std::size_t index = 1; index < work.children.size(); ++index)
+            work.node->addChild(work.children[index]);
+    }
+    else if (work.node->first() == nullptr) work.node->setFirst(work.children.front());
+    else parser_.diagnostics_.report(diagnostics::DiagnosticId::UnexpectedToken,
+        diagnostics::DiagnosticSeverity::Error, work.children.front()->range(),
+        "dynamic jagged allocation accepts exactly one counted dimension");
+    work.children.clear();
+}
+
+void Parser::PostfixIterationMachine::finishArrayNew(Work work)
+{
+    const bool inferred = work.ordinal == 0 && !work.ranges.empty() &&
+        parser_.at(TokenKind::LeftBrace);
+    const std::size_t modifiers = inferred ? work.ranges.size() - 1U : work.ranges.size();
+    for (std::size_t index = 0; index < modifiers; ++index)
+    {
+        const SourceRange& range = work.ranges[index];
+        work.typeSyntax->addModifier(ast::TypeModifierSyntax{
+            ast::TypeModifierSyntaxKind::DynamicArray, nullptr, range});
+        work.typeSyntax->setRange(parser_.join(work.typeSyntax->range(), range));
+    }
+    if (inferred)
+    {
+        parser_.consume();
+        work.node->setAuxiliaryText("inferred-array-initializer");
+        work.kind = WorkKind::ArrayInitializer;
+        continueArrayInitializer(std::move(work));
+        return;
+    }
+    if (work.ordinal == 0)
+        parser_.diagnostics_.report(diagnostics::DiagnosticId::ExpectedExpression,
+            diagnostics::DiagnosticSeverity::Error, work.node->range(),
+            "dynamic array allocation requires one count or an aggregate initializer");
+    work.node->setRange(SourceRange(
+        work.range.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+    complete(work.resultSlot, work.node);
+}
+
+void Parser::PostfixIterationMachine::continueArrayNew(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        work.children.push_back(results_[work.childSlot].value);
+        work.childSlot = noSlot;
+        if (parser_.consumeIf(TokenKind::Comma))
+        {
+            work.childSlot = makeSlot(); const std::size_t child = work.childSlot;
+            work_.push_back(std::move(work)); scheduleChild(child); return;
+        }
+        parser_.expect(TokenKind::RightBracket, "']'");
+        finishArrayGroup(work);
+    }
+    while (parser_.consumeIf(TokenKind::LeftBracket))
+    {
+        const SourceRange left = parser_.tokens_[parser_.index_ - 1U].range();
+        if (parser_.at(TokenKind::RightBracket))
+        {
+            work.ranges.push_back(parser_.join(left, parser_.consume().range()));
+            continue;
+        }
+        work.childSlot = makeSlot(); const std::size_t child = work.childSlot;
+        work_.push_back(std::move(work)); scheduleChild(child); return;
+    }
+    finishArrayNew(std::move(work));
+}
+
+void Parser::PostfixIterationMachine::continueArrayInitializer(Work work)
+{
+    if (work.childSlot != noSlot)
+    {
+        if (ast::AstNode* value = results_[work.childSlot].value) work.node->addChild(value);
+        work.childSlot = noSlot;
+        if (!parser_.consumeIf(TokenKind::Comma) || parser_.at(TokenKind::RightBrace))
+        {
+            parser_.expect(TokenKind::RightBrace, "'}'");
+            work.node->setRange(SourceRange(
+                work.range.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+            complete(work.resultSlot, work.node);
+            return;
+        }
+    }
+    if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightBrace, "'}'");
+        work.node->setRange(SourceRange(
+            work.range.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        complete(work.resultSlot, work.node);
+        return;
+    }
+    work.childSlot = makeSlot(); const std::size_t child = work.childSlot;
+    work_.push_back(std::move(work)); scheduleChild(child);
+}
+
+void Parser::PostfixIterationMachine::startNewExpression(Work work)
+{
+    const SourceRange start = parser_.consume().range();
+    if (parser_.at(TokenKind::LeftParen) && parser_.peek().kind() == TokenKind::RightParen)
+    {
+        parser_.consume(); parser_.consume();
+        ast::AstNode* creation = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ObjectCreationExpression, start);
+        creation->setAuxiliaryText("target-typed");
+        creation->setRange(parser_.join(start, parser_.tokens_[parser_.index_ - 1U].range()));
+        complete(work.resultSlot, creation); return;
+    }
+    if (parser_.consumeIf(TokenKind::LeftParen))
+    {
+        if (parser_.parenthesizedNewIsPlacement())
+        {
+            Work placement{WorkKind::PlacementNew, work.resultSlot, makeSlot()};
+            placement.range = start; const std::size_t child = placement.childSlot;
+            work_.push_back(std::move(placement)); scheduleChild(child); return;
+        }
+        ast::AstNode* creation = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ObjectCreationExpression, start);
+        creation->setAuxiliaryText("target-typed");
+        Work arguments{WorkKind::NewArguments, work.resultSlot, noSlot, creation};
+        arguments.range = start;
+        arguments.outerRange = start;
+        arguments.label = "')' after target-typed new arguments";
+        continueNewArguments(std::move(arguments)); return;
+    }
+    ast::TypeSyntax* type = parser_.parseAllocationElementType();
+    if (parser_.consumeIf(TokenKind::LeftParen))
+    {
+        ast::AstNode* creation = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ObjectCreationExpression, start);
+        creation->setTypeSyntax(type);
+        Work arguments{WorkKind::NewArguments, work.resultSlot, noSlot, creation};
+        arguments.range = start;
+        arguments.outerRange = start;
+        arguments.label = "')'";
+        continueNewArguments(std::move(arguments)); return;
+    }
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(ast::AstNodeKind::NewExpression, start);
+    node->setTypeSyntax(type);
+    if (!parser_.at(TokenKind::LeftBracket))
+    {
+        node->setRange(SourceRange(start.begin(), parser_.tokens_[parser_.index_ - 1U].range().end()));
+        complete(work.resultSlot, node); return;
+    }
+    node->setFlag(true);
+    Work array{WorkKind::ArrayNew, work.resultSlot, noSlot, node};
+    array.range = start; array.typeSyntax = type;
+    continueArrayNew(std::move(array));
+}
+
 ast::AstNode* Parser::parseCallSuffix(
     ast::AstNode* expression,
     std::vector<ast::TypeSyntax*> genericArguments,
@@ -3281,6 +3412,11 @@ ast::AstNode* Parser::parseResultPropagationSuffix(ast::AstNode* expression)
     propagation->setTokenKind(TokenKind::Question);
     propagation->setFirst(expression);
     return propagation;
+}
+
+ast::AstNode* Parser::parseUnaryIterativeExpression()
+{
+    return PostfixIterationMachine(*this).parseUnary();
 }
 
 ast::AstNode* Parser::parsePostfixExpression()
