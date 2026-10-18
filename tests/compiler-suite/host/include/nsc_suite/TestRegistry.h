@@ -222,6 +222,7 @@ void registerParserTryContinuationCounterfactualModule(TestRegistry& registry);
 void registerParserUsingCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerParserDeferCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerParserSwitchCoordinatorCounterfactualModule(TestRegistry& registry);
+void registerParserMatchCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

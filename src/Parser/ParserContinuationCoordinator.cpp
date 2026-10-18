@@ -2,11 +2,14 @@
 
 #include "nativesharp/Language/Language3Surface.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -32,6 +35,7 @@ private:
     enum class WorkKind : std::uint8_t
     {
         Expression,
+        ConditionalExpression,
         Block,
         ContinueBlock,
         AppendBlockStatement,
@@ -74,6 +78,10 @@ private:
         FinishSwitchLabel,
         ContinueSwitchSection,
         AppendSwitchStatement,
+        FinishMatchGoverning,
+        ContinueMatch,
+        FinishMatchGuard,
+        FinishMatchArm,
         Try,
         ContinueTry,
         FinishTryBlock,
@@ -110,6 +118,7 @@ private:
         For,
         Foreach,
         Switch,
+        Match,
         Try,
         Using,
         Defer
@@ -207,6 +216,32 @@ private:
         std::uint64_t labelCount = 0;
     };
 
+    struct MatchArm final
+    {
+        Pattern pattern;
+        Parser::MatchPatternAnalysis analysis;
+        SourceRange range;
+        ast::AstNode* guard = nullptr;
+        ast::AstNode* body = nullptr;
+    };
+
+    using MatchIntegerIntervalIndex = std::map<std::int64_t, std::int64_t>;
+
+    struct MatchFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        std::size_t armBeginIndex = 0;
+        SourceRange keywordRange;
+        ast::AstNode* governing = nullptr;
+        MatchArm pendingArm;
+        std::vector<MatchArm> arms;
+        bool sawCatchAll = false;
+        bool hasReferenceBinding = false;
+        bool hasMoveBinding = false;
+        MatchIntegerIntervalIndex coveredIntegerRanges;
+    };
+
     struct TryFrame final
     {
         std::size_t beginIndex = 0;
@@ -276,6 +311,7 @@ private:
     ast::AstNode* childValue(const Work& work) const;
 
     void startExpression(const Work& work);
+    void startConditionalExpression(const Work& work);
     void finishLambdaBlock(const Work& work);
     void startBlock(const Work& work);
     void continueBlock(const Work& work);
@@ -360,6 +396,67 @@ private:
     void continueSwitchSection(const Work& work);
     void appendSwitchStatement(const Work& work);
     void completeSwitch(SwitchFrame& frame);
+    void startMatch(const Work& work);
+    void finishMatchGoverning(const Work& work);
+    void continueMatch(const Work& work);
+    void parseMatchArmHeader(MatchFrame& frame);
+    void finishMatchGuard(const Work& work);
+    void scheduleMatchBody(std::size_t frameIndex);
+    void finishMatchArm(const Work& work);
+    void reportMissingMatchArmBody();
+    static std::string_view matchBindingModeName(PatternBindingMode mode) noexcept;
+    void reportMatchPatternDiagnostics(const Parser::MatchPatternAnalysis& analysis);
+    static void accumulateMatchOwnership(
+        MatchFrame& frame,
+        const Parser::MatchPatternAnalysis& analysis);
+    void validateMatchArmReachability(MatchFrame& frame);
+    void reportConstantFalseMatchGuard(const MatchArm& arm);
+    void reportMatchArmAfterCatchAll(const MatchArm& arm);
+    static bool collectMatchIntegerIntervals(
+        const Pattern& root,
+        std::vector<std::pair<std::int64_t, std::int64_t>>& intervals);
+    static bool appendMatchIntegerInterval(
+        const Pattern& pattern,
+        std::vector<std::pair<std::int64_t, std::int64_t>>& intervals);
+    void validateMatchIntegerIntervals(MatchFrame& frame, bool guardAlwaysTrue);
+    static bool normalizeMatchIntegerIntervals(
+        std::vector<std::pair<std::int64_t, std::int64_t>>& intervals);
+    static bool matchIntervalsOverlap(
+        const std::vector<std::pair<std::int64_t, std::int64_t>>& current,
+        const MatchIntegerIntervalIndex& covered);
+    static void insertMatchIntegerInterval(
+        MatchIntegerIntervalIndex& covered,
+        std::pair<std::int64_t, std::int64_t> interval);
+    ast::AstNode* lowerMatchStatement(MatchFrame& frame);
+    void reportEmptyMatch(const MatchFrame& frame);
+    std::string buildMatchCoverage(const std::vector<MatchArm>& arms);
+    void appendMatchArmCoverage(std::string& coverage, const MatchArm& arm);
+    static void appendMatchListCoverage(
+        std::string& coverage,
+        std::vector<std::pair<std::size_t, bool>>& lengths,
+        bool partial);
+    static void appendMatchCaseCoverage(
+        std::string& coverage,
+        std::vector<std::string>& cases,
+        bool partial);
+    void appendMatchGoverningState(
+        ast::AstNode& lowered,
+        const MatchFrame& frame,
+        const std::string& temporary);
+    ast::AstNode* makeMatchSelectedDeclaration(
+        SourceRange range,
+        const std::string& temporary);
+    ast::AstNode* lowerMatchArm(
+        const MatchArm& arm,
+        SourceRange matchRange,
+        const std::string& temporary);
+    ast::AstNode* makeMatchSelectedBody(
+        const MatchArm& arm,
+        const std::string& temporary);
+    ast::AstNode* wrapMatchGuard(const MatchArm& arm, ast::AstNode* selectedBody);
+    ast::AstNode* makeMatchNotSelected(
+        SourceRange range,
+        const std::string& temporary);
     ast::AstNode* parseCatchHeader(std::size_t beginIndex);
     void startTry(const Work& work);
     void continueTry(const Work& work);
@@ -410,6 +507,7 @@ private:
     std::deque<ForExpressionFrame> forExpressionFrames_;
     std::deque<ForeachFrame> foreachFrames_;
     std::deque<SwitchFrame> switchFrames_;
+    std::deque<MatchFrame> matchFrames_;
     std::deque<TryFrame> tryFrames_;
     std::deque<CatchFrame> catchFrames_;
     std::deque<UsingFrame> usingFrames_;
@@ -477,6 +575,7 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     switch (work.kind)
     {
     case WorkKind::Expression: startExpression(work); return;
+    case WorkKind::ConditionalExpression: startConditionalExpression(work); return;
     case WorkKind::Block: startBlock(work); return;
     case WorkKind::ContinueBlock: continueBlock(work); return;
     case WorkKind::AppendBlockStatement: appendBlockStatement(work); return;
@@ -519,6 +618,10 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishSwitchLabel: finishSwitchLabel(work); return;
     case WorkKind::ContinueSwitchSection: continueSwitchSection(work); return;
     case WorkKind::AppendSwitchStatement: appendSwitchStatement(work); return;
+    case WorkKind::FinishMatchGoverning: finishMatchGoverning(work); return;
+    case WorkKind::ContinueMatch: continueMatch(work); return;
+    case WorkKind::FinishMatchGuard: finishMatchGuard(work); return;
+    case WorkKind::FinishMatchArm: finishMatchArm(work); return;
     case WorkKind::Try: startTry(work); return;
     case WorkKind::ContinueTry: continueTry(work); return;
     case WorkKind::FinishTryBlock: finishTryBlock(work); return;
@@ -566,6 +669,12 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
     finish.node = lambda;
     work_.push_back(std::move(finish));
     work_.push_back({WorkKind::Block, bodySlot});
+}
+
+// Preserves the historical guard grammar without widening it to assignment-expression.
+void Parser::ParseContinuationCoordinator::startConditionalExpression(const Work& work)
+{
+    complete(work.resultSlot, parser_.parseConditionalExpression());
 }
 
 // Attaches the completed block with the canonical lambda flags and range update.
@@ -697,6 +806,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
     if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
     if (parser_.at(TokenKind::KwSwitch)) return StatementKind::Switch;
+    if (parser_.startsParenthesizedBlock("match")) return StatementKind::Match;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
     if (parser_.at(TokenKind::KwUsing)) return StatementKind::Using;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
@@ -744,6 +854,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::For: startFor(work); return;
     case StatementKind::Foreach: startForeach(work); return;
     case StatementKind::Switch: startSwitch(work); return;
+    case StatementKind::Match: startMatch(work); return;
     case StatementKind::Try: startTry(work); return;
     case StatementKind::Using: startUsing(work); return;
     case StatementKind::Defer: startDefer(work); return;
@@ -1963,6 +2074,536 @@ void Parser::ParseContinuationCoordinator::completeSwitch(SwitchFrame& frame)
     wrapper->addChild(frame.conditionDeclaration);
     wrapper->addChild(frame.node);
     complete(frame.resultSlot, wrapper);
+}
+
+// Opens one match frame and schedules its governing expression on the shared worklist.
+void Parser::ParseContinuationCoordinator::startMatch(const Work& work)
+{
+    const std::size_t frameIndex = matchFrames_.size();
+    matchFrames_.emplace_back();
+    MatchFrame& frame = matchFrames_.back();
+    frame.beginIndex = parser_.index_;
+    frame.resultSlot = work.resultSlot;
+    frame.keywordRange = parser_.consume().range();
+    parser_.expect(TokenKind::LeftParen, "'(' after 'match'");
+    Work finish{WorkKind::FinishMatchGoverning, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Completes the match header and advances to its first arm.
+void Parser::ParseContinuationCoordinator::finishMatchGoverning(const Work& work)
+{
+    MatchFrame& frame = matchFrames_[work.frameIndex];
+    frame.governing = childValue(work);
+    parser_.expect(TokenKind::RightParen, "')' after match governing expression");
+    parser_.expect(TokenKind::LeftBrace, "'{' to open match arms");
+    Work next{WorkKind::ContinueMatch, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Parses one arm prefix or closes and lowers the completed statement match.
+void Parser::ParseContinuationCoordinator::continueMatch(const Work& work)
+{
+    MatchFrame& frame = matchFrames_[work.frameIndex];
+    if (parser_.at(TokenKind::RightBrace) || parser_.at(TokenKind::EndOfFile))
+    {
+        parser_.expect(TokenKind::RightBrace, "'}' to close match arms");
+        complete(frame.resultSlot, lowerMatchStatement(frame));
+        return;
+    }
+    parseMatchArmHeader(frame);
+    if (parser_.atContextualKeyword("when"))
+    {
+        parser_.consume();
+        Work finish{WorkKind::FinishMatchGuard, frame.resultSlot};
+        finish.frameIndex = work.frameIndex;
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::ConditionalExpression, childSlot});
+        return;
+    }
+    validateMatchArmReachability(frame);
+    parser_.expect(TokenKind::FatArrow, "'=>' after match pattern");
+    scheduleMatchBody(work.frameIndex);
+}
+
+// Parses and analyzes one pattern exactly once before any optional guard.
+void Parser::ParseContinuationCoordinator::parseMatchArmHeader(MatchFrame& frame)
+{
+    frame.armBeginIndex = parser_.index_;
+    frame.pendingArm = MatchArm{};
+    frame.pendingArm.pattern = parser_.parsePattern(false);
+    frame.pendingArm.range = frame.pendingArm.pattern.range;
+    frame.pendingArm.analysis =
+        parser_.analyzeMatchExpressionPattern(frame.pendingArm.pattern, false);
+    reportMatchPatternDiagnostics(frame.pendingArm.analysis);
+    accumulateMatchOwnership(frame, frame.pendingArm.analysis);
+}
+
+// Stores the conditional-expression guard before reachability and arrow validation.
+void Parser::ParseContinuationCoordinator::finishMatchGuard(const Work& work)
+{
+    MatchFrame& frame = matchFrames_[work.frameIndex];
+    frame.pendingArm.guard = childValue(work);
+    validateMatchArmReachability(frame);
+    parser_.expect(TokenKind::FatArrow, "'=>' after match pattern");
+    scheduleMatchBody(work.frameIndex);
+}
+
+// Schedules the required block body or performs the historical missing-body recovery.
+void Parser::ParseContinuationCoordinator::scheduleMatchBody(std::size_t frameIndex)
+{
+    MatchFrame& frame = matchFrames_[frameIndex];
+    Work finish{WorkKind::FinishMatchArm, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    if (parser_.at(TokenKind::LeftBrace))
+    {
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Block, childSlot});
+        return;
+    }
+    reportMissingMatchArmBody();
+    finish.node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, parser_.current().range());
+    parser_.synchronizeStatement();
+    work_.push_back(finish);
+}
+
+// Attaches one completed body, closes its source range, and resumes arm parsing.
+void Parser::ParseContinuationCoordinator::finishMatchArm(const Work& work)
+{
+    MatchFrame& frame = matchFrames_[work.frameIndex];
+    frame.pendingArm.body = work.childSlot == noSlot ? work.node : childValue(work);
+    frame.pendingArm.range = parser_.tokenRangeFrom(frame.armBeginIndex);
+    frame.arms.push_back(std::move(frame.pendingArm));
+    parser_.consumeIf(TokenKind::Comma);
+    Work next{WorkKind::ContinueMatch, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Preserves the historical missing-block diagnostic before synchronization.
+void Parser::ParseContinuationCoordinator::reportMissingMatchArmBody()
+{
+    parser_.diagnostics_.report(
+        diagnostics::DiagnosticId::ExpectedToken,
+        diagnostics::DiagnosticSeverity::Error,
+        parser_.current().range(),
+        "a match arm requires a block body");
+}
+
+// Returns the stable spelling embedded in binding-mode diagnostics.
+std::string_view Parser::ParseContinuationCoordinator::matchBindingModeName(
+    PatternBindingMode mode) noexcept
+{
+    switch (mode)
+    {
+    case PatternBindingMode::Value: return "value";
+    case PatternBindingMode::Reference: return "ref";
+    case PatternBindingMode::Move: return "move";
+    case PatternBindingMode::Copy: return "copy";
+    case PatternBindingMode::ReferenceMutable: return "ref mut";
+    }
+    return "value";
+}
+
+// Publishes the two historical diagnostic families in their original order.
+void Parser::ParseContinuationCoordinator::reportMatchPatternDiagnostics(
+    const Parser::MatchPatternAnalysis& analysis)
+{
+    for (const auto& [range, mode] : analysis.nonAddressableBindings)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            std::string(matchBindingModeName(mode)) +
+                " pattern binding cannot cross a tuple deconstruction or variant payload "
+                "copy; bind the aggregate by ref/move first");
+    for (const SourceRange& range : analysis.invalidOrRanges)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "OR-pattern alternatives must bind identical names with identical "
+            "value/ref/move modes");
+}
+
+// Accumulates governing ownership requirements without rescanning patterns.
+void Parser::ParseContinuationCoordinator::accumulateMatchOwnership(
+    MatchFrame& frame,
+    const Parser::MatchPatternAnalysis& analysis)
+{
+    for (const auto& [name, mode] : analysis.bindings)
+    {
+        static_cast<void>(name);
+        frame.hasReferenceBinding = frame.hasReferenceBinding ||
+            mode == PatternBindingMode::Reference ||
+            mode == PatternBindingMode::ReferenceMutable;
+        frame.hasMoveBinding = frame.hasMoveBinding || mode == PatternBindingMode::Move;
+    }
+}
+
+// Updates cross-arm reachability after the optional guard is available.
+void Parser::ParseContinuationCoordinator::validateMatchArmReachability(MatchFrame& frame)
+{
+    MatchArm& arm = frame.pendingArm;
+    const bool guardAlwaysTrue = arm.guard == nullptr ||
+        (arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+         arm.guard->tokenKind() == TokenKind::KwTrue);
+    const bool guardAlwaysFalse = arm.guard != nullptr &&
+        arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+        arm.guard->tokenKind() == TokenKind::KwFalse;
+    if (guardAlwaysFalse) reportConstantFalseMatchGuard(arm);
+    if (frame.sawCatchAll) reportMatchArmAfterCatchAll(arm);
+    if (arm.analysis.wildcard && guardAlwaysTrue) frame.sawCatchAll = true;
+    validateMatchIntegerIntervals(frame, guardAlwaysTrue);
+}
+
+// Emits the established constant-false guard diagnostic at the guard range.
+void Parser::ParseContinuationCoordinator::reportConstantFalseMatchGuard(const MatchArm& arm)
+{
+    parser_.diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        arm.guard->range(),
+        "match arm is unreachable because its guard is the constant false");
+}
+
+// Emits the established diagnostic after an unconditional catch-all.
+void Parser::ParseContinuationCoordinator::reportMatchArmAfterCatchAll(const MatchArm& arm)
+{
+    parser_.diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        arm.range,
+        "match arm is unreachable after a catch-all wildcard or binding arm");
+}
+
+// Collects one literal/range OR domain iteratively; false marks a mixed domain.
+bool Parser::ParseContinuationCoordinator::collectMatchIntegerIntervals(
+    const Pattern& root,
+    std::vector<std::pair<std::int64_t, std::int64_t>>& intervals)
+{
+    bool complete = true;
+    std::vector<const Pattern*> pending{&root};
+    while (!pending.empty())
+    {
+        const Pattern* pattern = pending.back();
+        pending.pop_back();
+        if (appendMatchIntegerInterval(*pattern, intervals)) continue;
+        if (pattern->kind != PatternKind::Or) { complete = false; continue; }
+        for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
+            pending.push_back(&*child);
+    }
+    return complete;
+}
+
+// Appends one bounded integral pattern as a half-open interval.
+bool Parser::ParseContinuationCoordinator::appendMatchIntegerInterval(
+    const Pattern& pattern,
+    std::vector<std::pair<std::int64_t, std::int64_t>>& intervals)
+{
+    if (pattern.kind == PatternKind::Literal && pattern.firstInteger.has_value() &&
+        *pattern.firstInteger != std::numeric_limits<std::int64_t>::max())
+    {
+        intervals.emplace_back(*pattern.firstInteger, *pattern.firstInteger + 1);
+        return true;
+    }
+    if (pattern.kind == PatternKind::Range && pattern.firstInteger.has_value() &&
+        pattern.secondInteger.has_value() && *pattern.firstInteger < *pattern.secondInteger)
+    {
+        intervals.emplace_back(*pattern.firstInteger, *pattern.secondInteger);
+        return true;
+    }
+    return false;
+}
+
+// Diagnoses overlap and indexes only unrestricted arms.
+void Parser::ParseContinuationCoordinator::validateMatchIntegerIntervals(
+    MatchFrame& frame,
+    bool guardAlwaysTrue)
+{
+    std::vector<std::pair<std::int64_t, std::int64_t>> current;
+    if (!collectMatchIntegerIntervals(frame.pendingArm.pattern, current)) return;
+    const bool overlapsWithinArm = normalizeMatchIntegerIntervals(current);
+    const bool overlapsEarlierArm = matchIntervalsOverlap(current, frame.coveredIntegerRanges);
+    if (overlapsWithinArm || overlapsEarlierArm)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            frame.pendingArm.range,
+            "integer literal/range pattern overlaps an earlier alternative");
+    if (guardAlwaysTrue)
+        for (const auto& interval : current)
+            insertMatchIntegerInterval(frame.coveredIntegerRanges, interval);
+}
+
+// Sorts and coalesces one arm while recording strict overlap.
+bool Parser::ParseContinuationCoordinator::normalizeMatchIntegerIntervals(
+    std::vector<std::pair<std::int64_t, std::int64_t>>& intervals)
+{
+    std::ranges::sort(intervals);
+    std::size_t output = 0;
+    bool overlaps = false;
+    for (const auto& interval : intervals)
+    {
+        if (output == 0 || intervals[output - 1].second < interval.first)
+        {
+            intervals[output++] = interval;
+            continue;
+        }
+        overlaps = overlaps || interval.first < intervals[output - 1].second;
+        intervals[output - 1].second =
+            std::max(intervals[output - 1].second, interval.second);
+    }
+    intervals.resize(output);
+    return overlaps;
+}
+
+// Queries the ordered disjoint interval index in logarithmic time.
+bool Parser::ParseContinuationCoordinator::matchIntervalsOverlap(
+    const std::vector<std::pair<std::int64_t, std::int64_t>>& current,
+    const MatchIntegerIntervalIndex& covered)
+{
+    for (const auto& interval : current)
+    {
+        const auto next = covered.lower_bound(interval.first);
+        if (next != covered.end() && next->first < interval.second) return true;
+        if (next == covered.begin()) continue;
+        if (interval.first < std::prev(next)->second) return true;
+    }
+    return false;
+}
+
+// Inserts one interval and coalesces overlap or adjacency.
+void Parser::ParseContinuationCoordinator::insertMatchIntegerInterval(
+    MatchIntegerIntervalIndex& covered,
+    std::pair<std::int64_t, std::int64_t> interval)
+{
+    auto next = covered.lower_bound(interval.first);
+    if (next != covered.begin())
+    {
+        const auto previous = std::prev(next);
+        if (previous->second >= interval.first)
+        {
+            interval.first = previous->first;
+            interval.second = std::max(interval.second, previous->second);
+            covered.erase(previous);
+        }
+    }
+    next = covered.lower_bound(interval.first);
+    while (next != covered.end() && next->first <= interval.second)
+    {
+        interval.second = std::max(interval.second, next->second);
+        next = covered.erase(next);
+    }
+    covered.emplace(interval);
+}
+
+// Materializes the historical first-match lowering after every arm is complete.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerMatchStatement(MatchFrame& frame)
+{
+    if (frame.arms.empty()) reportEmptyMatch(frame);
+    const SourceRange range = parser_.tokenRangeFrom(frame.beginIndex);
+    ast::AstNode* lowered = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, range);
+    const std::string temporary =
+        "$__nsc_match_" + std::to_string(parser_.nextMatchTemporary_++);
+    lowered->setText(temporary);
+    lowered->setAuxiliaryText(buildMatchCoverage(frame.arms));
+    appendMatchGoverningState(*lowered, frame, temporary);
+    for (const MatchArm& arm : frame.arms)
+        lowered->addChild(lowerMatchArm(arm, range, temporary));
+    return lowered;
+}
+
+// Reports an empty statement match while retaining its lowering shell.
+void Parser::ParseContinuationCoordinator::reportEmptyMatch(const MatchFrame& frame)
+{
+    parser_.diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        frame.keywordRange,
+        "a match statement requires at least one arm");
+}
+
+// Builds the source-ordered semantic coverage bridge consumed downstream.
+std::string Parser::ParseContinuationCoordinator::buildMatchCoverage(
+    const std::vector<MatchArm>& arms)
+{
+    std::string coverage = "match-coverage:v1:";
+    for (std::size_t index = 0; index < arms.size(); ++index)
+    {
+        if (index != 0) coverage += ';';
+        appendMatchArmCoverage(coverage, arms[index]);
+    }
+    return coverage;
+}
+
+// Encodes one arm as wildcard, list-length, nominal-case, or unknown coverage.
+void Parser::ParseContinuationCoordinator::appendMatchArmCoverage(
+    std::string& coverage,
+    const MatchArm& arm)
+{
+    std::vector<std::string> cases = arm.analysis.cases;
+    std::vector<std::pair<std::size_t, bool>> lengths = arm.analysis.listLengths;
+    const bool restricted = arm.guard != nullptr &&
+        !(arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+          arm.guard->tokenKind() == TokenKind::KwTrue);
+    if (arm.analysis.wildcard)
+    {
+        if (restricted) coverage += '~';
+        coverage += '*';
+        return;
+    }
+    if (!lengths.empty())
+    {
+        appendMatchListCoverage(coverage, lengths, arm.analysis.partial || restricted);
+        return;
+    }
+    appendMatchCaseCoverage(coverage, cases, arm.analysis.partial || restricted);
+}
+
+// Sorts and deduplicates list domains before emitting their stable marker format.
+void Parser::ParseContinuationCoordinator::appendMatchListCoverage(
+    std::string& coverage,
+    std::vector<std::pair<std::size_t, bool>>& lengths,
+    bool partial)
+{
+    std::ranges::sort(lengths);
+    lengths.erase(std::unique(lengths.begin(), lengths.end()), lengths.end());
+    if (partial) coverage += '~';
+    for (std::size_t index = 0; index < lengths.size(); ++index)
+    {
+        if (index != 0) coverage += '|';
+        coverage += '#' + std::to_string(lengths[index].first);
+        if (lengths[index].second) coverage += '+';
+    }
+}
+
+// Sorts and deduplicates nominal cases before emitting their stable marker format.
+void Parser::ParseContinuationCoordinator::appendMatchCaseCoverage(
+    std::string& coverage,
+    std::vector<std::string>& cases,
+    bool partial)
+{
+    std::ranges::sort(cases);
+    cases.erase(std::unique(cases.begin(), cases.end()), cases.end());
+    if (cases.empty()) { coverage += '?'; return; }
+    if (partial) coverage += '~';
+    for (std::size_t index = 0; index < cases.size(); ++index)
+    {
+        if (index != 0) coverage += '|';
+        coverage += cases[index];
+    }
+}
+
+// Creates governing-value and selected-flag locals with preserved ownership mode.
+void Parser::ParseContinuationCoordinator::appendMatchGoverningState(
+    ast::AstNode& lowered,
+    const MatchFrame& frame,
+    const std::string& temporary)
+{
+    ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
+        frame.keywordRange, TokenKind::KwVar, "var");
+    ast::AstNode* governing = parser_.makeVariableDeclaration(
+        inferred,
+        temporary,
+        frame.governing,
+        false,
+        !frame.hasReferenceBinding && !frame.hasMoveBinding);
+    if (frame.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
+    lowered.addChild(governing);
+    lowered.addChild(makeMatchSelectedDeclaration(frame.keywordRange, temporary));
+}
+
+// Creates the false-initialized selected flag used by the lowered decision chain.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeMatchSelectedDeclaration(
+    SourceRange range,
+    const std::string& temporary)
+{
+    ast::TypeSyntax* boolType = parser_.arena_.make<ast::TypeSyntax>(
+        range, TokenKind::KwBool, "bool");
+    return parser_.makeVariableDeclaration(
+        boolType,
+        temporary + "_selected",
+        parser_.makeBooleanLiteral(range, false),
+        false,
+        false);
+}
+
+// Lowers one arm to the historical not-selected guard and pattern matcher.
+ast::AstNode* Parser::ParseContinuationCoordinator::lowerMatchArm(
+    const MatchArm& arm,
+    SourceRange matchRange,
+    const std::string& temporary)
+{
+    ast::AstNode* selectedBody = makeMatchSelectedBody(arm, temporary);
+    PatternExpressionFactory root = [this, &temporary, range = arm.range]
+    {
+        return parser_.makeIdentifierExpression(range, temporary);
+    };
+    ast::AstNode* continuation = wrapMatchGuard(arm, selectedBody);
+    ast::AstNode* matcher = parser_.lowerPattern(
+        arm.pattern, root, continuation, temporary);
+    ast::AstNode* guardedBody = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, arm.range);
+    guardedBody->addChild(matcher);
+    ast::AstNode* guard = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, arm.range);
+    guard->setFirst(makeMatchNotSelected(matchRange, temporary));
+    guard->setSecond(guardedBody);
+    return guard;
+}
+
+// Prepends selected=true to original body statements without copying their AST nodes.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeMatchSelectedBody(
+    const MatchArm& arm,
+    const std::string& temporary)
+{
+    ast::AstNode* selected = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, arm.range);
+    selected->addChild(parser_.makeExpressionStatement(parser_.makeAssignmentExpression(
+        parser_.makeIdentifierExpression(arm.range, temporary + "_selected"),
+        parser_.makeBooleanLiteral(arm.range, true))));
+    for (ast::AstNode* statement : arm.body->children()) selected->addChild(statement);
+    return selected;
+}
+
+// Evaluates a source guard only after pattern bindings are materialized.
+ast::AstNode* Parser::ParseContinuationCoordinator::wrapMatchGuard(
+    const MatchArm& arm,
+    ast::AstNode* selectedBody)
+{
+    if (arm.guard == nullptr) return selectedBody;
+    ast::AstNode* guarded = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, arm.guard->range());
+    guarded->setFirst(arm.guard);
+    guarded->setSecond(selectedBody);
+    ast::AstNode* block = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, arm.guard->range());
+    block->addChild(guarded);
+    return block;
+}
+
+// Builds the outer !selected condition that enforces first-match semantics.
+ast::AstNode* Parser::ParseContinuationCoordinator::makeMatchNotSelected(
+    SourceRange range,
+    const std::string& temporary)
+{
+    ast::AstNode* result = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UnaryExpression, range);
+    result->setTokenKind(TokenKind::Bang);
+    result->setFirst(parser_.makeIdentifierExpression(range, temporary + "_selected"));
+    return result;
 }
 
 // Parses the non-recursive catch declaration prefix and leaves any filter/body at the cursor.
