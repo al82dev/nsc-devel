@@ -1028,6 +1028,13 @@ private:
         const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
         std::span<const std::uint64_t> suspendOrders,
         std::unordered_set<std::size_t>& liveSet);
+    static void appendPollFrameLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_set<std::size_t>& liveSet,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectNameLookup& nameLookup,
+        ProjectOopMirFunction& function,
+        std::uint64_t& frameSize);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

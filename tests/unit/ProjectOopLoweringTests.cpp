@@ -552,6 +552,18 @@ struct ProjectOopHirModelTestAccess final
             root, localDefinition, localLastUse, suspendOrders, liveSet);
     }
 
+    static void appendMirPollFrameLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_set<std::size_t>& liveSet,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectNameLookup& nameLookup,
+        ProjectOopMirFunction& function,
+        std::uint64_t& frameSize)
+    {
+        ProjectOopMirModel::appendPollFrameLocals(
+            root, liveSet, objectLayoutModel, nameLookup, function, frameSize);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4559,6 +4571,52 @@ void testDeepMirLivePollLocalCollection(TestContext& tests)
         "MIR poll local collection preserves missing-use, equality, deduplication, and null rules");
     destroyMirTreeIteratively(std::move(root));
 }
+
+void testDeepMirPollFrameLocalAppend(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    std::unordered_set<std::size_t> liveSet;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+        if (depth % 6U != 5U) node->localOrdinal = depth;
+        if (depth % 6U == 0U) node->typeKey = "builtin:byte";
+        else if (depth % 6U == 1U || depth % 6U == 3U) node->typeKey = "builtin:int";
+        else if (depth % 6U == 4U) node->typeKey = "type:Missing";
+        if (depth % 6U == 0U || depth % 6U == 2U ||
+            depth % 6U == 3U || depth % 6U == 4U)
+            liveSet.insert(depth);
+        if (root != nullptr) node->children.push_back(std::move(root));
+        node->children.emplace_back();
+        root = std::move(node);
+    }
+    auto lateral = std::make_unique<ProjectOopMirNode>();
+    lateral->kind = ProjectOopMirNodeKind::LocalDeclaration;
+    lateral->localOrdinal = 0U;
+    lateral->typeKey = "builtin:long";
+    root->children.push_back(std::move(lateral));
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    nativesharp::frontend::ProjectOopMirFunction function;
+    function.asyncFrameLocals.emplace_back(999U, 1U, "sentinel:existing");
+    std::uint64_t frameSize = 3U;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::appendMirPollFrameLocals(
+        root.get(), liveSet, objectLayoutModel, nameLookup, function, frameSize);
+    tests.expect(function.asyncFrameLocals.size() == 10925U &&
+            function.asyncFrameLocals[0] == std::make_tuple(999U, 1U, std::string("sentinel:existing")) &&
+            function.asyncFrameLocals[1] == std::make_tuple(0U, 3U, std::string("builtin:byte")) &&
+            function.asyncFrameLocals[2] == std::make_tuple(3U, 4U, std::string("builtin:int")),
+        "MIR poll frame locals preserve existing slots, preorder, liveness, and alignment");
+    tests.expect(function.asyncFrameLocals[10923] ==
+            std::make_tuple(32766U, 43688U, std::string("builtin:byte")) &&
+            function.asyncFrameLocals.back() ==
+                std::make_tuple(0U, 43696U, std::string("builtin:long")) &&
+            frameSize == 43704U,
+        "MIR poll frame locals preserve missing layouts, repeats, sibling order, and final size");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4749,6 +4807,10 @@ int main()
     {
         testDeepMirLivePollLocalCollection(tests);
     }
+    else if (focusValue == "mir-poll-frame-local-depth")
+    {
+        testDeepMirPollFrameLocalAppend(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4791,6 +4853,7 @@ int main()
         testDeepMirMoveNextLiveness(tests);
         testDeepMirBorrowSourceCollection(tests);
         testDeepMirLivePollLocalCollection(tests);
+        testDeepMirPollFrameLocalAppend(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

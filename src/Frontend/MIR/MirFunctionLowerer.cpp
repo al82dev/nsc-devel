@@ -485,31 +485,36 @@ bool validateNonLocalBorrowSources(
     return true;
 }
 
-void appendPollFrameLocals(
-    const ProjectOopMirNode* node,
+void appendPollFrameLocalNodes(
+    const ProjectOopMirNode* root,
     const OrdinalSet& liveSet,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-        node->localOrdinal.has_value() && !node->typeKey.empty() &&
-        liveSet.contains(*node->localOrdinal))
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
-        if (layout.has_value())
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            node->localOrdinal.has_value() && !node->typeKey.empty() &&
+            liveSet.contains(*node->localOrdinal))
         {
-            frameSize = alignFrameOffset(frameSize, layout->second);
-            function.asyncFrameLocals.emplace_back(
-                *node->localOrdinal, frameSize, node->typeKey);
-            frameSize += layout->first;
+            const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
+            if (layout.has_value())
+            {
+                frameSize = alignFrameOffset(frameSize, layout->second);
+                function.asyncFrameLocals.emplace_back(
+                    *node->localOrdinal, frameSize, node->typeKey);
+                frameSize += layout->first;
+            }
         }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        appendPollFrameLocals(
-            child.get(), liveSet, objectLayoutModel, nameLookup, function, frameSize);
 }
 
 void appendMoveNextFrameLocals(
@@ -603,7 +608,7 @@ bool buildPollFrame(
     if (!validateNonLocalBorrowSources(
             borrowNonLocalSource, localDefinition, localLastUse, suspendOrders, error))
         return false;
-    appendPollFrameLocals(
+    appendPollFrameLocalNodes(
         function.body.get(), liveSet, objectLayoutModel, nameLookup, function, frameSize);
     appendLiveFrameParameters(
         parameterLastUse, suspendOrders, objectLayoutModel, nameLookup, function, frameSize);
@@ -755,6 +760,18 @@ void ProjectOopMirModel::collectLivePollLocals(
 {
     collectLivePollLocalNodes(
         root, localDefinition, localLastUse, suspendOrders, liveSet);
+}
+
+void ProjectOopMirModel::appendPollFrameLocals(
+    const ProjectOopMirNode* root,
+    const std::unordered_set<std::size_t>& liveSet,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    ProjectOopMirFunction& function,
+    std::uint64_t& frameSize)
+{
+    appendPollFrameLocalNodes(
+        root, liveSet, objectLayoutModel, nameLookup, function, frameSize);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
