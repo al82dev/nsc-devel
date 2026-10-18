@@ -479,6 +479,26 @@ struct ProjectOopHirModelTestAccess final
     {
         return model.lowerNode(node, error);
     }
+
+    static bool importMirLayouts(
+        ProjectOopMirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectOopHirModel& hirModel,
+        std::string& error)
+    {
+        return model.importLayouts(
+            nameLookup, memberModel, objectLayoutModel, hirModel, error);
+    }
+
+    static std::vector<std::string> collectFutureLayoutKeys(
+        const ProjectOopHirNode* root)
+    {
+        std::vector<std::string> keys;
+        ProjectOopMirModel::collectFutureLayoutKeys(root, keys);
+        return keys;
+    }
 };
 }
 
@@ -3842,6 +3862,59 @@ void testMirAggregateSpreadDescriptor(TestContext& tests)
             lowered->immediate == 19U && lowered->secondaryImmediate == 73U,
         "iterative MIR lowering preserves the completed AggregateSpread descriptor override");
 }
+
+void testDeepMirFutureKeyDiscovery(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    auto body = makeDeepMirHirChain(nestingDepth);
+    nativesharp::frontend::ProjectOopHirNode* leaf = body.get();
+    while (!leaf->children.empty() && leaf->children.front() != nullptr)
+        leaf = leaf->children.front().get();
+    body->typeKey = "future:builtin:long";
+    body->elementTypeKey = "future:builtin:long";
+    leaf->typeKey = "future:builtin:int";
+    leaf->argumentTypeKeys.push_back("future:builtin:int");
+    const std::vector<std::string> keys =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::collectFutureLayoutKeys(body.get());
+    tests.expect(keys == std::vector<std::string>{
+            "future:builtin:long", "future:builtin:long",
+            "future:builtin:int", "future:builtin:int"},
+        "future keys preserve preorder and duplicates through 32768 HIR levels");
+    destroyHirTreeIteratively(body);
+}
+
+void testMirFutureLayoutPublication(TestContext& tests)
+{
+    auto body = makeDeepMirHirChain(2U);
+    body->typeKey = "future:builtin:long";
+    body->elementTypeKey = "future:builtin:long";
+    body->children.front()->typeKey = "future:builtin:int";
+    body->children.front()->argumentTypeKeys.push_back("future:builtin:int");
+    ProjectOopHirModel hirModel;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setDumperBody(
+        hirModel, std::move(body));
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    ProjectOopMirModel mirModel;
+    std::string error;
+    const bool imported = nativesharp::frontend::ProjectOopHirModelTestAccess::importMirLayouts(
+        mirModel, nameLookup, memberModel, objectLayoutModel, hirModel, error);
+    const auto layouts = mirModel.structLayouts();
+    tests.expect(imported && error.empty(),
+        "future layouts are published without changing the import contract (" + error + ")");
+    tests.expect(layouts.size() == 2U && layouts[0].typeKey == "future:builtin:int" &&
+            layouts[1].typeKey == "future:builtin:long",
+        "iterative future discovery preserves preorder inputs and deterministic "
+        "sort/deduplication");
+    tests.expect(layouts.size() == 2U && layouts[0].fields.size() == 4U &&
+            layouts[1].fields.size() == 4U && layouts[0].fields[2].typeKey == "builtin:int" &&
+            layouts[1].fields[2].typeKey == "builtin:long",
+        "iterative future discovery preserves the canonical physical result-field layouts");
+    auto retainedBody =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(hirModel);
+    destroyHirTreeIteratively(retainedBody);
+}
 }
 
 int main()
@@ -3979,6 +4052,11 @@ int main()
         testDeepMirNodeLowering(tests);
         testMirAggregateSpreadDescriptor(tests);
     }
+    else if (focusValue == "mir-future-layout-depth")
+    {
+        testDeepMirFutureKeyDiscovery(tests);
+        testMirFutureLayoutPublication(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4007,6 +4085,8 @@ int main()
         testStaticAssertShortCircuitEvaluation(tests);
         testDeepMirNodeLowering(tests);
         testMirAggregateSpreadDescriptor(tests);
+        testDeepMirFutureKeyDiscovery(tests);
+        testMirFutureLayoutPublication(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

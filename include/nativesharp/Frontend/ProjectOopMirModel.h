@@ -966,6 +966,9 @@ private:
         const ProjectObjectLayoutModel& objectLayoutModel,
         const ProjectOopHirModel& hirModel,
         std::string& error);
+    static void collectFutureLayoutKeys(
+        const ProjectOopHirNode* root,
+        std::vector<std::string>& futureKeys);
     bool lowerFunctions(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,

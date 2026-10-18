@@ -26,6 +26,27 @@ std::string sanitizeDispatchName(std::string_view value)
 }
 }
 
+void ProjectOopMirModel::collectFutureLayoutKeys(
+    const ProjectOopHirNode* root,
+    std::vector<std::string>& futureKeys)
+{
+    std::vector<const ProjectOopHirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopHirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (language::futureInnerTypeKey(node->typeKey).has_value())
+            futureKeys.push_back(node->typeKey);
+        if (language::futureInnerTypeKey(node->elementTypeKey).has_value())
+            futureKeys.push_back(node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys)
+            if (language::futureInnerTypeKey(key).has_value()) futureKeys.push_back(key);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
 bool ProjectOopMirModel::importLayouts(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -169,20 +190,12 @@ bool ProjectOopMirModel::importLayouts(
     {
         if (language::futureInnerTypeKey(key).has_value()) futureKeys.emplace_back(key);
     };
-    const auto collectFutureNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
-    {
-        if (node == nullptr) return;
-        collectFutureKey(node->typeKey);
-        collectFutureKey(node->elementTypeKey);
-        for (const std::string& key : node->argumentTypeKeys) collectFutureKey(key);
-        for (const auto& child : node->children) self(self, child.get());
-    };
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectFutureKey(function.returnTypeKey);
         for (const std::string& key : function.parameterTypeKeys) collectFutureKey(key);
         for (const std::string& key : function.captureTypeKeys) collectFutureKey(key);
-        collectFutureNode(collectFutureNode, function.body.get());
+        collectFutureLayoutKeys(function.body.get(), futureKeys);
     }
     std::ranges::sort(futureKeys);
     futureKeys.erase(std::unique(futureKeys.begin(), futureKeys.end()), futureKeys.end());
