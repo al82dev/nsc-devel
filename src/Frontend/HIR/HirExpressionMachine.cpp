@@ -172,6 +172,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         NullConditionalField,
         RangeSlice,
     };
+    enum class BoundCallFrameStage : std::uint8_t
+    {
+        Receiver,
+        Arguments,
+        Ready,
+    };
+    struct BoundCallFrameState final
+    {
+        const MethodCallBinding* binding = nullptr;
+        const MethodExpressionTypeBinding* typeBinding = nullptr;
+        BoundCallTarget target;
+        BoundCallFrameStage stage = BoundCallFrameStage::Ready;
+        std::vector<const ast::AstNode*> argumentSyntaxes;
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
+        std::unique_ptr<ProjectOopHirNode> receiver;
+        std::size_t nextArgument = 0U;
+        bool nullConditional = false;
+        bool materializeReceiverTemporary = false;
+        bool hasOwnedTemporary = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -185,9 +205,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<const ast::AstNode*> operandSyntaxes;
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
-        const MethodCallBinding* operatorCallBinding = nullptr;
-        const MethodCallBinding* propertyGetterBinding = nullptr;
-        const MethodCallBinding* indexerGetterBinding = nullptr;
+        std::optional<BoundCallFrameState> boundCall;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
         BoundCallTarget callTarget;
         const MethodRangeSliceBinding* rangeBinding = nullptr;
@@ -544,15 +562,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 const ClassMemberSymbol& accessor =
                     memberModel_->members()[*getter->selectedMemberOrdinal];
-                const BoundCallTarget target = resolveBoundCallTarget(*getter);
                 const bool nullConditional = syntax->kind() ==
                     ast::AstNodeKind::NullConditionalMemberExpression;
                 const bool addressAllowed = !address ||
                     (!nullConditional && accessor.isReferenceReturn);
                 if (accessor.isPropertyAccessor && !accessor.isIndexerAccessor &&
-                    accessor.isGetter && addressAllowed && target.receiverSyntax != nullptr &&
-                    target.receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
-                    !target.receiverTypeKey.empty())
+                    accessor.isGetter && addressAllowed && getter->receiverSyntax != nullptr &&
+                    getter->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
+                    !getter->receiverTypeKey.empty())
                 {
                     return IterativeExpressionKind::PropertyGetter;
                 }
@@ -664,15 +681,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 const ClassMemberSymbol& accessor =
                     memberModel_->members()[*getter->selectedMemberOrdinal];
-                const BoundCallTarget target = resolveBoundCallTarget(*getter);
                 const bool ordinary = syntax->kind() == ast::AstNodeKind::IndexExpression &&
                     core == nullptr;
                 const bool addressAllowed = !address ||
                     (!nullConditional && accessor.isReferenceReturn);
                 if ((ordinary || nullConditional) && accessor.isIndexerAccessor &&
-                    accessor.isGetter && addressAllowed && target.receiverSyntax != nullptr &&
-                    target.receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
-                    !target.receiverTypeKey.empty())
+                    accessor.isGetter && addressAllowed && getter->receiverSyntax != nullptr &&
+                    getter->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
+                    !getter->receiverTypeKey.empty())
                 {
                     return IterativeExpressionKind::UserIndexerGetter;
                 }
@@ -726,6 +742,142 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     loopBlockActive = true;
             }
             if (loopBlockActive) activeHirCleanupRegions_.resize(rootCleanupDepth);
+        };
+        const auto isBoundCallKind = [](IterativeExpressionKind kind) noexcept
+        {
+            return kind == IterativeExpressionKind::UserUnaryOperator ||
+                kind == IterativeExpressionKind::UserBinaryOperator ||
+                kind == IterativeExpressionKind::UserConversion ||
+                kind == IterativeExpressionKind::PropertyGetter ||
+                kind == IterativeExpressionKind::UserIndexerGetter;
+        };
+        const auto initializeBoundCallFrame = [&](IterativeExpressionFrame& frame,
+                                                   const MethodCallBinding* binding,
+                                                   std::vector<const ast::AstNode*> arguments,
+                                                   bool nullConditional) -> bool
+        {
+            if (binding == nullptr ||
+                binding->resolution != MethodCallResolutionKind::Resolved ||
+                !binding->selectedMemberOrdinal.has_value())
+            {
+                error = "Stage 38 requires a resolved synthetic call binding";
+                return false;
+            }
+            BoundCallFrameState call;
+            call.binding = binding;
+            call.typeBinding = expressionType(frame.syntax);
+            call.target = resolveBoundCallTarget(*binding);
+            call.argumentSyntaxes = std::move(arguments);
+            call.arguments.reserve(call.argumentSyntaxes.size());
+            call.nullConditional = nullConditional;
+            if (binding->staticCall)
+            {
+                call.stage = call.argumentSyntaxes.empty()
+                    ? BoundCallFrameStage::Ready
+                    : BoundCallFrameStage::Arguments;
+                frame.boundCall.emplace(std::move(call));
+                return true;
+            }
+            if (call.target.receiverTypeKey.empty())
+            {
+                error = "Stage 40 receiver has no semantic class/interface/struct type";
+                return false;
+            }
+            const ast::AstNode* receiver = call.target.receiverSyntax;
+            if (receiver != nullptr && receiver->kind() != ast::AstNodeKind::BaseExpression)
+            {
+                call.materializeReceiverTemporary =
+                    isStructValueType(call.target.receiverTypeKey) &&
+                    !isNaturallyAddressable(receiver);
+                call.stage = BoundCallFrameStage::Receiver;
+                frame.boundCall.emplace(std::move(call));
+                return true;
+            }
+            if (currentLambda_ != nullptr)
+            {
+                const std::optional<std::size_t> capture = currentLambdaThisCapture();
+                if (!capture.has_value())
+                {
+                    error = "Stage 43 implicit instance receiver has no captured this";
+                    return false;
+                }
+                call.receiver = makeNode(
+                    isStructValueType(call.target.receiverTypeKey)
+                        ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                        : ProjectOopHirNodeKind::ClosureCaptureValue,
+                    receiver,
+                    std::string(call.target.receiverTypeKey));
+                call.receiver->integerValue = *capture;
+            }
+            else
+            {
+                call.receiver = makeNode(
+                    ProjectOopHirNodeKind::ThisValue,
+                    receiver,
+                    std::string(call.target.receiverTypeKey));
+            }
+            call.stage = call.argumentSyntaxes.empty()
+                ? BoundCallFrameStage::Ready
+                : BoundCallFrameStage::Arguments;
+            frame.boundCall.emplace(std::move(call));
+            return true;
+        };
+        struct BoundCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextBoundCallChild = [&](const BoundCallFrameState& call)
+            -> std::optional<BoundCallChild>
+        {
+            if (call.stage == BoundCallFrameStage::Receiver)
+            {
+                return BoundCallChild{
+                    call.target.receiverSyntax,
+                    isStructValueType(call.target.receiverTypeKey) &&
+                        !call.materializeReceiverTemporary};
+            }
+            if (call.stage != BoundCallFrameStage::Arguments ||
+                call.nextArgument >= call.argumentSyntaxes.size())
+            {
+                return std::nullopt;
+            }
+            const ClassMemberSymbol* target = callableSymbol(call.target.memberOrdinal);
+            const bool address = target != nullptr && target->isUserOperator &&
+                boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument);
+            return BoundCallChild{call.argumentSyntaxes[call.nextArgument], address};
+        };
+        const auto acceptBoundCallChild = [&](BoundCallFrameState& call,
+                                              std::unique_ptr<ProjectOopHirNode> child)
+        {
+            if (call.stage == BoundCallFrameStage::Receiver)
+            {
+                if (call.materializeReceiverTemporary)
+                {
+                    auto temporary = makeNode(
+                        ProjectOopHirNodeKind::TemporaryAddress,
+                        call.target.receiverSyntax,
+                        std::string(call.target.receiverTypeKey));
+                    temporary->elementTypeKey = call.target.receiverTypeKey;
+                    temporary->children.push_back(std::move(child));
+                    child = std::move(temporary);
+                }
+                call.receiver = std::move(child);
+                call.stage = call.argumentSyntaxes.empty()
+                    ? BoundCallFrameStage::Ready
+                    : BoundCallFrameStage::Arguments;
+                return;
+            }
+            const std::size_t index = call.nextArgument++;
+            call.arguments.push_back(prepareBoundCallArgument(
+                *call.binding,
+                call.target.memberOrdinal,
+                index,
+                call.argumentSyntaxes[index],
+                std::move(child),
+                call.hasOwnedTemporary));
+            if (call.nextArgument == call.argumentSyntaxes.size())
+                call.stage = BoundCallFrameStage::Ready;
         };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
@@ -920,38 +1072,55 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
                 else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
                 {
-                    frame.operatorCallBinding = callBinding(current);
-                    const ClassMemberSymbol* target = callableSymbol(
-                        *frame.operatorCallBinding->selectedMemberOrdinal);
-                    frame.operandAddressContext = !target->parameters.empty() &&
-                        target->parameters.front().passKind != ParameterPassKind::Value;
+                    if (!initializeBoundCallFrame(
+                            frame, callBinding(current), {current->first()}, false))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
                 }
                 else if (*currentKind == IterativeExpressionKind::UserBinaryOperator)
                 {
-                    frame.operatorCallBinding = callBinding(current);
-                    frame.callTarget = resolveBoundCallTarget(*frame.operatorCallBinding);
-                    frame.operandSyntaxes = {current->first(), current->second()};
-                    frame.operands.reserve(frame.operandSyntaxes.size());
+                    if (!initializeBoundCallFrame(
+                            frame,
+                            callBinding(current),
+                            {current->first(), current->second()},
+                            false))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
                 }
                 else if (*currentKind == IterativeExpressionKind::UserConversion)
                 {
-                    frame.operatorCallBinding = callBinding(current);
-                    frame.operandSyntaxes = {current->first()};
-                    frame.operands.reserve(1U);
+                    if (!initializeBoundCallFrame(
+                            frame, callBinding(current), {current->first()}, false))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
                 }
                 else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
-                    frame.propertyGetterBinding = accessorGetterBinding(current);
-                    frame.callTarget = resolveBoundCallTarget(*frame.propertyGetterBinding);
-                    frame.materializeReceiverTemporary =
-                        isStructValueType(frame.callTarget.receiverTypeKey) &&
-                        !isNaturallyAddressable(frame.callTarget.receiverSyntax);
                     frame.nullConditionalCall = current->kind() ==
                         ast::AstNodeKind::NullConditionalMemberExpression;
                     const MethodExpressionTypeBinding* receiverFlow =
                         frame.nullConditionalCall ? expressionType(current->first()) : nullptr;
                     frame.flowProvenNonNull = receiverFlow != nullptr &&
                         receiverFlow->flowProvenNonNull;
+                    if (!initializeBoundCallFrame(
+                            frame,
+                            accessorGetterBinding(current),
+                            {},
+                            frame.nullConditionalCall && !frame.flowProvenNonNull))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
@@ -961,11 +1130,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
                 else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
                 {
-                    frame.indexerGetterBinding = callBinding(current);
-                    frame.callTarget = resolveBoundCallTarget(*frame.indexerGetterBinding);
-                    frame.materializeReceiverTemporary =
-                        isStructValueType(frame.callTarget.receiverTypeKey) &&
-                        !isNaturallyAddressable(frame.callTarget.receiverSyntax);
                     const MethodCoreBinding* core = coreBinding(current);
                     frame.nullConditionalCall = core != nullptr &&
                         core->kind == MethodCoreOperationKind::NullConditionalUserIndex;
@@ -978,7 +1142,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     {
                         frame.operandSyntaxes.push_back(current->second());
                     }
-                    frame.operands.reserve(frame.operandSyntaxes.size());
+                    if (!initializeBoundCallFrame(
+                            frame,
+                            callBinding(current),
+                            std::move(frame.operandSyntaxes),
+                            frame.nullConditionalCall))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
                 }
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
                 {
@@ -1360,18 +1533,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->first();
                 else if (*currentKind == IterativeExpressionKind::AwaitExpression)
                     current = current->first();
-                else if (*currentKind == IterativeExpressionKind::PropertyGetter)
-                    current = frames.back().callTarget.receiverSyntax;
-                else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
-                    current = current->first();
-                else if (*currentKind == IterativeExpressionKind::UserBinaryOperator)
-                    current = frames.back().operandSyntaxes.front();
-                else if (*currentKind == IterativeExpressionKind::UserConversion)
-                    current = frames.back().operandSyntaxes.front();
+                else if (isBoundCallKind(*currentKind))
+                {
+                    const std::optional<BoundCallChild> child =
+                        nextBoundCallChild(*frames.back().boundCall);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 bound-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
+                }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
-                else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
-                    current = frames.back().callTarget.receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
                     current = frames.back().operandSyntaxes.front();
                 else if (*currentKind == IterativeExpressionKind::InstanceField)
@@ -1420,34 +1597,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentAddressContext = false;
                     currentInputKind = IterativeInputKind::LoopBlock;
                 }
-                else if (*currentKind == IterativeExpressionKind::PropertyGetter)
+                else if (isBoundCallKind(*currentKind))
                 {
-                    currentAddressContext =
-                        isStructValueType(frames.back().callTarget.receiverTypeKey) &&
-                        !frames.back().materializeReceiverTemporary;
-                }
-                else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
-                {
-                    currentAddressContext = frames.back().operandAddressContext;
-                }
-                else if (*currentKind == IterativeExpressionKind::UserBinaryOperator)
-                {
-                    currentAddressContext = boundCallArgumentNeedsAddress(
-                        frames.back().callTarget.memberOrdinal, 0U);
-                }
-                else if (*currentKind == IterativeExpressionKind::UserConversion)
-                {
-                    currentAddressContext = false;
+                    // The common frame selected both the child and its address context above.
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
                     currentAddressContext = frames.back().operandAddressContext;
-                }
-                else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
-                {
-                    currentAddressContext =
-                        isStructValueType(frames.back().callTarget.receiverTypeKey) &&
-                        !frames.back().materializeReceiverTemporary;
                 }
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
                 {
@@ -1661,53 +1817,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frames.pop_back();
                     continue;
                 }
-                if (frame.kind == IterativeExpressionKind::UserUnaryOperator)
+                if (isBoundCallKind(frame.kind))
                 {
-                    std::vector<const ast::AstNode*> argumentSyntaxes{frame.syntax->first()};
-                    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
-                    arguments.push_back(std::move(lowered));
-                    auto call = lowerBoundCall(
-                        frame.syntax,
-                        frame.memberOrdinal,
-                        frame.addressContext,
-                        error,
-                        expressionType(frame.syntax),
-                        frame.operatorCallBinding,
-                        argumentSyntaxes,
-                        nullptr,
-                        false,
-                        nullptr,
-                        &arguments);
-                    if (call == nullptr)
+                    BoundCallFrameState& boundCall = *frame.boundCall;
+                    acceptBoundCallChild(boundCall, std::move(lowered));
+                    const std::optional<BoundCallChild> child =
+                        nextBoundCallChild(boundCall);
+                    if (child.has_value())
                     {
-                        if (!lastErrorRange_.isValid())
-                            lastErrorRange_ = frame.syntax->range();
-                        lowered.reset();
-                        frames.clear();
-                        break;
-                    }
-                    lowered = std::move(call);
-                    frames.pop_back();
-                    continue;
-                }
-                if (frame.kind == IterativeExpressionKind::UserBinaryOperator)
-                {
-                    const std::size_t argumentIndex = frame.stage;
-                    lowered = prepareBoundCallArgument(
-                        *frame.operatorCallBinding,
-                        frame.callTarget.memberOrdinal,
-                        argumentIndex,
-                        frame.operandSyntaxes[argumentIndex],
-                        std::move(lowered),
-                        frame.hasOwnedTemporary);
-                    frame.operands.push_back(std::move(lowered));
-                    if (argumentIndex == 0U)
-                    {
-                        frame.stage = 1U;
-                        current = frame.operandSyntaxes[1U];
+                        current = child->syntax;
                         currentMemberOrdinal = frame.memberOrdinal;
-                        currentAddressContext = boundCallArgumentNeedsAddress(
-                            frame.callTarget.memberOrdinal, 1U);
+                        currentAddressContext = child->addressContext;
                         descend = true;
                         break;
                     }
@@ -1715,14 +1835,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frame.syntax,
                         frame.addressContext,
                         error,
-                        expressionType(frame.syntax),
-                        *frame.operatorCallBinding,
-                        frame.callTarget,
-                        frame.operandSyntaxes.size(),
-                        false,
-                        nullptr,
-                        std::move(frame.operands),
-                        frame.hasOwnedTemporary);
+                        boundCall.typeBinding,
+                        *boundCall.binding,
+                        boundCall.target,
+                        boundCall.argumentSyntaxes.size(),
+                        boundCall.nullConditional,
+                        std::move(boundCall.receiver),
+                        std::move(boundCall.arguments),
+                        boundCall.hasOwnedTemporary);
+                    const bool accessor =
+                        frame.kind == IterativeExpressionKind::PropertyGetter ||
+                        frame.kind == IterativeExpressionKind::UserIndexerGetter;
+                    if (call != nullptr && accessor &&
+                        !validateNoHeapDirectCall(frame.memberOrdinal, *boundCall.binding, error))
+                    {
+                        call.reset();
+                    }
                     if (call == nullptr)
                     {
                         if (!lastErrorRange_.isValid())
@@ -1731,32 +1859,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frames.clear();
                         break;
                     }
-                    lowered = std::move(call);
-                    frames.pop_back();
-                    continue;
-                }
-                if (frame.kind == IterativeExpressionKind::UserConversion)
-                {
-                    frame.operands.push_back(std::move(lowered));
-                    auto call = lowerBoundCall(
-                        frame.syntax,
-                        frame.memberOrdinal,
-                        frame.addressContext,
-                        error,
-                        expressionType(frame.syntax),
-                        frame.operatorCallBinding,
-                        frame.operandSyntaxes,
-                        nullptr,
-                        false,
-                        nullptr,
-                        &frame.operands);
-                    if (call == nullptr)
+                    if (frame.kind == IterativeExpressionKind::PropertyGetter &&
+                        frame.flowProvenNonNull)
                     {
-                        if (!lastErrorRange_.isValid())
-                            lastErrorRange_ = frame.syntax->range();
-                        lowered.reset();
-                        frames.clear();
-                        break;
+                        call->stringValue = "flow-nonnull";
                     }
                     lowered = std::move(call);
                     frames.pop_back();
@@ -2249,39 +2355,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frames.pop_back();
                     continue;
                 }
-                if (frame.kind == IterativeExpressionKind::PropertyGetter)
-                {
-                    if (frame.materializeReceiverTemporary)
-                    {
-                        auto temporary = makeNode(
-                            ProjectOopHirNodeKind::TemporaryAddress,
-                            frame.callTarget.receiverSyntax,
-                            std::string(frame.callTarget.receiverTypeKey));
-                        temporary->elementTypeKey = frame.callTarget.receiverTypeKey;
-                        temporary->children.push_back(std::move(lowered));
-                        lowered = std::move(temporary);
-                    }
-                    auto getter = lowerPropertyGetterWithReceiver(
-                        frame.syntax,
-                        frame.memberOrdinal,
-                        frame.addressContext,
-                        error,
-                        *frame.propertyGetterBinding,
-                        frame.nullConditionalCall && !frame.flowProvenNonNull,
-                        frame.flowProvenNonNull,
-                        std::move(lowered));
-                    if (getter == nullptr)
-                    {
-                        if (!lastErrorRange_.isValid())
-                            lastErrorRange_ = frame.syntax->range();
-                        lowered.reset();
-                        frames.clear();
-                        break;
-                    }
-                    lowered = std::move(getter);
-                    frames.pop_back();
-                    continue;
-                }
                 if (frame.kind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
                     auto getter = lowerExtensionPropertyGetterWithReceiver(
@@ -2290,65 +2363,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         error,
                         *frame.extensionPropertyBinding,
                         std::move(lowered));
-                    if (getter == nullptr)
-                    {
-                        if (!lastErrorRange_.isValid())
-                            lastErrorRange_ = frame.syntax->range();
-                        lowered.reset();
-                        frames.clear();
-                        break;
-                    }
-                    lowered = std::move(getter);
-                    frames.pop_back();
-                    continue;
-                }
-                if (frame.kind == IterativeExpressionKind::UserIndexerGetter)
-                {
-                    if (frame.stage == 0U)
-                    {
-                        frame.first = std::move(lowered);
-                        if (frame.materializeReceiverTemporary)
-                        {
-                            auto temporary = makeNode(
-                                ProjectOopHirNodeKind::TemporaryAddress,
-                                frame.callTarget.receiverSyntax,
-                                std::string(frame.callTarget.receiverTypeKey));
-                            temporary->elementTypeKey = frame.callTarget.receiverTypeKey;
-                            temporary->children.push_back(std::move(frame.first));
-                            frame.first = std::move(temporary);
-                        }
-                        frame.stage = 1U;
-                        if (!frame.operandSyntaxes.empty())
-                        {
-                            current = frame.operandSyntaxes.front();
-                            currentMemberOrdinal = frame.memberOrdinal;
-                            currentAddressContext = false;
-                            descend = true;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        frame.operands.push_back(std::move(lowered));
-                        if (frame.operands.size() < frame.operandSyntaxes.size())
-                        {
-                            current = frame.operandSyntaxes[frame.operands.size()];
-                            currentMemberOrdinal = frame.memberOrdinal;
-                            currentAddressContext = false;
-                            descend = true;
-                            break;
-                        }
-                    }
-                    auto getter = lowerIndexerGetterWithOperands(
-                        frame.syntax,
-                        frame.memberOrdinal,
-                        frame.addressContext,
-                        error,
-                        *frame.indexerGetterBinding,
-                        frame.operandSyntaxes,
-                        frame.nullConditionalCall,
-                        std::move(frame.first),
-                        std::move(frame.operands));
                     if (getter == nullptr)
                     {
                         if (!lastErrorRange_.isValid())

@@ -2588,6 +2588,7 @@ void testDeepUserUnaryOperatorLowering(
 struct UserBinaryOperatorTarget final
 {
     std::size_t operatorOrdinal = 0;
+    std::size_t getterOrdinal = 0;
     std::size_t callerOrdinal = 0;
     std::string nodeType;
 };
@@ -2605,6 +2606,7 @@ namespace Deep {
 public struct Node {
     public int Value;
     public Node(int value) { Value = value; }
+    public int Current { get { return Value; } }
     public static Node operator +(Node left, Node right) {
         return new Node(left.Value + right.Value);
     }
@@ -2618,6 +2620,7 @@ public struct Node {
         return false;
     }
     bool foundOperator = false;
+    bool foundGetter = false;
     bool foundCaller = false;
     const auto& members = compilation.memberModel()->members();
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
@@ -2631,13 +2634,19 @@ public struct Node {
             output.nodeType = member.declaredTypeKey;
             foundOperator = true;
         }
+        if (member.isPropertyAccessor && !member.isIndexerAccessor && member.isGetter &&
+            member.associatedName == "Current")
+        {
+            output.getterOrdinal = ordinal;
+            foundGetter = true;
+        }
         if (!member.isUserOperator && member.name == "Run")
         {
             output.callerOrdinal = ordinal;
             foundCaller = true;
         }
     }
-    return foundOperator && foundCaller && !output.nodeType.empty();
+    return foundOperator && foundGetter && foundCaller && !output.nodeType.empty();
 }
 
 struct DeepUserBinaryOperatorSyntax final
@@ -2756,6 +2765,8 @@ void testUserBinaryArgumentPreparation(
 {
     auto& operatorMember = const_cast<nativesharp::frontend::ClassMemberSymbol&>(
         compilation.memberModel()->members()[target.operatorOrdinal]);
+    const auto firstPassKind = operatorMember.parameters[0].passKind;
+    const auto secondPassKind = operatorMember.parameters[1].passKind;
     operatorMember.parameters[0].passKind = nativesharp::frontend::ParameterPassKind::In;
     operatorMember.parameters[1].passKind = nativesharp::frontend::ParameterPassKind::In;
     DeepUserBinaryOperatorSyntax shallow = makeDeepUserBinaryOperatorSyntax(1U, target);
@@ -2784,6 +2795,111 @@ void testUserBinaryArgumentPreparation(
     tests.expect(lowered != nullptr && error.empty() &&
         userBinaryPreparationMatches(lowered.get(), target),
         "binary operands apply In address context, conversion, and borrow immediately in order");
+    destroyHirTreeIteratively(lowered);
+    operatorMember.parameters[0].passKind = firstPassKind;
+    operatorMember.parameters[1].passKind = secondPassKind;
+}
+
+bool boundCallDefaultFollowsExplicitArguments(const ProjectOopHirNode* node)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    return node != nullptr && node->kind == HirKind::StaticCall &&
+        node->children.size() == 3U &&
+        node->children[0]->kind == HirKind::PointerLoad &&
+        node->children[1]->kind == HirKind::PointerLoad &&
+        node->children[2]->kind == HirKind::IntegerConstant &&
+        node->children[2]->integerValue == 29U;
+}
+
+void testBoundCallDefaultArgument(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const UserBinaryOperatorTarget& target,
+    const nativesharp::frontend::MethodExpressionTypeBinding& type)
+{
+    auto& operatorMember = const_cast<nativesharp::frontend::ClassMemberSymbol&>(
+        compilation.memberModel()->members()[target.operatorOrdinal]);
+    nativesharp::frontend::MethodParameterSymbol parameter;
+    parameter.name = "defaulted";
+    parameter.typeKey = "builtin:int";
+    operatorMember.parameters.push_back(std::move(parameter));
+    DeepUserBinaryOperatorSyntax fixture = makeDeepUserBinaryOperatorSyntax(1U, target);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(29U);
+    fixture.calls.front().selectedDefaultArguments.push_back(fixture.nodes.back().get());
+    std::string error;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUserBinaryOperatorExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(), target.callerOrdinal,
+            fixture.root, fixture.nodes, fixture.calls, {}, type, error);
+    tests.expect(lowered != nullptr && error.empty() &&
+            boundCallDefaultFollowsExplicitArguments(lowered.get()),
+        "bound-call frames append a default literal after both explicit arguments");
+    destroyHirTreeIteratively(lowered);
+    operatorMember.parameters.pop_back();
+}
+
+bool boundCallStructTemporaryMatches(const ProjectOopHirNode* node)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    const bool outerShape = node != nullptr && node->kind == HirKind::InstanceCall &&
+        node->children.size() == 1U && node->children.front() != nullptr &&
+        node->children.front()->kind == HirKind::TemporaryAddress &&
+        node->children.front()->children.size() == 1U &&
+        node->children.front()->children.front()->kind == HirKind::StaticCall;
+    std::size_t temporaryCount = 0U;
+    std::vector<const ProjectOopHirNode*> pending;
+    if (node != nullptr) pending.push_back(node);
+    while (!pending.empty())
+    {
+        const ProjectOopHirNode* current = pending.back();
+        pending.pop_back();
+        if (current->kind == HirKind::TemporaryAddress) ++temporaryCount;
+        for (const auto& child : current->children)
+            if (child != nullptr) pending.push_back(child.get());
+    }
+    return outerShape && temporaryCount == 1U;
+}
+
+void testBoundCallStructTemporary(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const UserBinaryOperatorTarget& target)
+{
+    DeepUserBinaryOperatorSyntax fixture = makeDeepUserBinaryOperatorSyntax(1U, target);
+    nativesharp::ast::AstNode* receiver = fixture.nodes.back().get();
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::MemberExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setFirst(receiver);
+    fixture.root = fixture.nodes.back().get();
+    fixture.calls.emplace_back();
+    nativesharp::frontend::MethodCallBinding& getter = fixture.calls.back();
+    getter.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+    getter.syntax = fixture.root;
+    getter.receiverSyntax = receiver;
+    getter.receiverTypeKey = target.nodeType;
+    getter.selectedMemberOrdinal = target.getterOrdinal;
+    getter.resultTypeKey = "builtin:int";
+    std::vector<nativesharp::frontend::MethodExpressionTypeBinding> types(
+        fixture.nodes.size());
+    for (std::size_t index = 0; index < types.size(); ++index)
+    {
+        types[index].typeKey = fixture.nodes[index].get() == fixture.root
+            ? "builtin:int" : target.nodeType;
+    }
+    std::string error;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUserConversionExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(), target.callerOrdinal,
+            fixture.root, fixture.nodes, fixture.calls, {}, types, false, error);
+    tests.expect(lowered != nullptr && error.empty() &&
+            boundCallStructTemporaryMatches(lowered.get()),
+        "bound-call frames materialize one struct receiver temporary before an instance getter");
     destroyHirTreeIteratively(lowered);
 }
 
@@ -2818,6 +2934,8 @@ void testDeepUserBinaryOperatorLowering(
     destroyHirTreeIteratively(lowered);
 
     testUserBinaryArgumentPreparation(tests, compilation, target, type);
+    testBoundCallDefaultArgument(tests, compilation, target, type);
+    testBoundCallStructTemporary(tests, compilation, target);
 }
 
 struct EventSubscriptionTargets final
@@ -3834,6 +3952,14 @@ void testDeepUserConversionLowering(
     destroyHirTreeIteratively(lowered);
     testUserConversionArgumentContracts(tests, compilation, targets);
     testUserConversionReferenceResult(tests, compilation, targets);
+}
+
+void testBoundCallFrameLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    testDeepUserBinaryOperatorLowering(tests, root);
+    testDeepUserConversionLowering(tests, root);
 }
 
 void testDeepClassFieldExpressionLowering(TestContext& tests)
@@ -7828,6 +7954,10 @@ int main()
     {
         testDeepUserConversionLowering(tests, root);
     }
+    else if (focusValue == "hir-bound-call-frame-depth")
+    {
+        testBoundCallFrameLowering(tests, root);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -8026,7 +8156,7 @@ int main()
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepUserUnaryOperatorLowering(tests, root);
-        testDeepUserBinaryOperatorLowering(tests, root);
+        testBoundCallFrameLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
