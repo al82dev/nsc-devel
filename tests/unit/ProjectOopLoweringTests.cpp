@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "../../src/Frontend/HIR/HirLoweringSupport.h"
+#include "../../src/Frontend/MIR/MirConstantEvaluator.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -3967,6 +3968,30 @@ void testDeepMirIteratorLayoutDiscovery(TestContext& tests)
         nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(hirModel);
     destroyHirTreeIteratively(retainedBody);
 }
+
+void testDeepMirStringConstantEvaluation(TestContext& tests)
+{
+    using Node = nativesharp::frontend::ProjectOopHirNode;
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    auto expression = std::make_unique<Node>();
+    expression->kind = Kind::StringLiteral;
+    expression->typeKey = "builtin:string";
+    expression->stringValue = "deep-string";
+    for (std::size_t depth = 0; depth < nestingDepth; ++depth)
+    {
+        auto conversion = std::make_unique<Node>();
+        conversion->kind = Kind::Conversion;
+        conversion->typeKey = "builtin:string";
+        conversion->children.push_back(std::move(expression));
+        expression = std::move(conversion);
+    }
+    const std::optional<std::string> value =
+        nativesharp::frontend::MirConstantEvaluator::stringValue(expression.get(), {});
+    tests.expect(value.has_value() && *value == "deep-string",
+        "MIR string constant evaluation preserves 32768 conversions without stack recursion");
+    destroyHirTreeIteratively(expression);
+}
 }
 
 int main()
@@ -4113,6 +4138,10 @@ int main()
     {
         testDeepMirIteratorLayoutDiscovery(tests);
     }
+    else if (focusValue == "mir-string-constant-depth")
+    {
+        testDeepMirStringConstantEvaluation(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4144,6 +4173,7 @@ int main()
         testDeepMirFutureKeyDiscovery(tests);
         testMirFutureLayoutPublication(tests);
         testDeepMirIteratorLayoutDiscovery(tests);
+        testDeepMirStringConstantEvaluation(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

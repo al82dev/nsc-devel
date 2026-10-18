@@ -311,18 +311,22 @@ std::optional<std::string> MirConstantEvaluator::stringValue(
     const ProjectOopHirNode* node,
     const std::vector<ProjectOopMirStaticField>& knownFields)
 {
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::StringLiteral) return node->stringValue;
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+    while (node != nullptr)
     {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        return field != nullptr && field->typeKey == "builtin:string"
-            ? std::optional<std::string>(field->constantStringValue)
-            : std::nullopt;
+        if (node->kind == ProjectOopHirNodeKind::StringLiteral) return node->stringValue;
+        if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+        {
+            const ProjectOopMirStaticField* field =
+                knownStaticField(*node->memberOrdinal, knownFields);
+            return field != nullptr && field->typeKey == "builtin:string"
+                ? std::optional<std::string>(field->constantStringValue)
+                : std::nullopt;
+        }
+        if (node->kind != ProjectOopHirNodeKind::Conversion ||
+            node->typeKey != "builtin:string" || node->children.empty())
+            return std::nullopt;
+        node = node->children.front().get();
     }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && node->typeKey == "builtin:string" &&
-        !node->children.empty())
-        return stringValue(node->children.front().get(), knownFields);
     return std::nullopt;
 }
 
