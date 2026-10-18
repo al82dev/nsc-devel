@@ -216,7 +216,7 @@ void testMemberFlagsAndStaticAbi(TestContext& tests, const std::filesystem::path
             std::string::npos,
         "MIR dumper exposes the static method ABI explicitly");
     tests.expect(mirDump.find("readonly=true volatile=false const=false") != std::string::npos &&
-            mirDump.find("const=true constant=true value=5") != std::string::npos,
+            mirDump.find("const=true imported=false constant=true value=5") != std::string::npos,
         "MIR dump exposes readonly, volatile, and compile-time const storage facts");
 }
 
