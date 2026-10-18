@@ -11844,14 +11844,29 @@ private:
                     LLVMValueRef receiver = values.back();
                     values.pop_back();
                     if (receiver == nullptr) { values.push_back(nullptr); continue; }
-                    frames.push_back({current, 2, receiver, 0});
+                    LLVMTypeRef resultType = nullptr;
+                    LLVMBasicBlockRef nullBlock = nullptr;
+                    LLVMBasicBlockRef endBlock = nullptr;
+                    if (!prepareNullConditionalArrayLoad(
+                            current, receiver, error, resultType, nullBlock, endBlock))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                    frames.push_back({
+                        current, 2, receiver, 0, {}, nullptr, resultType, nullBlock, endBlock});
                     frames.push_back({current->children[1].get(), 0, nullptr});
                     continue;
                 }
-                LLVMValueRef index = values.back();
+                LLVMValueRef rawIndex = values.back();
                 values.pop_back();
+                if (rawIndex == nullptr) { values.push_back(nullptr); continue; }
+                LLVMValueRef index = normalizeNativeIndexFromValue(
+                    current->children[1].get(), rawIndex, error);
                 if (index == nullptr) { values.push_back(nullptr); continue; }
-                values.push_back(lowerNullConditionalArrayLoad(current, error, frame.lhs, index));
+                values.push_back(finishNullConditionalArrayLoad(
+                    current, frame.lhs, index, frame.resultType,
+                    frame.nullBlock, frame.endBlock, error));
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::NullConditionalFieldStore)
@@ -19342,39 +19357,39 @@ private:
         return phi;
     }
 
-    LLVMValueRef lowerNullConditionalArrayLoad(
+    bool prepareNullConditionalArrayLoad(
         const frontend::ProjectOopMirNode* node,
+        LLVMValueRef receiver,
         std::string& error,
-        LLVMValueRef receiverOverride = nullptr,
-        LLVMValueRef indexOverride = nullptr)
+        LLVMTypeRef& resultType,
+        LLVMBasicBlockRef& nullBlock,
+        LLVMBasicBlockRef& endBlock)
     {
         if (node->children.size() != 2)
-            return failValue(error, "null-conditional array load MIR requires receiver and index (got " +
-                std::to_string(node->children.size()) + ")");
-        LLVMValueRef receiver = receiverOverride != nullptr
-            ? receiverOverride
-            : lowerExpression(node->children[0].get(), error);
-        if (receiver == nullptr) return nullptr;
+        {
+            error = "null-conditional array load MIR requires receiver and index (got " +
+                std::to_string(node->children.size()) + ")";
+            return false;
+        }
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-        LLVMTypeRef resultType = llvmType(node->typeKey, error);
-        if (resultType == nullptr) return nullptr;
+        resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return false;
         LLVMValueRef hasReceiver = LLVMBuildICmp(
             builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
-        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
+        nullBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index");
-        LLVMBasicBlockRef endBlock = appendBlock("nullcond.index.end");
+        endBlock = appendBlock("nullcond.index.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
-
         LLVMPositionBuilderAtEnd(builder_, valueBlock);
-        LLVMValueRef index = indexOverride != nullptr
-            ? normalizeNativeIndexFromValue(node->children[1].get(), indexOverride, error)
-            : normalizeNativeIndex(node->children[1].get(), error);
-        if (index == nullptr) return nullptr;
-        if (terminated())
-        {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
-            return LLVMConstNull(resultType);
-        }
+        return true;
+    }
+
+    LLVMValueRef nullConditionalArrayLoadAddress(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef receiver,
+        LLVMValueRef index,
+        std::string& error)
+    {
         LLVMValueRef length = LLVMBuildLoad2(
             builder_, LLVMInt64TypeInContext(context_), receiver, "nullcond.index.length");
         LLVMValueRef inRange = LLVMBuildICmp(
@@ -19388,20 +19403,36 @@ private:
         }
         if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "nullcond.index", error))
             return nullptr;
-        const std::uint64_t elementSize = node->immediate;
-        const std::uint64_t elementAlignment = node->alignment;
         const std::uint64_t dataOffset =
-            (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+            (8U + node->alignment - 1U) / node->alignment * node->alignment;
         LLVMValueRef scaled = LLVMBuildMul(
-            builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+            builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
             "nullcond.index.scaled");
         LLVMValueRef offset = LLVMBuildAdd(
             builder_, scaled, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
             "nullcond.index.offset");
         LLVMValueRef indices[] = {offset};
-        LLVMValueRef address = LLVMBuildGEP2(
+        return LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.index.addr");
+    }
+
+    LLVMValueRef finishNullConditionalArrayLoad(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef receiver,
+        LLVMValueRef index,
+        LLVMTypeRef resultType,
+        LLVMBasicBlockRef nullBlock,
+        LLVMBasicBlockRef endBlock,
+        std::string& error)
+    {
+        if (terminated())
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return LLVMConstNull(resultType);
+        }
+        LLVMValueRef address = nullConditionalArrayLoadAddress(node, receiver, index, error);
+        if (address == nullptr) return nullptr;
         LLVMValueRef element = LLVMBuildLoad2(
             builder_, resultType, address, "nullcond.index.element");
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
