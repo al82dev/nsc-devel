@@ -121,21 +121,47 @@ Se midieron 32 funciones en la nueva unidad:
 - Builder 3 configura el CMake raíz para producto y el CMake de compiler-suite para la suite; no mantiene
   un inventario paralelo de fuentes frontend.
 
-## Validación diferida
+## Corrección focal posterior a la extracción
 
-`VALIDACIÓN DINÁMICA DIFERIDA A LA TANDA INTEGRAL`.
+El primer build externo detectó siete fallos mecánicos en la nueva frontera: cinco parámetros
+`error` no usados en `lowerGroup05/07/08/09/11`, y dos accesos a `structLayouts_` que requerían el
+receptor `model_` en `FutureFieldAddress` y `AwaitFuture`. El commit `0b499ef21` corrigió sólo
+esas siete expresiones, sin alterar declaraciones, llamadas, ramas ni algoritmos.
 
-No se ejecutaron compilación, pruebas, configure, baseline ni producto. Por tanto, este expediente afirma
-sólo cierre estático. Build, regresión funcional, identidad de artefactos y rendimiento permanecen
-**NO VERIFICADOS** hasta la corrida integral indicada por el usuario.
+## Validación focal ejecutada
+
+La validación focal se ejecutó el 18 de octubre de 2026 con `TEMP` y `TMP` en `A:\temp`, sin
+baseline ni suite completa:
+
+| Gate | Resultado | Duración | Evidencia |
+|---|---:|---:|---|
+| Build productivo `nsc` | PASS, exit 0 | 15.5 s | `A:\temp\m01cd-build-nsc.log` |
+| Build de seis targets MIR | PASS, exit 0 | 46.7 s | `A:\temp\m01cd-build-unit-targets.log` |
+| Cinco CTest MIR dedicados | PASS 5/5 | 0.64 s acumulados | `A:\temp\m01cd-ctest-mir-focused.log` |
+| Build `nsc_component_tests` | PASS, exit 0 | 14.1 s | `A:\temp\m01cd-build-component-runner.log` |
+| Project OOP completo | PASS 157/157, exit 0 | 5.951 s | `A:\temp\m01cd-project-oop-lowering-with-nslink.log` |
+| TL-LANG-377, 378 y 438 O0 | PASS 3/3 | 0.785/0.566/0.551 s | `A:\temp\m01cd-tl-lang-*.log` |
+
+Los cinco CTest dedicados cubren CFG excepcional, layout/ABI, ownership/cleanup, exception flow y
+generics/interfaces. Los tres casos O0 ejercen de forma dirigida las rutas async/future que pasan
+por `FutureFieldAddress` y `AwaitFuture`, incluidas variantes local e intermodular.
+
+`nsc.project-oop-lowering` se repitió una sola vez después de corregir el fixture H02S13B, con
+`NSC_LINKER=A:\nslink-devel\bin\release\nslink.exe`. Ese NSLink ya existía; no se construyó ni
+modificó. Las 157 comprobaciones pasaron y el proceso terminó con código cero.
+
+No se ejecutaron baseline, batería completa, deploy, instalación, identidad de artefactos ni
+medición de rendimiento.
 
 ## Estado
 
 - Movimiento y descomposición estática: listos.
 - Paridad de inventarios y orden: aprobada.
 - Funciones mayores de 60 líneas ejecutables: cero.
-- Infraestructura producto/suite: completa por inspección estática.
-- Índice Git: debe permanecer vacío hasta la integración aislada.
-- Commit: no creado por instrucción vigente.
+- Infraestructura producto/suite: completa por inspección y build focal.
+- Build: PASS en producto, seis targets MIR y runner compiler-suite.
+- Pruebas focales M01: cinco CTest MIR dedicados y tres casos O0 PASS.
+- Prueba amplia `nsc.project-oop-lowering`: PASS 157/157, exit 0.
+- Commits: extracción `b9e0c8ab5`; corrección focal de build `0b499ef21`.
 
-`M01D LISTO PARA INTEGRACIÓN ESTÁTICA; VALIDACIÓN DINÁMICA DIFERIDA`.
+`M01D INTEGRADO; BUILD Y COBERTURA FOCAL M01 APROBADOS`.

@@ -168,13 +168,29 @@ campos estáticos, caché o la máquina de nodos.
   ejecutar pruebas o scripts de validación.
 - M01C no agrega pruebas, fixtures ni targets, por lo que no existe otra alta de infraestructura aplicable.
 
-## Validación
+## Validación focal ejecutada
 
-`VALIDACIÓN DIFERIDA A LA TANDA INTEGRAL`.
+La validación focal se ejecutó el 18 de octubre de 2026 con `TEMP` y `TMP` en `A:\temp`, sin
+baseline ni suite completa:
 
-No se ejecutaron compilación ni pruebas por instrucción vigente del usuario. Por tanto, M01C sólo puede
-afirmar cierre estático del movimiento. Build, regresión funcional, equivalencia de artefactos y rendimiento
-permanecen **NO VERIFICADOS** hasta la tanda integral ejecutada por el usuario.
+| Gate | Resultado | Duración | Evidencia |
+|---|---:|---:|---|
+| Build productivo `nsc` | PASS, exit 0 | 15.5 s | `A:\temp\m01cd-build-nsc.log` |
+| Build de seis targets MIR | PASS, exit 0 | 46.7 s | `A:\temp\m01cd-build-unit-targets.log` |
+| Cinco CTest MIR dedicados | PASS 5/5 | 0.64 s acumulados | `A:\temp\m01cd-ctest-mir-focused.log` |
+| Build `nsc_component_tests` | PASS, exit 0 | 14.1 s | `A:\temp\m01cd-build-component-runner.log` |
+| Project OOP completo | PASS 157/157, exit 0 | 5.951 s | `A:\temp\m01cd-project-oop-lowering-with-nslink.log` |
+| TL-LANG-377, 378 y 438 O0 | PASS 3/3 | 0.785/0.566/0.551 s | `A:\temp\m01cd-tl-lang-*.log` |
+
+Los cinco CTest dedicados fueron `nsc.stage45.mir-exceptional-cfg` y los casos MIR Item395 a
+Item398. Los tres casos compiler-suite construyen y ejecutan futuros O0, incluidas rutas async,
+future local e intermodular.
+
+El ejecutable completo `nsc.project-oop-lowering` se repitió una sola vez después de corregir el
+fixture H02S13B, con `NSC_LINKER=A:\nslink-devel\bin\release\nslink.exe`. Ese NSLink ya existía;
+no se construyó ni modificó. Las 157 comprobaciones pasaron y el proceso terminó con código cero.
+
+No se ejecutaron baseline, batería completa, deploy, instalación ni medición de rendimiento.
 
 ## Estado final
 
@@ -182,9 +198,10 @@ permanecen **NO VERIFICADOS** hasta la tanda integral ejecutada por el usuario.
 - Funciones nuevas/modificadas por encima de 60 ejecutables: cero.
 - Auditoría manual de referencias de build: aprobada; una referencia en producto y una en suite.
 - Índice de Git: vacío; no se prepararon archivos concurrentes.
-- Compilación: no ejecutada.
-- Pruebas: no ejecutadas.
+- Compilación: PASS en producto, seis targets MIR y runner compiler-suite.
+- Pruebas focales M01: cinco CTest MIR dedicados y tres casos O0 PASS.
+- Prueba amplia `nsc.project-oop-lowering`: PASS 157/157, exit 0.
 - Equivalencia de artefactos: no ejecutada.
 - Rendimiento: no medido.
 
-`CIERRE ESTÁTICO COMPLETO; VALIDACIÓN DE BUILD PENDIENTE DEL USUARIO`.
+`CIERRE ESTÁTICO COMPLETO; BUILD Y COBERTURA FOCAL M01 APROBADOS`.
