@@ -4851,6 +4851,27 @@ void testDeepMirDumper(TestContext& tests)
         "an 8192-level MIR tree emits the proportional full text in exact preorder");
     destroyMirTreeIteratively(std::move(dumpRoot));
 }
+
+void testDeepMirNodeDestruction(TestContext& tests)
+{
+    constexpr std::size_t depth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root = makeDeepMirBlockTree(depth);
+    root.reset();
+    tests.expect(root == nullptr,
+        "a directly owned 32768-level MIR tree is destroyed without process recursion");
+
+    nativesharp::frontend::ProjectOopMirFunction function;
+    function.body = makeDeepMirBlockTree(depth);
+    function.body.reset();
+    tests.expect(function.body == nullptr,
+        "a function body destroys its 32768-level MIR ownership tree iteratively");
+
+    nativesharp::frontend::ProjectOopMirFieldInitializer initializer;
+    initializer.value = makeDeepMirBlockTree(depth);
+    initializer.value.reset();
+    tests.expect(initializer.value == nullptr,
+        "a field initializer destroys its 32768-level MIR ownership tree iteratively");
+}
 }
 
 int main()
@@ -5057,6 +5078,10 @@ int main()
     {
         testMirDumperFormat(tests);
         testDeepMirDumper(tests);
+    }
+    else if (focusValue == "mir-node-destruction-depth")
+    {
+        testDeepMirNodeDestruction(tests);
     }
     else
     {

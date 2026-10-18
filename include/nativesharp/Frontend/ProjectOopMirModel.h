@@ -435,6 +435,8 @@ enum class ProjectOopMirNodeKind
 
 struct ProjectOopMirNode final
 {
+    ~ProjectOopMirNode() noexcept;
+
     ProjectOopMirNodeKind kind = ProjectOopMirNodeKind::Block;
     const ast::AstNode* syntax = nullptr;
     std::string typeKey;
