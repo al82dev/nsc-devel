@@ -1246,6 +1246,7 @@ private:
     class PatternIterationParser;
     class PatternAlternativeExpander;
     class PatternConditionBuilder;
+    class PatternLoweringMachine;
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>
@@ -1262,47 +1263,6 @@ private:
     ast::AstNode* makePatternCondition(
         const Pattern& pattern,
         const PatternExpressionFactory& source);
-    ast::AstNode* lowerBindingPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        bool emitBindings);
-    ast::AstNode* lowerOrPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
-    ast::AstNode* lowerTuplePattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
-    ast::AstNode* lowerStructPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
-    ast::AstNode* lowerListPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
-    ast::AstNode* lowerPositionalPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
-    ast::AstNode* lowerVariantPattern(
-        const Pattern& pattern,
-        const PatternExpressionFactory& source,
-        ast::AstNode* continuation,
-        std::string_view temporaryPrefix,
-        bool emitBindings);
     ast::AstNode* lowerPattern(
         const Pattern& pattern,
         const PatternExpressionFactory& source,

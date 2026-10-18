@@ -281,6 +281,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerParserPatternIterationCounterfactualModule(registry);
         nsc::suite::registerParserPatternTraversalCounterfactualModule(registry);
         nsc::suite::registerParserPatternConditionCounterfactualModule(registry);
+        nsc::suite::registerParserPatternLoweringCounterfactualModule(registry);
         nsc::suite::registerSemaConstantConversionModule(registry);
         nsc::suite::registerSemaEffectsExpressionModule(registry);
         nsc::suite::registerSemaScopeSymbolModule(registry);
