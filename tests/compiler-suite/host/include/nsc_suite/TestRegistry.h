@@ -202,6 +202,7 @@ void registerParserInterpolationFinalModule(TestRegistry& registry);
 void registerParserConstructionCloneFinalModule(TestRegistry& registry);
 void registerParserStateRobustnessFinalModule(TestRegistry& registry);
 void registerParserTypeIterationCounterfactualModule(TestRegistry& registry);
+void registerParserPatternIterationCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

@@ -1243,21 +1243,16 @@ private:
         ast::AstNode* increment = nullptr;
     };
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
+    class PatternIterationParser;
     Pattern parsePattern(bool implicitBinding);
-    Pattern parseAndPattern(bool implicitBinding);
-    Pattern parsePatternPrimary(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>
         parseSignedPatternIntegerLiteral();
-    Pattern parseListPattern(std::size_t patternBegin);
     Pattern parseBindingPattern(std::size_t patternBegin);
     Pattern parseRelationalPattern(std::size_t patternBegin);
     Pattern parseLiteralOrRangePattern(
         std::size_t patternBegin,
         SourceRange start);
-    Pattern parseParenthesizedPattern(std::size_t patternBegin);
-    void parseStructPatternBody(Pattern& pattern);
-    Pattern parseNamedPattern(std::size_t patternBegin, bool implicitBinding);
     bool patternHasBindings(const Pattern& pattern) const;
     std::vector<Pattern> expandPatternAlternatives(const Pattern& pattern) const;
     ast::AstNode* makeBooleanLiteral(const SourceRange& range, bool value);
