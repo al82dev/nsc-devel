@@ -961,6 +961,32 @@ private:
         const ProjectObjectLayoutModel& objectLayoutModel,
         const ProjectOopHirModel& hirModel,
         std::string& error);
+    bool lowerFunctions(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectVirtualDispatchModel& virtualDispatchModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectDestructionModel& destructionModel,
+        const ProjectOopHirModel& hirModel,
+        std::string& error,
+        std::size_t workerCount);
+    ProjectOopMirFunction lowerOneFunction(
+        const ProjectOopHirFunction& source,
+        const ProjectNameLookup& nameLookup,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        std::span<const ProjectOopMirStructLayout> functionLayouts,
+        language::PanicProfile panicProfile,
+        std::string& error);
+    void configureFunctionLowerer(
+        ProjectOopMirModel& lowerer,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectVirtualDispatchModel& virtualDispatchModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectDestructionModel& destructionModel,
+        const ProjectOopHirModel& hirModel) const;
 
     // C2.1 "fixed arrays": size/alignment of one array element, for both the managed
     // (length-prefixed, heap) and the raw (inline storage / raw pointer) element paths -- one
