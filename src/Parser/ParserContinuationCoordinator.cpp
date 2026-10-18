@@ -64,7 +64,16 @@ private:
         FinishForExpression,
         FinishForeachCollection,
         FinishForeachProbe,
-        FinishForeachBody
+        FinishForeachBody,
+        Try,
+        ContinueTry,
+        FinishTryBlock,
+        FinishTryCatchFilter,
+        FinishTryCatchBlock,
+        FinishTryFinallyBlock,
+        CatchClause,
+        FinishStandaloneCatchFilter,
+        FinishStandaloneCatchBlock
     };
 
     enum class StatementKind : std::uint8_t
@@ -87,7 +96,8 @@ private:
         While,
         DoWhile,
         For,
-        Foreach
+        Foreach,
+        Try
     };
 
     struct ResultSlot final
@@ -168,6 +178,23 @@ private:
         std::size_t resultSlot = 0;
         std::size_t collectionStart = 0;
         std::size_t collectionEnd = 0;
+    };
+
+    struct TryFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        std::size_t pendingCatchBeginIndex = 0;
+        ast::AstNode* node = nullptr;
+        ast::AstNode* pendingCatch = nullptr;
+        bool hasFinally = false;
+    };
+
+    struct CatchFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::AstNode* clause = nullptr;
     };
 
     struct Work final
@@ -272,6 +299,21 @@ private:
     void finishForeachCollection(const Work& work);
     void finishForeachProbe(const Work& work);
     void finishForeachBody(const Work& work);
+    ast::AstNode* parseCatchHeader(std::size_t beginIndex);
+    void startTry(const Work& work);
+    void continueTry(const Work& work);
+    void finishTryBlock(const Work& work);
+    void finishTryCatchFilter(const Work& work);
+    void scheduleTryCatchBody(std::size_t frameIndex);
+    void finishTryCatchBlock(const Work& work);
+    void attachPendingCatch(TryFrame& frame, ast::AstNode* body);
+    void scheduleTryFinally(std::size_t frameIndex);
+    void finishTryFinallyBlock(const Work& work);
+    void completeTry(TryFrame& frame);
+    void startStandaloneCatch(const Work& work);
+    void finishStandaloneCatchFilter(const Work& work);
+    void scheduleStandaloneCatchBody(std::size_t frameIndex);
+    void finishStandaloneCatchBlock(const Work& work);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -285,6 +327,8 @@ private:
     std::deque<ForFrame> forFrames_;
     std::deque<ForExpressionFrame> forExpressionFrames_;
     std::deque<ForeachFrame> foreachFrames_;
+    std::deque<TryFrame> tryFrames_;
+    std::deque<CatchFrame> catchFrames_;
     std::vector<Work> work_;
 };
 
@@ -317,6 +361,7 @@ std::size_t Parser::ParseContinuationCoordinator::request(ContinuationRequestKin
     WorkKind workKind = WorkKind::Expression;
     if (kind == ContinuationRequestKind::Block) workKind = WorkKind::Block;
     else if (kind == ContinuationRequestKind::Statement) workKind = WorkKind::Statement;
+    else if (kind == ContinuationRequestKind::CatchClause) workKind = WorkKind::CatchClause;
     work_.push_back({workKind, resultSlot});
     return resultSlot;
 }
@@ -383,6 +428,15 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishForeachCollection: finishForeachCollection(work); return;
     case WorkKind::FinishForeachProbe: finishForeachProbe(work); return;
     case WorkKind::FinishForeachBody: finishForeachBody(work); return;
+    case WorkKind::Try: startTry(work); return;
+    case WorkKind::ContinueTry: continueTry(work); return;
+    case WorkKind::FinishTryBlock: finishTryBlock(work); return;
+    case WorkKind::FinishTryCatchFilter: finishTryCatchFilter(work); return;
+    case WorkKind::FinishTryCatchBlock: finishTryCatchBlock(work); return;
+    case WorkKind::FinishTryFinallyBlock: finishTryFinallyBlock(work); return;
+    case WorkKind::CatchClause: startStandaloneCatch(work); return;
+    case WorkKind::FinishStandaloneCatchFilter: finishStandaloneCatchFilter(work); return;
+    case WorkKind::FinishStandaloneCatchBlock: finishStandaloneCatchBlock(work); return;
     }
 }
 
@@ -548,6 +602,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
     if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
+    if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
     if (parser_.atContextualKeyword("yield"))
         return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
@@ -557,8 +612,8 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwBreak) || parser_.at(TokenKind::KwContinue)) return StatementKind::Jump;
     if (parser_.atContextualKeyword("must_tail")) return StatementKind::MustTailReturn;
     if (parser_.at(TokenKind::KwReturn)) return StatementKind::Return;
-    if (parser_.atContextualKeyword("defer") || parser_.at(TokenKind::KwTry) ||
-        parser_.at(TokenKind::KwUsing)) return StatementKind::Direct;
+    if (parser_.atContextualKeyword("defer") || parser_.at(TokenKind::KwUsing))
+        return StatementKind::Direct;
     if (parser_.at(TokenKind::KwThrow)) return StatementKind::Throw;
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
     if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
@@ -593,6 +648,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::DoWhile: startDoWhile(work); return;
     case StatementKind::For: startFor(work); return;
     case StatementKind::Foreach: startForeach(work); return;
+    case StatementKind::Try: startTry(work); return;
     }
 }
 
@@ -1618,6 +1674,241 @@ void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
     ForeachFrame& frame = foreachFrames_[work.frameIndex];
     complete(frame.resultSlot, parser_.lowerForeachStatement(
         std::move(frame.state), childValue(work)));
+}
+
+// Parses the non-recursive catch declaration prefix and leaves any filter/body at the cursor.
+ast::AstNode* Parser::ParseContinuationCoordinator::parseCatchHeader(std::size_t beginIndex)
+{
+    parser_.consume();
+    ast::AstNode* clause = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::CatchClause,
+        parser_.tokenRangeFrom(beginIndex));
+    if (!parser_.consumeIf(TokenKind::LeftParen))
+    {
+        clause->setFlag(true);
+        return clause;
+    }
+    if (parser_.canStartTypeAt(parser_.index_))
+        clause->setTypeSyntax(parser_.parseType());
+    else
+        parser_.expect(TokenKind::Identifier, "exception type");
+    if (parser_.at(TokenKind::Identifier))
+        clause->setText(std::string(parser_.consume().lexeme()));
+    parser_.expect(TokenKind::RightParen, "')' after catch declaration");
+    return clause;
+}
+
+// Opens one try frame and schedules the protected block on the shared worklist.
+void Parser::ParseContinuationCoordinator::startTry(const Work& work)
+{
+    const std::size_t frameIndex = tryFrames_.size();
+    const std::size_t beginIndex = parser_.index_;
+    parser_.consume();
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::TryStatement,
+        parser_.tokenRangeFrom(beginIndex));
+    tryFrames_.push_back({beginIndex, work.resultSlot, 0, node, nullptr, false});
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after try");
+        work_.push_back({WorkKind::ContinueTry, work.resultSlot});
+        work_.back().frameIndex = frameIndex;
+        return;
+    }
+    Work finish{WorkKind::FinishTryBlock, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Selects the next catch/finally clause or closes the completed try statement.
+void Parser::ParseContinuationCoordinator::continueTry(const Work& work)
+{
+    TryFrame& frame = tryFrames_[work.frameIndex];
+    if (parser_.at(TokenKind::KwCatch))
+    {
+        frame.pendingCatchBeginIndex = parser_.index_;
+        frame.pendingCatch = parseCatchHeader(frame.pendingCatchBeginIndex);
+        if (!parser_.atContextualKeyword("when"))
+        {
+            scheduleTryCatchBody(work.frameIndex);
+            return;
+        }
+        parser_.consume();
+        parser_.expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
+        Work finish{WorkKind::FinishTryCatchFilter, frame.resultSlot};
+        finish.frameIndex = work.frameIndex;
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Expression, childSlot});
+        return;
+    }
+    if (parser_.consumeIf(TokenKind::KwFinally))
+    {
+        frame.hasFinally = true;
+        scheduleTryFinally(work.frameIndex);
+        return;
+    }
+    completeTry(frame);
+}
+
+// Stores the protected block and advances to the ordered catch/finally sequence.
+void Parser::ParseContinuationCoordinator::finishTryBlock(const Work& work)
+{
+    tryFrames_[work.frameIndex].node->setFirst(childValue(work));
+    Work next{WorkKind::ContinueTry, work.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Attaches the filter after the expression continuation consumes its exact closing boundary.
+void Parser::ParseContinuationCoordinator::finishTryCatchFilter(const Work& work)
+{
+    TryFrame& frame = tryFrames_[work.frameIndex];
+    frame.pendingCatch->setSecond(childValue(work));
+    parser_.expect(TokenKind::RightParen, "')' after catch filter expression");
+    scheduleTryCatchBody(work.frameIndex);
+}
+
+// Schedules one catch body or preserves the canonical missing-block recovery.
+void Parser::ParseContinuationCoordinator::scheduleTryCatchBody(std::size_t frameIndex)
+{
+    TryFrame& frame = tryFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after catch");
+        attachPendingCatch(frame, nullptr);
+        Work next{WorkKind::ContinueTry, frame.resultSlot};
+        next.frameIndex = frameIndex;
+        work_.push_back(next);
+        return;
+    }
+    Work finish{WorkKind::FinishTryCatchBlock, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches one completed catch body and resumes clause discovery in source order.
+void Parser::ParseContinuationCoordinator::finishTryCatchBlock(const Work& work)
+{
+    TryFrame& frame = tryFrames_[work.frameIndex];
+    attachPendingCatch(frame, childValue(work));
+    Work next{WorkKind::ContinueTry, frame.resultSlot};
+    next.frameIndex = work.frameIndex;
+    work_.push_back(next);
+}
+
+// Finalizes one pending catch without changing child ordering or range construction.
+void Parser::ParseContinuationCoordinator::attachPendingCatch(
+    TryFrame& frame,
+    ast::AstNode* body)
+{
+    frame.pendingCatch->setFirst(body);
+    frame.pendingCatch->setRange(parser_.tokenRangeFrom(frame.pendingCatchBeginIndex));
+    frame.node->addChild(frame.pendingCatch);
+    frame.pendingCatch = nullptr;
+}
+
+// Schedules the optional finally block or preserves its canonical recovery diagnostic.
+void Parser::ParseContinuationCoordinator::scheduleTryFinally(std::size_t frameIndex)
+{
+    TryFrame& frame = tryFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after finally");
+        completeTry(frame);
+        return;
+    }
+    Work finish{WorkKind::FinishTryFinallyBlock, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches the final cleanup block and publishes the completed try statement.
+void Parser::ParseContinuationCoordinator::finishTryFinallyBlock(const Work& work)
+{
+    TryFrame& frame = tryFrames_[work.frameIndex];
+    frame.node->setSecond(childValue(work));
+    completeTry(frame);
+}
+
+// Preserves the missing-clause diagnostic and exact full-statement source range.
+void Parser::ParseContinuationCoordinator::completeTry(TryFrame& frame)
+{
+    if (frame.node->children().empty() && !frame.hasFinally)
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "expected 'catch' or 'finally' after try block");
+    frame.node->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    complete(frame.resultSlot, frame.node);
+}
+
+// Opens one standalone catch frame for the parser's internal catch-clause facade.
+void Parser::ParseContinuationCoordinator::startStandaloneCatch(const Work& work)
+{
+    const std::size_t frameIndex = catchFrames_.size();
+    const std::size_t beginIndex = parser_.index_;
+    catchFrames_.push_back({beginIndex, work.resultSlot, parseCatchHeader(beginIndex)});
+    if (!parser_.atContextualKeyword("when"))
+    {
+        scheduleStandaloneCatchBody(frameIndex);
+        return;
+    }
+    parser_.consume();
+    parser_.expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
+    Work finish{WorkKind::FinishStandaloneCatchFilter, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Stores a standalone filter before scheduling the clause body.
+void Parser::ParseContinuationCoordinator::finishStandaloneCatchFilter(const Work& work)
+{
+    catchFrames_[work.frameIndex].clause->setSecond(childValue(work));
+    parser_.expect(TokenKind::RightParen, "')' after catch filter expression");
+    scheduleStandaloneCatchBody(work.frameIndex);
+}
+
+// Schedules a standalone catch body or completes the same malformed-clause recovery shape.
+void Parser::ParseContinuationCoordinator::scheduleStandaloneCatchBody(std::size_t frameIndex)
+{
+    CatchFrame& frame = catchFrames_[frameIndex];
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after catch");
+        frame.clause->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+        complete(frame.resultSlot, frame.clause);
+        return;
+    }
+    Work finish{WorkKind::FinishStandaloneCatchBlock, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Attaches and publishes one standalone catch body with its canonical range.
+void Parser::ParseContinuationCoordinator::finishStandaloneCatchBlock(const Work& work)
+{
+    CatchFrame& frame = catchFrames_[work.frameIndex];
+    frame.clause->setFirst(childValue(work));
+    frame.clause->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    complete(frame.resultSlot, frame.clause);
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)

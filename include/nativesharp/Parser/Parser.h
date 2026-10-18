@@ -1166,7 +1166,8 @@ private:
     {
         Expression,
         Block,
-        Statement
+        Statement,
+        CatchClause
     };
     class ParseContinuationCoordinator;
     ast::AstNode* parseWithContinuation(ContinuationRequestKind kind);

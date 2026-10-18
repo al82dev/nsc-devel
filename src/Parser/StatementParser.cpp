@@ -1488,13 +1488,6 @@ public:
         return values_.empty() ? nullptr : values_.back();
     }
 
-    ast::AstNode* parseCatchClause()
-    {
-        work_.push_back({WorkKind::ParseStandaloneCatch, 0});
-        execute();
-        return values_.empty() ? nullptr : values_.back();
-    }
-
 private:
     void execute()
     {
@@ -1513,8 +1506,6 @@ private:
         ParseWhile,
         ParseDoWhile,
         ParseFor,
-        ParseTry,
-        ParseStandaloneCatch,
         ParseUsing,
         ParseDefer,
         ParseForeach,
@@ -1531,11 +1522,6 @@ private:
         FinishWhile,
         FinishDoWhile,
         FinishFor,
-        ContinueTry,
-        FinishTryBlock,
-        FinishCatchBlock,
-        FinishFinallyBlock,
-        FinishStandaloneCatch,
         FinishUsing,
         FinishDefer,
         FinishForeach,
@@ -1567,19 +1553,6 @@ private:
         ast::AstNode* conditionDeclaration = nullptr;
         ast::AstNode* node = nullptr;
         ast::AstNode* section = nullptr;
-    };
-    struct TryParseState final
-    {
-        std::size_t beginIndex = 0;
-        std::size_t pendingCatchBeginIndex = 0;
-        ast::AstNode* node = nullptr;
-        ast::AstNode* pendingCatch = nullptr;
-        bool hasFinally = false;
-    };
-    struct StandaloneCatchParseState final
-    {
-        std::size_t beginIndex = 0;
-        ast::AstNode* clause = nullptr;
     };
     struct UsingParseState final
     {
@@ -1732,8 +1705,6 @@ private:
         case WorkKind::ParseWhile: parseWhile(); break;
         case WorkKind::ParseDoWhile: parseDoWhile(); break;
         case WorkKind::ParseFor: parseFor(); break;
-        case WorkKind::ParseTry: parseTry(); break;
-        case WorkKind::ParseStandaloneCatch: parseStandaloneCatch(); break;
         case WorkKind::ParseUsing: parseUsing(); break;
         case WorkKind::ParseDefer: parseDefer(); break;
         case WorkKind::ParseForeach: parseForeach(); break;
@@ -1758,11 +1729,6 @@ private:
         case WorkKind::FinishWhile: finishWhile(current.stateIndex); break;
         case WorkKind::FinishDoWhile: finishDoWhile(current.stateIndex); break;
         case WorkKind::FinishFor: finishFor(current.stateIndex); break;
-        case WorkKind::ContinueTry: continueTry(current.stateIndex); break;
-        case WorkKind::FinishTryBlock: finishTryBlock(current.stateIndex); break;
-        case WorkKind::FinishCatchBlock: finishCatchBlock(current.stateIndex); break;
-        case WorkKind::FinishFinallyBlock: finishFinallyBlock(current.stateIndex); break;
-        case WorkKind::FinishStandaloneCatch: finishStandaloneCatch(current.stateIndex); break;
         case WorkKind::FinishUsing: finishUsing(current.stateIndex, popValue()); break;
         case WorkKind::FinishDefer: finishDefer(current.stateIndex, popValue()); break;
         case WorkKind::FinishForeach: finishForeach(current.stateIndex, popValue()); break;
@@ -1797,7 +1763,8 @@ private:
         else if (ordinaryWhileAtCursor()) work_.push_back({WorkKind::ParseWhile, 0});
         else if (parser_.at(TokenKind::KwDo)) work_.push_back({WorkKind::ParseDoWhile, 0});
         else if (parser_.at(TokenKind::KwFor)) work_.push_back({WorkKind::ParseFor, 0});
-        else if (parser_.at(TokenKind::KwTry)) work_.push_back({WorkKind::ParseTry, 0});
+        else if (parser_.at(TokenKind::KwTry))
+            values_.push_back(parser_.parseTryStatement());
         else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
         else if (parser_.atContextualKeyword("defer"))
             work_.push_back({WorkKind::ParseDefer, 0});
@@ -1863,161 +1830,6 @@ private:
         }
         work_.push_back({WorkKind::FinishFor, index});
         work_.push_back({WorkKind::ParseBlock, 0});
-    }
-
-    void parseTry()
-    {
-        const std::size_t index = tryStates_.size();
-        tryStates_.push_back({parser_.index_});
-        TryParseState& state = tryStates_.back();
-        parser_.consume();
-        state.node = parser_.arena_.make<ast::AstNode>(
-            ast::AstNodeKind::TryStatement,
-            parser_.tokenRangeFrom(state.beginIndex));
-        work_.push_back({WorkKind::ContinueTry, index});
-        if (parser_.at(TokenKind::LeftBrace))
-        {
-            work_.push_back({WorkKind::FinishTryBlock, index});
-            work_.push_back({WorkKind::ParseBlock, 0});
-        }
-        else
-        {
-            parser_.expect(TokenKind::LeftBrace, "'{' after try");
-        }
-    }
-
-    ast::AstNode* parseCatchHeader()
-    {
-        const std::size_t beginIndex = parser_.index_;
-        parser_.consume();
-        ast::AstNode* clause = parser_.arena_.make<ast::AstNode>(
-            ast::AstNodeKind::CatchClause,
-            parser_.tokenRangeFrom(beginIndex));
-        if (parser_.consumeIf(TokenKind::LeftParen))
-        {
-            if (parser_.canStartTypeAt(parser_.index_))
-                clause->setTypeSyntax(parser_.parseType());
-            else
-                parser_.expect(TokenKind::Identifier, "exception type");
-            if (parser_.at(TokenKind::Identifier))
-                clause->setText(std::string(parser_.consume().lexeme()));
-            parser_.expect(TokenKind::RightParen, "')' after catch declaration");
-        }
-        else
-        {
-            clause->setFlag(true);
-        }
-        if (parser_.atContextualKeyword("when"))
-        {
-            parser_.consume();
-            parser_.expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
-            clause->setSecond(parser_.parseExpression());
-            parser_.expect(TokenKind::RightParen, "')' after catch filter expression");
-        }
-        return clause;
-    }
-
-    void continueTry(std::size_t index)
-    {
-        TryParseState& state = tryStates_[index];
-        if (parser_.at(TokenKind::KwCatch))
-        {
-            state.pendingCatchBeginIndex = parser_.index_;
-            state.pendingCatch = parseCatchHeader();
-            work_.push_back({WorkKind::ContinueTry, index});
-            if (parser_.at(TokenKind::LeftBrace))
-            {
-                work_.push_back({WorkKind::FinishCatchBlock, index});
-                work_.push_back({WorkKind::ParseBlock, 0});
-            }
-            else
-            {
-                parser_.expect(TokenKind::LeftBrace, "'{' after catch");
-                state.pendingCatch->setRange(
-                    parser_.tokenRangeFrom(state.pendingCatchBeginIndex));
-                state.node->addChild(state.pendingCatch);
-                state.pendingCatch = nullptr;
-            }
-            return;
-        }
-        if (parser_.consumeIf(TokenKind::KwFinally))
-        {
-            state.hasFinally = true;
-            if (parser_.at(TokenKind::LeftBrace))
-            {
-                work_.push_back({WorkKind::FinishFinallyBlock, index});
-                work_.push_back({WorkKind::ParseBlock, 0});
-            }
-            else
-            {
-                parser_.expect(TokenKind::LeftBrace, "'{' after finally");
-                values_.push_back(finishTry(state));
-            }
-            return;
-        }
-        values_.push_back(finishTry(state));
-    }
-
-    void finishTryBlock(std::size_t index)
-    {
-        tryStates_[index].node->setFirst(popValue());
-    }
-
-    void finishCatchBlock(std::size_t index)
-    {
-        TryParseState& state = tryStates_[index];
-        state.pendingCatch->setFirst(popValue());
-        state.pendingCatch->setRange(parser_.tokenRangeFrom(state.pendingCatchBeginIndex));
-        state.node->addChild(state.pendingCatch);
-        state.pendingCatch = nullptr;
-    }
-
-    void finishFinallyBlock(std::size_t index)
-    {
-        TryParseState& state = tryStates_[index];
-        state.node->setSecond(popValue());
-        values_.push_back(finishTry(state));
-    }
-
-    ast::AstNode* finishTry(TryParseState& state)
-    {
-        if (state.node->children().empty() && !state.hasFinally)
-        {
-            parser_.diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedToken,
-                diagnostics::DiagnosticSeverity::Error,
-                parser_.current().range(),
-                "expected 'catch' or 'finally' after try block");
-        }
-        state.node->setRange(parser_.tokenRangeFrom(state.beginIndex));
-        return state.node;
-    }
-
-    void parseStandaloneCatch()
-    {
-        const std::size_t index = standaloneCatchStates_.size();
-        const std::size_t beginIndex = parser_.index_;
-        standaloneCatchStates_.push_back({beginIndex, parseCatchHeader()});
-        if (parser_.at(TokenKind::LeftBrace))
-        {
-            work_.push_back({WorkKind::FinishStandaloneCatch, index});
-            work_.push_back({WorkKind::ParseBlock, 0});
-        }
-        else
-        {
-            parser_.expect(TokenKind::LeftBrace, "'{' after catch");
-            StandaloneCatchParseState& state = standaloneCatchStates_[index];
-            state.clause->setRange(parser_.tokenRangeFrom(state.beginIndex));
-            values_.push_back(state.clause);
-        }
-    }
-
-    void finishStandaloneCatch(std::size_t index)
-    {
-        StandaloneCatchParseState& state = standaloneCatchStates_[index];
-        state.clause->setFirst(popValue());
-        state.clause->setRange(parser_.tokenRangeFrom(state.beginIndex));
-        values_.push_back(state.clause);
     }
 
     void parseUsing()
@@ -3287,8 +3099,6 @@ private:
     std::vector<WhileParseState> whileStates_;
     std::vector<DoWhileParseState> doWhileStates_;
     std::vector<ForParseState> forStates_;
-    std::vector<TryParseState> tryStates_;
-    std::vector<StandaloneCatchParseState> standaloneCatchStates_;
     std::vector<UsingParseState> usingStates_;
     std::vector<DeferParseState> deferStates_;
     std::vector<ForeachParseState> foreachStates_;
@@ -4262,12 +4072,12 @@ ast::AstNode* Parser::parseDeferStatement()
 
 ast::AstNode* Parser::parseTryStatement()
 {
-    return parseStructuredControlStatement();
+    return parseWithContinuation(ContinuationRequestKind::Statement);
 }
 
 ast::AstNode* Parser::parseCatchClause()
 {
-    return StructuredControlParser(*this).parseCatchClause();
+    return parseWithContinuation(ContinuationRequestKind::CatchClause);
 }
 
 ast::AstNode* Parser::parseThrowStatement()
