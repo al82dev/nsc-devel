@@ -171,6 +171,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         NamespaceCall,
         EventInvoke,
         DelegateInvoke,
+        AssertionCore,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -370,6 +371,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 return IterativeExpressionKind::DelegateInvoke;
             }
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* assertionCore = coreBinding(syntax);
+            const bool recognized = assertionCore != nullptr &&
+                (assertionCore->kind == MethodCoreOperationKind::Assert ||
+                 assertionCore->kind == MethodCoreOperationKind::Unreachable ||
+                 assertionCore->kind == MethodCoreOperationKind::Assume ||
+                 assertionCore->kind == MethodCoreOperationKind::Panic);
+            const bool requiresOperandFrame = recognized &&
+                (assertionCore->kind == MethodCoreOperationKind::Assert ||
+                 assertionCore->kind == MethodCoreOperationKind::Assume ||
+                 !syntax->children().empty());
+            if (requiresOperandFrame) return IterativeExpressionKind::AssertionCore;
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
@@ -1381,6 +1396,59 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             if (call.nextArgument == frame.syntax->children().size())
                 call.stage = DelegateInvokeFrameStage::Ready;
         };
+        const auto initializeAssertionCoreFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            if (frame.core == nullptr ||
+                (frame.core->kind != MethodCoreOperationKind::Assert &&
+                 frame.core->kind != MethodCoreOperationKind::Unreachable &&
+                 frame.core->kind != MethodCoreOperationKind::Assume &&
+                 frame.core->kind != MethodCoreOperationKind::Panic))
+            {
+                error = "Stage 34 assertion core lost its semantic binding";
+                return false;
+            }
+            if (frame.addressContext)
+            {
+                error = std::string(methodCoreOperationKindName(frame.core->kind)) +
+                    "() has no addressable result";
+                return false;
+            }
+            const bool hasCondition = frame.core->kind == MethodCoreOperationKind::Assert ||
+                frame.core->kind == MethodCoreOperationKind::Assume;
+            const bool isPanic = frame.core->kind == MethodCoreOperationKind::Panic;
+            const std::size_t expectedArguments = hasCondition ? 1U : 0U;
+            const bool invalidArity = isPanic
+                ? frame.syntax->children().size() > 1U
+                : frame.syntax->children().size() != expectedArguments;
+            const std::string_view expectedType =
+                hasCondition ? "builtin:void" : "builtin:never";
+            if (invalidArity || frame.core->resultTypeKey != expectedType)
+            {
+                error = "T07-F06 assertion binding lost its arity/result contract";
+                return false;
+            }
+            const ProjectOopHirNodeKind nodeKind =
+                frame.core->kind == MethodCoreOperationKind::Assert
+                ? ProjectOopHirNodeKind::Assert
+                : frame.core->kind == MethodCoreOperationKind::Unreachable
+                    ? ProjectOopHirNodeKind::Unreachable
+                    : frame.core->kind == MethodCoreOperationKind::Assume
+                        ? ProjectOopHirNodeKind::Assume
+                        : ProjectOopHirNodeKind::Panic;
+            frame.first = makeNode(nodeKind, frame.syntax, std::string(expectedType));
+            if (isPanic)
+            {
+                frame.first->cleanupContinuationKind =
+                    MethodCleanupContinuationKind::Exception;
+                for (std::size_t index = activeHirCleanupRegions_.size(); index > 0U; --index)
+                {
+                    frame.first->cleanupRegionOrdinals.push_back(
+                        activeHirCleanupRegions_[index - 1U]);
+                }
+            }
+            return true;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1626,6 +1694,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::DelegateInvoke)
                 {
                     if (!initializeDelegateInvokeFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::AssertionCore)
+                {
+                    if (!initializeAssertionCoreFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2131,6 +2208,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         return nullptr;
                     }
                     current = child->syntax;
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::AssertionCore)
+                {
+                    current = current->children().front();
                     currentAddressContext = false;
                 }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
@@ -3049,6 +3131,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         frames.clear();
                         break;
                     }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::AssertionCore)
+                {
+                    const bool hasCondition =
+                        frame.core->kind == MethodCoreOperationKind::Assert ||
+                        frame.core->kind == MethodCoreOperationKind::Assume;
+                    const bool validOperand = hasCondition
+                        ? lowered->typeKey == "builtin:bool"
+                        : lowered->typeKey == "builtin:string" ||
+                            lowered->typeKey == "string-literal";
+                    if (!validOperand)
+                    {
+                        error = hasCondition
+                            ? "T07-F06 assertion condition lost its bool type"
+                            : "T07-F06 panic payload lost its string type";
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    frame.first->children.push_back(std::move(lowered));
+                    lowered = std::move(frame.first);
                     frames.pop_back();
                     continue;
                 }

@@ -989,30 +989,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
                 node->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
         }
-        if (hasCondition)
+        if (hasCondition || (isPanic && !expression->children().empty()))
         {
-            auto condition = lowerExpression(
-                expression->children().front(), memberOrdinal, false, error);
-            if (condition == nullptr) return nullptr;
-            if (condition->typeKey != "builtin:bool")
-            {
-                error = "T07-F06 assertion condition lost its bool type";
-                return nullptr;
-            }
-            node->children.push_back(std::move(condition));
-        }
-        else if (isPanic && !expression->children().empty())
-        {
-            auto payload = lowerExpression(
-                expression->children().front(), memberOrdinal, false, error);
-            if (payload == nullptr) return nullptr;
-            if (payload->typeKey != "builtin:string" &&
-                payload->typeKey != "string-literal")
-            {
-                error = "T07-F06 panic payload lost its string type";
-                return nullptr;
-            }
-            node->children.push_back(std::move(payload));
+            error = "Stage 34 assertion core escaped iterative lowering";
+            return nullptr;
         }
         return node;
     }

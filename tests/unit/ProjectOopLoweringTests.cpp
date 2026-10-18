@@ -305,6 +305,24 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerAssertionCoreExpression(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const MethodExpressionTypeBinding& expressionType,
+        std::vector<std::size_t> activeCleanupRegions,
+        bool addressContext,
+        std::string& error)
+    {
+        for (const auto& node : syntax)
+            model.expressionTypeBySyntax_[node.get()] = &expressionType;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup* nameLookup,
@@ -5717,6 +5735,245 @@ void testDeepDelegateLambdaInvokeLowering(
     testDelegateInvokeContracts(tests, target, expressionType);
 }
 
+struct AssertionCoreSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendAssertionCoreSyntax(
+    AssertionCoreSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        kind, nativesharp::SourceRange{}));
+    return fixture.nodes.back().get();
+}
+
+nativesharp::frontend::MethodCoreBinding makeAssertionCoreBinding(
+    const nativesharp::ast::AstNode* syntax,
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    nativesharp::frontend::MethodCoreBinding binding;
+    binding.syntax = syntax;
+    binding.kind = kind;
+    binding.resultTypeKey = kind == nativesharp::frontend::MethodCoreOperationKind::Assert ||
+            kind == nativesharp::frontend::MethodCoreOperationKind::Assume
+        ? "builtin:void" : "builtin:never";
+    return binding;
+}
+
+AssertionCoreSyntax makeDeepAssertionCoreSyntax(
+    std::size_t depth,
+    bool panic)
+{
+    AssertionCoreSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.cores.reserve(depth);
+    auto* current = appendAssertionCoreSyntax(
+        fixture,
+        panic ? nativesharp::ast::AstNodeKind::StringLiteralExpression
+              : nativesharp::ast::AstNodeKind::BooleanLiteralExpression);
+    if (panic)
+        current->setText("deep panic");
+    else
+        current->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* call = appendAssertionCoreSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        call->addChild(current);
+        const auto kind = panic
+            ? nativesharp::frontend::MethodCoreOperationKind::Panic
+            : index % 2U == 0U
+                ? nativesharp::frontend::MethodCoreOperationKind::Assert
+                : nativesharp::frontend::MethodCoreOperationKind::Assume;
+        fixture.cores.push_back(makeAssertionCoreBinding(call, kind));
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+AssertionCoreSyntax makeSingleAssertionCoreSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    std::optional<nativesharp::ast::AstNodeKind> operandKind)
+{
+    AssertionCoreSyntax fixture;
+    fixture.nodes.reserve(2U);
+    auto* call = appendAssertionCoreSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    if (operandKind.has_value())
+    {
+        auto* operand = appendAssertionCoreSyntax(fixture, *operandKind);
+        if (*operandKind == nativesharp::ast::AstNodeKind::BooleanLiteralExpression)
+            operand->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        if (*operandKind == nativesharp::ast::AstNodeKind::StringLiteralExpression)
+            operand->setText("panic payload");
+        call->addChild(operand);
+    }
+    fixture.cores.push_back(makeAssertionCoreBinding(call, kind));
+    fixture.root = call;
+    return fixture;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerAssertionCoreFixture(
+    AssertionCoreSyntax& fixture,
+    std::string_view expressionTypeKey,
+    std::vector<std::size_t> activeCleanupRegions,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding expressionType;
+    expressionType.typeKey = std::string(expressionTypeKey);
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerAssertionCoreExpression(
+            model,
+            fixture.root,
+            fixture.nodes,
+            fixture.cores,
+            expressionType,
+            std::move(activeCleanupRegions),
+            addressContext,
+            error);
+}
+
+void testAssertionCoreNominalContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    for (const auto [coreKind, hirKind] :
+        {std::pair{CoreKind::Assert, HirKind::Assert},
+         std::pair{CoreKind::Assume, HirKind::Assume}})
+    {
+        auto fixture = makeSingleAssertionCoreSyntax(
+            coreKind, nativesharp::ast::AstNodeKind::BooleanLiteralExpression);
+        auto lowered = lowerAssertionCoreFixture(
+            fixture, "builtin:bool", {}, false, error);
+        tests.expect(lowered != nullptr && error.empty() && lowered->kind == hirKind &&
+                lowered->typeKey == "builtin:void" && lowered->children.size() == 1U &&
+                lowered->children.front()->kind == HirKind::BooleanConstant,
+            coreKind == CoreKind::Assert
+                ? "iterative assert preserves its bool child and void result"
+                : "iterative assume preserves its bool child and void result");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    auto unreachable = makeSingleAssertionCoreSyntax(CoreKind::Unreachable, std::nullopt);
+    auto unreachableNode = lowerAssertionCoreFixture(
+        unreachable, "builtin:never", {}, false, error);
+    tests.expect(unreachableNode != nullptr && error.empty() &&
+            unreachableNode->kind == HirKind::Unreachable &&
+            unreachableNode->typeKey == "builtin:never" &&
+            unreachableNode->children.empty(),
+        "unreachable remains a receiver-free never leaf");
+    destroyHirTreeIteratively(unreachableNode);
+
+    error.clear();
+    auto emptyPanic = makeSingleAssertionCoreSyntax(CoreKind::Panic, std::nullopt);
+    auto emptyPanicNode = lowerAssertionCoreFixture(
+        emptyPanic, "builtin:never", {4U, 7U, 9U}, false, error);
+    tests.expect(emptyPanicNode != nullptr && error.empty() &&
+            emptyPanicNode->kind == HirKind::Panic && emptyPanicNode->children.empty() &&
+            emptyPanicNode->cleanupContinuationKind ==
+                nativesharp::frontend::MethodCleanupContinuationKind::Exception &&
+            emptyPanicNode->cleanupRegionOrdinals ==
+                std::vector<std::size_t>{9U, 7U, 4U},
+        "payload-free panic preserves its reverse cleanup snapshot");
+    destroyHirTreeIteratively(emptyPanicNode);
+
+    error.clear();
+    auto literalPanic = makeSingleAssertionCoreSyntax(
+        CoreKind::Panic, nativesharp::ast::AstNodeKind::StringLiteralExpression);
+    auto literalPanicNode = lowerAssertionCoreFixture(
+        literalPanic, "string-literal", {}, false, error);
+    tests.expect(literalPanicNode != nullptr && error.empty() &&
+            literalPanicNode->kind == HirKind::Panic &&
+            literalPanicNode->children.size() == 1U &&
+            literalPanicNode->children.front()->kind == HirKind::StringLiteral,
+        "iterative panic accepts a string-literal payload exactly once");
+    destroyHirTreeIteratively(literalPanicNode);
+
+    error.clear();
+    auto stringPanic = makeSingleAssertionCoreSyntax(
+        CoreKind::Panic, nativesharp::ast::AstNodeKind::DefaultValueExpression);
+    auto stringPanicNode = lowerAssertionCoreFixture(
+        stringPanic, "builtin:string", {10U, 20U, 30U}, false, error);
+    tests.expect(stringPanicNode != nullptr && error.empty() &&
+            stringPanicNode->kind == HirKind::Panic &&
+            stringPanicNode->children.size() == 1U &&
+            stringPanicNode->children.front()->kind == HirKind::DefaultValue &&
+            stringPanicNode->cleanupContinuationKind ==
+                nativesharp::frontend::MethodCleanupContinuationKind::Exception &&
+            stringPanicNode->cleanupRegionOrdinals ==
+                std::vector<std::size_t>{30U, 20U, 10U},
+        "panic freezes inner-to-outer cleanup before lowering a builtin:string payload");
+    destroyHirTreeIteratively(stringPanicNode);
+}
+
+void testAssertionCorePrevalidation(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto address = makeSingleAssertionCoreSyntax(
+        CoreKind::Assert, nativesharp::ast::AstNodeKind::CallExpression);
+    auto addressNode = lowerAssertionCoreFixture(
+        address, "builtin:bool", {}, true, error);
+    tests.expect(addressNode == nullptr && error == "assert() has no addressable result",
+        "assert rejects address context before visiting an invalid child");
+
+    error.clear();
+    auto arity = makeSingleAssertionCoreSyntax(
+        CoreKind::Assert, nativesharp::ast::AstNodeKind::CallExpression);
+    arity.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression, nativesharp::SourceRange{}));
+    arity.nodes.front()->addChild(arity.nodes.back().get());
+    auto arityNode = lowerAssertionCoreFixture(
+        arity, "builtin:bool", {}, false, error);
+    tests.expect(arityNode == nullptr &&
+            error == "T07-F06 assertion binding lost its arity/result contract",
+        "assert rejects invalid arity before visiting invalid children");
+
+    error.clear();
+    auto result = makeSingleAssertionCoreSyntax(
+        CoreKind::Panic, nativesharp::ast::AstNodeKind::CallExpression);
+    result.cores.front().resultTypeKey = "builtin:void";
+    auto resultNode = lowerAssertionCoreFixture(
+        result, "builtin:string", {}, false, error);
+    tests.expect(resultNode == nullptr &&
+            error == "T07-F06 assertion binding lost its arity/result contract",
+        "panic rejects an incoherent result type before visiting its invalid payload");
+}
+
+void testDeepPanicAssertCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::string error;
+    auto assertions = makeDeepAssertionCoreSyntax(nestingDepth, false);
+    auto assertionNode = lowerAssertionCoreFixture(
+        assertions, "builtin:bool", {}, false, error);
+    tests.expect(assertionNode == nullptr &&
+            error == "T07-F06 assertion condition lost its bool type",
+        "a 32768-level assert/assume chain reaches its controlled type diagnostic without "
+        "process-stack recursion");
+
+    error.clear();
+    auto panics = makeDeepAssertionCoreSyntax(nestingDepth, true);
+    auto panicNode = lowerAssertionCoreFixture(
+        panics, "string-literal", {}, false, error);
+    tests.expect(panicNode == nullptr &&
+            error == "T07-F06 panic payload lost its string type",
+        "a 32768-level panic chain reaches its controlled type diagnostic without "
+        "process-stack recursion");
+
+    testAssertionCoreNominalContracts(tests);
+    testAssertionCorePrevalidation(tests);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -9729,6 +9986,10 @@ int main()
     {
         testDeepDelegateLambdaInvokeLowering(tests, root);
     }
+    else if (focusValue == "hir-panic-assert-call-depth")
+    {
+        testDeepPanicAssertCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -9937,6 +10198,7 @@ int main()
         testDeepEventInvokeLowering(tests, root);
         testDeepDelegateLambdaReceiverLowering(tests, root);
         testDeepDelegateLambdaInvokeLowering(tests, root);
+        testDeepPanicAssertCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
