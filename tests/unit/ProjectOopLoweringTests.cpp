@@ -1528,6 +1528,25 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerSwitchStatementForTest(
+        ProjectOopHirModel& model,
+        const ast::AstNode* statement,
+        const std::vector<MethodSwitchBinding>& bindings,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        model.switchBindingBySyntax_.clear();
+        for (const MethodSwitchBinding& binding : bindings)
+            model.switchBindingBySyntax_[binding.syntax] = &binding;
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -15432,6 +15451,310 @@ void testDeepLoopStatementLowering(TestContext& tests)
         "32768 failed while/do conditions unwind on the shared worklist without recursion");
 }
 
+struct DeepSwitchStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodSwitchBinding> bindings;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    std::vector<const nativesharp::ast::AstNode*> switches;
+    std::vector<const nativesharp::ast::AstNode*> sections;
+    std::vector<std::uint8_t> routes;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepSwitchStatementFixture makeDeepSwitchStatementFixture(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& intType,
+    const nativesharp::frontend::MethodExpressionTypeBinding& boolType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepSwitchStatementFixture fixture;
+    fixture.nodes.reserve(depth * 8U);
+    fixture.bindings.reserve(depth);
+    fixture.typed.reserve(depth * 2U);
+    fixture.switches.reserve(depth);
+    fixture.sections.reserve(depth);
+    fixture.routes.reserve(depth);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    const auto makeInteger = [&](std::uint64_t value)
+    {
+        auto* literal = append(AstKind::IntegerLiteralExpression);
+        literal->setIntegerValue(value);
+        fixture.typed.push_back({literal, &intType});
+        return literal;
+    };
+    const auto makeBoolean = [&]()
+    {
+        auto* literal = append(AstKind::BooleanLiteralExpression);
+        literal->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        fixture.typed.push_back({literal, &boolType});
+        return literal;
+    };
+
+    nativesharp::ast::AstNode* current = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        auto* section = append(AstKind::SwitchSection);
+        auto* label = append(AstKind::SwitchLabel);
+        auto* impossibleLabelExpression = append(static_cast<AstKind>(0xFFFF));
+        label->setFirst(impossibleLabelExpression);
+        section->addChild(label);
+
+        const std::uint8_t route = current == nullptr
+            ? 0xFFU : static_cast<std::uint8_t>(index % 4U);
+        if (current != nullptr && route == 0U)
+        {
+            section->addChild(current);
+        }
+        else if (current != nullptr && route == 1U)
+        {
+            auto* block = append(AstKind::BlockStatement);
+            block->addChild(current);
+            section->addChild(block);
+        }
+        else if (current != nullptr && route == 2U)
+        {
+            auto* block = append(AstKind::BlockStatement);
+            block->addChild(current);
+            auto* ifStatement = append(AstKind::IfStatement);
+            ifStatement->setFirst(makeBoolean());
+            ifStatement->setSecond(block);
+            section->addChild(ifStatement);
+        }
+        else if (current != nullptr)
+        {
+            auto* block = append(AstKind::BlockStatement);
+            block->addChild(current);
+            auto* loop = append(index % 2U == 0U
+                ? AstKind::WhileStatement : AstKind::DoWhileStatement);
+            loop->setFirst(makeBoolean());
+            loop->setSecond(block);
+            section->addChild(loop);
+        }
+
+        auto* statement = append(AstKind::SwitchStatement);
+        statement->setFirst(makeInteger(index + 1U));
+        statement->addChild(section);
+        nativesharp::frontend::MethodSwitchBinding binding;
+        binding.syntax = statement;
+        binding.governingTypeKey = "builtin:int";
+        nativesharp::frontend::MethodSwitchSectionBinding sectionBinding;
+        sectionBinding.syntax = section;
+        sectionBinding.labelValues = {
+            static_cast<std::int64_t>(index),
+            -static_cast<std::int64_t>(index + 1U)};
+        sectionBinding.hasDefault = index % 3U == 0U;
+        binding.sections.push_back(std::move(sectionBinding));
+        fixture.bindings.push_back(std::move(binding));
+        fixture.switches.push_back(statement);
+        fixture.sections.push_back(section);
+        fixture.routes.push_back(route);
+        current = statement;
+    }
+    std::reverse(fixture.switches.begin(), fixture.switches.end());
+    std::reverse(fixture.sections.begin(), fixture.sections.end());
+    std::reverse(fixture.routes.begin(), fixture.routes.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepSwitchStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepSwitchStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.switches.size(); ++index)
+    {
+        const auto& expectedBinding =
+            fixture.bindings[fixture.bindings.size() - 1U - index].sections.front();
+        if (node == nullptr || node->kind != HirKind::Switch ||
+            node->syntax != fixture.switches[index] ||
+            node->typeKey != "builtin:void" || node->children.size() != 2U ||
+            node->children[0]->kind != HirKind::IntegerConstant)
+        {
+            return false;
+        }
+        const auto* section = node->children[1].get();
+        if (section == nullptr || section->kind != HirKind::SwitchSection ||
+            section->syntax != fixture.sections[index] ||
+            section->switchLabels != expectedBinding.labelValues ||
+            section->switchHasDefault != expectedBinding.hasDefault ||
+            section->children.size() != 1U ||
+            section->children[0]->kind != HirKind::Block)
+        {
+            return false;
+        }
+        const auto* body = section->children[0].get();
+        if (index + 1U == fixture.switches.size())
+            return body->children.empty();
+        if (body->children.size() != 1U) return false;
+        switch (fixture.routes[index])
+        {
+            case 0U:
+                node = body->children[0].get();
+                break;
+            case 1U:
+                if (body->children[0]->kind != HirKind::Block ||
+                    body->children[0]->children.size() != 1U)
+                    return false;
+                node = body->children[0]->children[0].get();
+                break;
+            case 2U:
+                if (body->children[0]->kind != HirKind::If ||
+                    body->children[0]->children.size() != 2U ||
+                    body->children[0]->children[1]->kind != HirKind::Block ||
+                    body->children[0]->children[1]->children.size() != 1U)
+                    return false;
+                node = body->children[0]->children[1]->children[0].get();
+                break;
+            default:
+                if ((body->children[0]->kind != HirKind::While &&
+                     body->children[0]->kind != HirKind::DoWhile) ||
+                    body->children[0]->children.size() != 2U ||
+                    body->children[0]->children[1]->kind != HirKind::Block ||
+                    body->children[0]->children[1]->children.size() != 1U)
+                    return false;
+                node = body->children[0]->children[1]->children[0].get();
+                break;
+        }
+    }
+    return false;
+}
+
+void testDeepSwitchStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    constexpr std::size_t nestingDepth = 32768U;
+    auto fixture = makeDeepSwitchStatementFixture(
+        nestingDepth, intType, boolType);
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            model, fixture.root, fixture.bindings, fixture.typed, {17U}, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 mixed switch/block/if/loop edges lower on one worklist (" +
+            error + ")");
+    tests.expect(deepSwitchStatementChainMatches(lowered.get(), fixture),
+        "iterative switch lowering preserves exact shape, syntax, labels and order");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(model) == 1U,
+        "iterative switch lowering preserves enclosing cleanup state");
+    destroyHirTreeIteratively(lowered);
+
+    auto badGoverning = std::make_unique<nativesharp::ast::AstNode>(
+        static_cast<AstKind>(0xFFFF), nativesharp::SourceRange{});
+    auto missingBindingSwitch = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchStatement, nativesharp::SourceRange{});
+    missingBindingSwitch->setFirst(badGoverning.get());
+    ProjectOopHirModel missingModel;
+    error.clear();
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            missingModel, missingBindingSwitch.get(), {}, {}, {}, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 34 OOP HIR reached a switch statement with no semantic binding",
+        "switch resolves its semantic binding before touching the governing expression");
+
+    auto precedenceSectionA = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchSection, nativesharp::SourceRange{});
+    auto precedenceSectionB = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchSection, nativesharp::SourceRange{});
+    auto precedenceSwitch = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchStatement, nativesharp::SourceRange{});
+    precedenceSwitch->setFirst(badGoverning.get());
+    precedenceSwitch->addChild(precedenceSectionA.get());
+    precedenceSwitch->addChild(precedenceSectionB.get());
+    nativesharp::frontend::MethodSwitchBinding precedenceBinding;
+    precedenceBinding.syntax = precedenceSwitch.get();
+    precedenceBinding.sections.push_back(
+        {precedenceSectionA.get(), {1}, false});
+    ProjectOopHirModel precedenceModel;
+    error.clear();
+    auto precedence = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            precedenceModel, precedenceSwitch.get(), {precedenceBinding}, {}, {}, error);
+    tests.expect(precedence == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode",
+        "governing-expression failure wins over section overflow");
+
+    auto validGoverning = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    validGoverning->setIntegerValue(3U);
+    precedenceSwitch->setFirst(validGoverning.get());
+    ProjectOopHirModel overflowModel;
+    error.clear();
+    auto overflow = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            overflowModel, precedenceSwitch.get(), {precedenceBinding},
+            {{validGoverning.get(), &intType}}, {19U}, error);
+    tests.expect(overflow == nullptr &&
+            error == "Stage 34 OOP HIR found more switch sections than its semantic binding" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(overflowModel) == 1U,
+        "section overflow is exact and restores enclosing cleanup state");
+
+    auto skipped = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto label = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchLabel, nativesharp::SourceRange{});
+    label->setFirst(badGoverning.get());
+    auto validSection = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchSection, nativesharp::SourceRange{});
+    validSection->addChild(label.get());
+    auto sparseSwitch = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SwitchStatement, nativesharp::SourceRange{});
+    sparseSwitch->setFirst(validGoverning.get());
+    sparseSwitch->addChild(nullptr);
+    sparseSwitch->addChild(skipped.get());
+    sparseSwitch->addChild(validSection.get());
+    nativesharp::frontend::MethodSwitchBinding sparseBinding;
+    sparseBinding.syntax = sparseSwitch.get();
+    sparseBinding.sections.push_back({validSection.get(), {7, 9}, true});
+    sparseBinding.sections.push_back({nullptr, {99}, false});
+    ProjectOopHirModel sparseModel;
+    error.clear();
+    auto sparse = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            sparseModel, sparseSwitch.get(), {sparseBinding},
+            {{validGoverning.get(), &intType}}, {}, error);
+    tests.expect(sparse != nullptr && error.empty() &&
+            sparse->children.size() == 2U &&
+            sparse->children[1]->kind == HirKind::SwitchSection &&
+            sparse->children[1]->switchLabels == std::vector<std::int64_t>({7, 9}) &&
+            sparse->children[1]->switchHasDefault &&
+            sparse->children[1]->children.size() == 1U &&
+            sparse->children[1]->children[0]->children.empty(),
+        "switch skips null/non-section children and labels without consuming extra bindings");
+    destroyHirTreeIteratively(sparse);
+
+    auto invalidBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    validSection->addChild(invalidBody.get());
+    ProjectOopHirModel bodyModel;
+    error.clear();
+    auto bodyFailure = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerSwitchStatementForTest(
+            bodyModel, sparseSwitch.get(), {sparseBinding},
+            {{validGoverning.get(), &intType}}, {23U}, error);
+    tests.expect(bodyFailure == nullptr &&
+            error == "unsupported Stage 34 OOP statement kind: IntegerLiteralExpression" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(bodyModel) == 1U,
+        "switch body failure is first, returns no partial HIR and restores cleanup state");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -19383,6 +19706,10 @@ int main()
     else if (focusValue == "hir-loop-statement-depth")
     {
         testDeepLoopStatementLowering(tests);
+    }
+    else if (focusValue == "hir-switch-statement-depth")
+    {
+        testDeepSwitchStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {

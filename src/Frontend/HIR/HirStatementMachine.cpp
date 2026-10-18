@@ -457,74 +457,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
         // there is exactly one place in the compiler that knows how to evaluate a case label, and
         // it is not here.
         case ast::AstNodeKind::SwitchStatement:
-        {
-            const MethodSwitchBinding* binding = switchBinding(statement);
-            if (binding == nullptr)
-            {
-                error = "Stage 34 OOP HIR reached a switch statement with no semantic binding";
-                return nullptr;
-            }
-
-            auto node = makeNode(ProjectOopHirNodeKind::Switch, statement, "builtin:void");
-            auto governing = lowerExpression(statement->first(), memberOrdinal, false, error);
-            if (governing == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(governing));
-
-            std::size_t sectionIndex = 0;
-            for (const ast::AstNode* section : statement->children())
-            {
-                if (section == nullptr || section->kind() != ast::AstNodeKind::SwitchSection)
-                {
-                    continue;
-                }
-                if (sectionIndex >= binding->sections.size())
-                {
-                    error = "Stage 34 OOP HIR found more switch sections than its semantic binding";
-                    return nullptr;
-                }
-                const MethodSwitchSectionBinding& sectionBinding = binding->sections[sectionIndex];
-                ++sectionIndex;
-
-                auto sectionNode =
-                    makeNode(ProjectOopHirNodeKind::SwitchSection, section, "builtin:void");
-                sectionNode->switchLabels = sectionBinding.labelValues;
-                sectionNode->switchHasDefault = sectionBinding.hasDefault;
-
-                // The section's statements become an ordinary Block, so every consumer downstream
-                // sees a shape it already handles. Built here rather than through lowerBlock()
-                // because a section is not a BlockStatement -- its child list starts with labels.
-                auto body = makeNode(ProjectOopHirNodeKind::Block, section, "builtin:void");
-                const std::size_t sectionCleanupDepth = activeHirCleanupRegions_.size();
-                for (const ast::AstNode* child : section->children())
-                {
-                    if (child == nullptr || child->kind() == ast::AstNodeKind::SwitchLabel)
-                    {
-                        continue;
-                    }
-                    std::unique_ptr<ProjectOopHirNode> lowered =
-                        lowerStatement(child, memberOrdinal, error);
-                    if (lowered == nullptr)
-                    {
-                        activeHirCleanupRegions_.resize(sectionCleanupDepth);
-                        return nullptr;
-                    }
-                    if (lowered->kind == ProjectOopHirNodeKind::LocalDeclaration &&
-                        lowered->cleanupRegionOrdinal.has_value())
-                    {
-                        activeHirCleanupRegions_.push_back(*lowered->cleanupRegionOrdinal);
-                    }
-                    body->children.push_back(std::move(lowered));
-                }
-                activeHirCleanupRegions_.resize(sectionCleanupDepth);
-
-                sectionNode->children.push_back(std::move(body));
-                node->children.push_back(std::move(sectionNode));
-            }
-            return node;
-        }
+            return lowerSwitchStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::ForStatement:
         {

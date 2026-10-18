@@ -186,6 +186,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLoopStatement(
         error);
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSwitchStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        statement != nullptr ? statement->first() : nullptr,
+        memberOrdinal,
+        false,
+        statement,
+        error);
+}
+
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
@@ -205,6 +218,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         StaticAssertStatement,
         IfStatement,
         LoopStatement,
+        SwitchStatement,
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
@@ -544,6 +558,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const ast::AstNode* pendingOperand = nullptr;
         std::size_t nextRecord = 0U;
     };
+    struct SwitchStatementFrameState final
+    {
+        const MethodSwitchBinding* binding = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        std::unique_ptr<ProjectOopHirNode> sectionNode;
+        std::unique_ptr<ProjectOopHirNode> sectionBody;
+        const ast::AstNode* sectionSyntax = nullptr;
+        std::size_t nextSyntaxChild = 0U;
+        std::size_t nextBindingSection = 0U;
+        std::size_t nextSectionChild = 0U;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -573,6 +598,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<DeconstructionDeclarationFrameState>
             deconstructionDeclaration;
         std::optional<InlineAssemblyFrameState> inlineAssembly;
+        std::optional<SwitchStatementFrameState> switchStatement;
         std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
         std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
@@ -1406,6 +1432,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         return child != nullptr;
     };
 
+    const auto initializeSwitchStatementFrame =
+        [&](IterativeExpressionFrame& frame, const ast::AstNode* statement) -> bool
+    {
+        const MethodSwitchBinding* binding = switchBinding(statement);
+        if (binding == nullptr)
+        {
+            error = "Stage 34 OOP HIR reached a switch statement with no semantic binding";
+            return false;
+        }
+        frame.kind = IterativeExpressionKind::SwitchStatement;
+        frame.syntax = statement;
+        frame.switchStatement.emplace();
+        frame.switchStatement->binding = binding;
+        frame.switchStatement->node = makeNode(
+            ProjectOopHirNodeKind::Switch, statement, "builtin:void");
+        return true;
+    };
+
     const std::optional<IterativeExpressionKind> rootKind =
         iterativeKind(expression, addressContext);
     if (rootKind.has_value() || statementContinuation != nullptr)
@@ -1455,6 +1499,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     statementContinuation,
                     "builtin:void");
             }
+            else if (statementContinuation->kind() == ast::AstNodeKind::SwitchStatement)
+            {
+                if (!initializeSwitchStatementFrame(frame, statementContinuation))
+                    return nullptr;
+            }
             else
             {
                 frame.kind = IterativeExpressionKind::ExpressionStatement;
@@ -1488,6 +1537,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 if (frame->kind == IterativeExpressionKind::Match && frame->cleanupActive)
                     activeHirCleanupRegions_.resize(frame->cleanupDepth);
+                if (frame->kind == IterativeExpressionKind::SwitchStatement &&
+                    frame->cleanupActive)
+                {
+                    activeHirCleanupRegions_.resize(frame->cleanupDepth);
+                }
                 if (frame->kind == IterativeExpressionKind::LoopBlock)
                     loopBlockActive = true;
             }
@@ -4532,6 +4586,260 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             Complete,
             Error,
         };
+        const auto activateDirectSwitchCleanup =
+            [&](const std::unique_ptr<ProjectOopHirNode>& node)
+        {
+            if (node != nullptr &&
+                node->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+                node->cleanupRegionOrdinal.has_value())
+            {
+                activeHirCleanupRegions_.push_back(
+                    *node->cleanupRegionOrdinal);
+            }
+        };
+        const auto advanceSwitchStatement =
+            [&](std::size_t frameIndex) -> LoopBlockAdvance
+        {
+            while (true)
+            {
+                IterativeExpressionFrame& frame = frames[frameIndex];
+                SwitchStatementFrameState& state = *frame.switchStatement;
+                if (state.sectionSyntax == nullptr)
+                {
+                    while (state.nextSyntaxChild < frame.syntax->children().size())
+                    {
+                        const ast::AstNode* candidate =
+                            frame.syntax->children()[state.nextSyntaxChild++];
+                        if (candidate == nullptr ||
+                            candidate->kind() != ast::AstNodeKind::SwitchSection)
+                        {
+                            continue;
+                        }
+                        if (state.nextBindingSection >= state.binding->sections.size())
+                        {
+                            error = "Stage 34 OOP HIR found more switch sections than its semantic binding";
+                            return LoopBlockAdvance::Error;
+                        }
+                        const MethodSwitchSectionBinding& sectionBinding =
+                            state.binding->sections[state.nextBindingSection++];
+                        state.sectionSyntax = candidate;
+                        state.nextSectionChild = 0U;
+                        state.sectionNode = makeNode(
+                            ProjectOopHirNodeKind::SwitchSection,
+                            candidate,
+                            "builtin:void");
+                        state.sectionNode->switchLabels = sectionBinding.labelValues;
+                        state.sectionNode->switchHasDefault = sectionBinding.hasDefault;
+                        state.sectionBody = makeNode(
+                            ProjectOopHirNodeKind::Block,
+                            candidate,
+                            "builtin:void");
+                        frame.cleanupDepth = activeHirCleanupRegions_.size();
+                        frame.cleanupActive = true;
+                        break;
+                    }
+                    if (state.sectionSyntax == nullptr)
+                    {
+                        lowered = std::move(state.node);
+                        frames.pop_back();
+                        return LoopBlockAdvance::Complete;
+                    }
+                }
+
+                const ast::AstNode* statement = nullptr;
+                while (state.nextSectionChild < state.sectionSyntax->children().size())
+                {
+                    const ast::AstNode* candidate =
+                        state.sectionSyntax->children()[state.nextSectionChild++];
+                    if (candidate == nullptr ||
+                        candidate->kind() == ast::AstNodeKind::SwitchLabel)
+                    {
+                        continue;
+                    }
+                    statement = candidate;
+                    break;
+                }
+                if (statement == nullptr)
+                {
+                    activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                    frame.cleanupActive = false;
+                    state.sectionNode->children.push_back(
+                        std::move(state.sectionBody));
+                    state.node->children.push_back(std::move(state.sectionNode));
+                    state.sectionSyntax = nullptr;
+                    continue;
+                }
+
+                frame.stage = 2U;
+                if (statement->kind() == ast::AstNodeKind::BlockStatement)
+                {
+                    current = statement;
+                    currentMemberOrdinal = frame.memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::LoopBlock;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::ExpressionStatement)
+                {
+                    IterativeExpressionFrame statementFrame;
+                    statementFrame.kind =
+                        IterativeExpressionKind::LoopBlockExpressionStatement;
+                    statementFrame.syntax = statement;
+                    statementFrame.memberOrdinal = frame.memberOrdinal;
+                    frames.push_back(std::move(statementFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement)
+                {
+                    IterativeExpressionFrame variableFrame;
+                    variableFrame.kind = IterativeExpressionKind::VariableDeclaration;
+                    variableFrame.syntax = statement;
+                    variableFrame.memberOrdinal = frame.memberOrdinal;
+                    if (!initializeVariableDeclarationFrame(variableFrame))
+                        return LoopBlockAdvance::Error;
+                    const auto child = nextVariableDeclarationChild(variableFrame);
+                    if (!child.has_value())
+                    {
+                        auto node = finishVariableDeclarationFrame(variableFrame);
+                        activateDirectSwitchCleanup(node);
+                        state.sectionBody->children.push_back(std::move(node));
+                        frame.stage = 1U;
+                        continue;
+                    }
+                    const std::size_t childMemberOrdinal = variableFrame.memberOrdinal;
+                    frames.push_back(std::move(variableFrame));
+                    current = child->syntax;
+                    currentMemberOrdinal = childMemberOrdinal;
+                    currentAddressContext = child->addressContext;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() ==
+                    ast::AstNodeKind::DeconstructionDeclarationStatement)
+                {
+                    IterativeExpressionFrame declarationFrame;
+                    declarationFrame.kind =
+                        IterativeExpressionKind::DeconstructionDeclaration;
+                    declarationFrame.syntax = statement;
+                    declarationFrame.memberOrdinal = frame.memberOrdinal;
+                    if (!initializeDeconstructionDeclarationFrame(declarationFrame))
+                        return LoopBlockAdvance::Error;
+                    const auto child =
+                        nextDeconstructionDeclarationChild(declarationFrame);
+                    if (!child.has_value())
+                    {
+                        auto node =
+                            finishDeconstructionDeclarationFrame(declarationFrame);
+                        if (node == nullptr) return LoopBlockAdvance::Error;
+                        state.sectionBody->children.push_back(std::move(node));
+                        frame.stage = 1U;
+                        continue;
+                    }
+                    const std::size_t childMemberOrdinal = declarationFrame.memberOrdinal;
+                    frames.push_back(std::move(declarationFrame));
+                    current = child->syntax;
+                    currentMemberOrdinal = childMemberOrdinal;
+                    currentAddressContext = child->addressContext;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::InlineAssemblyStatement)
+                {
+                    IterativeExpressionFrame assemblyFrame;
+                    assemblyFrame.kind = IterativeExpressionKind::InlineAssemblyStatement;
+                    assemblyFrame.syntax = statement;
+                    assemblyFrame.memberOrdinal = frame.memberOrdinal;
+                    initializeInlineAssemblyFrame(assemblyFrame);
+                    const auto child = advanceInlineAssemblyFrame(assemblyFrame);
+                    if (!error.empty()) return LoopBlockAdvance::Error;
+                    if (!child.has_value())
+                    {
+                        state.sectionBody->children.push_back(
+                            finishInlineAssemblyFrame(assemblyFrame));
+                        frame.stage = 1U;
+                        continue;
+                    }
+                    const std::size_t childMemberOrdinal = assemblyFrame.memberOrdinal;
+                    frames.push_back(std::move(assemblyFrame));
+                    current = child->syntax;
+                    currentMemberOrdinal = childMemberOrdinal;
+                    currentAddressContext = child->addressContext;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::StaticAssertStatement)
+                {
+                    IterativeExpressionFrame assertionFrame;
+                    assertionFrame.kind = IterativeExpressionKind::StaticAssertStatement;
+                    assertionFrame.syntax = statement;
+                    assertionFrame.memberOrdinal = frame.memberOrdinal;
+                    frames.push_back(std::move(assertionFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::IfStatement)
+                {
+                    IterativeExpressionFrame ifFrame;
+                    ifFrame.kind = IterativeExpressionKind::IfStatement;
+                    ifFrame.syntax = statement;
+                    ifFrame.memberOrdinal = frame.memberOrdinal;
+                    ifFrame.loopBlockNode = makeNode(
+                        ProjectOopHirNodeKind::If, statement, "builtin:void");
+                    frames.push_back(std::move(ifFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::WhileStatement ||
+                    statement->kind() == ast::AstNodeKind::DoWhileStatement)
+                {
+                    IterativeExpressionFrame loopFrame;
+                    loopFrame.kind = IterativeExpressionKind::LoopStatement;
+                    loopFrame.syntax = statement;
+                    loopFrame.memberOrdinal = frame.memberOrdinal;
+                    loopFrame.loopBlockNode = makeNode(
+                        statement->kind() == ast::AstNodeKind::DoWhileStatement
+                            ? ProjectOopHirNodeKind::DoWhile
+                            : ProjectOopHirNodeKind::While,
+                        statement,
+                        "builtin:void");
+                    frames.push_back(std::move(loopFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::SwitchStatement)
+                {
+                    IterativeExpressionFrame switchFrame;
+                    switchFrame.memberOrdinal = frame.memberOrdinal;
+                    if (!initializeSwitchStatementFrame(switchFrame, statement))
+                        return LoopBlockAdvance::Error;
+                    frames.push_back(std::move(switchFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+
+                auto node = lowerStatement(statement, frame.memberOrdinal, error);
+                if (node == nullptr) return LoopBlockAdvance::Error;
+                activateDirectSwitchCleanup(node);
+                state.sectionBody->children.push_back(std::move(node));
+                frame.stage = 1U;
+            }
+        };
         const auto advanceLoopBlock = [&](std::size_t frameIndex) -> LoopBlockAdvance
         {
             while (true)
@@ -4705,6 +5013,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         statement,
                         "builtin:void");
                     frames.push_back(std::move(loopFrame));
+                    current = statement->first();
+                    currentMemberOrdinal = frames.back().memberOrdinal;
+                    currentAddressContext = false;
+                    currentInputKind = IterativeInputKind::Expression;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement != nullptr &&
+                    statement->kind() == ast::AstNodeKind::SwitchStatement)
+                {
+                    IterativeExpressionFrame switchFrame;
+                    switchFrame.memberOrdinal = frame.memberOrdinal;
+                    if (!initializeSwitchStatementFrame(switchFrame, statement))
+                        return LoopBlockAdvance::Error;
+                    frames.push_back(std::move(switchFrame));
                     current = statement->first();
                     currentMemberOrdinal = frames.back().memberOrdinal;
                     currentAddressContext = false;
@@ -6042,15 +6364,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 const bool isStaticAssertChild =
                     !frames.empty() &&
                     frames.back().kind == IterativeExpressionKind::StaticAssertStatement;
-                const bool isConditionStatementChild =
+                const bool isStatementExpressionChild =
                     !frames.empty() &&
                     (frames.back().kind == IterativeExpressionKind::IfStatement ||
-                     frames.back().kind == IterativeExpressionKind::LoopStatement) &&
+                     frames.back().kind == IterativeExpressionKind::LoopStatement ||
+                     frames.back().kind == IterativeExpressionKind::SwitchStatement) &&
                     frames.back().stage == 0U;
                 lowered = isExpressionStatementRoot || isVariableDeclarationChild ||
                         isDeconstructionDeclarationChild ||
                         isInlineAssemblyOperandChild || isStaticAssertChild ||
-                        isConditionStatementChild
+                        isStatementExpressionChild
                     ? lowerExpressionImpl(
                         current, currentMemberOrdinal, currentAddressContext, error)
                     : lowerExpression(
@@ -6069,7 +6392,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                              ((frames.back().kind ==
                                    IterativeExpressionKind::IfStatement ||
                                frames.back().kind ==
-                                   IterativeExpressionKind::LoopStatement) &&
+                                   IterativeExpressionKind::LoopStatement ||
+                               frames.back().kind ==
+                                   IterativeExpressionKind::SwitchStatement) &&
                               frames.back().stage == 0U)) &&
                             current != nullptr)
                         {
@@ -6302,6 +6627,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             descend = true;
                             break;
                         }
+                        if (alternative->kind() == ast::AstNodeKind::SwitchStatement)
+                        {
+                            IterativeExpressionFrame nested;
+                            nested.memberOrdinal = frame.memberOrdinal;
+                            if (!initializeSwitchStatementFrame(nested, alternative))
+                            {
+                                rollbackMatchCleanups();
+                                return nullptr;
+                            }
+                            frames.push_back(std::move(nested));
+                            current = alternative->first();
+                            currentMemberOrdinal = frames.back().memberOrdinal;
+                            currentAddressContext = false;
+                            currentInputKind = IterativeInputKind::Expression;
+                            descend = true;
+                            break;
+                        }
                         lowered = lowerStatement(
                             alternative, frame.memberOrdinal, error);
                         if (lowered == nullptr)
@@ -6353,6 +6695,41 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.loopBlockNode->children.push_back(std::move(frame.second));
                     lowered = std::move(frame.loopBlockNode);
                     frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::SwitchStatement)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        if (!applyExpressionBoundaryPostconditions(
+                                lowered, frame.syntax->first(), frame.memberOrdinal))
+                        {
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        frame.switchStatement->node->children.push_back(
+                            std::move(lowered));
+                        frame.stage = 1U;
+                    }
+                    else
+                    {
+                        activateDirectSwitchCleanup(lowered);
+                        frame.switchStatement->sectionBody->children.push_back(
+                            std::move(lowered));
+                        frame.stage = 1U;
+                    }
+                    const LoopBlockAdvance advance =
+                        advanceSwitchStatement(frames.size() - 1U);
+                    if (advance == LoopBlockAdvance::Error)
+                    {
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    if (advance == LoopBlockAdvance::Descend)
+                    {
+                        descend = true;
+                        break;
+                    }
                     continue;
                 }
                 if (frame.kind == IterativeExpressionKind::LoopBlockExpressionStatement)
@@ -6714,6 +7091,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                                     loopFrame.memberOrdinal;
                                 frame.stage = 3U;
                                 frames.push_back(std::move(loopFrame));
+                                current = declaration->first();
+                                currentMemberOrdinal = declarationMemberOrdinal;
+                                currentAddressContext = false;
+                                return true;
+                            }
+                            if (declaration != nullptr &&
+                                declaration->kind() == ast::AstNodeKind::SwitchStatement)
+                            {
+                                IterativeExpressionFrame switchFrame;
+                                switchFrame.memberOrdinal = frame.memberOrdinal;
+                                if (!initializeSwitchStatementFrame(
+                                        switchFrame, declaration))
+                                {
+                                    return false;
+                                }
+                                const std::size_t declarationMemberOrdinal =
+                                    switchFrame.memberOrdinal;
+                                frame.stage = 3U;
+                                frames.push_back(std::move(switchFrame));
                                 current = declaration->first();
                                 currentMemberOrdinal = declarationMemberOrdinal;
                                 currentAddressContext = false;
@@ -9025,7 +9421,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         (statementContinuation->kind() == ast::AstNodeKind::StaticAssertStatement ||
          statementContinuation->kind() == ast::AstNodeKind::IfStatement ||
          statementContinuation->kind() == ast::AstNodeKind::WhileStatement ||
-         statementContinuation->kind() == ast::AstNodeKind::DoWhileStatement);
+         statementContinuation->kind() == ast::AstNodeKind::DoWhileStatement ||
+         statementContinuation->kind() == ast::AstNodeKind::SwitchStatement);
     if (!statementChildPolicyApplied && lowered != nullptr &&
         effects.allows(sema::Effect::NoHeap) &&
         loweredExpression != nullptr && directlyAllocatesHeap(loweredExpression->kind))
