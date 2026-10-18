@@ -173,6 +173,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         DelegateInvoke,
         AssertionCore,
         IteratorCoreCall,
+        CoreOperandCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -251,6 +252,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         DelegateInvokeFrameStage stage = DelegateInvokeFrameStage::Ready;
         std::size_t nextArgument = 0U;
     };
+    struct CoreOperandCallFrameState final
+    {
+        std::unique_ptr<ProjectOopHirNode> node;
+        const MethodCallBinding* binding = nullptr;
+        std::vector<const ast::AstNode*> operandSyntaxes;
+        std::vector<bool> operandAddressContexts;
+        std::size_t nextOperand = 0U;
+        bool appliesConversions = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -268,6 +278,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<NamespaceCallFrameState> namespaceCall;
         std::optional<EventInvokeFrameState> eventInvoke;
         std::optional<DelegateInvokeFrameState> delegateInvoke;
+        std::optional<CoreOperandCallFrameState> coreOperandCall;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -398,6 +409,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  iteratorCore->kind == MethodCoreOperationKind::IteratorCancel))
             {
                 return IterativeExpressionKind::IteratorCoreCall;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodCoreBinding* operandCore = coreBinding(syntax);
+            if (operandCore != nullptr)
+            {
+                const bool viewOrSpan =
+                    operandCore->kind == MethodCoreOperationKind::StringViewFromString ||
+                    operandCore->kind == MethodCoreOperationKind::SpanFromArray ||
+                    operandCore->kind == MethodCoreOperationKind::ReadOnlySpanFromArray ||
+                    operandCore->kind == MethodCoreOperationKind::SpanFromFixedArray ||
+                    operandCore->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray;
+                if (viewOrSpan) return IterativeExpressionKind::CoreOperandCall;
+
+                const std::optional<HirCoreOperandCallPlan> plan =
+                    hirCoreOperandCallPlan(operandCore->kind);
+                const MethodCallBinding* binding = callBinding(syntax);
+                const bool directZeroOperandLeaf = plan.has_value() &&
+                    plan->operandCount == 0U && !address && syntax->children().empty() &&
+                    binding != nullptr && binding->selectedMemberOrdinal.has_value() &&
+                    !binding->forwardedReceiver;
+                if (plan.has_value() && !directZeroOperandLeaf)
+                    return IterativeExpressionKind::CoreOperandCall;
             }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
@@ -1500,6 +1535,136 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frame.core->kind != MethodCoreOperationKind::IteratorGetEnumerator;
             return true;
         };
+        const auto initializeCoreOperandCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            frame.core = coreBinding(frame.syntax);
+            CoreOperandCallFrameState call;
+            if (frame.core->kind == MethodCoreOperationKind::StringViewFromString)
+            {
+                if (frame.addressContext)
+                {
+                    error = "a StringView rest capture is a value and is not addressable";
+                    return false;
+                }
+                call.node = makeNode(
+                    ProjectOopHirNodeKind::StringViewFromString,
+                    frame.syntax,
+                    frame.core->resultTypeKey);
+                call.node->elementTypeKey = frame.core->elementTypeKey;
+                call.operandSyntaxes.push_back(frame.syntax->first()->first());
+                call.operandAddressContexts.push_back(false);
+                for (const ast::AstNode* child : frame.syntax->children())
+                {
+                    call.operandSyntaxes.push_back(child);
+                    call.operandAddressContexts.push_back(false);
+                }
+            }
+            else if (frame.core->kind == MethodCoreOperationKind::SpanFromArray ||
+                frame.core->kind == MethodCoreOperationKind::ReadOnlySpanFromArray ||
+                frame.core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
+                frame.core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray)
+            {
+                if (frame.addressContext)
+                {
+                    error = "a Span/ReadOnlySpan rest capture is a value and is not addressable";
+                    return false;
+                }
+                const ProjectOopHirNodeKind nodeKind =
+                    frame.core->kind == MethodCoreOperationKind::SpanFromArray
+                    ? ProjectOopHirNodeKind::SpanFromArray
+                    : frame.core->kind == MethodCoreOperationKind::ReadOnlySpanFromArray
+                        ? ProjectOopHirNodeKind::ReadOnlySpanFromArray
+                        : frame.core->kind == MethodCoreOperationKind::SpanFromFixedArray
+                            ? ProjectOopHirNodeKind::SpanFromFixedArray
+                            : ProjectOopHirNodeKind::ReadOnlySpanFromFixedArray;
+                call.node = makeNode(nodeKind, frame.syntax, frame.core->resultTypeKey);
+                call.node->elementTypeKey = frame.core->elementTypeKey;
+                call.operandSyntaxes.push_back(frame.syntax->first()->first());
+                call.operandAddressContexts.push_back(
+                    frame.core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
+                    frame.core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray);
+                for (const ast::AstNode* child : frame.syntax->children())
+                {
+                    call.operandSyntaxes.push_back(child);
+                    call.operandAddressContexts.push_back(false);
+                }
+            }
+            else
+            {
+                const std::optional<HirCoreOperandCallPlan> plan =
+                    hirCoreOperandCallPlan(frame.core->kind);
+                if (!plan.has_value())
+                {
+                    error = "Stage 34 core operand call escaped iterative classification";
+                    return false;
+                }
+                if (frame.addressContext)
+                {
+                    error = "Stage 51 NativeSharp.Core.String result is not addressable";
+                    return false;
+                }
+                call.binding = callBinding(frame.syntax);
+                if (call.binding == nullptr ||
+                    !call.binding->selectedMemberOrdinal.has_value())
+                {
+                    error = "Stage 51 string intrinsic requires a resolved Core.String call";
+                    return false;
+                }
+                if (call.binding->forwardedReceiver)
+                {
+                    if (call.binding->receiverSyntax == nullptr)
+                    {
+                        error = "Stage 51 forwarded string call has no receiver";
+                        return false;
+                    }
+                    call.operandSyntaxes.push_back(call.binding->receiverSyntax);
+                    call.operandAddressContexts.push_back(false);
+                }
+                for (const ast::AstNode* child : frame.syntax->children())
+                {
+                    call.operandSyntaxes.push_back(child);
+                    call.operandAddressContexts.push_back(false);
+                }
+                if (call.operandSyntaxes.size() != plan->operandCount)
+                {
+                    error = "Stage 51 string intrinsic received an invalid operand count";
+                    return false;
+                }
+                call.node = makeNode(plan->hirKind, frame.syntax, frame.core->resultTypeKey);
+                call.appliesConversions = true;
+            }
+            frame.coreOperandCall.emplace(std::move(call));
+            return true;
+        };
+        struct CoreOperandCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextCoreOperandCallChild = [](const CoreOperandCallFrameState& call)
+            -> std::optional<CoreOperandCallChild>
+        {
+            if (call.nextOperand >= call.operandSyntaxes.size()) return std::nullopt;
+            return CoreOperandCallChild{
+                call.operandSyntaxes[call.nextOperand],
+                call.operandAddressContexts[call.nextOperand]};
+        };
+        const auto acceptCoreOperandCallChild = [&](IterativeExpressionFrame& frame,
+                                                     std::unique_ptr<ProjectOopHirNode> child)
+        {
+            CoreOperandCallFrameState& call = *frame.coreOperandCall;
+            const std::size_t index = call.nextOperand++;
+            if (call.appliesConversions &&
+                index < call.binding->selectedConversions.size() &&
+                call.binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    call.binding->selectedConversions[index],
+                    call.operandSyntaxes[index]);
+            }
+            call.node->children.push_back(std::move(child));
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1763,6 +1928,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::IteratorCoreCall)
                 {
                     if (!initializeIteratorCoreCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::CoreOperandCall)
+                {
+                    if (!initializeCoreOperandCallFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2280,6 +2454,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().operandSyntaxes.front();
                     currentAddressContext = frames.back().operandAddressContext;
                 }
+                else if (*currentKind == IterativeExpressionKind::CoreOperandCall)
+                {
+                    const std::optional<CoreOperandCallChild> child =
+                        nextCoreOperandCallChild(*frames.back().coreOperandCall);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 core operand-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
+                }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
                     current = frames.back().receiverFrame.syntax;
@@ -2422,6 +2610,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::IteratorCoreCall)
                 {
                     // The iterator frame selected value versus address context above.
+                }
+                else if (*currentKind == IterativeExpressionKind::CoreOperandCall)
+                {
+                    // The core-operand frame selected value versus address context above.
                 }
                 else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
                     *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
@@ -3237,6 +3429,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             activeHirExceptionHandlers_.back().hirRegionOrdinal;
                     }
                     lowered = std::move(frame.first);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CoreOperandCall)
+                {
+                    acceptCoreOperandCallChild(frame, std::move(lowered));
+                    CoreOperandCallFrameState& call = *frame.coreOperandCall;
+                    const std::optional<CoreOperandCallChild> child =
+                        nextCoreOperandCallChild(call);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = std::move(call.node);
                     frames.pop_back();
                     continue;
                 }

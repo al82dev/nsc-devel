@@ -355,6 +355,39 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerCoreOperandCallExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCoreBinding>& cores,
+        const std::vector<MethodCallBinding>& calls,
+        const std::vector<MethodNameBinding>& names,
+        const MethodExpressionTypeBinding& expressionType,
+        bool addressContext,
+        std::string& error)
+    {
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& node : syntax)
+            model.expressionTypeBySyntax_[node.get()] = &expressionType;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        for (const MethodNameBinding& name : names)
+        {
+            model.nameBindingBySyntax_[name.syntax] = &name;
+            if (name.localOrdinal.has_value())
+            {
+                if (methodBodyModel.locals_.size() <= *name.localOrdinal)
+                    methodBodyModel.locals_.resize(*name.localOrdinal + 1U);
+                methodBodyModel.locals_[*name.localOrdinal].name = name.name;
+                methodBodyModel.locals_[*name.localOrdinal].typeKey = name.typeKey;
+            }
+        }
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup* nameLookup,
@@ -6275,6 +6308,456 @@ void testDeepIteratorCoreCallLowering(TestContext& tests)
     testIteratorCoreCallInvalidShapes(tests);
 }
 
+struct CoreOperandCallSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendCoreOperandSyntax(
+    CoreOperandCallSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        kind, nativesharp::SourceRange{}));
+    return fixture.nodes.back().get();
+}
+
+nativesharp::ast::AstNode* appendCoreOperandString(CoreOperandCallSyntax& fixture)
+{
+    auto* literal = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::StringLiteralExpression);
+    literal->setText("operand");
+    return literal;
+}
+
+nativesharp::ast::AstNode* appendCoreOperandInteger(
+    CoreOperandCallSyntax& fixture,
+    std::uint64_t value)
+{
+    auto* literal = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    literal->setIntegerValue(value);
+    return literal;
+}
+
+nativesharp::ast::AstNode* appendCoreOperandLocal(
+    CoreOperandCallSyntax& fixture,
+    std::string typeKey)
+{
+    auto* local = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    fixture.names.emplace_back();
+    auto& name = fixture.names.back();
+    name.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    name.syntax = local;
+    name.name = "source";
+    name.typeKey = std::move(typeKey);
+    name.localOrdinal = 0U;
+    return local;
+}
+
+void appendCoreOperandBindings(
+    CoreOperandCallSyntax& fixture,
+    nativesharp::ast::AstNode* call,
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    std::string resultTypeKey = "builtin:string")
+{
+    fixture.cores.emplace_back();
+    auto& core = fixture.cores.back();
+    core.syntax = call;
+    core.kind = kind;
+    core.resultTypeKey = std::move(resultTypeKey);
+    fixture.calls.emplace_back();
+    auto& binding = fixture.calls.back();
+    binding.syntax = call;
+    binding.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+    binding.staticCall = true;
+    binding.selectedMemberOrdinal = 0U;
+    binding.resultTypeKey = core.resultTypeKey;
+}
+
+CoreOperandCallSyntax makeCoreOperandTableSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind,
+    std::size_t operandCount,
+    bool sentinelOperands = false)
+{
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(operandCount + 1U);
+    fixture.cores.reserve(1U);
+    fixture.calls.reserve(1U);
+    auto* call = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    for (std::size_t index = 0; index < operandCount; ++index)
+    {
+        auto* operand = sentinelOperands
+            ? appendCoreOperandSyntax(fixture, nativesharp::ast::AstNodeKind::CallExpression)
+            : appendCoreOperandString(fixture);
+        call->addChild(operand);
+    }
+    appendCoreOperandBindings(fixture, call, kind);
+    fixture.root = call;
+    return fixture;
+}
+
+CoreOperandCallSyntax makeDeepStringConcatSyntax(std::size_t depth)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.cores.reserve(depth);
+    fixture.calls.reserve(depth);
+    auto* current = appendCoreOperandString(fixture);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* right = appendCoreOperandString(fixture);
+        auto* call = appendCoreOperandSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        call->addChild(current);
+        call->addChild(right);
+        appendCoreOperandBindings(fixture, call, CoreKind::StringConcat);
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+CoreOperandCallSyntax makeViewCoreOperandSyntax(
+    nativesharp::frontend::MethodCoreOperationKind kind)
+{
+    CoreOperandCallSyntax fixture;
+    fixture.nodes.reserve(5U);
+    fixture.cores.reserve(1U);
+    fixture.names.reserve(1U);
+    auto* receiver = appendCoreOperandLocal(fixture, "type:Source");
+    auto* member = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::MemberExpression);
+    member->setFirst(receiver);
+    auto* call = appendCoreOperandSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    call->setFirst(member);
+    call->addChild(appendCoreOperandInteger(fixture, 3U));
+    call->addChild(appendCoreOperandInteger(fixture, 7U));
+    fixture.cores.emplace_back();
+    auto& core = fixture.cores.back();
+    core.syntax = call;
+    core.kind = kind;
+    core.resultTypeKey = "type:View";
+    core.elementTypeKey = "builtin:char";
+    fixture.root = call;
+    return fixture;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerCoreOperandCallFixture(
+    CoreOperandCallSyntax& fixture,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding expressionType;
+    expressionType.typeKey = "builtin:string";
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoreOperandCallExpression(
+            model,
+            methodBodyModel,
+            fixture.root,
+            fixture.nodes,
+            fixture.cores,
+            fixture.calls,
+            fixture.names,
+            expressionType,
+            addressContext,
+            error);
+}
+
+bool deepStringConcatMatches(const ProjectOopHirNode* node, std::size_t expectedDepth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::StringConcat)
+    {
+        if (node->typeKey != "builtin:string" || node->children.size() != 2U ||
+            node->children[1]->kind != HirKind::StringLiteral)
+            return false;
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::StringLiteral;
+}
+
+void testCoreOperandConversions(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using ConversionKind = nativesharp::frontend::ProjectConversionKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    auto fixture = makeCoreOperandTableSyntax(CoreKind::StringSubstring, 2U);
+    auto* receiver = appendCoreOperandLocal(fixture, "builtin:string");
+    fixture.calls.front().forwardedReceiver = true;
+    fixture.calls.front().receiverSyntax = receiver;
+    nativesharp::frontend::ProjectImplicitConversion numeric;
+    numeric.kind = ConversionKind::Numeric;
+    numeric.sourceTypeKey = "builtin:string";
+    numeric.targetTypeKey = "builtin:string";
+    nativesharp::frontend::ProjectImplicitConversion identity;
+    identity.kind = ConversionKind::Identity;
+    identity.sourceTypeKey = "builtin:string";
+    identity.targetTypeKey = "builtin:string";
+    fixture.calls.front().selectedConversions = {numeric, identity, numeric};
+    auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+    tests.expect(lowered != nullptr && error.empty() &&
+            lowered->kind == HirKind::StringSubstring && lowered->children.size() == 3U &&
+            lowered->children[0]->kind == HirKind::Conversion &&
+            lowered->children[0]->children.front()->kind == HirKind::LocalValue &&
+            lowered->children[1]->kind == HirKind::StringLiteral &&
+            lowered->children[2]->kind == HirKind::Conversion,
+        "forwarded core receiver owns conversion index zero and arguments keep source order");
+    destroyHirTreeIteratively(lowered);
+
+    error.clear();
+    auto shortVector = makeCoreOperandTableSyntax(CoreKind::StringConcat, 2U);
+    shortVector.calls.front().selectedConversions = {numeric};
+    auto shortLowered = lowerCoreOperandCallFixture(shortVector, false, error);
+    tests.expect(shortLowered != nullptr && error.empty() &&
+            shortLowered->children.size() == 2U &&
+            shortLowered->children[0]->kind == HirKind::Conversion &&
+            shortLowered->children[1]->kind == HirKind::StringLiteral,
+        "a short selected-conversion vector leaves missing operand entries as identity");
+    destroyHirTreeIteratively(shortLowered);
+}
+
+void testViewCoreOperandContracts(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct ViewExpectation final
+    {
+        CoreKind coreKind;
+        HirKind hirKind;
+        bool receiverAddress;
+    };
+    const std::array<ViewExpectation, 5U> expectations{{
+        {CoreKind::StringViewFromString, HirKind::StringViewFromString, false},
+        {CoreKind::SpanFromArray, HirKind::SpanFromArray, false},
+        {CoreKind::ReadOnlySpanFromArray, HirKind::ReadOnlySpanFromArray, false},
+        {CoreKind::SpanFromFixedArray, HirKind::SpanFromFixedArray, true},
+        {CoreKind::ReadOnlySpanFromFixedArray, HirKind::ReadOnlySpanFromFixedArray, true},
+    }};
+    std::string error;
+    for (const ViewExpectation& expectation : expectations)
+    {
+        auto fixture = makeViewCoreOperandSyntax(expectation.coreKind);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == expectation.hirKind && lowered->typeKey == "type:View" &&
+                lowered->elementTypeKey == "builtin:char" && lowered->children.size() == 3U &&
+                lowered->children[0]->kind == (expectation.receiverAddress
+                    ? HirKind::LocalAddress : HirKind::LocalValue) &&
+                lowered->children[1]->kind == HirKind::IntegerConstant &&
+                lowered->children[1]->integerValue == 3U &&
+                lowered->children[2]->kind == HirKind::IntegerConstant &&
+                lowered->children[2]->integerValue == 7U,
+            std::string(nativesharp::frontend::methodCoreOperationKindName(
+                expectation.coreKind)) + " preserves receiver context, order, and view metadata");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    auto stringViewAddress = makeViewCoreOperandSyntax(CoreKind::StringViewFromString);
+    auto stringViewNode = lowerCoreOperandCallFixture(stringViewAddress, true, error);
+    tests.expect(stringViewNode == nullptr &&
+            error == "a StringView rest capture is a value and is not addressable",
+        "StringView rejects address context with its historical diagnostic");
+    error.clear();
+    auto spanAddress = makeViewCoreOperandSyntax(CoreKind::SpanFromFixedArray);
+    auto spanNode = lowerCoreOperandCallFixture(spanAddress, true, error);
+    tests.expect(spanNode == nullptr &&
+            error == "a Span/ReadOnlySpan rest capture is a value and is not addressable",
+        "Span rejects address context with its historical diagnostic");
+}
+
+void testCoreOperandPrevalidation(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    std::string error;
+    auto address = makeCoreOperandTableSyntax(CoreKind::StringConcat, 2U, true);
+    auto addressNode = lowerCoreOperandCallFixture(address, true, error);
+    tests.expect(addressNode == nullptr &&
+            error == "Stage 51 NativeSharp.Core.String result is not addressable",
+        "table core rejects address context before visiting sentinel operands");
+
+    error.clear();
+    auto missingCall = makeCoreOperandTableSyntax(CoreKind::StringConcat, 2U, true);
+    missingCall.calls.clear();
+    auto missingCallNode = lowerCoreOperandCallFixture(missingCall, false, error);
+    tests.expect(missingCallNode == nullptr &&
+            error == "Stage 51 string intrinsic requires a resolved Core.String call",
+        "table core rejects a missing call binding before visiting sentinel operands");
+
+    error.clear();
+    auto missingOrdinal = makeCoreOperandTableSyntax(CoreKind::StringConcat, 2U, true);
+    missingOrdinal.calls.front().selectedMemberOrdinal.reset();
+    auto missingOrdinalNode = lowerCoreOperandCallFixture(missingOrdinal, false, error);
+    tests.expect(missingOrdinalNode == nullptr &&
+            error == "Stage 51 string intrinsic requires a resolved Core.String call",
+        "table core rejects a missing selected ordinal before visiting sentinel operands");
+
+    error.clear();
+    auto missingReceiver = makeCoreOperandTableSyntax(CoreKind::StringSubstring, 2U, true);
+    missingReceiver.calls.front().forwardedReceiver = true;
+    auto missingReceiverNode = lowerCoreOperandCallFixture(missingReceiver, false, error);
+    tests.expect(missingReceiverNode == nullptr &&
+            error == "Stage 51 forwarded string call has no receiver",
+        "table core rejects a null forwarded receiver before visiting sentinel operands");
+
+    error.clear();
+    auto wrongArity = makeCoreOperandTableSyntax(CoreKind::StringConcat, 1U, true);
+    auto wrongArityNode = lowerCoreOperandCallFixture(wrongArity, false, error);
+    tests.expect(wrongArityNode == nullptr &&
+            error == "Stage 51 string intrinsic received an invalid operand count",
+        "table core rejects wrong arity before visiting sentinel operands");
+}
+
+void testCoreOperandMappingTable(TestContext& tests)
+{
+    using CoreKind = nativesharp::frontend::MethodCoreOperationKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    struct Mapping final
+    {
+        CoreKind coreKind;
+        HirKind hirKind;
+        std::size_t arity;
+    };
+    const std::array<Mapping, 85U> mappings{{
+        {CoreKind::StringConcat, HirKind::StringConcat, 2U},
+        {CoreKind::StringEquals, HirKind::StringEquals, 2U},
+        {CoreKind::SimdFloat32x4Add, HirKind::CoreSimdFloat32x4Add, 2U},
+        {CoreKind::SimdFloat32x4Subtract, HirKind::CoreSimdFloat32x4Subtract, 2U},
+        {CoreKind::SimdFloat32x4Multiply, HirKind::CoreSimdFloat32x4Multiply, 2U},
+        {CoreKind::SimdInt128Add, HirKind::CoreSimdInt128Add, 2U},
+        {CoreKind::SimdInt128Subtract, HirKind::CoreSimdInt128Subtract, 2U},
+        {CoreKind::SimdInt128Multiply, HirKind::CoreSimdInt128Multiply, 2U},
+        {CoreKind::SimdFloat256Add, HirKind::CoreSimdFloat256Add, 2U},
+        {CoreKind::SimdFloat256Subtract, HirKind::CoreSimdFloat256Subtract, 2U},
+        {CoreKind::SimdFloat256Multiply, HirKind::CoreSimdFloat256Multiply, 2U},
+        {CoreKind::SimdInt256Add, HirKind::CoreSimdInt256Add, 2U},
+        {CoreKind::SimdInt256Subtract, HirKind::CoreSimdInt256Subtract, 2U},
+        {CoreKind::SimdInt256Multiply, HirKind::CoreSimdInt256Multiply, 2U},
+        {CoreKind::SimdLoadAligned128, HirKind::CoreSimdLoadAligned128, 1U},
+        {CoreKind::SimdStoreAligned128, HirKind::CoreSimdStoreAligned128, 2U},
+        {CoreKind::SimdLoadUnaligned128, HirKind::CoreSimdLoadUnaligned128, 1U},
+        {CoreKind::SimdStoreUnaligned128, HirKind::CoreSimdStoreUnaligned128, 2U},
+        {CoreKind::HalfFromFloat, HirKind::CoreHalfFromFloat, 1U},
+        {CoreKind::HalfToFloat, HirKind::CoreHalfToFloat, 1U},
+        {CoreKind::SimdSwizzleWzyx, HirKind::CoreSimdSwizzleWzyx, 1U},
+        {CoreKind::SimdShuffleLowHigh, HirKind::CoreSimdShuffleLowHigh, 2U},
+        {CoreKind::SimdSqrt, HirKind::CoreSimdSqrt, 1U},
+        {CoreKind::SimdReciprocalSqrt, HirKind::CoreSimdReciprocalSqrt, 1U},
+        {CoreKind::SimdFusedMultiplyAdd, HirKind::CoreSimdFusedMultiplyAdd, 3U},
+        {CoreKind::BitPopulationCount, HirKind::CoreBitPopulationCount, 1U},
+        {CoreKind::BitLeadingZeroCount, HirKind::CoreBitLeadingZeroCount, 1U},
+        {CoreKind::BitTrailingZeroCount, HirKind::CoreBitTrailingZeroCount, 1U},
+        {CoreKind::BitRotateLeft, HirKind::CoreBitRotateLeft, 2U},
+        {CoreKind::BitRotateRight, HirKind::CoreBitRotateRight, 2U},
+        {CoreKind::BitByteSwap, HirKind::CoreBitByteSwap, 1U},
+        {CoreKind::CpuPrefetchRead, HirKind::CoreCpuPrefetchRead, 1U},
+        {CoreKind::CpuPause, HirKind::CoreCpuPause, 0U},
+        {CoreKind::CpuReadTimestamp, HirKind::CoreCpuReadTimestamp, 0U},
+        {CoreKind::StringSubstring, HirKind::StringSubstring, 3U},
+        {CoreKind::StringCharacterPointer, HirKind::StringCharacterPointer, 2U},
+        {CoreKind::StringFromCharArray, HirKind::StringFromCharArray, 1U},
+        {CoreKind::ObjectTypeName, HirKind::CoreObjectTypeName, 1U},
+        {CoreKind::ObjectReferenceHash, HirKind::CoreObjectReferenceHash, 1U},
+        {CoreKind::EnvironmentGetVariable, HirKind::CoreEnvironmentGetVariable, 1U},
+        {CoreKind::EnvironmentSetVariable, HirKind::CoreEnvironmentSetVariable, 2U},
+        {CoreKind::FileExists, HirKind::CoreFileExists, 1U},
+        {CoreKind::FileDelete, HirKind::CoreFileDelete, 1U},
+        {CoreKind::DirectoryExists, HirKind::CoreDirectoryExists, 1U},
+        {CoreKind::DirectoryCreate, HirKind::CoreDirectoryCreate, 1U},
+        {CoreKind::FileReadAllText, HirKind::CoreFileReadAllText, 1U},
+        {CoreKind::FileWriteAllText, HirKind::CoreFileWriteAllText, 2U},
+        {CoreKind::FileAppendAllText, HirKind::CoreFileAppendAllText, 2U},
+        {CoreKind::DirectoryDelete, HirKind::CoreDirectoryDelete, 1U},
+        {CoreKind::PathGetFullPath, HirKind::CorePathGetFullPath, 1U},
+        {CoreKind::EnvironmentGetCommandLineArgs, HirKind::CoreEnvironmentGetCommandLineArgs, 1U},
+        {CoreKind::DirectoryGetFileCount, HirKind::CoreDirectoryGetFileCount, 1U},
+        {CoreKind::DirectoryGetFiles, HirKind::CoreDirectoryGetFiles, 2U},
+        {CoreKind::DirectoryGetDirectoryCount, HirKind::CoreDirectoryGetDirectoryCount, 1U},
+        {CoreKind::DirectoryGetDirectories, HirKind::CoreDirectoryGetDirectories, 2U},
+        {CoreKind::ThreadCreate, HirKind::CoreThreadCreate, 1U},
+        {CoreKind::ThreadJoin, HirKind::CoreThreadJoin, 1U},
+        {CoreKind::ThreadDetach, HirKind::CoreThreadDetach, 1U},
+        {CoreKind::MutexCreate, HirKind::CoreMutexCreate, 0U},
+        {CoreKind::MutexCreateNamed, HirKind::CoreMutexCreateNamed, 1U},
+        {CoreKind::MutexLock, HirKind::CoreMutexLock, 1U},
+        {CoreKind::MutexUnlock, HirKind::CoreMutexUnlock, 1U},
+        {CoreKind::MutexClose, HirKind::CoreMutexClose, 1U},
+        {CoreKind::SemaphoreCreate, HirKind::CoreSemaphoreCreate, 2U},
+        {CoreKind::SemaphoreCreateNamed, HirKind::CoreSemaphoreCreateNamed, 3U},
+        {CoreKind::SemaphoreWait, HirKind::CoreSemaphoreWait, 2U},
+        {CoreKind::SemaphoreRelease, HirKind::CoreSemaphoreRelease, 1U},
+        {CoreKind::SemaphoreClose, HirKind::CoreSemaphoreClose, 1U},
+        {CoreKind::EventCreate, HirKind::CoreEventCreate, 2U},
+        {CoreKind::EventCreateNamed, HirKind::CoreEventCreateNamed, 3U},
+        {CoreKind::EventSet, HirKind::CoreEventSet, 1U},
+        {CoreKind::EventReset, HirKind::CoreEventReset, 1U},
+        {CoreKind::EventWait, HirKind::CoreEventWait, 2U},
+        {CoreKind::EventClose, HirKind::CoreEventClose, 1U},
+        {CoreKind::ProcessSetPriorityClassRaw, HirKind::CoreProcessSetPriorityClass, 1U},
+        {CoreKind::DebugOutputStringRaw, HirKind::CoreDebugOutputString, 1U},
+        {CoreKind::ThreadSleepRaw, HirKind::CoreThreadSleep, 1U},
+        {CoreKind::FileCopyRaw, HirKind::CoreFileCopy, 3U},
+        {CoreKind::FileMoveRaw, HirKind::CoreFileMove, 2U},
+        {CoreKind::DirectoryMoveRaw, HirKind::CoreDirectoryMove, 2U},
+        {CoreKind::FileGetSize, HirKind::CoreFileGetSize, 1U},
+        {CoreKind::FileReadAllBytes, HirKind::CoreFileReadAllBytes, 1U},
+        {CoreKind::FileReadBytes, HirKind::CoreFileReadBytes, 2U},
+        {CoreKind::FileWriteAllBytes, HirKind::CoreFileWriteAllBytes, 3U},
+        {CoreKind::ProcessRun, HirKind::CoreProcessRun, 3U},
+    }};
+    std::array<std::size_t, 4U> arityCounts{};
+    std::string error;
+    for (const Mapping& mapping : mappings)
+    {
+        ++arityCounts[mapping.arity];
+        auto fixture = makeCoreOperandTableSyntax(mapping.coreKind, mapping.arity);
+        auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == mapping.hirKind && lowered->typeKey == "builtin:string" &&
+                lowered->children.size() == mapping.arity,
+            std::string(nativesharp::frontend::methodCoreOperationKindName(mapping.coreKind)) +
+                " preserves its explicit HIR kind and arity");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+    tests.expect(arityCounts == std::array<std::size_t, 4U>{3U, 43U, 32U, 7U},
+        "the explicit focal inventory covers all 85 mappings and all four arity buckets");
+}
+
+void testDeepSpanStringCoreCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::string error;
+    auto fixture = makeDeepStringConcatSyntax(nestingDepth);
+    auto lowered = lowerCoreOperandCallFixture(fixture, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a valid 32768-level StringConcat chain lowers without process-stack recursion (" +
+            error + ")");
+    tests.expect(deepStringConcatMatches(lowered.get(), nestingDepth),
+        "core-operand frames preserve every StringConcat node and receiver-to-argument order");
+    destroyHirTreeIteratively(lowered);
+
+    testCoreOperandConversions(tests);
+    testCoreOperandMappingTable(tests);
+    testViewCoreOperandContracts(tests);
+    testCoreOperandPrevalidation(tests);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -10295,6 +10778,10 @@ int main()
     {
         testDeepIteratorCoreCallLowering(tests);
     }
+    else if (focusValue == "hir-span-string-core-call-depth")
+    {
+        testDeepSpanStringCoreCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -10505,6 +10992,7 @@ int main()
         testDeepDelegateLambdaInvokeLowering(tests, root);
         testDeepPanicAssertCallLowering(tests);
         testDeepIteratorCoreCallLowering(tests);
+        testDeepSpanStringCoreCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

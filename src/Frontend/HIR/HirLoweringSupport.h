@@ -2,14 +2,25 @@
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
 {
+struct HirCoreOperandCallPlan final
+{
+    std::size_t operandCount;
+    ProjectOopHirNodeKind hirKind;
+};
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlan(
+    MethodCoreOperationKind kind);
+
 inline std::unique_ptr<ProjectOopHirNode> makeNode(
     ProjectOopHirNodeKind kind,
     const ast::AstNode* syntax,

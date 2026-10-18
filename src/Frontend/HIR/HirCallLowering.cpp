@@ -8,13 +8,10 @@ namespace nativesharp::frontend
 {
 namespace
 {
-struct StringCallLowering final
-{
-    std::size_t operandCount;
-    ProjectOopHirNodeKind hirKind;
-};
+using StringCallLowering = HirCoreOperandCallPlan;
 
-std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kind)
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
+    MethodCoreOperationKind kind)
 {
     switch (kind)
     {
@@ -23,7 +20,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
     // ---------------------------------------------------------------------------------------
     case MethodCoreOperationKind::StringConcat:
-        return StringCallLowering{2U, ProjectOopHirNodeKind::StringConcat};
+        return HirCoreOperandCallPlan{2U, ProjectOopHirNodeKind::StringConcat};
     case MethodCoreOperationKind::StringEquals:
         return StringCallLowering{2U, ProjectOopHirNodeKind::StringEquals};
     case MethodCoreOperationKind::SimdFloat32x4Add:
@@ -434,6 +431,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
 }
 
 
+}
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlan(
+    MethodCoreOperationKind kind)
+{
+    return hirCoreOperandCallPlanImpl(kind);
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
@@ -1115,20 +1118,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "a StringView rest capture is a value and is not addressable";
             return nullptr;
         }
-        auto node = makeNode(
-            ProjectOopHirNodeKind::StringViewFromString, expression, core->resultTypeKey);
-        node->elementTypeKey = core->elementTypeKey;
-        auto receiver = lowerExpression(
-            expression->first()->first(), memberOrdinal, false, error);
-        if (receiver == nullptr) return nullptr;
-        node->children.push_back(std::move(receiver));
-        for (const ast::AstNode* child : expression->children())
-        {
-            auto operand = lowerExpression(child, memberOrdinal, false, error);
-            if (operand == nullptr) return nullptr;
-            node->children.push_back(std::move(operand));
-        }
-        return node;
+        error = "Stage 34 StringView core call escaped iterative lowering";
+        return nullptr;
     }
     // NS304-T03-F03: same view synthesis over a native/fixed array -> Span<T>/ReadOnlySpan<T>.
     if (core != nullptr &&
@@ -1142,44 +1133,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "a Span/ReadOnlySpan rest capture is a value and is not addressable";
             return nullptr;
         }
-        ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::SpanFromArray;
-        switch (core->kind)
-        {
-            case MethodCoreOperationKind::SpanFromArray:
-                nodeKind = ProjectOopHirNodeKind::SpanFromArray;
-                break;
-            case MethodCoreOperationKind::ReadOnlySpanFromArray:
-                nodeKind = ProjectOopHirNodeKind::ReadOnlySpanFromArray;
-                break;
-            case MethodCoreOperationKind::SpanFromFixedArray:
-                nodeKind = ProjectOopHirNodeKind::SpanFromFixedArray;
-                break;
-            default:
-                nodeKind = ProjectOopHirNodeKind::ReadOnlySpanFromFixedArray;
-                break;
-        }
-        auto node = makeNode(nodeKind, expression, core->resultTypeKey);
-        node->elementTypeKey = core->elementTypeKey;
-        const bool fixedArrayView =
-            core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
-            core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray;
-        auto receiver = lowerExpression(
-            expression->first()->first(), memberOrdinal, fixedArrayView, error);
-        if (receiver == nullptr) return nullptr;
-        node->children.push_back(std::move(receiver));
-        for (const ast::AstNode* child : expression->children())
-        {
-            auto operand = lowerExpression(child, memberOrdinal, false, error);
-            if (operand == nullptr) return nullptr;
-            node->children.push_back(std::move(operand));
-        }
-        return node;
+        error = "Stage 34 Span core call escaped iterative lowering";
+        return nullptr;
     }
     // Las TRES preguntas --entra en este bloque, con cuantos operandos, y en que nodo
-    // HIR se convierte-- salen de la MISMA respuesta: ver stringCallLowering() al
+    // HIR se convierte-- salen de la MISMA respuesta: ver hirCoreOperandCallPlan() al
     // principio de este archivo.
-    const std::optional<StringCallLowering> coreLowering =
-        core != nullptr ? stringCallLowering(core->kind) : std::nullopt;
+    const std::optional<HirCoreOperandCallPlan> coreLowering =
+        core != nullptr ? hirCoreOperandCallPlan(core->kind) : std::nullopt;
     if (coreLowering.has_value())
     {
         if (addressContext)
@@ -1225,22 +1186,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
         // CONCATENACION DE CADENAS. `File.GetSize(ruta)` se habria bajado como
         // `concat(ruta, ...)`, sin un solo mensaje. Ahora la tabla que autorizo la
         // entrada es la que dice el nodo, asi que no hay omision posible.
-        const ProjectOopHirNodeKind kind = coreLowering->hirKind;
-        auto node = makeNode(kind, expression, core->resultTypeKey);
-        for (std::size_t index = 0; index < operands.size(); ++index)
+        if (coreLowering->operandCount != 0U)
         {
-            const ast::AstNode* operandSyntax = operands[index];
-            auto operand = lowerExpression(operandSyntax, memberOrdinal, false, error);
-            if (operand == nullptr) return nullptr;
-            if (index < stringCall->selectedConversions.size() &&
-                stringCall->selectedConversions[index].kind != ProjectConversionKind::Identity)
-            {
-                operand = wrapImplicitConversion(
-                    std::move(operand), stringCall->selectedConversions[index], operandSyntax);
-            }
-            node->children.push_back(std::move(operand));
+            error = "Stage 34 core operand call escaped iterative lowering";
+            return nullptr;
         }
-        return node;
+        return makeNode(coreLowering->hirKind, expression, core->resultTypeKey);
     }
     // Item 307: AtomicFence has one syntactic argument, but that MemoryOrder was folded
     // already and is metadata rather than an executable operand.
