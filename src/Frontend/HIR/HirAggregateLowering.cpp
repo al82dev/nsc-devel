@@ -45,6 +45,9 @@ bool ProjectOopHirModel::appendAggregateElements(
     std::vector<std::unique_ptr<ProjectOopHirNode>>& elements,
     std::string& error)
 {
+    (void)memberOrdinal;
+    (void)elements;
+
     // Per-element type and offset, for the two aggregate shapes the language has.
     struct AggregateSlot final
     {
