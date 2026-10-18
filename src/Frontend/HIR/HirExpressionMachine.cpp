@@ -138,6 +138,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         BuiltinBinary,
         CoreBinary,
         Conditional,
+        Match,
         NullCoalescing,
         NullCoalescingAssignment,
         ResultPropagation,
@@ -164,6 +165,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::uint8_t stage = 0;
         std::unique_ptr<ProjectOopHirNode> first;
         std::unique_ptr<ProjectOopHirNode> second;
+        std::unique_ptr<ProjectOopHirNode> matchNode;
+        std::unique_ptr<ProjectOopHirNode> matchArm;
         std::vector<const ast::AstNode*> operandSyntaxes;
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
@@ -179,6 +182,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodStructuredExitBinding* structuredExit = nullptr;
         const MethodMoveBinding* move = nullptr;
         const MethodExpressionTypeBinding* operandType = nullptr;
+        const MethodMatchExpressionBinding* matchBinding = nullptr;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -187,6 +191,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool flowProvenNonNull = false;
         std::size_t memberOrdinal = 0;
         std::size_t syntheticLocalOrdinal = 0;
+        std::size_t armIndex = 0;
+        std::size_t cleanupDepth = 0;
+        bool cleanupActive = false;
         std::vector<language::InterpolationPart> interpolationParts;
     };
     const auto iterativeKind = [&](const ast::AstNode* syntax, bool address)
@@ -260,6 +267,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 return IterativeExpressionKind::CoreBinary;
             }
         }
+        if (syntax->kind() == ast::AstNodeKind::MatchExpression)
+            return IterativeExpressionKind::Match;
         if (!address && syntax->kind() == ast::AstNodeKind::ConditionalExpression &&
             coreBinding(syntax) == nullptr && callBinding(syntax) == nullptr &&
             delegateBinding(syntax) == nullptr && lambdaBinding(syntax) == nullptr)
@@ -551,6 +560,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const ast::AstNode* current = expression;
         bool currentAddressContext = addressContext;
         std::size_t currentMemberOrdinal = memberOrdinal;
+        const auto rollbackMatchCleanups = [&]()
+        {
+            for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+            {
+                if (frame->kind == IterativeExpressionKind::Match && frame->cleanupActive)
+                    activeHirCleanupRegions_.resize(frame->cleanupDepth);
+            }
+        };
         while (true)
         {
             const std::optional<IterativeExpressionKind> currentKind =
@@ -621,6 +638,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     {
                         error = std::move(parseError);
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
                         return nullptr;
                     }
                     const std::size_t holeCount = static_cast<std::size_t>(std::count_if(
@@ -729,6 +747,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     frame.move = moveBinding(current);
                 }
+                else if (*currentKind == IterativeExpressionKind::Match)
+                {
+                    frame.matchBinding = methodBodyModel_ != nullptr
+                        ? methodBodyModel_->matchExpressionBinding(current) : nullptr;
+                    if (frame.matchBinding == nullptr)
+                    {
+                        error = "T03-F03 match expression has no semantic binding";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    if (currentAddressContext && !frame.matchBinding->referenceResult)
+                    {
+                        error = "a value match expression does not produce addressable storage";
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    const MethodExpressionTypeBinding* matchType = expressionType(current);
+                    const std::string resultType = matchType != nullptr
+                        ? matchType->typeKey : "<error>";
+                    frame.matchNode = makeNode(
+                        ProjectOopHirNodeKind::MatchExpression, current, resultType);
+                    frame.matchNode->referenceResult = frame.matchBinding->referenceResult;
+                    frame.matchNode->governingReference = frame.matchBinding->governingReference;
+                    frame.matchNode->secondaryMemberOrdinal =
+                        frame.matchBinding->switchTagMemberOrdinal;
+                    frame.matchNode->booleanValue =
+                        frame.matchBinding->switchTagMemberOrdinal.has_value();
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -749,6 +795,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = current->first();
                 else if (*currentKind == IterativeExpressionKind::ResultPropagation)
                     current = frames.back().resultPropagation->operandSyntax;
+                else if (*currentKind == IterativeExpressionKind::Match)
+                    current = current->first();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -815,6 +863,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     currentAddressContext = true;
                 }
+                else if (*currentKind == IterativeExpressionKind::Match)
+                {
+                    currentAddressContext = frames.back().matchBinding->governingReference;
+                }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
                     currentAddressContext = false;
@@ -832,6 +884,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current, currentMemberOrdinal, currentAddressContext, error);
             if (lowered == nullptr)
             {
+                rollbackMatchCleanups();
                 if (!lastErrorRange_.isValid() && !frames.empty() &&
                     frames.back().kind != IterativeExpressionKind::ExpressionStatement)
                     lastErrorRange_ = frames.back().syntax->range();
@@ -943,6 +996,176 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     conversion->children.push_back(std::move(lowered));
                     lowered = std::move(conversion);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::Match)
+                {
+                    const auto beginArm = [&]() -> bool
+                    {
+                        const ast::AstNode* armSyntax =
+                            frame.syntax->children()[frame.armIndex];
+                        if (armSyntax == nullptr || armSyntax->first() == nullptr ||
+                            armSyntax->third() == nullptr)
+                        {
+                            error = "T03-F03 malformed match expression arm";
+                            return false;
+                        }
+                        frame.matchArm = makeNode(
+                            ProjectOopHirNodeKind::MatchArm,
+                            armSyntax,
+                            frame.matchNode->typeKey);
+                        if (frame.armIndex < frame.matchBinding->armTags.size())
+                            frame.matchArm->switchLabels =
+                                frame.matchBinding->armTags[frame.armIndex];
+                        frame.stage = 1U;
+                        current = armSyntax->first();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        return true;
+                    };
+                    const auto beginValue = [&]() -> bool
+                    {
+                        const ast::AstNode* armSyntax =
+                            frame.syntax->children()[frame.armIndex];
+                        frame.cleanupDepth = activeHirCleanupRegions_.size();
+                        frame.cleanupActive = true;
+                        for (const ast::AstNode* declaration : armSyntax->children())
+                        {
+                            auto declarationNode = lowerStatement(
+                                declaration, frame.memberOrdinal, error);
+                            if (declarationNode == nullptr)
+                            {
+                                activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                                frame.cleanupActive = false;
+                                return false;
+                            }
+                            if (declarationNode->kind ==
+                                    ProjectOopHirNodeKind::LocalDeclaration &&
+                                declarationNode->cleanupRegionOrdinal.has_value())
+                            {
+                                activeHirCleanupRegions_.push_back(
+                                    *declarationNode->cleanupRegionOrdinal);
+                            }
+                            frame.matchArm->children.push_back(std::move(declarationNode));
+                        }
+                        frame.stage = 3U;
+                        current = armSyntax->third();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = frame.matchBinding->referenceResult;
+                        return true;
+                    };
+                    const auto finishMatch = [&]()
+                    {
+                        lowered = std::move(frame.matchNode);
+                        if (frame.matchBinding->referenceResult && !frame.addressContext)
+                        {
+                            auto load = makeNode(
+                                ProjectOopHirNodeKind::PointerLoad,
+                                frame.syntax,
+                                lowered->typeKey);
+                            load->children.push_back(std::move(lowered));
+                            lowered = std::move(load);
+                        }
+                    };
+                    if (frame.stage == 0U)
+                    {
+                        frame.matchNode->children.push_back(std::move(lowered));
+                        if (frame.syntax->children().empty())
+                        {
+                            finishMatch();
+                            frames.pop_back();
+                            continue;
+                        }
+                        if (!beginArm())
+                        {
+                            rollbackMatchCleanups();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        descend = true;
+                        break;
+                    }
+                    if (frame.stage == 1U)
+                    {
+                        frame.matchArm->children.push_back(std::move(lowered));
+                        const ast::AstNode* guard =
+                            frame.syntax->children()[frame.armIndex]->second();
+                        if (guard != nullptr)
+                        {
+                            frame.stage = 2U;
+                            current = guard;
+                            currentMemberOrdinal = frame.memberOrdinal;
+                            currentAddressContext = false;
+                            descend = true;
+                            break;
+                        }
+                        auto defaultGuard = makeNode(
+                            ProjectOopHirNodeKind::BooleanConstant,
+                            frame.syntax->children()[frame.armIndex],
+                            "builtin:bool");
+                        defaultGuard->booleanValue = true;
+                        frame.matchArm->children.push_back(std::move(defaultGuard));
+                        if (!beginValue())
+                        {
+                            rollbackMatchCleanups();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        descend = true;
+                        break;
+                    }
+                    if (frame.stage == 2U)
+                    {
+                        frame.matchArm->children.push_back(std::move(lowered));
+                        if (!beginValue())
+                        {
+                            rollbackMatchCleanups();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        descend = true;
+                        break;
+                    }
+                    const ast::AstNode* armSyntax =
+                        frame.syntax->children()[frame.armIndex];
+                    if (!frame.matchBinding->referenceResult &&
+                        frame.armIndex < frame.matchBinding->armConversions.size())
+                    {
+                        const ProjectImplicitConversion& conversion =
+                            frame.matchBinding->armConversions[frame.armIndex];
+                        if (conversion.exists() &&
+                            conversion.kind != ProjectConversionKind::Identity)
+                        {
+                            lowered = wrapImplicitConversion(
+                                std::move(lowered), conversion, armSyntax->third());
+                        }
+                    }
+                    frame.matchArm->children.push_back(std::move(lowered));
+                    frame.matchArm->cleanupRegionOrdinals.assign(
+                        activeHirCleanupRegions_.begin() +
+                            static_cast<std::ptrdiff_t>(frame.cleanupDepth),
+                        activeHirCleanupRegions_.end());
+                    activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                    frame.cleanupActive = false;
+                    frame.matchNode->children.push_back(std::move(frame.matchArm));
+                    ++frame.armIndex;
+                    if (frame.armIndex < frame.syntax->children().size())
+                    {
+                        if (!beginArm())
+                        {
+                            rollbackMatchCleanups();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        descend = true;
+                        break;
+                    }
+                    finishMatch();
                     frames.pop_back();
                     continue;
                 }
@@ -3096,104 +3319,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::MatchExpression:
-        {
-            const MethodMatchExpressionBinding* binding = methodBodyModel_ != nullptr
-                ? methodBodyModel_->matchExpressionBinding(expression) : nullptr;
-            if (binding == nullptr)
-            {
-                error = "T03-F03 match expression has no semantic binding";
-                return nullptr;
-            }
-            if (addressContext && !binding->referenceResult)
-            {
-                error = "a value match expression does not produce addressable storage";
-                return nullptr;
-            }
-
-            auto node = makeNode(ProjectOopHirNodeKind::MatchExpression, expression, resultType);
-            node->referenceResult = binding->referenceResult;
-            node->governingReference = binding->governingReference;
-            node->secondaryMemberOrdinal = binding->switchTagMemberOrdinal;
-            node->booleanValue = binding->switchTagMemberOrdinal.has_value();
-            auto governing = lowerExpression(
-                expression->first(), memberOrdinal, binding->governingReference, error);
-            if (governing == nullptr) return nullptr;
-            node->children.push_back(std::move(governing));
-
-            for (std::size_t armIndex = 0; armIndex < expression->children().size(); ++armIndex)
-            {
-                const ast::AstNode* armSyntax = expression->children()[armIndex];
-                if (armSyntax == nullptr || armSyntax->first() == nullptr ||
-                    armSyntax->third() == nullptr)
-                {
-                    error = "T03-F03 malformed match expression arm";
-                    return nullptr;
-                }
-                auto arm = makeNode(ProjectOopHirNodeKind::MatchArm, armSyntax, resultType);
-                if (armIndex < binding->armTags.size())
-                    arm->switchLabels = binding->armTags[armIndex];
-                auto condition = lowerExpression(armSyntax->first(), memberOrdinal, false, error);
-                if (condition == nullptr) return nullptr;
-                arm->children.push_back(std::move(condition));
-
-                if (armSyntax->second() != nullptr)
-                {
-                    auto guard = lowerExpression(armSyntax->second(), memberOrdinal, false, error);
-                    if (guard == nullptr) return nullptr;
-                    arm->children.push_back(std::move(guard));
-                }
-                else
-                {
-                    auto guard = makeNode(
-                        ProjectOopHirNodeKind::BooleanConstant, armSyntax, "builtin:bool");
-                    guard->booleanValue = true;
-                    arm->children.push_back(std::move(guard));
-                }
-
-                const std::size_t cleanupDepth = activeHirCleanupRegions_.size();
-                for (const ast::AstNode* declaration : armSyntax->children())
-                {
-                    auto lowered = lowerStatement(declaration, memberOrdinal, error);
-                    if (lowered == nullptr)
-                    {
-                        activeHirCleanupRegions_.resize(cleanupDepth);
-                        return nullptr;
-                    }
-                    if (lowered->kind == ProjectOopHirNodeKind::LocalDeclaration &&
-                        lowered->cleanupRegionOrdinal.has_value())
-                    {
-                        activeHirCleanupRegions_.push_back(*lowered->cleanupRegionOrdinal);
-                    }
-                    arm->children.push_back(std::move(lowered));
-                }
-
-                auto value = lowerExpression(
-                    armSyntax->third(), memberOrdinal, binding->referenceResult, error);
-                if (value == nullptr)
-                {
-                    activeHirCleanupRegions_.resize(cleanupDepth);
-                    return nullptr;
-                }
-                if (!binding->referenceResult && armIndex < binding->armConversions.size())
-                {
-                    const ProjectImplicitConversion& conversion = binding->armConversions[armIndex];
-                    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
-                        value = wrapImplicitConversion(
-                            std::move(value), conversion, armSyntax->third());
-                }
-                arm->children.push_back(std::move(value));
-                arm->cleanupRegionOrdinals.assign(
-                    activeHirCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(cleanupDepth),
-                    activeHirCleanupRegions_.end());
-                activeHirCleanupRegions_.resize(cleanupDepth);
-                node->children.push_back(std::move(arm));
-            }
-
-            if (!binding->referenceResult || addressContext) return node;
-            auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, resultType);
-            load->children.push_back(std::move(node));
-            return load;
-        }
+            return lowerExpressionWithStatementFrame(
+                expression, memberOrdinal, addressContext, nullptr, error);
 
         case ast::AstNodeKind::MatchArmExpression:
             error = "a match arm reached HIR outside its match expression";

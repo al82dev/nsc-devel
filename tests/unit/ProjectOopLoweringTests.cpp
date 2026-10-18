@@ -271,6 +271,51 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerMatchExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        const std::vector<const ast::AstNode*>& matches,
+        std::vector<MethodMatchExpressionBinding> bindings,
+        const std::vector<std::pair<
+            const ast::AstNode*, const MethodExpressionTypeBinding*>>& typedSyntax,
+        bool addressContext,
+        std::string& error)
+    {
+        methodBodyModel.matchExpressionBindings_ = std::move(bindings);
+        methodBodyModel.matchExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0; index < matches.size(); ++index)
+            methodBodyModel.matchExpressionBindingBySyntax_[matches[index]] = index;
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
+    static void configureMatchCleanupLocal(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* declaration)
+    {
+        MethodLocalSymbol local;
+        local.syntax = declaration;
+        local.name = "resource";
+        local.typeKey = "type:Match.Resource";
+        local.isRaii = true;
+        methodBodyModel.locals_.push_back(std::move(local));
+        model.localBySyntax_[declaration] = &methodBodyModel.locals_.back();
+
+        MethodCleanupRegion cleanup;
+        cleanup.syntax = declaration;
+        methodBodyModel.cleanupRegions_.push_back(std::move(cleanup));
+        model.cleanupRegionBySyntax_[declaration] = &methodBodyModel.cleanupRegions_.back();
+    }
+
+    static std::size_t activeCleanupDepth(const ProjectOopHirModel& model)
+    {
+        return model.activeHirCleanupRegions_.size();
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerFieldExpression(
         ProjectOopHirModel& model,
         const ast::AstNode* root,
@@ -3250,6 +3295,237 @@ void testDeepConditionalExpressionLowering(TestContext& tests)
     destroyHirTreeIteratively(lowered);
 }
 
+using MatchTypedSyntax = std::pair<const nativesharp::ast::AstNode*,
+    const nativesharp::frontend::MethodExpressionTypeBinding*>;
+
+nativesharp::ast::AstNode* appendMatchBooleanSyntax(
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>>& syntax,
+    std::vector<MatchTypedSyntax>& typedSyntax,
+    const nativesharp::frontend::MethodExpressionTypeBinding& booleanType)
+{
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::BooleanLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    typedSyntax.emplace_back(syntax.back().get(), &booleanType);
+    return syntax.back().get();
+}
+
+nativesharp::ast::AstNode* buildDeepMatchSyntax(
+    std::size_t nestingDepth,
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>>& syntax,
+    std::vector<const nativesharp::ast::AstNode*>& matches,
+    std::vector<MatchTypedSyntax>& typedSyntax,
+    std::vector<nativesharp::frontend::MethodMatchExpressionBinding>& bindings,
+    const nativesharp::frontend::MethodExpressionTypeBinding& booleanType)
+{
+    auto* current = appendMatchBooleanSyntax(syntax, typedSyntax, booleanType);
+    for (std::size_t depth = 0; depth < nestingDepth; ++depth)
+    {
+        std::array<nativesharp::ast::AstNode*, 4> edges{};
+        const std::size_t recursiveEdge = depth % edges.size();
+        for (std::size_t edge = 0; edge < edges.size(); ++edge)
+        {
+            edges[edge] = edge == recursiveEdge ? current
+                : appendMatchBooleanSyntax(syntax, typedSyntax, booleanType);
+        }
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::MatchArmExpression, nativesharp::SourceRange{}));
+        auto* arm = syntax.back().get();
+        arm->setFirst(edges[1]);
+        arm->setSecond(edges[2]);
+        arm->setThird(edges[3]);
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::MatchExpression, nativesharp::SourceRange{}));
+        current = syntax.back().get();
+        current->setFirst(edges[0]);
+        current->addChild(arm);
+        typedSyntax.emplace_back(current, &booleanType);
+        matches.push_back(current);
+        nativesharp::frontend::MethodMatchExpressionBinding binding;
+        binding.syntax = current;
+        binding.governingTypeKey = "builtin:bool";
+        binding.resultTypeKey = "builtin:bool";
+        binding.armConversions.push_back(nativesharp::frontend::ProjectImplicitConversion{
+            nativesharp::frontend::ProjectConversionKind::Identity,
+            0,
+            "builtin:bool",
+            "builtin:bool",
+            std::nullopt});
+        bindings.push_back(std::move(binding));
+    }
+    return current;
+}
+
+std::size_t observeDeepMatchDepth(
+    nativesharp::frontend::ProjectOopHirNode* cursor,
+    std::size_t nestingDepth)
+{
+    std::size_t observedDepth = 0;
+    for (std::size_t remaining = nestingDepth; remaining > 0U && cursor != nullptr; --remaining)
+    {
+        const std::size_t recursiveEdge = (remaining - 1U) % 4U;
+        const bool valid = cursor->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::MatchExpression &&
+            cursor->children.size() == 2U && cursor->children[1]->children.size() == 3U;
+        if (!valid) break;
+        auto* arm = cursor->children[1].get();
+        cursor = recursiveEdge == 0U ? cursor->children[0].get()
+            : arm->children[recursiveEdge - 1U].get();
+        ++observedDepth;
+    }
+    return cursor != nullptr &&
+            cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::BooleanConstant
+        ? observedDepth : 0U;
+}
+
+void testDeepMatchExpressionLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    std::vector<const nativesharp::ast::AstNode*> matches;
+    std::vector<MatchTypedSyntax> typedSyntax;
+    std::vector<nativesharp::frontend::MethodMatchExpressionBinding> bindings;
+    syntax.reserve(nestingDepth * 5U + 1U);
+    matches.reserve(nestingDepth);
+    typedSyntax.reserve(nestingDepth * 4U + 1U);
+    bindings.reserve(nestingDepth);
+    nativesharp::frontend::MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+    auto* current = buildDeepMatchSyntax(
+        nestingDepth, syntax, matches, typedSyntax, bindings, booleanType);
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerMatchExpression(
+        model, methodBodyModel, current, matches, std::move(bindings), typedSyntax, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level match expression lowers without process-stack recursion (" + error + ")");
+    tests.expect(observeDeepMatchDepth(lowered.get(), nestingDepth) == nestingDepth,
+        "iterative match lowering preserves governing, condition, guard, and value continuations");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testMatchExpressionContract(TestContext& tests)
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    const auto makeNode = [&](nativesharp::ast::AstNodeKind kind)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return syntax.back().get();
+    };
+    auto* governing = makeNode(nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    auto* condition = makeNode(nativesharp::ast::AstNodeKind::BooleanLiteralExpression);
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* guard = makeNode(nativesharp::ast::AstNodeKind::BooleanLiteralExpression);
+    guard->setTokenKind(nativesharp::lexer::TokenKind::KwFalse);
+    auto* declaration = makeNode(nativesharp::ast::AstNodeKind::VariableDeclarationStatement);
+    auto* value = makeNode(nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    auto* arm = makeNode(nativesharp::ast::AstNodeKind::MatchArmExpression);
+    arm->setFirst(condition);
+    arm->setSecond(guard);
+    arm->setThird(value);
+    arm->addChild(declaration);
+    auto* match = makeNode(nativesharp::ast::AstNodeKind::MatchExpression);
+    match->setFirst(governing);
+    match->addChild(arm);
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding longType;
+    longType.typeKey = "builtin:long";
+    nativesharp::frontend::MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+    const std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typedSyntax{
+        {governing, &integerType}, {condition, &booleanType}, {guard, &booleanType},
+        {value, &integerType}, {match, &longType}};
+    nativesharp::frontend::MethodMatchExpressionBinding binding;
+    binding.syntax = match;
+    binding.governingTypeKey = "builtin:int";
+    binding.resultTypeKey = "builtin:long";
+    binding.switchTagMemberOrdinal = 17U;
+    binding.armTags = {{3, 5}};
+    binding.armConversions.push_back(nativesharp::frontend::ProjectImplicitConversion{
+        nativesharp::frontend::ProjectConversionKind::Numeric,
+        1,
+        "builtin:int",
+        "builtin:long",
+        std::nullopt});
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::configureMatchCleanupLocal(
+        model, methodBodyModel, declaration);
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerMatchExpression(
+        model, methodBodyModel, match, {match}, {binding}, typedSyntax, false, error);
+    const auto* loweredArm = lowered != nullptr && lowered->children.size() == 2U
+        ? lowered->children[1].get() : nullptr;
+    tests.expect(loweredArm != nullptr && error.empty() && lowered->booleanValue &&
+            lowered->secondaryMemberOrdinal == 17U && loweredArm->switchLabels ==
+                std::vector<std::int64_t>({3, 5}) && loweredArm->children.size() == 4U &&
+            loweredArm->children[2]->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::LocalDeclaration &&
+            loweredArm->children[3]->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::Conversion &&
+            loweredArm->cleanupRegionOrdinals == std::vector<std::size_t>({0U}) &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(model) == 0U,
+        "iterative match lowering preserves tags, declaration order, conversion, and cleanup scope");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testReferenceMatchExpressionLowering(TestContext& tests)
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    const auto makeNode = [&](nativesharp::ast::AstNodeKind kind)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return syntax.back().get();
+    };
+    auto* governing = makeNode(nativesharp::ast::AstNodeKind::MatchValueExpression);
+    auto* condition = makeNode(nativesharp::ast::AstNodeKind::BooleanLiteralExpression);
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* value = makeNode(nativesharp::ast::AstNodeKind::MatchValueExpression);
+    auto* arm = makeNode(nativesharp::ast::AstNodeKind::MatchArmExpression);
+    arm->setFirst(condition);
+    arm->setThird(value);
+    auto* match = makeNode(nativesharp::ast::AstNodeKind::MatchExpression);
+    match->setFirst(governing);
+    match->addChild(arm);
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+    const std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typedSyntax{
+        {governing, &integerType}, {condition, &booleanType},
+        {value, &integerType}, {match, &integerType}};
+    nativesharp::frontend::MethodMatchExpressionBinding binding;
+    binding.syntax = match;
+    binding.governingTypeKey = "builtin:int";
+    binding.resultTypeKey = "builtin:int";
+    binding.referenceResult = true;
+    binding.governingReference = true;
+    binding.armConversions.emplace_back();
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::lowerMatchExpression(
+        model, methodBodyModel, match, {match}, {binding}, typedSyntax, false, error);
+    const auto* matchNode = lowered != nullptr && lowered->children.size() == 1U
+        ? lowered->children.front().get() : nullptr;
+    tests.expect(matchNode != nullptr && error.empty() &&
+            lowered->kind == nativesharp::frontend::ProjectOopHirNodeKind::PointerLoad &&
+            matchNode->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::MatchExpression &&
+            matchNode->referenceResult && matchNode->governingReference &&
+            matchNode->children[0]->referenceResult &&
+            matchNode->children[1]->children.back()->referenceResult,
+        "a reference match preserves address lowering and adds one value-context pointer load");
+    destroyHirTreeIteratively(lowered);
+}
+
 void testDeepMixedExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -4994,6 +5270,12 @@ int main()
     {
         testDeepConditionalExpressionLowering(tests);
     }
+    else if (focusValue == "hir-match-expression-depth")
+    {
+        testDeepMatchExpressionLowering(tests);
+        testMatchExpressionContract(tests);
+        testReferenceMatchExpressionLowering(tests);
+    }
     else if (focusValue == "hir-mixed-depth")
     {
         testDeepMixedExpressionLowering(tests);
@@ -5146,6 +5428,9 @@ int main()
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);
+        testDeepMatchExpressionLowering(tests);
+        testMatchExpressionContract(tests);
+        testReferenceMatchExpressionLowering(tests);
         testDeepMixedExpressionLowering(tests);
         testDeepStaticAssertEvaluation(tests);
         testStaticAssertShortCircuitEvaluation(tests);
