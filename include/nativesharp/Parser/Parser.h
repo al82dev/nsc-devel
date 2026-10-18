@@ -60,13 +60,44 @@ private:
         ast::AstNode* node,
         ast::FloatingPointModeSyntaxKind mode);
     bool canStartTypeAt(std::size_t tokenIndex) const noexcept;
+    enum class TypeScanTaskKind : std::uint8_t
+    {
+        Begin,
+        FunctionParameters,
+        FunctionAfterParameter,
+        FunctionAfterResult,
+        FunctionAfterError,
+        TupleElements,
+        TupleAfterElement
+    };
+    struct TypeScanTask final
+    {
+        TypeScanTaskKind kind = TypeScanTaskKind::Begin;
+        std::size_t count = 0;
+        bool flag = false;
+    };
     bool scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
+    bool beginTypeScan(
+        std::size_t& cursor,
+        std::vector<TypeScanTask>& tasks) const noexcept;
+    bool advanceFunctionTypeScan(
+        std::size_t& cursor,
+        TypeScanTask task,
+        std::vector<TypeScanTask>& tasks) const noexcept;
+    bool scheduleFunctionResultScan(
+        std::size_t& cursor,
+        std::vector<TypeScanTask>& tasks) const noexcept;
+    bool advanceTupleTypeScan(
+        std::size_t& cursor,
+        TypeScanTask task,
+        std::vector<TypeScanTask>& tasks) const noexcept;
+    bool finishTupleTypeScan(
+        std::size_t& cursor,
+        std::size_t elementCount,
+        bool sawComma) const noexcept;
     bool scanOwnershipTypePrefix(std::size_t& tokenIndex) const noexcept;
-    bool scanFunctionTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool scanFunctionCarrierAt(std::size_t& cursor) const noexcept;
-    bool scanFunctionParametersAt(std::size_t& cursor) const noexcept;
     void scanFunctionEffectsAt(std::size_t& cursor) const noexcept;
-    bool scanTupleTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool scanNamedTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept;
     bool scanNamedTypeIdentityAt(
         std::size_t tokenIndex,
@@ -110,13 +141,70 @@ private:
         std::string lifetimeName;
     };
 
+    enum class TypeParseFramePhase : std::uint8_t
+    {
+        Begin,
+        FunctionParameters,
+        FunctionParameterReady,
+        FunctionResultReady,
+        FunctionErrorReady,
+        TupleElements,
+        TupleElementReady,
+        NamedArguments,
+        NamedArgumentReady
+    };
+
+    enum class TypeParseStep : std::uint8_t
+    {
+        Continue,
+        PushChild,
+        Complete,
+        Failed
+    };
+
+    struct TypeParseFrame final
+    {
+        TypeParseFramePhase phase = TypeParseFramePhase::Begin;
+        TypeParseState typeState;
+        FunctionTypeParseState functionState;
+        ast::TypeSyntax* type = nullptr;
+        SourceRange start{};
+        SourceRange completeRange{};
+        std::vector<ast::TypeSyntax*> genericArguments;
+        bool sawParameter = false;
+    };
+
     ast::TypeSyntax* parseTypeImpl();
+    TypeParseStep advanceTypeParseFrame(TypeParseFrame& frame);
+    TypeParseStep acceptTypeParseChild(
+        TypeParseFrame& frame,
+        ast::TypeSyntax* child);
+    TypeParseStep beginTypeParseFrame(TypeParseFrame& frame);
+    TypeParseStep beginFunctionTypeFrame(TypeParseFrame& frame);
+    TypeParseStep advanceFunctionTypeFrame(TypeParseFrame& frame);
+    TypeParseStep acceptFunctionTypeChild(
+        TypeParseFrame& frame,
+        ast::TypeSyntax* child);
+    TypeParseStep closeFunctionParameters(TypeParseFrame& frame);
+    void finishFunctionTypeFrame(TypeParseFrame& frame);
+    TypeParseStep beginTupleTypeFrame(TypeParseFrame& frame);
+    TypeParseStep advanceTupleTypeFrame(TypeParseFrame& frame);
+    TypeParseStep acceptTupleTypeChild(
+        TypeParseFrame& frame,
+        ast::TypeSyntax* child);
+    TypeParseStep finishTupleTypeFrame(TypeParseFrame& frame);
+    TypeParseStep beginNamedTypeFrame(TypeParseFrame& frame);
+    TypeParseStep advanceNamedTypeFrame(TypeParseFrame& frame);
+    TypeParseStep acceptNamedTypeChild(
+        TypeParseFrame& frame,
+        ast::TypeSyntax* child);
+    TypeParseStep finishNamedTypeArgument(TypeParseFrame& frame);
+    void finishNamedTypeFrame(TypeParseFrame& frame);
     bool parseTypeQualifiers(TypeParseState& state);
     bool parseOwnershipTypeQualifier(TypeParseState& state);
     void parseReferenceTypeQualifier(TypeParseState& state);
     void parseTraitTypeQualifiers(TypeParseState& state);
     void parseDeferredTypePrefix(TypeParseState& state);
-    ast::TypeSyntax* parseFunctionType(TypeParseState& state);
     bool parseFunctionCarrier(SourceRange start, FunctionTypeParseState& state);
     void parseFunctionCallingConvention(FunctionTypeParseState& state);
     void validateFunctionCarrier(
@@ -126,23 +214,15 @@ private:
         SourceRange start,
         TypeParseState& typeState,
         FunctionTypeParseState& functionState);
-    bool parseFunctionTypeParameters(ast::TypeSyntax* function);
-    bool parseFunctionTypeResult(ast::TypeSyntax* function);
     void parseFunctionTypeEffects(ast::TypeSyntax* function);
-    bool parseFunctionTypeError(
-        ast::TypeSyntax* function,
-        const FunctionTypeParseState& state);
     void validateFunctionVariadic(
         ast::TypeSyntax* function,
         SourceRange start,
         const FunctionTypeParseState& state);
-    ast::TypeSyntax* parseTupleType(TypeParseState& state);
-    ast::TypeSyntax* parseNamedType(TypeParseState& state);
     ast::TypeSyntax* parseNamedTypeBase(
         TypeParseState& state,
         SourceRange& completeRange);
     static void normalizeBuiltinTypeName(std::string& baseName);
-    void parseNamedTypeArguments(ast::TypeSyntax* type, SourceRange& completeRange);
     void parseTypePostfixModifiers(ast::TypeSyntax* type, SourceRange& completeRange);
     void parsePointeeConst(
         ast::TypeSyntax* type,

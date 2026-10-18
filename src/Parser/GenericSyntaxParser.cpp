@@ -659,7 +659,7 @@ bool Parser::parseTypeArgument(std::vector<ast::TypeSyntax*>& arguments)
         arguments.push_back(literal);
         return true;
     }
-    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
+    if (!at(TokenKind::Identifier) && !canStartTypeAt(index_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedType,

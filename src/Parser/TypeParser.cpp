@@ -65,27 +65,53 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
 
 bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept
 {
-    if (tokenIndex >= tokens_.size() || !scanOwnershipTypePrefix(tokenIndex))
-        return false;
-
-    if (tokenIndex < tokens_.size() &&
-        tokens_[tokenIndex].kind() == TokenKind::Identifier &&
-        (tokens_[tokenIndex].lexeme() == "dyn" || tokens_[tokenIndex].lexeme() == "some"))
+    std::size_t cursor = tokenIndex;
+    std::vector<TypeScanTask> tasks{{TypeScanTaskKind::Begin}};
+    while (!tasks.empty())
     {
-        std::size_t afterDynamicType = tokenIndex + 1U;
-        if (scanTypeAt(tokenIndex + 1U, afterDynamicType))
-        {
-            afterType = afterDynamicType;
-            return true;
-        }
+        const TypeScanTask task = tasks.back();
+        tasks.pop_back();
+        bool valid = false;
+        if (task.kind == TypeScanTaskKind::Begin)
+            valid = beginTypeScan(cursor, tasks);
+        else if (task.kind == TypeScanTaskKind::TupleElements ||
+                 task.kind == TypeScanTaskKind::TupleAfterElement)
+            valid = advanceTupleTypeScan(cursor, task, tasks);
+        else
+            valid = advanceFunctionTypeScan(cursor, task, tasks);
+        if (!valid) return false;
     }
-    if (tokenIndex < tokens_.size() &&
-        tokens_[tokenIndex].kind() == TokenKind::Identifier &&
-        tokens_[tokenIndex].lexeme() == "fn")
-        return scanFunctionTypeAt(tokenIndex, afterType);
-    if (tokens_[tokenIndex].kind() == TokenKind::LeftParen)
-        return scanTupleTypeAt(tokenIndex, afterType);
-    return scanNamedTypeAt(tokenIndex, afterType);
+    afterType = cursor;
+    return true;
+}
+
+bool Parser::beginTypeScan(
+    std::size_t& cursor,
+    std::vector<TypeScanTask>& tasks) const noexcept
+{
+    if (cursor >= tokens_.size() || !scanOwnershipTypePrefix(cursor)) return false;
+    while (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+           (tokens_[cursor].lexeme() == "dyn" || tokens_[cursor].lexeme() == "some"))
+        ++cursor;
+    if (cursor >= tokens_.size()) return false;
+    if (tokens_[cursor].kind() == TokenKind::Identifier &&
+        tokens_[cursor].lexeme() == "fn")
+    {
+        ++cursor;
+        if (!scanFunctionCarrierAt(cursor)) return false;
+        tasks.push_back({TypeScanTaskKind::FunctionParameters});
+        return true;
+    }
+    if (tokens_[cursor].kind() == TokenKind::LeftParen)
+    {
+        ++cursor;
+        tasks.push_back({TypeScanTaskKind::TupleElements});
+        return true;
+    }
+    std::size_t afterNamed = cursor;
+    if (!scanNamedTypeAt(cursor, afterNamed)) return false;
+    cursor = afterNamed;
+    return true;
 }
 
 bool Parser::scanOwnershipTypePrefix(std::size_t& tokenIndex) const noexcept
@@ -110,32 +136,18 @@ bool Parser::scanOwnershipTypePrefix(std::size_t& tokenIndex) const noexcept
     return true;
 }
 
-bool Parser::scanFunctionTypeAt(
-    std::size_t tokenIndex,
-    std::size_t& afterType) const noexcept
+bool Parser::scheduleFunctionResultScan(
+    std::size_t& cursor,
+    std::vector<TypeScanTask>& tasks) const noexcept
 {
-    std::size_t cursor = tokenIndex + 1U;
-    if (!scanFunctionCarrierAt(cursor) || !scanFunctionParametersAt(cursor))
-        return false;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen)
         return false;
     ++cursor;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Arrow)
         return false;
     ++cursor;
-    std::size_t afterResult = cursor;
-    if (!scanTypeAt(cursor, afterResult)) return false;
-    cursor = afterResult;
-    scanFunctionEffectsAt(cursor);
-    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
-        tokens_[cursor].lexeme() == "throws")
-    {
-        ++cursor;
-        std::size_t afterError = cursor;
-        if (!scanTypeAt(cursor, afterError)) return false;
-        cursor = afterError;
-    }
-    afterType = cursor;
+    tasks.push_back({TypeScanTaskKind::FunctionAfterResult});
+    tasks.push_back({TypeScanTaskKind::Begin});
     return true;
 }
 
@@ -189,30 +201,47 @@ bool Parser::scanFunctionCarrierAt(std::size_t& cursor) const noexcept
     return true;
 }
 
-bool Parser::scanFunctionParametersAt(std::size_t& cursor) const noexcept
+bool Parser::advanceFunctionTypeScan(
+    std::size_t& cursor,
+    TypeScanTask task,
+    std::vector<TypeScanTask>& tasks) const noexcept
 {
-    bool sawParameter = false;
-    while (cursor < tokens_.size() && tokens_[cursor].kind() != TokenKind::RightParen)
+    if (task.kind == TypeScanTaskKind::FunctionAfterError) return true;
+    if (task.kind == TypeScanTaskKind::FunctionAfterResult)
     {
-        if (tokens_[cursor].kind() == TokenKind::Ellipsis)
+        scanFunctionEffectsAt(cursor);
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+            tokens_[cursor].lexeme() == "throws")
         {
-            if (!sawParameter || cursor + 1U >= tokens_.size() ||
-                tokens_[cursor + 1U].kind() != TokenKind::RightParen)
-                return false;
             ++cursor;
-            break;
+            tasks.push_back({TypeScanTaskKind::FunctionAfterError});
+            tasks.push_back({TypeScanTaskKind::Begin});
         }
-        std::size_t afterParameter = cursor;
-        if (!scanTypeAt(cursor, afterParameter)) return false;
-        cursor = afterParameter;
-        sawParameter = true;
+        return true;
+    }
+    if (task.kind == TypeScanTaskKind::FunctionAfterParameter)
+    {
         if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Comma)
         {
             ++cursor;
-            continue;
+            tasks.push_back({TypeScanTaskKind::FunctionParameters, 0, true});
+            return true;
         }
-        break;
+        return scheduleFunctionResultScan(cursor, tasks);
     }
+    if (cursor >= tokens_.size()) return false;
+    if (tokens_[cursor].kind() == TokenKind::RightParen)
+        return scheduleFunctionResultScan(cursor, tasks);
+    if (tokens_[cursor].kind() == TokenKind::Ellipsis)
+    {
+        if (!task.flag || cursor + 1U >= tokens_.size() ||
+            tokens_[cursor + 1U].kind() != TokenKind::RightParen)
+            return false;
+        ++cursor;
+        return scheduleFunctionResultScan(cursor, tasks);
+    }
+    tasks.push_back({TypeScanTaskKind::FunctionAfterParameter, 0, true});
+    tasks.push_back({TypeScanTaskKind::Begin});
     return true;
 }
 
@@ -239,41 +268,49 @@ void Parser::scanFunctionEffectsAt(std::size_t& cursor) const noexcept
     }
 }
 
-bool Parser::scanTupleTypeAt(
-    std::size_t tokenIndex,
-    std::size_t& afterType) const noexcept
+bool Parser::finishTupleTypeScan(
+    std::size_t& cursor,
+    std::size_t elementCount,
+    bool sawComma) const noexcept
 {
-    std::size_t cursor = tokenIndex + 1U;
-    std::size_t elementCount = 0;
-    bool sawComma = false;
-    while (cursor < tokens_.size() && tokens_[cursor].kind() != TokenKind::RightParen)
-    {
-        std::size_t afterElement = cursor;
-        if (!scanTypeAt(cursor, afterElement)) return false;
-        cursor = afterElement;
-        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
-            cursor + 1U < tokens_.size() &&
-            (tokens_[cursor + 1U].kind() == TokenKind::Comma ||
-             tokens_[cursor + 1U].kind() == TokenKind::RightParen))
-            ++cursor;
-        ++elementCount;
-        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Comma)
-        {
-            sawComma = true;
-            ++cursor;
-            if (cursor < tokens_.size() &&
-                tokens_[cursor].kind() == TokenKind::RightParen) break;
-            continue;
-        }
-        break;
-    }
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen ||
         (elementCount == 1U && !sawComma))
         return false;
     ++cursor;
     if (!scanTypeSuffixesAt(cursor)) return false;
-    afterType = cursor;
     return true;
+}
+
+bool Parser::advanceTupleTypeScan(
+    std::size_t& cursor,
+    TypeScanTask task,
+    std::vector<TypeScanTask>& tasks) const noexcept
+{
+    if (task.kind == TypeScanTaskKind::TupleElements)
+    {
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::RightParen)
+            return finishTupleTypeScan(cursor, task.count, task.flag);
+        tasks.push_back({TypeScanTaskKind::TupleAfterElement, task.count, task.flag});
+        tasks.push_back({TypeScanTaskKind::Begin});
+        return true;
+    }
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+        cursor + 1U < tokens_.size() &&
+        (tokens_[cursor + 1U].kind() == TokenKind::Comma ||
+         tokens_[cursor + 1U].kind() == TokenKind::RightParen))
+        ++cursor;
+    ++task.count;
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Comma)
+    {
+        ++cursor;
+        task.flag = true;
+        if (cursor < tokens_.size() && tokens_[cursor].kind() != TokenKind::RightParen)
+        {
+            tasks.push_back({TypeScanTaskKind::TupleElements, task.count, task.flag});
+            return true;
+        }
+    }
+    return finishTupleTypeScan(cursor, task.count, task.flag);
 }
 
 bool Parser::scanNamedTypeAt(
@@ -550,11 +587,70 @@ bool Parser::parseTypeQualifiers(TypeParseState& state)
 
 ast::TypeSyntax* Parser::parseTypeImpl()
 {
-    TypeParseState state;
-    if (!parseTypeQualifiers(state)) return nullptr;
-    if (atContextualKeyword("fn")) return parseFunctionType(state);
-    if (at(TokenKind::LeftParen)) return parseTupleType(state);
-    return parseNamedType(state);
+    std::vector<TypeParseFrame> frames(1);
+    std::optional<ast::TypeSyntax*> completed;
+    while (!frames.empty())
+    {
+        TypeParseStep step = TypeParseStep::Continue;
+        if (completed.has_value())
+        {
+            ast::TypeSyntax* child = *completed;
+            completed.reset();
+            step = acceptTypeParseChild(frames.back(), child);
+        }
+        else
+        {
+            step = advanceTypeParseFrame(frames.back());
+        }
+        if (step == TypeParseStep::PushChild)
+            frames.emplace_back();
+        else if (step == TypeParseStep::Complete || step == TypeParseStep::Failed)
+        {
+            completed = step == TypeParseStep::Complete ? frames.back().type : nullptr;
+            frames.pop_back();
+        }
+    }
+    return completed.has_value() ? *completed : nullptr;
+}
+
+Parser::TypeParseStep Parser::advanceTypeParseFrame(TypeParseFrame& frame)
+{
+    switch (frame.phase)
+    {
+        case TypeParseFramePhase::Begin: return beginTypeParseFrame(frame);
+        case TypeParseFramePhase::FunctionParameters:
+            return advanceFunctionTypeFrame(frame);
+        case TypeParseFramePhase::TupleElements: return advanceTupleTypeFrame(frame);
+        case TypeParseFramePhase::NamedArguments: return advanceNamedTypeFrame(frame);
+        default: return TypeParseStep::Failed;
+    }
+}
+
+Parser::TypeParseStep Parser::acceptTypeParseChild(
+    TypeParseFrame& frame,
+    ast::TypeSyntax* child)
+{
+    switch (frame.phase)
+    {
+        case TypeParseFramePhase::FunctionParameterReady:
+        case TypeParseFramePhase::FunctionResultReady:
+        case TypeParseFramePhase::FunctionErrorReady:
+            return acceptFunctionTypeChild(frame, child);
+        case TypeParseFramePhase::TupleElementReady:
+            return acceptTupleTypeChild(frame, child);
+        case TypeParseFramePhase::NamedArgumentReady:
+            return acceptNamedTypeChild(frame, child);
+        default:
+            return TypeParseStep::Failed;
+    }
+}
+
+Parser::TypeParseStep Parser::beginTypeParseFrame(TypeParseFrame& frame)
+{
+    if (!parseTypeQualifiers(frame.typeState)) return TypeParseStep::Failed;
+    if (atContextualKeyword("fn")) return beginFunctionTypeFrame(frame);
+    if (at(TokenKind::LeftParen)) return beginTupleTypeFrame(frame);
+    return beginNamedTypeFrame(frame);
 }
 
 bool Parser::parseFunctionCarrier(SourceRange start, FunctionTypeParseState& state)
@@ -651,60 +747,113 @@ ast::TypeSyntax* Parser::makeFunctionType(
     return function;
 }
 
-bool Parser::parseFunctionTypeParameters(ast::TypeSyntax* function)
+Parser::TypeParseStep Parser::beginFunctionTypeFrame(TypeParseFrame& frame)
 {
-    bool sawParameter = false;
-    while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
-    {
-        if (consumeIf(TokenKind::Ellipsis))
-        {
-            function->setFunctionVariadic();
-            if (!sawParameter)
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    tokens_[index_ - 1U].range(),
-                    "a variadic function type requires at least one fixed parameter");
-            if (!at(TokenKind::RightParen))
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    current().range(),
-                    "'...' must be the final item in a function type parameter list");
-            break;
-        }
-        ast::TypeSyntax* parameter = parseType();
-        if (parameter == nullptr) return false;
-        if (parameter->baseTokenKind() == TokenKind::KwVoid &&
-            parameter->modifiers().empty())
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                parameter->range(),
-                "a function type parameter cannot have type void");
-        function->addTypeArgument(parameter);
-        sawParameter = true;
-        if (!consumeIf(TokenKind::Comma)) break;
-        if (at(TokenKind::RightParen))
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                "a function type parameter list cannot end with ','; use ', ...' for variadicity");
-            break;
-        }
-    }
-    return expect(TokenKind::RightParen, "')' after function type parameters");
+    frame.start = current().range();
+    consume();
+    if (frame.typeState.dynamicTrait || frame.typeState.opaqueResult)
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            frame.typeState.dynamicTrait
+                ? frame.typeState.dynamicRange : frame.typeState.opaqueRange,
+            "a function type cannot use 'dyn' or 'some'");
+    if (!parseFunctionCarrier(frame.start, frame.functionState))
+        return TypeParseStep::Failed;
+    parseFunctionCallingConvention(frame.functionState);
+    validateFunctionCarrier(frame.start, frame.functionState);
+    if (!expect(TokenKind::LeftParen, "'(' after function type carrier"))
+        return TypeParseStep::Failed;
+    frame.type = makeFunctionType(frame.start, frame.typeState, frame.functionState);
+    frame.phase = TypeParseFramePhase::FunctionParameters;
+    return TypeParseStep::Continue;
 }
 
-bool Parser::parseFunctionTypeResult(ast::TypeSyntax* function)
+Parser::TypeParseStep Parser::closeFunctionParameters(TypeParseFrame& frame)
 {
-    if (!expect(TokenKind::Arrow, "'->' after function type parameters")) return false;
-    ast::TypeSyntax* returnType = parseType();
-    if (returnType == nullptr) return false;
-    function->setFunctionReturnType(returnType);
-    return true;
+    if (!expect(TokenKind::RightParen, "')' after function type parameters"))
+        return TypeParseStep::Failed;
+    if (!expect(TokenKind::Arrow, "'->' after function type parameters"))
+        return TypeParseStep::Failed;
+    frame.phase = TypeParseFramePhase::FunctionResultReady;
+    return TypeParseStep::PushChild;
+}
+
+Parser::TypeParseStep Parser::advanceFunctionTypeFrame(TypeParseFrame& frame)
+{
+    if (at(TokenKind::RightParen) || at(TokenKind::EndOfFile))
+        return closeFunctionParameters(frame);
+    if (!consumeIf(TokenKind::Ellipsis))
+    {
+        frame.phase = TypeParseFramePhase::FunctionParameterReady;
+        return TypeParseStep::PushChild;
+    }
+    frame.type->setFunctionVariadic();
+    if (!frame.sawParameter)
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            tokens_[index_ - 1U].range(),
+            "a variadic function type requires at least one fixed parameter");
+    if (!at(TokenKind::RightParen))
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "'...' must be the final item in a function type parameter list");
+    return closeFunctionParameters(frame);
+}
+
+Parser::TypeParseStep Parser::acceptFunctionTypeChild(
+    TypeParseFrame& frame,
+    ast::TypeSyntax* child)
+{
+    if (child == nullptr) return TypeParseStep::Failed;
+    if (frame.phase == TypeParseFramePhase::FunctionResultReady)
+    {
+        frame.type->setFunctionReturnType(child);
+        parseFunctionTypeEffects(frame.type);
+        if (!atContextualKeyword("throws"))
+        {
+            finishFunctionTypeFrame(frame);
+            return TypeParseStep::Complete;
+        }
+        const SourceRange throwsRange = consume().range();
+        if (frame.functionState.carrier == ast::FunctionTypeCarrierSyntaxKind::Pointer &&
+            frame.functionState.convention !=
+                ast::FunctionCallingConventionSyntaxKind::NativeSharp)
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                throwsRange,
+                "a foreign function pointer cannot propagate a NativeSharp typed error");
+        frame.phase = TypeParseFramePhase::FunctionErrorReady;
+        return TypeParseStep::PushChild;
+    }
+    if (frame.phase == TypeParseFramePhase::FunctionErrorReady)
+    {
+        frame.type->setFunctionErrorType(child);
+        finishFunctionTypeFrame(frame);
+        return TypeParseStep::Complete;
+    }
+    if (child->baseTokenKind() == TokenKind::KwVoid && child->modifiers().empty())
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            child->range(),
+            "a function type parameter cannot have type void");
+    frame.type->addTypeArgument(child);
+    frame.sawParameter = true;
+    if (!consumeIf(TokenKind::Comma)) return closeFunctionParameters(frame);
+    if (at(TokenKind::RightParen))
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "a function type parameter list cannot end with ','; use ', ...' for variadicity");
+    frame.phase = TypeParseFramePhase::FunctionParameters;
+    return at(TokenKind::RightParen)
+        ? closeFunctionParameters(frame) : TypeParseStep::Continue;
 }
 
 void Parser::parseFunctionTypeEffects(ast::TypeSyntax* function)
@@ -739,27 +888,6 @@ void Parser::parseFunctionTypeEffects(ast::TypeSyntax* function)
     function->setFunctionAsync(sawAsync);
 }
 
-bool Parser::parseFunctionTypeError(
-    ast::TypeSyntax* function,
-    const FunctionTypeParseState& state)
-{
-    if (!atContextualKeyword("throws")) return true;
-    const SourceRange throwsRange = consume().range();
-    if (state.carrier == ast::FunctionTypeCarrierSyntaxKind::Pointer &&
-        state.convention != ast::FunctionCallingConventionSyntaxKind::NativeSharp)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            throwsRange,
-            "a foreign function pointer cannot propagate a NativeSharp typed error");
-    }
-    ast::TypeSyntax* errorType = parseType();
-    if (errorType == nullptr) return false;
-    function->setFunctionErrorType(errorType);
-    return true;
-}
-
 void Parser::validateFunctionVariadic(
     ast::TypeSyntax* function,
     SourceRange start,
@@ -783,76 +911,82 @@ void Parser::validateFunctionVariadic(
             "a variadic function pointer requires the cdecl/C or win64 calling convention on Windows x64");
 }
 
-ast::TypeSyntax* Parser::parseFunctionType(TypeParseState& typeState)
+void Parser::finishFunctionTypeFrame(TypeParseFrame& frame)
 {
-    const SourceRange start = current().range();
-    consume();
-    if (typeState.dynamicTrait || typeState.opaqueResult)
-        diagnostics_.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            typeState.dynamicTrait ? typeState.dynamicRange : typeState.opaqueRange,
-            "a function type cannot use 'dyn' or 'some'");
-    FunctionTypeParseState functionState;
-    if (!parseFunctionCarrier(start, functionState)) return nullptr;
-    parseFunctionCallingConvention(functionState);
-    validateFunctionCarrier(start, functionState);
-    if (!expect(TokenKind::LeftParen, "'(' after function type carrier")) return nullptr;
-    ast::TypeSyntax* function = makeFunctionType(start, typeState, functionState);
-    if (!parseFunctionTypeParameters(function)) return nullptr;
-    if (!parseFunctionTypeResult(function)) return nullptr;
-    parseFunctionTypeEffects(function);
-    if (!parseFunctionTypeError(function, functionState)) return nullptr;
-    validateFunctionVariadic(function, start, functionState);
+    validateFunctionVariadic(frame.type, frame.start, frame.functionState);
     const SourceRange complete = index_ == 0
-        ? start
+        ? frame.start
         : join(
-            typeState.ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None
-                ? start : typeState.qualifierRange,
+            frame.typeState.ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None
+                ? frame.start : frame.typeState.qualifierRange,
             tokens_[index_ - 1U].range());
-    function->setRange(complete);
-    return function;
+    frame.type->setRange(complete);
 }
 
-ast::TypeSyntax* Parser::parseTupleType(TypeParseState& state)
+Parser::TypeParseStep Parser::beginTupleTypeFrame(TypeParseFrame& frame)
 {
     const SourceRange open = consume().range();
     ast::TypeSyntax* tuple = arena_.make<ast::TypeSyntax>(open, TokenKind::Invalid, "$tuple");
     tuple->setTuple();
-    tuple->setOwnershipQualifier(state.ownershipQualifier);
-    tuple->setLifetimeName(state.lifetimeName);
-    if (state.dynamicTrait)
+    tuple->setOwnershipQualifier(frame.typeState.ownershipQualifier);
+    tuple->setLifetimeName(frame.typeState.lifetimeName);
+    if (frame.typeState.dynamicTrait)
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
-            state.dynamicRange,
+            frame.typeState.dynamicRange,
             "'dyn' requires a named trait or interface type");
-    if (state.opaqueResult)
+    if (frame.typeState.opaqueResult)
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
-            state.opaqueRange,
+            frame.typeState.opaqueRange,
             "'some' requires a named trait type");
-    if (state.ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
-        state.qualifierRange = join(state.qualifierRange, open);
-    while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+    if (frame.typeState.ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
+        frame.typeState.qualifierRange = join(frame.typeState.qualifierRange, open);
+    frame.start = open;
+    frame.type = tuple;
+    frame.phase = TypeParseFramePhase::TupleElements;
+    return TypeParseStep::Continue;
+}
+
+Parser::TypeParseStep Parser::advanceTupleTypeFrame(TypeParseFrame& frame)
+{
+    if (at(TokenKind::RightParen) || at(TokenKind::EndOfFile))
+        return finishTupleTypeFrame(frame);
+    frame.phase = TypeParseFramePhase::TupleElementReady;
+    return TypeParseStep::PushChild;
+}
+
+Parser::TypeParseStep Parser::acceptTupleTypeChild(
+    TypeParseFrame& frame,
+    ast::TypeSyntax* child)
+{
+    if (child == nullptr) return TypeParseStep::Failed;
+    std::string elementName;
+    if (at(TokenKind::Identifier) &&
+        (peek().kind() == TokenKind::Comma || peek().kind() == TokenKind::RightParen))
+        elementName = std::string(consume().lexeme());
+    frame.type->addTupleElement(child, std::move(elementName));
+    const bool separated = consumeIf(TokenKind::Comma);
+    if (separated && !at(TokenKind::RightParen))
     {
-        ast::TypeSyntax* elementType = parseType();
-        if (elementType == nullptr) return nullptr;
-        std::string elementName;
-        if (at(TokenKind::Identifier) &&
-            (peek().kind() == TokenKind::Comma || peek().kind() == TokenKind::RightParen))
-            elementName = std::string(consume().lexeme());
-        tuple->addTupleElement(elementType, std::move(elementName));
-        if (!consumeIf(TokenKind::Comma) || at(TokenKind::RightParen)) break;
+        frame.phase = TypeParseFramePhase::TupleElements;
+        return TypeParseStep::Continue;
     }
+    return finishTupleTypeFrame(frame);
+}
+
+Parser::TypeParseStep Parser::finishTupleTypeFrame(TypeParseFrame& frame)
+{
     const SourceRange close = current().range();
-    if (!expect(TokenKind::RightParen, "')' after tuple type")) return nullptr;
-    tuple->setRange(join(
-        state.ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None
-            ? open : state.qualifierRange,
+    if (!expect(TokenKind::RightParen, "')' after tuple type"))
+        return TypeParseStep::Failed;
+    frame.type->setRange(join(
+        frame.typeState.ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None
+            ? frame.start : frame.typeState.qualifierRange,
         close));
-    return tuple;
+    return TypeParseStep::Complete;
 }
 
 void Parser::normalizeBuiltinTypeName(std::string& baseName)
@@ -915,23 +1049,98 @@ ast::TypeSyntax* Parser::parseNamedTypeBase(
     return type;
 }
 
-void Parser::parseNamedTypeArguments(ast::TypeSyntax* type, SourceRange& completeRange)
+Parser::TypeParseStep Parser::beginNamedTypeFrame(TypeParseFrame& frame)
 {
-    if (type->baseTokenKind() == TokenKind::Identifier && at(TokenKind::Less))
+    frame.type = parseNamedTypeBase(frame.typeState, frame.completeRange);
+    if (frame.type == nullptr) return TypeParseStep::Failed;
+    if (frame.type->baseTokenKind() != TokenKind::Identifier ||
+        !consumeIf(TokenKind::Less))
     {
-        std::vector<ast::TypeSyntax*> arguments;
-        if (parseTypeArgumentList(arguments))
-        {
-            for (ast::TypeSyntax* argument : arguments) type->addTypeArgument(argument);
-            if (index_ > 0) completeRange = join(completeRange, tokens_[index_ - 1U].range());
-        }
+        finishNamedTypeFrame(frame);
+        return TypeParseStep::Complete;
     }
+    if (consumeGenericGreater())
+    {
+        frame.completeRange = join(frame.completeRange, tokens_[index_ - 1U].range());
+        finishNamedTypeFrame(frame);
+        return TypeParseStep::Complete;
+    }
+    frame.phase = TypeParseFramePhase::NamedArguments;
+    return TypeParseStep::Continue;
+}
+
+Parser::TypeParseStep Parser::advanceNamedTypeFrame(TypeParseFrame& frame)
+{
+    if (looksLikeTupleTypeArgument())
+    {
+        frame.phase = TypeParseFramePhase::NamedArgumentReady;
+        return TypeParseStep::PushChild;
+    }
+    if (at(TokenKind::LeftParen) || at(TokenKind::Plus) || at(TokenKind::Minus) ||
+        at(TokenKind::Tilde) || at(TokenKind::Bang))
+    {
+        frame.genericArguments.push_back(parseConstExpressionTypeArgument());
+        return finishNamedTypeArgument(frame);
+    }
+    if (ast::TypeSyntax* literal = parseConstLiteralTypeArgument(); literal != nullptr)
+    {
+        frame.genericArguments.push_back(literal);
+        return finishNamedTypeArgument(frame);
+    }
+    if (!at(TokenKind::Identifier) && !canStartTypeAt(index_))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "generic type argument list requires a type");
+        finishNamedTypeFrame(frame);
+        return TypeParseStep::Complete;
+    }
+    frame.phase = TypeParseFramePhase::NamedArgumentReady;
+    return TypeParseStep::PushChild;
+}
+
+Parser::TypeParseStep Parser::acceptNamedTypeChild(
+    TypeParseFrame& frame,
+    ast::TypeSyntax* child)
+{
+    if (child != nullptr) frame.genericArguments.push_back(child);
+    return finishNamedTypeArgument(frame);
+}
+
+Parser::TypeParseStep Parser::finishNamedTypeArgument(TypeParseFrame& frame)
+{
+    if (consumeIf(TokenKind::Comma))
+    {
+        frame.phase = TypeParseFramePhase::NamedArguments;
+        return TypeParseStep::Continue;
+    }
+    if (consumeGenericGreater())
+    {
+        for (ast::TypeSyntax* argument : frame.genericArguments)
+            frame.type->addTypeArgument(argument);
+        if (index_ > 0)
+            frame.completeRange = join(frame.completeRange, tokens_[index_ - 1U].range());
+    }
+    else
+    {
+        expect(TokenKind::Greater, "'>' after generic type argument list");
+    }
+    finishNamedTypeFrame(frame);
+    return TypeParseStep::Complete;
+}
+
+void Parser::finishNamedTypeFrame(TypeParseFrame& frame)
+{
     if (at(TokenKind::Ellipsis))
     {
         const SourceRange expansion = consume().range();
-        type->setPackExpansion();
-        completeRange = join(completeRange, expansion);
+        frame.type->setPackExpansion();
+        frame.completeRange = join(frame.completeRange, expansion);
     }
+    parseTypePostfixModifiers(frame.type, frame.completeRange);
+    frame.type->setRange(frame.completeRange);
 }
 
 void Parser::parsePointeeConst(
@@ -1172,18 +1381,6 @@ void Parser::parseTypePostfixModifiers(ast::TypeSyntax* type, SourceRange& compl
             pointeeConstRange,
             "postfix const qualifies a pointer pointee and therefore requires '*' in the type");
 }
-
-ast::TypeSyntax* Parser::parseNamedType(TypeParseState& state)
-{
-    SourceRange completeRange{};
-    ast::TypeSyntax* type = parseNamedTypeBase(state, completeRange);
-    if (type == nullptr) return nullptr;
-    parseNamedTypeArguments(type, completeRange);
-    parseTypePostfixModifiers(type, completeRange);
-    type->setRange(completeRange);
-    return type;
-}
-
 
 std::string Parser::parseOptionalLifetimeAnnotation(std::string_view context)
 {

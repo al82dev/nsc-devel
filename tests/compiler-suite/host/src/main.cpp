@@ -277,6 +277,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerParserInterpolationFinalModule(registry);
         nsc::suite::registerParserConstructionCloneFinalModule(registry);
         nsc::suite::registerParserStateRobustnessFinalModule(registry);
+        nsc::suite::registerParserTypeIterationCounterfactualModule(registry);
         nsc::suite::registerSemaConstantConversionModule(registry);
         nsc::suite::registerSemaEffectsExpressionModule(registry);
         nsc::suite::registerSemaScopeSymbolModule(registry);
