@@ -167,7 +167,7 @@ namespace ConditionalPatterns
             if (ViaIfLet(Maybe.Some(7)) != ViaMatch(Maybe.Some(7))) return 5;
             if (ViaIfLet(Maybe.None()) != ViaMatch(Maybe.None())) return 6;
             int aliased = 40;
-            if (let ref alias = aliased) alias = alias + 2;
+            if (let ref mut alias = aliased) alias = alias + 2;
             if (aliased != 42) return 7;
             return score;
         }

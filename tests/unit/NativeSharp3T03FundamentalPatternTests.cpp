@@ -156,14 +156,14 @@ namespace FundamentalPatterns
             int aliased = 40;
             match (aliased)
             {
-                ref value => { value = value + 2; }
+                ref mut value => { value = value + 2; }
             }
             if (aliased != 42) { return 6; }
 
             Point aliasPoint = { 20, 22 };
             match (aliasPoint)
             {
-                { X: ref x, Y: _ } => { x = x + 1; },
+                { X: ref mut x, Y: _ } => { x = x + 1; },
                 _ => { return 14; }
             }
             if (aliasPoint.X != 21) { return 15; }
