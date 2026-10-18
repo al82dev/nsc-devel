@@ -1035,6 +1035,15 @@ private:
         const ProjectNameLookup& nameLookup,
         ProjectOopMirFunction& function,
         std::uint64_t& frameSize);
+    static void appendMoveNextFrameLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::span<const std::uint64_t> yieldOrders,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectNameLookup& nameLookup,
+        ProjectOopMirFunction& function,
+        std::uint64_t& frameSize);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,

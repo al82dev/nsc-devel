@@ -517,8 +517,8 @@ void appendPollFrameLocalNodes(
     }
 }
 
-void appendMoveNextFrameLocals(
-    const ProjectOopMirNode* node,
+void appendMoveNextFrameLocalNodes(
+    const ProjectOopMirNode* root,
     const PositionMap& localDefinition,
     const PositionMap& localLastUse,
     std::span<const std::uint64_t> yieldOrders,
@@ -527,28 +527,33 @@ void appendMoveNextFrameLocals(
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
-    if (node == nullptr) return;
-    const bool isLocal = node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-        node->localOrdinal.has_value() && !node->typeKey.empty();
-    const bool survives = isLocal &&
-        (liveAcrossBoundary(
-             *node->localOrdinal, localDefinition, localLastUse, yieldOrders) ||
-         node->cleanupRegionOrdinal.has_value());
-    if (survives)
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
-        if (layout.has_value())
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        const bool isLocal = node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            node->localOrdinal.has_value() && !node->typeKey.empty();
+        const bool survives = isLocal &&
+            (liveAcrossBoundary(
+                 *node->localOrdinal, localDefinition, localLastUse, yieldOrders) ||
+             node->cleanupRegionOrdinal.has_value());
+        if (survives)
         {
-            frameSize = alignFrameOffset(frameSize, layout->second);
-            function.asyncFrameLocals.emplace_back(
-                *node->localOrdinal, frameSize, node->typeKey);
-            frameSize += layout->first;
+            const auto layout =
+                objectLayoutModel.valueLayoutForTypeKey(nameLookup, node->typeKey);
+            if (layout.has_value())
+            {
+                frameSize = alignFrameOffset(frameSize, layout->second);
+                function.asyncFrameLocals.emplace_back(
+                    *node->localOrdinal, frameSize, node->typeKey);
+                frameSize += layout->first;
+            }
         }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        appendMoveNextFrameLocals(
-            child.get(), localDefinition, localLastUse, yieldOrders,
-            objectLayoutModel, nameLookup, function, frameSize);
 }
 
 void appendLiveFrameParameters(
@@ -630,7 +635,7 @@ void buildMoveNextFrame(
         function.body.get(), order, localDefinition, localLastUse,
         parameterLastUse, yieldOrders);
     std::uint64_t frameSize = 0;
-    appendMoveNextFrameLocals(
+    appendMoveNextFrameLocalNodes(
         function.body.get(), localDefinition, localLastUse, yieldOrders,
         objectLayoutModel, nameLookup, function, frameSize);
     appendLiveFrameParameters(
@@ -772,6 +777,21 @@ void ProjectOopMirModel::appendPollFrameLocals(
 {
     appendPollFrameLocalNodes(
         root, liveSet, objectLayoutModel, nameLookup, function, frameSize);
+}
+
+void ProjectOopMirModel::appendMoveNextFrameLocals(
+    const ProjectOopMirNode* root,
+    const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+    const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+    std::span<const std::uint64_t> yieldOrders,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    ProjectOopMirFunction& function,
+    std::uint64_t& frameSize)
+{
+    appendMoveNextFrameLocalNodes(
+        root, localDefinition, localLastUse, yieldOrders,
+        objectLayoutModel, nameLookup, function, frameSize);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(

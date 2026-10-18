@@ -20,6 +20,7 @@
 #include "../support/TestContext.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -562,6 +563,21 @@ struct ProjectOopHirModelTestAccess final
     {
         ProjectOopMirModel::appendPollFrameLocals(
             root, liveSet, objectLayoutModel, nameLookup, function, frameSize);
+    }
+
+    static void appendMirMoveNextFrameLocals(
+        const ProjectOopMirNode* root,
+        const std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+        const std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+        std::span<const std::uint64_t> yieldOrders,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectNameLookup& nameLookup,
+        ProjectOopMirFunction& function,
+        std::uint64_t& frameSize)
+    {
+        ProjectOopMirModel::appendMoveNextFrameLocals(
+            root, localDefinition, localLastUse, yieldOrders,
+            objectLayoutModel, nameLookup, function, frameSize);
     }
 
     static bool importMirLayouts(
@@ -4617,6 +4633,68 @@ void testDeepMirPollFrameLocalAppend(TestContext& tests)
         "MIR poll frame locals preserve missing layouts, repeats, sibling order, and final size");
     destroyMirTreeIteratively(std::move(root));
 }
+
+void testDeepMirMoveNextFrameLocalAppend(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    std::unordered_map<std::size_t, std::uint64_t> localDefinition;
+    std::unordered_map<std::size_t, std::uint64_t> localLastUse;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = ProjectOopMirNodeKind::LocalDeclaration;
+        switch (depth % 8U)
+        {
+        case 0U: node->localOrdinal = depth; node->typeKey = "builtin:byte"; break;
+        case 1U: node->localOrdinal = depth; node->typeKey = "builtin:int"; break;
+        case 2U: node->localOrdinal = depth; node->cleanupRegionOrdinal = depth; break;
+        case 3U: node->localOrdinal = depth; node->typeKey = "builtin:int";
+            node->cleanupRegionOrdinal = depth; break;
+        case 4U: node->localOrdinal = depth; node->typeKey = "type:Missing";
+            node->cleanupRegionOrdinal = depth; break;
+        case 5U: node->typeKey = "builtin:byte"; node->cleanupRegionOrdinal = depth; break;
+        case 6U: node->localOrdinal = depth; node->typeKey = "builtin:long"; break;
+        default: node->localOrdinal = depth; node->typeKey = "builtin:short"; break;
+        }
+        if (depth % 8U == 0U || depth % 8U == 6U)
+        {
+            localDefinition.emplace(depth, 0U);
+            localLastUse.emplace(depth, 10U);
+        }
+        if (root != nullptr) node->children.push_back(std::move(root));
+        node->children.emplace_back();
+        root = std::move(node);
+    }
+    auto lateral = std::make_unique<ProjectOopMirNode>();
+    lateral->kind = ProjectOopMirNodeKind::LocalDeclaration;
+    lateral->localOrdinal = 0U;
+    lateral->typeKey = "builtin:long";
+    lateral->cleanupRegionOrdinal = 0U;
+    root->children.push_back(std::move(lateral));
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    nativesharp::frontend::ProjectOopMirFunction function;
+    function.asyncFrameLocals.emplace_back(999U, 1U, "sentinel:existing");
+    std::uint64_t frameSize = 3U;
+    const std::array<std::uint64_t, 1U> yieldOrders{5U};
+    nativesharp::frontend::ProjectOopHirModelTestAccess::appendMirMoveNextFrameLocals(
+        root.get(), localDefinition, localLastUse, yieldOrders,
+        objectLayoutModel, nameLookup, function, frameSize);
+    tests.expect(function.asyncFrameLocals.size() == 12290U &&
+            function.asyncFrameLocals[0] == std::make_tuple(999U, 1U, std::string("sentinel:existing")) &&
+            function.asyncFrameLocals[1] == std::make_tuple(0U, 3U, std::string("builtin:byte")) &&
+            function.asyncFrameLocals[2] == std::make_tuple(3U, 4U, std::string("builtin:int")) &&
+            function.asyncFrameLocals[3] == std::make_tuple(6U, 8U, std::string("builtin:long")),
+        "MIR move-next frame locals preserve existing slots, preorder, liveness, cleanup, and alignment");
+    tests.expect(function.asyncFrameLocals[12288] ==
+            std::make_tuple(32766U, 65528U, std::string("builtin:long")) &&
+            function.asyncFrameLocals.back() ==
+                std::make_tuple(0U, 65536U, std::string("builtin:long")) &&
+            frameSize == 65544U,
+        "MIR move-next frame locals preserve omissions, repeats, sibling order, and final size");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4811,6 +4889,10 @@ int main()
     {
         testDeepMirPollFrameLocalAppend(tests);
     }
+    else if (focusValue == "mir-move-next-frame-local-depth")
+    {
+        testDeepMirMoveNextFrameLocalAppend(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4854,6 +4936,7 @@ int main()
         testDeepMirBorrowSourceCollection(tests);
         testDeepMirLivePollLocalCollection(tests);
         testDeepMirPollFrameLocalAppend(tests);
+        testDeepMirMoveNextFrameLocalAppend(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);
