@@ -312,42 +312,40 @@ void sumAwaitedFrameSizeNodes(
     }
 }
 
-void collectPollLiveness(
-    const ProjectOopMirNode* node,
+void collectPollLivenessNodes(
+    const ProjectOopMirNode* root,
     std::uint64_t& order,
     PositionMap& localDefinition,
     PositionMap& localLastUse,
     PositionMap& parameterLastUse,
     std::vector<std::uint64_t>& suspendOrders)
 {
-    if (node == nullptr) return;
-    const std::uint64_t here = order++;
-    if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
-        node->localOrdinal.has_value())
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        if (!localDefinition.contains(*node->localOrdinal))
-            localDefinition[*node->localOrdinal] = here;
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        const std::uint64_t here = order++;
+        if (node->kind == ProjectOopMirNodeKind::LocalDeclaration &&
+            node->localOrdinal.has_value())
+        {
+            if (!localDefinition.contains(*node->localOrdinal))
+                localDefinition[*node->localOrdinal] = here;
+        }
+        else if ((node->kind == ProjectOopMirNodeKind::LocalValue ||
+                  node->kind == ProjectOopMirNodeKind::LocalAddress) &&
+            node->localOrdinal.has_value())
+            localLastUse[*node->localOrdinal] = here;
+        else if (node->kind == ProjectOopMirNodeKind::ParameterValue &&
+            node->parameterOrdinal.has_value())
+            parameterLastUse[*node->parameterOrdinal] = here;
+        else if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
+                 node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
+            suspendOrders.push_back(here);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    else if ((node->kind == ProjectOopMirNodeKind::LocalValue ||
-              node->kind == ProjectOopMirNodeKind::LocalAddress) &&
-        node->localOrdinal.has_value())
-    {
-        localLastUse[*node->localOrdinal] = here;
-    }
-    else if (node->kind == ProjectOopMirNodeKind::ParameterValue &&
-        node->parameterOrdinal.has_value())
-    {
-        parameterLastUse[*node->parameterOrdinal] = here;
-    }
-    else if (node->kind == ProjectOopMirNodeKind::SuspendPoint ||
-             node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
-    {
-        suspendOrders.push_back(here);
-    }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        collectPollLiveness(
-            child.get(), order, localDefinition, localLastUse,
-            parameterLastUse, suspendOrders);
 }
 
 void collectMoveNextLiveness(
@@ -584,7 +582,7 @@ bool buildPollFrame(
     PositionMap localLastUse;
     PositionMap parameterLastUse;
     std::vector<std::uint64_t> suspendOrders;
-    collectPollLiveness(
+    collectPollLivenessNodes(
         function.body.get(), order, localDefinition, localLastUse,
         parameterLastUse, suspendOrders);
     std::unordered_map<std::size_t, std::size_t> borrowSource;
@@ -706,6 +704,18 @@ void ProjectOopMirModel::sumAwaitedFrameSize(
     std::uint64_t& frameSize)
 {
     sumAwaitedFrameSizeNodes(root, layouts, frameSize);
+}
+
+void ProjectOopMirModel::collectPollLiveness(
+    const ProjectOopMirNode* root,
+    std::uint64_t& order,
+    std::unordered_map<std::size_t, std::uint64_t>& localDefinition,
+    std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
+    std::unordered_map<std::size_t, std::uint64_t>& parameterLastUse,
+    std::vector<std::uint64_t>& suspendOrders)
+{
+    collectPollLivenessNodes(
+        root, order, localDefinition, localLastUse, parameterLastUse, suspendOrders);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
