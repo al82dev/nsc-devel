@@ -184,6 +184,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         EnvironmentExitCall,
         OrdinaryCall,
         CollectionBuilder,
+        ArrayConstruction,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -415,6 +416,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         bool cleanupActive = false;
         bool hasOwnedTemporary = false;
         std::vector<language::InterpolationPart> interpolationParts;
+        bool arraySegmented = false;
+        bool arrayInferred = false;
+        std::vector<bool> arraySpreadOperands;
     };
     enum class IterativeInputKind : std::uint8_t
     {
@@ -586,6 +590,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 core->kind == MethodCoreOperationKind::CollectionBuilder)
             {
                 return IterativeExpressionKind::CollectionBuilder;
+            }
+        }
+        if (!address && (syntax->kind() == ast::AstNodeKind::NewExpression ||
+                         syntax->kind() == ast::AstNodeKind::CollectionExpression))
+        {
+            const MethodCoreBinding* core = coreBinding(syntax);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ArrayAllocation ||
+                 core->kind == MethodCoreOperationKind::RangeArrayAllocation))
+            {
+                const bool hasOperand = core->kind == MethodCoreOperationKind::RangeArrayAllocation
+                    ? syntax->first() != nullptr || !syntax->children().empty()
+                    : syntax->auxiliaryText() == "inferred-array-initializer"
+                        ? !syntax->children().empty()
+                        : syntax->first() != nullptr || !syntax->children().empty();
+                if (hasOperand) return IterativeExpressionKind::ArrayConstruction;
             }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
@@ -2965,6 +2985,57 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         current->children().begin(), current->children().end());
                     frame.operands.reserve(frame.operandSyntaxes.size());
                 }
+                else if (*currentKind == IterativeExpressionKind::ArrayConstruction)
+                {
+                    frame.core = coreBinding(current);
+                    frame.first = makeNode(
+                        frame.core->kind == MethodCoreOperationKind::RangeArrayAllocation
+                            ? ProjectOopHirNodeKind::RangeArrayAllocation
+                            : ProjectOopHirNodeKind::ArrayAllocation,
+                        current, frame.core->resultTypeKey);
+                    frame.first->elementTypeKey = frame.core->elementTypeKey;
+                    if (frame.core->kind == MethodCoreOperationKind::RangeArrayAllocation)
+                    {
+                        frame.first->nativeArrayRank =
+                            ProjectTypeConversion::nativeArrayRank(frame.core->resultTypeKey);
+                        frame.operandSyntaxes.push_back(current->first());
+                        frame.operandSyntaxes.insert(frame.operandSyntaxes.end(),
+                            current->children().begin(), current->children().end());
+                    }
+                    else
+                    {
+                        frame.arraySegmented = std::any_of(
+                            current->children().begin(), current->children().end(),
+                            [](const ast::AstNode* child) { return child != nullptr &&
+                                child->kind() == ast::AstNodeKind::SpreadElementExpression; });
+                        frame.arrayInferred = current->auxiliaryText() ==
+                            "inferred-array-initializer";
+                        frame.first->booleanValue = frame.arrayInferred;
+                        if (frame.arraySegmented)
+                        {
+                            for (const ast::AstNode* child : current->children())
+                            {
+                                const bool spread = child != nullptr &&
+                                    child->kind() == ast::AstNodeKind::SpreadElementExpression;
+                                frame.arraySpreadOperands.push_back(spread);
+                                frame.operandSyntaxes.push_back(spread ? child->first() : child);
+                            }
+                        }
+                        else
+                        {
+                            if (frame.arrayInferred)
+                            {
+                                auto count = makeNode(ProjectOopHirNodeKind::IntegerConstant,
+                                    current, "builtin:int");
+                                count->integerValue = current->children().size();
+                                frame.first->children.push_back(std::move(count));
+                            }
+                            else frame.operandSyntaxes.push_back(current->first());
+                            frame.operandSyntaxes.insert(frame.operandSyntaxes.end(),
+                                current->children().begin(), current->children().end());
+                        }
+                    }
+                }
                 else if (*currentKind == IterativeExpressionKind::InstanceField ||
                     *currentKind == IterativeExpressionKind::NullConditionalField)
                 {
@@ -3475,6 +3546,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
                     current = frames.back().operandSyntaxes.front();
                 else if (*currentKind == IterativeExpressionKind::CollectionBuilder)
+                {
+                    current = frames.back().operandSyntaxes.front();
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::ArrayConstruction)
                 {
                     current = frames.back().operandSyntaxes.front();
                     currentAddressContext = false;
@@ -4749,6 +4825,65 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         std::move(frame.operands));
                     frames.pop_back();
                     continue;
+                }
+                if (frame.kind == IterativeExpressionKind::ArrayConstruction)
+                {
+                    const std::size_t index = frame.armIndex++;
+                    if (frame.core->kind == MethodCoreOperationKind::RangeArrayAllocation)
+                    {
+                        frame.first->children.push_back(std::move(lowered));
+                    }
+                    else if (frame.arraySegmented && frame.arraySpreadOperands[index])
+                    {
+                        frame.first->children.push_back(std::move(lowered));
+                        frame.first->collectionSegments.push_back(ProjectCollectionSegmentKind::Spread);
+                    }
+                    else
+                    {
+                        const bool isCount = !frame.arraySegmented && !frame.arrayInferred && index == 0U;
+                        if (!isCount)
+                        {
+                            const std::size_t initializerIndex = frame.arraySegmented
+                                ? index : index - (frame.arrayInferred ? 0U : 1U);
+                            const ast::AstNode* initializer =
+                                frame.syntax->children()[initializerIndex];
+                            const MethodExpressionTypeBinding* valueType = expressionType(initializer);
+                            if (valueType == nullptr)
+                            {
+                                error = frame.arraySegmented
+                                    ? "NSC-LIMIT-017 array spread element has no semantic type"
+                                    : "NSC-LIMIT-017 array initializer element has no semantic type";
+                                if (!lastErrorRange_.isValid())
+                                    lastErrorRange_ = initializer->range();
+                                lowered.reset(); frames.clear(); break;
+                            }
+                            const ProjectImplicitConversion conversion = classifyImplicit(
+                                valueType->typeKey, frame.core->elementTypeKey, valueType->integerConstant);
+                            if (!conversion.exists())
+                            {
+                                error = frame.arraySegmented
+                                    ? "NSC-LIMIT-017 array spread element lost its validated conversion"
+                                    : "NSC-LIMIT-017 array initializer lost its validated conversion";
+                                if (!lastErrorRange_.isValid())
+                                    lastErrorRange_ = initializer->range();
+                                lowered.reset(); frames.clear(); break;
+                            }
+                            if (conversion.kind != ProjectConversionKind::Identity)
+                                lowered = wrapImplicitConversion(std::move(lowered), conversion, initializer);
+                        }
+                        frame.first->children.push_back(std::move(lowered));
+                        if (frame.arraySegmented)
+                            frame.first->collectionSegments.push_back(ProjectCollectionSegmentKind::Element);
+                    }
+                    if (frame.armIndex < frame.operandSyntaxes.size())
+                    {
+                        current = frame.operandSyntaxes[frame.armIndex];
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true; break;
+                    }
+                    lowered = std::move(frame.first);
+                    frames.pop_back(); continue;
                 }
                 if (frame.kind == IterativeExpressionKind::InstanceField)
                 {

@@ -602,21 +602,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExp
             }
             if (core->kind == MethodCoreOperationKind::RangeArrayAllocation)
             {
-                auto node = makeNode(
-                    ProjectOopHirNodeKind::RangeArrayAllocation, expression, core->resultTypeKey);
-                node->elementTypeKey = core->elementTypeKey;
-                node->nativeArrayRank = ProjectTypeConversion::nativeArrayRank(core->resultTypeKey);
-                std::vector<const ast::AstNode*> dimensions;
-                dimensions.push_back(expression->first());
-                dimensions.insert(dimensions.end(), expression->children().begin(),
-                    expression->children().end());
-                for (const ast::AstNode* dimension : dimensions)
-                {
-                    auto extent = lowerExpression(dimension, memberOrdinal, false, error);
-                    if (extent == nullptr) return nullptr;
-                    node->children.push_back(std::move(extent));
-                }
-                return node;
+                error = expression->first() == nullptr && expression->children().empty()
+                    ? "null expression reached Stage 34 OOP HIR"
+                    : "Stage 34 range array construction escaped iterative lowering";
+                return nullptr;
             }
             // NS304-T09-F05: preserve every materialized segment in source order. A parallel
             // kind vector makes spread position explicit through HIR and MIR.
@@ -631,86 +620,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExp
             }
             if (spreadSeen)
             {
-                auto node = makeNode(
-                    ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
-                node->elementTypeKey = core->elementTypeKey;
-                for (const ast::AstNode* initializer : expression->children())
-                {
-                    if (initializer != nullptr &&
-                        initializer->kind() == ast::AstNodeKind::SpreadElementExpression)
-                    {
-                        auto source = lowerExpression(
-                            initializer->first(), memberOrdinal, false, error);
-                        if (source == nullptr) return nullptr;
-                        node->children.push_back(std::move(source));
-                        node->collectionSegments.push_back(ProjectCollectionSegmentKind::Spread);
-                        continue;
-                    }
-                    auto value = lowerExpression(initializer, memberOrdinal, false, error);
-                    if (value == nullptr) return nullptr;
-                    const MethodExpressionTypeBinding* valueType = expressionType(initializer);
-                    if (valueType == nullptr)
-                    {
-                        error = "NSC-LIMIT-017 array spread element has no semantic type";
-                        return nullptr;
-                    }
-                    const ProjectImplicitConversion conversion = classifyImplicit(
-                        valueType->typeKey, core->elementTypeKey, valueType->integerConstant);
-                    if (!conversion.exists())
-                    {
-                        error = "NSC-LIMIT-017 array spread element lost its validated conversion";
-                        return nullptr;
-                    }
-                    if (conversion.kind != ProjectConversionKind::Identity)
-                    {
-                        value = wrapImplicitConversion(std::move(value), conversion, initializer);
-                    }
-                    node->children.push_back(std::move(value));
-                    node->collectionSegments.push_back(ProjectCollectionSegmentKind::Element);
-                }
-                return node;
+                error = "Stage 34 segmented array construction escaped iterative lowering";
+                return nullptr;
             }
             const bool inferredInitializer =
                 expression->auxiliaryText() == "inferred-array-initializer";
-            std::unique_ptr<ProjectOopHirNode> count;
             if (inferredInitializer)
             {
-                count = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+                if (!expression->children().empty())
+                {
+                    error = "Stage 34 inferred array construction escaped iterative lowering";
+                    return nullptr;
+                }
+                auto count = makeNode(
+                    ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
                 count->integerValue = expression->children().size();
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->booleanValue = true;
+                node->children.push_back(std::move(count));
+                return node;
             }
-            else
-            {
-                count = lowerExpression(expression->first(), memberOrdinal, false, error);
-                if (count == nullptr) return nullptr;
-            }
-            auto node = makeNode(ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
-            node->elementTypeKey = core->elementTypeKey;
-            node->booleanValue = inferredInitializer;
-            node->children.push_back(std::move(count));
-            for (const ast::AstNode* initializer : expression->children())
-            {
-                auto value = lowerExpression(initializer, memberOrdinal, false, error);
-                if (value == nullptr) return nullptr;
-                const MethodExpressionTypeBinding* valueType = expressionType(initializer);
-                if (valueType == nullptr)
-                {
-                    error = "NSC-LIMIT-017 array initializer element has no semantic type";
-                    return nullptr;
-                }
-                const ProjectImplicitConversion conversion = classifyImplicit(
-                    valueType->typeKey, core->elementTypeKey, valueType->integerConstant);
-                if (!conversion.exists())
-                {
-                    error = "NSC-LIMIT-017 array initializer lost its validated conversion";
-                    return nullptr;
-                }
-                if (conversion.kind != ProjectConversionKind::Identity)
-                {
-                    value = wrapImplicitConversion(std::move(value), conversion, initializer);
-                }
-                node->children.push_back(std::move(value));
-            }
-            return node;
+            error = expression->first() == nullptr
+                ? "Stage 34 OOP HIR requires an expression"
+                : "Stage 34 array construction escaped iterative lowering";
+            return nullptr;
         }
         default:
             error = "non-array construction reached HIR array lowering";

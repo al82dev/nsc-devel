@@ -352,6 +352,22 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerArrayConstructionExpressionForTest(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodCoreBinding>& cores,
+        bool addressContext,
+        std::string& error)
+    {
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCallExpression(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -5687,6 +5703,205 @@ void testDeepCollectionBuilderLowering(TestContext& tests)
             array->children[1]->integerValue == 4U,
         "a CollectionExpression with ArrayAllocation core preserves the legacy array route");
     destroyHirTreeIteratively(array);
+}
+
+void testDeepArrayConstructionLowering(TestContext& tests)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    const auto sourceRange = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(29U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(29U), offset + 3U));
+    };
+    constexpr std::size_t depth = 32768U;
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    nodes.reserve(depth + 1U); cores.reserve(depth);
+    nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    nodes.back()->setIntegerValue(1U);
+    nativesharp::ast::AstNode* current = nodes.back().get();
+    for (std::size_t i = 0; i < depth; ++i)
+    {
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::NewExpression, nativesharp::SourceRange{}));
+        nodes.back()->setFirst(current);
+        nativesharp::frontend::MethodCoreBinding core;
+        core.syntax = nodes.back().get();
+        core.kind = nativesharp::frontend::MethodCoreOperationKind::ArrayAllocation;
+        core.resultTypeKey = "builtin:int[]"; core.elementTypeKey = "builtin:int";
+        cores.push_back(std::move(core)); current = nodes.back().get();
+    }
+    nativesharp::frontend::MethodExpressionTypeBinding leafType;
+    leafType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding arrayType;
+    arrayType.typeKey = "builtin:int[]";
+    ProjectOopHirModel model; std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCollectionBuilderExpression(
+            model, current, nodes, cores, leafType, arrayType, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level array count chain lowers without process-stack recursion (" + error + ")");
+    const ProjectOopHirNode* cursor = lowered.get();
+    std::size_t observed = 0U;
+    while (cursor != nullptr && cursor->kind == HirKind::ArrayAllocation &&
+           cursor->children.size() == 1U && !cursor->booleanValue)
+    {
+        ++observed; cursor = cursor->children[0].get();
+    }
+    tests.expect(observed == depth && cursor != nullptr &&
+            cursor->kind == HirKind::IntegerConstant && cursor->integerValue == 1U,
+        "iterative array counts preserve nesting, node shape, and terminal value");
+    destroyHirTreeIteratively(lowered);
+
+    const auto lowerSmall = [&](std::vector<std::unique_ptr<nativesharp::ast::AstNode>>& syntax,
+                                std::vector<nativesharp::frontend::MethodCoreBinding>& bindings,
+                                bool address, std::string& failure)
+    {
+        ProjectOopHirModel fixture;
+        return nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerCollectionBuilderExpression(
+                fixture, syntax.back().get(), syntax, bindings,
+                leafType, arrayType, address, failure);
+    };
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> rangeNodes;
+    for (std::uint64_t value : {2U, 3U, 4U}) { rangeNodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{})); rangeNodes.back()->setIntegerValue(value); }
+    rangeNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::NewExpression, sourceRange(100U)));
+    rangeNodes.back()->setFirst(rangeNodes[0].get());
+    rangeNodes.back()->addChild(rangeNodes[1].get()); rangeNodes.back()->addChild(rangeNodes[2].get());
+    nativesharp::frontend::MethodCoreBinding rangeCore;
+    rangeCore.syntax=rangeNodes.back().get(); rangeCore.kind=nativesharp::frontend::MethodCoreOperationKind::RangeArrayAllocation;
+    rangeCore.resultTypeKey="builtin:int[,,]"; rangeCore.elementTypeKey="builtin:int";
+    std::vector<nativesharp::frontend::MethodCoreBinding> rangeCores; rangeCores.push_back(rangeCore);
+    error.clear(); auto range=lowerSmall(rangeNodes,rangeCores,false,error);
+    tests.expect(range!=nullptr && error.empty() && range->kind==HirKind::RangeArrayAllocation &&
+        range->children.size()==3U && range->children[0]->integerValue==2U &&
+        range->children[1]->integerValue==3U && range->children[2]->integerValue==4U,
+        "range-array dimensions preserve physical order"); destroyHirTreeIteratively(range);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> spreadNodes;
+    for (std::uint64_t value : {5U,6U,7U}) { spreadNodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{})); spreadNodes.back()->setIntegerValue(value); }
+    spreadNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::SpreadElementExpression,nativesharp::SourceRange{}));
+    spreadNodes.back()->setFirst(spreadNodes[1].get());
+    spreadNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,nativesharp::SourceRange{}));
+    spreadNodes.back()->addChild(spreadNodes[0].get()); spreadNodes.back()->addChild(spreadNodes[3].get());
+    spreadNodes.back()->addChild(spreadNodes[2].get());
+    nativesharp::frontend::MethodCoreBinding spreadCore;
+    spreadCore.syntax=spreadNodes.back().get(); spreadCore.kind=nativesharp::frontend::MethodCoreOperationKind::ArrayAllocation;
+    spreadCore.resultTypeKey="builtin:int[]"; spreadCore.elementTypeKey="builtin:int";
+    std::vector<nativesharp::frontend::MethodCoreBinding> spreadCores; spreadCores.push_back(spreadCore);
+    error.clear(); auto spread=lowerSmall(spreadNodes,spreadCores,false,error);
+    tests.expect(spread!=nullptr && error.empty() && spread->children.size()==3U &&
+        spread->collectionSegments==std::vector<nativesharp::frontend::ProjectCollectionSegmentKind>{
+            nativesharp::frontend::ProjectCollectionSegmentKind::Element,
+            nativesharp::frontend::ProjectCollectionSegmentKind::Spread,
+            nativesharp::frontend::ProjectCollectionSegmentKind::Element} &&
+        spread->children[0]->integerValue==5U &&
+        spread->children[0]->syntax==spreadNodes[0].get() &&
+        spread->children[1]->integerValue==6U &&
+        spread->children[1]->syntax==spreadNodes[1].get() &&
+        spread->children[2]->integerValue==7U &&
+        spread->children[2]->syntax==spreadNodes[2].get(),
+        "element/spread/element preserves parallel child and segment order"); destroyHirTreeIteratively(spread);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> inferredNodes;
+    std::uint32_t inferredOffset = 200U;
+    for (std::uint64_t value : {11U,12U}) { inferredNodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        sourceRange(inferredOffset))); inferredOffset += 10U; inferredNodes.back()->setIntegerValue(value); }
+    inferredNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CollectionExpression,sourceRange(230U)));
+    inferredNodes.back()->setAuxiliaryText("inferred-array-initializer");
+    inferredNodes.back()->addChild(inferredNodes[0].get()); inferredNodes.back()->addChild(inferredNodes[1].get());
+    nativesharp::frontend::MethodCoreBinding inferredCore=spreadCore;
+    inferredCore.syntax=inferredNodes.back().get();
+    std::vector<nativesharp::frontend::MethodCoreBinding> inferredCores{inferredCore};
+    error.clear(); auto inferred=lowerSmall(inferredNodes,inferredCores,false,error);
+    const bool inferredOk=inferred!=nullptr && error.empty() && inferred->booleanValue &&
+        inferred->children.size()==3U && inferred->children[0]->integerValue==2U;
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> explicitNodes;
+    for (std::uint64_t value : {2U,21U}) { explicitNodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{})); explicitNodes.back()->setIntegerValue(value); }
+    explicitNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::NewExpression,nativesharp::SourceRange{}));
+    explicitNodes.back()->setFirst(explicitNodes[0].get()); explicitNodes.back()->addChild(explicitNodes[1].get());
+    nativesharp::frontend::MethodCoreBinding explicitCore=spreadCore; explicitCore.syntax=explicitNodes.back().get();
+    std::vector<nativesharp::frontend::MethodCoreBinding> explicitCores{explicitCore};
+    error.clear(); auto explicitArray=lowerSmall(explicitNodes,explicitCores,false,error);
+    tests.expect(inferredOk && explicitArray!=nullptr && error.empty() && !explicitArray->booleanValue &&
+        explicitArray->children.size()==2U && explicitArray->children[0]->integerValue==2U &&
+        explicitArray->children[1]->integerValue==21U,
+        "inferred and explicit initializers preserve synthetic/physical counts and flags");
+    destroyHirTreeIteratively(inferred); destroyHirTreeIteratively(explicitArray);
+
+    nativesharp::frontend::MethodExpressionTypeBinding longArrayType; longArrayType.typeKey="builtin:long[]";
+    nativesharp::frontend::MethodCoreBinding convertedCore=inferredCore;
+    convertedCore.elementTypeKey="builtin:long"; convertedCore.resultTypeKey="builtin:long[]";
+    std::vector<nativesharp::frontend::MethodCoreBinding> convertedCores{convertedCore};
+    ProjectOopHirModel convertedModel; error.clear();
+    auto converted=nativesharp::frontend::ProjectOopHirModelTestAccess::lowerArrayConstructionExpressionForTest(
+        convertedModel,inferredNodes.back().get(),{{inferredNodes[0].get(),&leafType},
+        {inferredNodes[1].get(),&leafType},{inferredNodes.back().get(),&longArrayType}},convertedCores,false,error);
+    tests.expect(converted!=nullptr && error.empty() && converted->children.size()==3U &&
+        converted->children[1]->kind==HirKind::Conversion &&
+        converted->children[2]->kind==HirKind::Conversion,
+        "array initializers preserve identity versus one-time non-identity conversions");
+    destroyHirTreeIteratively(converted);
+
+    ProjectOopHirModel missingTypeModel; error.clear();
+    auto missingType=nativesharp::frontend::ProjectOopHirModelTestAccess::lowerArrayConstructionExpressionForTest(
+        missingTypeModel,inferredNodes.back().get(),{{inferredNodes.back().get(),&arrayType}},
+        inferredCores,false,error);
+    const bool missingTypeOk=missingType==nullptr && error==
+        "NSC-LIMIT-017 array initializer element has no semantic type";
+    nativesharp::frontend::MethodExpressionTypeBinding stringType; stringType.typeKey="builtin:string";
+    ProjectOopHirModel invalidTypeModel; error.clear();
+    auto invalidType=nativesharp::frontend::ProjectOopHirModelTestAccess::lowerArrayConstructionExpressionForTest(
+        invalidTypeModel,inferredNodes.back().get(),{{inferredNodes[0].get(),&stringType},
+        {inferredNodes[1].get(),&stringType},{inferredNodes.back().get(),&arrayType}},inferredCores,false,error);
+    tests.expect(missingTypeOk && invalidType==nullptr && error==
+        "NSC-LIMIT-017 array initializer lost its validated conversion" &&
+        invalidTypeModel.lastErrorRange().begin()==inferredNodes[0]->range().begin() &&
+        invalidTypeModel.lastErrorRange().end()==inferredNodes[0]->range().end() &&
+        missingTypeModel.lastErrorRange().begin()==inferredNodes[0]->range().begin() &&
+        missingTypeModel.lastErrorRange().end()==inferredNodes[0]->range().end(),
+        "array initializer diagnostics remain post-lowering and text-exact");
+
+    ProjectOopHirModel addressModel; error.clear();
+    auto rejected=nativesharp::frontend::ProjectOopHirModelTestAccess::lowerArrayConstructionExpressionForTest(
+        addressModel,rangeNodes.back().get(),{{rangeNodes[0].get(),&leafType},
+        {rangeNodes[1].get(),&leafType},{rangeNodes[2].get(),&leafType},
+        {rangeNodes.back().get(),&arrayType}},rangeCores,true,error);
+    tests.expect(rejected==nullptr && error==
+        "Stage 41 array allocation result is a reference value, not addressable storage" &&
+        addressModel.lastErrorRange().begin()==rangeNodes.back()->range().begin() &&
+        addressModel.lastErrorRange().end()==rangeNodes.back()->range().end(),
+        "array address context preserves its exact diagnostic");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> emptyRangeNodes;
+    emptyRangeNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::NewExpression,sourceRange(300U)));
+    nativesharp::frontend::MethodCoreBinding emptyRangeCore=rangeCore;
+    emptyRangeCore.syntax=emptyRangeNodes.back().get();
+    std::vector<nativesharp::frontend::MethodCoreBinding> emptyRangeCores{emptyRangeCore};
+    ProjectOopHirModel emptyRangeModel; error.clear();
+    auto emptyRange=nativesharp::frontend::ProjectOopHirModelTestAccess::lowerArrayConstructionExpressionForTest(
+        emptyRangeModel,emptyRangeNodes.back().get(),{{emptyRangeNodes.back().get(),&arrayType}},
+        emptyRangeCores,false,error);
+    tests.expect(emptyRange==nullptr && error=="null expression reached Stage 34 OOP HIR" &&
+        emptyRangeModel.lastErrorRange().begin()==emptyRangeNodes.back()->range().begin() &&
+        emptyRangeModel.lastErrorRange().end()==emptyRangeNodes.back()->range().end(),
+        "dimensionless range array preserves its historical null-expression diagnostic and range");
 }
 
 struct DeepDelegateCreationSyntax final
@@ -12402,6 +12617,10 @@ int main()
     {
         testDeepCollectionBuilderLowering(tests);
     }
+    else if (focusValue == "hir-array-construction-depth")
+    {
+        testDeepArrayConstructionLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -12618,6 +12837,7 @@ int main()
         testDeepConsoleEnumStructCallLowering(tests);
         testDeepOrdinaryCallLowering(tests);
         testDeepCollectionBuilderLowering(tests);
+        testDeepArrayConstructionLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
