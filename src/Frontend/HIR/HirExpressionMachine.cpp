@@ -182,6 +182,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         StructCloneCall,
         StructAggregateCall,
         EnvironmentExitCall,
+        OrdinaryCall,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -325,6 +326,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         StructAggregateCallFrameStage stage = StructAggregateCallFrameStage::Receiver;
         bool equals = false;
     };
+    enum class OrdinaryCallFrameStage : std::uint8_t
+    {
+        Receiver,
+        Arguments,
+        Ready,
+    };
+    struct OrdinaryCallFrameState final
+    {
+        const MethodCallBinding* binding = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        ReceiverFrameState receiver;
+        OrdinaryCallFrameStage stage = OrdinaryCallFrameStage::Ready;
+        std::size_t selectedMemberOrdinal = 0U;
+        std::size_t nextArgument = 0U;
+        std::size_t conversionOffset = 0U;
+        std::optional<std::size_t> expandedPackChildIndex;
+        bool forwardedReceiver = false;
+        bool hasOwnedTemporary = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -348,6 +368,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<ConsoleOutputCallFrameState> consoleOutputCall;
         std::optional<EnumToStringCallFrameState> enumToStringCall;
         std::optional<StructAggregateCallFrameState> structAggregateCall;
+        std::optional<OrdinaryCallFrameState> ordinaryCall;
         const MethodCallBinding* environmentExitBinding = nullptr;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
@@ -538,6 +559,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     return IterativeExpressionKind::StructAggregateCall;
                 if (core->kind == MethodCoreOperationKind::EnvironmentExit)
                     return IterativeExpressionKind::EnvironmentExitCall;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression &&
+            coreBinding(syntax) == nullptr &&
+            namespaceFunctionCallBinding(syntax) == nullptr &&
+            eventBinding(syntax) == nullptr && delegateBinding(syntax) == nullptr)
+        {
+            const MethodCallBinding* binding = callBinding(syntax);
+            const bool explicitReceiver = binding != nullptr &&
+                !binding->staticCall && binding->receiverSyntax != nullptr &&
+                binding->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
+            if (binding != nullptr && binding->selectedMemberOrdinal.has_value() &&
+                (binding->forwardedReceiver || explicitReceiver ||
+                 !syntax->children().empty()))
+            {
+                return IterativeExpressionKind::OrdinaryCall;
             }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
@@ -1159,6 +1196,321 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 call.hasOwnedTemporary));
             if (call.nextArgument == call.argumentSyntaxes.size())
                 call.stage = BoundCallFrameStage::Ready;
+        };
+        const auto validateOrdinaryCallMember = [&](const OrdinaryCallFrameState& call) -> bool
+        {
+            if (memberModel_ == nullptr ||
+                call.selectedMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "NSC-LIMIT-020 selected call has no callable metadata";
+                return false;
+            }
+            return true;
+        };
+        const auto initializeOrdinaryCallFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            const MethodCallBinding* binding = callBinding(frame.syntax);
+            if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())
+            {
+                error = "Stage 34 requires a resolved Stage 27 method call";
+                return false;
+            }
+            OrdinaryCallFrameState call;
+            call.binding = binding;
+            call.selectedMemberOrdinal = *binding->selectedMemberOrdinal;
+            call.forwardedReceiver = binding->forwardedReceiver;
+            call.receiver.syntax = binding->receiverSyntax;
+            call.receiver.typeKey = binding->receiverTypeKey;
+            bool interfaceDispatch = binding->interfaceCall;
+            if (interfaceDispatch && !binding->forwardedReceiver && interfaceModel_ != nullptr &&
+                memberModel_ != nullptr && binding->receiverTypeOrdinal.has_value() &&
+                call.receiver.syntax != nullptr &&
+                (call.receiver.syntax->kind() == ast::AstNodeKind::CastExpression ||
+                 call.receiver.syntax->kind() == ast::AstNodeKind::SafeCastExpression) &&
+                call.receiver.syntax->first() != nullptr &&
+                (call.receiver.syntax->first()->kind() == ast::AstNodeKind::NewExpression ||
+                 call.receiver.syntax->first()->kind() ==
+                    ast::AstNodeKind::ObjectCreationExpression))
+            {
+                const MethodExpressionTypeBinding* concreteType =
+                    expressionType(call.receiver.syntax->first());
+                const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
+                    ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
+                    : std::nullopt;
+                const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
+                    ? interfaceModel_->tablePlan(
+                        *concreteTypeOrdinal, *binding->receiverTypeOrdinal)
+                    : nullptr;
+                if (plan != nullptr)
+                {
+                    const auto contract = std::find(
+                        plan->interfaceMethodMemberOrdinals.begin(),
+                        plan->interfaceMethodMemberOrdinals.end(),
+                        call.selectedMemberOrdinal);
+                    if (contract != plan->interfaceMethodMemberOrdinals.end())
+                    {
+                        const std::size_t slot = static_cast<std::size_t>(
+                            contract - plan->interfaceMethodMemberOrdinals.begin());
+                        if (slot < plan->implementationMemberOrdinals.size() &&
+                            plan->implementationMemberOrdinals[slot].has_value())
+                        {
+                            call.selectedMemberOrdinal =
+                                *plan->implementationMemberOrdinals[slot];
+                            call.receiver.syntax = call.receiver.syntax->first();
+                            call.receiver.typeKey = concreteType->typeKey;
+                            interfaceDispatch = false;
+                        }
+                    }
+                }
+            }
+            call.node = makeNode(
+                binding->staticCall ? ProjectOopHirNodeKind::StaticCall
+                                    : ProjectOopHirNodeKind::InstanceCall,
+                frame.syntax,
+                binding->resultTypeKey);
+            const bool writtenNullConditional = frame.syntax->first() != nullptr &&
+                frame.syntax->first()->kind() ==
+                    ast::AstNodeKind::NullConditionalMemberExpression;
+            const MethodExpressionTypeBinding* receiverFlow =
+                expressionType(call.receiver.syntax);
+            const bool provenNonNull = receiverFlow != nullptr &&
+                receiverFlow->flowProvenNonNull;
+            call.node->nullConditionalCall = writtenNullConditional && !provenNonNull;
+            if (writtenNullConditional && provenNonNull)
+                call.node->stringValue = "flow-nonnull";
+            const MethodExpressionTypeBinding* callType = expressionType(frame.syntax);
+            call.node->booleanValue = callType != nullptr &&
+                callType->flowActiveVariantCase.has_value();
+            call.node->memberOrdinal = call.selectedMemberOrdinal;
+            call.node->baseReceiver = binding->baseReceiver;
+            call.node->interfaceDispatch = interfaceDispatch;
+            if (interfaceDispatch) call.node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+
+            if (binding->forwardedReceiver)
+            {
+                call.stage = OrdinaryCallFrameStage::Receiver;
+            }
+            else if (!binding->staticCall)
+            {
+                const std::optional<bool> receiverReady = initializeReceiverFrame(
+                    call.receiver, call.receiver.syntax, call.receiver.typeKey);
+                if (!receiverReady.has_value()) return false;
+                if (*receiverReady)
+                {
+                    call.node->children.push_back(std::move(call.receiver.lowered));
+                    if (!validateOrdinaryCallMember(call)) return false;
+                    call.stage = frame.syntax->children().empty()
+                        ? OrdinaryCallFrameStage::Ready
+                        : OrdinaryCallFrameStage::Arguments;
+                }
+                else
+                {
+                    call.stage = OrdinaryCallFrameStage::Receiver;
+                }
+            }
+            else
+            {
+                if (!validateOrdinaryCallMember(call)) return false;
+                call.stage = frame.syntax->children().empty()
+                    ? OrdinaryCallFrameStage::Ready
+                    : OrdinaryCallFrameStage::Arguments;
+            }
+            frame.ordinaryCall.emplace(std::move(call));
+            return true;
+        };
+        struct OrdinaryCallChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+            bool addressContext = false;
+        };
+        const auto nextOrdinaryCallChild = [&](const OrdinaryCallFrameState& call)
+            -> std::optional<OrdinaryCallChild>
+        {
+            if (call.stage == OrdinaryCallFrameStage::Receiver)
+            {
+                const bool address = !call.forwardedReceiver &&
+                    isStructValueType(call.receiver.typeKey) &&
+                    !call.receiver.materializeTemporary;
+                return OrdinaryCallChild{call.receiver.syntax, address};
+            }
+            if (call.stage != OrdinaryCallFrameStage::Arguments ||
+                call.nextArgument >= call.node->syntax->children().size())
+            {
+                return std::nullopt;
+            }
+            return OrdinaryCallChild{
+                call.node->syntax->children()[call.nextArgument], false};
+        };
+        const auto acceptOrdinaryCallChild = [&](OrdinaryCallFrameState& call,
+                                                  std::unique_ptr<ProjectOopHirNode> child) -> bool
+        {
+            if (call.stage == OrdinaryCallFrameStage::Receiver)
+            {
+                if (call.forwardedReceiver)
+                {
+                    if (!call.binding->selectedConversions.empty() &&
+                        call.binding->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        child = wrapImplicitConversion(
+                            std::move(child),
+                            call.binding->selectedConversions.front(),
+                            call.binding->receiverSyntax);
+                    }
+                    call.node->children.push_back(std::move(child));
+                    call.node->argumentParameterOrdinals.push_back(0U);
+                    call.conversionOffset = 1U;
+                }
+                else
+                {
+                    acceptReceiverChild(call.receiver, std::move(child));
+                    call.node->children.push_back(std::move(call.receiver.lowered));
+                }
+                if (!validateOrdinaryCallMember(call)) return false;
+                call.stage = call.node->syntax->children().empty()
+                    ? OrdinaryCallFrameStage::Ready
+                    : OrdinaryCallFrameStage::Arguments;
+                return true;
+            }
+
+            const std::size_t index = call.nextArgument++;
+            const std::size_t selectedIndex = index + call.conversionOffset;
+            if (selectedIndex >= call.binding->selectedArgumentParameterOrdinals.size())
+            {
+                error = "named call argument has no selected parameter ordinal";
+                return false;
+            }
+            const std::size_t parameterIndex =
+                call.binding->selectedArgumentParameterOrdinals[selectedIndex];
+            const ast::AstNode* argumentSyntax = call.node->syntax->children()[index];
+            if (selectedIndex < call.binding->selectedConversions.size() &&
+                call.binding->selectedConversions[selectedIndex].kind !=
+                    ProjectConversionKind::Identity)
+            {
+                child = wrapImplicitConversion(
+                    std::move(child),
+                    call.binding->selectedConversions[selectedIndex],
+                    argumentSyntax);
+            }
+            const ClassMemberSymbol& selectedMember =
+                memberModel_->members()[call.selectedMemberOrdinal];
+            const bool packElement =
+                selectedIndex < call.binding->selectedParameterPackElements.size() &&
+                call.binding->selectedParameterPackElements[selectedIndex];
+            if (packElement)
+            {
+                if (parameterIndex >= selectedMember.parameters.size())
+                {
+                    error = "T01-F02 method parameter pack has no selected parameter";
+                    return false;
+                }
+                const std::string& elementType =
+                    selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error = "T01-F02 method parameter pack lost its element type";
+                    return false;
+                }
+                if (!call.expandedPackChildIndex.has_value())
+                {
+                    auto pack = makeNode(
+                        ProjectOopHirNodeKind::ParameterPack,
+                        argumentSyntax,
+                        selectedMember.parameters[parameterIndex].typeKey);
+                    pack->elementTypeKey = elementType;
+                    call.expandedPackChildIndex = call.node->children.size();
+                    call.node->children.push_back(std::move(pack));
+                    call.node->argumentParameterOrdinals.push_back(parameterIndex);
+                }
+                call.node->children[*call.expandedPackChildIndex]->children.push_back(
+                    std::move(child));
+            }
+            else
+            {
+                if (parameterIndex < selectedMember.parameters.size())
+                {
+                    child = wrapCallArgumentBorrow(
+                        std::move(child), argumentSyntax, call.selectedMemberOrdinal,
+                        parameterIndex, call.hasOwnedTemporary);
+                }
+                call.node->children.push_back(std::move(child));
+                call.node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            if (call.nextArgument == call.node->syntax->children().size())
+                call.stage = OrdinaryCallFrameStage::Ready;
+            return true;
+        };
+        const auto finishOrdinaryCall = [&](IterativeExpressionFrame& frame)
+            -> std::unique_ptr<ProjectOopHirNode>
+        {
+            OrdinaryCallFrameState& call = *frame.ordinaryCall;
+            const ClassMemberSymbol& selectedMember =
+                memberModel_->members()[call.selectedMemberOrdinal];
+            for (std::size_t index = 0;
+                index < call.binding->selectedDefaultArguments.size(); ++index)
+            {
+                if (index >= call.binding->selectedDefaultArgumentParameterOrdinals.size())
+                {
+                    error = "selected default argument has no parameter ordinal";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex =
+                    call.binding->selectedDefaultArgumentParameterOrdinals[index];
+                if (parameterIndex >= selectedMember.parameters.size())
+                {
+                    error = "NSC-LIMIT-020 selected default argument has no matching parameter";
+                    return nullptr;
+                }
+                auto argument = lowerDefaultArgument(
+                    call.binding->selectedDefaultArguments[index],
+                    selectedMember.parameters[parameterIndex].typeKey,
+                    error);
+                if (argument == nullptr) return nullptr;
+                call.node->children.push_back(std::move(argument));
+                call.node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            if (call.binding->selectedSynthesizesEmptyParameterPack)
+            {
+                if (!call.binding->selectedParameterPackOrdinal.has_value() ||
+                    *call.binding->selectedParameterPackOrdinal >=
+                        selectedMember.parameters.size())
+                {
+                    error = "T01-F02 empty method parameter pack has no parameter";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex =
+                    *call.binding->selectedParameterPackOrdinal;
+                const std::string& elementType =
+                    selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error = "T01-F02 empty method parameter pack lost its element type";
+                    return nullptr;
+                }
+                auto pack = makeNode(
+                    ProjectOopHirNodeKind::ParameterPack,
+                    frame.syntax,
+                    selectedMember.parameters[parameterIndex].typeKey);
+                pack->elementTypeKey = elementType;
+                call.node->children.push_back(std::move(pack));
+                call.node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            if (frame.addressContext && !selectedMember.isReferenceReturn)
+            {
+                error = "call result is not addressable unless the selected method returns ref";
+                return nullptr;
+            }
+            call.node->referenceResult = selectedMember.isReferenceReturn;
+            auto loweredCall = wrapFullExpressionCleanup(
+                std::move(call.node), frame.syntax, call.hasOwnedTemporary);
+            if (!selectedMember.isReferenceReturn || frame.addressContext)
+                return loweredCall;
+            auto load = makeNode(
+                ProjectOopHirNodeKind::PointerLoad,
+                frame.syntax,
+                selectedMember.declaredTypeKey);
+            load->children.push_back(std::move(loweredCall));
+            return load;
         };
         const auto initializeNamespaceCallFrame = [&](IterativeExpressionFrame& frame) -> bool
         {
@@ -2494,6 +2846,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         return nullptr;
                     }
                 }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryCall)
+                {
+                    if (!initializeOrdinaryCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
                 else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     frame.nullConditionalCall = current->kind() ==
@@ -3068,6 +3429,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     current = child->syntax;
                     currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryCall)
+                {
+                    const std::optional<OrdinaryCallChild> child =
+                        nextOrdinaryCallChild(*frames.back().ordinaryCall);
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 ordinary-call frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = child->addressContext;
                 }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
@@ -4247,6 +4622,38 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         "builtin:void");
                     node->children.push_back(std::move(lowered));
                     lowered = std::move(node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::OrdinaryCall)
+                {
+                    OrdinaryCallFrameState& call = *frame.ordinaryCall;
+                    if (!acceptOrdinaryCallChild(call, std::move(lowered)))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    const std::optional<OrdinaryCallChild> child =
+                        nextOrdinaryCallChild(call);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = child->addressContext;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishOrdinaryCall(frame);
+                    if (lowered == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        frames.clear();
+                        break;
+                    }
                     frames.pop_back();
                     continue;
                 }

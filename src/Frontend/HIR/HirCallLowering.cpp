@@ -1712,29 +1712,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     {
         node->targetTypeOrdinal = binding->receiverTypeOrdinal;
     }
-    std::size_t conversionOffset = 0;
-    if (binding->forwardedReceiver)
+    const bool explicitReceiver = !binding->staticCall && receiverSyntax != nullptr &&
+        receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
+    if (binding->forwardedReceiver || explicitReceiver || !expression->children().empty())
     {
-        auto receiver = lowerExpression(binding->receiverSyntax, memberOrdinal, false, error);
-        if (receiver == nullptr) return nullptr;
-        if (!binding->selectedConversions.empty() &&
-            binding->selectedConversions.front().kind != ProjectConversionKind::Identity)
-        {
-            receiver = wrapImplicitConversion(
-                std::move(receiver), binding->selectedConversions.front(), binding->receiverSyntax);
-        }
-        node->children.push_back(std::move(receiver));
-        node->argumentParameterOrdinals.push_back(0U);
-        conversionOffset = 1;
+        error = "Stage 34 ordinary call escaped iterative lowering";
+        return nullptr;
     }
-    else if (!binding->staticCall)
+    if (!binding->staticCall)
     {
-        auto receiver = lowerReceiver(
-            receiverSyntax, receiverTypeKey, memberOrdinal, error);
-        if (receiver == nullptr)
-        {
-            return nullptr;
-        }
+        auto receiver = lowerImplicitReceiver(receiverSyntax, receiverTypeKey, error);
+        if (receiver == nullptr) return nullptr;
         node->children.push_back(std::move(receiver));
     }
     if (memberModel_ == nullptr ||
@@ -1746,70 +1734,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     const ClassMemberSymbol& selectedMember =
         memberModel_->members()[selectedMemberOrdinal];
     bool hasOwnedTemporary = false;
-    ProjectOopHirNode* expandedPack = nullptr;
-    for (std::size_t index = 0; index < expression->children().size(); ++index)
-    {
-        auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
-        if (argument == nullptr)
-        {
-            return nullptr;
-        }
-        const std::size_t selectedIndex = index + conversionOffset;
-        if (selectedIndex >= binding->selectedArgumentParameterOrdinals.size())
-        {
-            error = "named call argument has no selected parameter ordinal";
-            return nullptr;
-        }
-        const std::size_t parameterIndex =
-            binding->selectedArgumentParameterOrdinals[selectedIndex];
-        if (selectedIndex < binding->selectedConversions.size() &&
-            binding->selectedConversions[selectedIndex].kind != ProjectConversionKind::Identity)
-        {
-            argument = wrapImplicitConversion(
-                std::move(argument), binding->selectedConversions[selectedIndex], expression->children()[index]);
-        }
-        const ast::AstNode* argumentSyntax = expression->children()[index];
-        const bool packElement =
-            selectedIndex < binding->selectedParameterPackElements.size() &&
-            binding->selectedParameterPackElements[selectedIndex];
-        if (packElement)
-        {
-            if (parameterIndex >= selectedMember.parameters.size())
-            {
-                error = "T01-F02 method parameter pack has no selected parameter";
-                return nullptr;
-            }
-            const std::string& elementType =
-                selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
-            if (elementType.empty())
-            {
-                error = "T01-F02 method parameter pack lost its element type";
-                return nullptr;
-            }
-            if (expandedPack == nullptr)
-            {
-                auto pack = makeNode(
-                    ProjectOopHirNodeKind::ParameterPack,
-                    argumentSyntax,
-                    selectedMember.parameters[parameterIndex].typeKey);
-                pack->elementTypeKey = elementType;
-                expandedPack = pack.get();
-                node->children.push_back(std::move(pack));
-                node->argumentParameterOrdinals.push_back(parameterIndex);
-            }
-            expandedPack->children.push_back(std::move(argument));
-            continue;
-        }
-        if (memberModel_ != nullptr && selectedMemberOrdinal < memberModel_->members().size() &&
-            parameterIndex < memberModel_->members()[selectedMemberOrdinal].parameters.size())
-        {
-            argument = wrapCallArgumentBorrow(
-                std::move(argument), argumentSyntax, selectedMemberOrdinal,
-                parameterIndex, hasOwnedTemporary);
-        }
-        node->children.push_back(std::move(argument));
-        node->argumentParameterOrdinals.push_back(parameterIndex);
-    }
     for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
     {
         if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())

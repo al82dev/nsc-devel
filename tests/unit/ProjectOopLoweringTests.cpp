@@ -761,6 +761,30 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
     }
 
+    static void setOrdinaryCallMembers(
+        ProjectMemberModel& memberModel,
+        std::vector<ClassMemberSymbol> members)
+    {
+        memberModel.members_ = std::move(members);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerOrdinaryCallExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertySetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -5232,6 +5256,98 @@ void testDeepNamespaceCallLowering(
     tests.expect(namespaceCallChainMatches(
             lowered.get(), nestingDepth, target),
         "iterative namespace-call lowering preserves targets, argument order, and metadata");
+    destroyHirTreeIteratively(lowered);
+}
+
+void testDeepOrdinaryCallLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    constexpr std::string_view typeKey = "type:H02S14L.C";
+
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    std::vector<nativesharp::frontend::ClassMemberSymbol> members(2U);
+    members[0].kind = nativesharp::frontend::ClassMemberKind::Method;
+    members[0].name = "Next";
+    members[0].declaredTypeKey = std::string(typeKey);
+    members[0].hasImplicitThis = true;
+    members[1].kind = nativesharp::frontend::ClassMemberKind::Method;
+    members[1].name = "Identity";
+    members[1].declaredTypeKey = std::string(typeKey);
+    members[1].isStatic = true;
+    nativesharp::frontend::MethodParameterSymbol parameter;
+    parameter.name = "value";
+    parameter.typeKey = std::string(typeKey);
+    members[1].parameters.push_back(std::move(parameter));
+    nativesharp::frontend::ProjectOopHirModelTestAccess::setOrdinaryCallMembers(
+        memberModel, std::move(members));
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    syntax.reserve(nestingDepth + 1U);
+    calls.reserve(nestingDepth);
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(7U);
+    nativesharp::ast::AstNode* current = syntax.back().get();
+    for (std::size_t index = 0; index < nestingDepth; ++index)
+    {
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::CallExpression,
+            nativesharp::SourceRange{}));
+        nativesharp::frontend::MethodCallBinding call;
+        call.syntax = syntax.back().get();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.resultTypeKey = std::string(typeKey);
+        if ((index & 1U) == 0U)
+        {
+            call.selectedMemberOrdinal = 0U;
+            call.receiverSyntax = current;
+            call.receiverTypeKey = std::string(typeKey);
+        }
+        else
+        {
+            call.staticCall = true;
+            call.selectedMemberOrdinal = 1U;
+            call.selectedArgumentParameterOrdinals.push_back(0U);
+            syntax.back()->addChild(current);
+        }
+        calls.push_back(std::move(call));
+        current = syntax.back().get();
+    }
+
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = std::string(typeKey);
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerOrdinaryCallExpression(
+            model, memberModel, current, syntax, calls, type, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a mixed 32768-level ordinary call chain lowers without process-stack recursion (" +
+            error + ")");
+
+    const ProjectOopHirNode* node = lowered.get();
+    bool layoutMatches = node != nullptr;
+    for (std::size_t remaining = nestingDepth; layoutMatches && remaining > 0U; --remaining)
+    {
+        const std::size_t sourceIndex = remaining - 1U;
+        const bool instance = (sourceIndex & 1U) == 0U;
+        layoutMatches = node->kind == (instance
+                ? nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall
+                : nativesharp::frontend::ProjectOopHirNodeKind::StaticCall) &&
+            node->memberOrdinal == (instance ? 0U : 1U) &&
+            node->children.size() == 1U &&
+            (instance
+                ? node->argumentParameterOrdinals.empty()
+                : node->argumentParameterOrdinals == std::vector<std::size_t>{0U});
+        node = layoutMatches ? node->children.front().get() : nullptr;
+    }
+    layoutMatches = layoutMatches && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
+        node->integerValue == 7U;
+    tests.expect(layoutMatches,
+        "iterative ordinary calls preserve instance receivers, static arguments, targets, and order");
     destroyHirTreeIteratively(lowered);
 }
 
@@ -11940,6 +12056,10 @@ int main()
     {
         testDeepConsoleEnumStructCallLowering(tests);
     }
+    else if (focusValue == "hir-ordinary-call-depth")
+    {
+        testDeepOrdinaryCallLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -12154,6 +12274,7 @@ int main()
         testDeepAtomicInterlockedCallLowering(tests);
         testDeepMonitorCallLowering(tests);
         testDeepConsoleEnumStructCallLowering(tests);
+        testDeepOrdinaryCallLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
