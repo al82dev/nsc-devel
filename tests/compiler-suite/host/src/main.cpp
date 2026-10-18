@@ -266,6 +266,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerParserMatchSemanticsModule(registry);
         nsc::suite::registerParserLoopComprehensionModule(registry);
         nsc::suite::registerParserLoopExpressionContinuationCounterfactualModule(registry);
+        nsc::suite::registerParserComprehensionContinuationCounterfactualModule(registry);
         nsc::suite::registerParserForeachSemanticsModule(registry);
         nsc::suite::registerParserForeachContinuationModule(registry);
         nsc::suite::registerParserCleanupContinuationModule(registry);

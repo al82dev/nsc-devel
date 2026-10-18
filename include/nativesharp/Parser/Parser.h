@@ -1167,6 +1167,7 @@ private:
     {
         Expression,
         LoopExpression,
+        ComprehensionExpression,
         Block,
         Statement,
         CatchClause
@@ -1185,7 +1186,8 @@ private:
     };
     class ParseContinuationCoordinator;
     ast::AstNode* parseWithContinuation(ContinuationRequestKind kind);
-    std::unique_ptr<ExpressionContinuation> makeExpressionContinuation(bool forceLoop);
+    std::unique_ptr<ExpressionContinuation> makeExpressionContinuation(
+        ContinuationRequestKind rootKind);
     ast::AstNode* lowerLocalFunctionDeclaration(
         ast::AstNode* function,
         bool isStaticLocal,
@@ -1585,6 +1587,7 @@ private:
     ast::AstNode* parseResultPropagationSuffix(ast::AstNode* expression);
     ast::AstNode* parsePostfixExpression();
     void buildConditionalQuestionIndex();
+    void buildComprehensionDelimiterIndex();
     bool questionBeginsConditional() const noexcept;
     bool comprehensionExpressionStartsHere() const noexcept;
     std::size_t pureGroupingDepth() const noexcept;
@@ -1640,6 +1643,7 @@ private:
     diagnostics::DiagnosticEngine& diagnostics_;
     std::size_t index_ = 0;
     std::vector<std::uint8_t> conditionalQuestionIndex_;
+    std::vector<std::size_t> comprehensionDelimiterIndex_;
     std::size_t pendingGenericGreater_ = 0;
     bool pendingGenericEqual_ = false;
     std::optional<lexer::Token> pendingGenericEqualToken_;

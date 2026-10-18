@@ -618,6 +618,12 @@ EOF y arena/engine nuevos salvo que la fila indique otro setup.
 | TP-PAR-535 | CP-PAR-042 | diagnostics engine con presupuesto agotado | parser termina aunque se supriman mensajes | PR |
 | TP-PAR-536 | CP-PAR-042 | fuzz determinista de tokens balanceados/no balanceados | sin hang; rangos dentro de fuente | NIGHTLY |
 
+## Cierre iterativo de `comprehend`
+
+| ID | Contrato | Entrada/preparación | Oráculo | Frecuencia |
+|---|---|---|---|---|
+| TP-PAR-571 | CP-PAR-033 | golden, LIFO, ordinales, 32768 niveles y recovery | AST y estado exactos sin recursión | NIGHTLY |
+
 ## Criterios de cierre futuro
 
 1. Cada fila debe materializarse en la nueva suite o quedar explícitamente bloqueada con productor y evidencia.

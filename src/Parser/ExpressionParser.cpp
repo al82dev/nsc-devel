@@ -574,54 +574,7 @@ ast::AstNode* Parser::parseLoopExpression()
 
 ast::AstNode* Parser::parseComprehensionExpression()
 {
-    const std::size_t beginIndex = index_;
-    const SourceRange keywordRange = consume().range();
-    expect(TokenKind::LeftParen, "'(' after comprehend");
-    ast::AstNode* builder = parseExpression();
-    expect(TokenKind::RightParen, "')' after comprehension builder");
-
-    const std::size_t ordinal = nextComprehensionTemporary_++;
-    ComprehensionContext context{
-        "$__comprehension_builder_" + std::to_string(ordinal),
-        "$__comprehension_loop_" + std::to_string(ordinal)};
-    comprehensionContexts_.push_back(context);
-    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (body == nullptr)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "expected '{' after comprehension builder");
-        body = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, keywordRange);
-    }
-    comprehensionContexts_.pop_back();
-
-    const SourceRange range = tokenRangeFrom(beginIndex);
-    ast::AstNode* loopBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
-    ast::TypeSyntax* inferred = arena_.make<ast::TypeSyntax>(
-        range, TokenKind::KwVar, std::string("var"));
-    ast::AstNode* builderDeclaration = makeVariableDeclaration(
-        inferred, context.builderName, builder, false);
-    builderDeclaration->setAuxiliaryText("local:comprehension-builder");
-    loopBody->addChild(builderDeclaration);
-    loopBody->addChild(body);
-
-    ast::AstNode* finish = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::BreakStatement, range);
-    finish->setText(context.loopLabel);
-    ast::AstNode* result = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::MoveExpression, range);
-    result->setFirst(makeIdentifierExpression(range, context.builderName));
-    result->setAuxiliaryText("comprehension-result");
-    finish->setFirst(result);
-    loopBody->addChild(finish);
-
-    ast::AstNode* loop = arena_.make<ast::AstNode>(ast::AstNodeKind::LoopExpression, range);
-    loop->setText(context.loopLabel);
-    loop->setAuxiliaryText("comprehension:explicit-builder");
-    loop->setFirst(loopBody);
-    return loop;
+    return parseWithContinuation(ContinuationRequestKind::ComprehensionExpression);
 }
 
 ast::AstNode* Parser::makeIdentifierExpression(const SourceRange& range, std::string name)
@@ -1542,8 +1495,8 @@ public:
     explicit PostfixIterationMachine(
         Parser& parser,
         bool resumable = false,
-        bool forceLoop = false) noexcept
-        : parser_(parser), resumable_(resumable), forceLoop_(forceLoop)
+        ContinuationRequestKind rootKind = ContinuationRequestKind::Expression) noexcept
+        : parser_(parser), resumable_(resumable), rootKind_(rootKind)
     {
     }
     ast::AstNode* parse();
@@ -1558,7 +1511,8 @@ private:
         Expression, ExpressionTail, Unary, FinishUnary, FinishBinary,
         FinishAssignment, FinishConditionalTrue, FinishConditionalFalse,
         FinishTypeRelation, FinishRangeEnd, FinishRangeStep,
-        Postfix, Primary, Loop, Grouping, Collection, FinishNameOf,
+        Postfix, Primary, Loop, Comprehension, FinishComprehensionBuilder,
+        Grouping, Collection, FinishNameOf,
         FinishOverflowPolicy, ContinueInterpolation, Call, Index, With,
         NewArguments, PlacementNew, ArrayNew, ArrayInitializer
     };
@@ -1606,6 +1560,7 @@ private:
         std::span<const lexer::Token> outerTokens;
         std::size_t outerIndex = 0;
         std::vector<std::uint8_t> outerQuestionIndex;
+        std::vector<std::size_t> outerComprehensionDelimiterIndex;
         std::size_t outerPendingGenericGreater = 0;
     };
 
@@ -1628,6 +1583,9 @@ private:
     void startPrimary(Work work);
     void startLoop(Work work);
     void finishLoopBody(Work work, ast::AstNode* body);
+    void startComprehension(Work work);
+    void finishComprehensionBuilder(Work work);
+    void finishComprehensionBody(Work work, ast::AstNode* body);
     void continueGrouping(Work work);
     void continueCollection(Work work);
     void finishNameOf(Work work);
@@ -1667,11 +1625,13 @@ private:
     std::deque<InterpolationFrame> interpolationFrames_;
     std::vector<Work> work_;
     Work pendingLoop_;
+    Work pendingComprehension_;
     std::size_t rootSlot_ = noSlot;
     bool resumable_ = false;
-    bool forceLoop_ = false;
+    ContinuationRequestKind rootKind_ = ContinuationRequestKind::Expression;
     bool started_ = false;
     bool awaitingBlock_ = false;
+    bool awaitingComprehensionBody_ = false;
 #if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
     std::size_t outstandingResults_ = 0;
 #endif
@@ -1798,6 +1758,9 @@ void Parser::PostfixIterationMachine::execute(Work work)
     case WorkKind::Postfix: startPostfix(std::move(work)); break;
     case WorkKind::Primary: startPrimary(std::move(work)); break;
     case WorkKind::Loop: startLoop(std::move(work)); break;
+    case WorkKind::Comprehension: startComprehension(std::move(work)); break;
+    case WorkKind::FinishComprehensionBuilder:
+        finishComprehensionBuilder(std::move(work)); break;
     case WorkKind::Grouping: continueGrouping(std::move(work)); break;
     case WorkKind::Collection: continueCollection(std::move(work)); break;
     case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
@@ -1817,12 +1780,26 @@ Parser::ExpressionContinuationStatus Parser::PostfixIterationMachine::advance(
     ast::AstNode* completedBlock)
 {
     if (!started_)
-        initializeRoot(forceLoop_ ? WorkKind::Loop : WorkKind::Expression, 1);
+    {
+        WorkKind root = WorkKind::Expression;
+        if (rootKind_ == ContinuationRequestKind::LoopExpression) root = WorkKind::Loop;
+        else if (rootKind_ == ContinuationRequestKind::ComprehensionExpression)
+            root = WorkKind::Comprehension;
+        initializeRoot(root, 1);
+    }
     else
     {
         assert(awaitingBlock_);
         awaitingBlock_ = false;
-        finishLoopBody(std::move(pendingLoop_), completedBlock);
+        if (awaitingComprehensionBody_)
+        {
+            awaitingComprehensionBody_ = false;
+            finishComprehensionBody(std::move(pendingComprehension_), completedBlock);
+        }
+        else
+        {
+            finishLoopBody(std::move(pendingLoop_), completedBlock);
+        }
     }
     while (!results_[rootSlot_].ready && !awaitingBlock_)
     {
@@ -2541,11 +2518,14 @@ void Parser::PostfixIterationMachine::enterInterpolationFragment(InterpolationFr
     frame.outerTokens = parser_.tokens_;
     frame.outerIndex = parser_.index_;
     frame.outerQuestionIndex = std::move(parser_.conditionalQuestionIndex_);
+    frame.outerComprehensionDelimiterIndex =
+        std::move(parser_.comprehensionDelimiterIndex_);
     frame.outerPendingGenericGreater = parser_.pendingGenericGreater_;
     parser_.tokens_ = std::span<const lexer::Token>(frame.fragmentTokens);
     parser_.index_ = 0;
     parser_.pendingGenericGreater_ = 0;
     parser_.buildConditionalQuestionIndex();
+    parser_.buildComprehensionDelimiterIndex();
 }
 
 void Parser::PostfixIterationMachine::restoreInterpolationParser(InterpolationFrame& frame)
@@ -2553,6 +2533,8 @@ void Parser::PostfixIterationMachine::restoreInterpolationParser(InterpolationFr
     parser_.tokens_ = frame.outerTokens;
     parser_.index_ = frame.outerIndex;
     parser_.conditionalQuestionIndex_ = std::move(frame.outerQuestionIndex);
+    parser_.comprehensionDelimiterIndex_ =
+        std::move(frame.outerComprehensionDelimiterIndex);
     parser_.pendingGenericGreater_ = frame.outerPendingGenericGreater;
     frame.fragmentTokens.clear();
     frame.fragmentSource.reset();
@@ -2679,6 +2661,87 @@ void Parser::PostfixIterationMachine::finishLoopBody(
     complete(work.resultSlot, loop);
 }
 
+void Parser::PostfixIterationMachine::startComprehension(Work work)
+{
+    work.beginIndex = parser_.index_;
+    work.range = parser_.consume().range();
+    parser_.expect(TokenKind::LeftParen, "'(' after comprehend");
+    work.kind = WorkKind::FinishComprehensionBuilder;
+    work.childSlot = makeSlot();
+    const std::size_t builderSlot = work.childSlot;
+    work_.push_back(std::move(work));
+    scheduleChild(builderSlot);
+}
+
+void Parser::PostfixIterationMachine::finishComprehensionBuilder(Work work)
+{
+    work.node = results_[work.childSlot].value;
+    parser_.expect(TokenKind::RightParen, "')' after comprehension builder");
+    work.ordinal = parser_.nextComprehensionTemporary_++;
+    work.text = "$__comprehension_builder_" + std::to_string(work.ordinal);
+    work.label = "$__comprehension_loop_" + std::to_string(work.ordinal);
+    parser_.comprehensionContexts_.push_back({work.text, work.label});
+
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "expected '{' after comprehension builder");
+        ast::AstNode* body = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, work.range);
+        finishComprehensionBody(std::move(work), body);
+        return;
+    }
+    if (resumable_)
+    {
+        pendingComprehension_ = std::move(work);
+        awaitingComprehensionBody_ = true;
+        awaitingBlock_ = true;
+        return;
+    }
+    finishComprehensionBody(std::move(work), parser_.parseBlock());
+}
+
+void Parser::PostfixIterationMachine::finishComprehensionBody(
+    Work work,
+    ast::AstNode* body)
+{
+    assert(!parser_.comprehensionContexts_.empty());
+    assert(parser_.comprehensionContexts_.back().builderName == work.text);
+    assert(parser_.comprehensionContexts_.back().loopLabel == work.label);
+    parser_.comprehensionContexts_.pop_back();
+
+    const SourceRange range = parser_.tokenRangeFrom(work.beginIndex);
+    ast::AstNode* loopBody = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, range);
+    ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
+        range, TokenKind::KwVar, std::string("var"));
+    ast::AstNode* builderDeclaration = parser_.makeVariableDeclaration(
+        inferred, work.text, work.node, false);
+    builderDeclaration->setAuxiliaryText("local:comprehension-builder");
+    loopBody->addChild(builderDeclaration);
+    loopBody->addChild(body);
+
+    ast::AstNode* finish = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BreakStatement, range);
+    finish->setText(work.label);
+    ast::AstNode* result = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MoveExpression, range);
+    result->setFirst(parser_.makeIdentifierExpression(range, work.text));
+    result->setAuxiliaryText("comprehension-result");
+    finish->setFirst(result);
+    loopBody->addChild(finish);
+
+    ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::LoopExpression, range);
+    loop->setText(work.label);
+    loop->setAuxiliaryText("comprehension:explicit-builder");
+    loop->setFirst(loopBody);
+    complete(work.resultSlot, loop);
+}
+
 bool Parser::PostfixIterationMachine::startReservedPrimary(Work& work)
 {
     if (parser_.startsParenthesizedBlock("match"))
@@ -2689,7 +2752,7 @@ bool Parser::PostfixIterationMachine::startReservedPrimary(Work& work)
           parser_.peek(2).kind() == TokenKind::LeftBrace)))
         { startLoop(std::move(work)); return true; }
     if (parser_.comprehensionExpressionStartsHere())
-        { complete(work.resultSlot, parser_.parseComprehensionExpression()); return true; }
+        { startComprehension(std::move(work)); return true; }
     return false;
 }
 
@@ -3424,9 +3487,9 @@ ast::AstNode* Parser::parseUnaryIterativeExpression()
 }
 
 std::unique_ptr<Parser::ExpressionContinuation> Parser::makeExpressionContinuation(
-    bool forceLoop)
+    ContinuationRequestKind rootKind)
 {
-    return std::make_unique<PostfixIterationMachine>(*this, true, forceLoop);
+    return std::make_unique<PostfixIterationMachine>(*this, true, rootKind);
 }
 
 ast::AstNode* Parser::parseLogicalOrExpression()
@@ -3452,6 +3515,26 @@ void Parser::buildConditionalQuestionIndex()
     std::vector<std::size_t> nextEvents;
     buildConditionalNextEvents(tokens_, ordinals, closureEnds, nextEvents);
     classifyConditionalQuestions(tokens_, nextEvents, conditionalQuestionIndex_);
+}
+
+// Pairs parentheses once so contextual `comprehend (...) {` recognition is O(1) per probe.
+void Parser::buildComprehensionDelimiterIndex()
+{
+    comprehensionDelimiterIndex_.assign(tokens_.size(), tokens_.size());
+    std::vector<std::size_t> openings;
+    openings.reserve(tokens_.size());
+    for (std::size_t cursor = 0; cursor < tokens_.size(); ++cursor)
+    {
+        if (tokens_[cursor].kind() == TokenKind::LeftParen)
+        {
+            openings.push_back(cursor);
+        }
+        else if (tokens_[cursor].kind() == TokenKind::RightParen && !openings.empty())
+        {
+            comprehensionDelimiterIndex_[openings.back()] = cursor;
+            openings.pop_back();
+        }
+    }
 }
 
 // Returns the preclassified role of the question token at the current cursor in O(1). The index
@@ -3666,15 +3749,11 @@ bool Parser::comprehensionExpressionStartsHere() const noexcept
 {
     if (!atContextualKeyword("comprehend") || peek().kind() != TokenKind::LeftParen)
         return false;
-    std::size_t depth = 0;
-    for (std::size_t cursor = index_ + 1U; cursor < tokens_.size(); ++cursor)
-    {
-        if (tokens_[cursor].kind() == TokenKind::LeftParen) ++depth;
-        else if (tokens_[cursor].kind() == TokenKind::RightParen && --depth == 0)
-            return cursor + 1U < tokens_.size() &&
-                tokens_[cursor + 1U].kind() == TokenKind::LeftBrace;
-    }
-    return false;
+    const std::size_t open = index_ + 1U;
+    if (open >= comprehensionDelimiterIndex_.size()) return false;
+    const std::size_t close = comprehensionDelimiterIndex_[open];
+    return close < tokens_.size() && close + 1U < tokens_.size() &&
+        tokens_[close + 1U].kind() == TokenKind::LeftBrace;
 }
 
 std::size_t Parser::pureGroupingDepth() const noexcept

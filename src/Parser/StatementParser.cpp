@@ -3293,32 +3293,7 @@ ast::AstNode* Parser::parseMatchStatement()
 }
 ast::AstNode* Parser::parseComprehensionYieldStatement()
 {
-    const std::size_t beginIndex = index_;
-    const SourceRange yieldRange = consume().range();
-    const ComprehensionContext& context = comprehensionContexts_.back();
-
-    if (consumeIf(TokenKind::KwBreak))
-    {
-        expect(TokenKind::Semicolon, "';' after 'yield break'");
-        ast::AstNode* stop = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BreakStatement, tokenRangeFrom(beginIndex));
-        stop->setText(context.loopLabel);
-        ast::AstNode* result = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::MoveExpression, yieldRange);
-        result->setFirst(makeIdentifierExpression(yieldRange, context.builderName));
-        result->setAuxiliaryText("comprehension-result");
-        stop->setFirst(result);
-        return stop;
-    }
-
-    consumeIf(TokenKind::KwReturn);
-    ast::AstNode* value = parseExpression();
-    expect(TokenKind::Semicolon, "';' after comprehension yield");
-    ast::AstNode* add = makeZeroArgCallExpression(makeMemberExpression(
-        makeIdentifierExpression(yieldRange, context.builderName), "Add"));
-    if (value != nullptr) add->addChild(value);
-    add->setAuxiliaryText("comprehension-builder-add");
-    return makeExpressionStatement(add);
+    return parseWithContinuation(ContinuationRequestKind::Statement);
 }
 
 ast::AstNode* Parser::parseForExpressionList(std::size_t beginIndex)

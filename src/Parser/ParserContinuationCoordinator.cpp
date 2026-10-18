@@ -37,6 +37,7 @@ private:
     {
         Expression,
         LoopExpression,
+        ComprehensionExpression,
         ResumeExpression,
         UnaryExpression,
         ConditionalExpression,
@@ -397,7 +398,10 @@ private:
 
     void startExpression(const Work& work);
     void startLoopExpression(const Work& work);
-    void startExpressionContinuation(const Work& work, bool forceLoop);
+    void startComprehensionExpression(const Work& work);
+    void startExpressionContinuation(
+        const Work& work,
+        ContinuationRequestKind rootKind);
     void advanceExpression(std::size_t frameIndex, ast::AstNode* completedBlock);
     void resumeExpression(const Work& work);
     void startUnaryExpression(const Work& work);
@@ -694,6 +698,8 @@ std::size_t Parser::ParseContinuationCoordinator::request(ContinuationRequestKin
     const std::size_t resultSlot = makeResultSlot();
     WorkKind workKind = WorkKind::Expression;
     if (kind == ContinuationRequestKind::LoopExpression) workKind = WorkKind::LoopExpression;
+    else if (kind == ContinuationRequestKind::ComprehensionExpression)
+        workKind = WorkKind::ComprehensionExpression;
     else if (kind == ContinuationRequestKind::Block) workKind = WorkKind::Block;
     else if (kind == ContinuationRequestKind::Statement) workKind = WorkKind::Statement;
     else if (kind == ContinuationRequestKind::CatchClause) workKind = WorkKind::CatchClause;
@@ -728,6 +734,7 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     {
     case WorkKind::Expression: startExpression(work); return;
     case WorkKind::LoopExpression: startLoopExpression(work); return;
+    case WorkKind::ComprehensionExpression: startComprehensionExpression(work); return;
     case WorkKind::ResumeExpression: resumeExpression(work); return;
     case WorkKind::UnaryExpression: startUnaryExpression(work); return;
     case WorkKind::ConditionalExpression: startConditionalExpression(work); return;
@@ -830,7 +837,7 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
 {
     if (!parser_.lambdaBlockBodyStartsHere())
     {
-        startExpressionContinuation(work, false);
+        startExpressionContinuation(work, ContinuationRequestKind::Expression);
         return;
     }
     ast::AstNode* lambda = parser_.parseLambdaExpressionHead();
@@ -844,16 +851,21 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
 
 void Parser::ParseContinuationCoordinator::startLoopExpression(const Work& work)
 {
-    startExpressionContinuation(work, true);
+    startExpressionContinuation(work, ContinuationRequestKind::LoopExpression);
+}
+
+void Parser::ParseContinuationCoordinator::startComprehensionExpression(const Work& work)
+{
+    startExpressionContinuation(work, ContinuationRequestKind::ComprehensionExpression);
 }
 
 void Parser::ParseContinuationCoordinator::startExpressionContinuation(
     const Work& work,
-    bool forceLoop)
+    ContinuationRequestKind rootKind)
 {
     const std::size_t frameIndex = expressionFrames_.size();
     expressionFrames_.push_back(
-        {work.resultSlot, parser_.makeExpressionContinuation(forceLoop)});
+        {work.resultSlot, parser_.makeExpressionContinuation(rootKind)});
     advanceExpression(frameIndex, nullptr);
 }
 
