@@ -671,7 +671,9 @@ public class Math { public static int Internal(int value) { return value; } }
                  "P6 rejects an archive whose linker-member index claims an unsafe or unreadable symbol table");
 
     const std::vector<std::uint8_t> validDll = readBytes(shared / "SharedMeta.dll");
+    if (validDll.size() < 0x40U) return;
     const std::size_t peOffset = static_cast<std::size_t>(readU32(validDll, 0x3c));
+    if (peOffset > validDll.size() || validDll.size() - peOffset < 24U) return;
 
     std::vector<std::uint8_t> executableImage = validDll;
     const std::size_t characteristicsOffset = peOffset + 4U + 18U;
