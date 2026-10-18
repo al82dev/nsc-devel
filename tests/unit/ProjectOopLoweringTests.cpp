@@ -13,6 +13,7 @@
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
+#include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
@@ -36,6 +37,14 @@ namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess final
 {
+    static std::vector<std::uint8_t> coordinatorStaticFieldMask(
+        std::vector<ProjectOopMirStaticField> fields)
+    {
+        ProjectOopMirModel model;
+        model.staticFields_ = std::move(fields);
+        return llvm_backend::projectOopStaticFieldDeclarationMask(model, {}, true, true);
+    }
+
     static bool configureAggregateTypes(
         ProjectNameLookup& nameLookup,
         ProjectInheritanceModel& inheritanceModel,
@@ -1598,6 +1607,32 @@ class Catalog
             ir.find(unused->storageSymbol) == std::string::npos &&
             ir.find(unused->accessorName) == std::string::npos,
         "a code unit declares the static field it reads and omits the unrelated field");
+}
+
+void testImportedConstantCoordinatorReachability(TestContext& tests)
+{
+    nativesharp::frontend::ProjectOopMirStaticField localMutable;
+    localMutable.name = "LocalMutable";
+
+    nativesharp::frontend::ProjectOopMirStaticField importedMutable;
+    importedMutable.name = "ImportedMutable";
+    importedMutable.isImported = true;
+
+    nativesharp::frontend::ProjectOopMirStaticField importedConstant;
+    importedConstant.name = "ImportedConstant";
+    importedConstant.isConst = true;
+    importedConstant.isImported = true;
+
+    std::vector<nativesharp::frontend::ProjectOopMirStaticField> fields;
+    fields.push_back(std::move(localMutable));
+    fields.push_back(std::move(importedMutable));
+    fields.push_back(std::move(importedConstant));
+    const std::vector<std::uint8_t> mask =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::coordinatorStaticFieldMask(
+            std::move(fields));
+
+    tests.expect(mask == std::vector<std::uint8_t>{1U, 0U, 1U},
+        "the coordinator owns local fields and imported constants but not imported mutable storage");
 }
 
 void testDeepOptionalDefaultHir(TestContext& tests, const std::filesystem::path& root)
@@ -5083,6 +5118,10 @@ int main()
     {
         testDeepMirNodeDestruction(tests);
     }
+    else if (focusValue == "llvm-imported-constant-reachability")
+    {
+        testImportedConstantCoordinatorReachability(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -5091,6 +5130,7 @@ int main()
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
         testPartitionStaticFieldReachability(tests, root);
+        testImportedConstantCoordinatorReachability(tests);
         testDeepOptionalDefaultHir(tests, root);
         testDeepYieldStateAssignment(tests);
         testDeepGeneratorThrowRewrite(tests);

@@ -153,7 +153,7 @@ std::vector<std::uint8_t> projectOopStaticFieldDeclarationMask(
     if (ownsModuleGlobals)
     {
         for (std::size_t ordinal = 0; ordinal < fields.size(); ++ordinal)
-            if (!fields[ordinal].isImported) selected[ordinal] = 1U;
+            if (!fields[ordinal].isImported || fields[ordinal].isConst) selected[ordinal] = 1U;
         for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel.fieldInitializers())
         {
             const auto target = fieldByMember.find(initializer.memberOrdinal);

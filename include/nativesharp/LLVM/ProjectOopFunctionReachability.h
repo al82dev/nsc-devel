@@ -19,8 +19,8 @@ std::vector<std::uint8_t> projectOopReachableDefinitionMask(
 
 // NSC305-L06F. Selects only static-field declarations required by one physical LLVM module.
 // A monolithic module retains the complete model. The partition coordinator owns every local
-// field and the dependencies of local initializers; ordinary units retain fields referenced by
-// the MIR bodies they define.
+// field, each ODR-materialized imported constant, and the dependencies of local initializers;
+// ordinary units retain fields referenced by the MIR bodies they define.
 std::vector<std::uint8_t> projectOopStaticFieldDeclarationMask(
     const frontend::ProjectOopMirModel& mirModel,
     std::span<const std::size_t> definitionOrdinals,
