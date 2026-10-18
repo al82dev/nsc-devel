@@ -592,6 +592,18 @@ struct ProjectOopHirModelTestAccess final
         return ProjectOopMirModel::restoreMirNodeTreeForTesting(bytes, root);
     }
 
+    static std::string dumpMirNode(const ProjectOopMirNode* root, int depth)
+    {
+        return ProjectOopMirModelDumper::dumpNodeForTesting(root, depth);
+    }
+
+    static std::size_t mirNodeTraversalDepth(
+        const ProjectOopMirNode* root,
+        std::size_t& visitedNodes)
+    {
+        return ProjectOopMirModelDumper::nodeTraversalDepthForTesting(root, visitedNodes);
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4769,6 +4781,76 @@ void testDeepMirCacheRestore(TestContext& tests)
     destroyMirTreeIteratively(std::move(root));
     destroyMirTreeIteratively(std::move(restored));
 }
+
+std::unique_ptr<ProjectOopMirNode> makeDeepMirBlockTree(std::size_t edgeDepth)
+{
+    auto root = std::make_unique<ProjectOopMirNode>();
+    root->kind = ProjectOopMirNodeKind::Block;
+    ProjectOopMirNode* current = root.get();
+    for (std::size_t depth = 0; depth < edgeDepth; ++depth)
+    {
+        auto child = std::make_unique<ProjectOopMirNode>();
+        child->kind = ProjectOopMirNodeKind::Block;
+        current->children.push_back(std::move(child));
+        current = current->children.back().get();
+    }
+    root->children.emplace_back();
+    return root;
+}
+
+void testMirDumperFormat(TestContext& tests)
+{
+    auto root = std::make_unique<ProjectOopMirNode>();
+    root->kind = ProjectOopMirNodeKind::Block;
+    root->typeKey = "builtin:void";
+    root->memberOrdinal = 3U;
+    root->mirRegionOrdinal = 5U;
+    root->cleanupRegionOrdinals = {8U, 13U};
+    auto first = std::make_unique<ProjectOopMirNode>();
+    first->kind = ProjectOopMirNodeKind::Block;
+    first->typeKey = "builtin:int";
+    first->localOrdinal = 7U;
+    first->children.emplace_back();
+    root->children.push_back(std::move(first));
+    root->children.emplace_back();
+    auto last = std::make_unique<ProjectOopMirNode>();
+    last->kind = ProjectOopMirNodeKind::Block;
+    last->typeKey = "builtin:bool";
+    root->children.push_back(std::move(last));
+    const std::string dump =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::dumpMirNode(root.get(), 1);
+    const std::string expected =
+        "  block type=builtin:void member=#3 mir-region=#5 cleanup-path=#8->#13\n"
+        "    block type=builtin:int local=#7\n"
+        "      <none>\n"
+        "    <none>\n"
+        "    block type=builtin:bool\n";
+    tests.expect(dump == expected,
+        "MIR dumping preserves byte-exact fields, indentation, preorder, and null slots");
+}
+
+void testDeepMirDumper(TestContext& tests)
+{
+    constexpr std::size_t traversalDepth = 32768U;
+    auto traversalRoot = makeDeepMirBlockTree(traversalDepth);
+    std::size_t visitedNodes = 0;
+    const std::size_t maximumDepth =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::mirNodeTraversalDepth(
+            traversalRoot.get(), visitedNodes);
+    tests.expect(maximumDepth == traversalDepth && visitedNodes == traversalDepth + 2U,
+        "MIR dumper traversal reaches 32768 levels and preserves the null sibling without recursion");
+    destroyMirTreeIteratively(std::move(traversalRoot));
+
+    constexpr std::size_t dumpDepth = 8192U;
+    auto dumpRoot = makeDeepMirBlockTree(dumpDepth);
+    const std::string dump =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::dumpMirNode(dumpRoot.get(), 0);
+    tests.expect(static_cast<std::size_t>(std::count(dump.begin(), dump.end(), '\n')) ==
+            dumpDepth + 2U && dump.starts_with("block\n  block\n") &&
+            dump.ends_with("  <none>\n"),
+        "an 8192-level MIR tree emits the proportional full text in exact preorder");
+    destroyMirTreeIteratively(std::move(dumpRoot));
+}
 }
 
 int main()
@@ -4971,6 +5053,11 @@ int main()
     {
         testDeepMirCacheRestore(tests);
     }
+    else if (focusValue == "mir-dump-depth")
+    {
+        testMirDumperFormat(tests);
+        testDeepMirDumper(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -5016,6 +5103,7 @@ int main()
         testDeepMirPollFrameLocalAppend(tests);
         testDeepMirMoveNextFrameLocalAppend(tests);
         testDeepMirCacheRestore(tests);
+        testMirDumperFormat(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

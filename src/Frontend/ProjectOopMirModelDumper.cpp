@@ -5,12 +5,262 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <sstream>
+#include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
 namespace
 {
-void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int depth)
+void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.syntax != nullptr)
+    {
+        switch (node.syntax->floatingPointMode())
+        {
+            case ast::FloatingPointModeSyntaxKind::Inherit: break;
+            case ast::FloatingPointModeSyntaxKind::Strict: output << " fp=strict"; break;
+            case ast::FloatingPointModeSyntaxKind::Precise: output << " fp=precise"; break;
+            case ast::FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
+        }
+    }
+    if (!node.typeKey.empty()) output << " type=" << node.typeKey;
+    if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
+    if (node.namespaceFunctionOrdinal.has_value())
+        output << " namespace-function=#" << *node.namespaceFunctionOrdinal;
+    if (node.namespaceStateOrdinal.has_value())
+        output << " namespace-state=#" << *node.namespaceStateOrdinal;
+    if (node.localOrdinal.has_value()) output << " local=#" << *node.localOrdinal;
+    if (node.mirRegionOrdinal.has_value()) output << " mir-region=#" << *node.mirRegionOrdinal;
+    if (node.exceptionTargetRegionOrdinal.has_value())
+        output << " exception-target=#" << *node.exceptionTargetRegionOrdinal;
+    if (node.cleanupRegionOrdinal.has_value()) output << " cleanup=#" << *node.cleanupRegionOrdinal;
+    if (node.targetScopeOrdinal.has_value()) output << " target-scope=#" << *node.targetScopeOrdinal;
+    if (node.exceptionTypeOrdinal.has_value()) output << " exception-type=#" << *node.exceptionTypeOrdinal;
+    if (node.catchAll) output << " catch=all";
+    if (node.kind == ProjectOopMirNodeKind::CatchRegion)
+    {
+        output << " pattern=" << (node.catchAll ? "_" : node.elementTypeKey)
+               << " filter=" << (node.catchHasFilter ? "true" : "false")
+               << " exhaustive=" << (node.catchExhaustive ? "true" : "false")
+               << " matches=[";
+        for (std::size_t index = 0; index < node.catchMatchedErrorTypeKeys.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node.catchMatchedErrorTypeKeys[index];
+        }
+        output << ']';
+    }
+    if (node.disposeContractMemberOrdinal.has_value())
+        output << " dispose-contract=#" << *node.disposeContractMemberOrdinal;
+    if (node.disposeImplementationMemberOrdinal.has_value())
+        output << " dispose-implementation=#" << *node.disposeImplementationMemberOrdinal;
+    if (node.interfaceCleanupDispatch) output << " cleanup-dispatch=interface";
+    if (!node.cleanupRegionOrdinals.empty())
+    {
+        output << " cleanup-path=";
+        for (std::size_t index = 0; index < node.cleanupRegionOrdinals.size(); ++index)
+        {
+            if (index != 0) output << "->";
+            output << '#' << node.cleanupRegionOrdinals[index];
+        }
+    }
+    if (node.cleanupContinuationKind.has_value())
+        output << " continuation=" << methodCleanupContinuationKindName(*node.cleanupContinuationKind);
+    if (node.borrowKind.has_value()) output << " borrow=" << methodBorrowKindName(*node.borrowKind);
+    if (node.localBorrowSourceKind.has_value())
+        output << " borrow-source=" << methodLocalBorrowSourceKindName(*node.localBorrowSourceKind);
+    if (node.parameterOrdinal.has_value()) output << " param=#" << *node.parameterOrdinal;
+    if (node.constructionOrdinal.has_value()) output << " construction=#" << *node.constructionOrdinal;
+}
+
+void dumpNodeLayout(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.kind == ProjectOopMirNodeKind::RuntimeTypeTest ||
+        node.kind == ProjectOopMirNodeKind::SafeReferenceCast ||
+        node.kind == ProjectOopMirNodeKind::CheckedReferenceCast)
+        output << " target-type=#" << node.targetTypeOrdinal.value_or(0)
+               << " target-kind=" << (node.targetIsInterface ? "interface" : "class")
+               << " type-id=" << node.immediate;
+    if (node.kind == ProjectOopMirNodeKind::FieldAddress ||
+        node.kind == ProjectOopMirNodeKind::FieldLoad ||
+        node.kind == ProjectOopMirNodeKind::NullConditionalFieldLoad ||
+        node.kind == ProjectOopMirNodeKind::BitFieldAddress ||
+        node.kind == ProjectOopMirNodeKind::BitFieldLoad)
+        output << " offset=" << node.immediate << " align=" << node.alignment;
+    if (node.kind == ProjectOopMirNodeKind::BitFieldAddress ||
+        node.kind == ProjectOopMirNodeKind::BitFieldLoad)
+        output << " storage=" << node.bitStorageSize
+               << " bit-offset=" << node.bitOffset.value_or(0)
+               << " bit-width=" << node.bitWidth.value_or(0);
+    if (node.kind == ProjectOopMirNodeKind::AggregateElementStore && node.bitWidth.has_value())
+        output << " bit-storage=" << node.bitStorageSize
+               << " bit-offset=" << node.bitOffset.value_or(0)
+               << " bit-width=" << *node.bitWidth;
+    if (node.kind == ProjectOopMirNodeKind::AggregateElementStore && !node.bitWidth.has_value())
+        output << " offset=" << node.immediate << " bytes=" << node.bitStorageSize;
+    if (node.kind == ProjectOopMirNodeKind::AggregateSpreadStore)
+        output << " targets=" << (node.children.empty() ? 0U : node.children.size() - 1U)
+               << " source-evaluations=1 mode=" << (node.booleanValue ? "move" : "copy");
+    if (!node.collectionSegments.empty())
+    {
+        output << " segments=";
+        for (const ProjectCollectionSegmentKind segment : node.collectionSegments)
+            output << (segment == ProjectCollectionSegmentKind::Spread ? 'S' : 'E');
+    }
+}
+
+void dumpNodeStorage(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.kind == ProjectOopMirNodeKind::ParameterPack)
+        output << " element=" << node.elementTypeKey
+               << " elements=" << node.children.size()
+               << " element-size=" << node.immediate
+               << " element-align=" << node.alignment
+               << " span-size=" << node.secondaryImmediate
+               << " data-offset=" << node.integerValue
+               << " length-offset=" << node.bitStorageSize
+               << " storage=stack";
+    if (node.kind == ProjectOopMirNodeKind::AllocateAndConstruct)
+        output << " bytes=" << node.immediate << " align=" << node.alignment
+               << " zero=" << (node.zeroInitialize ? "true" : "false")
+               << " failure=" << (node.allocationFailureReturnsNull ? "null" : "trap");
+    if (node.kind == ProjectOopMirNodeKind::PlacementConstruct)
+        output << " bytes=" << node.immediate << " align=" << node.alignment
+               << " zero=" << (node.zeroInitialize ? "true" : "false")
+               << " storage=supplied";
+    if (node.kind == ProjectOopMirNodeKind::ArrayAllocate ||
+        node.kind == ProjectOopMirNodeKind::RangeArrayAllocate ||
+        node.kind == ProjectOopMirNodeKind::ArrayElementLoad ||
+        node.kind == ProjectOopMirNodeKind::ArrayElementAddress ||
+        node.kind == ProjectOopMirNodeKind::RangeArrayElementLoad ||
+        node.kind == ProjectOopMirNodeKind::RangeArrayElementAddress)
+        output << " element=" << node.elementTypeKey
+               << " element-size=" << node.immediate
+               << " element-align=" << node.alignment
+               << ((node.kind != ProjectOopMirNodeKind::ArrayAllocate && node.booleanValue)
+                    ? " index=from-end" : "");
+    if (node.nativeArrayRank > 1) output << " rank=" << node.nativeArrayRank;
+    if (node.kind == ProjectOopMirNodeKind::StringElementLoad && node.booleanValue)
+        output << " index=from-end";
+    if (node.kind == ProjectOopMirNodeKind::StringLiteral)
+        output << " bytes=" << node.stringValue.size();
+}
+
+void dumpNodeAssembly(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.kind == ProjectOopMirNodeKind::InlineAssembly)
+        output << " source-bytes=" << node.stringValue.size()
+               << " side-effects=" << (node.inlineAssemblyHasSideEffects ? "true" : "false")
+               << " memory-barrier=" << (node.inlineAssemblyClobbersMemory ? "true" : "false")
+               << " flags=" << (node.inlineAssemblyClobbersFlags ? "true" : "false");
+    if (node.kind == ProjectOopMirNodeKind::InlineAssemblyLine)
+        output << " text=\"" << node.stringValue << "\" contract=" << node.elementTypeKey;
+    if (node.kind == ProjectOopMirNodeKind::InlineAssemblyInput ||
+        node.kind == ProjectOopMirNodeKind::InlineAssemblyOutput)
+        output << " ordinal=" << node.integerValue << " constraint=" << node.stringValue
+               << " explicit=" << (node.booleanValue ? "true" : "false");
+    if (node.kind == ProjectOopMirNodeKind::InlineAssemblyClobber)
+        output << " ordinal=" << node.integerValue << " name=" << node.stringValue
+               << " category=" << node.elementTypeKey
+               << " preserve=" << (node.booleanValue ? "true" : "false");
+}
+
+void dumpNodeControl(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.referenceLocal) output << " reference-local=true";
+    if (node.referenceLocal)
+        output << " reference-mutable=" << (node.referenceMutable ? "true" : "false");
+    if (node.staticLocal) output << " storage=module-static";
+    if (node.pinnedStorage) output << " pinned=true";
+    if (node.referenceResult) output << " reference-result=true";
+    if (node.governingReference) output << " governing-reference=true";
+    if (node.kind == ProjectOopMirNodeKind::LoopExpression)
+        output << " label=" << (node.stringValue.empty() ? "<none>" : node.stringValue)
+               << " break-result=" << node.typeKey;
+    if ((node.kind == ProjectOopMirNodeKind::Break ||
+         node.kind == ProjectOopMirNodeKind::Continue) && !node.stringValue.empty())
+        output << " target-label=" << node.stringValue;
+    if (node.kind == ProjectOopMirNodeKind::Break)
+        output << " value=" << (node.children.empty() ? "none" : node.elementTypeKey);
+    if (node.kind == ProjectOopMirNodeKind::MatchExpression)
+        output << " dispatch=" << (node.booleanValue ? "tag-switch" : "ordered-branches")
+               << " governing-evaluations=1"
+               << (node.booleanValue ? " tag-offset=" + std::to_string(node.immediate) : "");
+    if (node.kind == ProjectOopMirNodeKind::MatchArm && !node.switchLabels.empty())
+    {
+        output << " tags=";
+        for (std::size_t index = 0; index < node.switchLabels.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node.switchLabels[index];
+        }
+    }
+    if (node.nullConditionalCall) output << " null-conditional=true";
+    if ((node.kind == ProjectOopMirNodeKind::NullConditionalFieldStore ||
+         node.kind == ProjectOopMirNodeKind::NullConditionalArrayStore) && node.booleanValue)
+        output << " owns-storage=true";
+    if (node.mustTailCall) output << " must-tail=true";
+    if (node.kind == ProjectOopMirNodeKind::Binary && node.booleanValue &&
+        (node.operation == lexer::TokenKind::Slash || node.operation == lexer::TokenKind::Percent))
+        output << " check=elided-flow";
+    if (node.kind == ProjectOopMirNodeKind::FieldLoad && node.booleanValue)
+        output << " null-check=elided-flow";
+    if ((node.kind == ProjectOopMirNodeKind::DirectInstanceCall ||
+         node.kind == ProjectOopMirNodeKind::DirectStaticCall ||
+         node.kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
+         node.kind == ProjectOopMirNodeKind::InterfaceInstanceCall) && node.booleanValue)
+        output << " variant-case=proven";
+    if ((node.kind == ProjectOopMirNodeKind::DirectInstanceCall ||
+         node.kind == ProjectOopMirNodeKind::DirectStaticCall ||
+         node.kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
+         node.kind == ProjectOopMirNodeKind::InterfaceInstanceCall) &&
+        node.stringValue == "flow-nonnull")
+        output << " null-check=elided-flow";
+}
+
+void dumpNodeOwnership(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    if (node.ownership != sema::OwnershipKind::None)
+        output << " ownership=" << sema::ownershipKindName(node.ownership);
+    if (node.automaticDestruction) output << " destruction=scope-bound";
+    if (node.stackPromotedObject) output << " stack-promoted=true";
+    if (node.volatileAccess) output << " volatile=true";
+    if (node.kind == ProjectOopMirNodeKind::ClosureCaptureLoad)
+        output << " capture=#" << node.immediate;
+    if (node.kind == ProjectOopMirNodeKind::LambdaCreate) output << " lambda=#" << node.immediate;
+    if (!node.calleeName.empty()) output << " callee=" << node.calleeName;
+    if (!node.secondaryCalleeName.empty()) output << " secondary-callee=" << node.secondaryCalleeName;
+    if (node.kind == ProjectOopMirNodeKind::ResultPropagation)
+        output << " source-carrier=" << node.resultSourceCarrierTypeKey
+               << " success-tag=" << node.resultSuccessTag
+               << " error=" << node.resultSourceErrorTypeKey
+               << " error-tag=" << node.resultErrorTag
+               << " return-carrier=" << node.resultReturnCarrierTypeKey
+               << " return-error=" << node.resultReturnErrorTypeKey
+               << " return-error-tag=" << node.resultReturnErrorTag
+               << " success-test=" << node.resultSuccessTestCalleeName
+               << " success-extractor=" << node.resultSuccessExtractorCalleeName
+               << " error-extractor=" << node.resultErrorExtractorCalleeName
+               << " error-factory=" << node.resultErrorFactoryCalleeName
+               << (node.resultErrorConversionCalleeName.empty()
+                    ? " conversion=identity" :
+                       " conversion=" + node.resultErrorConversionCalleeName);
+    if (node.operation != lexer::TokenKind::Invalid)
+        output << " op=" << lexer::tokenKindName(node.operation);
+    if (node.conversionKind.has_value())
+        output << " conversion=" << projectConversionKindName(*node.conversionKind);
+    if (node.kind == ProjectOopMirNodeKind::Deallocate)
+        output << " destruction=" << (node.dynamicDestruction ? "dynamic-descriptor" : "direct-free");
+    if (node.kind == ProjectOopMirNodeKind::ObjectDestroy)
+        output << " destruction=" << (node.dynamicDestruction ? "dynamic-object-only" : "trivial-object");
+    if (node.objectLifetimeOwnership != sema::OwnershipKind::None ||
+        node.storageOwnership != sema::OwnershipKind::None)
+        output << " object-ownership=" << sema::ownershipKindName(node.objectLifetimeOwnership)
+               << " storage-ownership=" << sema::ownershipKindName(node.storageOwnership);
+}
+
+void dumpNodeLine(std::ostringstream& output, const ProjectOopMirNode* node, int depth)
 {
     const std::string indent(static_cast<std::size_t>(depth * 2), ' ');
     if (node == nullptr)
@@ -19,232 +269,60 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         return;
     }
     output << indent << projectOopMirNodeKindName(node->kind);
-    if (node->syntax != nullptr)
-    {
-        switch (node->syntax->floatingPointMode())
-        {
-            case ast::FloatingPointModeSyntaxKind::Inherit: break;
-            case ast::FloatingPointModeSyntaxKind::Strict: output << " fp=strict"; break;
-            case ast::FloatingPointModeSyntaxKind::Precise: output << " fp=precise"; break;
-            case ast::FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
-        }
-    }
-    if (!node->typeKey.empty()) output << " type=" << node->typeKey;
-    if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
-    if (node->namespaceFunctionOrdinal.has_value())
-        output << " namespace-function=#" << *node->namespaceFunctionOrdinal;
-    if (node->namespaceStateOrdinal.has_value())
-        output << " namespace-state=#" << *node->namespaceStateOrdinal;
-    if (node->localOrdinal.has_value()) output << " local=#" << *node->localOrdinal;
-    if (node->mirRegionOrdinal.has_value()) output << " mir-region=#" << *node->mirRegionOrdinal;
-    if (node->exceptionTargetRegionOrdinal.has_value()) output << " exception-target=#" << *node->exceptionTargetRegionOrdinal;
-    if (node->cleanupRegionOrdinal.has_value()) output << " cleanup=#" << *node->cleanupRegionOrdinal;
-    if (node->targetScopeOrdinal.has_value()) output << " target-scope=#" << *node->targetScopeOrdinal;
-    if (node->exceptionTypeOrdinal.has_value()) output << " exception-type=#" << *node->exceptionTypeOrdinal;
-    if (node->catchAll) output << " catch=all";
-    if (node->kind == ProjectOopMirNodeKind::CatchRegion)
-    {
-        output << " pattern=" << (node->catchAll ? "_" : node->elementTypeKey)
-               << " filter=" << (node->catchHasFilter ? "true" : "false")
-               << " exhaustive=" << (node->catchExhaustive ? "true" : "false")
-               << " matches=[";
-        for (std::size_t index = 0; index < node->catchMatchedErrorTypeKeys.size(); ++index)
-        {
-            if (index != 0) output << ',';
-            output << node->catchMatchedErrorTypeKeys[index];
-        }
-        output << ']';
-    }
-    if (node->disposeContractMemberOrdinal.has_value()) output << " dispose-contract=#" << *node->disposeContractMemberOrdinal;
-    if (node->disposeImplementationMemberOrdinal.has_value()) output << " dispose-implementation=#" << *node->disposeImplementationMemberOrdinal;
-    if (node->interfaceCleanupDispatch) output << " cleanup-dispatch=interface";
-    if (!node->cleanupRegionOrdinals.empty())
-    {
-        output << " cleanup-path=";
-        for (std::size_t index = 0; index < node->cleanupRegionOrdinals.size(); ++index)
-        {
-            if (index != 0) output << "->";
-            output << '#' << node->cleanupRegionOrdinals[index];
-        }
-    }
-    if (node->cleanupContinuationKind.has_value())
-        output << " continuation=" << methodCleanupContinuationKindName(*node->cleanupContinuationKind);
-    if (node->borrowKind.has_value())
-        output << " borrow=" << methodBorrowKindName(*node->borrowKind);
-    if (node->localBorrowSourceKind.has_value())
-        output << " borrow-source=" << methodLocalBorrowSourceKindName(*node->localBorrowSourceKind);
-    if (node->parameterOrdinal.has_value()) output << " param=#" << *node->parameterOrdinal;
-    if (node->constructionOrdinal.has_value()) output << " construction=#" << *node->constructionOrdinal;
-    if (node->kind == ProjectOopMirNodeKind::RuntimeTypeTest ||
-        node->kind == ProjectOopMirNodeKind::SafeReferenceCast ||
-        node->kind == ProjectOopMirNodeKind::CheckedReferenceCast)
-        output << " target-type=#" << node->targetTypeOrdinal.value_or(0)
-               << " target-kind=" << (node->targetIsInterface ? "interface" : "class")
-               << " type-id=" << node->immediate;
-    if (node->kind == ProjectOopMirNodeKind::FieldAddress ||
-        node->kind == ProjectOopMirNodeKind::FieldLoad ||
-        node->kind == ProjectOopMirNodeKind::NullConditionalFieldLoad ||
-        node->kind == ProjectOopMirNodeKind::BitFieldAddress ||
-        node->kind == ProjectOopMirNodeKind::BitFieldLoad)
-        output << " offset=" << node->immediate << " align=" << node->alignment;
-    if (node->kind == ProjectOopMirNodeKind::BitFieldAddress ||
-        node->kind == ProjectOopMirNodeKind::BitFieldLoad)
-        output << " storage=" << node->bitStorageSize
-               << " bit-offset=" << node->bitOffset.value_or(0)
-               << " bit-width=" << node->bitWidth.value_or(0);
-    if (node->kind == ProjectOopMirNodeKind::AggregateElementStore && node->bitWidth.has_value())
-        output << " bit-storage=" << node->bitStorageSize
-               << " bit-offset=" << node->bitOffset.value_or(0)
-               << " bit-width=" << *node->bitWidth;
-    if (node->kind == ProjectOopMirNodeKind::AggregateElementStore && !node->bitWidth.has_value())
-        output << " offset=" << node->immediate << " bytes=" << node->bitStorageSize;
-    if (node->kind == ProjectOopMirNodeKind::AggregateSpreadStore)
-        output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
-               << " source-evaluations=1 mode=" << (node->booleanValue ? "move" : "copy");
-    if (!node->collectionSegments.empty())
-    {
-        output << " segments=";
-        for (const ProjectCollectionSegmentKind segment : node->collectionSegments)
-            output << (segment == ProjectCollectionSegmentKind::Spread ? 'S' : 'E');
-    }
-    if (node->kind == ProjectOopMirNodeKind::ParameterPack)
-        output << " element=" << node->elementTypeKey
-               << " elements=" << node->children.size()
-               << " element-size=" << node->immediate
-               << " element-align=" << node->alignment
-               << " span-size=" << node->secondaryImmediate
-               << " data-offset=" << node->integerValue
-               << " length-offset=" << node->bitStorageSize
-               << " storage=stack";
-    if (node->kind == ProjectOopMirNodeKind::AllocateAndConstruct)
-        output << " bytes=" << node->immediate << " align=" << node->alignment
-               << " zero=" << (node->zeroInitialize ? "true" : "false")
-               << " failure=" << (node->allocationFailureReturnsNull ? "null" : "trap");
-    if (node->kind == ProjectOopMirNodeKind::PlacementConstruct)
-        output << " bytes=" << node->immediate << " align=" << node->alignment
-               << " zero=" << (node->zeroInitialize ? "true" : "false")
-               << " storage=supplied";
-    if (node->kind == ProjectOopMirNodeKind::ArrayAllocate ||
-        node->kind == ProjectOopMirNodeKind::RangeArrayAllocate ||
-        node->kind == ProjectOopMirNodeKind::ArrayElementLoad ||
-        node->kind == ProjectOopMirNodeKind::ArrayElementAddress ||
-        node->kind == ProjectOopMirNodeKind::RangeArrayElementLoad ||
-        node->kind == ProjectOopMirNodeKind::RangeArrayElementAddress)
-        output << " element=" << node->elementTypeKey
-               << " element-size=" << node->immediate
-               << " element-align=" << node->alignment
-               << ((node->kind != ProjectOopMirNodeKind::ArrayAllocate && node->booleanValue)
-                    ? " index=from-end" : "");
-    if (node->nativeArrayRank > 1) output << " rank=" << node->nativeArrayRank;
-    if (node->kind == ProjectOopMirNodeKind::StringElementLoad && node->booleanValue)
-        output << " index=from-end";
-    if (node->kind == ProjectOopMirNodeKind::StringLiteral)
-        output << " bytes=" << node->stringValue.size();
-    if (node->kind == ProjectOopMirNodeKind::InlineAssembly)
-        output << " source-bytes=" << node->stringValue.size()
-               << " side-effects=" << (node->inlineAssemblyHasSideEffects ? "true" : "false")
-               << " memory-barrier=" << (node->inlineAssemblyClobbersMemory ? "true" : "false")
-               << " flags=" << (node->inlineAssemblyClobbersFlags ? "true" : "false");
-    if (node->kind == ProjectOopMirNodeKind::InlineAssemblyLine)
-        output << " text=\"" << node->stringValue << "\" contract=" << node->elementTypeKey;
-    if (node->kind == ProjectOopMirNodeKind::InlineAssemblyInput ||
-        node->kind == ProjectOopMirNodeKind::InlineAssemblyOutput)
-        output << " ordinal=" << node->integerValue << " constraint=" << node->stringValue
-               << " explicit=" << (node->booleanValue ? "true" : "false");
-    if (node->kind == ProjectOopMirNodeKind::InlineAssemblyClobber)
-        output << " ordinal=" << node->integerValue << " name=" << node->stringValue
-               << " category=" << node->elementTypeKey
-               << " preserve=" << (node->booleanValue ? "true" : "false");
-    if (node->referenceLocal) output << " reference-local=true";
-    if (node->referenceLocal)
-        output << " reference-mutable=" << (node->referenceMutable ? "true" : "false");
-    if (node->staticLocal) output << " storage=module-static";
-    if (node->pinnedStorage) output << " pinned=true";
-    if (node->referenceResult) output << " reference-result=true";
-    if (node->governingReference) output << " governing-reference=true";
-    if (node->kind == ProjectOopMirNodeKind::LoopExpression)
-        output << " label=" << (node->stringValue.empty() ? "<none>" : node->stringValue)
-               << " break-result=" << node->typeKey;
-    if ((node->kind == ProjectOopMirNodeKind::Break ||
-         node->kind == ProjectOopMirNodeKind::Continue) && !node->stringValue.empty())
-        output << " target-label=" << node->stringValue;
-    if (node->kind == ProjectOopMirNodeKind::Break)
-        output << " value=" << (node->children.empty() ? "none" : node->elementTypeKey);
-    if (node->kind == ProjectOopMirNodeKind::MatchExpression)
-        output << " dispatch=" << (node->booleanValue ? "tag-switch" : "ordered-branches")
-               << " governing-evaluations=1"
-               << (node->booleanValue ? " tag-offset=" + std::to_string(node->immediate) : "");
-    if (node->kind == ProjectOopMirNodeKind::MatchArm && !node->switchLabels.empty())
-    {
-        output << " tags=";
-        for (std::size_t index = 0; index < node->switchLabels.size(); ++index)
-        {
-            if (index != 0) output << ',';
-            output << node->switchLabels[index];
-        }
-    }
-    if (node->nullConditionalCall) output << " null-conditional=true";
-    if ((node->kind == ProjectOopMirNodeKind::NullConditionalFieldStore ||
-         node->kind == ProjectOopMirNodeKind::NullConditionalArrayStore) && node->booleanValue)
-        output << " owns-storage=true";
-    if (node->mustTailCall) output << " must-tail=true";
-    if (node->kind == ProjectOopMirNodeKind::Binary && node->booleanValue &&
-        (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
-        output << " check=elided-flow";
-    if (node->kind == ProjectOopMirNodeKind::FieldLoad && node->booleanValue)
-        output << " null-check=elided-flow";
-    if ((node->kind == ProjectOopMirNodeKind::DirectInstanceCall ||
-         node->kind == ProjectOopMirNodeKind::DirectStaticCall ||
-         node->kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
-         node->kind == ProjectOopMirNodeKind::InterfaceInstanceCall) &&
-        node->booleanValue)
-        output << " variant-case=proven";
-    if ((node->kind == ProjectOopMirNodeKind::DirectInstanceCall ||
-         node->kind == ProjectOopMirNodeKind::DirectStaticCall ||
-         node->kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
-         node->kind == ProjectOopMirNodeKind::InterfaceInstanceCall) &&
-        node->stringValue == "flow-nonnull")
-        output << " null-check=elided-flow";
-    if (node->ownership != sema::OwnershipKind::None)
-        output << " ownership=" << sema::ownershipKindName(node->ownership);
-    if (node->automaticDestruction) output << " destruction=scope-bound";
-    if (node->stackPromotedObject) output << " stack-promoted=true";
-    if (node->volatileAccess) output << " volatile=true";
-    if (node->kind == ProjectOopMirNodeKind::ClosureCaptureLoad)
-        output << " capture=#" << node->immediate;
-    if (node->kind == ProjectOopMirNodeKind::LambdaCreate)
-        output << " lambda=#" << node->immediate;
-    if (!node->calleeName.empty()) output << " callee=" << node->calleeName;
-    if (!node->secondaryCalleeName.empty())
-        output << " secondary-callee=" << node->secondaryCalleeName;
-    if (node->kind == ProjectOopMirNodeKind::ResultPropagation)
-        output << " source-carrier=" << node->resultSourceCarrierTypeKey
-               << " success-tag=" << node->resultSuccessTag
-               << " error=" << node->resultSourceErrorTypeKey
-               << " error-tag=" << node->resultErrorTag
-               << " return-carrier=" << node->resultReturnCarrierTypeKey
-               << " return-error=" << node->resultReturnErrorTypeKey
-               << " return-error-tag=" << node->resultReturnErrorTag
-               << " success-test=" << node->resultSuccessTestCalleeName
-               << " success-extractor=" << node->resultSuccessExtractorCalleeName
-               << " error-extractor=" << node->resultErrorExtractorCalleeName
-               << " error-factory=" << node->resultErrorFactoryCalleeName
-               << (node->resultErrorConversionCalleeName.empty()
-                    ? " conversion=identity" :
-                      " conversion=" + node->resultErrorConversionCalleeName);
-    if (node->operation != lexer::TokenKind::Invalid) output << " op=" << lexer::tokenKindName(node->operation);
-    if (node->conversionKind.has_value()) output << " conversion=" << projectConversionKindName(*node->conversionKind);
-    if (node->kind == ProjectOopMirNodeKind::Deallocate)
-        output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
-    if (node->kind == ProjectOopMirNodeKind::ObjectDestroy)
-        output << " destruction=" << (node->dynamicDestruction ? "dynamic-object-only" : "trivial-object");
-    if (node->objectLifetimeOwnership != sema::OwnershipKind::None ||
-        node->storageOwnership != sema::OwnershipKind::None)
-        output << " object-ownership=" << sema::ownershipKindName(node->objectLifetimeOwnership)
-               << " storage-ownership=" << sema::ownershipKindName(node->storageOwnership);
+    dumpNodeIdentity(output, *node);
+    dumpNodeLayout(output, *node);
+    dumpNodeStorage(output, *node);
+    dumpNodeAssembly(output, *node);
+    dumpNodeControl(output, *node);
+    dumpNodeOwnership(output, *node);
     output << '\n';
-    for (const auto& child : node->children) dumpNode(output, child.get(), depth + 1);
 }
+
+template <typename Visitor>
+void visitNodesPreorder(const ProjectOopMirNode* node, int depth, Visitor&& visitor)
+{
+    std::vector<std::pair<const ProjectOopMirNode*, int>> stack;
+    stack.emplace_back(node, depth);
+    while (!stack.empty())
+    {
+        const auto [current, currentDepth] = stack.back();
+        stack.pop_back();
+        visitor(current, currentDepth);
+        if (current == nullptr) continue;
+        for (auto child = current->children.rbegin(); child != current->children.rend(); ++child)
+            stack.emplace_back(child->get(), currentDepth + 1);
+    }
+}
+
+void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int depth)
+{
+    visitNodesPreorder(node, depth, [&](const ProjectOopMirNode* current, int currentDepth) {
+        dumpNodeLine(output, current, currentDepth);
+    });
+}
+}
+
+std::string ProjectOopMirModelDumper::dumpNodeForTesting(
+    const ProjectOopMirNode* node,
+    int depth)
+{
+    std::ostringstream output;
+    dumpNode(output, node, depth);
+    return output.str();
+}
+
+std::size_t ProjectOopMirModelDumper::nodeTraversalDepthForTesting(
+    const ProjectOopMirNode* node,
+    std::size_t& visitedNodes)
+{
+    std::size_t maximumDepth = 0;
+    visitedNodes = 0;
+    visitNodesPreorder(node, 0, [&](const ProjectOopMirNode*, int depth) {
+        ++visitedNodes;
+        const std::size_t unsignedDepth = static_cast<std::size_t>(depth);
+        if (unsignedDepth > maximumDepth) maximumDepth = unsignedDepth;
+    });
+    return maximumDepth;
 }
 
 std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
