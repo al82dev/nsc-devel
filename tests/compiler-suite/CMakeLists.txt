@@ -528,6 +528,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/HIR/HirBindingIndex.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopHirModelDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirBuildCoordinator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirConstantEvaluator.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirFunctionLowerer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirNodeMachine.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirLayoutImporter.cpp"

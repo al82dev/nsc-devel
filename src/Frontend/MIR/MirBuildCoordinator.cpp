@@ -2,13 +2,13 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
+#include "MirConstantEvaluator.h"
+
 #include "nativesharp/Basic/Sha256.h"
-#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <cstring>
 #include <limits>
 #include <string_view>
@@ -1010,433 +1010,6 @@ std::string genericSpecializationKeyForType(
     return {};
 }
 
-const ProjectOopMirStaticField* knownStaticField(
-    std::size_t memberOrdinal,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
-{
-    for (const ProjectOopMirStaticField& field : knownFields)
-    {
-        if (field.memberOrdinal == memberOrdinal && field.isConst && field.hasConstantInitializer)
-        {
-            return &field;
-        }
-    }
-    return nullptr;
-}
-
-bool isSignedIntegralType(std::string_view typeKey) noexcept
-{
-    // ID 89. Dice lo mismo que la tabla del modelo semantico y que la del backend, a proposito:
-    // cada capa contesta sin depender de las otras. Las tres se fijan entre si en la fixture c19.
-    return typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
-        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint" ||
-        typeKey == "builtin:i128";
-}
-
-unsigned integerBitWidth(std::string_view typeKey) noexcept
-{
-    if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
-        typeKey == "builtin:char") return 8;
-    if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
-    if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
-    if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return 128;
-    if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
-        typeKey == "builtin:nint" || typeKey == "builtin:nuint") return 64;
-    return 64;
-}
-
-std::uint64_t integerMask(unsigned width) noexcept
-{
-    return width >= 64 ? std::numeric_limits<std::uint64_t>::max()
-                       : ((std::uint64_t{1} << width) - 1U);
-}
-
-// ID 127. ESTA FUNCION HACIA MEDIA OPERACION, Y ESO ES UN DEFECTO SILENCIOSO.
-//
-// Decia:
-//
-//     return value & integerMask(integerBitWidth(typeKey));
-//
-// Truncaba al ancho del tipo y NO extendia el signo. La operacion canonica del compilador --
-// `ProjectIntegerEvaluator::normalize`, cuyo propio comentario la llama "LA OPERACION CENTRAL" --
-// hace las dos cosas: trunca, y si el tipo tiene signo rellena hacia arriba desde el bit mas alto
-// del ancho real.
-//
-// QUE PRODUCIA. `integerConstantValue` (aqui abajo) es el plegado que decide el valor de TODO
-// campo `const`, y lo hace normalizando cada operando al tipo del RESULTADO. Para `(-1) + 1L`:
-//
-//     -1 como int   -> 0xFFFFFFFFFFFFFFFF & 0xFFFFFFFF  =  0x00000000FFFFFFFF   (signo perdido)
-//     ensanchado a long                                  =  4294967295
-//     + 1                                                =  4294967296
-//
-// El campo quedaba con 4294967296 en vez de 0, sin un diagnostico: la constante se plegaba, el
-// programa compilaba y enlazaba, y devolvia el numero equivocado. La fixture c17 lo destapo con
-// codigo de salida 3.
-//
-// POR QUE NUNCA SE VIO. Era inalcanzable. El defecto solo aparece cuando un valor negativo de un
-// tipo estrecho se ENSANCHA a uno mas ancho, y hasta el ID 121 `int + long` con constantes no
-// compilaba -- el tipo comun era `double` y el evaluador entero se rendia. Los `const` negativos
-// que existian eran de un solo ancho (`const int x = -5;`), donde truncar dos veces a 32 bits da
-// el mismo patron y `LLVMConstInt(..., signExtend=1)` lo interpreta bien. **El ID 121 no
-// introdujo este defecto: lo hizo alcanzable.**
-//
-// POR QUE SE DELEGA EN VEZ DE PARCHEAR. Esto era un TERCER evaluador de constantes enteras, con
-// tabla de anchos propia, tabla de signo propia y normalizacion propia -- exactamente lo que
-// CC1-105 elimino del modelo semantico despues de que produjera los defectos C-001..C-004 de una
-// sola vez. La copia se quedo sin la mitad de la operacion, que es la forma en que las
-// duplicaciones fallan: no divergen de golpe, se quedan cortas en una rama. Delegando, las dos
-// capas no pueden volver a discrepar.
-//
-// Los otros dos consumidores de esta funcion (el plegado a `double`) pasan su resultado por
-// `signedInteger()`, que vuelve a enmascarar antes de extender: para ellos el cambio es inocuo.
-std::uint64_t normalizeInteger(std::uint64_t value, std::string_view typeKey) noexcept
-{
-    return ProjectIntegerEvaluator::normalize(value, typeKey);
-}
-
-std::int64_t signedInteger(std::uint64_t bits, std::string_view typeKey) noexcept
-{
-    const unsigned width = integerBitWidth(typeKey);
-    bits &= integerMask(width);
-    if (width >= 64)
-    {
-        return static_cast<std::int64_t>(bits);
-    }
-    const std::uint64_t sign = std::uint64_t{1} << (width - 1U);
-    if ((bits & sign) == 0)
-    {
-        return static_cast<std::int64_t>(bits);
-    }
-    return static_cast<std::int64_t>(bits | ~integerMask(width));
-}
-
-double normalizeFloating(double value, std::string_view typeKey) noexcept
-{
-    return typeKey == "builtin:float"
-        ? static_cast<double>(static_cast<float>(value))
-        : value;
-}
-
-std::optional<std::uint64_t> integerConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept;
-std::optional<double> floatingConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept;
-std::optional<bool> booleanConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept;
-std::optional<std::string> stringConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields);
-
-std::optional<std::string> stringConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields)
-{
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::StringLiteral)
-    {
-        return node->stringValue;
-    }
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
-    {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        if (field != nullptr && field->typeKey == "builtin:string")
-        {
-            return field->constantStringValue;
-        }
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && node->typeKey == "builtin:string" &&
-        !node->children.empty())
-    {
-        return stringConstantValue(node->children.front().get(), knownFields);
-    }
-    return std::nullopt;
-}
-
-std::optional<std::uint64_t> integerConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
-{
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::IntegerConstant)
-    {
-        return normalizeInteger(node->integerValue, node->typeKey);
-    }
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
-    {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        if (field != nullptr && ProjectTypeConversion::isIntegral(field->typeKey))
-        {
-            return normalizeInteger(field->constantIntegerValue, field->typeKey);
-        }
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
-    {
-        if (!ProjectTypeConversion::isIntegral(node->typeKey)) return std::nullopt;
-        const ProjectOopHirNode* child = node->children.front().get();
-        if (ProjectTypeConversion::isIntegral(child->typeKey))
-        {
-            const std::optional<std::uint64_t> value = integerConstantValue(child, knownFields);
-            return value.has_value() ? std::optional<std::uint64_t>(normalizeInteger(*value, node->typeKey))
-                                     : std::nullopt;
-        }
-        // Stage 37 deliberately does not treat floating-to-integral casts as native const
-        // expressions yet; rejecting them here keeps compile-time evaluation deterministic.
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Unary && !node->children.empty())
-    {
-        const std::optional<std::uint64_t> value = integerConstantValue(node->children.front().get(), knownFields);
-        if (!value.has_value()) return std::nullopt;
-        switch (node->operation)
-        {
-            case lexer::TokenKind::Plus: return normalizeInteger(*value, node->typeKey);
-            case lexer::TokenKind::Minus: return normalizeInteger(std::uint64_t{0} - *value, node->typeKey);
-            case lexer::TokenKind::Tilde: return normalizeInteger(~*value, node->typeKey);
-            default: return std::nullopt;
-        }
-    }
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->children.size() == 2)
-    {
-        const std::optional<std::uint64_t> leftValue = integerConstantValue(node->children[0].get(), knownFields);
-        const std::optional<std::uint64_t> rightValue = integerConstantValue(node->children[1].get(), knownFields);
-        if (!leftValue.has_value() || !rightValue.has_value()) return std::nullopt;
-        const unsigned width = integerBitWidth(node->typeKey);
-        const std::uint64_t left = normalizeInteger(*leftValue, node->typeKey);
-        const std::uint64_t right = normalizeInteger(*rightValue, node->typeKey);
-        std::uint64_t result = 0;
-        switch (node->operation)
-        {
-            case lexer::TokenKind::Plus: result = left + right; break;
-            case lexer::TokenKind::Minus: result = left - right; break;
-            case lexer::TokenKind::Star: result = left * right; break;
-            case lexer::TokenKind::Amp: result = left & right; break;
-            case lexer::TokenKind::Pipe: result = left | right; break;
-            case lexer::TokenKind::Caret: result = left ^ right; break;
-            case lexer::TokenKind::LessLess:
-                if (right >= width) return std::nullopt;
-                result = left << static_cast<unsigned>(right);
-                break;
-            case lexer::TokenKind::GreaterGreater:
-                if (right >= width) return std::nullopt;
-                if (isSignedIntegralType(node->typeKey))
-                {
-                    result = static_cast<std::uint64_t>(
-                        signedInteger(left, node->typeKey) >> static_cast<unsigned>(right));
-                }
-                else
-                {
-                    result = left >> static_cast<unsigned>(right);
-                }
-                break;
-            case lexer::TokenKind::Slash:
-            case lexer::TokenKind::Percent:
-                if (right == 0) return std::nullopt;
-                if (isSignedIntegralType(node->typeKey))
-                {
-                    const std::int64_t lhs = signedInteger(left, node->typeKey);
-                    const std::int64_t rhs = signedInteger(right, node->typeKey);
-                    const std::int64_t minimum = width == 64
-                        ? std::numeric_limits<std::int64_t>::min()
-                        : -(std::int64_t{1} << (width - 1U));
-                    // NativeSharp signed arithmetic wraps. C++ cannot evaluate MinValue / -1
-                    // directly because that expression is undefined in the compiler host, so
-                    // materialize the language result without executing the host operation. This
-                    // mirrors ProjectIntegerEvaluator and both LLVM lowering paths.
-                    if (lhs == minimum && rhs == -1)
-                    {
-                        result = node->operation == lexer::TokenKind::Slash
-                            ? static_cast<std::uint64_t>(minimum)
-                            : std::uint64_t{0};
-                    }
-                    else
-                    {
-                        const std::int64_t computed = node->operation == lexer::TokenKind::Slash
-                            ? lhs / rhs
-                            : lhs % rhs;
-                        result = static_cast<std::uint64_t>(computed);
-                    }
-                }
-                else
-                {
-                    result = node->operation == lexer::TokenKind::Slash ? left / right : left % right;
-                }
-                break;
-            default: return std::nullopt;
-        }
-        return normalizeInteger(result, node->typeKey);
-    }
-    return std::nullopt;
-}
-
-std::optional<double> floatingConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
-{
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::FloatingConstant)
-    {
-        return normalizeFloating(node->floatingValue, node->typeKey);
-    }
-    if (node->kind == ProjectOopHirNodeKind::IntegerConstant)
-    {
-        const std::uint64_t bits = normalizeInteger(node->integerValue, node->typeKey);
-        const double value = isSignedIntegralType(node->typeKey)
-            ? static_cast<double>(signedInteger(bits, node->typeKey))
-            : static_cast<double>(bits);
-        return value;
-    }
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
-    {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        if (field == nullptr) return std::nullopt;
-        if (field->typeKey == "builtin:float" || field->typeKey == "builtin:double")
-        {
-            return field->constantFloatingValue;
-        }
-        if (ProjectTypeConversion::isIntegral(field->typeKey))
-        {
-            const std::uint64_t bits = normalizeInteger(field->constantIntegerValue, field->typeKey);
-            return isSignedIntegralType(field->typeKey)
-                ? static_cast<double>(signedInteger(bits, field->typeKey))
-                : static_cast<double>(bits);
-        }
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
-    {
-        const ProjectOopHirNode* child = node->children.front().get();
-        if (const std::optional<double> floating = floatingConstantValue(child, knownFields); floating.has_value())
-        {
-            return normalizeFloating(*floating, node->typeKey);
-        }
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Unary && !node->children.empty())
-    {
-        const std::optional<double> value = floatingConstantValue(node->children.front().get(), knownFields);
-        if (!value.has_value()) return std::nullopt;
-        if (node->operation == lexer::TokenKind::Plus) return normalizeFloating(*value, node->typeKey);
-        if (node->operation == lexer::TokenKind::Minus) return normalizeFloating(-*value, node->typeKey);
-        return std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->children.size() == 2)
-    {
-        const std::optional<double> left = floatingConstantValue(node->children[0].get(), knownFields);
-        const std::optional<double> right = floatingConstantValue(node->children[1].get(), knownFields);
-        if (!left.has_value() || !right.has_value()) return std::nullopt;
-        double result = 0.0;
-        switch (node->operation)
-        {
-            case lexer::TokenKind::Plus: result = *left + *right; break;
-            case lexer::TokenKind::Minus: result = *left - *right; break;
-            case lexer::TokenKind::Star: result = *left * *right; break;
-            case lexer::TokenKind::Slash: result = *left / *right; break;
-            case lexer::TokenKind::Percent: result = std::fmod(*left, *right); break;
-            default: return std::nullopt;
-        }
-        return normalizeFloating(result, node->typeKey);
-    }
-    return std::nullopt;
-}
-
-std::optional<bool> booleanConstantValue(
-    const ProjectOopHirNode* node,
-    const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
-{
-    if (node == nullptr) return std::nullopt;
-    if (node->kind == ProjectOopHirNodeKind::BooleanConstant) return node->booleanValue;
-    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
-    {
-        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
-        return field != nullptr && field->typeKey == "builtin:bool"
-            ? std::optional<bool>(field->constantBooleanValue)
-            : std::nullopt;
-    }
-    if (node->kind == ProjectOopHirNodeKind::Conversion && !node->children.empty())
-    {
-        return booleanConstantValue(node->children.front().get(), knownFields);
-    }
-    if (node->kind == ProjectOopHirNodeKind::Unary && node->operation == lexer::TokenKind::Bang &&
-        !node->children.empty())
-    {
-        const std::optional<bool> value = booleanConstantValue(node->children.front().get(), knownFields);
-        return value.has_value() ? std::optional<bool>(!*value) : std::nullopt;
-    }
-    if (node->kind != ProjectOopHirNodeKind::Binary || node->children.size() != 2)
-    {
-        return std::nullopt;
-    }
-    if (node->operation == lexer::TokenKind::AmpAmp || node->operation == lexer::TokenKind::PipePipe)
-    {
-        const std::optional<bool> left = booleanConstantValue(node->children[0].get(), knownFields);
-        const std::optional<bool> right = booleanConstantValue(node->children[1].get(), knownFields);
-        if (!left.has_value() || !right.has_value()) return std::nullopt;
-        return node->operation == lexer::TokenKind::AmpAmp ? (*left && *right) : (*left || *right);
-    }
-    if (node->operation == lexer::TokenKind::EqualEqual || node->operation == lexer::TokenKind::BangEqual)
-    {
-        const std::optional<bool> leftBool = booleanConstantValue(node->children[0].get(), knownFields);
-        const std::optional<bool> rightBool = booleanConstantValue(node->children[1].get(), knownFields);
-        if (leftBool.has_value() && rightBool.has_value())
-        {
-            return node->operation == lexer::TokenKind::EqualEqual
-                ? *leftBool == *rightBool
-                : *leftBool != *rightBool;
-        }
-    }
-    const bool floating = node->children[0]->typeKey == "builtin:float" ||
-        node->children[0]->typeKey == "builtin:double";
-    if (floating)
-    {
-        const std::optional<double> left = floatingConstantValue(node->children[0].get(), knownFields);
-        const std::optional<double> right = floatingConstantValue(node->children[1].get(), knownFields);
-        if (!left.has_value() || !right.has_value()) return std::nullopt;
-        switch (node->operation)
-        {
-            case lexer::TokenKind::EqualEqual: return *left == *right;
-            case lexer::TokenKind::BangEqual: return *left != *right;
-            case lexer::TokenKind::Less: return *left < *right;
-            case lexer::TokenKind::LessEqual: return *left <= *right;
-            case lexer::TokenKind::Greater: return *left > *right;
-            case lexer::TokenKind::GreaterEqual: return *left >= *right;
-            default: return std::nullopt;
-        }
-    }
-    const std::optional<std::uint64_t> left = integerConstantValue(node->children[0].get(), knownFields);
-    const std::optional<std::uint64_t> right = integerConstantValue(node->children[1].get(), knownFields);
-    if (!left.has_value() || !right.has_value()) return std::nullopt;
-    if (isSignedIntegralType(node->children[0]->typeKey))
-    {
-        const auto lhs = static_cast<std::int64_t>(*left);
-        const auto rhs = static_cast<std::int64_t>(*right);
-        switch (node->operation)
-        {
-            case lexer::TokenKind::EqualEqual: return lhs == rhs;
-            case lexer::TokenKind::BangEqual: return lhs != rhs;
-            case lexer::TokenKind::Less: return lhs < rhs;
-            case lexer::TokenKind::LessEqual: return lhs <= rhs;
-            case lexer::TokenKind::Greater: return lhs > rhs;
-            case lexer::TokenKind::GreaterEqual: return lhs >= rhs;
-            default: return std::nullopt;
-        }
-    }
-    switch (node->operation)
-    {
-        case lexer::TokenKind::EqualEqual: return *left == *right;
-        case lexer::TokenKind::BangEqual: return *left != *right;
-        case lexer::TokenKind::Less: return *left < *right;
-        case lexer::TokenKind::LessEqual: return *left <= *right;
-        case lexer::TokenKind::Greater: return *left > *right;
-        case lexer::TokenKind::GreaterEqual: return *left >= *right;
-        default: return std::nullopt;
-    }
-}
-
 }
 const char* projectOopMirAbiPassingName(ProjectOopMirAbiPassing passing) noexcept
 {
@@ -2092,7 +1665,8 @@ bool ProjectOopMirModel::build(
                     // would miss it here -- it is still an int-sized compile-time constant.
                     if (ProjectTypeConversion::isIntegral(field.declaredTypeKey) || field.isEnumConstant)
                     {
-                        const std::optional<std::uint64_t> value = integerConstantValue(initializer.value.get(), staticFields_);
+                        const std::optional<std::uint64_t> value =
+                            MirConstantEvaluator::integerValue(initializer.value.get(), staticFields_);
                         if (value.has_value())
                         {
                             staticField.hasConstantInitializer = true;
@@ -2101,7 +1675,8 @@ bool ProjectOopMirModel::build(
                     }
                     else if (field.declaredTypeKey == "builtin:bool")
                     {
-                        const std::optional<bool> value = booleanConstantValue(initializer.value.get(), staticFields_);
+                        const std::optional<bool> value =
+                            MirConstantEvaluator::booleanValue(initializer.value.get(), staticFields_);
                         if (value.has_value())
                         {
                             staticField.hasConstantInitializer = true;
@@ -2111,7 +1686,8 @@ bool ProjectOopMirModel::build(
                     else if (field.declaredTypeKey == "builtin:float" || field.declaredTypeKey == "builtin:double" ||
                              field.declaredTypeKey == "builtin:decimal")
                     {
-                        const std::optional<double> value = floatingConstantValue(initializer.value.get(), staticFields_);
+                        const std::optional<double> value =
+                            MirConstantEvaluator::floatingValue(initializer.value.get(), staticFields_);
                         if (value.has_value())
                         {
                             staticField.hasConstantInitializer = true;
@@ -2121,7 +1697,7 @@ bool ProjectOopMirModel::build(
                     else if (field.declaredTypeKey == "builtin:string")
                     {
                         const std::optional<std::string> value =
-                            stringConstantValue(initializer.value.get(), staticFields_);
+                            MirConstantEvaluator::stringValue(initializer.value.get(), staticFields_);
                         if (value.has_value())
                         {
                             staticField.hasConstantInitializer = true;
