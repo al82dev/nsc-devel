@@ -43,20 +43,6 @@ constexpr std::array<TokenKind, 2> kShift = {TokenKind::LessLess, TokenKind::Gre
 constexpr std::array<TokenKind, 2> kAdditive = {TokenKind::Plus, TokenKind::Minus};
 constexpr std::array<TokenKind, 3> kMultiplicative = {TokenKind::Star, TokenKind::Slash, TokenKind::Percent};
 
-enum class AssignmentContinuationKind
-{
-    Assignment,
-    ExpressionLambda
-};
-
-struct AssignmentContinuation final
-{
-    AssignmentContinuationKind kind;
-    ast::AstNode* node = nullptr;
-    TokenKind operation = TokenKind::Invalid;
-    bool reference = false;
-};
-
 bool containsExpressionToken(
     std::span<const TokenKind> values,
     TokenKind kind) noexcept
@@ -767,64 +753,173 @@ ast::AstNode* Parser::parseExpressionImpl()
     return parseAssignmentExpression();
 }
 
+class Parser::ExpressionIterationMachine final
+{
+public:
+    ExpressionIterationMachine(Parser& parser, bool conditionalOnly) noexcept
+        : parser_(parser), work_(conditionalOnly ? WorkKind::Conditional : WorkKind::Assignment)
+    {
+    }
+
+    ast::AstNode* parse();
+
+private:
+    enum class WorkKind { Assignment, Conditional, Deliver };
+    enum class ContinuationKind {
+        AssignmentTail,
+        FinishAssignment,
+        ExpressionLambda,
+        ConditionalTrue,
+        ConditionalFalse
+    };
+
+    struct Continuation final
+    {
+        ContinuationKind kind;
+        ast::AstNode* first = nullptr;
+        ast::AstNode* second = nullptr;
+        TokenKind operation = TokenKind::Invalid;
+        bool reference = false;
+    };
+
+    void parseAssignment();
+    void parseConditional();
+    void deliver();
+    void deliverAssignmentTail(const Continuation& continuation);
+    void deliverContinuation(const Continuation& continuation);
+    void buildAssignment(const Continuation& continuation);
+    void buildConditional(const Continuation& continuation);
+
+    Parser& parser_;
+    WorkKind work_;
+    std::vector<Continuation> continuations_;
+    ast::AstNode* value_ = nullptr;
+};
+
+ast::AstNode* Parser::ExpressionIterationMachine::parse()
+{
+    while (work_ != WorkKind::Deliver || !continuations_.empty())
+    {
+        if (work_ == WorkKind::Assignment) parseAssignment();
+        else if (work_ == WorkKind::Conditional) parseConditional();
+        else deliver();
+    }
+    return value_;
+}
+
+void Parser::ExpressionIterationMachine::parseAssignment()
+{
+    if (!parser_.looksLikeLambdaExpression())
+    {
+        continuations_.push_back({ContinuationKind::AssignmentTail});
+        work_ = WorkKind::Conditional;
+        return;
+    }
+
+    ast::AstNode* lambda = parser_.parseLambdaExpressionHead();
+    if (parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.finishLambdaExpression(lambda, parser_.parseBlock(), true);
+        value_ = lambda;
+        work_ = WorkKind::Deliver;
+        return;
+    }
+    continuations_.push_back({ContinuationKind::ExpressionLambda, lambda});
+}
+
+void Parser::ExpressionIterationMachine::parseConditional()
+{
+    ast::AstNode* condition = parser_.parseNullCoalescingExpression();
+    if (!parser_.at(TokenKind::Question))
+    {
+        value_ = condition;
+        work_ = WorkKind::Deliver;
+        return;
+    }
+
+    parser_.consume();
+    continuations_.push_back({ContinuationKind::ConditionalTrue, condition});
+    work_ = WorkKind::Assignment;
+}
+
+void Parser::ExpressionIterationMachine::deliver()
+{
+    const Continuation continuation = continuations_.back();
+    continuations_.pop_back();
+    if (continuation.kind == ContinuationKind::AssignmentTail)
+    {
+        deliverAssignmentTail(continuation);
+        return;
+    }
+    deliverContinuation(continuation);
+}
+
+void Parser::ExpressionIterationMachine::deliverAssignmentTail(const Continuation&)
+{
+    if (!lexer::isAssignmentOperator(parser_.current().kind())) return;
+
+    const TokenKind operation = parser_.consume().kind();
+    const bool referenceAssignment = operation == TokenKind::Equal &&
+        parser_.atContextualKeyword("ref");
+    if (referenceAssignment) parser_.consume();
+    continuations_.push_back(
+        {ContinuationKind::FinishAssignment, value_, nullptr, operation, referenceAssignment});
+    work_ = WorkKind::Assignment;
+}
+
+void Parser::ExpressionIterationMachine::deliverContinuation(
+    const Continuation& continuation)
+{
+    switch (continuation.kind)
+    {
+    case ContinuationKind::FinishAssignment:
+        buildAssignment(continuation);
+        return;
+    case ContinuationKind::ExpressionLambda:
+        parser_.finishLambdaExpression(continuation.first, value_, false);
+        value_ = continuation.first;
+        return;
+    case ContinuationKind::ConditionalTrue:
+        parser_.expect(TokenKind::Colon, "':' in a conditional expression");
+        continuations_.push_back(
+            {ContinuationKind::ConditionalFalse, continuation.first, value_});
+        work_ = WorkKind::Assignment;
+        return;
+    case ContinuationKind::ConditionalFalse:
+        buildConditional(continuation);
+        return;
+    case ContinuationKind::AssignmentTail:
+        return;
+    }
+}
+
+void Parser::ExpressionIterationMachine::buildAssignment(const Continuation& continuation)
+{
+    ast::AstNode* assignment = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::AssignmentExpression,
+        parser_.join(continuation.first->range(), value_->range()));
+    assignment->setTokenKind(continuation.operation);
+    assignment->setFirst(continuation.first);
+    assignment->setSecond(value_);
+    assignment->setReference(continuation.reference);
+    value_ = assignment;
+}
+
+void Parser::ExpressionIterationMachine::buildConditional(const Continuation& continuation)
+{
+    ast::AstNode* node = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ConditionalExpression,
+        parser_.join(continuation.first->range(),
+            value_ != nullptr ? value_->range() : continuation.first->range()));
+    node->setFirst(continuation.first);
+    node->setSecond(continuation.second);
+    node->setThird(value_);
+    value_ = node;
+}
+
 ast::AstNode* Parser::parseAssignmentExpression()
 {
-    std::vector<AssignmentContinuation> continuations;
-    ast::AstNode* value = nullptr;
-    bool complete = false;
-    while (!complete)
-    {
-        if (looksLikeLambdaExpression())
-        {
-            ast::AstNode* lambda = parseLambdaExpressionHead();
-            if (at(TokenKind::LeftBrace))
-            {
-                finishLambdaExpression(lambda, parseBlock(), true);
-                value = lambda;
-                complete = true;
-                continue;
-            }
-            continuations.push_back(
-                {AssignmentContinuationKind::ExpressionLambda, lambda});
-            continue;
-        }
-
-        ast::AstNode* left = parseConditionalExpression();
-        if (!lexer::isAssignmentOperator(current().kind()))
-        {
-            value = left;
-            complete = true;
-            continue;
-        }
-
-        const TokenKind operation = consume().kind();
-        const bool referenceAssignment = operation == TokenKind::Equal &&
-            atContextualKeyword("ref");
-        if (referenceAssignment) consume();
-        continuations.push_back(
-            {AssignmentContinuationKind::Assignment, left, operation, referenceAssignment});
-    }
-
-    while (!continuations.empty())
-    {
-        const AssignmentContinuation continuation = continuations.back();
-        continuations.pop_back();
-        if (continuation.kind == AssignmentContinuationKind::ExpressionLambda)
-        {
-            finishLambdaExpression(continuation.node, value, false);
-            value = continuation.node;
-            continue;
-        }
-        ast::AstNode* assignment = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::AssignmentExpression,
-            join(continuation.node->range(), value->range()));
-        assignment->setTokenKind(continuation.operation);
-        assignment->setFirst(continuation.node);
-        assignment->setSecond(value);
-        assignment->setReference(continuation.reference);
-        value = assignment;
-    }
-    return value;
+    return ExpressionIterationMachine(*this, false).parse();
 }
 
 // `condition ? whenTrue : whenFalse`, between assignment and logical-or in precedence, and
@@ -835,24 +930,7 @@ ast::AstNode* Parser::parseAssignmentExpression()
 // nested conditional cannot be ambiguous.
 ast::AstNode* Parser::parseConditionalExpression()
 {
-    ast::AstNode* condition = parseNullCoalescingExpression();
-    if (!at(TokenKind::Question))
-    {
-        return condition;
-    }
-
-    consume();
-    ast::AstNode* whenTrue = parseExpression();
-    expect(TokenKind::Colon, "':' in a conditional expression");
-    ast::AstNode* whenFalse = parseAssignmentExpression();
-
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::ConditionalExpression,
-        join(condition->range(), whenFalse != nullptr ? whenFalse->range() : condition->range()));
-    node->setFirst(condition);
-    node->setSecond(whenTrue);
-    node->setThird(whenFalse);
-    return node;
+    return ExpressionIterationMachine(*this, true).parse();
 }
 
 ast::AstNode* Parser::parseNullCoalescingExpression()

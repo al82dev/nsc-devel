@@ -214,6 +214,7 @@ void registerParserMatchIntervalIndexCounterfactualModule(TestRegistry& registry
 void registerParserAssignmentIterationCounterfactualModule(TestRegistry& registry);
 void registerParserConditionalQuestionIndexCounterfactualModule(TestRegistry& registry);
 void registerParserNullCoalescingIterationCounterfactualModule(TestRegistry& registry);
+void registerParserConditionalTrampolineCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

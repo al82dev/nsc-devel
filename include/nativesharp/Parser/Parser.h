@@ -1460,6 +1460,7 @@ private:
     ast::AstNode* parseExpression();
     ast::AstNode* parseExpressionImpl();
     ast::AstNode* parseArgument();
+    class ExpressionIterationMachine;
     ast::AstNode* parseAssignmentExpression();
     bool hasLambdaFatArrowBeforeBoundary(std::size_t cursor) const noexcept;
     std::size_t skipLambdaGenericHead(std::size_t begin) const noexcept;
