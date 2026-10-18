@@ -159,9 +159,29 @@ struct ProjectOopHirModelTestAccess final
 
     static void setAggregateRootFields(
         ProjectObjectLayoutModel& objectLayoutModel,
-        std::vector<ObjectFieldLayout> fields)
+        std::vector<ObjectFieldLayout> fields,
+        bool isUnion = false)
     {
         objectLayoutModel.structLayouts_.front().fields = std::move(fields);
+        objectLayoutModel.structLayouts_.front().isUnion = isUnion;
+    }
+
+    static void setAggregateLayoutFields(
+        ProjectObjectLayoutModel& objectLayoutModel,
+        std::size_t typeOrdinal,
+        std::vector<ObjectFieldLayout> fields,
+        bool isUnion = false)
+    {
+        objectLayoutModel.structLayouts_[typeOrdinal].fields = std::move(fields);
+        objectLayoutModel.structLayouts_[typeOrdinal].isUnion = isUnion;
+    }
+
+    static void configureTupleAggregateEnvironment(
+        ProjectNameLookup& nameLookup,
+        ProjectObjectLayoutModel& objectLayoutModel)
+    {
+        nameLookup.built_ = true;
+        objectLayoutModel.built_ = true;
     }
 
     static void configureAggregateElementBindings(
@@ -170,6 +190,7 @@ struct ProjectOopHirModelTestAccess final
         const std::vector<ast::AstNode*>& aggregates,
         const ast::AstNode* literal,
         const std::vector<std::string>& typeKeys,
+        const std::vector<MethodExpressionTypeBinding>& aggregateTypes,
         const MethodExpressionTypeBinding& literalType)
     {
         methodBodyModel.aggregateInitializerBindings_.reserve(aggregates.size());
@@ -190,7 +211,18 @@ struct ProjectOopHirModelTestAccess final
             methodBodyModel.aggregateInitializerBindings_.push_back(std::move(binding));
         }
         model.methodBodyModel_ = &methodBodyModel;
+        for (std::size_t ordinal = 0U; ordinal < aggregates.size(); ++ordinal)
+            model.expressionTypeBySyntax_[aggregates[ordinal]] =
+                &aggregateTypes[ordinal];
         model.expressionTypeBySyntax_[literal] = &literalType;
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerConfiguredAggregateExpression(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        std::string& error)
+    {
+        return model.lowerExpression(root, 0U, false, error);
     }
 
     static bool appendAggregateElements(
@@ -203,6 +235,52 @@ struct ProjectOopHirModelTestAccess final
     {
         return model.appendAggregateElements(
             syntax, targetTypeKey, baseOffset, 0U, elements, error);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerAggregateCrossExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        std::vector<MethodAggregateInitializerBinding> bindings,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodNameBinding>& names,
+        const ProjectMemberModel* memberModel,
+        std::string& error,
+        const std::vector<MethodCoreBinding>* cores = nullptr,
+        const std::vector<MethodCallBinding>* calls = nullptr,
+        const std::vector<MethodBorrowBinding>* borrows = nullptr)
+    {
+        methodBodyModel.aggregateInitializerBindings_ = std::move(bindings);
+        methodBodyModel.aggregateInitializerBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+            index < methodBodyModel.aggregateInitializerBindings_.size(); ++index)
+        {
+            methodBodyModel.aggregateInitializerBindingBySyntax_[
+                methodBodyModel.aggregateInitializerBindings_[index].syntax] = index;
+        }
+        model.nameLookup_ = &nameLookup;
+        model.inheritanceModel_ = &inheritanceModel;
+        model.objectLayoutModel_ = &objectLayoutModel;
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = memberModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        if (cores != nullptr)
+            for (const MethodCoreBinding& core : *cores)
+                model.coreBindingBySyntax_[core.syntax] = &core;
+        if (calls != nullptr)
+            for (const MethodCallBinding& call : *calls)
+                model.callBySyntax_[call.syntax] = &call;
+        if (borrows != nullptr)
+            for (const MethodBorrowBinding& borrow : *borrows)
+                model.borrowBindingBySyntax_[borrow.syntax] = &borrow;
+        return model.lowerExpression(root, 0U, false, error);
     }
 
     static std::unique_ptr<ProjectOopHirNode> lowerBlock(
@@ -13436,10 +13514,1036 @@ void testDeepAggregateLeaves(TestContext& tests)
         "iterative struct flattening preserves declared field order and absolute offsets");
 }
 
+void testDeepAggregateCrossLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using AggregateBinding =
+        nativesharp::frontend::MethodAggregateInitializerBinding;
+    using EntryBinding =
+        nativesharp::frontend::MethodAggregateInitializerEntryBinding;
+    constexpr std::size_t motifCount = 10923U;
+
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectInheritanceModel inheritanceModel;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    ProjectOopHirModel model;
+    std::vector<std::string> typeKeys;
+    const bool configured =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureAggregateLeafChain(
+                model, nameLookup, inheritanceModel, objectLayoutModel,
+                motifCount, typeKeys);
+    tests.expect(configured,
+        "the aggregate cross-lowering fixture builds 10923 real struct layouts");
+    if (!configured) return;
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    syntax.reserve(motifCount * 4U + 1U);
+    std::vector<nativesharp::ast::AstNode*> withNodes(motifCount);
+    std::vector<nativesharp::ast::AstNode*> spreadAggregateNodes(motifCount);
+    std::vector<nativesharp::ast::AstNode*> valueAggregateNodes(motifCount);
+    std::vector<nativesharp::ast::AstNode*> spreadNodes(motifCount);
+    std::vector<AggregateBinding> bindings;
+    bindings.reserve(motifCount * 3U);
+    std::vector<nativesharp::frontend::MethodExpressionTypeBinding> types;
+    types.reserve(motifCount * 3U + 1U);
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    typed.reserve(motifCount * 3U + 1U);
+
+    syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    syntax.back()->setIntegerValue(7U);
+    auto* current = syntax.back().get();
+    nativesharp::frontend::MethodExpressionTypeBinding literalType;
+    literalType.syntax = current;
+    literalType.typeKey = "builtin:int";
+    types.push_back(std::move(literalType));
+    typed.push_back({current, &types.back()});
+
+    for (std::size_t remaining = motifCount; remaining > 0U; --remaining)
+    {
+        const std::size_t index = remaining - 1U;
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AggregateInitializerExpression,
+            nativesharp::SourceRange{}));
+        auto* valueAggregate = syntax.back().get();
+        valueAggregate->addChild(current);
+        valueAggregateNodes[index] = valueAggregate;
+
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::SpreadElementExpression,
+            nativesharp::SourceRange{}));
+        auto* spread = syntax.back().get();
+        spread->setFirst(valueAggregate);
+        spreadNodes[index] = spread;
+
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AggregateInitializerExpression,
+            nativesharp::SourceRange{}));
+        auto* spreadAggregate = syntax.back().get();
+        spreadAggregate->addChild(spread);
+        spreadAggregateNodes[index] = spreadAggregate;
+
+        syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::WithExpression,
+            nativesharp::SourceRange{}));
+        auto* with = syntax.back().get();
+        with->setFirst(spreadAggregate);
+        withNodes[index] = with;
+
+        for (nativesharp::ast::AstNode* node :
+            {valueAggregate, spreadAggregate, with})
+        {
+            nativesharp::frontend::MethodExpressionTypeBinding type;
+            type.syntax = node;
+            type.typeKey = typeKeys[index];
+            types.push_back(std::move(type));
+            typed.push_back({node, &types.back()});
+        }
+
+        EntryBinding valueEntry;
+        valueEntry.syntax = current;
+        valueEntry.targetElementOrdinals = {0U};
+        AggregateBinding valueBinding;
+        valueBinding.syntax = valueAggregate;
+        valueBinding.targetTypeKey = typeKeys[index];
+        valueBinding.entries.push_back(std::move(valueEntry));
+        bindings.push_back(std::move(valueBinding));
+
+        EntryBinding spreadEntry;
+        spreadEntry.syntax = spread;
+        spreadEntry.spread = true;
+        spreadEntry.targetElementOrdinals = {0U};
+        AggregateBinding spreadBinding;
+        spreadBinding.syntax = spreadAggregate;
+        spreadBinding.targetTypeKey = typeKeys[index];
+        spreadBinding.entries.push_back(std::move(spreadEntry));
+        bindings.push_back(std::move(spreadBinding));
+
+        AggregateBinding withBinding;
+        withBinding.syntax = with;
+        withBinding.targetTypeKey = typeKeys[index];
+        withBinding.generalized = true;
+        bindings.push_back(std::move(withBinding));
+        current = with;
+    }
+
+    std::string error;
+    auto root = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerAggregateCrossExpression(
+            model, nameLookup, inheritanceModel, objectLayoutModel,
+            methodBodyModel, withNodes.front(), std::move(bindings), typed,
+            {}, nullptr, error);
+    const ProjectOopHirNode* cursor = root.get();
+    bool shape = error.empty();
+    std::size_t visited = 0U;
+    for (; visited < motifCount && shape; ++visited)
+    {
+        const auto* withNode = cursor;
+        const auto* implicitSpread = withNode != nullptr &&
+                withNode->children.size() == 1U
+            ? withNode->children.front().get() : nullptr;
+        const auto* spreadAggregate = implicitSpread != nullptr &&
+                implicitSpread->children.size() == 2U
+            ? implicitSpread->children.front().get() : nullptr;
+        const auto* explicitSpread = spreadAggregate != nullptr &&
+                spreadAggregate->children.size() == 1U
+            ? spreadAggregate->children.front().get() : nullptr;
+        const auto* valueAggregate = explicitSpread != nullptr &&
+                explicitSpread->children.size() == 2U
+            ? explicitSpread->children.front().get() : nullptr;
+        const auto* element = valueAggregate != nullptr &&
+                valueAggregate->children.size() == 1U
+            ? valueAggregate->children.front().get() : nullptr;
+        shape = withNode != nullptr &&
+            withNode->kind == HirKind::AggregateInitializer &&
+            withNode->syntax == withNodes[visited] &&
+            withNode->typeKey == typeKeys[visited] &&
+            implicitSpread != nullptr &&
+            implicitSpread->kind == HirKind::AggregateSpread &&
+            implicitSpread->syntax == withNodes[visited] &&
+            !implicitSpread->booleanValue &&
+            !implicitSpread->localOrdinal.has_value() &&
+            !implicitSpread->parameterOrdinal.has_value() &&
+            implicitSpread->children[1]->kind == HirKind::AggregateElement &&
+            implicitSpread->children[1]->integerValue == 8U &&
+            implicitSpread->children[1]->secondaryIntegerValue == 8U &&
+            implicitSpread->children[1]->bitStorageAlignment >= 1U &&
+            spreadAggregate != nullptr &&
+            spreadAggregate->kind == HirKind::AggregateInitializer &&
+            spreadAggregate->syntax == spreadAggregateNodes[visited] &&
+            explicitSpread != nullptr &&
+            explicitSpread->kind == HirKind::AggregateSpread &&
+            explicitSpread->syntax == spreadNodes[visited] &&
+            !explicitSpread->booleanValue &&
+            explicitSpread->children[1]->integerValue == 8U &&
+            explicitSpread->children[1]->secondaryIntegerValue == 8U &&
+            valueAggregate != nullptr &&
+            valueAggregate->kind == HirKind::AggregateInitializer &&
+            valueAggregate->syntax == valueAggregateNodes[visited] &&
+            element != nullptr && element->kind == HirKind::AggregateElement &&
+            element->integerValue == 8U && element->children.size() == 1U;
+        cursor = shape ? element->children.front().get() : nullptr;
+    }
+    shape = shape && visited == motifCount && cursor != nullptr &&
+        cursor->kind == HirKind::IntegerConstant && cursor->integerValue == 7U;
+    tests.expect(shape,
+        "10923 motifs preserve all 32769 With/spread/value cross transitions iteratively");
+    destroyHirTreeIteratively(root);
+
+    const std::string tupleKey =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(
+            std::array<std::string, 2U>{"builtin:int", "builtin:long"});
+    {
+        nativesharp::frontend::ProjectNameLookup tupleLookup;
+        nativesharp::frontend::ProjectInheritanceModel tupleInheritance;
+        nativesharp::frontend::ProjectObjectLayoutModel tupleLayout;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureTupleAggregateEnvironment(tupleLookup, tupleLayout);
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        auto append = [&](AstKind kind)
+        {
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                kind, nativesharp::SourceRange{}));
+            return nodes.back().get();
+        };
+        auto* left = append(AstKind::IntegerLiteralExpression);
+        auto* right = append(AstKind::IntegerLiteralExpression);
+        auto* tuple = append(AstKind::TupleExpression);
+        left->setIntegerValue(11U); right->setIntegerValue(12U);
+        tuple->addChild(left); tuple->addChild(right);
+        nativesharp::frontend::MethodExpressionTypeBinding intType;
+        intType.typeKey = "builtin:int";
+        nativesharp::frontend::MethodExpressionTypeBinding tupleType;
+        tupleType.typeKey = tupleKey;
+        AggregateBinding binding; binding.syntax = tuple;
+        for (std::size_t index = 0U; index < 2U; ++index)
+        {
+            EntryBinding entry;
+            entry.syntax = index == 0U ? left : right;
+            entry.targetElementOrdinals = {index};
+            binding.entries.push_back(std::move(entry));
+        }
+        ProjectOopHirModel tupleModel;
+        nativesharp::frontend::ProjectMethodBodyModel tupleBody;
+        error.clear();
+        auto tupleHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                tupleModel, tupleLookup, tupleInheritance, tupleLayout,
+                tupleBody, tuple, {binding},
+                {{left, &intType}, {right, &intType}, {tuple, &tupleType}},
+                {}, nullptr, error);
+        tests.expect(tupleHir != nullptr && error.empty() &&
+                tupleHir->children.size() == 2U &&
+                tupleHir->children[0]->syntax == left &&
+                tupleHir->children[0]->integerValue == 0U &&
+                tupleHir->children[0]->children[0]->kind == HirKind::IntegerConstant &&
+                tupleHir->children[1]->syntax == right &&
+                tupleHir->children[1]->integerValue == 8U &&
+                tupleHir->children[1]->children[0]->kind == HirKind::Conversion &&
+                tupleHir->children[1]->children[0]->children.size() == 1U &&
+                tupleHir->children[1]->children[0]->children[0]->integerValue == 12U,
+            "tuple preserves left-to-right offsets and applies one numeric conversion");
+        destroyHirTreeIteratively(tupleHir);
+    }
+
+    {
+        nativesharp::frontend::ProjectNameLookup nestedLookup;
+        nativesharp::frontend::ProjectInheritanceModel nestedInheritance;
+        nativesharp::frontend::ProjectObjectLayoutModel nestedLayout;
+        ProjectOopHirModel nestedModel;
+        std::vector<std::string> nestedTypes;
+        const bool nestedConfigured =
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                configureAggregateLeafChain(
+                    nestedModel, nestedLookup, nestedInheritance,
+                    nestedLayout, 1U, nestedTypes);
+        nativesharp::frontend::ObjectFieldLayout tupleField;
+        tupleField.memberOrdinal = 0U;
+        tupleField.offset = 8U;
+        tupleField.size = 16U;
+        tupleField.alignment = 8U;
+        tupleField.typeKey = tupleKey;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateRootFields(
+            nestedLayout, {tupleField});
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+        auto append = [&](AstKind kind)
+        {
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                kind, nativesharp::SourceRange{}));
+            return nodes.back().get();
+        };
+        auto* first = append(AstKind::IntegerLiteralExpression);
+        auto* second = append(AstKind::IntegerLiteralExpression);
+        first->setIntegerValue(21U); second->setIntegerValue(22U);
+        auto* structural = append(AstKind::AggregateInitializerExpression);
+        structural->addChild(first); structural->addChild(second);
+        auto* outer = append(AstKind::AggregateInitializerExpression);
+        outer->addChild(structural);
+        nativesharp::frontend::MethodExpressionTypeBinding intType;
+        intType.typeKey = "builtin:int";
+        nativesharp::frontend::MethodExpressionTypeBinding outerType;
+        outerType.typeKey = nestedTypes.front();
+        AggregateBinding innerBinding; innerBinding.syntax = structural;
+        EntryBinding innerFirst; innerFirst.syntax = first;
+        innerFirst.targetElementOrdinals = {0U};
+        EntryBinding innerSecond; innerSecond.syntax = second;
+        innerSecond.targetElementOrdinals = {1U};
+        innerBinding.entries = {innerFirst, innerSecond};
+        AggregateBinding outerBinding; outerBinding.syntax = outer;
+        EntryBinding outerEntry; outerEntry.syntax = structural;
+        outerEntry.targetElementOrdinals = {0U};
+        outerBinding.entries = {outerEntry};
+        nativesharp::frontend::ProjectMethodBodyModel nestedBody;
+        error.clear();
+        auto structuralHir = nestedConfigured
+            ? nativesharp::frontend::ProjectOopHirModelTestAccess::
+                lowerAggregateCrossExpression(
+                    nestedModel, nestedLookup, nestedInheritance, nestedLayout,
+                    nestedBody, outer, {outerBinding, innerBinding},
+                    {{outer, &outerType}, {first, &intType}, {second, &intType}},
+                    {}, nullptr, error)
+            : nullptr;
+        tests.expect(structuralHir != nullptr && error.empty() &&
+                structuralHir->children.size() == 2U &&
+                structuralHir->children[0]->kind == HirKind::AggregateElement &&
+                structuralHir->children[0]->integerValue == 8U &&
+                structuralHir->children[1]->kind == HirKind::AggregateElement &&
+                structuralHir->children[1]->integerValue == 16U,
+            "exact AggregateInitializer flattens structurally with accumulated offsets");
+        destroyHirTreeIteratively(structuralHir);
+
+        auto* tuple = append(AstKind::TupleExpression);
+        auto* tupleLeft = append(AstKind::IntegerLiteralExpression);
+        auto* tupleRight = append(AstKind::IntegerLiteralExpression);
+        tupleLeft->setIntegerValue(23U); tupleRight->setIntegerValue(24U);
+        tuple->addChild(tupleLeft); tuple->addChild(tupleRight);
+        auto* tupleOuter = append(AstKind::AggregateInitializerExpression);
+        tupleOuter->addChild(tuple);
+        nativesharp::frontend::MethodExpressionTypeBinding tupleType;
+        tupleType.typeKey = tupleKey;
+        AggregateBinding tupleBinding; tupleBinding.syntax = tuple;
+        EntryBinding tupleLeftEntry; tupleLeftEntry.syntax = tupleLeft;
+        tupleLeftEntry.targetElementOrdinals = {0U};
+        EntryBinding tupleRightEntry; tupleRightEntry.syntax = tupleRight;
+        tupleRightEntry.targetElementOrdinals = {1U};
+        tupleBinding.entries = {tupleLeftEntry, tupleRightEntry};
+        AggregateBinding tupleOuterBinding; tupleOuterBinding.syntax = tupleOuter;
+        EntryBinding tupleOuterEntry; tupleOuterEntry.syntax = tuple;
+        tupleOuterEntry.targetElementOrdinals = {0U};
+        tupleOuterBinding.entries = {tupleOuterEntry};
+        ProjectOopHirModel tupleOuterModel;
+        nativesharp::frontend::ProjectMethodBodyModel tupleOuterBody;
+        error.clear();
+        auto tupleOuterHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                tupleOuterModel, nestedLookup, nestedInheritance, nestedLayout,
+                tupleOuterBody, tupleOuter,
+                {tupleOuterBinding, tupleBinding},
+                {{tupleOuter, &outerType}, {tuple, &tupleType},
+                 {tupleLeft, &intType}, {tupleRight, &intType}},
+                {}, nullptr, error);
+        tests.expect(tupleOuterHir != nullptr && error.empty() &&
+                tupleOuterHir->children.size() == 1U &&
+                tupleOuterHir->children[0]->kind == HirKind::AggregateElement &&
+                tupleOuterHir->children[0]->integerValue == 8U &&
+                tupleOuterHir->children[0]->children.size() == 1U &&
+                tupleOuterHir->children[0]->children[0]->kind ==
+                    HirKind::AggregateInitializer &&
+                tupleOuterHir->children[0]->children[0]->children.size() == 2U,
+            "TupleExpression used as an ordinary value remains a nested aggregate node");
+        destroyHirTreeIteratively(tupleOuterHir);
+    }
+
+    {
+        nativesharp::frontend::ProjectNameLookup structLookup;
+        nativesharp::frontend::ProjectInheritanceModel structInheritance;
+        nativesharp::frontend::ProjectObjectLayoutModel structLayout;
+        ProjectOopHirModel configuredModel;
+        std::vector<std::string> structTypes;
+        const bool structConfigured =
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                configureAggregateLeafChain(
+                    configuredModel, structLookup, structInheritance,
+                    structLayout, 1U, structTypes);
+        nativesharp::frontend::ObjectFieldLayout firstField;
+        firstField.memberOrdinal = 0U;
+        firstField.offset = 8U;
+        firstField.size = 4U;
+        firstField.alignment = 4U;
+        firstField.typeKey = "builtin:int";
+        nativesharp::frontend::ObjectFieldLayout secondField = firstField;
+        secondField.memberOrdinal = 1U;
+        secondField.offset = 16U;
+        secondField.typeKey = "builtin:long";
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateRootFields(
+            structLayout, {firstField, secondField});
+        nativesharp::frontend::MethodExpressionTypeBinding structType;
+        structType.typeKey = structTypes.front();
+        nativesharp::frontend::MethodExpressionTypeBinding intType;
+        intType.typeKey = "builtin:int";
+
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> withSyntax;
+        auto addWith = [&](AstKind kind)
+        {
+            withSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                kind, nativesharp::SourceRange{}));
+            return withSyntax.back().get();
+        };
+        auto* withSource = addWith(AstKind::IdentifierExpression);
+        auto* withUpdate = addWith(AstKind::IntegerLiteralExpression);
+        withUpdate->setIntegerValue(31U);
+        auto* withRoot = addWith(AstKind::WithExpression);
+        withRoot->setFirst(withSource);
+        withRoot->addChild(withUpdate);
+        AggregateBinding withBinding; withBinding.syntax = withRoot;
+        withBinding.targetTypeKey = structTypes.front();
+        withBinding.generalized = true;
+        EntryBinding updateEntry; updateEntry.syntax = withUpdate;
+        updateEntry.targetElementOrdinals = {1U};
+        withBinding.entries = {updateEntry};
+        const auto withName = allocatorLocalBinding(
+            withSource, "withSource", structTypes.front(), 3U);
+        ProjectOopHirModel withModel;
+        nativesharp::frontend::ProjectMethodBodyModel withBody;
+        error.clear();
+        auto withHir = structConfigured
+            ? nativesharp::frontend::ProjectOopHirModelTestAccess::
+                lowerAggregateCrossExpression(
+                    withModel, structLookup, structInheritance, structLayout,
+                    withBody, withRoot, {withBinding},
+                    {{withRoot, &structType}, {withSource, &structType},
+                     {withUpdate, &intType}},
+                    {withName}, nullptr, error)
+            : nullptr;
+        tests.expect(withHir != nullptr && error.empty() &&
+                withHir->children.size() == 2U &&
+                withHir->children[0]->kind == HirKind::AggregateSpread &&
+                withHir->children[0]->children.size() == 3U &&
+                withHir->children[0]->children[0]->kind == HirKind::LocalValue &&
+                withHir->children[0]->children[1]->integerValue == 8U &&
+                withHir->children[0]->children[2]->integerValue == 16U &&
+                withHir->children[1]->kind == HirKind::AggregateElement &&
+                withHir->children[1]->integerValue == 16U,
+            "With evaluates its source once and publishes the implicit spread before updates");
+        destroyHirTreeIteratively(withHir);
+
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> spreadSyntax;
+        auto addSpread = [&](AstKind kind)
+        {
+            spreadSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                kind, nativesharp::SourceRange{}));
+            return spreadSyntax.back().get();
+        };
+        auto* spreadSource = addSpread(AstKind::IdentifierExpression);
+        auto* spreadElement = addSpread(AstKind::SpreadElementExpression);
+        spreadElement->setFirst(spreadSource);
+        auto* spreadRoot = addSpread(AstKind::AggregateInitializerExpression);
+        spreadRoot->addChild(spreadElement);
+        AggregateBinding spreadBinding; spreadBinding.syntax = spreadRoot;
+        spreadBinding.targetTypeKey = structTypes.front();
+        EntryBinding spreadEntry; spreadEntry.syntax = spreadElement;
+        spreadEntry.spread = true;
+        spreadEntry.targetElementOrdinals = {1U, 0U};
+        spreadBinding.entries = {spreadEntry};
+        const auto spreadName = allocatorLocalBinding(
+            spreadSource, "spreadSource", structTypes.front(), 4U);
+        ProjectOopHirModel spreadModel;
+        nativesharp::frontend::ProjectMethodBodyModel spreadBody;
+        error.clear();
+        auto spreadHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                spreadModel, structLookup, structInheritance, structLayout,
+                spreadBody, spreadRoot, {spreadBinding},
+                {{spreadRoot, &structType}, {spreadSource, &structType}},
+                {spreadName}, nullptr, error);
+        tests.expect(spreadHir != nullptr && error.empty() &&
+                spreadHir->children.size() == 1U &&
+                spreadHir->children[0]->kind == HirKind::AggregateSpread &&
+                spreadHir->children[0]->children.size() == 3U &&
+                spreadHir->children[0]->children[0]->kind == HirKind::LocalValue &&
+                spreadHir->children[0]->children[1]->integerValue == 16U &&
+                spreadHir->children[0]->children[2]->integerValue == 8U,
+            "copy spread evaluates one source and preserves binding target order");
+        destroyHirTreeIteratively(spreadHir);
+
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> moveSyntax;
+        auto addMove = [&](AstKind kind)
+        {
+            moveSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                kind, nativesharp::SourceRange{}));
+            return moveSyntax.back().get();
+        };
+        auto* moveSource = addMove(AstKind::IdentifierExpression);
+        auto* move = addMove(AstKind::MoveExpression);
+        move->setFirst(moveSource);
+        auto* moveSpread = addMove(AstKind::SpreadElementExpression);
+        moveSpread->setFirst(move);
+        auto* moveRoot = addMove(AstKind::AggregateInitializerExpression);
+        moveRoot->addChild(moveSpread);
+        AggregateBinding moveBinding; moveBinding.syntax = moveRoot;
+        moveBinding.targetTypeKey = structTypes.front();
+        EntryBinding moveEntry; moveEntry.syntax = moveSpread;
+        moveEntry.spread = true;
+        moveEntry.moveSpread = true;
+        moveEntry.moveSourceLocalOrdinal = 5U;
+        moveEntry.targetElementOrdinals = {0U, 1U};
+        moveBinding.entries = {moveEntry};
+        const auto moveName = allocatorLocalBinding(
+            moveSource, "moveSource", structTypes.front(), 5U);
+        ProjectOopHirModel moveModel;
+        nativesharp::frontend::ProjectMethodBodyModel moveBody;
+        error.clear();
+        auto moveHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                moveModel, structLookup, structInheritance, structLayout,
+                moveBody, moveRoot, {moveBinding},
+                {{moveRoot, &structType}, {moveSource, &structType}},
+                {moveName}, nullptr, error);
+        tests.expect(moveHir != nullptr && error.empty() &&
+                moveHir->children.size() == 1U &&
+                moveHir->children[0]->kind == HirKind::AggregateSpread &&
+                moveHir->children[0]->booleanValue &&
+                moveHir->children[0]->localOrdinal == 5U &&
+                !moveHir->children[0]->parameterOrdinal.has_value() &&
+                moveHir->children[0]->children[0]->kind == HirKind::LocalAddress,
+            "move spread unwraps MoveExpression and preserves address/provenance exactly");
+        destroyHirTreeIteratively(moveHir);
+    }
+
+    {
+        nativesharp::frontend::ProjectNameLookup layoutLookup;
+        nativesharp::frontend::ProjectInheritanceModel layoutInheritance;
+        nativesharp::frontend::ProjectObjectLayoutModel layoutModel;
+        ProjectOopHirModel configuredModel;
+        std::vector<std::string> layoutTypes;
+        const bool layoutConfigured =
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                configureAggregateLeafChain(
+                    configuredModel, layoutLookup, layoutInheritance,
+                    layoutModel, 2U, layoutTypes);
+        nativesharp::frontend::ClassMemberSymbol firstMember;
+        firstMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+        firstMember.declaringTypeOrdinal = 0U;
+        firstMember.isUnnamedBitField = true;
+        nativesharp::frontend::ClassMemberSymbol secondMember;
+        secondMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+        secondMember.declaringTypeOrdinal = 0U;
+        secondMember.isVolatile = true;
+        nativesharp::frontend::ProjectMemberModel members;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureOrdinaryConstructionMembers(
+                members, {firstMember, secondMember},
+                std::vector<std::vector<std::size_t>>(2U));
+        nativesharp::frontend::ObjectFieldLayout omitted;
+        omitted.memberOrdinal = 0U;
+        omitted.offset = 8U;
+        omitted.size = 4U;
+        omitted.alignment = 4U;
+        omitted.typeKey = "builtin:int";
+        omitted.bitOffset = 0U;
+        omitted.bitWidth = 1U;
+        nativesharp::frontend::ObjectFieldLayout visible = omitted;
+        visible.memberOrdinal = 1U;
+        visible.offset = 16U;
+        visible.bitOffset.reset();
+        visible.bitWidth.reset();
+        visible.typeKey = "builtin:long";
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateRootFields(
+            layoutModel, {omitted, visible});
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+        auto source = std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IdentifierExpression, nativesharp::SourceRange{});
+        auto* sourcePtr = source.get(); syntax.push_back(std::move(source));
+        auto with = std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::WithExpression, nativesharp::SourceRange{});
+        auto* withPtr = with.get(); withPtr->setFirst(sourcePtr);
+        syntax.push_back(std::move(with));
+        AggregateBinding binding; binding.syntax = withPtr;
+        binding.targetTypeKey = layoutTypes.front(); binding.generalized = true;
+        nativesharp::frontend::MethodExpressionTypeBinding type;
+        type.typeKey = layoutTypes.front();
+        const auto name = allocatorLocalBinding(
+            sourcePtr, "layoutSource", layoutTypes.front(), 6U);
+        ProjectOopHirModel omittedModel;
+        nativesharp::frontend::ProjectMethodBodyModel omittedBody;
+        error.clear();
+        auto omittedHir = layoutConfigured
+            ? nativesharp::frontend::ProjectOopHirModelTestAccess::
+                lowerAggregateCrossExpression(
+                    omittedModel, layoutLookup, layoutInheritance, layoutModel,
+                    omittedBody, withPtr, {binding},
+                    {{withPtr, &type}, {sourcePtr, &type}}, {name}, &members, error)
+            : nullptr;
+        tests.expect(omittedHir != nullptr && error.empty() &&
+                omittedHir->children.size() == 1U &&
+                omittedHir->children[0]->children.size() == 2U &&
+                omittedHir->children[0]->children[1]->integerValue == 16U &&
+                omittedHir->children[0]->children[1]->volatileAccess,
+            "unnamed bitfields are omitted and volatile survives the implicit With descriptor");
+        destroyHirTreeIteratively(omittedHir);
+
+        firstMember.isUnnamedBitField = false;
+        firstMember.isVolatile = false;
+        secondMember.isVolatile = false;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureOrdinaryConstructionMembers(
+                members, {firstMember, secondMember},
+                std::vector<std::vector<std::size_t>>(2U));
+        omitted.bitOffset.reset(); omitted.bitWidth.reset();
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateRootFields(
+            layoutModel, {omitted, visible}, true);
+        ProjectOopHirModel unionModel;
+        nativesharp::frontend::ProjectMethodBodyModel unionBody;
+        error.clear();
+        auto unionHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                unionModel, layoutLookup, layoutInheritance, layoutModel,
+                unionBody, withPtr, {binding},
+                {{withPtr, &type}, {sourcePtr, &type}}, {name}, &members, error);
+        tests.expect(unionHir != nullptr && error.empty() &&
+                unionHir->children.size() == 1U &&
+                unionHir->children[0]->children.size() == 2U &&
+                unionHir->children[0]->children[1]->integerValue == 8U,
+            "union aggregate exposes only its first physical slot");
+        destroyHirTreeIteratively(unionHir);
+
+        nativesharp::frontend::ObjectFieldLayout outerField;
+        outerField.memberOrdinal = 0U;
+        outerField.offset = 8U;
+        outerField.size = 16U;
+        outerField.alignment = 8U;
+        outerField.typeKey = layoutTypes[1];
+        nativesharp::frontend::ObjectFieldLayout bitField;
+        bitField.memberOrdinal = 1U;
+        bitField.offset = 4U;
+        bitField.size = 4U;
+        bitField.alignment = 4U;
+        bitField.typeKey = "builtin:int";
+        bitField.bitOffset = 1U;
+        bitField.bitWidth = 3U;
+        secondMember.declaringTypeOrdinal = 1U;
+        secondMember.isVolatile = true;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureOrdinaryConstructionMembers(
+                members, {firstMember, secondMember},
+                std::vector<std::vector<std::size_t>>(2U));
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateLayoutFields(
+            layoutModel, 0U, {outerField});
+        nativesharp::frontend::ProjectOopHirModelTestAccess::setAggregateLayoutFields(
+            layoutModel, 1U, {bitField});
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> bitSyntax;
+        auto literal = std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+        literal->setIntegerValue(41U); auto* literalPtr = literal.get();
+        bitSyntax.push_back(std::move(literal));
+        auto inner = std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AggregateInitializerExpression, nativesharp::SourceRange{});
+        auto* innerPtr = inner.get(); innerPtr->addChild(literalPtr);
+        bitSyntax.push_back(std::move(inner));
+        auto outer = std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AggregateInitializerExpression, nativesharp::SourceRange{});
+        auto* outerPtr = outer.get(); outerPtr->addChild(innerPtr);
+        bitSyntax.push_back(std::move(outer));
+        AggregateBinding innerBinding; innerBinding.syntax = innerPtr;
+        EntryBinding innerEntry; innerEntry.syntax = literalPtr;
+        innerEntry.targetElementOrdinals = {0U}; innerBinding.entries = {innerEntry};
+        AggregateBinding outerBinding; outerBinding.syntax = outerPtr;
+        EntryBinding outerEntry; outerEntry.syntax = innerPtr;
+        outerEntry.targetElementOrdinals = {0U}; outerBinding.entries = {outerEntry};
+        nativesharp::frontend::MethodExpressionTypeBinding outerType;
+        outerType.typeKey = layoutTypes[0];
+        nativesharp::frontend::MethodExpressionTypeBinding literalType;
+        literalType.typeKey = "builtin:int";
+        ProjectOopHirModel bitModel;
+        nativesharp::frontend::ProjectMethodBodyModel bitBody;
+        error.clear();
+        auto bitHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                bitModel, layoutLookup, layoutInheritance, layoutModel,
+                bitBody, outerPtr, {outerBinding, innerBinding},
+                {{outerPtr, &outerType}, {literalPtr, &literalType}},
+                {}, &members, error);
+        const auto* bitElement = bitHir != nullptr && bitHir->children.size() == 1U
+            ? bitHir->children.front().get() : nullptr;
+        tests.expect(bitElement != nullptr && error.empty() &&
+                bitElement->integerValue == 12U && bitElement->bitOffset == 1U &&
+                bitElement->bitWidth == 3U && bitElement->bitStorageSize == 4U &&
+                bitElement->bitStorageAlignment == 4U && bitElement->volatileAccess,
+            "nested structural flatten preserves accumulated offset, bit metadata, alignment, and volatile");
+        destroyHirTreeIteratively(bitHir);
+    }
+
+    {
+        nativesharp::frontend::ProjectNameLookup diagnosticLookup;
+        nativesharp::frontend::ProjectInheritanceModel diagnosticInheritance;
+        nativesharp::frontend::ProjectObjectLayoutModel diagnosticLayout;
+        ProjectOopHirModel configuredModel;
+        std::vector<std::string> diagnosticTypes;
+        const bool diagnosticConfigured =
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                configureAggregateLeafChain(
+                    configuredModel, diagnosticLookup, diagnosticInheritance,
+                    diagnosticLayout, 1U, diagnosticTypes);
+        nativesharp::frontend::MethodExpressionTypeBinding aggregateType;
+        aggregateType.typeKey = diagnosticTypes.front();
+        nativesharp::frontend::MethodExpressionTypeBinding intType;
+        intType.typeKey = "builtin:int";
+        nativesharp::frontend::MethodExpressionTypeBinding voidType;
+        voidType.typeKey = "builtin:void";
+
+        auto lowerDiagnostic = [&]<typename Configure>(
+            AstKind rootKind,
+            const nativesharp::SourceRange& rootRange,
+            Configure configure,
+            std::string& diagnostic,
+            nativesharp::SourceRange& diagnosticRange)
+        {
+            std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                rootKind, rootRange));
+            std::vector<AggregateBinding> caseBindings;
+            std::vector<std::pair<const nativesharp::ast::AstNode*,
+                const nativesharp::frontend::MethodExpressionTypeBinding*>> caseTypes;
+            std::vector<nativesharp::frontend::MethodNameBinding> caseNames;
+            nativesharp::frontend::ProjectMemberModel caseMembers;
+            configure(nodes, caseBindings, caseTypes, caseNames, caseMembers);
+            ProjectOopHirModel caseModel;
+            nativesharp::frontend::ProjectMethodBodyModel caseBody;
+            diagnostic.clear();
+            auto result = diagnosticConfigured
+                ? nativesharp::frontend::ProjectOopHirModelTestAccess::
+                    lowerAggregateCrossExpression(
+                        caseModel, diagnosticLookup, diagnosticInheritance,
+                        diagnosticLayout, caseBody, nodes.front().get(),
+                        std::move(caseBindings), caseTypes, caseNames,
+                        &caseMembers, diagnostic)
+                : nullptr;
+            diagnosticRange = caseModel.lastErrorRange();
+            return result;
+        };
+
+        const nativesharp::SourceRange aggregateRange(
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 10U),
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 19U));
+        nativesharp::SourceRange observedRange;
+        error.clear();
+        auto missingMapping = lowerDiagnostic(
+            AstKind::AggregateInitializerExpression, aggregateRange,
+            [&](auto& nodes, auto&, auto& caseTypes, auto&, auto&)
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::IntegerLiteralExpression, aggregateRange));
+                nodes.front()->addChild(nodes.back().get());
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+                caseTypes.push_back({nodes.back().get(), &intType});
+            }, error, observedRange);
+        tests.expect(missingMapping == nullptr &&
+                error == "T01-F05 aggregate initializer has no semantic element mapping" &&
+                observedRange.begin() == aggregateRange.begin() &&
+                observedRange.end() == aggregateRange.end(),
+            "missing aggregate mapping preserves its exact diagnostic and root range");
+
+        auto wrongCardinality = lowerDiagnostic(
+            AstKind::AggregateInitializerExpression, aggregateRange,
+            [&](auto& nodes, auto& caseBindings, auto& caseTypes, auto&, auto&)
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::IntegerLiteralExpression, aggregateRange));
+                nodes.back()->setIntegerValue(1U);
+                nodes.front()->addChild(nodes.back().get());
+                AggregateBinding binding;
+                binding.syntax = nodes.front().get();
+                binding.targetTypeKey = diagnosticTypes.front();
+                caseBindings.push_back(std::move(binding));
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+                caseTypes.push_back({nodes.back().get(), &intType});
+            }, error, observedRange);
+        tests.expect(wrongCardinality == nullptr &&
+                error == "T01-F05 aggregate initializer has no semantic element mapping" &&
+                observedRange.begin() == aggregateRange.begin() &&
+                observedRange.end() == aggregateRange.end(),
+            "aggregate binding/cardinality mismatch preserves its diagnostic, range, and publishes no root");
+
+        const nativesharp::SourceRange withRange(
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 20U),
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 29U));
+        auto noWithSource = lowerDiagnostic(
+            AstKind::WithExpression, withRange,
+            [&](auto& nodes, auto& caseBindings, auto& caseTypes, auto&, auto&)
+            {
+                AggregateBinding binding;
+                binding.syntax = nodes.front().get();
+                binding.targetTypeKey = diagnosticTypes.front();
+                binding.generalized = true;
+                caseBindings.push_back(std::move(binding));
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+            }, error, observedRange);
+        tests.expect(noWithSource == nullptr &&
+                error == "T01-F07 with expression has no source value" &&
+                observedRange.begin() == withRange.begin() &&
+                observedRange.end() == withRange.end(),
+            "With without source preserves its exact diagnostic and root range");
+
+        const nativesharp::SourceRange childRange(
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 40U),
+            nativesharp::SourceLocation(nativesharp::FileId(41U), 49U));
+        auto missingSpreadSource = lowerDiagnostic(
+            AstKind::AggregateInitializerExpression, aggregateRange,
+            [&](auto& nodes, auto& caseBindings, auto& caseTypes, auto&, auto&)
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::SpreadElementExpression, childRange));
+                nodes.front()->addChild(nodes.back().get());
+                AggregateBinding binding;
+                binding.syntax = nodes.front().get();
+                binding.targetTypeKey = diagnosticTypes.front();
+                EntryBinding entry;
+                entry.syntax = nodes.back().get();
+                entry.spread = true;
+                entry.targetElementOrdinals = {0U};
+                binding.entries.push_back(std::move(entry));
+                caseBindings.push_back(std::move(binding));
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+            }, error, observedRange);
+        tests.expect(missingSpreadSource == nullptr &&
+                error == "T01-F05 aggregate spread has no source expression" &&
+                observedRange.begin() == aggregateRange.begin() &&
+                observedRange.end() == aggregateRange.end(),
+            "spread without source preserves the historical first diagnostic");
+
+        nativesharp::frontend::ObjectFieldLayout bitTarget;
+        bitTarget.memberOrdinal = 0U;
+        bitTarget.offset = 8U;
+        bitTarget.size = 4U;
+        bitTarget.alignment = 4U;
+        bitTarget.typeKey = "builtin:int";
+        bitTarget.bitOffset = 0U;
+        bitTarget.bitWidth = 1U;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            setAggregateRootFields(diagnosticLayout, {bitTarget});
+
+        const auto observableSourceFailure = [&](bool withExpression,
+                                                  std::size_t targetOrdinal,
+                                                  const std::string& expected,
+                                                  const std::string& message)
+        {
+            std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                withExpression ? AstKind::WithExpression
+                               : AstKind::AggregateInitializerExpression,
+                withExpression ? withRange : aggregateRange));
+            auto* root = nodes.back().get();
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                AstKind::IntegerLiteralExpression, childRange));
+            nodes.back()->setIntegerValue(17U);
+            auto* argument = nodes.back().get();
+            nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                AstKind::CallExpression, childRange));
+            auto* source = nodes.back().get();
+            source->addChild(argument);
+
+            AggregateBinding binding;
+            binding.syntax = root;
+            binding.targetTypeKey = diagnosticTypes.front();
+            binding.generalized = withExpression;
+            if (withExpression)
+            {
+                root->setFirst(source);
+            }
+            else
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::SpreadElementExpression, childRange));
+                auto* spread = nodes.back().get();
+                spread->setFirst(source);
+                root->addChild(spread);
+                EntryBinding entry;
+                entry.syntax = spread;
+                entry.spread = true;
+                entry.targetElementOrdinals = {targetOrdinal};
+                binding.entries.push_back(std::move(entry));
+            }
+
+            std::vector<nativesharp::frontend::MethodCoreBinding> cores(1U);
+            cores.front().syntax = source;
+            cores.front().kind =
+                nativesharp::frontend::MethodCoreOperationKind::ConsoleWrite;
+            cores.front().resultTypeKey = "builtin:void";
+            std::vector<nativesharp::frontend::MethodCallBinding> calls(1U);
+            calls.front().syntax = source;
+            calls.front().resolution =
+                nativesharp::frontend::MethodCallResolutionKind::Resolved;
+            calls.front().staticCall = true;
+            calls.front().selectedMemberOrdinal = 0U;
+            calls.front().resultTypeKey = "builtin:void";
+            std::vector<nativesharp::frontend::MethodBorrowBinding> borrows(1U);
+            borrows.front().syntax = argument;
+            borrows.front().kind = nativesharp::frontend::MethodBorrowKind::
+                FreshOwnedTemporaryToBorrowedParameter;
+            borrows.front().targetMemberOrdinal = 0U;
+            borrows.front().targetParameterOrdinal = 0U;
+            borrows.front().sourceLocalOrdinal = 4U;
+
+            ProjectOopHirModel caseModel;
+            nativesharp::frontend::ProjectMethodBodyModel caseBody;
+            nativesharp::frontend::ProjectMemberModel caseMembers;
+            std::string caseError;
+            auto result = nativesharp::frontend::ProjectOopHirModelTestAccess::
+                lowerAggregateCrossExpression(
+                    caseModel, diagnosticLookup, diagnosticInheritance,
+                    diagnosticLayout, caseBody, root, {binding},
+                    {{root, &aggregateType}, {source, &voidType},
+                     {argument, &intType}},
+                    {}, &caseMembers, caseError, &cores, &calls, &borrows);
+            const auto rootRange = withExpression ? withRange : aggregateRange;
+            tests.expect(result == nullptr && caseError == expected &&
+                    caseModel.lastErrorRange().begin() == rootRange.begin() &&
+                    caseModel.lastErrorRange().end() == rootRange.end() &&
+                    nativesharp::frontend::ProjectOopHirModelTestAccess::
+                        nextSyntheticCleanupRegionOrdinal(caseModel) == 1U,
+                message);
+        };
+
+        observableSourceFailure(
+            true, 0U,
+            "T01-F07 with expressions over bit fields require explicit copy semantics",
+            "With lowers its observable source before rejecting bitfield copy and publishes no root");
+        observableSourceFailure(
+            false, 0U,
+            "T01-F05 spread initialization of bit fields requires explicit named values",
+            "spread lowers its observable source before rejecting a bitfield and publishes no root");
+        observableSourceFailure(
+            false, 1U,
+            "T01-F05 aggregate spread target is out of range",
+            "spread lowers its observable source before preserving the out-of-range diagnostic");
+
+        auto noUniqueTarget = lowerDiagnostic(
+            AstKind::AggregateInitializerExpression, aggregateRange,
+            [&](auto& nodes, auto& caseBindings, auto& caseTypes, auto&, auto&)
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::IntegerLiteralExpression, childRange));
+                nodes.back()->setIntegerValue(5U);
+                nodes.front()->addChild(nodes.back().get());
+                AggregateBinding binding;
+                binding.syntax = nodes.front().get();
+                binding.targetTypeKey = diagnosticTypes.front();
+                EntryBinding entry;
+                entry.syntax = nodes.back().get();
+                binding.entries.push_back(std::move(entry));
+                caseBindings.push_back(std::move(binding));
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+                caseTypes.push_back({nodes.back().get(), &intType});
+            }, error, observedRange);
+        tests.expect(noUniqueTarget == nullptr &&
+                error == "T01-F05 aggregate value has no unique target element" &&
+                observedRange.begin() == aggregateRange.begin() &&
+                observedRange.end() == aggregateRange.end(),
+            "ordinary aggregate value without one target preserves its exact diagnostic");
+
+        auto failingChild = lowerDiagnostic(
+            AstKind::AggregateInitializerExpression, aggregateRange,
+            [&](auto& nodes, auto& caseBindings, auto& caseTypes, auto&, auto&)
+            {
+                nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+                    AstKind::CallExpression, childRange));
+                nodes.front()->addChild(nodes.back().get());
+                AggregateBinding binding;
+                binding.syntax = nodes.front().get();
+                binding.targetTypeKey = diagnosticTypes.front();
+                EntryBinding entry;
+                entry.syntax = nodes.back().get();
+                entry.targetElementOrdinals = {0U};
+                binding.entries.push_back(std::move(entry));
+                caseBindings.push_back(std::move(binding));
+                caseTypes.push_back({nodes.front().get(), &aggregateType});
+                caseTypes.push_back({nodes.back().get(), &intType});
+            }, error, observedRange);
+        tests.expect(failingChild == nullptr &&
+                error == "Stage 34 requires a resolved Stage 27 method call" &&
+                observedRange.begin() == childRange.begin() &&
+                observedRange.end() == childRange.end(),
+            "aggregate child failure preserves the exact child diagnostic and range");
+
+        std::vector<std::unique_ptr<nativesharp::ast::AstNode>> cleanupSyntax;
+        cleanupSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IntegerLiteralExpression, childRange));
+        cleanupSyntax.back()->setIntegerValue(9U);
+        auto* cleanupArgument = cleanupSyntax.back().get();
+        cleanupSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::CallExpression, childRange));
+        auto* cleanupCall = cleanupSyntax.back().get();
+        cleanupCall->addChild(cleanupArgument);
+        cleanupSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::AggregateInitializerExpression, aggregateRange));
+        auto* cleanupAggregate = cleanupSyntax.back().get();
+        cleanupAggregate->addChild(cleanupCall);
+        AggregateBinding cleanupAggregateBinding;
+        cleanupAggregateBinding.syntax = cleanupAggregate;
+        cleanupAggregateBinding.targetTypeKey = diagnosticTypes.front();
+        EntryBinding cleanupEntry;
+        cleanupEntry.syntax = cleanupCall;
+        cleanupEntry.targetElementOrdinals = {0U};
+        cleanupAggregateBinding.entries.push_back(std::move(cleanupEntry));
+        std::vector<nativesharp::frontend::MethodCoreBinding> cleanupCores(1U);
+        cleanupCores.front().syntax = cleanupCall;
+        cleanupCores.front().kind =
+            nativesharp::frontend::MethodCoreOperationKind::ConsoleWrite;
+        cleanupCores.front().resultTypeKey = "builtin:void";
+        std::vector<nativesharp::frontend::MethodCallBinding> cleanupCalls(1U);
+        cleanupCalls.front().syntax = cleanupCall;
+        cleanupCalls.front().resolution =
+            nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        cleanupCalls.front().staticCall = true;
+        cleanupCalls.front().selectedMemberOrdinal = 0U;
+        cleanupCalls.front().resultTypeKey = "builtin:void";
+        std::vector<nativesharp::frontend::MethodBorrowBinding> cleanupBorrows(1U);
+        cleanupBorrows.front().syntax = cleanupArgument;
+        cleanupBorrows.front().kind =
+            nativesharp::frontend::MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+        cleanupBorrows.front().targetMemberOrdinal = 0U;
+        cleanupBorrows.front().targetParameterOrdinal = 0U;
+        cleanupBorrows.front().sourceLocalOrdinal = 4U;
+        ProjectOopHirModel cleanupModel;
+        nativesharp::frontend::ProjectMethodBodyModel cleanupBody;
+        nativesharp::frontend::ProjectMemberModel cleanupMembers;
+        error.clear();
+        auto cleanupHir = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerAggregateCrossExpression(
+                cleanupModel, diagnosticLookup, diagnosticInheritance,
+                diagnosticLayout, cleanupBody, cleanupAggregate,
+                {cleanupAggregateBinding},
+                {{cleanupAggregate, &aggregateType}, {cleanupCall, &voidType},
+                 {cleanupArgument, &intType}},
+                {}, &cleanupMembers, error, &cleanupCores, &cleanupCalls,
+                &cleanupBorrows);
+        const auto* cleanupElement = cleanupHir != nullptr &&
+                cleanupHir->kind == HirKind::AggregateInitializer &&
+                cleanupHir->children.size() == 1U
+            ? cleanupHir->children.front().get() : nullptr;
+        const auto* childCleanup = cleanupElement != nullptr &&
+                cleanupElement->kind == HirKind::AggregateElement &&
+                cleanupElement->children.size() == 1U
+            ? cleanupElement->children.front().get() : nullptr;
+        tests.expect(cleanupHir != nullptr && error.empty() &&
+                cleanupHir->kind == HirKind::AggregateInitializer &&
+                childCleanup != nullptr &&
+                childCleanup->kind == HirKind::FullExpressionCleanup &&
+                childCleanup->children.size() == 1U &&
+                childCleanup->children.front()->kind ==
+                    HirKind::CoreConsoleWriteLine,
+            "child cleanup wrapper is preserved without adding an aggregate cleanup wrapper");
+        destroyHirTreeIteratively(cleanupHir);
+    }
+}
+
 void testDeepAggregateElements(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 4096;
-    constexpr std::uint64_t initialOffset = 17U;
 
     nativesharp::frontend::ProjectNameLookup nameLookup;
     nativesharp::frontend::ProjectInheritanceModel inheritanceModel;
@@ -13484,33 +14588,35 @@ void testDeepAggregateElements(TestContext& tests)
     nativesharp::frontend::MethodExpressionTypeBinding literalType;
     literalType.syntax = literal;
     literalType.typeKey = "builtin:int";
+    std::vector<nativesharp::frontend::MethodExpressionTypeBinding> aggregateTypes(
+        nestingDepth);
+    for (std::size_t ordinal = 0U; ordinal < nestingDepth; ++ordinal)
+    {
+        aggregateTypes[ordinal].syntax = aggregates[ordinal];
+        aggregateTypes[ordinal].typeKey = typeKeys[ordinal];
+    }
     nativesharp::frontend::ProjectOopHirModelTestAccess::configureAggregateElementBindings(
-        model, methodBodyModel, aggregates, literal, typeKeys, literalType);
+        model, methodBodyModel, aggregates, literal, typeKeys,
+        aggregateTypes, literalType);
 
-    std::vector<std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>> elements;
     std::string error;
-    const bool lowered =
-        nativesharp::frontend::ProjectOopHirModelTestAccess::appendAggregateElements(
-            model,
-            aggregates.front(),
-            typeKeys.front(),
-            initialOffset,
-            elements,
-            error);
-    tests.expect(lowered && error.empty(),
+    auto root = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerConfiguredAggregateExpression(model, aggregates.front(), error);
+    tests.expect(root != nullptr && error.empty(),
         "a 4096-level aggregate initializer lowers without process-stack recursion (" +
             error + ")");
-    tests.expect(elements.size() == 1U &&
-            elements.front()->kind ==
+    tests.expect(root != nullptr && root->children.size() == 1U &&
+            root->children.front()->kind ==
                 nativesharp::frontend::ProjectOopHirNodeKind::AggregateElement &&
-            elements.front()->typeKey == "builtin:int" &&
-            elements.front()->integerValue == initialOffset + 8U * nestingDepth &&
-            elements.front()->syntax == literal &&
-            elements.front()->children.size() == 1U &&
-            elements.front()->children.front()->kind ==
+            root->children.front()->typeKey == "builtin:int" &&
+            root->children.front()->integerValue == 8U * nestingDepth &&
+            root->children.front()->syntax == literal &&
+            root->children.front()->children.size() == 1U &&
+            root->children.front()->children.front()->kind ==
                 nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant &&
-            elements.front()->children.front()->integerValue == 7U,
+            root->children.front()->children.front()->integerValue == 7U,
         "deep aggregate lowering preserves the leaf value, provenance, and absolute offset");
+    destroyHirTreeIteratively(root);
 }
 
 std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> makeDeepMirHirChain(
@@ -14721,6 +15827,10 @@ int main()
     {
         testDeepAggregateElements(tests);
     }
+    else if (focusValue == "hir-aggregate-cross-lowering-depth")
+    {
+        testDeepAggregateCrossLowering(tests);
+    }
     else if (focusValue == "mir-node-lowering-depth")
     {
         testDeepMirNodeLowering(tests);
@@ -14855,6 +15965,7 @@ int main()
         testDeepOverflowPolicyExpressionLowering(tests);
         testDeepBuiltinBinaryExpressionLowering(tests);
         testDeepConditionalExpressionLowering(tests);
+        testDeepAggregateCrossLowering(tests);
         testDeepMatchExpressionLowering(tests);
         testMatchExpressionContract(tests);
         testReferenceMatchExpressionLowering(tests);

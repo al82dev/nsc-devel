@@ -195,33 +195,8 @@ bool ProjectOopHirModel::appendAggregateElements(
                     error = "T01-F07 with expression has no source value";
                     return false;
                 }
-                auto source = lowerExpression(
-                    frame.syntax->first(), memberOrdinal, false, error);
-                if (source == nullptr) return false;
-                auto spread = makeNode(
-                    ProjectOopHirNodeKind::AggregateSpread,
-                    frame.syntax,
-                    frame.targetTypeKey);
-                spread->children.push_back(std::move(source));
-                for (const AggregateSlot& target : frame.slots)
-                {
-                    if (target.bitWidth.has_value())
-                    {
-                        error =
-                            "T01-F07 with expressions over bit fields require explicit copy semantics";
-                        return false;
-                    }
-                    auto descriptor = makeNode(
-                        ProjectOopHirNodeKind::AggregateElement,
-                        frame.syntax,
-                        target.typeKey);
-                    descriptor->integerValue = frame.baseOffset + target.offset;
-                    descriptor->secondaryIntegerValue = target.offset;
-                    descriptor->bitStorageAlignment = target.storageAlignment;
-                    descriptor->volatileAccess = target.volatileAccess;
-                    spread->children.push_back(std::move(descriptor));
-                }
-                elements.push_back(std::move(spread));
+                error = "Stage 34 aggregate with source escaped iterative lowering";
+                return false;
             }
             frame.initialized = true;
         }
@@ -248,45 +223,9 @@ bool ProjectOopHirModel::appendAggregateElements(
             {
                 sourceSyntax = sourceSyntax->first();
             }
-            auto source = lowerExpression(
-                sourceSyntax, memberOrdinal, entry.moveSpread, error);
-            if (source == nullptr) return false;
-            auto spread = makeNode(
-                ProjectOopHirNodeKind::AggregateSpread,
-                element,
-                frame.targetTypeKey);
-            spread->booleanValue = entry.moveSpread;
-            spread->localOrdinal = entry.moveSourceLocalOrdinal;
-            spread->parameterOrdinal = entry.moveSourceParameterOrdinal;
-            spread->children.push_back(std::move(source));
-            for (const std::size_t targetOrdinal : entry.targetElementOrdinals)
-            {
-                if (targetOrdinal >= frame.slots.size())
-                {
-                    error = "T01-F05 aggregate spread target is out of range";
-                    return false;
-                }
-                const AggregateSlot& target = frame.slots[targetOrdinal];
-                auto descriptor = makeNode(
-                    ProjectOopHirNodeKind::AggregateElement,
-                    element,
-                    target.typeKey);
-                descriptor->integerValue = frame.baseOffset + target.offset;
-                descriptor->secondaryIntegerValue = target.offset;
-                descriptor->bitOffset = target.bitOffset;
-                descriptor->bitWidth = target.bitWidth;
-                descriptor->bitStorageSize = target.storageSize;
-                descriptor->bitStorageAlignment = target.storageAlignment;
-                descriptor->volatileAccess = target.volatileAccess;
-                if (target.bitWidth.has_value())
-                {
-                    error = "T01-F05 spread initialization of bit fields requires explicit named values";
-                    return false;
-                }
-                spread->children.push_back(std::move(descriptor));
-            }
-            elements.push_back(std::move(spread));
-            continue;
+            (void)sourceSyntax;
+            error = "Stage 34 aggregate spread source escaped iterative lowering";
+            return false;
         }
         if (entry.targetElementOrdinals.size() != 1U ||
             entry.targetElementOrdinals.front() >= frame.slots.size())
@@ -306,29 +245,9 @@ bool ProjectOopHirModel::appendAggregateElements(
             pending.push_back(std::move(child));
             continue;
         }
-        auto value = lowerExpression(element, memberOrdinal, false, error);
-        if (value == nullptr)
-        {
-            return false;
-        }
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            value->typeKey,
-            slotTypeKey,
-            expressionType(element) != nullptr ? expressionType(element)->integerConstant
-                                              : std::nullopt);
-        if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
-        {
-            value = wrapImplicitConversion(std::move(value), conversion, element);
-        }
-        auto slot = makeNode(ProjectOopHirNodeKind::AggregateElement, element, slotTypeKey);
-        slot->integerValue = slotOffset;
-        slot->bitOffset = target.bitOffset;
-        slot->bitWidth = target.bitWidth;
-        slot->bitStorageSize = target.storageSize;
-        slot->bitStorageAlignment = target.storageAlignment;
-        slot->volatileAccess = target.volatileAccess;
-        slot->children.push_back(std::move(value));
-        elements.push_back(std::move(slot));
+        (void)slotOffset;
+        error = "Stage 34 aggregate value escaped iterative lowering";
+        return false;
     }
     return true;
 }
@@ -899,19 +818,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAggregateOrLayoutExp
         case ast::AstNodeKind::AggregateInitializerExpression:
         case ast::AstNodeKind::WithExpression:
         {
-            const MethodExpressionTypeBinding* targetType = expressionType(expression);
-            if (targetType == nullptr)
-            {
-                error = "aggregate/with initializer has no bound target type";
-                return nullptr;
-            }
-            auto node = makeNode(
-                ProjectOopHirNodeKind::AggregateInitializer, expression, targetType->typeKey);
-            if (!appendAggregateElements(expression, targetType->typeKey, 0, memberOrdinal, node->children, error))
-            {
-                return nullptr;
-            }
-            return node;
+            (void)memberOrdinal;
+            error = "Stage 34 aggregate/tuple/with escaped iterative lowering";
+            return nullptr;
         }
 
         // CC1 fase 4A -- `sizeof`. Las dos formas llegan aqui como una CONSTANTE y nada mas: MIR y
