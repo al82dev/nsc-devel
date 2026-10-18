@@ -1486,6 +1486,11 @@ private:
         const std::string& effects,
         const std::string& callingConvention,
         const std::string& attribute);
+    ast::AstNode* parseLambdaExpressionHead();
+    void finishLambdaExpression(
+        ast::AstNode* lambda,
+        ast::AstNode* body,
+        bool blockBody);
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;
     ast::AstNode* parseConditionalExpression();

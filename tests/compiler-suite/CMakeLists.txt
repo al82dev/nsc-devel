@@ -267,6 +267,7 @@ add_executable(
     host/modules/ParserConditionalPatternAnalysisCounterfactualModule.cpp
     host/modules/ParserMatchStatementAnalysisCounterfactualModule.cpp
     host/modules/ParserMatchIntervalIndexCounterfactualModule.cpp
+    host/modules/ParserAssignmentIterationCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
     host/modules/ParserDeclarationProductTestShim.cpp
@@ -551,6 +552,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirFunctionLowerer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirVerifier.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirNodeMachine.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirNodeOwnership.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirLayoutImporter.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCostExplorer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopMirModelDumper.cpp"

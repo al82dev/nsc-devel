@@ -43,6 +43,20 @@ constexpr std::array<TokenKind, 2> kShift = {TokenKind::LessLess, TokenKind::Gre
 constexpr std::array<TokenKind, 2> kAdditive = {TokenKind::Plus, TokenKind::Minus};
 constexpr std::array<TokenKind, 3> kMultiplicative = {TokenKind::Star, TokenKind::Slash, TokenKind::Percent};
 
+enum class AssignmentContinuationKind
+{
+    Assignment,
+    ExpressionLambda
+};
+
+struct AssignmentContinuation final
+{
+    AssignmentContinuationKind kind;
+    ast::AstNode* node = nullptr;
+    TokenKind operation = TokenKind::Invalid;
+    bool reference = false;
+};
+
 bool containsExpressionToken(
     std::span<const TokenKind> values,
     TokenKind kind) noexcept
@@ -594,32 +608,62 @@ ast::AstNode* Parser::parseExpressionImpl()
 
 ast::AstNode* Parser::parseAssignmentExpression()
 {
-    if (looksLikeLambdaExpression())
+    std::vector<AssignmentContinuation> continuations;
+    ast::AstNode* value = nullptr;
+    bool complete = false;
+    while (!complete)
     {
-        return parseLambdaExpression();
+        if (looksLikeLambdaExpression())
+        {
+            ast::AstNode* lambda = parseLambdaExpressionHead();
+            if (at(TokenKind::LeftBrace))
+            {
+                finishLambdaExpression(lambda, parseBlock(), true);
+                value = lambda;
+                complete = true;
+                continue;
+            }
+            continuations.push_back(
+                {AssignmentContinuationKind::ExpressionLambda, lambda});
+            continue;
+        }
+
+        ast::AstNode* left = parseConditionalExpression();
+        if (!lexer::isAssignmentOperator(current().kind()))
+        {
+            value = left;
+            complete = true;
+            continue;
+        }
+
+        const TokenKind operation = consume().kind();
+        const bool referenceAssignment = operation == TokenKind::Equal &&
+            atContextualKeyword("ref");
+        if (referenceAssignment) consume();
+        continuations.push_back(
+            {AssignmentContinuationKind::Assignment, left, operation, referenceAssignment});
     }
 
-    ast::AstNode* left = parseConditionalExpression();
-    if (!lexer::isAssignmentOperator(current().kind()))
+    while (!continuations.empty())
     {
-        return left;
+        const AssignmentContinuation continuation = continuations.back();
+        continuations.pop_back();
+        if (continuation.kind == AssignmentContinuationKind::ExpressionLambda)
+        {
+            finishLambdaExpression(continuation.node, value, false);
+            value = continuation.node;
+            continue;
+        }
+        ast::AstNode* assignment = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::AssignmentExpression,
+            join(continuation.node->range(), value->range()));
+        assignment->setTokenKind(continuation.operation);
+        assignment->setFirst(continuation.node);
+        assignment->setSecond(value);
+        assignment->setReference(continuation.reference);
+        value = assignment;
     }
-
-    const TokenKind operation = consume().kind();
-    // NS304-T11-F07: `target = ref storage` stores the address of a storage into a ref field or
-    // ref local (distinct from a value copy). Only plain `=` accepts the `ref` marker.
-    const bool referenceAssignment = operation == TokenKind::Equal &&
-        atContextualKeyword("ref");
-    if (referenceAssignment) consume();
-    ast::AstNode* right = parseAssignmentExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::AssignmentExpression,
-        join(left->range(), right->range()));
-    node->setTokenKind(operation);
-    node->setFirst(left);
-    node->setSecond(right);
-    node->setReference(referenceAssignment);
-    return node;
+    return value;
 }
 
 // `condition ? whenTrue : whenFalse`, between assignment and logical-or in precedence, and
@@ -1024,7 +1068,7 @@ void Parser::applyLambdaContracts(
     lambda->setAuxiliaryText(std::move(capture));
 }
 
-ast::AstNode* Parser::parseLambdaExpression()
+ast::AstNode* Parser::parseLambdaExpressionHead()
 {
     const std::size_t beginIndex = index_;
     ast::AstNode* lambda = arena_.make<ast::AstNode>(
@@ -1045,13 +1089,23 @@ ast::AstNode* Parser::parseLambdaExpression()
     applyLambdaContracts(
         lambda, std::move(captureContract), effects, callingConvention, attributeContract);
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);
-    const bool blockBody = at(TokenKind::LeftBrace);
-    lambda->setFlag(blockBody);
-    lambda->setFirst(blockBody ? parseBlock() : parseAssignmentExpression());
-    if (lambda->first() != nullptr)
-        lambda->setRange(SourceRange(
-            tokens_[beginIndex].range().begin(), lambda->first()->range().end()));
     return lambda;
+}
+
+void Parser::finishLambdaExpression(
+    ast::AstNode* lambda,
+    ast::AstNode* body,
+    bool blockBody)
+{
+    lambda->setFlag(blockBody);
+    lambda->setFirst(body);
+    if (body != nullptr)
+        lambda->setRange(SourceRange(lambda->range().begin(), body->range().end()));
+}
+
+ast::AstNode* Parser::parseLambdaExpression()
+{
+    return parseAssignmentExpression();
 }
 
 ast::AstNode* Parser::parseLogicalOrExpression()

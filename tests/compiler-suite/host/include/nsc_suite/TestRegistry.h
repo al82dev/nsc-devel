@@ -211,6 +211,7 @@ void registerParserMatchExpressionAnalysisCounterfactualModule(TestRegistry& reg
 void registerParserConditionalPatternAnalysisCounterfactualModule(TestRegistry& registry);
 void registerParserMatchStatementAnalysisCounterfactualModule(TestRegistry& registry);
 void registerParserMatchIntervalIndexCounterfactualModule(TestRegistry& registry);
+void registerParserAssignmentIterationCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);
