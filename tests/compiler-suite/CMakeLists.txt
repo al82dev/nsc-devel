@@ -280,6 +280,7 @@ add_executable(
     host/modules/ParserSwitchCoordinatorCounterfactualModule.cpp
     host/modules/ParserMatchCoordinatorCounterfactualModule.cpp
     host/modules/ParserConditionalPatternCoordinatorCounterfactualModule.cpp
+    host/modules/ParserSpecialStatementSccClosureCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContinuationProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp

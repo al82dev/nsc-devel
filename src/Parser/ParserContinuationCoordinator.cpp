@@ -1,5 +1,6 @@
 #include "nativesharp/Parser/Parser.h"
 
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
 
 #include <algorithm>
@@ -35,6 +36,7 @@ private:
     enum class WorkKind : std::uint8_t
     {
         Expression,
+        UnaryExpression,
         ConditionalExpression,
         Block,
         ContinueBlock,
@@ -98,12 +100,17 @@ private:
         FinishStandaloneCatchBlock,
         FinishUsingInitializer,
         FinishUsingBody,
-        FinishDeferBody
+        FinishDeferBody,
+        FinishFloatingPointScope,
+        FinishUnsafeScope,
+        ContinueInlineAssembly,
+        FinishInlineAssemblyOutput,
+        FinishInlineAssemblyInput,
+        FinishComprehensionYield
     };
 
     enum class StatementKind : std::uint8_t
     {
-        Direct,
         Block,
         Expression,
         Return,
@@ -127,7 +134,11 @@ private:
         Match,
         Try,
         Using,
-        Defer
+        Defer,
+        FloatingPointScope,
+        UnsafeScope,
+        InlineAssembly,
+        ComprehensionYield
     };
 
     struct ResultSlot final
@@ -318,6 +329,38 @@ private:
         std::vector<DeferCapture> captures;
     };
 
+    struct FloatingPointScopeFrame final
+    {
+        std::size_t resultSlot = 0;
+        ast::FloatingPointModeSyntaxKind mode = ast::FloatingPointModeSyntaxKind::Inherit;
+        std::string modeName;
+    };
+
+    struct UnsafeScopeFrame final
+    {
+        std::size_t resultSlot = 0;
+        std::string reason;
+    };
+
+    struct InlineAssemblyFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        ast::AstNode* statement = nullptr;
+        std::uint64_t outputOrdinal = 0;
+        std::uint64_t inputOrdinal = 0;
+        bool hasOperandClauses = false;
+    };
+
+    struct ComprehensionYieldFrame final
+    {
+        std::size_t beginIndex = 0;
+        std::size_t resultSlot = 0;
+        SourceRange yieldRange;
+        std::string builderName;
+        std::string loopLabel;
+    };
+
     struct Work final
     {
         Work(WorkKind requestedKind, std::size_t requestedResultSlot) noexcept
@@ -345,6 +388,7 @@ private:
     ast::AstNode* childValue(const Work& work) const;
 
     void startExpression(const Work& work);
+    void startUnaryExpression(const Work& work);
     void startConditionalExpression(const Work& work);
     void finishLambdaBlock(const Work& work);
     void startBlock(const Work& work);
@@ -353,8 +397,6 @@ private:
     void finishBlock(BlockFrame& frame);
 
     StatementKind classifyStatement() const;
-    bool scopedStatementStarts() const noexcept;
-    bool controlStatementStarts() const noexcept;
     bool ordinaryIfStarts() const noexcept;
     bool ordinaryWhileStarts() const noexcept;
     bool declarationStatementStarts() const noexcept;
@@ -564,6 +606,26 @@ private:
         ast::AstNode* registration,
         ast::AstNode* cleanup);
     ast::AstNode* lowerDeferRegistration(DeferFrame& frame, ast::AstNode* body);
+    void startFloatingPointScope(const Work& work);
+    void finishFloatingPointScope(const Work& work);
+    void startUnsafeScope(const Work& work);
+    void finishUnsafeScope(const Work& work);
+    void startInlineAssembly(const Work& work);
+    void continueInlineAssembly(const Work& work);
+    void scheduleInlineAssemblyOperand(
+        std::size_t frameIndex,
+        bool output,
+        std::size_t operandBegin);
+    void finishInlineAssemblyOutput(const Work& work);
+    void finishInlineAssemblyInput(const Work& work);
+    void appendInlineAssemblyOperand(
+        InlineAssemblyFrame& frame,
+        ast::AstNode* value,
+        bool output,
+        std::size_t operandBegin);
+    void completeInlineAssembly(InlineAssemblyFrame& frame);
+    void startComprehensionYield(const Work& work);
+    void finishComprehensionYield(const Work& work);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -584,6 +646,10 @@ private:
     std::deque<CatchFrame> catchFrames_;
     std::deque<UsingFrame> usingFrames_;
     std::deque<DeferFrame> deferFrames_;
+    std::deque<FloatingPointScopeFrame> floatingPointScopeFrames_;
+    std::deque<UnsafeScopeFrame> unsafeScopeFrames_;
+    std::deque<InlineAssemblyFrame> inlineAssemblyFrames_;
+    std::deque<ComprehensionYieldFrame> comprehensionYieldFrames_;
     std::vector<Work> work_;
 };
 
@@ -647,6 +713,7 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     switch (work.kind)
     {
     case WorkKind::Expression: startExpression(work); return;
+    case WorkKind::UnaryExpression: startUnaryExpression(work); return;
     case WorkKind::ConditionalExpression: startConditionalExpression(work); return;
     case WorkKind::Block: startBlock(work); return;
     case WorkKind::ContinueBlock: continueBlock(work); return;
@@ -716,6 +783,12 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishUsingInitializer: finishUsingInitializer(work); return;
     case WorkKind::FinishUsingBody: finishUsingBody(work); return;
     case WorkKind::FinishDeferBody: finishDeferBody(work); return;
+    case WorkKind::FinishFloatingPointScope: finishFloatingPointScope(work); return;
+    case WorkKind::FinishUnsafeScope: finishUnsafeScope(work); return;
+    case WorkKind::ContinueInlineAssembly: continueInlineAssembly(work); return;
+    case WorkKind::FinishInlineAssemblyOutput: finishInlineAssemblyOutput(work); return;
+    case WorkKind::FinishInlineAssemblyInput: finishInlineAssemblyInput(work); return;
+    case WorkKind::FinishComprehensionYield: finishComprehensionYield(work); return;
     }
 }
 
@@ -751,6 +824,12 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
     finish.node = lambda;
     work_.push_back(std::move(finish));
     work_.push_back({WorkKind::Block, bodySlot});
+}
+
+// Preserves the inline-assembly output grammar without widening it to assignment-expression.
+void Parser::ParseContinuationCoordinator::startUnaryExpression(const Work& work)
+{
+    complete(work.resultSlot, parser_.parseUnaryExpression());
 }
 
 // Preserves the historical guard grammar without widening it to assignment-expression.
@@ -817,32 +896,6 @@ void Parser::ParseContinuationCoordinator::finishBlock(BlockFrame& frame)
     complete(frame.resultSlot, frame.block);
 }
 
-// Mirrors the side-effect-free prefix test used before the scoped-statement fallback.
-bool Parser::ParseContinuationCoordinator::scopedStatementStarts() const noexcept
-{
-    return (parser_.atContextualKeyword("fp") && parser_.peek().kind() == TokenKind::LeftParen) ||
-        (parser_.atContextualKeyword("unsafe") &&
-         (parser_.peek().kind() == TokenKind::LeftBrace ||
-          parser_.peek().kind() == TokenKind::LeftParen)) ||
-        (parser_.atContextualKeyword("asm") &&
-         (parser_.peek().kind() == TokenKind::LeftBrace ||
-          parser_.peek().kind() == TokenKind::LeftParen));
-}
-
-// Recognizes control-family prefixes without consuming tokens or changing their parser.
-bool Parser::ParseContinuationCoordinator::controlStatementStarts() const noexcept
-{
-    if (parser_.atContextualKeyword("let")) return true;
-    if ((parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile)) &&
-        parser_.peek().kind() == TokenKind::LeftParen &&
-        parser_.peek(2).kind() == TokenKind::Identifier &&
-        parser_.peek(2).lexeme() == "let") return true;
-    return parser_.at(TokenKind::KwIf) || parser_.at(TokenKind::KwWhile) ||
-        parser_.at(TokenKind::KwDo) || parser_.at(TokenKind::KwFor) ||
-        parser_.at(TokenKind::KwForeach) || parser_.at(TokenKind::KwSwitch) ||
-        parser_.startsParenthesizedBlock("match");
-}
-
 // Distinguishes ordinary if from the conditional-pattern form owned by R03C2C2E.
 bool Parser::ParseContinuationCoordinator::ordinaryIfStarts() const noexcept
 {
@@ -896,9 +949,17 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.startsParenthesizedBlock("match")) return StatementKind::Match;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;
     if (parser_.at(TokenKind::KwUsing)) return StatementKind::Using;
-    if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
+    if (parser_.atContextualKeyword("fp") && parser_.peek().kind() == TokenKind::LeftParen)
+        return StatementKind::FloatingPointScope;
+    if (parser_.atContextualKeyword("unsafe") &&
+        (parser_.peek().kind() == TokenKind::LeftBrace ||
+         parser_.peek().kind() == TokenKind::LeftParen)) return StatementKind::UnsafeScope;
+    if (parser_.atContextualKeyword("asm") &&
+        (parser_.peek().kind() == TokenKind::LeftBrace ||
+         parser_.peek().kind() == TokenKind::LeftParen)) return StatementKind::InlineAssembly;
     if (parser_.atContextualKeyword("yield"))
-        return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
+        return parser_.comprehensionContexts_.empty()
+            ? StatementKind::Yield : StatementKind::ComprehensionYield;
     if (parser_.at(TokenKind::KwStatic))
         return parser_.looksLikeLocalFunction()
             ? StatementKind::LocalFunction : StatementKind::StaticLocal;
@@ -921,7 +982,6 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
 {
     switch (classifyStatement())
     {
-    case StatementKind::Direct: complete(work.resultSlot, parser_.parseStatementImpl()); return;
     case StatementKind::Block: work_.push_back({WorkKind::Block, work.resultSlot}); return;
     case StatementKind::Expression: startExpressionStatement(work); return;
     case StatementKind::Return: startReturn(work, false); return;
@@ -946,6 +1006,10 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::Try: startTry(work); return;
     case StatementKind::Using: startUsing(work); return;
     case StatementKind::Defer: startDefer(work); return;
+    case StatementKind::FloatingPointScope: startFloatingPointScope(work); return;
+    case StatementKind::UnsafeScope: startUnsafeScope(work); return;
+    case StatementKind::InlineAssembly: startInlineAssembly(work); return;
+    case StatementKind::ComprehensionYield: startComprehensionYield(work); return;
     }
 }
 
@@ -3483,6 +3547,283 @@ ast::AstNode* Parser::ParseContinuationCoordinator::lowerDeferRegistration(
     registration->addChild(lowered);
     registration->setRange(parser_.tokenRangeFrom(frame.beginIndex));
     return registration;
+}
+
+// Parses the bounded fp header and schedules its body on the shared worklist.
+void Parser::ParseContinuationCoordinator::startFloatingPointScope(const Work& work)
+{
+    parser_.consume();
+    parser_.consume();
+    FloatingPointScopeFrame frame;
+    frame.resultSlot = work.resultSlot;
+    if (parser_.atContextualKeyword("strict"))
+        frame.mode = ast::FloatingPointModeSyntaxKind::Strict;
+    else if (parser_.atContextualKeyword("precise"))
+        frame.mode = ast::FloatingPointModeSyntaxKind::Precise;
+    else if (parser_.atContextualKeyword("fast"))
+        frame.mode = ast::FloatingPointModeSyntaxKind::Fast;
+    else
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "floating-point scope mode must be strict, precise, or fast");
+    if (frame.mode != ast::FloatingPointModeSyntaxKind::Inherit)
+        frame.modeName = std::string(parser_.consume().lexeme());
+    parser_.expect(TokenKind::RightParen, "')' after floating-point scope mode");
+    const std::size_t frameIndex = floatingPointScopeFrames_.size();
+    floatingPointScopeFrames_.push_back(std::move(frame));
+    Work finish{WorkKind::FinishFloatingPointScope, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Applies the inherited mode after the complete block is available.
+void Parser::ParseContinuationCoordinator::finishFloatingPointScope(const Work& work)
+{
+    FloatingPointScopeFrame& frame = floatingPointScopeFrames_[work.frameIndex];
+    ast::AstNode* block = childValue(work);
+    block->setAuxiliaryText("fp-scope:" + frame.modeName);
+    parser_.applyMemberFloatingPointMode(block, frame.mode);
+    complete(frame.resultSlot, block);
+}
+
+// Parses the optional unsafe reason and schedules the body on the shared worklist.
+void Parser::ParseContinuationCoordinator::startUnsafeScope(const Work& work)
+{
+    parser_.consume();
+    UnsafeScopeFrame frame;
+    frame.resultSlot = work.resultSlot;
+    if (parser_.consumeIf(TokenKind::LeftParen))
+    {
+        if (parser_.at(TokenKind::StringLiteral))
+            frame.reason = std::string(parser_.consume().lexeme());
+        else
+            parser_.expect(TokenKind::StringLiteral, "unsafe block reason string");
+        parser_.expect(TokenKind::RightParen, "')' after unsafe block reason");
+    }
+    const std::size_t frameIndex = unsafeScopeFrames_.size();
+    unsafeScopeFrames_.push_back(std::move(frame));
+    Work finish{WorkKind::FinishUnsafeScope, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Restores unsafe annotations and the historical breadth warning after its body finishes.
+void Parser::ParseContinuationCoordinator::finishUnsafeScope(const Work& work)
+{
+    UnsafeScopeFrame& frame = unsafeScopeFrames_[work.frameIndex];
+    ast::AstNode* block = childValue(work);
+    block->setAuxiliaryText("unsafe-block");
+    block->setText(frame.reason);
+    if (language::unsafeBlockTooBroad(block->children().size(), !frame.reason.empty()))
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::NS3030MissingEffectContext,
+            diagnostics::DiagnosticSeverity::Warning,
+            block->range(),
+            "unsafe block covers more than eight statements; narrow it or write unsafe(\"reason\") { ... }");
+    complete(frame.resultSlot, block);
+}
+
+// Parses the linear asm header/body before operand expressions enter the shared worklist.
+void Parser::ParseContinuationCoordinator::startInlineAssembly(const Work& work)
+{
+    const std::size_t beginIndex = parser_.index_;
+    parser_.consume();
+    std::string targetMetadata;
+    std::string dialectMetadata;
+    parser_.parseInlineAssemblyHeader(targetMetadata, dialectMetadata);
+    parser_.expect(TokenKind::LeftBrace, "'{' after asm");
+    ast::AstNode* statement = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::InlineAssemblyStatement,
+        parser_.tokenRangeFrom(beginIndex));
+    if (!targetMetadata.empty() || !dialectMetadata.empty())
+        statement->setAuxiliaryText(
+            "target:" + targetMetadata + ";dialect:" + dialectMetadata);
+    std::string exactBody;
+    parser_.parseInlineAssemblyBody(statement, exactBody);
+    parser_.expect(TokenKind::RightBrace, "'}' to close asm block");
+    statement->setRange(parser_.tokenRangeFrom(beginIndex));
+    statement->setText(std::move(exactBody));
+    parser_.validateInlineAssemblyControlFlow(statement);
+    const std::size_t frameIndex = inlineAssemblyFrames_.size();
+    inlineAssemblyFrames_.push_back({beginIndex, work.resultSlot, statement});
+    Work next{WorkKind::ContinueInlineAssembly, work.resultSlot};
+    next.frameIndex = frameIndex;
+    work_.push_back(std::move(next));
+}
+
+// Selects the next operand clause or publishes the completed inline-assembly statement.
+void Parser::ParseContinuationCoordinator::continueInlineAssembly(const Work& work)
+{
+    InlineAssemblyFrame& frame = inlineAssemblyFrames_[work.frameIndex];
+    if (parser_.atContextualKeyword("out") || parser_.at(TokenKind::KwIn))
+    {
+        const bool output = parser_.atContextualKeyword("out");
+        frame.hasOperandClauses = true;
+        parser_.consume();
+        if (!parser_.expect(TokenKind::LeftParen,
+                output ? "'(' after asm out" : "'(' after asm in"))
+        {
+            work_.push_back(work);
+            return;
+        }
+        if (!parser_.at(TokenKind::RightParen))
+            return scheduleInlineAssemblyOperand(work.frameIndex, output, parser_.index_);
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedExpression,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            output ? "asm out clause requires at least one output target" :
+                "asm in clause requires at least one input expression");
+        parser_.consume();
+        work_.push_back(work);
+        return;
+    }
+    if (parser_.atContextualKeyword("clobber"))
+    {
+        frame.hasOperandClauses = true;
+        parser_.parseInlineAssemblyClobberClause(frame.statement);
+        work_.push_back(work);
+        return;
+    }
+    completeInlineAssembly(frame);
+}
+
+// Schedules one output-unary or input-assignment expression with stable operand metadata.
+void Parser::ParseContinuationCoordinator::scheduleInlineAssemblyOperand(
+    std::size_t frameIndex,
+    bool output,
+    std::size_t operandBegin)
+{
+    InlineAssemblyFrame& frame = inlineAssemblyFrames_[frameIndex];
+    Work finish{
+        output ? WorkKind::FinishInlineAssemblyOutput : WorkKind::FinishInlineAssemblyInput,
+        frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.beginIndex = operandBegin;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({output ? WorkKind::UnaryExpression : WorkKind::Expression, childSlot});
+}
+
+// Attaches one output operand and either repeats the clause or resumes clause discovery.
+void Parser::ParseContinuationCoordinator::finishInlineAssemblyOutput(const Work& work)
+{
+    InlineAssemblyFrame& frame = inlineAssemblyFrames_[work.frameIndex];
+    appendInlineAssemblyOperand(frame, childValue(work), true, work.beginIndex);
+    if (parser_.consumeIf(TokenKind::Comma))
+        scheduleInlineAssemblyOperand(work.frameIndex, true, parser_.index_);
+    else
+    {
+        parser_.expect(TokenKind::RightParen, "')' after asm output targets");
+        Work next{WorkKind::ContinueInlineAssembly, frame.resultSlot};
+        next.frameIndex = work.frameIndex;
+        work_.push_back(std::move(next));
+    }
+}
+
+// Attaches one input operand and either repeats the clause or resumes clause discovery.
+void Parser::ParseContinuationCoordinator::finishInlineAssemblyInput(const Work& work)
+{
+    InlineAssemblyFrame& frame = inlineAssemblyFrames_[work.frameIndex];
+    appendInlineAssemblyOperand(frame, childValue(work), false, work.beginIndex);
+    if (parser_.consumeIf(TokenKind::Comma))
+        scheduleInlineAssemblyOperand(work.frameIndex, false, parser_.index_);
+    else
+    {
+        parser_.expect(TokenKind::RightParen, "')' after asm input operands");
+        Work next{WorkKind::ContinueInlineAssembly, frame.resultSlot};
+        next.frameIndex = work.frameIndex;
+        work_.push_back(std::move(next));
+    }
+}
+
+// Recreates one historical operand node after its expression continuation completes.
+void Parser::ParseContinuationCoordinator::appendInlineAssemblyOperand(
+    InlineAssemblyFrame& frame,
+    ast::AstNode* value,
+    bool output,
+    std::size_t operandBegin)
+{
+    ast::AstNode* operand = parser_.arena_.make<ast::AstNode>(
+        output ? ast::AstNodeKind::InlineAssemblyOutputOperand :
+            ast::AstNodeKind::InlineAssemblyInputOperand,
+        parser_.tokenRangeFrom(operandBegin));
+    operand->setFirst(value);
+    operand->setIntegerValue(output ? frame.outputOrdinal++ : frame.inputOrdinal++);
+    bool explicitConstraint = false;
+    operand->setAuxiliaryText(
+        parser_.parseInlineAssemblyConstraint(output, explicitConstraint));
+    operand->setFlag(explicitConstraint);
+    operand->setRange(parser_.tokenRangeFrom(operandBegin));
+    frame.statement->addChild(operand);
+}
+
+// Preserves the optional clause semicolon, final range, and placeholder validation order.
+void Parser::ParseContinuationCoordinator::completeInlineAssembly(InlineAssemblyFrame& frame)
+{
+    if (frame.hasOperandClauses)
+    {
+        parser_.expect(TokenKind::Semicolon, "';' after asm operand clauses");
+        frame.statement->setRange(parser_.tokenRangeFrom(frame.beginIndex));
+    }
+    parser_.validateInlineAssemblyPlaceholders(frame.statement);
+    complete(frame.resultSlot, frame.statement);
+}
+
+// Copies comprehension context before scheduling the optional yielded expression.
+void Parser::ParseContinuationCoordinator::startComprehensionYield(const Work& work)
+{
+    ComprehensionYieldFrame frame;
+    frame.beginIndex = parser_.index_;
+    frame.resultSlot = work.resultSlot;
+    frame.yieldRange = parser_.consume().range();
+    frame.builderName = parser_.comprehensionContexts_.back().builderName;
+    frame.loopLabel = parser_.comprehensionContexts_.back().loopLabel;
+    if (parser_.consumeIf(TokenKind::KwBreak))
+    {
+        parser_.expect(TokenKind::Semicolon, "';' after 'yield break'");
+        ast::AstNode* stop = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BreakStatement,
+            parser_.tokenRangeFrom(frame.beginIndex));
+        stop->setText(frame.loopLabel);
+        ast::AstNode* result = parser_.arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MoveExpression, frame.yieldRange);
+        result->setFirst(parser_.makeIdentifierExpression(frame.yieldRange, frame.builderName));
+        result->setAuxiliaryText("comprehension-result");
+        stop->setFirst(result);
+        complete(frame.resultSlot, stop);
+        return;
+    }
+    parser_.consumeIf(TokenKind::KwReturn);
+    const std::size_t frameIndex = comprehensionYieldFrames_.size();
+    comprehensionYieldFrames_.push_back(std::move(frame));
+    Work finish{WorkKind::FinishComprehensionYield, work.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(std::move(finish));
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Recreates builder.Add(value) after the yielded expression is complete.
+void Parser::ParseContinuationCoordinator::finishComprehensionYield(const Work& work)
+{
+    ComprehensionYieldFrame& frame = comprehensionYieldFrames_[work.frameIndex];
+    parser_.expect(TokenKind::Semicolon, "';' after comprehension yield");
+    ast::AstNode* add = parser_.makeZeroArgCallExpression(parser_.makeMemberExpression(
+        parser_.makeIdentifierExpression(frame.yieldRange, frame.builderName), "Add"));
+    if (ast::AstNode* value = childValue(work)) add->addChild(value);
+    add->setAuxiliaryText("comprehension-builder-add");
+    complete(frame.resultSlot, parser_.makeExpressionStatement(add));
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)

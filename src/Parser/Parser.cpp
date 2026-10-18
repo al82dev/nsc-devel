@@ -37,15 +37,21 @@ void applyFloatingPointModeToTree(
     ast::AstNode* node,
     ast::FloatingPointModeSyntaxKind mode)
 {
-    if (node == nullptr || node->floatingPointMode() !=
-            ast::FloatingPointModeSyntaxKind::Inherit)
-        return;
-    node->setFloatingPointMode(mode);
-    applyFloatingPointModeToTree(node->first(), mode);
-    applyFloatingPointModeToTree(node->second(), mode);
-    applyFloatingPointModeToTree(node->third(), mode);
-    for (ast::AstNode* child : node->children())
-        applyFloatingPointModeToTree(child, mode);
+    std::vector<ast::AstNode*> pending{node};
+    while (!pending.empty())
+    {
+        ast::AstNode* current = pending.back();
+        pending.pop_back();
+        if (current == nullptr || current->floatingPointMode() !=
+                ast::FloatingPointModeSyntaxKind::Inherit)
+            continue;
+        current->setFloatingPointMode(mode);
+        for (auto child = current->children().rbegin(); child != current->children().rend(); ++child)
+            pending.push_back(*child);
+        pending.push_back(current->third());
+        pending.push_back(current->second());
+        pending.push_back(current->first());
+    }
 }
 
 ast::AstNode* cloneParsedNode(ast::AstArena& arena, const ast::AstNode* source);
