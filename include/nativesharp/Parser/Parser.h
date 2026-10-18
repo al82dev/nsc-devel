@@ -15,6 +15,11 @@
 #include <string_view>
 #include <unordered_set>
 
+namespace nativesharp::language
+{
+struct InterpolationPart;
+}
+
 namespace nativesharp::parser
 {
 struct ParsedVariantCase;
@@ -1082,6 +1087,38 @@ private:
     // tree over generated case tests and guarded payload extractors. The source expression is
     // therefore evaluated exactly once and no runtime allocation or boxing protocol is introduced.
     ast::AstNode* parseMatchStatement();
+    bool matchPatternIsCatchAll(const Pattern& pattern) const;
+    std::vector<std::pair<std::string, PatternBindingMode>> collectMatchPatternBindings(
+        const Pattern& pattern) const;
+    void validateMatchOrBindings(const Pattern& pattern);
+    void collectMatchCoverage(
+        const Pattern& pattern,
+        std::vector<std::string>& cases,
+        std::vector<std::pair<std::size_t, bool>>& listLengths,
+        bool& wildcard,
+        bool& partial) const;
+    void appendMatchCoverage(
+        const Pattern& pattern,
+        const ast::AstNode* guard,
+        std::string& coverage,
+        bool& firstArm) const;
+    void appendMatchExpressionAlternative(
+        ast::AstNode* match,
+        const Pattern& pattern,
+        ast::AstNode* guard,
+        ast::AstNode* value,
+        bool referenceResult,
+        const std::string& temporary,
+        std::size_t armBegin,
+        std::size_t alternativeIndex,
+        std::string& coverage,
+        bool& firstArm);
+    void parseMatchExpressionArm(
+        ast::AstNode* match,
+        const std::string& temporary,
+        std::string& coverage,
+        bool& firstArm,
+        bool& hasReferenceBinding);
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
     ast::AstNode* parseNameOfExpression();
@@ -1153,8 +1190,35 @@ private:
     ast::AstNode* parseUsingStatement();
 
     ast::AstNode* parseExpression();
+    ast::AstNode* parseExpressionImpl();
     ast::AstNode* parseArgument();
     ast::AstNode* parseAssignmentExpression();
+    bool hasLambdaFatArrowBeforeBoundary(std::size_t cursor) const noexcept;
+    std::size_t skipLambdaGenericHead(std::size_t begin) const noexcept;
+    bool looksLikeParenthesizedLambdaHead(std::size_t begin) const noexcept;
+    bool looksLikeLambdaParameterHead(std::size_t begin) const noexcept;
+    bool looksLikeLambdaCaptureHead() const noexcept;
+    void parseLambdaPrefix(
+        ast::AstNode* lambda,
+        std::string& effects,
+        std::string& callingConvention);
+    std::string parseLambdaCaptureMode();
+    std::string parseLambdaCaptureName(SourceRange& range);
+    void parseLambdaCaptureList(std::string& contract);
+    void parseLambdaCaptureOrAttribute(
+        std::string& captureContract,
+        std::string& attributeContract);
+    ast::AstNode* parseLambdaParameter();
+    std::vector<ast::AstNode*> parseLambdaParameters();
+    void materializeLambdaAutoParameters(
+        ast::AstNode* lambda,
+        const std::vector<ast::AstNode*>& parameters);
+    void applyLambdaContracts(
+        ast::AstNode* lambda,
+        std::string capture,
+        const std::string& effects,
+        const std::string& callingConvention,
+        const std::string& attribute);
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;
     ast::AstNode* parseConditionalExpression();
@@ -1170,9 +1234,94 @@ private:
     ast::AstNode* parseShiftExpression();
     ast::AstNode* parseAdditiveExpression();
     ast::AstNode* parseMultiplicativeExpression();
+    ast::AstNode* parseAwaitUnaryExpression();
+    ast::AstNode* parseFromEndUnaryExpression();
+    ast::AstNode* parseMoveUnaryExpression();
+    ast::AstNode* parseOrdinaryUnaryExpression();
+    ast::AstNode* parseNamedCastExpression();
+    ast::AstNode* parseParenthesizedCastExpression();
+    ast::AstNode* parseOffsetofExpression();
+    bool looksLikeSizeofTypeForm(std::size_t cursor) const noexcept;
+    ast::AstNode* parseSizeofOrAlignofExpression();
+    ast::AstNode* parseDefaultValueExpression();
+    bool parenthesizedNewIsPlacement() const noexcept;
+    void appendCallArguments(ast::AstNode* node, lexer::TokenKind closingToken);
+    ast::AstNode* parseTargetTypedNew(const SourceRange& start);
+    void parsePlacementOptions(
+        ast::AstNode*& trailingCapacity,
+        std::string& failureProfile);
+    void attachPlacementResultType(ast::AstNode* creation, ast::TypeSyntax* type);
+    ast::AstNode* parsePlacementNew(const SourceRange& start);
+    void parseArrayAllocationDimensions(
+        ast::AstNode* node,
+        std::vector<SourceRange>& omittedDimensions,
+        std::size_t& countedDimensions);
+    void finishArrayAllocation(
+        ast::AstNode* node,
+        ast::TypeSyntax* type,
+        const std::vector<SourceRange>& omittedDimensions,
+        std::size_t countedDimensions);
+    ast::AstNode* parseTypedNew(const SourceRange& start);
+    ast::AstNode* parseNewExpression();
+    ast::AstNode* parseDeleteExpression();
+    ast::AstNode* parseDestroyExpression();
+    ast::AstNode* parseStackallocExpression();
     ast::AstNode* parseUnaryExpression();
+    ast::AstNode* parsePostfixBaseExpression();
+    ast::AstNode* parseCallSuffix(
+        ast::AstNode* expression,
+        std::vector<ast::TypeSyntax*> genericArguments,
+        bool explicitGenericArguments);
+    ast::AstNode* parseIndexArgument();
+    ast::AstNode* parseIndexSuffix(ast::AstNode* expression, bool conditional);
+    ast::AstNode* parseNullConditionalMemberSuffix(ast::AstNode* expression);
+    ast::AstNode* parseMemberSuffix(ast::AstNode* expression);
+    ast::AstNode* parsePostfixOperatorSuffix(ast::AstNode* expression);
+    ast::AstNode* parseResultPropagationSuffix(ast::AstNode* expression);
     ast::AstNode* parsePostfixExpression();
     bool questionBeginsConditional() const noexcept;
+    bool comprehensionExpressionStartsHere() const noexcept;
+    std::size_t pureGroupingDepth() const noexcept;
+    ast::AstNode* parseTupleElement();
+    ast::AstNode* parseParenthesizedPrimaryExpression();
+    std::optional<ast::AstNodeKind> classifyPrimaryToken(
+        lexer::TokenKind kind) const noexcept;
+    ast::AstNode* makeInterpolationStringLiteral(
+        const lexer::Token& token,
+        std::string value);
+    ast::AstNode* makeInterpolationBooleanLiteral(
+        const lexer::Token& token,
+        bool value);
+    ast::AstNode* makeInterpolationCall(
+        const lexer::Token& token,
+        std::string method,
+        std::vector<ast::AstNode*> arguments);
+    std::optional<std::uint64_t> parseInterpolationWidth(
+        std::string_view format) const noexcept;
+    ast::AstNode* parseInterpolationFragment(
+        const lexer::Token& token,
+        const language::InterpolationPart& part,
+        std::string_view label,
+        const std::vector<std::string>& knownTypes,
+        bool requireEnd);
+    void appendInterpolationHoles(
+        ast::AstNode* node,
+        const lexer::Token& token,
+        const std::vector<language::InterpolationPart>& parts);
+    ast::AstNode* formatRuntimeInterpolationHole(
+        const lexer::Token& token,
+        const language::InterpolationPart& part,
+        ast::AstNode* hole);
+    ast::AstNode* lowerRuntimeInterpolation(
+        const lexer::Token& token,
+        const std::vector<language::InterpolationPart>& parts);
+    ast::AstNode* finishInterpolatedString(
+        ast::AstNode* node,
+        const lexer::Token& token,
+        const std::string& value);
+    ast::AstNode* makeTokenPrimaryExpression(
+        const lexer::Token& token,
+        ast::AstNodeKind kind);
     ast::AstNode* parsePrimaryExpression();
     ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);

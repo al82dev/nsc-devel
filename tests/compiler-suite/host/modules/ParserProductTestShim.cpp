@@ -10,6 +10,7 @@
 #include "../../../../src/Parser/MemberParser.cpp"
 #include "../../../../src/Parser/TypeParser.cpp"
 #include "../../../../src/Parser/StatementParser.cpp"
+#include "../../../../src/Parser/ExpressionParser.cpp"
 
 namespace nsc::suite::parser_clone_test_support
 {
