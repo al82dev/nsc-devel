@@ -6206,6 +6206,50 @@ void testDeepOrdinaryCallLowering(TestContext& tests)
         "ordinary calls preserve the selected address context for a resolved struct parameter "
         "receiver (" + structObserved + ")");
     destroyHirTreeIteratively(structLowered);
+
+    constexpr std::string_view importedStructType =
+        "type:Imported.Math.Vector2";
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> importedSyntax;
+    importedSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{}));
+    auto* importedReceiver = importedSyntax.back().get();
+    importedSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    auto* importedCallSyntax = importedSyntax.back().get();
+
+    structCall.syntax = importedCallSyntax;
+    structCall.receiverSyntax = importedReceiver;
+    structCall.receiverTypeKey = importedStructType;
+    receiverName.syntax = importedReceiver;
+    receiverName.typeKey = importedStructType;
+    structType.typeKey = importedStructType;
+    ProjectOopHirModel importedStructModel;
+    error.clear();
+    auto importedStructLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerOrdinaryCallExpression(
+            importedStructModel,
+            &structNameLookup,
+            memberModel,
+            importedCallSyntax,
+            importedSyntax,
+            {structCall},
+            {receiverName},
+            structType,
+            false,
+            error);
+    tests.expect(importedStructLowered != nullptr && error.empty() &&
+            importedStructLowered->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall &&
+            importedStructLowered->memberOrdinal == 2U &&
+            importedStructLowered->children.size() == 1U &&
+            importedStructLowered->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::ParameterAddress &&
+            importedStructLowered->children.front()->typeKey == importedStructType,
+        "ordinary calls use the selected member ABI for an imported struct receiver absent "
+        "from the local type catalog");
+    destroyHirTreeIteratively(importedStructLowered);
 }
 
 void testDeepCollectionBuilderLowering(TestContext& tests)

@@ -480,6 +480,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::size_t conversionOffset = 0U;
         std::optional<std::size_t> expandedPackChildIndex;
         bool forwardedReceiver = false;
+        bool receiverNeedsAddress = false;
         bool hasOwnedTemporary = false;
     };
     enum class AllocatorConstructionFrameStage : std::uint8_t
@@ -1987,6 +1988,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             call.forwardedReceiver = binding->forwardedReceiver;
             call.receiver.syntax = binding->receiverSyntax;
             call.receiver.typeKey = binding->receiverTypeKey;
+            const bool selectedReceiverIsStruct = memberModel_ != nullptr &&
+                call.selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[call.selectedMemberOrdinal].declaringTypeIsStruct;
+            call.receiverNeedsAddress = !call.forwardedReceiver &&
+                (selectedReceiverIsStruct || isStructValueType(call.receiver.typeKey));
             bool interfaceDispatch = binding->interfaceCall;
             if (interfaceDispatch && !binding->forwardedReceiver && interfaceModel_ != nullptr &&
                 memberModel_ != nullptr && binding->receiverTypeOrdinal.has_value() &&
@@ -2061,6 +2067,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 const std::optional<bool> receiverReady = initializeReceiverFrame(
                     call.receiver, call.receiver.syntax, call.receiver.typeKey);
                 if (!receiverReady.has_value()) return false;
+                if (!*receiverReady)
+                {
+                    call.receiver.materializeTemporary = call.receiverNeedsAddress &&
+                        !isNaturallyAddressable(call.receiver.syntax);
+                }
                 if (*receiverReady)
                 {
                     call.node->children.push_back(std::move(call.receiver.lowered));
@@ -2095,7 +2106,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             if (call.stage == OrdinaryCallFrameStage::Receiver)
             {
                 const bool address = !call.forwardedReceiver &&
-                    isStructValueType(call.receiver.typeKey) &&
+                    call.receiverNeedsAddress &&
                     !call.receiver.materializeTemporary;
                 return OrdinaryCallChild{call.receiver.syntax, address};
             }
