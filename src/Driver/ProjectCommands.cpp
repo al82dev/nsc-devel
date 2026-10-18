@@ -18,6 +18,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <streambuf>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -37,6 +38,74 @@ namespace
 namespace fs = std::filesystem;
 
 constexpr std::uintmax_t kMaximumJsonBytes = 4U * 1024U * 1024U;
+constexpr std::string_view kProgressJsonPrefix =
+    "{\"schema\":\"nativesharp-progress-event\"";
+
+class ProgressJsonForwardingBuffer final : public std::streambuf
+{
+public:
+    ProgressJsonForwardingBuffer(std::ostream& forwarded, std::string& retained)
+        : forwarded_(forwarded), retained_(retained) {}
+
+    void finish()
+    {
+        if (!line_.empty()) retainLine();
+    }
+
+protected:
+    int_type overflow(int_type character) override
+    {
+        if (traits_type::eq_int_type(character, traits_type::eof()))
+            return traits_type::not_eof(character);
+        const char value = traits_type::to_char_type(character);
+        append(&value, 1U);
+        return traits_type::not_eof(character);
+    }
+
+    std::streamsize xsputn(const char* characters, std::streamsize count) override
+    {
+        if (count <= 0) return 0;
+        append(characters, static_cast<std::size_t>(count));
+        return count;
+    }
+
+    int sync() override
+    {
+        return 0;
+    }
+
+private:
+    void append(const char* characters, std::size_t count)
+    {
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            line_.push_back(characters[index]);
+            if (characters[index] == '\n') flushLine();
+        }
+    }
+
+    void flushLine()
+    {
+        if (line_.starts_with(kProgressJsonPrefix))
+        {
+            forwarded_ << line_;
+            forwarded_.flush();
+            line_.clear();
+            return;
+        }
+        retainLine();
+    }
+
+    void retainLine()
+    {
+        retained_ += line_;
+        line_.clear();
+    }
+
+    std::ostream& forwarded_;
+    std::string& retained_;
+    std::string line_;
+};
 
 std::string jsonEscape(std::string_view value)
 {
@@ -1123,8 +1192,46 @@ struct BuildOptions final
     bool noRestore = false;
     bool precompiledOnly = false;
     bool dependencyReport = false;
+    bool progress = false;
+    std::optional<std::string> progressFormat;
     std::vector<std::string> programArguments;
 };
+
+bool parseBuildProgressOption(
+    std::string_view argument,
+    BuildOptions& options,
+    std::string& error)
+{
+    constexpr std::string_view progressPrefix = "--progress=";
+    constexpr std::string_view formatPrefix = "--progress-format=";
+    if (argument == "--progress")
+    {
+        if (options.progress)
+        {
+            error = "duplicate progress option";
+            return false;
+        }
+        options.progress = true;
+        return true;
+    }
+    const bool enablesProgress = argument.starts_with(progressPrefix);
+    if (!enablesProgress && !argument.starts_with(formatPrefix)) return false;
+    const std::string_view prefix = enablesProgress ? progressPrefix : formatPrefix;
+    const std::string_view value = argument.substr(prefix.size());
+    if (value != "text" && value != "json")
+    {
+        error = "progress format must be text or json";
+        return false;
+    }
+    if ((enablesProgress && options.progress) || options.progressFormat.has_value())
+    {
+        error = "duplicate progress option";
+        return false;
+    }
+    options.progress = options.progress || enablesProgress;
+    options.progressFormat = value;
+    return true;
+}
 
 bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, BuildOptions& options, std::string& error)
 {
@@ -1139,6 +1246,11 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         else if (argument == "--no-restore") options.noRestore = true;
         else if (argument == "--precompiled-only") options.precompiledOnly = true;
         else if (argument == "--dependency-report") options.dependencyReport = true;
+        else if (argument == "--progress" || argument.starts_with("--progress=") ||
+                 argument.starts_with("--progress-format="))
+        {
+            if (!parseBuildProgressOption(argument, options, error)) return false;
+        }
         else if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
         {
             if (options.compilerJobs.has_value())
@@ -1436,15 +1548,42 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         owned.push_back("-j");
         owned.push_back(std::to_string(*compilerJobs));
     }
+    if (options.progress)
+    {
+        owned.push_back(options.progressFormat.has_value()
+            ? "--progress=" + *options.progressFormat
+            : "--progress");
+    }
+    else if (options.progressFormat.has_value())
+    {
+        owned.push_back("--progress-format=" + *options.progressFormat);
+    }
     owned.push_back("-o");
     owned.push_back(artifact.string());
     std::vector<std::string_view> views;
     for (const std::string& value : owned) views.push_back(value);
+    std::string compilerOutputText;
     std::ostringstream compilerOutput;
     std::ostringstream compilerError;
-    std::ostream& nestedOutput = json ? static_cast<std::ostream&>(compilerOutput) : output;
+    const bool forwardJsonProgress = json && options.progress &&
+        options.progressFormat == "json";
     std::ostream& nestedError = json ? static_cast<std::ostream&>(compilerError) : error;
-    const ExitCode code = executor(views, nestedOutput, nestedError);
+    ExitCode code = ExitCode::InternalError;
+    if (forwardJsonProgress)
+    {
+        ProgressJsonForwardingBuffer progressBuffer(output, compilerOutputText);
+        std::ostream progressOutput(&progressBuffer);
+        code = executor(views, progressOutput, nestedError);
+        progressBuffer.finish();
+    }
+    else
+    {
+        std::ostream& nestedOutput = json
+            ? static_cast<std::ostream&>(compilerOutput)
+            : output;
+        code = executor(views, nestedOutput, nestedError);
+        if (json) compilerOutputText = compilerOutput.str();
+    }
     if (code != ExitCode::Success)
     {
         if (json)
@@ -1454,7 +1593,8 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     std::size_t contentFiles = 0;
     if (!publishContentDirectory(project.parent_path(), artifact.parent_path(), contentFiles, message))
         return result.failure(error, message, ExitCode::InternalError);
-    if (buildResult != nullptr) *buildResult = BuildResult{project, artifact, compilerOutput.str(), compilerError.str()};
+    if (buildResult != nullptr)
+        *buildResult = BuildResult{project, artifact, compilerOutputText, compilerError.str()};
     return result.success(output,
         "Build succeeded: " + artifact.string(),
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) + "\",\"configuration\":\"" +
@@ -1465,7 +1605,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
             ? ",\"dependencyProvenance\":" + dependencyProvenanceJson(provenance)
             : std::string{}) +
         ",\"stdout\":\"" +
-        jsonEscape(compilerOutput.str()) + "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
+        jsonEscape(compilerOutputText) + "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
 }
 
 ExitCode runBuild(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,

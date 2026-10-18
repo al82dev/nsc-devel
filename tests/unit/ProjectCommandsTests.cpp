@@ -118,6 +118,45 @@ int main()
                      "build forwards the library-reference root to the nested compiler invocation");
     }
 
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string> owned{
+            "build", project.string(), "--no-restore", "--progress=json",
+            "--output-format=json"};
+        std::vector<std::string_view> arguments;
+        for (const std::string& value : owned) arguments.push_back(value);
+        bool sawProgress = false;
+        const auto compiler = [&](std::span<const std::string_view> compilerArguments,
+                                  std::ostream& compilerOutput, std::ostream&) {
+            for (std::size_t index = 0; index < compilerArguments.size(); ++index)
+            {
+                if (compilerArguments[index] == "--progress=json") sawProgress = true;
+                if (compilerArguments[index] == "-o" && index + 1U < compilerArguments.size())
+                    writeFile(fs::path(compilerArguments[index + 1U]), "executable");
+            }
+            compilerOutput <<
+                "{\"schema\":\"nativesharp-progress-event\",\"version\":1,"
+                "\"event\":\"phase-started\",\"phase\":\"parse\"}\n";
+            compilerOutput.flush();
+            compilerOutput << "technical output\n";
+            return ExitCode::Success;
+        };
+
+        const ExitCode code = nativesharp::driver::runProjectCommand(
+            arguments, output, error, compiler);
+        const std::string text = output.str();
+        const std::size_t progress = text.find("\"schema\":\"nativesharp-progress-event\"");
+        const std::size_t envelope = text.find("\"schemaVersion\":1");
+        tests.expect(code == ExitCode::Success && sawProgress && error.str().empty(),
+                     "build accepts and forwards JSON progress selection");
+        tests.expect(progress != std::string::npos && envelope > progress,
+                     "JSON progress streams before the project result envelope");
+        tests.expect(text.find("\"stdout\":\"technical output\\n\"") != std::string::npos &&
+                         text.find("nativesharp-progress-event", progress + 1U) == std::string::npos,
+                     "project envelope retains technical output without duplicating progress events");
+    }
+
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";
     writeFile(package / "NativeSharp.Test.lib", "archive");
     writeFile(package / "NativeSharp.Test.nsmeta", "metadata");
