@@ -753,7 +753,7 @@ class Shape {
 
 void testDeepMixedR04BControl(TestContext& tests, const std::filesystem::path& root)
 {
-    constexpr std::size_t depth = 256;
+    constexpr std::size_t depth = 1024;
     const std::filesystem::path directory = root / "DeepMixedR04BControl";
     writeProject(directory, "DeepMixedR04BControl");
     const std::string source = makeDeepMixedR04BSource(depth);
@@ -764,7 +764,7 @@ void testDeepMixedR04BControl(TestContext& tests, const std::filesystem::path& r
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "DeepMixedR04BControl.nsproj", error);
     tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
-        "256 mixed if/while/do/for bodies bind without host-stack failure");
+        "1024 mixed if/while/do/for bodies bind without host-stack failure");
 }
 
 void testDeepNestedForeachLoops(TestContext& tests, const std::filesystem::path& root)
