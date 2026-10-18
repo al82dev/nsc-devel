@@ -167,6 +167,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         PropertyGetter,
         ExtensionPropertyGetter,
         UserIndexerGetter,
+        DelegateCreationReceiver,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -178,6 +179,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         Arguments,
         Ready,
     };
+    struct ReceiverFrameState final
+    {
+        const ast::AstNode* syntax = nullptr;
+        std::string_view typeKey;
+        std::unique_ptr<ProjectOopHirNode> lowered;
+        bool materializeTemporary = false;
+    };
     struct BoundCallFrameState final
     {
         const MethodCallBinding* binding = nullptr;
@@ -186,10 +194,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         BoundCallFrameStage stage = BoundCallFrameStage::Ready;
         std::vector<const ast::AstNode*> argumentSyntaxes;
         std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
-        std::unique_ptr<ProjectOopHirNode> receiver;
+        ReceiverFrameState receiver;
         std::size_t nextArgument = 0U;
         bool nullConditional = false;
-        bool materializeReceiverTemporary = false;
         bool hasOwnedTemporary = false;
     };
     struct IterativeExpressionFrame final
@@ -206,6 +213,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
         std::optional<BoundCallFrameState> boundCall;
+        const MethodDelegateBinding* delegateCreationBinding = nullptr;
+        ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
         BoundCallTarget callTarget;
         const MethodRangeSliceBinding* rangeBinding = nullptr;
@@ -258,6 +267,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         -> std::optional<IterativeExpressionKind>
     {
         if (syntax == nullptr) return std::nullopt;
+        const MethodDelegateBinding* delegateCreation = delegateBinding(syntax);
+        const bool directOwnedReceiver = delegateCreation != nullptr &&
+            delegateCreation->ownsReceiver &&
+            (delegateCreation->receiverSourceLocalOrdinal.has_value() ||
+             delegateCreation->receiverSourceParameterOrdinal.has_value());
+        if (delegateCreation != nullptr &&
+            delegateCreation->kind == MethodDelegateOperationKind::Create &&
+            hasValidDelegateCreationTarget(*delegateCreation) &&
+            !delegateCreation->staticTarget && !directOwnedReceiver &&
+            delegateCreation->receiverSyntax != nullptr &&
+            delegateCreation->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression &&
+            !delegateCreation->receiverTypeKey.empty())
+        {
+            return IterativeExpressionKind::DelegateCreationReceiver;
+        }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
             return IterativeExpressionKind::AwaitExpression;
         if (syntax->kind() == ast::AstNodeKind::LoopExpression)
@@ -751,6 +775,46 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 kind == IterativeExpressionKind::PropertyGetter ||
                 kind == IterativeExpressionKind::UserIndexerGetter;
         };
+        const auto initializeReceiverFrame = [&](ReceiverFrameState& receiver,
+                                                 const ast::AstNode* receiverSyntax,
+                                                 std::string_view receiverTypeKey)
+            -> std::optional<bool>
+        {
+            if (receiverTypeKey.empty())
+            {
+                error = "Stage 40 receiver has no semantic class/interface/struct type";
+                return std::nullopt;
+            }
+            receiver.syntax = receiverSyntax;
+            receiver.typeKey = receiverTypeKey;
+            if (receiverSyntax != nullptr &&
+                receiverSyntax->kind() != ast::AstNodeKind::BaseExpression)
+            {
+                receiver.materializeTemporary =
+                    isStructValueType(receiverTypeKey) &&
+                    !isNaturallyAddressable(receiverSyntax);
+                return false;
+            }
+            receiver.lowered = lowerImplicitReceiver(
+                receiverSyntax, receiverTypeKey, error);
+            if (receiver.lowered == nullptr) return std::nullopt;
+            return true;
+        };
+        const auto acceptReceiverChild = [&](ReceiverFrameState& receiver,
+                                             std::unique_ptr<ProjectOopHirNode> child)
+        {
+            if (receiver.materializeTemporary)
+            {
+                auto temporary = makeNode(
+                    ProjectOopHirNodeKind::TemporaryAddress,
+                    receiver.syntax,
+                    std::string(receiver.typeKey));
+                temporary->elementTypeKey = receiver.typeKey;
+                temporary->children.push_back(std::move(child));
+                child = std::move(temporary);
+            }
+            receiver.lowered = std::move(child);
+        };
         const auto initializeBoundCallFrame = [&](IterativeExpressionFrame& frame,
                                                    const MethodCallBinding* binding,
                                                    std::vector<const ast::AstNode*> arguments,
@@ -778,47 +842,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frame.boundCall.emplace(std::move(call));
                 return true;
             }
-            if (call.target.receiverTypeKey.empty())
-            {
-                error = "Stage 40 receiver has no semantic class/interface/struct type";
-                return false;
-            }
-            const ast::AstNode* receiver = call.target.receiverSyntax;
-            if (receiver != nullptr && receiver->kind() != ast::AstNodeKind::BaseExpression)
-            {
-                call.materializeReceiverTemporary =
-                    isStructValueType(call.target.receiverTypeKey) &&
-                    !isNaturallyAddressable(receiver);
-                call.stage = BoundCallFrameStage::Receiver;
-                frame.boundCall.emplace(std::move(call));
-                return true;
-            }
-            if (currentLambda_ != nullptr)
-            {
-                const std::optional<std::size_t> capture = currentLambdaThisCapture();
-                if (!capture.has_value())
-                {
-                    error = "Stage 43 implicit instance receiver has no captured this";
-                    return false;
-                }
-                call.receiver = makeNode(
-                    isStructValueType(call.target.receiverTypeKey)
-                        ? ProjectOopHirNodeKind::ClosureCaptureAddress
-                        : ProjectOopHirNodeKind::ClosureCaptureValue,
-                    receiver,
-                    std::string(call.target.receiverTypeKey));
-                call.receiver->integerValue = *capture;
-            }
-            else
-            {
-                call.receiver = makeNode(
-                    ProjectOopHirNodeKind::ThisValue,
-                    receiver,
-                    std::string(call.target.receiverTypeKey));
-            }
-            call.stage = call.argumentSyntaxes.empty()
-                ? BoundCallFrameStage::Ready
-                : BoundCallFrameStage::Arguments;
+            const std::optional<bool> receiverReady = initializeReceiverFrame(
+                call.receiver,
+                call.target.receiverSyntax,
+                call.target.receiverTypeKey);
+            if (!receiverReady.has_value()) return false;
+            call.stage = *receiverReady
+                ? (call.argumentSyntaxes.empty()
+                    ? BoundCallFrameStage::Ready
+                    : BoundCallFrameStage::Arguments)
+                : BoundCallFrameStage::Receiver;
             frame.boundCall.emplace(std::move(call));
             return true;
         };
@@ -833,9 +866,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             if (call.stage == BoundCallFrameStage::Receiver)
             {
                 return BoundCallChild{
-                    call.target.receiverSyntax,
-                    isStructValueType(call.target.receiverTypeKey) &&
-                        !call.materializeReceiverTemporary};
+                    call.receiver.syntax,
+                    isStructValueType(call.receiver.typeKey) &&
+                        !call.receiver.materializeTemporary};
             }
             if (call.stage != BoundCallFrameStage::Arguments ||
                 call.nextArgument >= call.argumentSyntaxes.size())
@@ -852,17 +885,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         {
             if (call.stage == BoundCallFrameStage::Receiver)
             {
-                if (call.materializeReceiverTemporary)
-                {
-                    auto temporary = makeNode(
-                        ProjectOopHirNodeKind::TemporaryAddress,
-                        call.target.receiverSyntax,
-                        std::string(call.target.receiverTypeKey));
-                    temporary->elementTypeKey = call.target.receiverTypeKey;
-                    temporary->children.push_back(std::move(child));
-                    child = std::move(temporary);
-                }
-                call.receiver = std::move(child);
+                acceptReceiverChild(call.receiver, std::move(child));
                 call.stage = call.argumentSyntaxes.empty()
                     ? BoundCallFrameStage::Ready
                     : BoundCallFrameStage::Arguments;
@@ -1149,6 +1172,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             frame.nullConditionalCall))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
+                {
+                    frame.delegateCreationBinding = delegateBinding(current);
+                    const std::optional<bool> receiverReady = initializeReceiverFrame(
+                        frame.receiverFrame,
+                        frame.delegateCreationBinding->receiverSyntax,
+                        frame.delegateCreationBinding->receiverTypeKey);
+                    if (!receiverReady.has_value())
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
                         return nullptr;
                     }
@@ -1547,6 +1585,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = child->addressContext;
                 }
+                else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
+                {
+                    current = frames.back().receiverFrame.syntax;
+                    currentAddressContext =
+                        isStructValueType(frames.back().receiverFrame.typeKey) &&
+                        !frames.back().receiverFrame.materializeTemporary;
+                }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::InterpolationHandler)
@@ -1817,6 +1862,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frames.pop_back();
                     continue;
                 }
+                if (frame.kind == IterativeExpressionKind::DelegateCreationReceiver)
+                {
+                    acceptReceiverChild(frame.receiverFrame, std::move(lowered));
+                    lowered = finishDelegateCreation(
+                        frame.syntax,
+                        *frame.delegateCreationBinding,
+                        std::move(frame.receiverFrame.lowered));
+                    frames.pop_back();
+                    continue;
+                }
                 if (isBoundCallKind(frame.kind))
                 {
                     BoundCallFrameState& boundCall = *frame.boundCall;
@@ -1840,7 +1895,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         boundCall.target,
                         boundCall.argumentSyntaxes.size(),
                         boundCall.nullConditional,
-                        std::move(boundCall.receiver),
+                        std::move(boundCall.receiver.lowered),
                         std::move(boundCall.arguments),
                         boundCall.hasOwnedTemporary);
                     const bool accessor =
@@ -3859,6 +3914,40 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpress
     return node;
 }
 
+bool ProjectOopHirModel::hasValidDelegateCreationTarget(
+    const MethodDelegateBinding& binding) const noexcept
+{
+    if (!binding.selectedMemberOrdinal.has_value() || memberModel_ == nullptr)
+        return false;
+    if (*binding.selectedMemberOrdinal < memberModel_->members().size())
+        return true;
+    return namespaceFunctionModel_ != nullptr &&
+        *binding.selectedMemberOrdinal - memberModel_->members().size() <
+            namespaceFunctionModel_->functions().size();
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateCreation(
+    const ast::AstNode* expression,
+    const MethodDelegateBinding& binding,
+    std::unique_ptr<ProjectOopHirNode> receiver)
+{
+    auto node = makeNode(
+        ProjectOopHirNodeKind::DelegateCreate,
+        expression,
+        binding.delegateTypeKey);
+    node->elementTypeKey = binding.delegateTypeKey;
+    node->memberOrdinal = binding.selectedMemberOrdinal;
+    node->booleanValue = binding.virtualDispatch;
+    node->interfaceDispatch = binding.interfaceDispatch;
+    node->ownership = binding.ownsReceiver
+        ? sema::OwnershipKind::Owned : sema::OwnershipKind::Borrowed;
+    if (binding.interfaceDispatch)
+        node->targetTypeOrdinal = binding.receiverTypeOrdinal;
+    if (!binding.staticTarget)
+        node->children.push_back(std::move(receiver));
+    return node;
+}
+
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const ast::AstNode* expression,
@@ -3928,31 +4017,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const MethodDelegateBinding* stage42Delegate = delegateBinding(expression);
     if (stage42Delegate != nullptr && stage42Delegate->kind == MethodDelegateOperationKind::Create)
     {
-        const bool memberTarget = stage42Delegate->selectedMemberOrdinal.has_value() &&
-            memberModel_ != nullptr &&
-            *stage42Delegate->selectedMemberOrdinal < memberModel_->members().size();
-        const bool namespaceTarget = stage42Delegate->selectedMemberOrdinal.has_value() &&
-            memberModel_ != nullptr && namespaceFunctionModel_ != nullptr &&
-            *stage42Delegate->selectedMemberOrdinal >= memberModel_->members().size() &&
-            *stage42Delegate->selectedMemberOrdinal - memberModel_->members().size() <
-                namespaceFunctionModel_->functions().size();
-        if (!memberTarget && !namespaceTarget)
+        if (!hasValidDelegateCreationTarget(*stage42Delegate))
         {
             error = "Stage 42 delegate creation has no selected callable";
             return nullptr;
         }
-        auto node = makeNode(ProjectOopHirNodeKind::DelegateCreate, expression, stage42Delegate->delegateTypeKey);
-        node->elementTypeKey = stage42Delegate->delegateTypeKey;
-        node->memberOrdinal = stage42Delegate->selectedMemberOrdinal;
-        node->booleanValue = stage42Delegate->virtualDispatch;
-        node->interfaceDispatch = stage42Delegate->interfaceDispatch;
-        node->ownership = stage42Delegate->ownsReceiver
-            ? sema::OwnershipKind::Owned : sema::OwnershipKind::Borrowed;
-        if (stage42Delegate->interfaceDispatch)
-            node->targetTypeOrdinal = stage42Delegate->receiverTypeOrdinal;
+        std::unique_ptr<ProjectOopHirNode> receiver;
         if (!stage42Delegate->staticTarget)
         {
-            std::unique_ptr<ProjectOopHirNode> receiver;
             if (stage42Delegate->ownsReceiver &&
                 (stage42Delegate->receiverSourceLocalOrdinal.has_value() ||
                  stage42Delegate->receiverSourceParameterOrdinal.has_value()))
@@ -3967,14 +4039,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             else
             {
-                receiver = lowerReceiver(
-                    stage42Delegate->receiverSyntax, stage42Delegate->receiverTypeKey,
-                    memberOrdinal, error);
+                receiver = lowerImplicitReceiver(
+                    stage42Delegate->receiverSyntax,
+                    stage42Delegate->receiverTypeKey,
+                    error);
             }
             if (receiver == nullptr) return nullptr;
-            node->children.push_back(std::move(receiver));
         }
-        return node;
+        return finishDelegateCreation(
+            expression, *stage42Delegate, std::move(receiver));
     }
 
     const MethodExpressionTypeBinding* typeBinding = expressionType(expression);

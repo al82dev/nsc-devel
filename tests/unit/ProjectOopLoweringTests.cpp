@@ -271,6 +271,24 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerDelegateCreationExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ast::AstNode* root,
+        const std::vector<MethodDelegateBinding>& delegates,
+        const std::vector<MethodLambdaBinding>& lambdas,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const MethodDelegateBinding& binding : delegates)
+            model.delegateBindingBySyntax_[binding.syntax] = &binding;
+        for (const MethodLambdaBinding& binding : lambdas)
+            model.lambdaBindingBySyntax_[binding.syntax] = &binding;
+        return model.lowerExpression(root, 0U, false, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup* nameLookup,
@@ -3960,6 +3978,269 @@ void testBoundCallFrameLowering(
 {
     testDeepUserBinaryOperatorLowering(tests, root);
     testDeepUserConversionLowering(tests, root);
+}
+
+struct DeepDelegateCreationSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodDelegateBinding> delegates;
+    std::vector<nativesharp::frontend::MethodLambdaBinding> lambdas;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::frontend::MethodLambdaBinding makeDelegateReceiverLambda(
+    const nativesharp::ast::AstNode* syntax,
+    bool validCapture = true)
+{
+    nativesharp::frontend::MethodLambdaCapture capture;
+    capture.name = "captured";
+    capture.typeKey = "builtin:int";
+    capture.sourceKind =
+        nativesharp::frontend::MethodLambdaCaptureSourceKind::OriginalLocal;
+    if (validCapture) capture.sourceOrdinal = 41U;
+    capture.mode = nativesharp::language::CaptureMode::MutableReference;
+    capture.clearMovedSource = true;
+
+    nativesharp::frontend::MethodLambdaBinding binding;
+    binding.syntax = syntax;
+    binding.lambdaOrdinal = 73U;
+    binding.delegateTypeKey = "delegate:Deep::Receiver";
+    binding.generatedName = "Deep.Receiver.lambda$73";
+    binding.captures.push_back(std::move(capture));
+    return binding;
+}
+
+DeepDelegateCreationSyntax makeDeepDelegateCreationSyntax(
+    std::size_t depth,
+    std::size_t selectedMemberOrdinal)
+{
+    DeepDelegateCreationSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.delegates.reserve(depth);
+    fixture.lambdas.reserve(1U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::LambdaExpression,
+        nativesharp::SourceRange{}));
+    fixture.lambdas.push_back(makeDelegateReceiverLambda(fixture.nodes.back().get()));
+    const nativesharp::ast::AstNode* receiver = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IdentifierExpression,
+            nativesharp::SourceRange{}));
+        nativesharp::frontend::MethodDelegateBinding binding;
+        binding.syntax = fixture.nodes.back().get();
+        binding.delegateTypeKey = "delegate:Deep::Receiver";
+        binding.selectedMemberOrdinal = selectedMemberOrdinal;
+        binding.receiverSyntax = receiver;
+        binding.receiverTypeKey = "builtin:object";
+        fixture.delegates.push_back(std::move(binding));
+        receiver = fixture.nodes.back().get();
+    }
+    fixture.root = receiver;
+    return fixture;
+}
+
+bool deepDelegateCreationMatches(
+    const ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    std::size_t selectedMemberOrdinal)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::DelegateCreate)
+    {
+        if (node->memberOrdinal != selectedMemberOrdinal ||
+            node->typeKey != "delegate:Deep::Receiver" ||
+            node->elementTypeKey != "delegate:Deep::Receiver" ||
+            node->children.size() != 1U || node->booleanValue ||
+            node->interfaceDispatch ||
+            node->ownership != nativesharp::sema::OwnershipKind::Borrowed)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::LambdaCreate &&
+        node->typeKey == "delegate:Deep::Receiver" &&
+        node->elementTypeKey == "delegate:Deep::Receiver" &&
+        node->stringValue == "Deep.Receiver.lambda$73" &&
+        node->integerValue == 73U && node->children.size() == 1U &&
+        node->children.front()->kind == HirKind::CaptureCellReference &&
+        node->children.front()->localOrdinal == 41U &&
+        node->children.front()->captureMode ==
+            nativesharp::language::CaptureMode::MutableReference &&
+        node->children.front()->booleanValue;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerDelegateCreationFixture(
+    const ProjectCompilation& compilation,
+    const nativesharp::ast::AstNode* root,
+    const std::vector<nativesharp::frontend::MethodDelegateBinding>& delegates,
+    const std::vector<nativesharp::frontend::MethodLambdaBinding>& lambdas,
+    std::string& error)
+{
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDelegateCreationExpression(
+            model,
+            *compilation.nameLookup(),
+            *compilation.memberModel(),
+            root,
+            delegates,
+            lambdas,
+            error);
+}
+
+void testDelegateCreationLeafContracts(
+    TestContext& tests,
+    const ProjectCompilation& compilation,
+    const UserBinaryOperatorTarget& target)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    const auto makeSyntax = []()
+    {
+        return std::make_unique<nativesharp::ast::AstNode>(
+            nativesharp::ast::AstNodeKind::IdentifierExpression,
+            nativesharp::SourceRange{});
+    };
+
+    {
+        auto syntax = makeSyntax();
+        nativesharp::frontend::MethodDelegateBinding binding;
+        binding.syntax = syntax.get();
+        binding.delegateTypeKey = "delegate:Deep::Static";
+        binding.selectedMemberOrdinal = target.operatorOrdinal;
+        binding.staticTarget = true;
+        std::string error;
+        auto lowered = lowerDelegateCreationFixture(
+            compilation, syntax.get(), {binding}, {}, error);
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == HirKind::DelegateCreate && lowered->children.empty(),
+            "static delegate creation remains a receiver-free leaf");
+    }
+    for (const bool fromLocal : {true, false})
+    {
+        auto syntax = makeSyntax();
+        auto receiver = makeSyntax();
+        nativesharp::frontend::MethodDelegateBinding binding;
+        binding.syntax = syntax.get();
+        binding.delegateTypeKey = "delegate:Deep::Owned";
+        binding.selectedMemberOrdinal = target.operatorOrdinal;
+        binding.receiverSyntax = receiver.get();
+        binding.receiverTypeKey = target.nodeType;
+        binding.ownsReceiver = true;
+        if (fromLocal) binding.receiverSourceLocalOrdinal = 11U;
+        else binding.receiverSourceParameterOrdinal = 13U;
+        std::string error;
+        auto lowered = lowerDelegateCreationFixture(
+            compilation, syntax.get(), {binding}, {}, error);
+        const ProjectOopHirNode* moved = lowered != nullptr &&
+                lowered->children.size() == 1U
+            ? lowered->children.front().get() : nullptr;
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->ownership == nativesharp::sema::OwnershipKind::Owned &&
+                moved != nullptr && moved->kind == HirKind::MoveValue &&
+                moved->booleanValue &&
+                moved->localOrdinal == (fromLocal
+                    ? std::optional<std::size_t>{11U} : std::nullopt) &&
+                moved->parameterOrdinal == (fromLocal
+                    ? std::nullopt : std::optional<std::size_t>{13U}),
+            fromLocal
+                ? "owned-local delegate receiver remains one direct MoveValue"
+                : "owned-parameter delegate receiver remains one direct MoveValue");
+    }
+}
+
+void testDelegateCreationReceiverContracts(
+    TestContext& tests,
+    const ProjectCompilation& compilation,
+    const UserBinaryOperatorTarget& target)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    auto receiver = std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::LambdaExpression,
+        nativesharp::SourceRange{});
+    auto syntax = std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{});
+    nativesharp::frontend::MethodLambdaBinding lambda =
+        makeDelegateReceiverLambda(receiver.get());
+    nativesharp::frontend::MethodDelegateBinding binding;
+    binding.syntax = syntax.get();
+    binding.delegateTypeKey = "delegate:Deep::Interface";
+    binding.selectedMemberOrdinal = target.operatorOrdinal;
+    binding.receiverSyntax = receiver.get();
+    binding.receiverTypeKey = target.nodeType;
+    binding.receiverTypeOrdinal = 19U;
+    binding.virtualDispatch = true;
+    binding.interfaceDispatch = true;
+    std::string error;
+    auto lowered = lowerDelegateCreationFixture(
+        compilation, syntax.get(), {binding}, {lambda}, error);
+    const ProjectOopHirNode* temporary = lowered != nullptr &&
+            lowered->children.size() == 1U
+        ? lowered->children.front().get() : nullptr;
+    tests.expect(lowered != nullptr && error.empty() &&
+            lowered->kind == HirKind::DelegateCreate && lowered->booleanValue &&
+            lowered->interfaceDispatch && lowered->targetTypeOrdinal == 19U &&
+            temporary != nullptr && temporary->kind == HirKind::TemporaryAddress &&
+            temporary->elementTypeKey == target.nodeType &&
+            temporary->children.size() == 1U &&
+            temporary->children.front()->kind == HirKind::LambdaCreate,
+        "delegate frame preserves dispatch and materializes one struct receiver temporary");
+
+    binding.selectedMemberOrdinal.reset();
+    error.clear();
+    auto invalid = lowerDelegateCreationFixture(
+        compilation, syntax.get(), {binding}, {lambda}, error);
+    tests.expect(invalid == nullptr &&
+            error == "Stage 42 delegate creation has no selected callable",
+        "invalid delegate target preserves the exact Stage 42 diagnostic");
+
+    lambda = makeDelegateReceiverLambda(receiver.get(), false);
+    error.clear();
+    auto missingCapture = lowerDelegateCreationFixture(
+        compilation, receiver.get(), {}, {lambda}, error);
+    tests.expect(missingCapture == nullptr &&
+            error == "Stage 43 lambda capture source is unavailable",
+        "missing lambda capture preserves the exact Stage 43 diagnostic");
+}
+
+void testDeepDelegateLambdaReceiverLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    UserBinaryOperatorTarget target;
+    std::string error;
+    const bool prepared = prepareUserBinaryOperatorFixture(
+        root, compilation, target, error);
+    tests.expect(prepared,
+        "the delegate receiver fixture provides a valid selected callable (" + error + ")");
+    if (!prepared) return;
+
+    DeepDelegateCreationSyntax fixture = makeDeepDelegateCreationSyntax(
+        nestingDepth, target.operatorOrdinal);
+    auto lowered = lowerDelegateCreationFixture(
+        compilation,
+        fixture.root,
+        fixture.delegates,
+        fixture.lambdas,
+        error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level delegate receiver chain lowers without stack recursion (" +
+            error + ")");
+    tests.expect(deepDelegateCreationMatches(
+            lowered.get(), nestingDepth, target.operatorOrdinal),
+        "delegate frames preserve every receiver and the terminal lambda captures");
+    destroyHirTreeIteratively(lowered);
+
+    testDelegateCreationLeafContracts(tests, compilation, target);
+    testDelegateCreationReceiverContracts(tests, compilation, target);
 }
 
 void testDeepClassFieldExpressionLowering(TestContext& tests)
@@ -7958,6 +8239,10 @@ int main()
     {
         testBoundCallFrameLowering(tests, root);
     }
+    else if (focusValue == "hir-delegate-lambda-receiver-depth")
+    {
+        testDeepDelegateLambdaReceiverLowering(tests, root);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -8157,6 +8442,7 @@ int main()
         testDeepBuiltinUnaryExpressionLowering(tests);
         testDeepUserUnaryOperatorLowering(tests, root);
         testBoundCallFrameLowering(tests, root);
+        testDeepDelegateLambdaReceiverLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

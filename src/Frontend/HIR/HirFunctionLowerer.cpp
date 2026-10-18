@@ -76,10 +76,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBlock(
     return nullptr;
 }
 
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerImplicitReceiver(
     const ast::AstNode* receiverSyntax,
     std::string_view receiverTypeKey,
-    std::size_t memberOrdinal,
     std::string& error)
 {
     if (receiverTypeKey.empty())
@@ -87,26 +86,41 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
         error = "Stage 40 receiver has no semantic class/interface/struct type";
         return nullptr;
     }
-    if (receiverSyntax == nullptr || receiverSyntax->kind() == ast::AstNodeKind::BaseExpression)
+    if (currentLambda_ != nullptr)
     {
-        if (currentLambda_ != nullptr)
+        const std::optional<std::size_t> capture = currentLambdaThisCapture();
+        if (!capture.has_value())
         {
-            const std::optional<std::size_t> capture = currentLambdaThisCapture();
-            if (!capture.has_value())
-            {
-                error = "Stage 43 implicit instance receiver has no captured this";
-                return nullptr;
-            }
-            auto node = makeNode(
-                isStructValueType(receiverTypeKey)
-                    ? ProjectOopHirNodeKind::ClosureCaptureAddress
-                    : ProjectOopHirNodeKind::ClosureCaptureValue,
-                receiverSyntax,
-                std::string(receiverTypeKey));
-            node->integerValue = *capture;
-            return node;
+            error = "Stage 43 implicit instance receiver has no captured this";
+            return nullptr;
         }
-        return makeNode(ProjectOopHirNodeKind::ThisValue, receiverSyntax, std::string(receiverTypeKey));
+        auto node = makeNode(
+            isStructValueType(receiverTypeKey)
+                ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                : ProjectOopHirNodeKind::ClosureCaptureValue,
+            receiverSyntax,
+            std::string(receiverTypeKey));
+        node->integerValue = *capture;
+        return node;
+    }
+    return makeNode(
+        ProjectOopHirNodeKind::ThisValue,
+        receiverSyntax,
+        std::string(receiverTypeKey));
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
+    const ast::AstNode* receiverSyntax,
+    std::string_view receiverTypeKey,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    if (receiverSyntax == nullptr || receiverSyntax->kind() == ast::AstNodeKind::BaseExpression)
+        return lowerImplicitReceiver(receiverSyntax, receiverTypeKey, error);
+    if (receiverTypeKey.empty())
+    {
+        error = "Stage 40 receiver has no semantic class/interface/struct type";
+        return nullptr;
     }
     // Struct instance methods receive the address of existing value storage.  Unlike a class
     // receiver, lowering a struct receiver as a value here would copy it and mutations of `this`

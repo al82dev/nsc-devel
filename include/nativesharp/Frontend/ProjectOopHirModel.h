@@ -909,6 +909,13 @@ private:
         bool addressContext,
         std::string& error);
 
+    bool hasValidDelegateCreationTarget(
+        const MethodDelegateBinding& binding) const noexcept;
+    std::unique_ptr<ProjectOopHirNode> finishDelegateCreation(
+        const ast::AstNode* expression,
+        const MethodDelegateBinding& binding,
+        std::unique_ptr<ProjectOopHirNode> receiver);
+
     std::unique_ptr<ProjectOopHirNode> buildBuiltinBinaryExpression(
         const ast::AstNode* expression,
         std::unique_ptr<ProjectOopHirNode> left,
@@ -1120,6 +1127,10 @@ private:
     // lowerExpression re-deriving the binding, which is how the two sites came to disagree in the
     // first place.
     const MethodCallBinding* accessorGetterBinding(const ast::AstNode* expression) const noexcept;
+    std::unique_ptr<ProjectOopHirNode> lowerImplicitReceiver(
+        const ast::AstNode* receiverSyntax,
+        std::string_view receiverTypeKey,
+        std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerReceiver(
         const ast::AstNode* receiverSyntax,
         std::string_view receiverTypeKey,
