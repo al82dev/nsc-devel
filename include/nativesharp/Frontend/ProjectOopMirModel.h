@@ -956,6 +956,7 @@ public:
 
 private:
     class MirNodeMachine;
+    class MirVerifier;
 
     bool importLayouts(
         const ProjectNameLookup& nameLookup,

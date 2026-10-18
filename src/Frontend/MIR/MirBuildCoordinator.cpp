@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "MirConstantEvaluator.h"
+#include "MirVerifier.h"
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
@@ -1763,93 +1764,8 @@ bool ProjectOopMirModel::build(
         }
         staticFields_.push_back(std::move(staticField));
     }
-    const auto recordGenericSpecialization = [&](std::string_view key) -> std::size_t {
-        const auto found = std::find_if(genericSpecializations_.begin(), genericSpecializations_.end(),
-            [key](const ProjectOopMirGenericSpecialization& specialization) {
-                return specialization.key == key;
-            });
-        if (found != genericSpecializations_.end())
-            return static_cast<std::size_t>(found - genericSpecializations_.begin());
-        genericSpecializations_.push_back(
-            ProjectOopMirGenericSpecialization{std::string(key), {}, {}, {}});
-        return genericSpecializations_.size() - 1;
-    };
-    for (std::size_t index = 0; index < functions_.size(); ++index)
-    {
-        if (functions_[index].genericSpecializationKey.empty()) continue;
-        genericSpecializations_[recordGenericSpecialization(functions_[index].genericSpecializationKey)]
-            .functionIndices.push_back(index);
-    }
-    for (std::size_t index = 0; index < staticFields_.size(); ++index)
-    {
-        if (staticFields_[index].genericSpecializationKey.empty()) continue;
-        genericSpecializations_[recordGenericSpecialization(staticFields_[index].genericSpecializationKey)]
-            .staticFieldIndices.push_back(index);
-    }
-    for (std::size_t index = 0; index < dispatchTables_.size(); ++index)
-    {
-        const ProjectOopMirDispatchTable& table = dispatchTables_[index];
-        if (!table.genericSpecializationKey.empty())
-        {
-            genericSpecializations_[recordGenericSpecialization(table.genericSpecializationKey)]
-                .dispatchTableIndices.push_back(index);
-        }
-        for (const ProjectOopMirDispatchTable::InterfaceTable& source : table.interfaceTables)
-        {
-            if (source.interfaceMemberOrdinals.size() != source.implementationMemberOrdinals.size() ||
-                source.interfaceMemberOrdinals.size() != source.calleeNames.size())
-            {
-                error = "Item 398 MIR interface binding has inconsistent slot vectors";
-                return false;
-            }
-            if (source.interfaceTypeKey.empty() || source.stableInterfaceTypeId == 0 ||
-                source.methodTableName.empty())
-            {
-                error = "Item 398 MIR interface binding is missing stable ABI identity";
-                return false;
-            }
-            if (interfaceBindingForTypes(table.typeOrdinal, source.interfaceTypeOrdinal) != nullptr)
-            {
-                error = "Item 398 MIR contains a duplicate class/interface binding";
-                return false;
-            }
-            interfaceBindings_.push_back(ProjectOopMirInterfaceBinding{
-                table.typeOrdinal,
-                source.interfaceTypeOrdinal,
-                source.interfaceTypeKey,
-                source.stableInterfaceTypeId,
-                source.methodTableName,
-                source.interfaceMemberOrdinals,
-                source.implementationMemberOrdinals,
-                source.calleeNames});
-        }
-    }
-
-    panicHandlerMangledName_.clear();
-    if (!panicHandler_.empty())
-    {
-        const auto found = std::find_if(functions_.begin(), functions_.end(), [&](const auto& function) {
-            return function.debugDisplayName == panicHandler_;
-        });
-        if (found == functions_.end())
-        {
-            error = "PanicHandler '" + panicHandler_ +
-                "' does not name a project namespace function";
-            return false;
-        }
-        static const std::vector<std::string> expectedParameters = {
-            "builtin:string", "builtin:string", "builtin:int", "builtin:int"};
-        if (!found->isStatic || found->referenceReturn || found->isVariadic ||
-            found->returnTypeKey != "builtin:void" || !found->errorTypeKey.empty() ||
-            found->parameterTypeKeys != expectedParameters)
-        {
-            error = "PanicHandler '" + panicHandler_ +
-                "' must be a non-throwing free function with signature "
-                "void(string message, string file, int line, int column)";
-            return false;
-        }
-        panicHandlerMangledName_ = found->mangledName;
-    }
+    MirVerifier verifier(*this);
+    if (!verifier.finalize(error)) return false;
 
     built_ = true;
     // NSC305-C04. Persist the built MIR functions (no-op when the cache is disabled).
