@@ -184,6 +184,37 @@ struct ProjectOopHirModelTestAccess final
         objectLayoutModel.built_ = true;
     }
 
+    static void configureDeconstructionReceiverTypes(
+        ProjectNameLookup& nameLookup,
+        std::string& classTypeKey,
+        std::string& structTypeKey)
+    {
+        const auto append = [&](std::string name, NamedTypeDeclarationKind kind)
+        {
+            nameLookup.namedTypes_.push_back(NamedTypeDeclaration{
+                compilation::TypeIdentity(
+                    "DeconstructionFixture", {}, {}, std::move(name)),
+                kind,
+                NamedTypeAccessibility::Internal,
+                std::nullopt,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0U,
+                0U,
+                FileId{},
+                SourceRange{},
+                nullptr,
+                {}});
+            return "type:" + nameLookup.namedTypes_.back().identity.key();
+        };
+        classTypeKey = append("ClassSource", NamedTypeDeclarationKind::Class);
+        structTypeKey = append("StructSource", NamedTypeDeclarationKind::Struct);
+        nameLookup.built_ = true;
+    }
+
     static void configureAggregateElementBindings(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -1374,6 +1405,72 @@ struct ProjectOopHirModelTestAccess final
                 model.constructionBySyntax_[construction.syntax] = &construction;
             }
         }
+        return model.lowerStatement(statement, 0U, error);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode>
+    lowerDeconstructionDeclarationStatement(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ProjectNameLookup& nameLookup,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ast::AstNode* statement,
+        std::vector<MethodDeconstructionBinding> deconstructions,
+        std::vector<MethodLocalSymbol> locals,
+        std::vector<MethodLoopExpressionBinding> loops,
+        std::vector<MethodMatchExpressionBinding> matches,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodNameBinding>& names,
+        std::string& error)
+    {
+        methodBodyModel.deconstructionBindings_ = std::move(deconstructions);
+        methodBodyModel.deconstructionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.deconstructionBindings_.size(); ++index)
+        {
+            methodBodyModel.deconstructionBindingBySyntax_[
+                methodBodyModel.deconstructionBindings_[index].syntax] = index;
+        }
+        methodBodyModel.locals_ = std::move(locals);
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        methodBodyModel.matchExpressionBindings_ = std::move(matches);
+        methodBodyModel.matchExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.matchExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.matchExpressionBindingBySyntax_[
+                methodBodyModel.matchExpressionBindings_[index].syntax] = index;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        model.nameLookup_ = &nameLookup;
+        model.objectLayoutModel_ = &objectLayoutModel;
+        model.localBySyntax_.clear();
+        for (const MethodLocalSymbol& local : methodBodyModel.locals_)
+            model.localBySyntax_[local.syntax] = &local;
+        model.nameBindingBySyntax_.clear();
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerStatement(statement, 0U, error);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode>
+    lowerBareDeconstructionDeclarationStatement(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel* methodBodyModel,
+        const ast::AstNode* statement,
+        std::string& error)
+    {
+        model.methodBodyModel_ = methodBodyModel;
         return model.lowerStatement(statement, 0U, error);
     }
 
@@ -13171,6 +13268,783 @@ bool userIndexerChainMatches(
         node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue;
 }
 
+struct DeconstructionDeclarationDepthFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodDeconstructionBinding> bindings;
+    std::vector<nativesharp::frontend::MethodLocalSymbol> locals;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<nativesharp::frontend::MethodMatchExpressionBinding> matches;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    const nativesharp::ast::AstNode* root = nullptr;
+    std::string tupleTypeKey;
+};
+
+nativesharp::ast::AstNode* appendDeconstructionDeclarationNode(
+    DeconstructionDeclarationDepthFixture& fixture,
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::SourceRange sourceRange = {})
+{
+    fixture.nodes.push_back(
+        std::make_unique<nativesharp::ast::AstNode>(kind, sourceRange));
+    return fixture.nodes.back().get();
+}
+
+DeconstructionDeclarationDepthFixture makeDeepDeconstructionDeclarationFixture(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& tupleType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeconstructionDeclarationDepthFixture fixture;
+    fixture.tupleTypeKey = tupleType.typeKey;
+    fixture.nodes.reserve(depth * 4U + 1U);
+    fixture.bindings.reserve(depth);
+    fixture.locals.reserve(depth + 1U);
+    fixture.loops.reserve(depth > 0U ? depth - 1U : 0U);
+    fixture.typed.reserve(depth);
+    std::vector<nativesharp::ast::AstNode*> declarations;
+    std::vector<nativesharp::ast::AstNode*> leaves;
+    declarations.reserve(depth);
+    leaves.reserve(depth);
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        auto* declaration = appendDeconstructionDeclarationNode(
+            fixture, AstKind::DeconstructionDeclarationStatement);
+        auto* leaf = appendDeconstructionDeclarationNode(
+            fixture, AstKind::IdentifierExpression);
+        leaf->setText("item-" + std::to_string(index));
+        declaration->addChild(leaf);
+        declarations.push_back(declaration);
+        leaves.push_back(leaf);
+    }
+    auto* terminal = appendDeconstructionDeclarationNode(
+        fixture, AstKind::IdentifierExpression);
+    terminal->setText("tuple-source");
+    declarations.back()->setFirst(terminal);
+    fixture.typed.push_back({terminal, &tupleType});
+    for (std::size_t index = depth - 1U; index > 0U; --index)
+    {
+        auto* block = appendDeconstructionDeclarationNode(
+            fixture, AstKind::BlockStatement);
+        block->addChild(declarations[index]);
+        auto* loop = appendDeconstructionDeclarationNode(
+            fixture, AstKind::LoopExpression);
+        loop->setFirst(block);
+        declarations[index - 1U]->setFirst(loop);
+        fixture.loops.push_back({
+            loop, 0U, index - 1U,
+            "deconstruction-loop-" + std::to_string(index - 1U),
+            fixture.tupleTypeKey});
+        fixture.typed.push_back({loop, &tupleType});
+    }
+    nativesharp::frontend::MethodLocalSymbol sourceLocal;
+    sourceLocal.syntax = terminal;
+    sourceLocal.name = "tuple-source";
+    sourceLocal.typeKey = fixture.tupleTypeKey;
+    fixture.locals.push_back(std::move(sourceLocal));
+    nativesharp::frontend::MethodNameBinding sourceName;
+    sourceName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    sourceName.syntax = terminal;
+    sourceName.name = "tuple-source";
+    sourceName.typeKey = fixture.tupleTypeKey;
+    sourceName.localOrdinal = 0U;
+    fixture.names.push_back(std::move(sourceName));
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        fixture.bindings.push_back({
+            declarations[index], declarations[index]->first(),
+            fixture.tupleTypeKey, fixture.tupleTypeKey, std::nullopt});
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = leaves[index];
+        local.name = "item-" + std::to_string(index);
+        local.typeKey = "builtin:int";
+        local.declarationOrdinal = index + 1U;
+        fixture.locals.push_back(std::move(local));
+    }
+    fixture.root = declarations.front();
+    return fixture;
+}
+
+bool deepDeconstructionDeclarationMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeconstructionDeclarationDepthFixture& fixture,
+    std::size_t depth)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::Block ||
+            node->typeKey != "builtin:void" || node->children.size() != 2U)
+            return false;
+        const auto* declaration = node->children[0].get();
+        const auto* deconstruct = node->children[1].get();
+        if (declaration == nullptr || declaration->kind != HirKind::LocalDeclaration ||
+            declaration->syntax != fixture.locals[index + 1U].syntax ||
+            declaration->stringValue != "item-" + std::to_string(index) ||
+            declaration->typeKey != "builtin:int" ||
+            declaration->localOrdinal != index + 1U ||
+            declaration->referenceLocal || declaration->automaticDestruction ||
+            declaration->cleanupRegionOrdinal.has_value() ||
+            deconstruct == nullptr || deconstruct->kind != HirKind::TupleDeconstruct ||
+            deconstruct->typeKey != fixture.tupleTypeKey ||
+            deconstruct->children.size() != 2U)
+            return false;
+        const auto* element = deconstruct->children[1].get();
+        if (element == nullptr || element->kind != HirKind::TupleDeconstructElement ||
+            element->syntax != fixture.locals[index + 1U].syntax ||
+            element->typeKey != "builtin:int" ||
+            element->elementTypeKey != "builtin:int" ||
+            element->integerValue != 0U || !element->conversion.has_value() ||
+            element->conversion->kind !=
+                nativesharp::frontend::ProjectConversionKind::Identity ||
+            element->children.size() != 1U ||
+            element->children.front()->kind != HirKind::LocalAddress ||
+            element->children.front()->syntax != fixture.locals[index + 1U].syntax ||
+            element->children.front()->localOrdinal != index + 1U)
+            return false;
+        node = deconstruct->children.front().get();
+        if (index + 1U == depth)
+        {
+            return node != nullptr && node->kind == HirKind::LocalValue &&
+                node->typeKey == fixture.tupleTypeKey && node->localOrdinal == 0U;
+        }
+        if (node == nullptr || node->kind != HirKind::LoopExpression ||
+            node->typeKey != fixture.tupleTypeKey || node->children.size() != 1U ||
+            node->children.front()->kind != HirKind::Block ||
+            node->children.front()->children.size() != 1U)
+            return false;
+        node = node->children.front()->children.front().get();
+    }
+    return false;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode>
+lowerDeconstructionDeclarationFixture(
+    DeconstructionDeclarationDepthFixture& fixture,
+    ProjectOopHirModel& model,
+    nativesharp::frontend::ProjectMethodBodyModel& methodBodyModel,
+    nativesharp::frontend::ProjectNameLookup& nameLookup,
+    nativesharp::frontend::ProjectObjectLayoutModel& objectLayoutModel,
+    std::string& error)
+{
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(nameLookup, objectLayoutModel);
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            model, methodBodyModel, nameLookup, objectLayoutModel, fixture.root,
+            std::move(fixture.bindings), std::move(fixture.locals),
+            std::move(fixture.loops), std::move(fixture.matches), fixture.typed,
+            fixture.names, error);
+}
+
+void testDeepDeconstructionDeclarationLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using nativesharp::frontend::MethodExpressionTypeBinding;
+    const auto range = [](std::uint32_t offset)
+    {
+        return nativesharp::SourceRange(
+            nativesharp::SourceLocation(nativesharp::FileId(47U), offset),
+            nativesharp::SourceLocation(nativesharp::FileId(47U), offset + 3U));
+    };
+    constexpr std::size_t nestingDepth = 32768U;
+    const std::array<std::string, 1U> elementTypes{"builtin:int"};
+    MethodExpressionTypeBinding tupleType;
+    tupleType.typeKey =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(elementTypes);
+
+    auto deep = makeDeepDeconstructionDeclarationFixture(nestingDepth, tupleType);
+    DeconstructionDeclarationDepthFixture observed;
+    observed.tupleTypeKey = deep.tupleTypeKey;
+    observed.locals = deep.locals;
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    std::string error;
+    auto lowered = lowerDeconstructionDeclarationFixture(
+        deep, model, methodBodyModel, nameLookup, objectLayoutModel, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 deconstruction->loop->block levels lower on one worklist (" +
+            error + ")");
+    tests.expect(deepDeconstructionDeclarationMatches(
+            lowered.get(), observed, nestingDepth),
+        "iterative deconstruction declarations preserve source, layout, locals, offsets and conversions");
+    destroyHirTreeIteratively(lowered);
+
+    DeconstructionDeclarationDepthFixture matchFixture;
+    matchFixture.tupleTypeKey = tupleType.typeKey;
+    MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    auto* source = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::IdentifierExpression, range(200U));
+    source->setText("match-source");
+    auto* innerLeaf = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::IdentifierExpression, range(201U));
+    innerLeaf->setText("inner");
+    auto* inner = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::DeconstructionDeclarationStatement, range(202U));
+    inner->setFirst(source);
+    inner->addChild(innerLeaf);
+    auto* condition = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::BooleanLiteralExpression, range(203U));
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* value = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::IdentifierExpression, range(204U));
+    value->setText("match-source");
+    auto* arm = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::MatchArmExpression, range(205U));
+    arm->setFirst(condition);
+    arm->setThird(value);
+    arm->addChild(inner);
+    auto* governing = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::BooleanLiteralExpression, range(206U));
+    governing->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* match = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::MatchExpression, range(207U));
+    match->setFirst(governing);
+    match->addChild(arm);
+    auto* outerLeaf = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::IdentifierExpression, range(208U));
+    outerLeaf->setText("outer");
+    auto* outer = appendDeconstructionDeclarationNode(
+        matchFixture, AstKind::DeconstructionDeclarationStatement, range(209U));
+    outer->setFirst(match);
+    outer->addChild(outerLeaf);
+    matchFixture.root = outer;
+    matchFixture.bindings.push_back({
+        inner, source, tupleType.typeKey, tupleType.typeKey, std::nullopt});
+    matchFixture.bindings.push_back({
+        outer, match, tupleType.typeKey, tupleType.typeKey, std::nullopt});
+    for (const auto& [syntax, name, type] :
+         std::array<std::tuple<const nativesharp::ast::AstNode*,
+             const char*, const char*>, 3U>{{
+             {source, "match-source", tupleType.typeKey.c_str()},
+             {innerLeaf, "inner", "builtin:int"},
+             {outerLeaf, "outer", "builtin:int"}}})
+    {
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = syntax;
+        local.name = name;
+        local.typeKey = type;
+        matchFixture.locals.push_back(std::move(local));
+    }
+    nativesharp::frontend::MethodNameBinding sourceName;
+    sourceName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    sourceName.syntax = source;
+    sourceName.name = "match-source";
+    sourceName.typeKey = tupleType.typeKey;
+    sourceName.localOrdinal = 0U;
+    matchFixture.names.push_back(sourceName);
+    sourceName.syntax = value;
+    matchFixture.names.push_back(sourceName);
+    matchFixture.typed = {
+        {source, &tupleType}, {value, &tupleType}, {match, &tupleType},
+        {governing, &boolType}, {condition, &boolType}};
+    nativesharp::frontend::MethodMatchExpressionBinding matchBinding;
+    matchBinding.syntax = match;
+    matchBinding.governingTypeKey = "builtin:bool";
+    matchBinding.resultTypeKey = tupleType.typeKey;
+    matchBinding.armConversions.push_back({
+        nativesharp::frontend::ProjectConversionKind::Identity, 0,
+        tupleType.typeKey, tupleType.typeKey, std::nullopt});
+    matchFixture.matches.push_back(std::move(matchBinding));
+    ProjectOopHirModel matchModel;
+    nativesharp::frontend::ProjectMethodBodyModel matchBody;
+    nativesharp::frontend::ProjectNameLookup matchLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel matchLayout;
+    error.clear();
+    auto matchLowered = lowerDeconstructionDeclarationFixture(
+        matchFixture, matchModel, matchBody, matchLookup, matchLayout, error);
+    const auto* outerDeconstruct = matchLowered != nullptr &&
+            matchLowered->children.size() == 2U
+        ? matchLowered->children.back().get() : nullptr;
+    const auto* matchNode = outerDeconstruct != nullptr &&
+            !outerDeconstruct->children.empty()
+        ? outerDeconstruct->children.front().get() : nullptr;
+    const auto* matchArm = matchNode != nullptr && matchNode->children.size() == 2U
+        ? matchNode->children[1].get() : nullptr;
+    tests.expect(matchLowered != nullptr && error.empty() &&
+            matchArm != nullptr && matchArm->kind == HirKind::MatchArm &&
+            matchArm->children.size() == 4U &&
+            matchArm->children[2]->kind == HirKind::Block &&
+            matchArm->children[2]->children.back()->kind ==
+                HirKind::TupleDeconstruct,
+        "match arm declarations reuse the deconstruction statement continuation without recursive reentry (" +
+            error + ")");
+    destroyHirTreeIteratively(matchLowered);
+
+    DeconstructionDeclarationDepthFixture shapeFixture;
+    const std::array<std::string, 2U> nestedElementTypes{
+        "builtin:int", "builtin:int"};
+    const std::string nestedTuple =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(
+            nestedElementTypes);
+    const std::array<std::string, 3U> shapeElementTypes{
+        "builtin:int", nestedTuple, "builtin:int"};
+    shapeFixture.tupleTypeKey =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(
+            shapeElementTypes);
+    MethodExpressionTypeBinding shapeType;
+    shapeType.typeKey = shapeFixture.tupleTypeKey;
+    auto* shapeSource = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::IdentifierExpression, range(220U));
+    shapeSource->setText("shape-source");
+    auto* left = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::IdentifierExpression, range(221U));
+    left->setText("left");
+    auto* nested = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::TupleExpression, range(222U));
+    auto* widened = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::IdentifierExpression, range(223U));
+    widened->setText("widened");
+    auto* discard = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::IdentifierExpression, range(224U));
+    discard->setText("_");
+    nested->addChild(widened);
+    nested->addChild(discard);
+    auto* right = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::IdentifierExpression, range(225U));
+    right->setText("right");
+    auto* shapeStatement = appendDeconstructionDeclarationNode(
+        shapeFixture, AstKind::DeconstructionDeclarationStatement, range(226U));
+    shapeStatement->setFirst(shapeSource);
+    shapeStatement->addChild(left);
+    shapeStatement->addChild(nested);
+    shapeStatement->addChild(right);
+    shapeFixture.root = shapeStatement;
+    shapeFixture.bindings.push_back({
+        shapeStatement, shapeSource, shapeFixture.tupleTypeKey,
+        shapeFixture.tupleTypeKey, std::nullopt});
+    for (const auto& [syntax, name, type] :
+         std::array<std::tuple<const nativesharp::ast::AstNode*,
+             const char*, const char*>, 4U>{{
+             {shapeSource, "shape-source", shapeFixture.tupleTypeKey.c_str()},
+             {left, "left", "builtin:int"},
+             {widened, "widened", "builtin:long"},
+             {right, "right", "builtin:int"}}})
+    {
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.syntax = syntax;
+        local.name = name;
+        local.typeKey = type;
+        shapeFixture.locals.push_back(std::move(local));
+    }
+    nativesharp::frontend::MethodNameBinding shapeName;
+    shapeName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    shapeName.syntax = shapeSource;
+    shapeName.name = "shape-source";
+    shapeName.typeKey = shapeFixture.tupleTypeKey;
+    shapeName.localOrdinal = 0U;
+    shapeFixture.names.push_back(std::move(shapeName));
+    shapeFixture.typed.push_back({shapeSource, &shapeType});
+    ProjectOopHirModel shapeModel;
+    nativesharp::frontend::ProjectMethodBodyModel shapeBody;
+    nativesharp::frontend::ProjectNameLookup shapeLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel shapeLayout;
+    error.clear();
+    auto shapeLowered = lowerDeconstructionDeclarationFixture(
+        shapeFixture, shapeModel, shapeBody, shapeLookup, shapeLayout, error);
+    const auto topLayout = shapeLayout.tupleLayoutForTypeKey(
+        shapeLookup, shapeType.typeKey);
+    const auto innerLayout = shapeLayout.tupleLayoutForTypeKey(
+        shapeLookup, nestedTuple);
+    const auto* shapeDeconstruct = shapeLowered != nullptr &&
+            shapeLowered->children.size() == 4U
+        ? shapeLowered->children.back().get() : nullptr;
+    const bool shapeOk = shapeDeconstruct != nullptr &&
+        shapeDeconstruct->kind == HirKind::TupleDeconstruct &&
+        shapeDeconstruct->children.size() == 4U &&
+        topLayout.has_value() && innerLayout.has_value() &&
+        shapeDeconstruct->children[1]->integerValue == topLayout->offsets[0] &&
+        shapeDeconstruct->children[2]->integerValue ==
+            topLayout->offsets[1] + innerLayout->offsets[0] &&
+        shapeDeconstruct->children[3]->integerValue == topLayout->offsets[2] &&
+        shapeDeconstruct->children[2]->conversion.has_value() &&
+        shapeDeconstruct->children[2]->conversion->kind ==
+            nativesharp::frontend::ProjectConversionKind::Numeric &&
+        shapeLowered->children[0]->stringValue == "left" &&
+        shapeLowered->children[1]->stringValue == "widened" &&
+        shapeLowered->children[2]->stringValue == "right";
+    std::size_t sourceOccurrences = 0U;
+    std::size_t borrowNodes = 0U;
+    bool neutralLeafOwnership = true;
+    if (shapeLowered != nullptr)
+    {
+        std::vector<const nativesharp::frontend::ProjectOopHirNode*> pending{
+            shapeLowered.get()};
+        while (!pending.empty())
+        {
+            const auto* currentNode = pending.back();
+            pending.pop_back();
+            if (currentNode->syntax == shapeSource) ++sourceOccurrences;
+            if (currentNode->kind == HirKind::BorrowValue) ++borrowNodes;
+            if (currentNode->kind == HirKind::LocalDeclaration)
+            {
+                neutralLeafOwnership = neutralLeafOwnership &&
+                    currentNode->ownership == nativesharp::sema::OwnershipKind::None &&
+                    currentNode->objectLifetimeOwnership ==
+                        nativesharp::sema::OwnershipKind::None &&
+                    currentNode->storageOwnership ==
+                        nativesharp::sema::OwnershipKind::None &&
+                    !currentNode->automaticDestruction &&
+                    !currentNode->cleanupRegionOrdinal.has_value();
+            }
+            for (const auto& child : currentNode->children)
+                if (child != nullptr) pending.push_back(child.get());
+        }
+    }
+    tests.expect(shapeLowered != nullptr && error.empty() && shapeOk &&
+            sourceOccurrences == 1U && borrowNodes == 0U && neutralLeafOwnership,
+        "nested deconstruction preserves absolute offsets, preorder, discard, widening metadata and one source evaluation (" +
+            error + ")");
+    tests.expect(shapeLowered != nullptr &&
+            std::none_of(shapeLowered->children.begin(), shapeLowered->children.end(),
+                [&](const auto& child)
+                {
+                    return child != nullptr && child->syntax == discard;
+                }) &&
+            borrowNodes == 0U && neutralLeafOwnership,
+        "deconstruction leaves add no discard, borrow, ownership or cleanup nodes");
+    destroyHirTreeIteratively(shapeLowered);
+
+    const auto runNominal = [&](AstKind sourceKind,
+                                bool useStruct,
+                                bool implicitReceiver,
+                                HirKind expectedReceiver,
+                                std::string_view label)
+    {
+        DeconstructionDeclarationDepthFixture fixture;
+        fixture.tupleTypeKey = tupleType.typeKey;
+        auto* nominalSource = appendDeconstructionDeclarationNode(
+            fixture, sourceKind, range(240U));
+        nominalSource->setText("receiver");
+        if (sourceKind == AstKind::IntegerLiteralExpression)
+            nominalSource->setIntegerValue(9U);
+        auto* leaf = appendDeconstructionDeclarationNode(
+            fixture, AstKind::IdentifierExpression, range(241U));
+        leaf->setText("result");
+        auto* statement = appendDeconstructionDeclarationNode(
+            fixture, AstKind::DeconstructionDeclarationStatement, range(242U));
+        statement->setFirst(nominalSource);
+        statement->addChild(leaf);
+        fixture.root = statement;
+        nativesharp::frontend::ProjectNameLookup lookup;
+        nativesharp::frontend::ProjectObjectLayoutModel layout;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureTupleAggregateEnvironment(lookup, layout);
+        std::string classTypeKey;
+        std::string structTypeKey;
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            configureDeconstructionReceiverTypes(
+                lookup, classTypeKey, structTypeKey);
+        const std::string& sourceTypeKey = useStruct
+            ? structTypeKey : classTypeKey;
+        MethodExpressionTypeBinding sourceType;
+        sourceType.typeKey = sourceTypeKey;
+        fixture.typed.push_back({nominalSource, &sourceType});
+        fixture.bindings.push_back({
+            statement, nominalSource, sourceTypeKey, fixture.tupleTypeKey, 77U});
+        if (!implicitReceiver && sourceKind == AstKind::IdentifierExpression)
+        {
+            nativesharp::frontend::MethodLocalSymbol receiverLocal;
+            receiverLocal.syntax = nominalSource;
+            receiverLocal.name = "receiver";
+            receiverLocal.typeKey = sourceTypeKey;
+            fixture.locals.push_back(std::move(receiverLocal));
+            nativesharp::frontend::MethodNameBinding receiverName;
+            receiverName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+            receiverName.syntax = nominalSource;
+            receiverName.name = "receiver";
+            receiverName.typeKey = sourceTypeKey;
+            receiverName.localOrdinal = 0U;
+            fixture.names.push_back(std::move(receiverName));
+        }
+        nativesharp::frontend::MethodLocalSymbol resultLocal;
+        resultLocal.syntax = leaf;
+        resultLocal.name = "result";
+        resultLocal.typeKey = "builtin:int";
+        fixture.locals.push_back(std::move(resultLocal));
+        ProjectOopHirModel nominalModel;
+        nativesharp::frontend::ProjectMethodBodyModel nominalBody;
+        std::string nominalError;
+        auto result = nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerDeconstructionDeclarationStatement(
+                nominalModel, nominalBody, lookup, layout, fixture.root,
+                std::move(fixture.bindings), std::move(fixture.locals), {}, {},
+                fixture.typed, fixture.names, nominalError);
+        const auto* deconstruct = result != nullptr && result->children.size() == 2U
+            ? result->children.back().get() : nullptr;
+        const auto* call = deconstruct != nullptr && !deconstruct->children.empty()
+            ? deconstruct->children.front().get() : nullptr;
+        const auto* receiver = call != nullptr && call->children.size() == 1U
+            ? call->children.front().get() : nullptr;
+        tests.expect(result != nullptr && nominalError.empty() &&
+                call != nullptr && call->kind == HirKind::InstanceCall &&
+                call->memberOrdinal == 77U && receiver != nullptr &&
+                receiver->kind == expectedReceiver &&
+                receiver->typeKey == sourceTypeKey,
+            std::string(label) + " preserves the historical receiver shape (" +
+                nominalError + ")");
+        if (expectedReceiver == HirKind::TemporaryAddress)
+        {
+            tests.expect(receiver != nullptr && receiver->elementTypeKey == sourceTypeKey &&
+                    receiver->children.size() == 1U &&
+                    receiver->children.front()->kind == HirKind::IntegerConstant,
+                "struct temporary is materialized once before Deconstruct()");
+        }
+        destroyHirTreeIteratively(result);
+    };
+    runNominal(AstKind::IdentifierExpression, false, false,
+        HirKind::LocalValue, "class Deconstruct receiver");
+    runNominal(AstKind::IdentifierExpression, true, false,
+        HirKind::LocalAddress, "struct lvalue Deconstruct receiver");
+    runNominal(AstKind::IntegerLiteralExpression, true, false,
+        HirKind::TemporaryAddress, "struct temporary Deconstruct receiver");
+    runNominal(AstKind::BaseExpression, false, true,
+        HirKind::ThisValue, "implicit/base Deconstruct receiver");
+
+    const auto makeDiagnosticStatement = [&](std::size_t base)
+    {
+        DeconstructionDeclarationDepthFixture fixture;
+        fixture.tupleTypeKey = tupleType.typeKey;
+        auto* diagnosticSource = appendDeconstructionDeclarationNode(
+            fixture, AstKind::IdentifierExpression, range(base));
+        diagnosticSource->setText("diagnostic-source");
+        auto* diagnosticLeaf = appendDeconstructionDeclarationNode(
+            fixture, AstKind::IdentifierExpression, range(base + 1U));
+        diagnosticLeaf->setText("diagnostic-leaf");
+        auto* statement = appendDeconstructionDeclarationNode(
+            fixture, AstKind::DeconstructionDeclarationStatement,
+            range(base + 2U));
+        statement->setFirst(diagnosticSource);
+        statement->addChild(diagnosticLeaf);
+        fixture.root = statement;
+        fixture.bindings.push_back({
+            statement, diagnosticSource, tupleType.typeKey,
+            tupleType.typeKey, std::nullopt});
+        nativesharp::frontend::MethodLocalSymbol sourceLocal;
+        sourceLocal.syntax = diagnosticSource;
+        sourceLocal.name = "diagnostic-source";
+        sourceLocal.typeKey = tupleType.typeKey;
+        fixture.locals.push_back(std::move(sourceLocal));
+        nativesharp::frontend::MethodLocalSymbol leafLocal;
+        leafLocal.syntax = diagnosticLeaf;
+        leafLocal.name = "diagnostic-leaf";
+        leafLocal.typeKey = "builtin:int";
+        fixture.locals.push_back(std::move(leafLocal));
+        nativesharp::frontend::MethodNameBinding diagnosticName;
+        diagnosticName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+        diagnosticName.syntax = diagnosticSource;
+        diagnosticName.name = "diagnostic-source";
+        diagnosticName.typeKey = tupleType.typeKey;
+        diagnosticName.localOrdinal = 0U;
+        fixture.names.push_back(std::move(diagnosticName));
+        fixture.typed.push_back({diagnosticSource, &tupleType});
+        return fixture;
+    };
+
+    auto noLayout = makeDiagnosticStatement(300U);
+    ProjectOopHirModel noLayoutModel;
+    nativesharp::frontend::ProjectMethodBodyModel noLayoutBody;
+    error.clear();
+    auto noLayoutResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerBareDeconstructionDeclarationStatement(
+            noLayoutModel, &noLayoutBody, noLayout.root, error);
+    tests.expect(noLayoutResult == nullptr &&
+            error == "T02-F03 deconstruction declaration requires value layouts" &&
+            noLayoutModel.lastErrorRange().begin() == noLayout.root->range().begin() &&
+            noLayoutModel.lastErrorRange().end() == noLayout.root->range().end(),
+        "missing layout wins before binding/source and retains the declaration range");
+
+    auto noBinding = makeDiagnosticStatement(310U);
+    noBinding.bindings.clear();
+    ProjectOopHirModel noBindingModel;
+    nativesharp::frontend::ProjectMethodBodyModel noBindingBody;
+    nativesharp::frontend::ProjectNameLookup noBindingLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel noBindingLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(noBindingLookup, noBindingLayout);
+    error.clear();
+    auto noBindingResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            noBindingModel, noBindingBody, noBindingLookup, noBindingLayout,
+            noBinding.root, {}, std::move(noBinding.locals), {}, {},
+            noBinding.typed, noBinding.names, error);
+    tests.expect(noBindingResult == nullptr &&
+            error == "T02-F03 deconstruction declaration has no semantic binding" &&
+            noBindingModel.lastErrorRange().begin() == noBinding.root->range().begin() &&
+            noBindingModel.lastErrorRange().end() == noBinding.root->range().end(),
+        "missing semantic binding wins before source lowering and publishes no HIR");
+
+    auto sourceFailure = makeDiagnosticStatement(320U);
+    auto* badSource = appendDeconstructionDeclarationNode(
+        sourceFailure, AstKind::BreakStatement, range(323U));
+    const auto* sourceFailureStatement = sourceFailure.root;
+    const_cast<nativesharp::ast::AstNode*>(sourceFailureStatement)->setFirst(badSource);
+    sourceFailure.bindings.front().sourceSyntax = badSource;
+    sourceFailure.typed.push_back({badSource, &tupleType});
+    ProjectOopHirModel sourceFailureModel;
+    nativesharp::frontend::ProjectMethodBodyModel sourceFailureBody;
+    nativesharp::frontend::ProjectNameLookup sourceFailureLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel sourceFailureLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(sourceFailureLookup, sourceFailureLayout);
+    error.clear();
+    auto sourceFailureResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            sourceFailureModel, sourceFailureBody, sourceFailureLookup,
+            sourceFailureLayout, sourceFailure.root,
+            std::move(sourceFailure.bindings), std::move(sourceFailure.locals), {}, {},
+            sourceFailure.typed, sourceFailure.names, error);
+    tests.expect(sourceFailureResult == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: BreakStatement" &&
+            sourceFailureModel.lastErrorRange().begin() == badSource->range().begin() &&
+            sourceFailureModel.lastErrorRange().end() == badSource->range().end(),
+        "source lowering failure keeps the interior source range and publishes no partial block");
+
+    auto sourceBeforeShape = makeDiagnosticStatement(325U);
+    auto* badSourceBeforeShape = appendDeconstructionDeclarationNode(
+        sourceBeforeShape, AstKind::BreakStatement, range(328U));
+    const_cast<nativesharp::ast::AstNode*>(sourceBeforeShape.root)->setFirst(
+        badSourceBeforeShape);
+    sourceBeforeShape.bindings.front().sourceSyntax = badSourceBeforeShape;
+    sourceBeforeShape.bindings.front().tupleTypeKey = "builtin:int";
+    sourceBeforeShape.typed.push_back({badSourceBeforeShape, &tupleType});
+    ProjectOopHirModel sourceBeforeShapeModel;
+    nativesharp::frontend::ProjectMethodBodyModel sourceBeforeShapeBody;
+    nativesharp::frontend::ProjectNameLookup sourceBeforeShapeLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel sourceBeforeShapeLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(
+            sourceBeforeShapeLookup, sourceBeforeShapeLayout);
+    error.clear();
+    auto sourceBeforeShapeResult =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerDeconstructionDeclarationStatement(
+                sourceBeforeShapeModel, sourceBeforeShapeBody,
+                sourceBeforeShapeLookup, sourceBeforeShapeLayout,
+                sourceBeforeShape.root, std::move(sourceBeforeShape.bindings),
+                std::move(sourceBeforeShape.locals), {}, {},
+                sourceBeforeShape.typed, sourceBeforeShape.names, error);
+    tests.expect(sourceBeforeShapeResult == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: BreakStatement" &&
+            sourceBeforeShapeModel.lastErrorRange().begin() ==
+                badSourceBeforeShape->range().begin() &&
+            sourceBeforeShapeModel.lastErrorRange().end() ==
+                badSourceBeforeShape->range().end(),
+        "source failure keeps precedence over an invalid tuple shape");
+
+    auto lostShape = makeDiagnosticStatement(330U);
+    lostShape.bindings.front().tupleTypeKey = "builtin:int";
+    ProjectOopHirModel lostShapeModel;
+    nativesharp::frontend::ProjectMethodBodyModel lostShapeBody;
+    nativesharp::frontend::ProjectNameLookup lostShapeLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel lostShapeLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(lostShapeLookup, lostShapeLayout);
+    error.clear();
+    auto lostShapeResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            lostShapeModel, lostShapeBody, lostShapeLookup, lostShapeLayout,
+            lostShape.root, std::move(lostShape.bindings),
+            std::move(lostShape.locals), {}, {}, lostShape.typed,
+            lostShape.names, error);
+    tests.expect(lostShapeResult == nullptr &&
+            error == "T02-F03 deconstruction declaration lost its tuple shape or layout" &&
+            lostShapeModel.lastErrorRange().begin() == lostShape.root->range().begin() &&
+            lostShapeModel.lastErrorRange().end() == lostShape.root->range().end(),
+        "top-level shape is validated after a successful source and rolls back the provisional tree");
+
+    auto missingLocal = makeDiagnosticStatement(340U);
+    missingLocal.locals.pop_back();
+    ProjectOopHirModel missingLocalModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingLocalBody;
+    nativesharp::frontend::ProjectNameLookup missingLocalLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel missingLocalLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(missingLocalLookup, missingLocalLayout);
+    error.clear();
+    auto missingLocalResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            missingLocalModel, missingLocalBody, missingLocalLookup,
+            missingLocalLayout, missingLocal.root,
+            std::move(missingLocal.bindings), std::move(missingLocal.locals), {}, {},
+            missingLocal.typed, missingLocal.names, error);
+    tests.expect(missingLocalResult == nullptr &&
+            error == "T02-F03 deconstruction binding has no local symbol" &&
+            missingLocalModel.lastErrorRange().begin() == missingLocal.root->range().begin() &&
+            missingLocalModel.lastErrorRange().end() == missingLocal.root->range().end(),
+        "missing leaf local reports the historical diagnostic and publishes no partial block");
+
+    DeconstructionDeclarationDepthFixture nestedFailure;
+    const std::array<std::string, 1U> nestedOnly{"builtin:int"};
+    const std::string oneTuple =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(nestedOnly);
+    const std::array<std::string, 1U> outerOnly{oneTuple};
+    nestedFailure.tupleTypeKey =
+        nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(outerOnly);
+    MethodExpressionTypeBinding nestedFailureSourceType;
+    nestedFailureSourceType.typeKey = nestedFailure.tupleTypeKey;
+    auto* nestedFailureSource = appendDeconstructionDeclarationNode(
+        nestedFailure, AstKind::IdentifierExpression, range(350U));
+    nestedFailureSource->setText("nested-source");
+    auto* firstMalformedLeaf = appendDeconstructionDeclarationNode(
+        nestedFailure, AstKind::IdentifierExpression, range(351U));
+    firstMalformedLeaf->setText("first");
+    auto* secondMalformedLeaf = appendDeconstructionDeclarationNode(
+        nestedFailure, AstKind::IdentifierExpression, range(352U));
+    secondMalformedLeaf->setText("second");
+    auto* malformedTuple = appendDeconstructionDeclarationNode(
+        nestedFailure, AstKind::TupleExpression, range(353U));
+    malformedTuple->addChild(firstMalformedLeaf);
+    malformedTuple->addChild(secondMalformedLeaf);
+    auto* nestedFailureStatement = appendDeconstructionDeclarationNode(
+        nestedFailure, AstKind::DeconstructionDeclarationStatement, range(354U));
+    nestedFailureStatement->setFirst(nestedFailureSource);
+    nestedFailureStatement->addChild(malformedTuple);
+    nestedFailure.root = nestedFailureStatement;
+    nestedFailure.bindings.push_back({
+        nestedFailureStatement, nestedFailureSource,
+        nestedFailure.tupleTypeKey, nestedFailure.tupleTypeKey, std::nullopt});
+    nativesharp::frontend::MethodLocalSymbol nestedSourceLocal;
+    nestedSourceLocal.syntax = nestedFailureSource;
+    nestedSourceLocal.name = "nested-source";
+    nestedSourceLocal.typeKey = nestedFailure.tupleTypeKey;
+    nestedFailure.locals.push_back(std::move(nestedSourceLocal));
+    nativesharp::frontend::MethodNameBinding nestedSourceName;
+    nestedSourceName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    nestedSourceName.syntax = nestedFailureSource;
+    nestedSourceName.name = "nested-source";
+    nestedSourceName.typeKey = nestedFailure.tupleTypeKey;
+    nestedSourceName.localOrdinal = 0U;
+    nestedFailure.names.push_back(std::move(nestedSourceName));
+    nestedFailure.typed.push_back({nestedFailureSource, &nestedFailureSourceType});
+    ProjectOopHirModel nestedFailureModel;
+    nativesharp::frontend::ProjectMethodBodyModel nestedFailureBody;
+    nativesharp::frontend::ProjectNameLookup nestedFailureLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel nestedFailureLayout;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureTupleAggregateEnvironment(nestedFailureLookup, nestedFailureLayout);
+    error.clear();
+    auto nestedFailureResult = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionDeclarationStatement(
+            nestedFailureModel, nestedFailureBody, nestedFailureLookup,
+            nestedFailureLayout, nestedFailure.root,
+            std::move(nestedFailure.bindings), std::move(nestedFailure.locals), {}, {},
+            nestedFailure.typed, nestedFailure.names, error);
+    tests.expect(nestedFailureResult == nullptr &&
+            error == "T02-F03 nested declaration pattern lost its tuple layout" &&
+            nestedFailureModel.lastErrorRange().begin() ==
+                nestedFailure.root->range().begin() &&
+            nestedFailureModel.lastErrorRange().end() ==
+                nestedFailure.root->range().end(),
+        "nested shape loss keeps the historical diagnostic and rolls back every prior leaf");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -16845,6 +17719,10 @@ int main()
     else if (focusValue == "hir-variable-declaration-depth")
     {
         testDeepVariableDeclarationLowering(tests);
+    }
+    else if (focusValue == "hir-deconstruction-declaration-depth")
+    {
+        testDeepDeconstructionDeclarationLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
