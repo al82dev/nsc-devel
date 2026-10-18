@@ -445,29 +445,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             return lowerStaticAssertStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::IfStatement:
-        {
-            auto node = makeNode(ProjectOopHirNodeKind::If, statement, "builtin:void");
-            auto condition = lowerExpression(statement->first(), memberOrdinal, false, error);
-            auto thenBlock = lowerBlock(statement->second(), memberOrdinal, error);
-            if (condition == nullptr || thenBlock == nullptr)
-            {
-                return nullptr;
-            }
-            node->children.push_back(std::move(condition));
-            node->children.push_back(std::move(thenBlock));
-            if (statement->third() != nullptr)
-            {
-                std::unique_ptr<ProjectOopHirNode> elseNode = statement->third()->kind() == ast::AstNodeKind::BlockStatement
-                    ? lowerBlock(statement->third(), memberOrdinal, error)
-                    : lowerStatement(statement->third(), memberOrdinal, error);
-                if (elseNode == nullptr)
-                {
-                    return nullptr;
-                }
-                node->children.push_back(std::move(elseNode));
-            }
-            return node;
-        }
+            return lowerIfStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::DoWhileStatement:
         case ast::AstNodeKind::WhileStatement:

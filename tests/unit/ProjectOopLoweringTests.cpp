@@ -1480,6 +1480,29 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerIfStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodLoopExpressionBinding> loops,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -14812,6 +14835,312 @@ void testDeepInlineAssemblyOperandLowering(TestContext& tests)
         "the second inline-assembly operand keeps the allocation's inner range");
 }
 
+struct DeepIfStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    std::vector<const nativesharp::ast::AstNode*> statements;
+    std::vector<std::uint8_t> modes;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepIfStatementFixture makeDeepIfStatementFixture(
+    std::size_t depth,
+    const nativesharp::frontend::MethodExpressionTypeBinding& boolType)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepIfStatementFixture fixture;
+    fixture.nodes.reserve(depth * 4U + 2U);
+    fixture.loops.reserve(depth / 3U + 1U);
+    fixture.typed.reserve(depth * 2U);
+    fixture.statements.reserve(depth);
+    fixture.modes.reserve(depth);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    const auto makeTrue = [&]()
+    {
+        auto* literal = append(AstKind::BooleanLiteralExpression);
+        literal->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+        fixture.typed.push_back({literal, &boolType});
+        return literal;
+    };
+    const auto makeBlock = [&]() { return append(AstKind::BlockStatement); };
+
+    auto* terminal = append(AstKind::IfStatement);
+    terminal->setFirst(makeTrue());
+    terminal->setSecond(makeBlock());
+    nativesharp::ast::AstNode* current = terminal;
+    fixture.statements.push_back(terminal);
+    fixture.modes.push_back(3U);
+    for (std::size_t index = 1U; index < depth; ++index)
+    {
+        const std::uint8_t mode = static_cast<std::uint8_t>(index % 3U);
+        auto* statement = append(AstKind::IfStatement);
+        if (mode == 0U)
+        {
+            auto* loopBlock = makeBlock();
+            loopBlock->addChild(current);
+            auto* loop = append(AstKind::LoopExpression);
+            loop->setFirst(loopBlock);
+            fixture.loops.push_back(
+                {loop, 0U, index, "if-condition-loop", "builtin:bool"});
+            fixture.typed.push_back({loop, &boolType});
+            statement->setFirst(loop);
+            statement->setSecond(makeBlock());
+        }
+        else if (mode == 1U)
+        {
+            statement->setFirst(makeTrue());
+            auto* thenBlock = makeBlock();
+            thenBlock->addChild(current);
+            statement->setSecond(thenBlock);
+        }
+        else
+        {
+            statement->setFirst(makeTrue());
+            statement->setSecond(makeBlock());
+            statement->setThird(current);
+        }
+        current = statement;
+        fixture.statements.push_back(statement);
+        fixture.modes.push_back(mode);
+    }
+    std::reverse(fixture.statements.begin(), fixture.statements.end());
+    std::reverse(fixture.modes.begin(), fixture.modes.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepIfStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepIfStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.modes.size(); ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::If ||
+            node->syntax != fixture.statements[index] ||
+            node->typeKey != "builtin:void")
+            return false;
+        const std::uint8_t mode = fixture.modes[index];
+        if (mode == 3U)
+        {
+            return index + 1U == fixture.modes.size() &&
+                node->children.size() == 2U &&
+                node->children[0]->kind == HirKind::BooleanConstant &&
+                node->children[1]->kind == HirKind::Block &&
+                node->children[1]->children.empty();
+        }
+        if (mode == 0U)
+        {
+            if (node->children.size() != 2U ||
+                node->children[0]->kind != HirKind::LoopExpression ||
+                node->children[0]->children.size() != 1U ||
+                node->children[0]->children[0]->kind != HirKind::Block ||
+                node->children[0]->children[0]->children.size() != 1U ||
+                node->children[1]->kind != HirKind::Block ||
+                !node->children[1]->children.empty())
+                return false;
+            node = node->children[0]->children[0]->children[0].get();
+        }
+        else if (mode == 1U)
+        {
+            if (node->children.size() != 2U ||
+                node->children[0]->kind != HirKind::BooleanConstant ||
+                node->children[1]->kind != HirKind::Block ||
+                node->children[1]->children.size() != 1U)
+                return false;
+            node = node->children[1]->children[0].get();
+        }
+        else
+        {
+            if (node->children.size() != 3U ||
+                node->children[0]->kind != HirKind::BooleanConstant ||
+                node->children[1]->kind != HirKind::Block ||
+                !node->children[1]->children.empty() ||
+                node->children[2]->kind != HirKind::If)
+                return false;
+            node = node->children[2].get();
+        }
+    }
+    return false;
+}
+
+void testDeepIfStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    constexpr std::size_t nestingDepth = 32768U;
+    auto fixture = makeDeepIfStatementFixture(nestingDepth, boolType);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel body;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            model, body, fixture.root, fixture.loops, fixture.typed, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 alternating if condition/then/else-if edges lower on one worklist (" +
+            error + ")");
+    tests.expect(deepIfStatementChainMatches(lowered.get(), fixture),
+        "iterative if lowering preserves exact condition/then/else shape and order");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::activeCleanupDepth(model) == 0U,
+        "iterative if lowering restores cleanup depth after every real branch block");
+    destroyHirTreeIteratively(lowered);
+
+    auto condition = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BooleanLiteralExpression, nativesharp::SourceRange{});
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto thenBlock = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto elseBlock = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto statement = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IfStatement, nativesharp::SourceRange{});
+    statement->setFirst(condition.get());
+    statement->setSecond(thenBlock.get());
+    statement->setThird(elseBlock.get());
+    ProjectOopHirModel branchModel;
+    nativesharp::frontend::ProjectMethodBodyModel branchBody;
+    error.clear();
+    auto branch = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            branchModel, branchBody, statement.get(), {},
+            {{condition.get(), &boolType}}, error);
+    tests.expect(branch != nullptr && error.empty() &&
+            branch->kind == HirKind::If && branch->children.size() == 3U &&
+            branch->children[0]->kind == HirKind::BooleanConstant &&
+            branch->children[1]->kind == HirKind::Block &&
+            branch->children[2]->kind == HirKind::Block,
+        "if with else block preserves the exact three-child HIR contract");
+    destroyHirTreeIteratively(branch);
+
+    auto malformed = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IfStatement, nativesharp::SourceRange{});
+    malformed->setFirst(condition.get());
+    ProjectOopHirModel malformedModel;
+    nativesharp::frontend::ProjectMethodBodyModel malformedBody;
+    error.clear();
+    auto rejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            malformedModel, malformedBody, malformed.get(), {},
+            {{condition.get(), &boolType}}, error);
+    tests.expect(rejected == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body",
+        "if preserves the exact missing-then-block diagnostic");
+
+    const nativesharp::SourceRange conditionRange(
+        nativesharp::SourceLocation(nativesharp::FileId(73U), 11U),
+        nativesharp::SourceLocation(nativesharp::FileId(73U), 19U));
+    auto invalidCondition = std::make_unique<nativesharp::ast::AstNode>(
+        static_cast<AstKind>(0xFFFF), conditionRange);
+    auto validThen = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto forbiddenElse = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    forbiddenElse->addChild(nullptr);
+    auto conditionFailure = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IfStatement, nativesharp::SourceRange{});
+    conditionFailure->setFirst(invalidCondition.get());
+    conditionFailure->setSecond(validThen.get());
+    conditionFailure->setThird(forbiddenElse.get());
+    ProjectOopHirModel conditionFailureModel;
+    nativesharp::frontend::ProjectMethodBodyModel conditionFailureBody;
+    error.clear();
+    auto conditionRejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            conditionFailureModel, conditionFailureBody, conditionFailure.get(), {}, {}, error);
+    tests.expect(conditionRejected == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode" &&
+            conditionFailureModel.lastErrorRange().begin() == conditionRange.begin() &&
+            conditionFailureModel.lastErrorRange().end() == conditionRange.end(),
+        "if lowers then after condition failure, skips else, and preserves condition error/range");
+
+    auto failingThen = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    failingThen->addChild(nullptr);
+    auto thenOnlyFailure = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IfStatement, nativesharp::SourceRange{});
+    thenOnlyFailure->setFirst(condition.get());
+    thenOnlyFailure->setSecond(failingThen.get());
+    ProjectOopHirModel thenOnlyFailureModel;
+    nativesharp::frontend::ProjectMethodBodyModel thenOnlyFailureBody;
+    error.clear();
+    auto thenOnlyRejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            thenOnlyFailureModel, thenOnlyFailureBody, thenOnlyFailure.get(), {},
+            {{condition.get(), &boolType}}, error);
+    tests.expect(thenOnlyRejected == nullptr &&
+            error == "null statement reached Stage 34 OOP HIR",
+        "if preserves a then-block failure after a successful condition (" + error + ")");
+
+    auto doubleFailure = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IfStatement, nativesharp::SourceRange{});
+    doubleFailure->setFirst(invalidCondition.get());
+    doubleFailure->setSecond(failingThen.get());
+    ProjectOopHirModel doubleFailureModel;
+    nativesharp::frontend::ProjectMethodBodyModel doubleFailureBody;
+    error.clear();
+    auto doubleRejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            doubleFailureModel, doubleFailureBody, doubleFailure.get(), {}, {}, error);
+    tests.expect(doubleRejected == nullptr &&
+            error == "null statement reached Stage 34 OOP HIR",
+        "if preserves historical condition-then failure precedence (" + error + ")");
+    tests.expect(
+            doubleFailureModel.lastErrorRange().begin() == conditionRange.begin() &&
+            doubleFailureModel.lastErrorRange().end() == conditionRange.end(),
+        "if preserves the first condition failure range when the then block also fails");
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> failingChainNodes;
+    failingChainNodes.reserve(nestingDepth * 3U);
+    nativesharp::ast::AstNode* failingChain = nullptr;
+    const nativesharp::SourceRange outerFailureRange(
+        nativesharp::SourceLocation(nativesharp::FileId(74U), 100U),
+        nativesharp::SourceLocation(nativesharp::FileId(74U), 108U));
+    for (std::size_t index = 0U; index < nestingDepth; ++index)
+    {
+        const nativesharp::SourceRange failureRange = index + 1U == nestingDepth
+            ? outerFailureRange
+            : nativesharp::SourceRange(
+                nativesharp::SourceLocation(
+                    nativesharp::FileId(74U), static_cast<std::uint32_t>(200U + index)),
+                nativesharp::SourceLocation(
+                    nativesharp::FileId(74U), static_cast<std::uint32_t>(201U + index)));
+        failingChainNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            static_cast<AstKind>(0xFFFF), failureRange));
+        auto* failedCondition = failingChainNodes.back().get();
+        failingChainNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        auto* failedThen = failingChainNodes.back().get();
+        if (failingChain != nullptr) failedThen->addChild(failingChain);
+        failingChainNodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::IfStatement, nativesharp::SourceRange{}));
+        failingChainNodes.back()->setFirst(failedCondition);
+        failingChainNodes.back()->setSecond(failedThen);
+        failingChain = failingChainNodes.back().get();
+    }
+    ProjectOopHirModel failingChainModel;
+    nativesharp::frontend::ProjectMethodBodyModel failingChainBody;
+    error.clear();
+    auto deepRejected = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerIfStatementForTest(
+            failingChainModel, failingChainBody, failingChain, {}, {}, error);
+    tests.expect(deepRejected == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode" &&
+            failingChainModel.lastErrorRange().begin() == outerFailureRange.begin() &&
+            failingChainModel.lastErrorRange().end() == outerFailureRange.end(),
+        "32768 failed if conditions unwind through the shared worklist without recursion");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -18755,6 +19084,10 @@ int main()
     else if (focusValue == "hir-inline-assembly-operand-depth")
     {
         testDeepInlineAssemblyOperandLowering(tests);
+    }
+    else if (focusValue == "hir-if-statement-depth")
+    {
+        testDeepIfStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
