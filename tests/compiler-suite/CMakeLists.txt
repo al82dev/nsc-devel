@@ -271,6 +271,7 @@ add_executable(
     host/modules/ParserConditionalQuestionIndexCounterfactualModule.cpp
     host/modules/ParserNullCoalescingIterationCounterfactualModule.cpp
     host/modules/ParserConditionalTrampolineCounterfactualModule.cpp
+    host/modules/ParserLambdaBlockContinuationCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContinuationProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp

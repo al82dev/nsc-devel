@@ -1140,6 +1140,30 @@ bool Parser::looksLikeLambdaExpression() const noexcept
     return looksLikeLambdaCaptureHead();
 }
 
+// Detects only a lambda whose already-recognized head is followed by a block body. The scan is
+// side-effect free, linear in the head length, and leaves expression-bodied lambdas untouched.
+bool Parser::lambdaBlockBodyStartsHere() const noexcept
+{
+    if (!looksLikeLambdaExpression()) return false;
+    std::size_t parenthesisDepth = 0;
+    std::size_t bracketDepth = 0;
+    for (std::size_t cursor = index_; cursor + 1 < tokens_.size(); ++cursor)
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+        else if (kind == TokenKind::RightParen && parenthesisDepth != 0) --parenthesisDepth;
+        else if (kind == TokenKind::LeftBracket) ++bracketDepth;
+        else if (kind == TokenKind::RightBracket && bracketDepth != 0) --bracketDepth;
+        else if (kind == TokenKind::FatArrow && parenthesisDepth == 0 && bracketDepth == 0)
+            return tokens_[cursor + 1].kind() == TokenKind::LeftBrace;
+        else if (parenthesisDepth == 0 && bracketDepth == 0 &&
+            (kind == TokenKind::Semicolon || kind == TokenKind::LeftBrace ||
+             kind == TokenKind::RightBrace || kind == TokenKind::EndOfFile))
+            return false;
+    }
+    return false;
+}
+
 void Parser::parseLambdaPrefix(
     ast::AstNode* lambda,
     std::string& effects,

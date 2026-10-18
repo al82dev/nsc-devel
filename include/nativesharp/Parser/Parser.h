@@ -1504,6 +1504,7 @@ private:
         bool blockBody);
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;
+    bool lambdaBlockBodyStartsHere() const noexcept;
     ast::AstNode* parseConditionalExpression();
     ast::AstNode* parseNullCoalescingExpression();
     ast::AstNode* parseRangeExpression();
