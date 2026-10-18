@@ -189,6 +189,7 @@ void registerParserPatternContinuationModule(TestRegistry& registry);
 void registerParserPatternSemanticsModule(TestRegistry& registry);
 void registerParserMatchSemanticsModule(TestRegistry& registry);
 void registerParserLoopComprehensionModule(TestRegistry& registry);
+void registerParserLoopExpressionContinuationCounterfactualModule(TestRegistry& registry);
 void registerParserForeachSemanticsModule(TestRegistry& registry);
 void registerParserForeachContinuationModule(TestRegistry& registry);
 void registerParserCleanupContinuationModule(TestRegistry& registry);

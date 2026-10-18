@@ -245,6 +245,7 @@ add_executable(
     host/modules/ParserPatternSemanticsModule.cpp
     host/modules/ParserMatchSemanticsModule.cpp
     host/modules/ParserLoopComprehensionModule.cpp
+    host/modules/ParserLoopExpressionContinuationCounterfactualModule.cpp
     host/modules/ParserForeachSemanticsModule.cpp
     host/modules/ParserForeachContinuationModule.cpp
     host/modules/ParserCleanupContinuationModule.cpp

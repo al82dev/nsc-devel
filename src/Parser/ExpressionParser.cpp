@@ -14,6 +14,7 @@
 #include "nativesharp/Source/SourceFile.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <deque>
 #include <functional>
@@ -568,28 +569,7 @@ ast::AstNode* Parser::parseMatchExpression()
 
 ast::AstNode* Parser::parseLoopExpression()
 {
-    const std::size_t beginIndex = index_;
-    consume();
-
-    std::string label;
-    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::LeftBrace)
-        label = std::string(consume().lexeme());
-
-    if (!at(TokenKind::LeftBrace))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "expected '{' after loop expression" +
-                (label.empty() ? std::string{} : " label '" + label + "'"));
-    }
-    ast::AstNode* body = parseBlock();
-    ast::AstNode* loop = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::LoopExpression, tokenRangeFrom(beginIndex));
-    loop->setFirst(body);
-    loop->setText(std::move(label));
-    return loop;
+    return parseWithContinuation(ContinuationRequestKind::LoopExpression);
 }
 
 ast::AstNode* Parser::parseComprehensionExpression()
@@ -1556,13 +1536,21 @@ ast::AstNode* Parser::parsePostfixBaseExpression()
     return expression;
 }
 
-class Parser::PostfixIterationMachine final
+class Parser::PostfixIterationMachine final : public Parser::ExpressionContinuation
 {
 public:
-    explicit PostfixIterationMachine(Parser& parser) noexcept : parser_(parser) {}
+    explicit PostfixIterationMachine(
+        Parser& parser,
+        bool resumable = false,
+        bool forceLoop = false) noexcept
+        : parser_(parser), resumable_(resumable), forceLoop_(forceLoop)
+    {
+    }
     ast::AstNode* parse();
     ast::AstNode* parseUnary();
     ast::AstNode* parseBinary();
+    ExpressionContinuationStatus advance(ast::AstNode* completedBlock) override;
+    ast::AstNode* result() const noexcept override;
 
 private:
     static constexpr std::size_t noSlot = std::numeric_limits<std::size_t>::max();
@@ -1570,11 +1558,12 @@ private:
         Expression, ExpressionTail, Unary, FinishUnary, FinishBinary,
         FinishAssignment, FinishConditionalTrue, FinishConditionalFalse,
         FinishTypeRelation, FinishRangeEnd, FinishRangeStep,
-        Postfix, Primary, Grouping, Collection, FinishNameOf,
+        Postfix, Primary, Loop, Grouping, Collection, FinishNameOf,
         FinishOverflowPolicy, ContinueInterpolation, Call, Index, With,
         NewArguments, PlacementNew, ArrayNew, ArrayInitializer
     };
     ast::AstNode* parseRoot(WorkKind rootKind, std::uint8_t precedence);
+    void initializeRoot(WorkKind rootKind, std::uint8_t precedence);
     struct Result final { ast::AstNode* value = nullptr; bool ready = false; };
     struct Work final {
         Work() = default;
@@ -1601,8 +1590,10 @@ private:
         ast::TypeSyntax* typeSyntax = nullptr;
         std::vector<SourceRange> ranges;
         std::size_t ordinal = 0;
+        std::size_t beginIndex = 0;
         std::string label;
     };
+    void execute(Work work);
     struct InterpolationFrame final {
         std::optional<lexer::Token> token;
         std::vector<language::InterpolationPart> parts;
@@ -1635,6 +1626,8 @@ private:
     void validateConstantRange(ast::AstNode* range) const;
     void startPostfix(Work work);
     void startPrimary(Work work);
+    void startLoop(Work work);
+    void finishLoopBody(Work work, ast::AstNode* body);
     void continueGrouping(Work work);
     void continueCollection(Work work);
     void finishNameOf(Work work);
@@ -1673,6 +1666,12 @@ private:
     std::deque<Result> results_;
     std::deque<InterpolationFrame> interpolationFrames_;
     std::vector<Work> work_;
+    Work pendingLoop_;
+    std::size_t rootSlot_ = noSlot;
+    bool resumable_ = false;
+    bool forceLoop_ = false;
+    bool started_ = false;
+    bool awaitingBlock_ = false;
 #if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
     std::size_t outstandingResults_ = 0;
 #endif
@@ -1753,49 +1752,93 @@ ast::AstNode* Parser::PostfixIterationMachine::parseRoot(
     scheduler_test_hooks::maximumDepth = std::max(
         scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
 #endif
-    const std::size_t root = makeSlot();
-    Work rootWork{rootKind, root};
-    rootWork.precedence = precedence;
-    work_.push_back(std::move(rootWork));
-    while (!results_[root].ready)
+    initializeRoot(rootKind, precedence);
+    while (!results_[rootSlot_].ready)
     {
+        assert(!awaitingBlock_);
         Work work = std::move(work_.back());
         work_.pop_back();
-        switch (work.kind)
-        {
-        case WorkKind::Expression: startExpression(std::move(work)); break;
-        case WorkKind::ExpressionTail: continueExpression(std::move(work)); break;
-        case WorkKind::Unary: startUnary(std::move(work)); break;
-        case WorkKind::FinishUnary: finishUnary(std::move(work)); break;
-        case WorkKind::FinishBinary: finishBinary(std::move(work)); break;
-        case WorkKind::FinishAssignment: finishAssignment(std::move(work)); break;
-        case WorkKind::FinishConditionalTrue: finishConditionalTrue(std::move(work)); break;
-        case WorkKind::FinishConditionalFalse: finishConditionalFalse(std::move(work)); break;
-        case WorkKind::FinishTypeRelation: finishTypeRelation(std::move(work)); break;
-        case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
-        case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
-        case WorkKind::Postfix: startPostfix(std::move(work)); break;
-        case WorkKind::Primary: startPrimary(std::move(work)); break;
-        case WorkKind::Grouping: continueGrouping(std::move(work)); break;
-        case WorkKind::Collection: continueCollection(std::move(work)); break;
-        case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
-        case WorkKind::FinishOverflowPolicy: finishOverflowPolicy(std::move(work)); break;
-        case WorkKind::ContinueInterpolation: finishInterpolationHole(std::move(work)); break;
-        case WorkKind::Call: continueCall(std::move(work)); break;
-        case WorkKind::Index: continueIndex(std::move(work)); break;
-        case WorkKind::With: continueWith(std::move(work)); break;
-        case WorkKind::NewArguments: continueNewArguments(std::move(work)); break;
-        case WorkKind::PlacementNew: continuePlacementNew(std::move(work)); break;
-        case WorkKind::ArrayNew: continueArrayNew(std::move(work)); break;
-        case WorkKind::ArrayInitializer: continueArrayInitializer(std::move(work)); break;
-        }
+        execute(std::move(work));
     }
-    ast::AstNode* result = results_[root].value;
+    ast::AstNode* parsed = results_[rootSlot_].value;
 #if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
     scheduler_test_hooks::unfinishedResults = outstandingResults_;
     --scheduler_test_hooks::activeDepth;
 #endif
-    return result;
+    return parsed;
+}
+
+void Parser::PostfixIterationMachine::initializeRoot(
+    WorkKind rootKind,
+    std::uint8_t precedence)
+{
+    assert(!started_);
+    rootSlot_ = makeSlot();
+    Work rootWork{rootKind, rootSlot_};
+    rootWork.precedence = precedence;
+    work_.push_back(std::move(rootWork));
+    started_ = true;
+}
+
+void Parser::PostfixIterationMachine::execute(Work work)
+{
+    switch (work.kind)
+    {
+    case WorkKind::Expression: startExpression(std::move(work)); break;
+    case WorkKind::ExpressionTail: continueExpression(std::move(work)); break;
+    case WorkKind::Unary: startUnary(std::move(work)); break;
+    case WorkKind::FinishUnary: finishUnary(std::move(work)); break;
+    case WorkKind::FinishBinary: finishBinary(std::move(work)); break;
+    case WorkKind::FinishAssignment: finishAssignment(std::move(work)); break;
+    case WorkKind::FinishConditionalTrue: finishConditionalTrue(std::move(work)); break;
+    case WorkKind::FinishConditionalFalse: finishConditionalFalse(std::move(work)); break;
+    case WorkKind::FinishTypeRelation: finishTypeRelation(std::move(work)); break;
+    case WorkKind::FinishRangeEnd: finishRangeEnd(std::move(work)); break;
+    case WorkKind::FinishRangeStep: finishRangeStep(std::move(work)); break;
+    case WorkKind::Postfix: startPostfix(std::move(work)); break;
+    case WorkKind::Primary: startPrimary(std::move(work)); break;
+    case WorkKind::Loop: startLoop(std::move(work)); break;
+    case WorkKind::Grouping: continueGrouping(std::move(work)); break;
+    case WorkKind::Collection: continueCollection(std::move(work)); break;
+    case WorkKind::FinishNameOf: finishNameOf(std::move(work)); break;
+    case WorkKind::FinishOverflowPolicy: finishOverflowPolicy(std::move(work)); break;
+    case WorkKind::ContinueInterpolation: finishInterpolationHole(std::move(work)); break;
+    case WorkKind::Call: continueCall(std::move(work)); break;
+    case WorkKind::Index: continueIndex(std::move(work)); break;
+    case WorkKind::With: continueWith(std::move(work)); break;
+    case WorkKind::NewArguments: continueNewArguments(std::move(work)); break;
+    case WorkKind::PlacementNew: continuePlacementNew(std::move(work)); break;
+    case WorkKind::ArrayNew: continueArrayNew(std::move(work)); break;
+    case WorkKind::ArrayInitializer: continueArrayInitializer(std::move(work)); break;
+    }
+}
+
+Parser::ExpressionContinuationStatus Parser::PostfixIterationMachine::advance(
+    ast::AstNode* completedBlock)
+{
+    if (!started_)
+        initializeRoot(forceLoop_ ? WorkKind::Loop : WorkKind::Expression, 1);
+    else
+    {
+        assert(awaitingBlock_);
+        awaitingBlock_ = false;
+        finishLoopBody(std::move(pendingLoop_), completedBlock);
+    }
+    while (!results_[rootSlot_].ready && !awaitingBlock_)
+    {
+        assert(!work_.empty());
+        Work work = std::move(work_.back());
+        work_.pop_back();
+        execute(std::move(work));
+    }
+    return results_[rootSlot_].ready
+        ? ExpressionContinuationStatus::Complete
+        : ExpressionContinuationStatus::NeedsBlock;
+}
+
+ast::AstNode* Parser::PostfixIterationMachine::result() const noexcept
+{
+    return rootSlot_ == noSlot ? nullptr : results_[rootSlot_].value;
 }
 
 namespace
@@ -2601,6 +2644,41 @@ void Parser::PostfixIterationMachine::startInterpolationToken(
     scheduleInterpolation(frameIndex, work.resultSlot);
 }
 
+void Parser::PostfixIterationMachine::startLoop(Work work)
+{
+    work.beginIndex = parser_.index_;
+    parser_.consume();
+    if (parser_.at(TokenKind::Identifier) && parser_.peek().kind() == TokenKind::LeftBrace)
+        work.text = std::string(parser_.consume().lexeme());
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            parser_.current().range(),
+            "expected '{' after loop expression" +
+                (work.text.empty() ? std::string{} : " label '" + work.text + "'"));
+    }
+    if (resumable_)
+    {
+        pendingLoop_ = std::move(work);
+        awaitingBlock_ = true;
+        return;
+    }
+    finishLoopBody(std::move(work), parser_.parseBlock());
+}
+
+void Parser::PostfixIterationMachine::finishLoopBody(
+    Work work,
+    ast::AstNode* body)
+{
+    ast::AstNode* loop = parser_.arena_.make<ast::AstNode>(
+        ast::AstNodeKind::LoopExpression, parser_.tokenRangeFrom(work.beginIndex));
+    loop->setFirst(body);
+    loop->setText(std::move(work.text));
+    complete(work.resultSlot, loop);
+}
+
 bool Parser::PostfixIterationMachine::startReservedPrimary(Work& work)
 {
     if (parser_.startsParenthesizedBlock("match"))
@@ -2609,7 +2687,7 @@ bool Parser::PostfixIterationMachine::startReservedPrimary(Work& work)
         (parser_.peek().kind() == TokenKind::LeftBrace ||
          (parser_.peek().kind() == TokenKind::Identifier &&
           parser_.peek(2).kind() == TokenKind::LeftBrace)))
-        { complete(work.resultSlot, parser_.parseLoopExpression()); return true; }
+        { startLoop(std::move(work)); return true; }
     if (parser_.comprehensionExpressionStartsHere())
         { complete(work.resultSlot, parser_.parseComprehensionExpression()); return true; }
     return false;
@@ -3343,6 +3421,12 @@ ast::AstNode* Parser::parseResultPropagationSuffix(ast::AstNode* expression)
 ast::AstNode* Parser::parseUnaryIterativeExpression()
 {
     return PostfixIterationMachine(*this).parseUnary();
+}
+
+std::unique_ptr<Parser::ExpressionContinuation> Parser::makeExpressionContinuation(
+    bool forceLoop)
+{
+    return std::make_unique<PostfixIterationMachine>(*this, true, forceLoop);
 }
 
 ast::AstNode* Parser::parseLogicalOrExpression()

@@ -36,6 +36,8 @@ private:
     enum class WorkKind : std::uint8_t
     {
         Expression,
+        LoopExpression,
+        ResumeExpression,
         UnaryExpression,
         ConditionalExpression,
         Block,
@@ -145,6 +147,12 @@ private:
     {
         ast::AstNode* value = nullptr;
         bool ready = false;
+    };
+
+    struct ExpressionFrame final
+    {
+        std::size_t resultSlot = 0;
+        std::unique_ptr<ExpressionContinuation> continuation;
     };
 
     struct BlockFrame final
@@ -388,6 +396,10 @@ private:
     ast::AstNode* childValue(const Work& work) const;
 
     void startExpression(const Work& work);
+    void startLoopExpression(const Work& work);
+    void startExpressionContinuation(const Work& work, bool forceLoop);
+    void advanceExpression(std::size_t frameIndex, ast::AstNode* completedBlock);
+    void resumeExpression(const Work& work);
     void startUnaryExpression(const Work& work);
     void startConditionalExpression(const Work& work);
     void finishLambdaBlock(const Work& work);
@@ -630,6 +642,7 @@ private:
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
     std::deque<ResultSlot> resultSlots_;
+    std::deque<ExpressionFrame> expressionFrames_;
     std::deque<BlockFrame> blockFrames_;
     std::deque<VariableFrame> variableFrames_;
     std::deque<AggregateFrame> aggregateFrames_;
@@ -680,7 +693,8 @@ std::size_t Parser::ParseContinuationCoordinator::request(ContinuationRequestKin
 {
     const std::size_t resultSlot = makeResultSlot();
     WorkKind workKind = WorkKind::Expression;
-    if (kind == ContinuationRequestKind::Block) workKind = WorkKind::Block;
+    if (kind == ContinuationRequestKind::LoopExpression) workKind = WorkKind::LoopExpression;
+    else if (kind == ContinuationRequestKind::Block) workKind = WorkKind::Block;
     else if (kind == ContinuationRequestKind::Statement) workKind = WorkKind::Statement;
     else if (kind == ContinuationRequestKind::CatchClause) workKind = WorkKind::CatchClause;
     work_.push_back({workKind, resultSlot});
@@ -713,6 +727,8 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     switch (work.kind)
     {
     case WorkKind::Expression: startExpression(work); return;
+    case WorkKind::LoopExpression: startLoopExpression(work); return;
+    case WorkKind::ResumeExpression: resumeExpression(work); return;
     case WorkKind::UnaryExpression: startUnaryExpression(work); return;
     case WorkKind::ConditionalExpression: startConditionalExpression(work); return;
     case WorkKind::Block: startBlock(work); return;
@@ -814,7 +830,7 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
 {
     if (!parser_.lambdaBlockBodyStartsHere())
     {
-        complete(work.resultSlot, parser_.parseExpressionImpl());
+        startExpressionContinuation(work, false);
         return;
     }
     ast::AstNode* lambda = parser_.parseLambdaExpressionHead();
@@ -824,6 +840,47 @@ void Parser::ParseContinuationCoordinator::startExpression(const Work& work)
     finish.node = lambda;
     work_.push_back(std::move(finish));
     work_.push_back({WorkKind::Block, bodySlot});
+}
+
+void Parser::ParseContinuationCoordinator::startLoopExpression(const Work& work)
+{
+    startExpressionContinuation(work, true);
+}
+
+void Parser::ParseContinuationCoordinator::startExpressionContinuation(
+    const Work& work,
+    bool forceLoop)
+{
+    const std::size_t frameIndex = expressionFrames_.size();
+    expressionFrames_.push_back(
+        {work.resultSlot, parser_.makeExpressionContinuation(forceLoop)});
+    advanceExpression(frameIndex, nullptr);
+}
+
+void Parser::ParseContinuationCoordinator::advanceExpression(
+    std::size_t frameIndex,
+    ast::AstNode* completedBlock)
+{
+    ExpressionFrame& frame = expressionFrames_[frameIndex];
+    const ExpressionContinuationStatus status = frame.continuation->advance(completedBlock);
+    if (status == ExpressionContinuationStatus::Complete)
+    {
+        ast::AstNode* result = frame.continuation->result();
+        frame.continuation.reset();
+        complete(frame.resultSlot, result);
+        return;
+    }
+    const std::size_t blockSlot = makeResultSlot();
+    Work resume{WorkKind::ResumeExpression, frame.resultSlot};
+    resume.frameIndex = frameIndex;
+    resume.childSlot = blockSlot;
+    work_.push_back(std::move(resume));
+    work_.push_back({WorkKind::Block, blockSlot});
+}
+
+void Parser::ParseContinuationCoordinator::resumeExpression(const Work& work)
+{
+    advanceExpression(work.frameIndex, childValue(work));
 }
 
 // Preserves the inline-assembly output grammar without widening it to assignment-expression.

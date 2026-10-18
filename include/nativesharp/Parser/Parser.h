@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -1165,12 +1166,26 @@ private:
     enum class ContinuationRequestKind : std::uint8_t
     {
         Expression,
+        LoopExpression,
         Block,
         Statement,
         CatchClause
     };
+    enum class ExpressionContinuationStatus : std::uint8_t
+    {
+        Complete,
+        NeedsBlock
+    };
+    class ExpressionContinuation
+    {
+    public:
+        virtual ~ExpressionContinuation() = default;
+        virtual ExpressionContinuationStatus advance(ast::AstNode* completedBlock) = 0;
+        virtual ast::AstNode* result() const noexcept = 0;
+    };
     class ParseContinuationCoordinator;
     ast::AstNode* parseWithContinuation(ContinuationRequestKind kind);
+    std::unique_ptr<ExpressionContinuation> makeExpressionContinuation(bool forceLoop);
     ast::AstNode* lowerLocalFunctionDeclaration(
         ast::AstNode* function,
         bool isStaticLocal,
