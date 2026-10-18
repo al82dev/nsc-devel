@@ -429,6 +429,106 @@ struct ProjectOopHirModelTestAccess final
         return model.nextSyntheticLocalOrdinal_;
     }
 
+    static std::size_t nextSyntheticCleanupRegionOrdinal(
+        const ProjectOopHirModel& model)
+    {
+        return model.nextSyntheticCleanupRegionOrdinal_;
+    }
+
+    static std::unique_ptr<ProjectOopHirNode>
+    lowerOrdinaryConstructionExpressionForTest(
+        ProjectOopHirModel& model,
+        ProjectConstructionModel& constructionModel,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* root,
+        std::vector<ObjectConstructionBinding> bindings,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        const std::vector<MethodNameBinding>& names,
+        const ProjectNameLookup* nameLookup,
+        const ProjectInheritanceModel* inheritanceModel,
+        const ProjectMemberModel* memberModel,
+        std::size_t syntheticLocalFloor,
+        std::size_t syntheticCleanupFloor,
+        bool addressContext,
+        std::string& error)
+    {
+        constructionModel.constructions_ = std::move(bindings);
+        constructionModel.built_ = true;
+        model.constructionModel_ = &constructionModel;
+        for (const ObjectConstructionBinding& binding :
+             constructionModel.constructions_)
+        {
+            model.constructionBySyntax_[binding.syntax] = &binding;
+        }
+        methodBodyModel.locals_.clear();
+        for (const MethodNameBinding& name : names)
+        {
+            model.nameBindingBySyntax_[name.syntax] = &name;
+            if (!name.localOrdinal.has_value()) continue;
+            if (methodBodyModel.locals_.size() <= *name.localOrdinal)
+                methodBodyModel.locals_.resize(*name.localOrdinal + 1U);
+            methodBodyModel.locals_[*name.localOrdinal].name = name.name;
+            methodBodyModel.locals_[*name.localOrdinal].typeKey = name.typeKey;
+        }
+        model.methodBodyModel_ = &methodBodyModel;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.nameLookup_ = nameLookup;
+        model.inheritanceModel_ = inheritanceModel;
+        model.memberModel_ = memberModel;
+        model.nextSyntheticLocalOrdinal_ = syntheticLocalFloor;
+        model.nextSyntheticCleanupRegionOrdinal_ = syntheticCleanupFloor;
+        return model.lowerExpression(root, 73U, addressContext, error);
+    }
+
+    static void configureOrdinaryConstructionMembers(
+        ProjectMemberModel& memberModel,
+        std::vector<ClassMemberSymbol> members,
+        std::vector<std::vector<std::size_t>> membersByType)
+    {
+        memberModel.members_ = std::move(members);
+        memberModel.membersByType_ = std::move(membersByType);
+        memberModel.built_ = true;
+    }
+
+    static void configureOrdinaryConstructionInheritance(
+        ProjectNameLookup& nameLookup,
+        ProjectInheritanceModel& inheritanceModel,
+        std::vector<std::string>& typeKeys)
+    {
+        nameLookup.namedTypes_.clear();
+        for (const std::string_view name : {"Base", "Derived"})
+        {
+            NamedTypeDeclaration declaration{
+                compilation::TypeIdentity("H02S15E", {}, {}, std::string(name)),
+                NamedTypeDeclarationKind::Class,
+                NamedTypeAccessibility::Internal,
+                std::nullopt,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0U,
+                0U,
+                FileId{},
+                SourceRange{},
+                nullptr,
+                {}};
+            nameLookup.namedTypes_.push_back(std::move(declaration));
+            typeKeys.push_back(
+                "type:" + nameLookup.namedTypes_.back().identity.key());
+        }
+        nameLookup.built_ = true;
+        inheritanceModel.nameLookup_ = &nameLookup;
+        inheritanceModel.classes_ = {
+            ClassInheritanceInfo{0U, std::nullopt, {}, 0U, {1U}},
+            ClassInheritanceInfo{1U, 0U, typeKeys[0], 1U, {}}};
+        inheritanceModel.classInfoByType_ = {0U, 1U};
+        inheritanceModel.built_ = true;
+    }
+
     static void configureAllocatorLayouts(
         ProjectObjectLayoutModel& objectLayoutModel,
         std::size_t typeOrdinal,
@@ -6752,6 +6852,1049 @@ void testDeepAllocatorConstructionLowering(TestContext& tests)
             nativesharp::frontend::ProjectOopHirModelTestAccess::
                 nextSyntheticLocalOrdinal(innerFailureModel) == 36U + failureDepth * 2U,
         "a deep inner failure traverses and unwinds all allocator frames, preserves exact error/range, and publishes no partial block");
+}
+
+struct OrdinaryConstructionSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::ObjectConstructionBinding> bindings;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typed;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendOrdinaryConstructionSyntax(
+    OrdinaryConstructionSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind,
+    nativesharp::SourceRange range = {})
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(kind, range));
+    return fixture.nodes.back().get();
+}
+
+nativesharp::frontend::ObjectConstructionBinding ordinaryConstructionBinding(
+    const nativesharp::ast::AstNode* syntax,
+    std::string targetTypeKey,
+    bool targetIsStruct,
+    std::size_t argumentCount,
+    std::size_t targetTypeOrdinal = 0U)
+{
+    using nativesharp::frontend::ConstructionResolutionKind;
+    using nativesharp::frontend::ProjectConversionKind;
+    nativesharp::frontend::ObjectConstructionBinding binding;
+    binding.syntax = syntax;
+    binding.resolution = ConstructionResolutionKind::ResolvedExplicit;
+    binding.targetTypeKey = std::move(targetTypeKey);
+    binding.targetTypeOrdinal = targetTypeOrdinal;
+    binding.targetIsStruct = targetIsStruct;
+    binding.selectedConstructorMemberOrdinal = 41U;
+    for (std::size_t index = 0; index < argumentCount; ++index)
+    {
+        nativesharp::frontend::ProjectImplicitConversion conversion;
+        conversion.kind = ProjectConversionKind::Identity;
+        conversion.sourceTypeKey = "type:H02S15E.Node";
+        conversion.targetTypeKey = "type:H02S15E.Node";
+        binding.selectedConversions.push_back(std::move(conversion));
+        binding.selectedArgumentParameterOrdinals.push_back(10U + index);
+    }
+    return binding;
+}
+
+void testDeepOrdinaryConstructionLowering(TestContext& tests)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t depth = 32768U;
+    const nativesharp::SourceRange outerRange(
+        nativesharp::SourceLocation(nativesharp::FileId(32U), 10U),
+        nativesharp::SourceLocation(nativesharp::FileId(32U), 20U));
+    const nativesharp::SourceRange innerRange(
+        nativesharp::SourceLocation(nativesharp::FileId(32U), 40U),
+        nativesharp::SourceLocation(nativesharp::FileId(32U), 48U));
+    nativesharp::frontend::MethodExpressionTypeBinding nodeType;
+    nodeType.typeKey = "type:H02S15E.Node";
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding structPointerType;
+    structPointerType.typeKey = "type:H02S15E.Struct*";
+
+    const auto lower = [&](OrdinaryConstructionSyntax& fixture,
+                           ProjectOopHirModel& model,
+                           ProjectConstructionModel& constructionModel,
+                           ProjectMethodBodyModel& bodyModel,
+                           const ProjectNameLookup* lookup,
+                           const ProjectInheritanceModel* inheritance,
+                           const ProjectMemberModel* members,
+                           std::size_t localFloor,
+                           std::size_t cleanupFloor,
+                           bool address,
+                           std::string& error)
+    {
+        return nativesharp::frontend::ProjectOopHirModelTestAccess::
+            lowerOrdinaryConstructionExpressionForTest(
+                model, constructionModel, bodyModel, fixture.root,
+                std::move(fixture.bindings), fixture.typed, fixture.names,
+                lookup, inheritance, members, localFloor, cleanupFloor,
+                address, error);
+    };
+
+    OrdinaryConstructionSyntax deepArguments;
+    deepArguments.nodes.reserve(depth + 1U);
+    deepArguments.bindings.reserve(depth);
+    auto* deepLeaf = appendOrdinaryConstructionSyntax(
+        deepArguments, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    deepArguments.names.push_back(allocatorLocalBinding(
+        deepLeaf, "tail", nodeType.typeKey, 0U));
+    deepArguments.typed.push_back({deepLeaf, &nodeType});
+    nativesharp::ast::AstNode* nestedArgument = deepLeaf;
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* construction = appendOrdinaryConstructionSyntax(
+            deepArguments,
+            nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+            index + 1U == depth ? outerRange : nativesharp::SourceRange{});
+        construction->addChild(nestedArgument);
+        deepArguments.typed.push_back({construction, &nodeType});
+        deepArguments.bindings.push_back(ordinaryConstructionBinding(
+            construction, nodeType.typeKey, false, 1U, 7U));
+        nestedArgument = construction;
+    }
+    deepArguments.root = nestedArgument;
+    ProjectOopHirModel deepArgumentModel;
+    ProjectConstructionModel deepArgumentConstructions;
+    ProjectMethodBodyModel deepArgumentBody;
+    std::string error;
+    auto deepArgumentHir = lower(
+        deepArguments, deepArgumentModel, deepArgumentConstructions,
+        deepArgumentBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    const ProjectOopHirNode* argumentCursor = deepArgumentHir.get();
+    bool argumentShape = error.empty();
+    for (std::size_t level = 0; level < depth && argumentShape; ++level)
+    {
+        const std::size_t expectedOrdinal = depth - level - 1U;
+        argumentShape = argumentCursor != nullptr &&
+            argumentCursor->kind == HirKind::ObjectConstruction &&
+            argumentCursor->typeKey == nodeType.typeKey &&
+            argumentCursor->syntax == deepArguments.nodes[depth - level].get() &&
+            argumentCursor->constructionOrdinal == expectedOrdinal &&
+            argumentCursor->targetTypeOrdinal == 7U &&
+            argumentCursor->memberOrdinal == 41U &&
+            argumentCursor->objectLifetimeOwnership ==
+                nativesharp::sema::OwnershipKind::Owned &&
+            argumentCursor->storageOwnership ==
+                nativesharp::sema::OwnershipKind::Owned &&
+            argumentCursor->argumentCount == 1U &&
+            argumentCursor->argumentParameterOrdinals ==
+                std::vector<std::size_t>{10U} &&
+            argumentCursor->children.size() == 1U;
+        argumentCursor = argumentShape
+            ? argumentCursor->children.front().get() : nullptr;
+    }
+    argumentShape = argumentShape && argumentCursor != nullptr &&
+        argumentCursor->kind == HirKind::LocalValue &&
+        argumentCursor->syntax == deepLeaf && argumentCursor->typeKey == nodeType.typeKey;
+    tests.expect(argumentShape,
+        "32768 class constructions preserve identity, ownership, argument order, parameter mapping, syntax, and terminal");
+    destroyHirTreeIteratively(deepArgumentHir);
+
+    OrdinaryConstructionSyntax deepStorage;
+    deepStorage.nodes.reserve(depth + 1U);
+    deepStorage.bindings.reserve(depth);
+    auto* storageLeaf = appendOrdinaryConstructionSyntax(
+        deepStorage, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    deepStorage.names.push_back(allocatorLocalBinding(
+        storageLeaf, "storage", structPointerType.typeKey, 0U));
+    deepStorage.typed.push_back({storageLeaf, &structPointerType});
+    nativesharp::ast::AstNode* nestedStorage = storageLeaf;
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* construction = appendOrdinaryConstructionSyntax(
+            deepStorage,
+            nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+            index + 1U == depth ? outerRange : nativesharp::SourceRange{});
+        construction->setFirst(nestedStorage);
+        deepStorage.typed.push_back({construction, &structPointerType});
+        deepStorage.bindings.push_back(ordinaryConstructionBinding(
+            construction, "type:H02S15E.Struct", true, 0U, 8U));
+        nestedStorage = construction;
+    }
+    deepStorage.root = nestedStorage;
+    ProjectOopHirModel deepStorageModel;
+    ProjectConstructionModel deepStorageConstructions;
+    ProjectMethodBodyModel deepStorageBody;
+    auto deepStorageHir = lower(
+        deepStorage, deepStorageModel, deepStorageConstructions,
+        deepStorageBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    const ProjectOopHirNode* storageCursor = deepStorageHir.get();
+    bool storageShape = error.empty();
+    for (std::size_t level = 0; level < depth && storageShape; ++level)
+    {
+        const std::size_t expectedOrdinal = depth - level - 1U;
+        storageShape = storageCursor != nullptr &&
+            storageCursor->kind == HirKind::PlacementConstruction &&
+            storageCursor->typeKey == structPointerType.typeKey &&
+            storageCursor->syntax == deepStorage.nodes[depth - level].get() &&
+            storageCursor->constructionOrdinal == expectedOrdinal &&
+            storageCursor->targetTypeOrdinal == 8U &&
+            storageCursor->memberOrdinal == 41U &&
+            storageCursor->objectLifetimeOwnership ==
+                nativesharp::sema::OwnershipKind::Owned &&
+            storageCursor->storageOwnership ==
+                nativesharp::sema::OwnershipKind::Borrowed &&
+            storageCursor->argumentCount == 0U &&
+            storageCursor->argumentParameterOrdinals.empty() &&
+            storageCursor->children.size() == 1U &&
+            !storageCursor->allocatorContextLocalOrdinal.has_value() &&
+            !storageCursor->allocatorDeallocateMemberOrdinal.has_value() &&
+            !storageCursor->allocatorTypeOrdinal.has_value();
+        storageCursor = storageShape
+            ? storageCursor->children.front().get() : nullptr;
+    }
+    storageShape = storageShape && storageCursor != nullptr &&
+        storageCursor->kind == HirKind::LocalValue &&
+        storageCursor->syntax == storageLeaf &&
+        storageCursor->typeKey == structPointerType.typeKey;
+    tests.expect(storageShape,
+        "32768 raw struct placements preserve storage-first shape, borrowed storage, identities, and no allocator provenance");
+    destroyHirTreeIteratively(deepStorageHir);
+
+    const auto makeLeafConstruction = [&](bool targetStruct)
+    {
+        OrdinaryConstructionSyntax fixture;
+        auto* root = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+            outerRange);
+        fixture.typed.push_back({root, targetStruct ? &structPointerType : &nodeType});
+        fixture.bindings.push_back(ordinaryConstructionBinding(
+            root,
+            targetStruct ? "type:H02S15E.Struct" : nodeType.typeKey,
+            targetStruct,
+            0U,
+            targetStruct ? 8U : 7U));
+        fixture.root = root;
+        return fixture;
+    };
+    auto classLeaf = makeLeafConstruction(false);
+    ProjectOopHirModel classLeafModel; ProjectConstructionModel classLeafConstructions;
+    ProjectMethodBodyModel classLeafBody;
+    auto classLeafHir = lower(classLeaf, classLeafModel, classLeafConstructions,
+        classLeafBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    tests.expect(classLeafHir != nullptr && error.empty() &&
+            classLeafHir->kind == HirKind::ObjectConstruction &&
+            classLeafHir->typeKey == nodeType.typeKey &&
+            classLeafHir->objectLifetimeOwnership ==
+                nativesharp::sema::OwnershipKind::Owned &&
+            classLeafHir->storageOwnership == nativesharp::sema::OwnershipKind::Owned &&
+            classLeafHir->argumentCount == 0U && classLeafHir->children.empty(),
+        "zero-argument class construction crosses the iterative frame guard and preserves ObjectConstruction and Owned/Owned");
+    destroyHirTreeIteratively(classLeafHir);
+
+    auto structLeaf = makeLeafConstruction(true);
+    structLeaf.bindings[0].resolution =
+        nativesharp::frontend::ConstructionResolutionKind::ResolvedImplicitDefault;
+    structLeaf.bindings[0].selectedImplicitDefault = true;
+    ProjectOopHirModel structLeafModel; ProjectConstructionModel structLeafConstructions;
+    ProjectMethodBodyModel structLeafBody;
+    auto structLeafHir = lower(structLeaf, structLeafModel, structLeafConstructions,
+        structLeafBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    tests.expect(structLeafHir != nullptr && error.empty() &&
+            structLeafHir->kind == HirKind::ValueConstruction &&
+            structLeafHir->typeKey == "type:H02S15E.Struct" &&
+            structLeafHir->objectLifetimeOwnership ==
+                nativesharp::sema::OwnershipKind::None &&
+            structLeafHir->storageOwnership == nativesharp::sema::OwnershipKind::None,
+        "implicit-default struct construction crosses the iterative frame guard and preserves ValueConstruction and default ownership");
+    destroyHirTreeIteratively(structLeafHir);
+
+    OrdinaryConstructionSyntax placementFixture;
+    auto* placementStorage = appendOrdinaryConstructionSyntax(
+        placementFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* placementFirst = appendOrdinaryConstructionSyntax(
+        placementFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    placementFirst->setIntegerValue(61U);
+    auto* placementSecond = appendOrdinaryConstructionSyntax(
+        placementFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    placementSecond->setIntegerValue(62U);
+    auto* placementRoot = appendOrdinaryConstructionSyntax(
+        placementFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+        outerRange);
+    placementRoot->setFirst(placementStorage);
+    placementRoot->addChild(placementFirst);
+    placementRoot->addChild(placementSecond);
+    placementFixture.names.push_back(allocatorLocalBinding(
+        placementStorage, "storage", "type:H02S15E.Node*", 3U));
+    placementFixture.typed = {
+        {placementStorage, &nodeType}, {placementFirst, &intType},
+        {placementSecond, &intType}, {placementRoot, &nodeType}};
+    auto placementBinding = ordinaryConstructionBinding(
+        placementRoot, nodeType.typeKey, false, 2U, 7U);
+    placementBinding.selectedConversions[0].sourceTypeKey = "builtin:int";
+    placementBinding.selectedConversions[0].targetTypeKey = "builtin:int";
+    placementBinding.selectedConversions[1].kind =
+        nativesharp::frontend::ProjectConversionKind::Numeric;
+    placementBinding.selectedConversions[1].sourceTypeKey = "builtin:int";
+    placementBinding.selectedConversions[1].targetTypeKey = "builtin:long";
+    placementBinding.selectedArgumentParameterOrdinals = {4U, 2U};
+    placementFixture.bindings.push_back(std::move(placementBinding));
+    placementFixture.root = placementRoot;
+    ProjectOopHirModel placementModel; ProjectConstructionModel placementConstructions;
+    ProjectMethodBodyModel placementBody;
+    auto placementHir = lower(placementFixture, placementModel, placementConstructions,
+        placementBody, nullptr, nullptr, nullptr, 0U, 0U, true, error);
+    tests.expect(placementHir != nullptr && error.empty() &&
+            placementHir->kind == HirKind::PlacementConstruction &&
+            placementHir->typeKey == nodeType.typeKey &&
+            placementHir->objectLifetimeOwnership ==
+                nativesharp::sema::OwnershipKind::Owned &&
+            placementHir->storageOwnership ==
+                nativesharp::sema::OwnershipKind::Borrowed &&
+            placementHir->argumentCount == 2U &&
+            placementHir->argumentParameterOrdinals ==
+                std::vector<std::size_t>({4U, 2U}) &&
+            placementHir->children.size() == 3U &&
+            placementHir->children[0]->kind == HirKind::LocalValue &&
+            placementHir->children[0]->localOrdinal == 3U &&
+            placementHir->children[1]->integerValue == 61U &&
+            placementHir->children[2]->kind == HirKind::Conversion &&
+            placementHir->children[2]->children[0]->integerValue == 62U,
+        "raw placement accepts address context, evaluates storage before ordered arguments, and preserves conversion/mapping");
+    destroyHirTreeIteratively(placementHir);
+
+    auto invalidFixture = makeLeafConstruction(false);
+    invalidFixture.bindings[0].resolution =
+        nativesharp::frontend::ConstructionResolutionKind::InvalidTarget;
+    ProjectOopHirModel invalidModel; ProjectConstructionModel invalidConstructions;
+    ProjectMethodBodyModel invalidBody;
+    auto invalid = lower(invalidFixture, invalidModel, invalidConstructions,
+        invalidBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    tests.expect(invalid == nullptr &&
+            error == "Stage 34 requires a resolved Stage 28 object construction" &&
+            invalidModel.lastErrorRange().begin() == outerRange.begin() &&
+            invalidModel.lastErrorRange().end() == outerRange.end(),
+        "invalid binding remains outside the ordinary frame and preserves Stage 34/range");
+
+    OrdinaryConstructionSyntax allocatorFixture;
+    auto* allocatorReceiver = appendOrdinaryConstructionSyntax(
+        allocatorFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* allocatorRoot = appendOrdinaryConstructionSyntax(
+        allocatorFixture,
+        nativesharp::ast::AstNodeKind::PlacementConstructionExpression,
+        outerRange);
+    allocatorRoot->setFirst(allocatorReceiver);
+    allocatorFixture.names.push_back(allocatorLocalBinding(
+        allocatorReceiver, "allocator", "type:H02S15E.Allocator", 0U));
+    allocatorFixture.typed = {{allocatorReceiver, &nodeType}, {allocatorRoot, &nodeType}};
+    auto allocatorBinding = ordinaryConstructionBinding(
+        allocatorRoot, nodeType.typeKey, false, 0U, 7U);
+    allocatorBinding.allocatorSelection = true;
+    allocatorBinding.allocatorAllocateMemberOrdinal = 101U;
+    allocatorBinding.allocatorDeallocateMemberOrdinal = 102U;
+    allocatorBinding.allocatorTypeKey = "type:H02S15E.Allocator";
+    allocatorFixture.bindings.push_back(std::move(allocatorBinding));
+    allocatorFixture.root = allocatorRoot;
+    ProjectOopHirModel allocatorModel; ProjectConstructionModel allocatorConstructions;
+    ProjectMethodBodyModel allocatorBody;
+    auto allocator = lower(allocatorFixture, allocatorModel, allocatorConstructions,
+        allocatorBody, nullptr, nullptr, nullptr, 0U, 0U, true, error);
+    tests.expect(allocator == nullptr &&
+            error == "allocator construction result is a value, not addressable storage" &&
+            allocatorModel.lastErrorRange().begin() == outerRange.begin() &&
+            allocatorModel.lastErrorRange().end() == outerRange.end(),
+        "complete allocator binding is not absorbed by S15E and preserves the S15D address rejection");
+
+    nativesharp::frontend::ClassMemberSymbol constructor;
+    constructor.kind = nativesharp::frontend::ClassMemberKind::Constructor;
+    constructor.declaringTypeOrdinal = 7U;
+    constructor.parameters.resize(4U);
+    constructor.parameters[0].typeKey = nodeType.typeKey;
+    constructor.parameters[1].typeKey = "builtin:long";
+    constructor.parameters[2].typeKey = "type:H02S15E.NodePack";
+    constructor.parameters[2].isParameterPack = true;
+    constructor.parameters[2].parameterPackElementTypeKey = nodeType.typeKey;
+    constructor.parameters[3].typeKey = "builtin:int";
+    ProjectMemberModel constructorMembers;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(
+            constructorMembers, {constructor}, std::vector<std::vector<std::size_t>>(8U));
+
+    OrdinaryConstructionSyntax defaultsOnlyFixture;
+    auto* defaultsOnlyValue = appendOrdinaryConstructionSyntax(
+        defaultsOnlyFixture,
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    defaultsOnlyValue->setIntegerValue(69U);
+    auto* defaultsOnlyRoot = appendOrdinaryConstructionSyntax(
+        defaultsOnlyFixture,
+        nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    defaultsOnlyFixture.typed.push_back({defaultsOnlyRoot, &nodeType});
+    auto defaultsOnlyBinding = ordinaryConstructionBinding(
+        defaultsOnlyRoot, nodeType.typeKey, false, 0U, 7U);
+    defaultsOnlyBinding.selectedConstructorMemberOrdinal = 0U;
+    defaultsOnlyBinding.selectedDefaultArguments = {defaultsOnlyValue};
+    defaultsOnlyBinding.selectedDefaultArgumentParameterOrdinals = {1U};
+    defaultsOnlyFixture.bindings.push_back(std::move(defaultsOnlyBinding));
+    defaultsOnlyFixture.root = defaultsOnlyRoot;
+    ProjectOopHirModel defaultsOnlyModel;
+    ProjectConstructionModel defaultsOnlyConstructions;
+    ProjectMethodBodyModel defaultsOnlyBody;
+    error.clear();
+    auto defaultsOnlyHir = lower(
+        defaultsOnlyFixture, defaultsOnlyModel, defaultsOnlyConstructions,
+        defaultsOnlyBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    tests.expect(defaultsOnlyHir != nullptr && error.empty() &&
+            defaultsOnlyHir->kind == HirKind::ObjectConstruction &&
+            defaultsOnlyHir->argumentCount == 1U &&
+            defaultsOnlyHir->argumentParameterOrdinals ==
+                std::vector<std::size_t>({1U}) &&
+            defaultsOnlyHir->children.size() == 1U &&
+            defaultsOnlyHir->children.front()->kind == HirKind::IntegerConstant &&
+            defaultsOnlyHir->children.front()->integerValue == 69U,
+        "defaults-only construction completes its synchronous tail inside the iterative frame");
+    destroyHirTreeIteratively(defaultsOnlyHir);
+
+    OrdinaryConstructionSyntax emptyOnlyFixture;
+    auto* emptyOnlyRoot = appendOrdinaryConstructionSyntax(
+        emptyOnlyFixture,
+        nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    emptyOnlyFixture.typed.push_back({emptyOnlyRoot, &nodeType});
+    auto emptyOnlyBinding = ordinaryConstructionBinding(
+        emptyOnlyRoot, nodeType.typeKey, false, 0U, 7U);
+    emptyOnlyBinding.selectedConstructorMemberOrdinal = 0U;
+    emptyOnlyBinding.selectedSynthesizesEmptyParameterPack = true;
+    emptyOnlyBinding.selectedParameterPackOrdinal = 2U;
+    emptyOnlyFixture.bindings.push_back(std::move(emptyOnlyBinding));
+    emptyOnlyFixture.root = emptyOnlyRoot;
+    ProjectOopHirModel emptyOnlyModel;
+    ProjectConstructionModel emptyOnlyConstructions;
+    ProjectMethodBodyModel emptyOnlyBody;
+    error.clear();
+    auto emptyOnlyHir = lower(
+        emptyOnlyFixture, emptyOnlyModel, emptyOnlyConstructions,
+        emptyOnlyBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    tests.expect(emptyOnlyHir != nullptr && error.empty() &&
+            emptyOnlyHir->kind == HirKind::ObjectConstruction &&
+            emptyOnlyHir->argumentCount == 1U &&
+            emptyOnlyHir->argumentParameterOrdinals ==
+                std::vector<std::size_t>({2U}) &&
+            emptyOnlyHir->children.size() == 1U &&
+            emptyOnlyHir->children.front()->kind == HirKind::ParameterPack &&
+            emptyOnlyHir->children.front()->typeKey ==
+                "type:H02S15E.NodePack" &&
+            emptyOnlyHir->children.front()->elementTypeKey == nodeType.typeKey &&
+            emptyOnlyHir->children.front()->children.empty(),
+        "empty-pack-only construction completes its synchronous tail inside the iterative frame");
+    destroyHirTreeIteratively(emptyOnlyHir);
+
+    const auto makePackFixture = [&](std::size_t parameterOrdinal)
+    {
+        OrdinaryConstructionSyntax fixture;
+        auto* root = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+            outerRange);
+        for (std::size_t index = 0; index < 3U; ++index)
+        {
+            auto* value = appendOrdinaryConstructionSyntax(
+                fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+            value->setIntegerValue(70U + index);
+            root->addChild(value);
+            fixture.typed.push_back({value, &intType});
+        }
+        fixture.typed.push_back({root, &nodeType});
+        auto binding = ordinaryConstructionBinding(
+            root, nodeType.typeKey, false, 3U, 7U);
+        binding.selectedConstructorMemberOrdinal = 0U;
+        binding.selectedArgumentParameterOrdinals =
+            {parameterOrdinal, parameterOrdinal, parameterOrdinal};
+        binding.selectedParameterPackElements = {true, true, true};
+        fixture.bindings.push_back(std::move(binding));
+        fixture.root = root;
+        return fixture;
+    };
+
+    auto packFixture = makePackFixture(2U);
+    packFixture.bindings[0].selectedFullExpressionBorrowArgumentOrdinals =
+        {0U, 1U, 2U};
+    ProjectOopHirModel packModel; ProjectConstructionModel packConstructions;
+    ProjectMethodBodyModel packBody;
+    error.clear();
+    auto packHir = lower(packFixture, packModel, packConstructions, packBody,
+        nullptr, nullptr, &constructorMembers, 0U, 0U, false, error);
+    tests.expect(packHir != nullptr && error.empty() &&
+            packHir->kind == HirKind::ObjectConstruction &&
+            packHir->argumentCount == 1U &&
+            packHir->argumentParameterOrdinals == std::vector<std::size_t>{2U} &&
+            packHir->children.size() == 1U &&
+            packHir->children[0]->kind == HirKind::ParameterPack &&
+            packHir->children[0]->typeKey == "type:H02S15E.NodePack" &&
+            packHir->children[0]->elementTypeKey == nodeType.typeKey &&
+            packHir->children[0]->children.size() == 3U &&
+            packHir->children[0]->children[0]->integerValue == 70U &&
+            packHir->children[0]->children[1]->integerValue == 71U &&
+            packHir->children[0]->children[2]->integerValue == 72U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(packModel) == 0U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticCleanupRegionOrdinal(packModel) == 0U,
+        "expanded construction pack forms one physical argument, preserves element order, and omits fresh-owner borrow wrappers");
+    destroyHirTreeIteratively(packHir);
+
+    auto packNoMetadata = makePackFixture(2U);
+    packNoMetadata.bindings[0].selectedConstructorMemberOrdinal.reset();
+    ProjectOopHirModel packNoMetadataModel;
+    ProjectConstructionModel packNoMetadataConstructions;
+    ProjectMethodBodyModel packNoMetadataBody;
+    error.clear();
+    auto packNoMetadataHir = lower(
+        packNoMetadata, packNoMetadataModel, packNoMetadataConstructions,
+        packNoMetadataBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool packMetadataError = packNoMetadataHir == nullptr &&
+        error == "T01-F02 construction parameter pack has no constructor metadata";
+
+    auto packNoParameter = makePackFixture(9U);
+    ProjectOopHirModel packNoParameterModel;
+    ProjectConstructionModel packNoParameterConstructions;
+    ProjectMethodBodyModel packNoParameterBody;
+    error.clear();
+    auto packNoParameterHir = lower(
+        packNoParameter, packNoParameterModel, packNoParameterConstructions,
+        packNoParameterBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool packParameterError = packNoParameterHir == nullptr &&
+        error == "T01-F02 construction parameter pack has no parameter";
+
+    auto noElementConstructor = constructor;
+    noElementConstructor.parameters[2].parameterPackElementTypeKey.clear();
+    ProjectMemberModel noElementMembers;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(
+            noElementMembers, {noElementConstructor},
+            std::vector<std::vector<std::size_t>>(8U));
+    auto packNoElement = makePackFixture(2U);
+    ProjectOopHirModel packNoElementModel;
+    ProjectConstructionModel packNoElementConstructions;
+    ProjectMethodBodyModel packNoElementBody;
+    error.clear();
+    auto packNoElementHir = lower(
+        packNoElement, packNoElementModel, packNoElementConstructions,
+        packNoElementBody, nullptr, nullptr, &noElementMembers,
+        0U, 0U, false, error);
+    tests.expect(packMetadataError && packParameterError &&
+            packNoElementHir == nullptr &&
+            error == "T01-F02 construction parameter pack lost its element type",
+        "expanded construction pack preserves all three exact metadata diagnostics");
+
+    const auto makeDefaultFixture = [&]()
+    {
+        OrdinaryConstructionSyntax fixture;
+        auto* explicitValue = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+        explicitValue->setIntegerValue(80U);
+        auto* firstDefault = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+        firstDefault->setIntegerValue(81U);
+        auto* secondDefaultLeaf = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+        secondDefaultLeaf->setIntegerValue(82U);
+        auto* secondDefault = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::UnaryExpression);
+        secondDefault->setTokenKind(nativesharp::lexer::TokenKind::Minus);
+        secondDefault->setFirst(secondDefaultLeaf);
+        auto* root = appendOrdinaryConstructionSyntax(
+            fixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+            outerRange);
+        root->addChild(explicitValue);
+        fixture.typed = {{explicitValue, &intType}, {root, &nodeType}};
+        auto binding = ordinaryConstructionBinding(
+            root, nodeType.typeKey, false, 1U, 7U);
+        binding.selectedConstructorMemberOrdinal = 0U;
+        binding.selectedArgumentParameterOrdinals = {0U};
+        binding.selectedDefaultArguments = {firstDefault, secondDefault};
+        binding.selectedDefaultArgumentParameterOrdinals = {1U, 3U};
+        fixture.bindings.push_back(std::move(binding));
+        fixture.root = root;
+        return fixture;
+    };
+    auto defaultFixture = makeDefaultFixture();
+    ProjectOopHirModel defaultModel; ProjectConstructionModel defaultConstructions;
+    ProjectMethodBodyModel defaultBody;
+    error.clear();
+    auto defaultHir = lower(defaultFixture, defaultModel, defaultConstructions,
+        defaultBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    tests.expect(defaultHir != nullptr && error.empty() &&
+            defaultHir->argumentCount == 3U &&
+            defaultHir->argumentParameterOrdinals ==
+                std::vector<std::size_t>({0U, 1U, 3U}) &&
+            defaultHir->children.size() == 3U &&
+            defaultHir->children[0]->integerValue == 80U &&
+            defaultHir->children[1]->integerValue == 81U &&
+            defaultHir->children[2]->kind == HirKind::Unary &&
+            defaultHir->children[2]->children[0]->integerValue == 82U,
+        "construction defaults follow all explicit arguments and preserve parameter order");
+    destroyHirTreeIteratively(defaultHir);
+
+    auto defaultNoMetadata = makeDefaultFixture();
+    defaultNoMetadata.bindings[0].selectedConstructorMemberOrdinal.reset();
+    ProjectOopHirModel defaultNoMetadataModel;
+    ProjectConstructionModel defaultNoMetadataConstructions;
+    ProjectMethodBodyModel defaultNoMetadataBody;
+    error.clear();
+    auto defaultNoMetadataHir = lower(
+        defaultNoMetadata, defaultNoMetadataModel, defaultNoMetadataConstructions,
+        defaultNoMetadataBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool defaultMetadataError = defaultNoMetadataHir == nullptr &&
+        error == "NSC-LIMIT-020 selected construction has no callable metadata";
+
+    auto defaultNoOrdinal = makeDefaultFixture();
+    defaultNoOrdinal.bindings[0].selectedDefaultArgumentParameterOrdinals.clear();
+    ProjectOopHirModel defaultNoOrdinalModel;
+    ProjectConstructionModel defaultNoOrdinalConstructions;
+    ProjectMethodBodyModel defaultNoOrdinalBody;
+    error.clear();
+    auto defaultNoOrdinalHir = lower(
+        defaultNoOrdinal, defaultNoOrdinalModel, defaultNoOrdinalConstructions,
+        defaultNoOrdinalBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool defaultOrdinalError = defaultNoOrdinalHir == nullptr &&
+        error == "selected construction default has no parameter ordinal";
+
+    auto defaultBadParameter = makeDefaultFixture();
+    defaultBadParameter.bindings[0].selectedDefaultArgumentParameterOrdinals = {9U, 3U};
+    ProjectOopHirModel defaultBadParameterModel;
+    ProjectConstructionModel defaultBadParameterConstructions;
+    ProjectMethodBodyModel defaultBadParameterBody;
+    error.clear();
+    auto defaultBadParameterHir = lower(
+        defaultBadParameter, defaultBadParameterModel,
+        defaultBadParameterConstructions, defaultBadParameterBody,
+        nullptr, nullptr, &constructorMembers, 0U, 0U, false, error);
+    tests.expect(defaultMetadataError && defaultOrdinalError &&
+            defaultBadParameterHir == nullptr &&
+            error == "NSC-LIMIT-020 construction default has no parameter",
+        "construction defaults preserve all three structural diagnostics");
+
+    auto emptyPackFixture = makeDefaultFixture();
+    emptyPackFixture.bindings[0].selectedDefaultArguments.resize(1U);
+    emptyPackFixture.bindings[0].selectedDefaultArgumentParameterOrdinals = {1U};
+    emptyPackFixture.bindings[0].selectedSynthesizesEmptyParameterPack = true;
+    emptyPackFixture.bindings[0].selectedParameterPackOrdinal = 2U;
+    ProjectOopHirModel emptyPackModel; ProjectConstructionModel emptyPackConstructions;
+    ProjectMethodBodyModel emptyPackBody;
+    error.clear();
+    auto emptyPackHir = lower(
+        emptyPackFixture, emptyPackModel, emptyPackConstructions,
+        emptyPackBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    tests.expect(emptyPackHir != nullptr && error.empty() &&
+            emptyPackHir->argumentCount == 3U &&
+            emptyPackHir->argumentParameterOrdinals ==
+                std::vector<std::size_t>({0U, 1U, 2U}) &&
+            emptyPackHir->children.size() == 3U &&
+            emptyPackHir->children[2]->kind == HirKind::ParameterPack &&
+            emptyPackHir->children[2]->elementTypeKey == nodeType.typeKey &&
+            emptyPackHir->children[2]->children.empty(),
+        "empty construction pack is synthesized once after explicit and default arguments");
+    destroyHirTreeIteratively(emptyPackHir);
+
+    auto emptyNoMetadata = makeDefaultFixture();
+    emptyNoMetadata.bindings[0].selectedDefaultArguments.clear();
+    emptyNoMetadata.bindings[0].selectedDefaultArgumentParameterOrdinals.clear();
+    emptyNoMetadata.bindings[0].selectedSynthesizesEmptyParameterPack = true;
+    emptyNoMetadata.bindings[0].selectedConstructorMemberOrdinal.reset();
+    ProjectOopHirModel emptyNoMetadataModel;
+    ProjectConstructionModel emptyNoMetadataConstructions;
+    ProjectMethodBodyModel emptyNoMetadataBody;
+    error.clear();
+    auto emptyNoMetadataHir = lower(
+        emptyNoMetadata, emptyNoMetadataModel, emptyNoMetadataConstructions,
+        emptyNoMetadataBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool emptyMetadataError = emptyNoMetadataHir == nullptr &&
+        error ==
+            "T01-F02 empty construction parameter pack has no constructor metadata";
+
+    auto emptyNoParameter = makeDefaultFixture();
+    emptyNoParameter.bindings[0].selectedDefaultArguments.clear();
+    emptyNoParameter.bindings[0].selectedDefaultArgumentParameterOrdinals.clear();
+    emptyNoParameter.bindings[0].selectedSynthesizesEmptyParameterPack = true;
+    emptyNoParameter.bindings[0].selectedParameterPackOrdinal = 9U;
+    ProjectOopHirModel emptyNoParameterModel;
+    ProjectConstructionModel emptyNoParameterConstructions;
+    ProjectMethodBodyModel emptyNoParameterBody;
+    error.clear();
+    auto emptyNoParameterHir = lower(
+        emptyNoParameter, emptyNoParameterModel, emptyNoParameterConstructions,
+        emptyNoParameterBody, nullptr, nullptr, &constructorMembers,
+        0U, 0U, false, error);
+    const bool emptyParameterError = emptyNoParameterHir == nullptr &&
+        error == "T01-F02 empty construction parameter pack has no parameter";
+
+    auto emptyNoElement = makeDefaultFixture();
+    emptyNoElement.bindings[0].selectedDefaultArguments.clear();
+    emptyNoElement.bindings[0].selectedDefaultArgumentParameterOrdinals.clear();
+    emptyNoElement.bindings[0].selectedSynthesizesEmptyParameterPack = true;
+    emptyNoElement.bindings[0].selectedParameterPackOrdinal = 2U;
+    ProjectOopHirModel emptyNoElementModel;
+    ProjectConstructionModel emptyNoElementConstructions;
+    ProjectMethodBodyModel emptyNoElementBody;
+    error.clear();
+    auto emptyNoElementHir = lower(
+        emptyNoElement, emptyNoElementModel, emptyNoElementConstructions,
+        emptyNoElementBody, nullptr, nullptr, &noElementMembers,
+        0U, 0U, false, error);
+    tests.expect(emptyMetadataError && emptyParameterError &&
+            emptyNoElementHir == nullptr &&
+            error == "T01-F02 empty construction parameter pack lost its element type",
+        "empty construction pack preserves all three exact metadata diagnostics");
+
+    OrdinaryConstructionSyntax borrowFixture;
+    auto* borrowLeaf = appendOrdinaryConstructionSyntax(
+        borrowFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* innerBorrow = appendOrdinaryConstructionSyntax(
+        borrowFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression);
+    innerBorrow->addChild(borrowLeaf);
+    auto* outerBorrow = appendOrdinaryConstructionSyntax(
+        borrowFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    auto* outerBorrowLeaf = appendOrdinaryConstructionSyntax(
+        borrowFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    outerBorrow->addChild(innerBorrow);
+    outerBorrow->addChild(outerBorrowLeaf);
+    borrowFixture.names.push_back(allocatorLocalBinding(
+        borrowLeaf, "owned", nodeType.typeKey, 0U));
+    borrowFixture.names.push_back(allocatorLocalBinding(
+        outerBorrowLeaf, "owned2", nodeType.typeKey, 1U));
+    borrowFixture.typed = {{borrowLeaf, &nodeType}, {innerBorrow, &nodeType},
+        {outerBorrowLeaf, &nodeType}, {outerBorrow, &nodeType}};
+    auto innerBorrowBinding = ordinaryConstructionBinding(
+        innerBorrow, nodeType.typeKey, false, 1U, 7U);
+    innerBorrowBinding.selectedFullExpressionBorrowArgumentOrdinals = {0U};
+    auto outerBorrowBinding = ordinaryConstructionBinding(
+        outerBorrow, nodeType.typeKey, false, 2U, 7U);
+    outerBorrowBinding.selectedFullExpressionBorrowArgumentOrdinals = {0U, 1U};
+    borrowFixture.bindings.push_back(std::move(innerBorrowBinding));
+    borrowFixture.bindings.push_back(std::move(outerBorrowBinding));
+    borrowFixture.root = outerBorrow;
+    ProjectOopHirModel borrowModel; ProjectConstructionModel borrowConstructions;
+    ProjectMethodBodyModel borrowBody;
+    error.clear();
+    auto borrowHir = lower(
+        borrowFixture, borrowModel, borrowConstructions, borrowBody,
+        nullptr, nullptr, nullptr, 50U, 70U, false, error);
+    const ProjectOopHirNode* outerBorrowConstruction = borrowHir != nullptr &&
+            borrowHir->kind == HirKind::FullExpressionCleanup &&
+            borrowHir->children.size() == 1U
+        ? borrowHir->children[0].get() : nullptr;
+    const ProjectOopHirNode* outerOwned = outerBorrowConstruction != nullptr &&
+            outerBorrowConstruction->children.size() == 2U
+        ? outerBorrowConstruction->children[0].get() : nullptr;
+    const ProjectOopHirNode* outerOwnedSecond = outerBorrowConstruction != nullptr &&
+            outerBorrowConstruction->children.size() == 2U
+        ? outerBorrowConstruction->children[1].get() : nullptr;
+    const ProjectOopHirNode* innerCleanup = outerOwned != nullptr &&
+            outerOwned->children.size() == 1U &&
+            outerOwned->children[0]->children.size() == 1U
+        ? outerOwned->children[0]->children[0].get() : nullptr;
+    const ProjectOopHirNode* innerBorrowConstruction = innerCleanup != nullptr &&
+            innerCleanup->kind == HirKind::FullExpressionCleanup &&
+            innerCleanup->children.size() == 1U
+        ? innerCleanup->children[0].get() : nullptr;
+    const ProjectOopHirNode* innerOwned = innerBorrowConstruction != nullptr &&
+            innerBorrowConstruction->children.size() == 1U
+        ? innerBorrowConstruction->children[0].get() : nullptr;
+    tests.expect(borrowHir != nullptr && error.empty() &&
+            outerBorrowConstruction != nullptr &&
+            outerBorrowConstruction->kind == HirKind::ObjectConstruction &&
+            outerOwned != nullptr && outerOwned->kind == HirKind::OwnedTemporaryBorrow &&
+            outerOwned->localOrdinal == 51U && outerOwned->cleanupRegionOrdinal == 71U &&
+            outerOwned->children[0]->kind == HirKind::BorrowValue &&
+            outerOwnedSecond != nullptr &&
+            outerOwnedSecond->kind == HirKind::OwnedTemporaryBorrow &&
+            outerOwnedSecond->localOrdinal == 52U &&
+            outerOwnedSecond->cleanupRegionOrdinal == 72U &&
+            innerBorrowConstruction != nullptr &&
+            innerOwned != nullptr && innerOwned->kind == HirKind::OwnedTemporaryBorrow &&
+            innerOwned->localOrdinal == 50U && innerOwned->cleanupRegionOrdinal == 70U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(borrowModel) == 53U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticCleanupRegionOrdinal(borrowModel) == 73U,
+        "multiple nested fresh-owner borrows reserve ordinals after each child and produce one cleanup wrapper per construction");
+    destroyHirTreeIteratively(borrowHir);
+
+    OrdinaryConstructionSyntax missingOrdinalFixture;
+    auto* missingLeaf = appendOrdinaryConstructionSyntax(
+        missingOrdinalFixture, nativesharp::ast::AstNodeKind::IdentifierExpression);
+    auto* missingFirst = appendOrdinaryConstructionSyntax(
+        missingOrdinalFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    missingFirst->setIntegerValue(90U);
+    auto* missingSecond = appendOrdinaryConstructionSyntax(
+        missingOrdinalFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        innerRange);
+    missingSecond->addChild(missingLeaf);
+    auto* forbiddenThird = appendOrdinaryConstructionSyntax(
+        missingOrdinalFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression);
+    forbiddenThird->addChild(missingLeaf);
+    auto* missingRoot = appendOrdinaryConstructionSyntax(
+        missingOrdinalFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    missingRoot->addChild(missingFirst);
+    missingRoot->addChild(missingSecond);
+    missingRoot->addChild(forbiddenThird);
+    missingOrdinalFixture.names.push_back(allocatorLocalBinding(
+        missingLeaf, "owned", nodeType.typeKey, 0U));
+    missingOrdinalFixture.typed = {
+        {missingLeaf, &nodeType}, {missingFirst, &intType},
+        {missingSecond, &nodeType}, {forbiddenThird, &nodeType},
+        {missingRoot, &nodeType}};
+    auto missingSecondBinding = ordinaryConstructionBinding(
+        missingSecond, nodeType.typeKey, false, 1U, 7U);
+    missingSecondBinding.selectedFullExpressionBorrowArgumentOrdinals = {0U};
+    auto forbiddenThirdBinding = ordinaryConstructionBinding(
+        forbiddenThird, nodeType.typeKey, false, 1U, 7U);
+    forbiddenThirdBinding.selectedFullExpressionBorrowArgumentOrdinals = {0U};
+    auto missingRootBinding = ordinaryConstructionBinding(
+        missingRoot, nodeType.typeKey, false, 3U, 7U);
+    missingRootBinding.selectedConversions[1].kind =
+        nativesharp::frontend::ProjectConversionKind::Numeric;
+    missingRootBinding.selectedConversions[1].sourceTypeKey = nodeType.typeKey;
+    missingRootBinding.selectedConversions[1].targetTypeKey =
+        "type:H02S15E.ConvertedNode";
+    missingRootBinding.selectedArgumentParameterOrdinals.resize(1U);
+    missingOrdinalFixture.bindings.push_back(std::move(missingSecondBinding));
+    missingOrdinalFixture.bindings.push_back(std::move(forbiddenThirdBinding));
+    missingOrdinalFixture.bindings.push_back(std::move(missingRootBinding));
+    missingOrdinalFixture.root = missingRoot;
+    ProjectOopHirModel missingOrdinalModel;
+    ProjectConstructionModel missingOrdinalConstructions;
+    ProjectMethodBodyModel missingOrdinalBody;
+    error.clear();
+    auto missingOrdinal = lower(
+        missingOrdinalFixture, missingOrdinalModel, missingOrdinalConstructions,
+        missingOrdinalBody, nullptr, nullptr, nullptr,
+        90U, 100U, false, error);
+    tests.expect(missingOrdinal == nullptr &&
+            error == "named construction argument has no selected parameter ordinal" &&
+            missingOrdinalModel.lastErrorRange().begin() == outerRange.begin() &&
+            missingOrdinalModel.lastErrorRange().end() == outerRange.end() &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticLocalOrdinal(missingOrdinalModel) == 91U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                nextSyntheticCleanupRegionOrdinal(missingOrdinalModel) == 101U,
+        "missing parameter ordinal follows lowering/conversion of argument two and prevents argument three from consuming ordinals");
+
+    auto targetTypedFixture = makeLeafConstruction(false);
+    targetTypedFixture.bindings[0].resolution =
+        nativesharp::frontend::ConstructionResolutionKind::ResolvedImplicitDefault;
+    targetTypedFixture.bindings[0].selectedConstructorMemberOrdinal.reset();
+    targetTypedFixture.bindings[0].implicitDefaultBaseConstructorMemberOrdinal = 44U;
+    ProjectOopHirModel targetTypedModel;
+    ProjectConstructionModel targetTypedConstructions;
+    ProjectMethodBodyModel targetTypedBody;
+    error.clear();
+    auto targetTyped = lower(
+        targetTypedFixture, targetTypedModel, targetTypedConstructions,
+        targetTypedBody, nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    tests.expect(targetTyped != nullptr && error.empty() &&
+            targetTyped->kind == HirKind::ObjectConstruction &&
+            targetTyped->typeKey == nodeType.typeKey &&
+            targetTyped->memberOrdinal == 44U &&
+            targetTyped->constructionOrdinal == 0U,
+        "target-typed new crosses the iterative frame guard and preserves the resolved class type and implicit constructor identity");
+    destroyHirTreeIteratively(targetTyped);
+
+    ProjectNameLookup fieldLookup;
+    ProjectInheritanceModel fieldInheritance;
+    std::vector<std::string> fieldTypeKeys;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionInheritance(
+            fieldLookup, fieldInheritance, fieldTypeKeys);
+    nativesharp::frontend::MethodExpressionTypeBinding derivedType;
+    derivedType.typeKey = fieldTypeKeys[1];
+    OrdinaryConstructionSyntax fieldFixture;
+    auto* nestedFieldValue = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    nestedFieldValue->setIntegerValue(101U);
+    auto* nestedFieldConstruction = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        innerRange);
+    nestedFieldConstruction->addChild(nestedFieldValue);
+    auto* baseSecondValue = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    baseSecondValue->setIntegerValue(102U);
+    auto* derivedValue = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    derivedValue->setIntegerValue(103U);
+    auto* baseFirstField = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::FieldDeclaration);
+    baseFirstField->setFirst(nestedFieldConstruction);
+    auto* baseSecondField = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::FieldDeclaration);
+    baseSecondField->setFirst(baseSecondValue);
+    auto* derivedField = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::FieldDeclaration);
+    derivedField->setFirst(derivedValue);
+    auto* fieldRoot = appendOrdinaryConstructionSyntax(
+        fieldFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    fieldFixture.typed = {
+        {nestedFieldValue, &intType}, {nestedFieldConstruction, &nodeType},
+        {baseSecondValue, &intType}, {derivedValue, &intType},
+        {fieldRoot, &derivedType}};
+    auto nestedFieldBinding = ordinaryConstructionBinding(
+        nestedFieldConstruction, nodeType.typeKey, false, 1U, 7U);
+    nestedFieldBinding.selectedConstructorMemberOrdinal = 0U;
+    auto fieldRootBinding = ordinaryConstructionBinding(
+        fieldRoot, derivedType.typeKey, false, 0U, 1U);
+    fieldRootBinding.resolution =
+        nativesharp::frontend::ConstructionResolutionKind::ResolvedImplicitDefault;
+    fieldRootBinding.selectedConstructorMemberOrdinal.reset();
+    fieldRootBinding.selectedImplicitDefault = true;
+    fieldFixture.bindings.push_back(std::move(nestedFieldBinding));
+    fieldFixture.bindings.push_back(std::move(fieldRootBinding));
+    fieldFixture.root = fieldRoot;
+
+    auto fieldConstructor = constructor;
+    fieldConstructor.declaringTypeOrdinal = 1U;
+    nativesharp::frontend::ClassMemberSymbol baseFirstMember;
+    baseFirstMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+    baseFirstMember.declaringTypeOrdinal = 0U;
+    baseFirstMember.syntax = baseFirstField;
+    baseFirstMember.declaredTypeKey = nodeType.typeKey;
+    nativesharp::frontend::ClassMemberSymbol baseSecondMember;
+    baseSecondMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+    baseSecondMember.declaringTypeOrdinal = 0U;
+    baseSecondMember.syntax = baseSecondField;
+    baseSecondMember.declaredTypeKey = "builtin:long";
+    baseSecondMember.isVolatile = true;
+    nativesharp::frontend::ClassMemberSymbol derivedMember;
+    derivedMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+    derivedMember.declaringTypeOrdinal = 1U;
+    derivedMember.syntax = derivedField;
+    derivedMember.declaredTypeKey = "builtin:int";
+    ProjectMemberModel fieldMembers;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(
+            fieldMembers,
+            {fieldConstructor, baseFirstMember, baseSecondMember, derivedMember},
+            {{1U, 2U}, {0U, 3U}});
+    ProjectOopHirModel fieldModel; ProjectConstructionModel fieldConstructions;
+    ProjectMethodBodyModel fieldBody;
+    error.clear();
+    auto fieldHir = lower(
+        fieldFixture, fieldModel, fieldConstructions, fieldBody,
+        &fieldLookup, &fieldInheritance, &fieldMembers,
+        0U, 0U, false, error);
+    const auto fieldAssignmentMatches = [&](std::size_t index,
+                                            std::size_t memberOrdinal,
+                                            std::string_view receiverType)
+    {
+        if (fieldHir == nullptr || index >= fieldHir->children.size()) return false;
+        const ProjectOopHirNode* assignment = fieldHir->children[index].get();
+        return assignment->kind == HirKind::Assignment &&
+            assignment->operation == nativesharp::lexer::TokenKind::Equal &&
+            assignment->children.size() == 2U &&
+            assignment->children[0]->kind == HirKind::FieldAddress &&
+            assignment->children[0]->memberOrdinal == memberOrdinal &&
+            assignment->children[0]->children.size() == 1U &&
+            assignment->children[0]->children[0]->kind == HirKind::ThisValue &&
+            assignment->children[0]->children[0]->typeKey == receiverType;
+    };
+    tests.expect(fieldHir != nullptr && error.empty() &&
+            fieldHir->kind == HirKind::ObjectConstruction &&
+            fieldHir->typeKey == derivedType.typeKey &&
+            fieldHir->argumentCount == 0U && fieldHir->children.size() == 3U &&
+            fieldAssignmentMatches(0U, 1U, fieldTypeKeys[0]) &&
+            fieldAssignmentMatches(1U, 2U, fieldTypeKeys[0]) &&
+            fieldAssignmentMatches(2U, 3U, fieldTypeKeys[1]) &&
+            fieldHir->children[0]->children[1]->kind == HirKind::ObjectConstruction &&
+            fieldHir->children[0]->children[1]->syntax == nestedFieldConstruction &&
+            fieldHir->children[1]->children[0]->volatileAccess &&
+            fieldHir->children[1]->children[1]->kind == HirKind::Conversion &&
+            fieldHir->children[1]->children[1]->typeKey == "builtin:long" &&
+            fieldHir->children[2]->children[1]->integerValue == 103U,
+        "implicit fields lower base-to-derived/member order through the same worklist with exact assignment/conversion shape");
+    destroyHirTreeIteratively(fieldHir);
+
+    OrdinaryConstructionSyntax lostConversionFixture;
+    auto* lostValue = appendOrdinaryConstructionSyntax(
+        lostConversionFixture, nativesharp::ast::AstNodeKind::IdentifierExpression,
+        innerRange);
+    auto* lostField = appendOrdinaryConstructionSyntax(
+        lostConversionFixture, nativesharp::ast::AstNodeKind::FieldDeclaration);
+    lostField->setFirst(lostValue);
+    auto* lostRoot = appendOrdinaryConstructionSyntax(
+        lostConversionFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+        outerRange);
+    lostConversionFixture.names.push_back(allocatorLocalBinding(
+        lostValue, "node", nodeType.typeKey, 0U));
+    lostConversionFixture.typed = {{lostValue, &nodeType}, {lostRoot, &derivedType}};
+    auto lostRootBinding = ordinaryConstructionBinding(
+        lostRoot, derivedType.typeKey, false, 0U, 1U);
+    lostRootBinding.resolution =
+        nativesharp::frontend::ConstructionResolutionKind::ResolvedImplicitDefault;
+    lostRootBinding.selectedConstructorMemberOrdinal.reset();
+    lostRootBinding.selectedImplicitDefault = true;
+    lostConversionFixture.bindings.push_back(std::move(lostRootBinding));
+    lostConversionFixture.root = lostRoot;
+    nativesharp::frontend::ClassMemberSymbol lostFieldMember;
+    lostFieldMember.kind = nativesharp::frontend::ClassMemberKind::Field;
+    lostFieldMember.declaringTypeOrdinal = 0U;
+    lostFieldMember.syntax = lostField;
+    lostFieldMember.declaredTypeKey = "builtin:int";
+    ProjectMemberModel lostMembers;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::
+        configureOrdinaryConstructionMembers(lostMembers, {lostFieldMember}, {{0U}, {}});
+    ProjectOopHirModel lostModel; ProjectConstructionModel lostConstructions;
+    ProjectMethodBodyModel lostBody;
+    error.clear();
+    auto lostConversion = lower(
+        lostConversionFixture, lostModel, lostConstructions, lostBody,
+        &fieldLookup, &fieldInheritance, &lostMembers,
+        0U, 0U, false, error);
+    tests.expect(lostConversion == nullptr &&
+            error == "Stage 37 field initializer lost its validated implicit conversion" &&
+            lostModel.lastErrorRange().begin() == outerRange.begin() &&
+            lostModel.lastErrorRange().end() == outerRange.end(),
+        "field initializer conversion loss preserves its exact diagnostic and construction range");
+
+    constexpr std::size_t failureDepth = 4096U;
+    OrdinaryConstructionSyntax failureFixture;
+    failureFixture.nodes.reserve(failureDepth + 1U);
+    failureFixture.bindings.reserve(failureDepth);
+    auto* failingCall = appendOrdinaryConstructionSyntax(
+        failureFixture, nativesharp::ast::AstNodeKind::CallExpression, innerRange);
+    failureFixture.typed.push_back({failingCall, &nodeType});
+    nativesharp::ast::AstNode* failingNested = failingCall;
+    for (std::size_t index = 0; index < failureDepth; ++index)
+    {
+        auto* construction = appendOrdinaryConstructionSyntax(
+            failureFixture, nativesharp::ast::AstNodeKind::ObjectCreationExpression,
+            index + 1U == failureDepth ? outerRange : nativesharp::SourceRange{});
+        construction->addChild(failingNested);
+        failureFixture.typed.push_back({construction, &nodeType});
+        failureFixture.bindings.push_back(ordinaryConstructionBinding(
+            construction, nodeType.typeKey, false, 1U, 7U));
+        failingNested = construction;
+    }
+    failureFixture.root = failingNested;
+    ProjectOopHirModel failureModel; ProjectConstructionModel failureConstructions;
+    ProjectMethodBodyModel failureBody;
+    error.clear();
+    auto failureHir = lower(
+        failureFixture, failureModel, failureConstructions, failureBody,
+        nullptr, nullptr, nullptr, 0U, 0U, false, error);
+    tests.expect(failureHir == nullptr &&
+            error == "Stage 34 requires a resolved Stage 27 method call" &&
+            failureModel.lastErrorRange().begin() == innerRange.begin() &&
+            failureModel.lastErrorRange().end() == innerRange.end(),
+        "deep inner call failure unwinds 4096 ordinary-construction frames with exact innermost range and no partial node");
 }
 
 struct DeepDelegateCreationSyntax final
@@ -13475,6 +14618,10 @@ int main()
     {
         testDeepAllocatorConstructionLowering(tests);
     }
+    else if (focusValue == "hir-object-construction-depth")
+    {
+        testDeepOrdinaryConstructionLowering(tests);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -13693,6 +14840,7 @@ int main()
         testDeepCollectionBuilderLowering(tests);
         testDeepArrayConstructionLowering(tests);
         testDeepAllocatorConstructionLowering(tests);
+        testDeepOrdinaryConstructionLowering(tests);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

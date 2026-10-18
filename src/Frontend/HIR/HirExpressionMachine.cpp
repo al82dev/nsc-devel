@@ -185,6 +185,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         OrdinaryCall,
         CollectionBuilder,
         ArrayConstruction,
+        OrdinaryConstruction,
         AllocatorConstruction,
         InterpolationHandler,
         InstanceField,
@@ -372,6 +373,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<std::size_t> argumentParameterOrdinals;
         std::size_t nextArgument = 0U;
     };
+    enum class OrdinaryConstructionFrameStage : std::uint8_t
+    {
+        Storage,
+        Arguments,
+        FieldInitializers,
+        Ready,
+    };
+    struct OrdinaryConstructionFrameState final
+    {
+        const ObjectConstructionBinding* binding = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        OrdinaryConstructionFrameStage stage =
+            OrdinaryConstructionFrameStage::Ready;
+        std::size_t nextArgument = 0U;
+        std::optional<std::size_t> expandedPackChildIndex;
+        std::vector<std::size_t> fieldMemberOrdinals;
+        std::size_t nextFieldInitializer = 0U;
+        bool hasOwnedTemporary = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -396,6 +416,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<EnumToStringCallFrameState> enumToStringCall;
         std::optional<StructAggregateCallFrameState> structAggregateCall;
         std::optional<OrdinaryCallFrameState> ordinaryCall;
+        std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
         std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
@@ -620,6 +641,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 return IterativeExpressionKind::AllocatorConstruction;
             }
+        }
+        if (syntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+            syntax->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(syntax);
+            const bool resolved = binding != nullptr &&
+                (binding->resolution == ConstructionResolutionKind::ResolvedExplicit ||
+                 binding->resolution == ConstructionResolutionKind::ResolvedImplicitDefault);
+            const bool completeAllocator = resolved && binding->allocatorSelection &&
+                binding->allocatorAllocateMemberOrdinal.has_value();
+            if (resolved && !completeAllocator)
+                return IterativeExpressionKind::OrdinaryConstruction;
         }
         if (!address && syntax->kind() == ast::AstNodeKind::CollectionExpression &&
             !syntax->children().empty())
@@ -1581,6 +1614,405 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 selectedMember.declaredTypeKey);
             load->children.push_back(std::move(loweredCall));
             return load;
+        };
+        const auto prepareOrdinaryConstructionTail =
+            [&](OrdinaryConstructionFrameState& construction) -> bool
+        {
+            const ObjectConstructionBinding& binding = *construction.binding;
+            if (!binding.selectedDefaultArguments.empty())
+            {
+                if (!binding.selectedConstructorMemberOrdinal.has_value() ||
+                    memberModel_ == nullptr ||
+                    *binding.selectedConstructorMemberOrdinal >=
+                        memberModel_->members().size())
+                {
+                    error = "NSC-LIMIT-020 selected construction has no callable metadata";
+                    return false;
+                }
+                const ClassMemberSymbol& selectedConstructor =
+                    memberModel_->members()[*binding.selectedConstructorMemberOrdinal];
+                for (std::size_t index = 0;
+                    index < binding.selectedDefaultArguments.size(); ++index)
+                {
+                    if (index >=
+                        binding.selectedDefaultArgumentParameterOrdinals.size())
+                    {
+                        error = "selected construction default has no parameter ordinal";
+                        return false;
+                    }
+                    const std::size_t parameterIndex =
+                        binding.selectedDefaultArgumentParameterOrdinals[index];
+                    if (parameterIndex >= selectedConstructor.parameters.size())
+                    {
+                        error = "NSC-LIMIT-020 construction default has no parameter";
+                        return false;
+                    }
+                    auto argument = lowerDefaultArgument(
+                        binding.selectedDefaultArguments[index],
+                        selectedConstructor.parameters[parameterIndex].typeKey,
+                        error);
+                    if (argument == nullptr) return false;
+                    construction.node->children.push_back(std::move(argument));
+                    construction.node->argumentParameterOrdinals.push_back(parameterIndex);
+                }
+            }
+            if (binding.selectedSynthesizesEmptyParameterPack)
+            {
+                if (!binding.selectedConstructorMemberOrdinal.has_value() ||
+                    memberModel_ == nullptr ||
+                    *binding.selectedConstructorMemberOrdinal >=
+                        memberModel_->members().size() ||
+                    !binding.selectedParameterPackOrdinal.has_value())
+                {
+                    error =
+                        "T01-F02 empty construction parameter pack has no constructor metadata";
+                    return false;
+                }
+                const ClassMemberSymbol& constructor =
+                    memberModel_->members()[*binding.selectedConstructorMemberOrdinal];
+                const std::size_t parameterIndex = *binding.selectedParameterPackOrdinal;
+                if (parameterIndex >= constructor.parameters.size())
+                {
+                    error = "T01-F02 empty construction parameter pack has no parameter";
+                    return false;
+                }
+                const std::string& elementType =
+                    constructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error =
+                        "T01-F02 empty construction parameter pack lost its element type";
+                    return false;
+                }
+                auto pack = makeNode(
+                    ProjectOopHirNodeKind::ParameterPack,
+                    construction.node->syntax,
+                    constructor.parameters[parameterIndex].typeKey);
+                pack->elementTypeKey = elementType;
+                construction.node->children.push_back(std::move(pack));
+                construction.node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            construction.node->argumentCount =
+                construction.node->argumentParameterOrdinals.size();
+
+            if (binding.selectedImplicitDefault && memberModel_ != nullptr)
+            {
+                for (const std::size_t typeOrdinal : implicitInitializerTypes(
+                         binding.targetTypeOrdinal,
+                         binding.implicitDefaultBaseConstructorMemberOrdinal))
+                {
+                    for (const std::size_t memberOrdinal :
+                         memberModel_->membersOfType(typeOrdinal))
+                    {
+                        if (memberOrdinal >= memberModel_->members().size()) continue;
+                        const ClassMemberSymbol& field =
+                            memberModel_->members()[memberOrdinal];
+                        if (field.kind == ClassMemberKind::Field && !field.isStatic &&
+                            field.syntax != nullptr && field.syntax->first() != nullptr)
+                        {
+                            construction.fieldMemberOrdinals.push_back(memberOrdinal);
+                        }
+                    }
+                }
+            }
+            construction.stage = construction.fieldMemberOrdinals.empty()
+                ? OrdinaryConstructionFrameStage::Ready
+                : OrdinaryConstructionFrameStage::FieldInitializers;
+            return true;
+        };
+        const auto initializeOrdinaryConstructionFrame =
+            [&](IterativeExpressionFrame& frame) -> bool
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(frame.syntax);
+            if (binding == nullptr || constructionModel_ == nullptr ||
+                (binding->resolution != ConstructionResolutionKind::ResolvedExplicit &&
+                 binding->resolution != ConstructionResolutionKind::ResolvedImplicitDefault))
+            {
+                error = "Stage 34 requires a resolved Stage 28 object construction";
+                return false;
+            }
+            if (binding->allocatorSelection &&
+                binding->allocatorAllocateMemberOrdinal.has_value())
+            {
+                error = "Stage 34 ordinary construction captured allocator construction";
+                return false;
+            }
+
+            const bool placement = frame.syntax->kind() ==
+                ast::AstNodeKind::PlacementConstructionExpression;
+            OrdinaryConstructionFrameState construction;
+            construction.binding = binding;
+            construction.node = makeNode(
+                placement
+                    ? ProjectOopHirNodeKind::PlacementConstruction
+                    : binding->targetIsStruct
+                    ? ProjectOopHirNodeKind::ValueConstruction
+                    : ProjectOopHirNodeKind::ObjectConstruction,
+                frame.syntax,
+                placement && binding->targetIsStruct
+                    ? binding->targetTypeKey + "*"
+                    : binding->targetTypeKey);
+            construction.node->constructionOrdinal = static_cast<std::size_t>(
+                binding - constructionModel_->constructions().data());
+            if (placement)
+            {
+                construction.node->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                construction.node->storageOwnership = sema::OwnershipKind::Borrowed;
+            }
+            else if (!binding->targetIsStruct)
+            {
+                construction.node->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                construction.node->storageOwnership = sema::OwnershipKind::Owned;
+            }
+            construction.node->targetTypeOrdinal = binding->targetTypeOrdinal;
+            construction.node->memberOrdinal =
+                binding->selectedConstructorMemberOrdinal.has_value()
+                ? binding->selectedConstructorMemberOrdinal
+                : binding->implicitDefaultBaseConstructorMemberOrdinal;
+            construction.node->argumentCount = 0U;
+            if (placement)
+            {
+                construction.stage = OrdinaryConstructionFrameStage::Storage;
+            }
+            else if (!frame.syntax->children().empty())
+            {
+                construction.stage = OrdinaryConstructionFrameStage::Arguments;
+            }
+            else if (!prepareOrdinaryConstructionTail(construction))
+            {
+                return false;
+            }
+            frame.ordinaryConstruction.emplace(std::move(construction));
+            return true;
+        };
+        struct OrdinaryConstructionChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+        };
+        const auto nextOrdinaryConstructionChild =
+            [&](const OrdinaryConstructionFrameState& construction)
+                -> std::optional<OrdinaryConstructionChild>
+        {
+            if (construction.stage == OrdinaryConstructionFrameStage::Storage)
+            {
+                return OrdinaryConstructionChild{
+                    construction.node->syntax->first()};
+            }
+            if (construction.stage == OrdinaryConstructionFrameStage::Arguments &&
+                construction.nextArgument <
+                    construction.node->syntax->children().size())
+            {
+                return OrdinaryConstructionChild{
+                    construction.node->syntax->children()[construction.nextArgument]};
+            }
+            if (construction.stage ==
+                    OrdinaryConstructionFrameStage::FieldInitializers &&
+                construction.nextFieldInitializer <
+                    construction.fieldMemberOrdinals.size() && memberModel_ != nullptr)
+            {
+                const std::size_t memberOrdinal =
+                    construction.fieldMemberOrdinals[
+                        construction.nextFieldInitializer];
+                if (memberOrdinal < memberModel_->members().size())
+                {
+                    const ClassMemberSymbol& field =
+                        memberModel_->members()[memberOrdinal];
+                    return OrdinaryConstructionChild{field.syntax->first()};
+                }
+            }
+            return std::nullopt;
+        };
+        const auto acceptOrdinaryConstructionChild =
+            [&](OrdinaryConstructionFrameState& construction,
+                std::unique_ptr<ProjectOopHirNode> child) -> bool
+        {
+            if (construction.stage == OrdinaryConstructionFrameStage::Storage)
+            {
+                construction.node->children.push_back(std::move(child));
+                if (!construction.node->syntax->children().empty())
+                {
+                    construction.stage = OrdinaryConstructionFrameStage::Arguments;
+                    return true;
+                }
+                return prepareOrdinaryConstructionTail(construction);
+            }
+            if (construction.stage == OrdinaryConstructionFrameStage::Arguments)
+            {
+                const std::size_t index = construction.nextArgument++;
+                const ast::AstNode* argumentSyntax =
+                    construction.node->syntax->children()[index];
+                if (index < construction.binding->selectedConversions.size() &&
+                    construction.binding->selectedConversions[index].kind !=
+                        ProjectConversionKind::Identity)
+                {
+                    child = wrapImplicitConversion(
+                        std::move(child),
+                        construction.binding->selectedConversions[index],
+                        argumentSyntax);
+                }
+                if (index >=
+                    construction.binding->selectedArgumentParameterOrdinals.size())
+                {
+                    error = "named construction argument has no selected parameter ordinal";
+                    return false;
+                }
+                const std::size_t parameterIndex =
+                    construction.binding->selectedArgumentParameterOrdinals[index];
+                const bool packElement =
+                    index < construction.binding->selectedParameterPackElements.size() &&
+                    construction.binding->selectedParameterPackElements[index];
+                if (packElement)
+                {
+                    if (!construction.binding->selectedConstructorMemberOrdinal.has_value() ||
+                        memberModel_ == nullptr ||
+                        *construction.binding->selectedConstructorMemberOrdinal >=
+                            memberModel_->members().size())
+                    {
+                        error =
+                            "T01-F02 construction parameter pack has no constructor metadata";
+                        return false;
+                    }
+                    const ClassMemberSymbol& constructor =
+                        memberModel_->members()[
+                            *construction.binding->selectedConstructorMemberOrdinal];
+                    if (parameterIndex >= constructor.parameters.size())
+                    {
+                        error = "T01-F02 construction parameter pack has no parameter";
+                        return false;
+                    }
+                    const std::string& elementType =
+                        constructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                    if (elementType.empty())
+                    {
+                        error =
+                            "T01-F02 construction parameter pack lost its element type";
+                        return false;
+                    }
+                    if (!construction.expandedPackChildIndex.has_value())
+                    {
+                        auto pack = makeNode(
+                            ProjectOopHirNodeKind::ParameterPack,
+                            argumentSyntax,
+                            constructor.parameters[parameterIndex].typeKey);
+                        pack->elementTypeKey = elementType;
+                        construction.expandedPackChildIndex =
+                            construction.node->children.size();
+                        construction.node->children.push_back(std::move(pack));
+                        construction.node->argumentParameterOrdinals.push_back(
+                            parameterIndex);
+                    }
+                    construction.node
+                        ->children[*construction.expandedPackChildIndex]
+                        ->children.push_back(std::move(child));
+                }
+                else
+                {
+                    if (std::ranges::find(
+                            construction.binding
+                                ->selectedFullExpressionBorrowArgumentOrdinals,
+                            index) != construction.binding
+                                ->selectedFullExpressionBorrowArgumentOrdinals.end())
+                    {
+                        child = wrapFreshOwnedTemporaryBorrow(
+                            std::move(child), argumentSyntax,
+                            construction.hasOwnedTemporary);
+                    }
+                    construction.node->children.push_back(std::move(child));
+                    construction.node->argumentParameterOrdinals.push_back(
+                        parameterIndex);
+                }
+                if (construction.nextArgument ==
+                    construction.node->syntax->children().size())
+                {
+                    return prepareOrdinaryConstructionTail(construction);
+                }
+                return true;
+            }
+            if (construction.stage ==
+                OrdinaryConstructionFrameStage::FieldInitializers)
+            {
+                if (memberModel_ == nullptr || inheritanceModel_ == nullptr ||
+                    construction.nextFieldInitializer >=
+                        construction.fieldMemberOrdinals.size())
+                {
+                    error = "Stage 37 cannot lower an invalid instance field initializer";
+                    return false;
+                }
+                const std::size_t fieldMemberOrdinal =
+                    construction.fieldMemberOrdinals[
+                        construction.nextFieldInitializer++];
+                if (fieldMemberOrdinal >= memberModel_->members().size())
+                {
+                    error = "Stage 37 cannot lower an invalid instance field initializer";
+                    return false;
+                }
+                const ClassMemberSymbol& field =
+                    memberModel_->members()[fieldMemberOrdinal];
+                if (field.kind != ClassMemberKind::Field || field.isStatic ||
+                    field.syntax == nullptr || field.syntax->first() == nullptr)
+                {
+                    error =
+                        "Stage 37 instance initializer helper received a non-instance field";
+                    return false;
+                }
+                const MethodExpressionTypeBinding* sourceType =
+                    expressionType(field.syntax->first());
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    child->typeKey,
+                    field.declaredTypeKey,
+                    sourceType != nullptr
+                        ? sourceType->integerConstant
+                        : std::nullopt);
+                if (!conversion.exists())
+                {
+                    error =
+                        "Stage 37 field initializer lost its validated implicit conversion";
+                    return false;
+                }
+                if (conversion.kind != ProjectConversionKind::Identity)
+                {
+                    child = wrapImplicitConversion(
+                        std::move(child), conversion, field.syntax->first());
+                }
+                auto target = makeNode(
+                    ProjectOopHirNodeKind::FieldAddress,
+                    field.syntax,
+                    field.declaredTypeKey);
+                target->memberOrdinal = fieldMemberOrdinal;
+                target->volatileAccess = field.isVolatile;
+                target->children.push_back(makeNode(
+                    ProjectOopHirNodeKind::ThisValue,
+                    field.syntax,
+                    inheritanceModel_->typeKeyForOrdinal(
+                        field.declaringTypeOrdinal)));
+                auto assignment = makeNode(
+                    ProjectOopHirNodeKind::Assignment,
+                    field.syntax,
+                    field.declaredTypeKey);
+                assignment->operation = lexer::TokenKind::Equal;
+                assignment->children.push_back(std::move(target));
+                assignment->children.push_back(std::move(child));
+                construction.node->children.push_back(std::move(assignment));
+                if (construction.nextFieldInitializer ==
+                    construction.fieldMemberOrdinals.size())
+                {
+                    construction.stage = OrdinaryConstructionFrameStage::Ready;
+                }
+                return true;
+            }
+            error = "Stage 34 ordinary-construction frame accepted an unexpected child";
+            return false;
+        };
+        const auto finishOrdinaryConstructionFrame =
+            [&](IterativeExpressionFrame& frame)
+                -> std::unique_ptr<ProjectOopHirNode>
+        {
+            OrdinaryConstructionFrameState& construction =
+                *frame.ordinaryConstruction;
+            return wrapFullExpressionCleanup(
+                std::move(construction.node),
+                frame.syntax,
+                construction.hasOwnedTemporary);
         };
         const auto initializeAllocatorConstructionFrame =
             [&](IterativeExpressionFrame& frame) -> bool
@@ -2848,6 +3280,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             {
                 const std::optional<IterativeExpressionKind> currentKind =
                     iterativeKind(current, currentAddressContext);
+                bool completedWithoutChild = false;
                 if (currentKind.has_value())
                 {
                 IterativeExpressionFrame frame;
@@ -3069,6 +3502,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::OrdinaryCall)
                 {
                     if (!initializeOrdinaryCallFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryConstruction)
+                {
+                    if (!initializeOrdinaryConstructionFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -3732,6 +4174,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = child->syntax;
                     currentAddressContext = child->addressContext;
                 }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryConstruction)
+                {
+                    const std::optional<OrdinaryConstructionChild> child =
+                        nextOrdinaryConstructionChild(
+                            *frames.back().ordinaryConstruction);
+                    if (!child.has_value())
+                    {
+                        lowered = finishOrdinaryConstructionFrame(frames.back());
+                        if (lowered == nullptr)
+                        {
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = current->range();
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        frames.pop_back();
+                        completedWithoutChild = true;
+                    }
+                    else
+                    {
+                        current = child->syntax;
+                        currentAddressContext = false;
+                    }
+                }
                 else if (*currentKind == IterativeExpressionKind::AllocatorConstruction)
                 {
                     const std::optional<AllocatorConstructionChild> child =
@@ -3821,6 +4287,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::AllocatorConstruction)
                 {
                     // The allocator frame selected receiver addressability versus argument value.
+                }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryConstruction)
+                {
+                    // Storage, arguments, and field initializers are value expressions.
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
@@ -3942,24 +4412,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
                 if (*currentKind != IterativeExpressionKind::LoopExpression)
                     currentInputKind = IterativeInputKind::Expression;
-                continue;
+                if (!completedWithoutChild) continue;
             }
 
-            const bool isExpressionStatementRoot =
-                frames.size() == 1u &&
-                frames.back().kind == IterativeExpressionKind::ExpressionStatement;
-            lowered = isExpressionStatementRoot
-                ? lowerExpressionImpl(
-                    current, currentMemberOrdinal, currentAddressContext, error)
-                : lowerExpression(
-                    current, currentMemberOrdinal, currentAddressContext, error);
-            if (lowered == nullptr)
+            if (!completedWithoutChild)
             {
-                rollbackMatchCleanups();
-                if (!lastErrorRange_.isValid() && !frames.empty() &&
-                    frames.back().kind != IterativeExpressionKind::ExpressionStatement)
-                    lastErrorRange_ = frames.back().syntax->range();
-                break;
+                const bool isExpressionStatementRoot =
+                    frames.size() == 1u &&
+                    frames.back().kind == IterativeExpressionKind::ExpressionStatement;
+                lowered = isExpressionStatementRoot
+                    ? lowerExpressionImpl(
+                        current, currentMemberOrdinal, currentAddressContext, error)
+                    : lowerExpression(
+                        current, currentMemberOrdinal, currentAddressContext, error);
+                if (lowered == nullptr)
+                {
+                    rollbackMatchCleanups();
+                    if (!lastErrorRange_.isValid() && !frames.empty() &&
+                        frames.back().kind != IterativeExpressionKind::ExpressionStatement)
+                        lastErrorRange_ = frames.back().syntax->range();
+                    break;
+                }
             }
             }
 
@@ -4964,6 +5437,40 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         break;
                     }
                     lowered = finishOrdinaryCall(frame);
+                    if (lowered == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        frames.clear();
+                        break;
+                    }
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::OrdinaryConstruction)
+                {
+                    OrdinaryConstructionFrameState& construction =
+                        *frame.ordinaryConstruction;
+                    if (!acceptOrdinaryConstructionChild(
+                            construction, std::move(lowered)))
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    const std::optional<OrdinaryConstructionChild> child =
+                        nextOrdinaryConstructionChild(construction);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishOrdinaryConstructionFrame(frame);
                     if (lowered == nullptr)
                     {
                         if (!lastErrorRange_.isValid())

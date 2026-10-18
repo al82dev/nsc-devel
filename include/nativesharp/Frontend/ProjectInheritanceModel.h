@@ -16,6 +16,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct ProjectOopHirModelTestAccess;
+
 struct ClassInheritanceInfo final
 {
     std::size_t typeOrdinal = 0;
@@ -48,6 +50,8 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    friend struct ProjectOopHirModelTestAccess;
+
     // NSC-LIMIT-009. `protected` sobre un tipo ANIDADO, comprobado aqui y no en la resolucion de
     // nombres. Es la primera fase que puede responder «el sitio de uso deriva del contenedor?»,
     // que es literalmente lo que la palabra significa; antes de la herencia no hay con que.
