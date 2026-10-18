@@ -59,27 +59,35 @@ bool ProjectOopMirModel::importLayouts(
     // HIR (including nested element tuples), sort the keys for reproducible dumps, and publish
     // synthetic physical layouts in the ordinary struct-layout catalogue.
     std::vector<std::string> tupleKeys;
-    const auto collectTypeKey = [&](const auto& self, std::string_view key) -> void
+    const auto collectTypeKey = [&](std::string_view key)
     {
-        const std::optional<std::vector<std::string>> elements =
-            ProjectTypeConversion::tupleElementTypeKeys(key);
-        if (!elements.has_value()) return;
-        tupleKeys.emplace_back(key);
-        for (const std::string& element : *elements) self(self, element);
+        std::vector<std::string> work;
+        work.emplace_back(key);
+        while (!work.empty())
+        {
+            std::string current = std::move(work.back());
+            work.pop_back();
+            std::optional<std::vector<std::string>> elements =
+                ProjectTypeConversion::tupleElementTypeKeys(current);
+            if (!elements.has_value()) continue;
+            tupleKeys.push_back(std::move(current));
+            for (auto element = elements->rbegin(); element != elements->rend(); ++element)
+                work.push_back(std::move(*element));
+        }
     };
     const auto collectNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
     {
         if (node == nullptr) return;
-        collectTypeKey(collectTypeKey, node->typeKey);
-        collectTypeKey(collectTypeKey, node->elementTypeKey);
-        for (const std::string& key : node->argumentTypeKeys) collectTypeKey(collectTypeKey, key);
+        collectTypeKey(node->typeKey);
+        collectTypeKey(node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys) collectTypeKey(key);
         for (const auto& child : node->children) self(self, child.get());
     };
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
-        collectTypeKey(collectTypeKey, function.returnTypeKey);
-        for (const std::string& key : function.parameterTypeKeys) collectTypeKey(collectTypeKey, key);
-        for (const std::string& key : function.captureTypeKeys) collectTypeKey(collectTypeKey, key);
+        collectTypeKey(function.returnTypeKey);
+        for (const std::string& key : function.parameterTypeKeys) collectTypeKey(key);
+        for (const std::string& key : function.captureTypeKeys) collectTypeKey(key);
         collectNode(collectNode, function.body.get());
     }
     std::ranges::sort(tupleKeys);
