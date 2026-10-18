@@ -133,6 +133,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         ExpressionStatement,
         OverflowPolicy,
         BuiltinUnary,
+        UserUnaryOperator,
         Conversion,
         BuiltinBinary,
         CoreBinary,
@@ -166,6 +167,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::vector<const ast::AstNode*> operandSyntaxes;
         std::vector<std::unique_ptr<ProjectOopHirNode>> operands;
         const MethodNameBinding* fieldBinding = nullptr;
+        const MethodCallBinding* operatorCallBinding = nullptr;
         const MethodCallBinding* propertyGetterBinding = nullptr;
         const MethodCallBinding* indexerGetterBinding = nullptr;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -315,14 +317,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
                 callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
                 callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator;
-            if (!userOperator &&
-                (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
-                 syntax->tokenKind() == lexer::TokenKind::MinusMinus))
+            if (userOperator)
+            {
+                return IterativeExpressionKind::UserUnaryOperator;
+            }
+            if (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
+                syntax->tokenKind() == lexer::TokenKind::MinusMinus)
             {
                 if (!address && expressionType(syntax->first()) != nullptr)
                     return IterativeExpressionKind::StorageUnary;
             }
-            else if (!userOperator && syntax->tokenKind() == lexer::TokenKind::Amp && !address)
+            else if (syntax->tokenKind() == lexer::TokenKind::Amp && !address)
             {
                 const MethodNameBinding* target = nameBinding(syntax->first());
                 const bool bitField = target != nullptr &&
@@ -331,7 +336,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     memberModel_->members()[target->candidateMemberOrdinals.front()].isBitField;
                 if (!bitField) return IterativeExpressionKind::StorageUnary;
             }
-            else if (!userOperator && syntax->tokenKind() == lexer::TokenKind::Star)
+            else if (syntax->tokenKind() == lexer::TokenKind::Star)
             {
                 return IterativeExpressionKind::StorageUnary;
             }
@@ -557,7 +562,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frame.syntax = current;
                 frame.addressContext = currentAddressContext;
                 frame.memberOrdinal = currentMemberOrdinal;
-                if (*currentKind == IterativeExpressionKind::PropertyGetter)
+                if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
+                {
+                    frame.operatorCallBinding = callBinding(current);
+                    const ClassMemberSymbol* target = callableSymbol(
+                        *frame.operatorCallBinding->selectedMemberOrdinal);
+                    frame.operandAddressContext = !target->parameters.empty() &&
+                        target->parameters.front().passKind != ParameterPassKind::Value;
+                }
+                else if (*currentKind == IterativeExpressionKind::PropertyGetter)
                 {
                     frame.propertyGetterBinding = accessorGetterBinding(current);
                     frame.callTarget = resolveBoundCallTarget(*frame.propertyGetterBinding);
@@ -719,6 +732,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
+                else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
+                    current = current->first();
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                     current = frames.back().extensionPropertyBinding->receiverSyntax;
                 else if (*currentKind == IterativeExpressionKind::UserIndexerGetter)
@@ -746,6 +761,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     currentAddressContext =
                         isStructValueType(frames.back().callTarget.receiverTypeKey) &&
                         !frames.back().materializeReceiverTemporary;
+                }
+                else if (*currentKind == IterativeExpressionKind::UserUnaryOperator)
+                {
+                    currentAddressContext = frames.back().operandAddressContext;
                 }
                 else if (*currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
                 {
@@ -860,6 +879,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     unary->operation = frame.syntax->tokenKind();
                     unary->children.push_back(std::move(lowered));
                     lowered = std::move(unary);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::UserUnaryOperator)
+                {
+                    std::vector<const ast::AstNode*> argumentSyntaxes{frame.syntax->first()};
+                    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;
+                    arguments.push_back(std::move(lowered));
+                    auto call = lowerBoundCall(
+                        frame.syntax,
+                        frame.memberOrdinal,
+                        frame.addressContext,
+                        error,
+                        expressionType(frame.syntax),
+                        frame.operatorCallBinding,
+                        argumentSyntaxes,
+                        nullptr,
+                        false,
+                        nullptr,
+                        &arguments);
+                    if (call == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    lowered = std::move(call);
                     frames.pop_back();
                     continue;
                 }
@@ -2867,14 +2915,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         case ast::AstNodeKind::UnaryExpression:
         case ast::AstNodeKind::PostfixExpression:
         {
-            const MethodCallBinding* operatorCall = callBinding(expression);
-            if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
-                operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
-                callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
-                callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator)
-            {
-                return lowerResolvedCall(operatorCall, {expression->first()});
-            }
             if (expression->tokenKind() == lexer::TokenKind::PlusPlus ||
                 expression->tokenKind() == lexer::TokenKind::MinusMinus)
             {

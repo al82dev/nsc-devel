@@ -296,6 +296,25 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerUserUnaryOperatorExpression(
+        ProjectOopHirModel& model,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodCallBinding>& calls,
+        const MethodExpressionTypeBinding& type,
+        std::string& error)
+    {
+        model.nameLookup_ = &nameLookup;
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodCallBinding& call : calls)
+            model.callBySyntax_[call.syntax] = &call;
+        return model.lowerExpression(root, callerMemberOrdinal, false, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerExtensionPropertyGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -1795,6 +1814,152 @@ void testDeepBuiltinUnaryExpressionLowering(TestContext& tests)
     tests.expect(observedDepth == nestingDepth && cursor != nullptr &&
             cursor->kind == nativesharp::frontend::ProjectOopHirNodeKind::IntegerConstant,
         "iterative builtin unary lowering preserves every operator and its literal leaf");
+    destroyHirTreeIteratively(lowered);
+}
+
+struct UserUnaryOperatorTarget final
+{
+    std::size_t operatorOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string nodeType;
+};
+
+bool prepareUserUnaryOperatorFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    UserUnaryOperatorTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepUserUnaryOperator";
+    writeProject(directory, "DeepUserUnaryOperator");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public struct Node {
+    public static Node operator -(in Node value) { return value; }
+    public Node Run() { return -this; }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepUserUnaryOperator.nsproj", error) ||
+        compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+    {
+        return false;
+    }
+    bool foundOperator = false;
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const auto& member = members[ordinal];
+        if (member.isUserOperator && member.parameters.size() == 1U &&
+            member.parameters.front().passKind == nativesharp::frontend::ParameterPassKind::In)
+        {
+            output.operatorOrdinal = ordinal;
+            output.nodeType = member.declaredTypeKey;
+            foundOperator = true;
+        }
+        if (!member.isUserOperator && member.name == "Run")
+        {
+            output.callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundOperator && foundCaller && !output.nodeType.empty();
+}
+
+struct DeepUserUnaryOperatorSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodCallBinding> calls;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepUserUnaryOperatorSyntax makeDeepUserUnaryOperatorSyntax(
+    std::size_t depth,
+    const UserUnaryOperatorTarget& target)
+{
+    DeepUserUnaryOperatorSyntax fixture;
+    fixture.nodes.reserve(depth + 1U);
+    fixture.calls.reserve(depth);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::ThisExpression, nativesharp::SourceRange{}));
+    auto* current = fixture.nodes.back().get();
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            index % 2U == 0U ? nativesharp::ast::AstNodeKind::UnaryExpression
+                             : nativesharp::ast::AstNodeKind::PostfixExpression,
+            nativesharp::SourceRange{}));
+        auto* operation = fixture.nodes.back().get();
+        operation->setTokenKind(nativesharp::lexer::TokenKind::Minus);
+        operation->setFirst(current);
+        fixture.calls.emplace_back();
+        auto& call = fixture.calls.back();
+        call.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+        call.syntax = operation;
+        call.staticCall = true;
+        call.selectedMemberOrdinal = target.operatorOrdinal;
+        call.resultTypeKey = target.nodeType;
+        current = operation;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+bool userUnaryOperatorChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const UserUnaryOperatorTarget& target)
+{
+    std::size_t observedDepth = 0;
+    while (node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::StaticCall)
+    {
+        const std::size_t sourceIndex = expectedDepth - observedDepth - 1U;
+        const auto expectedSyntax = sourceIndex % 2U == 0U
+            ? nativesharp::ast::AstNodeKind::UnaryExpression
+            : nativesharp::ast::AstNodeKind::PostfixExpression;
+        if (node->syntax == nullptr || node->syntax->kind() != expectedSyntax ||
+            node->memberOrdinal != target.operatorOrdinal || node->typeKey != target.nodeType ||
+            node->children.size() != 1U || node->interfaceDispatch || node->baseReceiver ||
+            node->nullConditionalCall || node->referenceResult)
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ThisValue &&
+        node->typeKey == target.nodeType;
+}
+
+void testDeepUserUnaryOperatorLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    UserUnaryOperatorTarget target;
+    std::string error;
+    const bool prepared = prepareUserUnaryOperatorFixture(root, compilation, target, error);
+    tests.expect(prepared, "the user-unary fixture builds an `in` operator target (" + error + ")");
+    if (!prepared) return;
+
+    DeepUserUnaryOperatorSyntax syntax =
+        makeDeepUserUnaryOperatorSyntax(nestingDepth, target);
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.nodeType;
+    ProjectOopHirModel model;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUserUnaryOperatorExpression(
+            model, *compilation.nameLookup(), *compilation.memberModel(), target.callerOrdinal,
+            syntax.root, syntax.nodes, syntax.calls, type, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level unary/postfix user-operator chain lowers without stack recursion (" +
+            error + ")");
+    tests.expect(userUnaryOperatorChainMatches(lowered.get(), nestingDepth, target),
+        "iterative user-operator lowering preserves passKind, member ordinal, order, and syntax");
     destroyHirTreeIteratively(lowered);
 }
 
@@ -3624,6 +3789,10 @@ int main()
     {
         testDeepBuiltinUnaryExpressionLowering(tests);
     }
+    else if (focusValue == "hir-user-unary-operator-depth")
+    {
+        testDeepUserUnaryOperatorLowering(tests, root);
+    }
     else if (focusValue == "hir-conversion-depth")
     {
         testDeepConversionExpressionLowering(tests);
@@ -3719,6 +3888,7 @@ int main()
         testDeepAsyncPollReturnRewrite(tests);
         testDeepAsyncAwaitScan(tests);
         testDeepBuiltinUnaryExpressionLowering(tests);
+        testDeepUserUnaryOperatorLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);
