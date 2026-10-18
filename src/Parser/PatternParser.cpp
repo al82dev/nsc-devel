@@ -94,6 +94,36 @@ private:
     std::vector<Pattern> values_;
 };
 
+class Parser::PatternAlternativeExpander final
+{
+public:
+    explicit PatternAlternativeExpander(const Pattern& root) : root_(root) {}
+
+    std::vector<Pattern> run();
+
+private:
+    struct Frame final
+    {
+        const Pattern* source = nullptr;
+        std::size_t nextChild = 0;
+        std::vector<Pattern> alternatives;
+    };
+
+    static Pattern copyWithoutChildren(const Pattern& source);
+    static Frame makeFrame(const Pattern& source);
+    static void appendOrAlternatives(
+        Frame& frame,
+        std::vector<Pattern> alternatives);
+    static void appendChildAlternatives(
+        Frame& frame,
+        std::vector<Pattern> alternatives);
+    static void integrateCompletedChild(
+        Frame& frame,
+        std::vector<Pattern> alternatives);
+
+    const Pattern& root_;
+};
+
 Parser::Pattern Parser::PatternIterationParser::run()
 {
     schedule(WorkKind::ParseOr, implicitBinding_);
@@ -551,6 +581,102 @@ void Parser::PatternIterationParser::finishNamedPayload(Work work)
     values_.push_back(std::move(work.pattern));
 }
 
+Parser::Pattern Parser::PatternAlternativeExpander::copyWithoutChildren(
+    const Pattern& source)
+{
+    Pattern copy;
+    copy.kind = source.kind;
+    copy.bindingMode = source.bindingMode;
+    copy.name = source.name;
+    copy.range = source.range;
+    copy.firstValue = source.firstValue;
+    copy.secondValue = source.secondValue;
+    copy.firstInteger = source.firstInteger;
+    copy.secondInteger = source.secondInteger;
+    copy.restIndex = source.restIndex;
+    copy.fieldNames = source.fieldNames;
+    return copy;
+}
+
+Parser::PatternAlternativeExpander::Frame
+Parser::PatternAlternativeExpander::makeFrame(const Pattern& source)
+{
+    Frame frame;
+    frame.source = &source;
+    if (source.kind != PatternKind::Or)
+        frame.alternatives.push_back(copyWithoutChildren(source));
+    return frame;
+}
+
+void Parser::PatternAlternativeExpander::appendOrAlternatives(
+    Frame& frame,
+    std::vector<Pattern> alternatives)
+{
+    frame.alternatives.insert(
+        frame.alternatives.end(),
+        std::make_move_iterator(alternatives.begin()),
+        std::make_move_iterator(alternatives.end()));
+}
+
+void Parser::PatternAlternativeExpander::appendChildAlternatives(
+    Frame& frame,
+    std::vector<Pattern> alternatives)
+{
+    if (frame.alternatives.empty() || alternatives.empty())
+    {
+        frame.alternatives.clear();
+        return;
+    }
+    if (frame.alternatives.size() == 1 && alternatives.size() == 1)
+    {
+        frame.alternatives.front().children.push_back(std::move(alternatives.front()));
+        return;
+    }
+    std::vector<Pattern> product;
+    product.reserve(frame.alternatives.size() * alternatives.size());
+    for (const Pattern& prefix : frame.alternatives)
+    {
+        for (const Pattern& alternative : alternatives)
+        {
+            Pattern copy = prefix;
+            copy.children.push_back(alternative);
+            product.push_back(std::move(copy));
+        }
+    }
+    frame.alternatives = std::move(product);
+}
+
+void Parser::PatternAlternativeExpander::integrateCompletedChild(
+    Frame& frame,
+    std::vector<Pattern> alternatives)
+{
+    if (frame.source->kind == PatternKind::Or)
+        appendOrAlternatives(frame, std::move(alternatives));
+    else
+        appendChildAlternatives(frame, std::move(alternatives));
+}
+
+std::vector<Parser::Pattern> Parser::PatternAlternativeExpander::run()
+{
+    std::vector<Frame> frames;
+    frames.push_back(makeFrame(root_));
+    while (!frames.empty())
+    {
+        Frame& frame = frames.back();
+        if (frame.nextChild < frame.source->children.size())
+        {
+            const Pattern& child = frame.source->children[frame.nextChild++];
+            frames.push_back(makeFrame(child));
+            continue;
+        }
+        std::vector<Pattern> completed = std::move(frame.alternatives);
+        frames.pop_back();
+        if (frames.empty()) return completed;
+        integrateCompletedChild(frames.back(), std::move(completed));
+    }
+    return {};
+}
+
 bool Parser::patternLiteralStartsHere() const noexcept
 {
     const TokenKind kind = current().kind();
@@ -728,48 +854,22 @@ Parser::Pattern Parser::parsePattern(bool implicitBinding)
 
 bool Parser::patternHasBindings(const Pattern& pattern) const
 {
-    if (pattern.kind == PatternKind::Binding) return true;
-    return std::ranges::any_of(pattern.children, [this](const Pattern& child)
+    std::vector<const Pattern*> pending{&pattern};
+    while (!pending.empty())
     {
-        return patternHasBindings(child);
-    });
+        const Pattern& currentPattern = *pending.back();
+        pending.pop_back();
+        if (currentPattern.kind == PatternKind::Binding) return true;
+        for (auto child = currentPattern.children.rbegin();
+             child != currentPattern.children.rend(); ++child)
+            pending.push_back(&*child);
+    }
+    return false;
 }
 
 std::vector<Parser::Pattern> Parser::expandPatternAlternatives(const Pattern& pattern) const
 {
-    if (pattern.kind == PatternKind::Or)
-    {
-        std::vector<Pattern> alternatives;
-        for (const Pattern& child : pattern.children)
-        {
-            std::vector<Pattern> expanded = expandPatternAlternatives(child);
-            alternatives.insert(
-                alternatives.end(),
-                std::make_move_iterator(expanded.begin()),
-                std::make_move_iterator(expanded.end()));
-        }
-        return alternatives;
-    }
-
-    std::vector<Pattern> expanded{pattern};
-    expanded.front().children.clear();
-    for (const Pattern& child : pattern.children)
-    {
-        const std::vector<Pattern> childAlternatives = expandPatternAlternatives(child);
-        std::vector<Pattern> product;
-        product.reserve(expanded.size() * childAlternatives.size());
-        for (const Pattern& prefix : expanded)
-        {
-            for (const Pattern& alternative : childAlternatives)
-            {
-                Pattern copy = prefix;
-                copy.children.push_back(alternative);
-                product.push_back(std::move(copy));
-            }
-        }
-        expanded = std::move(product);
-    }
-    return expanded;
+    return PatternAlternativeExpander(pattern).run();
 }
 
 ast::AstNode* Parser::makeBooleanLiteral(const SourceRange& range, bool value)
@@ -783,12 +883,20 @@ ast::AstNode* Parser::makeBooleanLiteral(const SourceRange& range, bool value)
 
 bool Parser::patternIsConditionOnly(const Pattern& pattern) const
 {
-    if (pattern.kind == PatternKind::Binding || pattern.kind == PatternKind::Tuple ||
-        pattern.kind == PatternKind::List)
-        return false;
-    return std::ranges::all_of(
-        pattern.children,
-        [this](const Pattern& child) { return patternIsConditionOnly(child); });
+    std::vector<const Pattern*> pending{&pattern};
+    while (!pending.empty())
+    {
+        const Pattern& currentPattern = *pending.back();
+        pending.pop_back();
+        if (currentPattern.kind == PatternKind::Binding ||
+            currentPattern.kind == PatternKind::Tuple ||
+            currentPattern.kind == PatternKind::List)
+            return false;
+        for (auto child = currentPattern.children.rbegin();
+             child != currentPattern.children.rend(); ++child)
+            pending.push_back(&*child);
+    }
+    return true;
 }
 
 ast::AstNode* Parser::makeRelationalPatternCondition(
@@ -1217,17 +1325,24 @@ void Parser::collectUniquePatternBindings(
     const Pattern& pattern,
     std::vector<std::pair<std::string, PatternBindingMode>>& bindings) const
 {
-    if (pattern.kind == PatternKind::Binding)
+    std::unordered_set<std::string> names;
+    names.reserve(bindings.size());
+    for (const auto& binding : bindings) names.insert(binding.first);
+    std::vector<const Pattern*> pending{&pattern};
+    while (!pending.empty())
     {
-        if (std::ranges::none_of(bindings, [&](const auto& binding)
-            {
-                return binding.first == pattern.name;
-            }))
-            bindings.emplace_back(pattern.name, pattern.bindingMode);
-        return;
+        const Pattern& currentPattern = *pending.back();
+        pending.pop_back();
+        if (currentPattern.kind == PatternKind::Binding)
+        {
+            if (names.insert(currentPattern.name).second)
+                bindings.emplace_back(currentPattern.name, currentPattern.bindingMode);
+            continue;
+        }
+        for (auto child = currentPattern.children.rbegin();
+             child != currentPattern.children.rend(); ++child)
+            pending.push_back(&*child);
     }
-    for (const Pattern& child : pattern.children)
-        collectUniquePatternBindings(child, bindings);
 }
 
 void Parser::applyPatternBindingMode(

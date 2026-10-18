@@ -1244,6 +1244,7 @@ private:
     };
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     class PatternIterationParser;
+    class PatternAlternativeExpander;
     Pattern parsePattern(bool implicitBinding);
     bool patternLiteralStartsHere() const noexcept;
     std::pair<ast::AstNode*, std::optional<std::int64_t>>

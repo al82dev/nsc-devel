@@ -259,6 +259,7 @@ add_executable(
     host/modules/ParserStateRobustnessFinalModule.cpp
     host/modules/ParserTypeIterationCounterfactualModule.cpp
     host/modules/ParserPatternIterationCounterfactualModule.cpp
+    host/modules/ParserPatternTraversalCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
     host/modules/ParserDeclarationProductTestShim.cpp
