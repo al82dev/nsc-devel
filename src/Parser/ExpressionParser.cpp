@@ -96,6 +96,167 @@ bool endsConditionalQuestionScan(TokenKind kind) noexcept
         kind == TokenKind::EndOfFile;
 }
 
+// Identifies delimiters that terminate questions opened at their own nesting level. Runs in O(1).
+bool closesConditionalQuestionScope(TokenKind kind) noexcept
+{
+    return kind == TokenKind::RightParen || kind == TokenKind::RightBracket ||
+        kind == TokenKind::RightBrace;
+}
+
+// Records one opener in lexical order and in its delimiter-specific LIFO stack. The ordinal table
+// lets the later event pass identify an opener without another search. Runs in O(1).
+void recordConditionalOpener(
+    std::size_t cursor,
+    std::vector<std::size_t>& positions,
+    std::vector<std::size_t>& ordinals,
+    std::vector<std::size_t>& stack)
+{
+    ordinals[cursor] = positions.size();
+    positions.push_back(cursor);
+    stack.push_back(cursor);
+}
+
+// Pairs one closer with the latest unmatched opener of the same delimiter type. Unmatched closers
+// remain unpaired events, matching the previous scanner's recovery behavior. Runs in O(1).
+void closeConditionalOpener(
+    std::size_t cursor,
+    std::vector<std::size_t>& matches,
+    std::vector<std::size_t>& stack)
+{
+    if (stack.empty()) return;
+    matches[stack.back()] = cursor;
+    stack.pop_back();
+}
+
+// Pairs delimiters independently by type, which is exactly how the former per-question counters
+// treated crossing and malformed delimiter sequences. Runs in O(T) time and O(T) space.
+void pairConditionalDelimiters(
+    std::span<const lexer::Token> tokens,
+    std::vector<std::size_t>& matches,
+    std::vector<std::size_t>& positions,
+    std::vector<std::size_t>& ordinals)
+{
+    const std::size_t end = tokens.size();
+    matches.assign(end, end);
+    ordinals.assign(end, end);
+    std::vector<std::size_t> parentheses;
+    std::vector<std::size_t> brackets;
+    std::vector<std::size_t> braces;
+    for (std::size_t cursor = 0; cursor < end; ++cursor)
+    {
+        const TokenKind kind = tokens[cursor].kind();
+        if (kind == TokenKind::LeftParen)
+            recordConditionalOpener(cursor, positions, ordinals, parentheses);
+        else if (kind == TokenKind::LeftBracket)
+            recordConditionalOpener(cursor, positions, ordinals, brackets);
+        else if (kind == TokenKind::LeftBrace)
+            recordConditionalOpener(cursor, positions, ordinals, braces);
+        else if (kind == TokenKind::RightParen)
+            closeConditionalOpener(cursor, matches, parentheses);
+        else if (kind == TokenKind::RightBracket)
+            closeConditionalOpener(cursor, matches, brackets);
+        else if (kind == TokenKind::RightBrace)
+            closeConditionalOpener(cursor, matches, braces);
+    }
+}
+
+// Returns the ordinal of the last opener at or before a token boundary. The caller guarantees a
+// non-empty prefix because every queried boundary is at least its originating opener position.
+std::size_t lastConditionalOpenerAtOrBefore(
+    const std::vector<std::size_t>& positions,
+    std::size_t boundary)
+{
+    return static_cast<std::size_t>(
+        std::upper_bound(positions.begin(), positions.end(), boundary) - positions.begin() - 1);
+}
+
+// Computes the complete interval closed by each opener, including independently paired intervals
+// that cross it. Closure-ordinal jumps make total merging linear; searches add O(T log T).
+void buildConditionalScopeClosures(
+    const std::vector<std::size_t>& matches,
+    const std::vector<std::size_t>& positions,
+    std::vector<std::size_t>& closureEnds)
+{
+    std::vector<std::size_t> closureOrdinals(positions.size());
+    closureEnds.resize(positions.size());
+    for (std::size_t ordinal = positions.size(); ordinal-- > 0;)
+    {
+        std::size_t end = matches[positions[ordinal]];
+        std::size_t last = lastConditionalOpenerAtOrBefore(positions, end);
+        for (std::size_t next = ordinal + 1U; next <= last;)
+        {
+            end = std::max(end, closureEnds[next]);
+            last = lastConditionalOpenerAtOrBefore(positions, end);
+            next = closureOrdinals[next] + 1U;
+        }
+        closureEnds[ordinal] = end;
+        closureOrdinals[ordinal] = last;
+    }
+}
+
+// Identifies events that are observable by a question scanner at depth zero. Opening delimiters
+// are handled through their precomputed closures instead. Runs in O(1).
+bool isConditionalQuestionEvent(TokenKind kind) noexcept
+{
+    return kind == TokenKind::Question || kind == TokenKind::Colon ||
+        closesConditionalQuestionScope(kind) || endsConditionalQuestionScan(kind);
+}
+
+// Builds the next depth-zero event for every token boundary. Crossing scopes are skipped through
+// their transitive closure, so every lookup is O(1) after O(T) construction.
+void buildConditionalNextEvents(
+    std::span<const lexer::Token> tokens,
+    const std::vector<std::size_t>& ordinals,
+    const std::vector<std::size_t>& closureEnds,
+    std::vector<std::size_t>& nextEvents)
+{
+    const std::size_t end = tokens.size();
+    nextEvents.assign(end + 1U, end);
+    for (std::size_t cursor = end; cursor-- > 0;)
+    {
+        if (ordinals[cursor] != end)
+        {
+            const std::size_t closure = closureEnds[ordinals[cursor]];
+            nextEvents[cursor] = closure < end ? nextEvents[closure + 1U] : end;
+            continue;
+        }
+        nextEvents[cursor] = isConditionalQuestionEvent(tokens[cursor].kind())
+            ? cursor
+            : nextEvents[cursor + 1U];
+    }
+}
+
+// Matches questions and colons from right to left. Collapsed events skip complete nested ternaries,
+// preserving LIFO ownership with O(1) work per question and no native recursion.
+void classifyConditionalQuestions(
+    std::span<const lexer::Token> tokens,
+    const std::vector<std::size_t>& nextEvents,
+    std::vector<std::uint8_t>& roles)
+{
+    const std::size_t end = tokens.size();
+    roles.assign(end, std::uint8_t{0});
+    std::vector<std::size_t> collapsedEvents(end + 1U, end);
+    for (std::size_t cursor = end; cursor-- > 0;)
+    {
+        const TokenKind kind = tokens[cursor].kind();
+        if (kind != TokenKind::Question)
+        {
+            if (isConditionalQuestionEvent(kind)) collapsedEvents[cursor] = cursor;
+            continue;
+        }
+        std::size_t event = nextEvents[cursor + 1U];
+        if (event < end) event = collapsedEvents[event];
+        if (event >= end || tokens[event].kind() != TokenKind::Colon)
+        {
+            collapsedEvents[cursor] = cursor;
+            continue;
+        }
+        roles[cursor] = std::uint8_t{1};
+        const std::size_t after = nextEvents[event + 1U];
+        collapsedEvents[cursor] = after < end ? collapsedEvents[after] : end;
+    }
+}
+
 }
 
 class Parser::MatchExpressionPatternAnalyzer final
@@ -1904,56 +2065,27 @@ ast::AstNode* Parser::parsePostfixExpression()
     return expression;
 }
 
+// Builds the immutable question-role cache from delimiter pairs, transitive crossing closures and
+// depth-zero events. Total construction is O(T log T), space is O(T), and no recursion is used.
+void Parser::buildConditionalQuestionIndex()
+{
+    std::vector<std::size_t> matches;
+    std::vector<std::size_t> positions;
+    std::vector<std::size_t> ordinals;
+    pairConditionalDelimiters(tokens_, matches, positions, ordinals);
+    std::vector<std::size_t> closureEnds;
+    buildConditionalScopeClosures(matches, positions, closureEnds);
+    std::vector<std::size_t> nextEvents;
+    buildConditionalNextEvents(tokens_, ordinals, closureEnds, nextEvents);
+    classifyConditionalQuestions(tokens_, nextEvents, conditionalQuestionIndex_);
+}
+
+// Returns the preclassified role of the question token at the current cursor in O(1). The index
+// is immutable after construction because the token span itself is immutable for the parser.
 bool Parser::questionBeginsConditional() const noexcept
 {
-    if (!at(TokenKind::Question)) return false;
-
-    // `?` is both a postfix Result operator and the opener of `condition ? a : b`.  Looking only
-    // at the following token is insufficient (`result? + 1` and `condition ? +1 : 0` share it),
-    // so find the colon owned by this exact nesting level. Nested ternaries consume their own
-    // colons; delimiters end the current expression. This keeps the existing conditional grammar
-    // intact while allowing propagation to participate in every higher-precedence expression.
-    std::size_t parentheses = 0;
-    std::size_t brackets = 0;
-    std::size_t braces = 0;
-    std::size_t nestedQuestions = 0;
-    for (std::size_t cursor = index_ + 1U; cursor < tokens_.size(); ++cursor)
-    {
-        const TokenKind kind = tokens_[cursor].kind();
-        if (parentheses == 0 && brackets == 0 && braces == 0 &&
-            endsConditionalQuestionScan(kind))
-            return false;
-        switch (kind)
-        {
-            case TokenKind::LeftParen: ++parentheses; break;
-            case TokenKind::LeftBracket: ++brackets; break;
-            case TokenKind::LeftBrace: ++braces; break;
-            case TokenKind::RightParen:
-                if (parentheses != 0) { --parentheses; break; }
-                if (brackets == 0 && braces == 0) return false;
-                break;
-            case TokenKind::RightBracket:
-                if (brackets != 0) { --brackets; break; }
-                if (parentheses == 0 && braces == 0) return false;
-                break;
-            case TokenKind::RightBrace:
-                if (braces != 0) { --braces; break; }
-                if (parentheses == 0 && brackets == 0) return false;
-                break;
-            case TokenKind::Question:
-                if (parentheses == 0 && brackets == 0 && braces == 0) ++nestedQuestions;
-                break;
-            case TokenKind::Colon:
-                if (parentheses == 0 && brackets == 0 && braces == 0)
-                {
-                    if (nestedQuestions == 0) return true;
-                    --nestedQuestions;
-                }
-                break;
-            default: break;
-        }
-    }
-    return false;
+    return at(TokenKind::Question) && index_ < conditionalQuestionIndex_.size() &&
+        conditionalQuestionIndex_[index_] != std::uint8_t{0};
 }
 
 ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)

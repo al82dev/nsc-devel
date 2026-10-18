@@ -7,6 +7,7 @@
 #include "nativesharp/Lexer/Token.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -1551,6 +1552,7 @@ private:
     ast::AstNode* parsePostfixOperatorSuffix(ast::AstNode* expression);
     ast::AstNode* parseResultPropagationSuffix(ast::AstNode* expression);
     ast::AstNode* parsePostfixExpression();
+    void buildConditionalQuestionIndex();
     bool questionBeginsConditional() const noexcept;
     bool comprehensionExpressionStartsHere() const noexcept;
     std::size_t pureGroupingDepth() const noexcept;
@@ -1610,6 +1612,7 @@ private:
     ast::AstArena& arena_;
     diagnostics::DiagnosticEngine& diagnostics_;
     std::size_t index_ = 0;
+    std::vector<std::uint8_t> conditionalQuestionIndex_;
     std::size_t pendingGenericGreater_ = 0;
     bool pendingGenericEqual_ = false;
     std::optional<lexer::Token> pendingGenericEqualToken_;

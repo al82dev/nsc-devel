@@ -54,6 +54,7 @@ Parser::Parser(
             knownTypeNames_.insert(name);
         }
     }
+    buildConditionalQuestionIndex();
 }
 
 // Returns the logical token at the cursor, including a pending '=' split from a generic closer.
