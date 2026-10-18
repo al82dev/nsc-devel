@@ -1254,6 +1254,7 @@ private:
         std::vector<std::pair<std::string, PatternBindingMode>> bindings;
         std::vector<SourceRange> invalidOrRanges;
         std::vector<SourceRange> nonAddressableBindingRanges;
+        std::vector<std::pair<SourceRange, PatternBindingMode>> nonAddressableBindings;
         std::vector<std::string> cases;
         std::vector<std::pair<std::size_t, bool>> listLengths;
         bool wildcard = false;

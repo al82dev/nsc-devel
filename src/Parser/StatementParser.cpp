@@ -1624,6 +1624,7 @@ private:
     struct MatchArm final
     {
         Pattern pattern;
+        Parser::MatchPatternAnalysis analysis;
         SourceRange range;
         ast::AstNode* guard = nullptr;
         ast::AstNode* body = nullptr;
@@ -1637,6 +1638,8 @@ private:
         MatchArm pendingArm;
         std::vector<MatchArm> arms;
         bool sawCatchAll = false;
+        bool hasReferenceBinding = false;
+        bool hasMoveBinding = false;
         std::vector<std::pair<std::int64_t, std::int64_t>> coveredIntegerRanges;
     };
 
@@ -2712,8 +2715,10 @@ private:
         state.pendingArm = MatchArm{};
         state.pendingArm.pattern = parser_.parsePattern(false);
         state.pendingArm.range = state.pendingArm.pattern.range;
-        validateMatchBindingModes(state.pendingArm.pattern);
-        validateMatchOrBindings(state.pendingArm.pattern);
+        state.pendingArm.analysis =
+            parser_.analyzeMatchExpressionPattern(state.pendingArm.pattern, false);
+        reportMatchPatternDiagnostics(state.pendingArm.analysis);
+        accumulateMatchOwnership(state, state.pendingArm.analysis);
         if (parser_.atContextualKeyword("when"))
         {
             parser_.consume();
@@ -2747,108 +2752,38 @@ private:
         return "value";
     }
 
-    // Collects bindings iteratively in source order, then canonicalizes them for equality checks.
-    static std::vector<std::pair<std::string, PatternBindingMode>> collectMatchBindings(
-        const Pattern& root)
+    // Publishes the two historical diagnostic families from one source-ordered fact record.
+    void reportMatchPatternDiagnostics(const Parser::MatchPatternAnalysis& analysis)
     {
-        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
-        std::vector<const Pattern*> pending{&root};
-        while (!pending.empty())
-        {
-            const Pattern* pattern = pending.back();
-            pending.pop_back();
-            if (pattern->kind == PatternKind::Binding)
-                bindings.emplace_back(pattern->name, pattern->bindingMode);
-            else
-                for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
-                    pending.push_back(&*child);
-        }
-        std::ranges::sort(bindings, [](const auto& left, const auto& right)
-        {
-            if (left.first != right.first) return left.first < right.first;
-            return left.second < right.second;
-        });
-        return bindings;
-    }
-
-    // Tests wildcard/binding reachability through OR alternatives using an explicit worklist.
-    static bool matchPatternIsCatchAll(const Pattern& root)
-    {
-        std::vector<const Pattern*> pending{&root};
-        while (!pending.empty())
-        {
-            const Pattern* pattern = pending.back();
-            pending.pop_back();
-            if (pattern->kind == PatternKind::Wildcard || pattern->kind == PatternKind::Binding)
-                return true;
-            if (pattern->kind != PatternKind::Or) continue;
-            for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
-                pending.push_back(&*child);
-        }
-        return false;
-    }
-
-    // Propagates address preservation iteratively and reports invalid ref/move binding sites.
-    void validateMatchBindingModes(const Pattern& root)
-    {
-        std::vector<std::pair<const Pattern*, bool>> pending{{&root, true}};
-        while (!pending.empty())
-        {
-            const auto [pattern, preservesAddress] = pending.back();
-            pending.pop_back();
-            if (invalidMatchBindingMode(*pattern, preservesAddress)) continue;
-            const bool childPreservesAddress = preservesAddress &&
-                pattern->kind != PatternKind::Tuple && pattern->kind != PatternKind::Variant;
-            for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
-                pending.emplace_back(&*child, childPreservesAddress);
-        }
-    }
-
-    // Reports one binding-mode violation and returns whether child traversal must stop.
-    bool invalidMatchBindingMode(const Pattern& pattern, bool preservesAddress)
-    {
-        if (pattern.kind != PatternKind::Binding ||
-            pattern.bindingMode == PatternBindingMode::Value || preservesAddress)
-            return false;
-        parser_.diagnostics_.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            pattern.range,
-            std::string(matchBindingModeName(pattern.bindingMode)) +
-                " pattern binding cannot cross a tuple deconstruction or variant payload "
-                "copy; bind the aggregate by ref/move first");
-        return true;
-    }
-
-    // Visits every OR pattern without recursion and compares each alternative's binding set.
-    void validateMatchOrBindings(const Pattern& root)
-    {
-        std::vector<const Pattern*> pending{&root};
-        while (!pending.empty())
-        {
-            const Pattern* pattern = pending.back();
-            pending.pop_back();
-            if (pattern->kind == PatternKind::Or && !pattern->children.empty())
-                validateMatchOrAlternatives(*pattern);
-            for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
-                pending.push_back(&*child);
-        }
-    }
-
-    // Requires every alternative of one OR node to bind identical names and modes.
-    void validateMatchOrAlternatives(const Pattern& pattern)
-    {
-        const auto expected = collectMatchBindings(pattern.children.front());
-        for (std::size_t index = 1; index < pattern.children.size(); ++index)
-        {
-            if (collectMatchBindings(pattern.children[index]) == expected) continue;
+        for (const auto& [range, mode] : analysis.nonAddressableBindings)
             parser_.diagnostics_.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
-                pattern.range,
+                range,
+                std::string(matchBindingModeName(mode)) +
+                    " pattern binding cannot cross a tuple deconstruction or variant payload "
+                    "copy; bind the aggregate by ref/move first");
+        for (const SourceRange& range : analysis.invalidOrRanges)
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                range,
                 "OR-pattern alternatives must bind identical names with identical "
                 "value/ref/move modes");
-            return;
+    }
+
+    // Accumulates ownership requirements without rescanning already analyzed arm patterns.
+    static void accumulateMatchOwnership(
+        MatchParseState& state,
+        const Parser::MatchPatternAnalysis& analysis)
+    {
+        for (const auto& [name, mode] : analysis.bindings)
+        {
+            static_cast<void>(name);
+            state.hasReferenceBinding = state.hasReferenceBinding ||
+                mode == PatternBindingMode::Reference ||
+                mode == PatternBindingMode::ReferenceMutable;
+            state.hasMoveBinding = state.hasMoveBinding || mode == PatternBindingMode::Move;
         }
     }
 
@@ -2864,7 +2799,7 @@ private:
             arm.guard->tokenKind() == TokenKind::KwFalse;
         if (guardAlwaysFalse) reportConstantFalseMatchGuard(arm);
         if (state.sawCatchAll) reportMatchArmAfterCatchAll(arm);
-        if (matchPatternIsCatchAll(arm.pattern) && guardAlwaysTrue) state.sawCatchAll = true;
+        if (arm.analysis.wildcard && guardAlwaysTrue) state.sawCatchAll = true;
         validateMatchIntegerIntervals(state, guardAlwaysTrue);
     }
 
@@ -3020,15 +2955,12 @@ private:
     // Encodes one arm as wildcard, list-length, nominal-case, or unknown coverage.
     void appendMatchArmCoverage(std::string& coverage, const MatchArm& arm)
     {
-        std::vector<std::string> cases;
-        std::vector<std::pair<std::size_t, bool>> listLengths;
-        bool wildcard = false;
-        bool partial = false;
-        collectMatchCoverage(arm.pattern, cases, listLengths, wildcard, partial);
+        std::vector<std::string> cases = arm.analysis.cases;
+        std::vector<std::pair<std::size_t, bool>> listLengths = arm.analysis.listLengths;
         const bool restricted = arm.guard != nullptr &&
             !(arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
               arm.guard->tokenKind() == TokenKind::KwTrue);
-        if (wildcard)
+        if (arm.analysis.wildcard)
         {
             if (restricted) coverage += '~';
             coverage += '*';
@@ -3036,59 +2968,12 @@ private:
         }
         if (!listLengths.empty())
         {
-            appendMatchListCoverage(coverage, listLengths, partial || restricted);
+            appendMatchListCoverage(
+                coverage, listLengths, arm.analysis.partial || restricted);
             return;
         }
-        appendMatchCaseCoverage(coverage, cases, partial || restricted);
-    }
-
-    // Collects coverage facts iteratively while preserving OR alternative order.
-    static void collectMatchCoverage(
-        const Pattern& root,
-        std::vector<std::string>& cases,
-        std::vector<std::pair<std::size_t, bool>>& listLengths,
-        bool& wildcard,
-        bool& partial)
-    {
-        std::vector<const Pattern*> pending{&root};
-        while (!pending.empty())
-        {
-            const Pattern* pattern = pending.back();
-            pending.pop_back();
-            if (pattern->kind == PatternKind::Wildcard || pattern->kind == PatternKind::Binding)
-                wildcard = true;
-            else if (pattern->kind == PatternKind::Variant)
-            {
-                cases.push_back(pattern->name);
-                if (!pattern->children.empty() &&
-                    !matchPatternIsCatchAll(pattern->children.front())) partial = true;
-            }
-            else if (pattern->kind == PatternKind::List)
-                collectMatchListCoverage(*pattern, listLengths, partial);
-            else if (pattern->kind == PatternKind::Or)
-                for (auto child = pattern->children.rbegin(); child != pattern->children.rend(); ++child)
-                    pending.push_back(&*child);
-        }
-    }
-
-    // Records one list-length domain and whether element subpatterns make it partial.
-    static void collectMatchListCoverage(
-        const Pattern& pattern,
-        std::vector<std::pair<std::size_t, bool>>& lengths,
-        bool& partial)
-    {
-        const std::size_t fixedCount = pattern.children.size() -
-            (pattern.restIndex.has_value() ? 1U : 0U);
-        lengths.emplace_back(fixedCount, pattern.restIndex.has_value());
-        for (std::size_t index = 0; index < pattern.children.size(); ++index)
-        {
-            if (pattern.restIndex.has_value() && *pattern.restIndex == index) continue;
-            if (!matchPatternIsCatchAll(pattern.children[index]))
-            {
-                partial = true;
-                return;
-            }
-        }
+        appendMatchCaseCoverage(
+            coverage, cases, arm.analysis.partial || restricted);
     }
 
     // Sorts and deduplicates list domains before emitting their stable marker format.
@@ -3135,14 +3020,6 @@ private:
         const MatchParseState& state,
         const std::string& temporary)
     {
-        const bool hasReference = matchHasBindingMode(
-            state.arms,
-            PatternBindingMode::Reference,
-            PatternBindingMode::ReferenceMutable);
-        const bool hasMove = matchHasBindingMode(
-            state.arms,
-            PatternBindingMode::Move,
-            PatternBindingMode::Move);
         ast::TypeSyntax* inferred = parser_.arena_.make<ast::TypeSyntax>(
             state.keywordRange,
             TokenKind::KwVar,
@@ -3152,22 +3029,10 @@ private:
             temporary,
             state.governing,
             false,
-            !hasReference && !hasMove);
-        if (hasReference) governing->setAuxiliaryText("local:ref");
+            !state.hasReferenceBinding && !state.hasMoveBinding);
+        if (state.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
         lowered.addChild(governing);
         lowered.addChild(makeMatchSelectedDeclaration(state.keywordRange, temporary));
-    }
-
-    // Returns whether any arm binds with either requested ownership mode.
-    static bool matchHasBindingMode(
-        const std::vector<MatchArm>& arms,
-        PatternBindingMode first,
-        PatternBindingMode second)
-    {
-        for (const MatchArm& arm : arms)
-            for (const auto& binding : collectMatchBindings(arm.pattern))
-                if (binding.second == first || binding.second == second) return true;
-        return false;
     }
 
     // Creates the false-initialized selected flag used by the lowered decision chain.
