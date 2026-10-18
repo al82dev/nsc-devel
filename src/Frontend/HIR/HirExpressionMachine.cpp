@@ -146,6 +146,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         EventSubscription,
         PropertyIndexerSetter,
         NamespaceExtensionSetter,
+        NullConditionalFieldAssignment,
+        NullConditionalArrayAssignment,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -365,6 +367,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 *setter->selectedFunctionOrdinal < namespaceFunctionModel_->functions().size())
             {
                 return IterativeExpressionKind::NamespaceExtensionSetter;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->second() != nullptr && syntax->first() != nullptr)
+        {
+            if (syntax->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+            {
+                const MethodNameBinding* binding = nameBinding(syntax->first());
+                if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1U &&
+                    binding->kind == MethodNameBindingKind::ExplicitObjectField)
+                {
+                    return IterativeExpressionKind::NullConditionalFieldAssignment;
+                }
+            }
+            if (syntax->tokenKind() == lexer::TokenKind::Equal &&
+                syntax->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+            {
+                const MethodCoreBinding* binding = coreBinding(syntax->first());
+                if (binding != nullptr &&
+                    binding->kind == MethodCoreOperationKind::NullConditionalArrayElement)
+                {
+                    return IterativeExpressionKind::NullConditionalArrayAssignment;
+                }
             }
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
@@ -1062,6 +1087,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     frame.stage = frame.extensionSetterBinding->forwardedReceiver ? 0U : 1U;
                 }
+                else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment)
+                {
+                    frame.fieldBinding = nameBinding(current->first());
+                    frame.stage = 0U;
+                }
+                else if (*currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
+                {
+                    frame.core = coreBinding(current->first());
+                    frame.stage = 0U;
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -1102,6 +1137,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().stage == 0U
                         ? frames.back().extensionSetterBinding->receiverSyntax
                         : current->second();
+                else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
+                    *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
+                    current = current->first()->first();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -1205,6 +1243,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                 }
                 else if (*currentKind == IterativeExpressionKind::NamespaceExtensionSetter)
+                {
+                    currentAddressContext = false;
+                }
+                else if (*currentKind == IterativeExpressionKind::NullConditionalFieldAssignment ||
+                    *currentKind == IterativeExpressionKind::NullConditionalArrayAssignment)
                 {
                     currentAddressContext = false;
                 }
@@ -2732,6 +2775,83 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         target.parameters[valueParameterOrdinal].typeKey);
                     setter->returnsAssignedValue = true;
                     lowered = std::move(setter);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NullConditionalFieldAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const MethodExpressionTypeBinding* assignmentType = expressionType(frame.syntax);
+                    const MethodDelegateBinding* assignmentDelegate = delegateBinding(frame.syntax);
+                    const std::string resultType = assignmentType != nullptr
+                        ? assignmentType->typeKey
+                        : assignmentDelegate != nullptr ? assignmentDelegate->resultTypeKey : "<error>";
+                    auto store = makeNode(
+                        ProjectOopHirNodeKind::NullConditionalFieldStore,
+                        frame.syntax,
+                        resultType);
+                    store->operation = frame.syntax->tokenKind();
+                    store->booleanValue = assignmentType != nullptr &&
+                        assignmentType->ownsStorageDestination;
+                    store->memberOrdinal = frame.fieldBinding->candidateMemberOrdinals.front();
+                    store->volatileAccess = memberModel_ != nullptr &&
+                        *store->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*store->memberOrdinal].isVolatile;
+                    store->children.push_back(std::move(frame.first));
+                    store->children.push_back(std::move(lowered));
+                    lowered = std::move(store);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::NullConditionalArrayAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        frame.first = std::move(lowered);
+                        frame.stage = 1U;
+                        current = !frame.syntax->first()->children().empty()
+                            ? frame.syntax->first()->children().front()
+                            : frame.syntax->first()->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    if (frame.stage == 1U)
+                    {
+                        frame.second = std::move(lowered);
+                        frame.stage = 2U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    const MethodExpressionTypeBinding* assignmentType = expressionType(frame.syntax);
+                    const MethodDelegateBinding* assignmentDelegate = delegateBinding(frame.syntax);
+                    const std::string resultType = assignmentType != nullptr
+                        ? assignmentType->typeKey
+                        : assignmentDelegate != nullptr ? assignmentDelegate->resultTypeKey : "<error>";
+                    auto store = makeNode(
+                        ProjectOopHirNodeKind::NullConditionalArrayStore,
+                        frame.syntax,
+                        resultType);
+                    store->elementTypeKey = frame.core->elementTypeKey;
+                    store->booleanValue = assignmentType != nullptr &&
+                        assignmentType->ownsStorageDestination;
+                    store->children.push_back(std::move(frame.first));
+                    store->children.push_back(std::move(frame.second));
+                    store->children.push_back(std::move(lowered));
+                    lowered = std::move(store);
                     frames.pop_back();
                     continue;
                 }

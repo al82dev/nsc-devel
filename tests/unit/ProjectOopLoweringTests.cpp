@@ -518,6 +518,27 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerNullConditionalAssignmentExpression(
+        ProjectOopHirModel& model,
+        const ProjectMemberModel& memberModel,
+        std::size_t callerMemberOrdinal,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodNameBinding>& names,
+        const std::vector<MethodCoreBinding>& cores,
+        const MethodExpressionTypeBinding& type,
+        bool addressContext,
+        std::string& error)
+    {
+        model.memberModel_ = &memberModel;
+        for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        for (const MethodCoreBinding& core : cores)
+            model.coreBindingBySyntax_[core.syntax] = &core;
+        return model.lowerExpression(root, callerMemberOrdinal, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerUserIndexerGetterExpression(
         ProjectOopHirModel& model,
         const ProjectMemberModel& memberModel,
@@ -3892,6 +3913,238 @@ void testDeepExtensionPropertySetterLowering(
     testExtensionPropertySetterDiagnostics(tests, compilation, target);
 }
 
+struct NullConditionalAssignmentTarget final
+{
+    std::size_t fieldOrdinal = 0;
+    std::size_t callerOrdinal = 0;
+    std::string typeKey;
+};
+
+bool prepareNullConditionalAssignmentFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    NullConditionalAssignmentTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepNullConditionalAssignment";
+    writeProject(directory, "DeepNullConditionalAssignment");
+    writeFile(directory / "Main.ns",
+        "namespace Deep { public class Box { public volatile int Value; } "
+        "public class Probe { public int Run() { return 0; } } }");
+    if (!compilation.compileProjectOopHir(directory / "DeepNullConditionalAssignment.nsproj", error) ||
+        compilation.memberModel() == nullptr)
+        return false;
+    bool foundField = false;
+    bool foundCaller = false;
+    const auto& members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        if (members[ordinal].name == "Value" && members[ordinal].isVolatile)
+        {
+            output.fieldOrdinal = ordinal;
+            output.typeKey = members[ordinal].declaredTypeKey;
+            foundField = true;
+        }
+        if (members[ordinal].name == "Run")
+        {
+            output.callerOrdinal = ordinal;
+            foundCaller = true;
+        }
+    }
+    return foundField && foundCaller && !output.typeKey.empty();
+}
+
+struct DeepNullConditionalAssignmentSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<nativesharp::frontend::MethodCoreBinding> cores;
+    std::vector<std::size_t> deepChildOrdinals;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* addNullConditionalInteger(
+    DeepNullConditionalAssignmentSyntax& fixture,
+    std::uint64_t value)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IntegerLiteralExpression,
+        nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(value);
+    return fixture.nodes.back().get();
+}
+
+nativesharp::ast::AstNode* addNullConditionalFieldLayer(
+    DeepNullConditionalAssignmentSyntax& fixture,
+    nativesharp::ast::AstNode* current,
+    std::size_t index,
+    const NullConditionalAssignmentTarget& target)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    const bool deepReceiver = index % 5U == 1U;
+    auto* receiver = deepReceiver ? current : addNullConditionalInteger(fixture, index + 11U);
+    auto* value = deepReceiver ? addNullConditionalInteger(fixture, index + 21U) : current;
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::NullConditionalMemberExpression, nativesharp::SourceRange{}));
+    auto* destination = fixture.nodes.back().get();
+    destination->setFirst(receiver);
+    fixture.names.emplace_back();
+    fixture.names.back().kind = nativesharp::frontend::MethodNameBindingKind::ExplicitObjectField;
+    fixture.names.back().syntax = destination;
+    fixture.names.back().candidateMemberOrdinals.push_back(target.fieldOrdinal);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::AssignmentExpression, nativesharp::SourceRange{}));
+    auto* assignment = fixture.nodes.back().get();
+    assignment->setTokenKind(index % 10U == 0U
+        ? nativesharp::lexer::TokenKind::PlusEqual : nativesharp::lexer::TokenKind::Equal);
+    assignment->setFirst(destination);
+    assignment->setSecond(value);
+    fixture.deepChildOrdinals.push_back(deepReceiver ? 0U : 1U);
+    return assignment;
+}
+
+nativesharp::ast::AstNode* addNullConditionalArrayLayer(
+    DeepNullConditionalAssignmentSyntax& fixture,
+    nativesharp::ast::AstNode* current,
+    std::size_t index,
+    const NullConditionalAssignmentTarget& target)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    const std::size_t deepChild = index % 5U == 3U ? 0U : index % 5U == 4U ? 1U : 2U;
+    auto* receiver = deepChild == 0U ? current : addNullConditionalInteger(fixture, index + 31U);
+    auto* elementIndex = deepChild == 1U ? current : addNullConditionalInteger(fixture, index + 41U);
+    auto* value = deepChild == 2U ? current : addNullConditionalInteger(fixture, index + 51U);
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::NullConditionalIndexExpression, nativesharp::SourceRange{}));
+    auto* destination = fixture.nodes.back().get();
+    destination->setFirst(receiver);
+    if (index % 2U == 0U) destination->addChild(elementIndex);
+    else destination->setSecond(elementIndex);
+    fixture.cores.emplace_back();
+    fixture.cores.back().kind = nativesharp::frontend::MethodCoreOperationKind::NullConditionalArrayElement;
+    fixture.cores.back().syntax = destination;
+    fixture.cores.back().elementTypeKey = target.typeKey;
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::AssignmentExpression, nativesharp::SourceRange{}));
+    auto* assignment = fixture.nodes.back().get();
+    assignment->setTokenKind(nativesharp::lexer::TokenKind::Equal);
+    assignment->setFirst(destination);
+    assignment->setSecond(value);
+    fixture.deepChildOrdinals.push_back(deepChild);
+    return assignment;
+}
+
+DeepNullConditionalAssignmentSyntax makeDeepNullConditionalAssignmentSyntax(
+    std::size_t depth,
+    const NullConditionalAssignmentTarget& target)
+{
+    DeepNullConditionalAssignmentSyntax fixture;
+    fixture.nodes.reserve(depth * 5U + 1U);
+    fixture.names.reserve(depth);
+    fixture.cores.reserve(depth);
+    fixture.deepChildOrdinals.reserve(depth);
+    auto* current = addNullConditionalInteger(fixture, 7U);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        current = index % 5U < 2U
+            ? addNullConditionalFieldLayer(fixture, current, index, target)
+            : addNullConditionalArrayLayer(fixture, current, index, target);
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<nativesharp::frontend::ProjectOopHirNode> lowerNullConditionalFixture(
+    ProjectCompilation& compilation,
+    const NullConditionalAssignmentTarget& target,
+    DeepNullConditionalAssignmentSyntax& syntax,
+    bool addressContext,
+    std::string& error)
+{
+    nativesharp::frontend::MethodExpressionTypeBinding type;
+    type.typeKey = target.typeKey;
+    type.ownsStorageDestination = true;
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerNullConditionalAssignmentExpression(
+            model, *compilation.memberModel(), target.callerOrdinal, syntax.root,
+            syntax.nodes, syntax.names, syntax.cores, type, addressContext, error);
+}
+
+bool nullConditionalAssignmentChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepNullConditionalAssignmentSyntax& syntax,
+    const NullConditionalAssignmentTarget& target)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = syntax.deepChildOrdinals.size(); remaining > 0U; --remaining)
+    {
+        const std::size_t sourceIndex = remaining - 1U;
+        const bool field = sourceIndex % 5U < 2U;
+        const std::size_t childCount = field ? 2U : 3U;
+        if (node == nullptr || node->kind != (field
+                ? HirKind::NullConditionalFieldStore : HirKind::NullConditionalArrayStore) ||
+            node->typeKey != target.typeKey || !node->booleanValue ||
+            node->children.size() != childCount)
+            return false;
+        if (field && (node->memberOrdinal != target.fieldOrdinal || !node->volatileAccess ||
+            node->operation != (sourceIndex % 10U == 0U
+                ? nativesharp::lexer::TokenKind::PlusEqual : nativesharp::lexer::TokenKind::Equal)))
+            return false;
+        if (!field && node->elementTypeKey != target.typeKey) return false;
+        node = node->children[syntax.deepChildOrdinals[sourceIndex]].get();
+    }
+    return node != nullptr && node->kind == HirKind::IntegerConstant;
+}
+
+void testNullConditionalAssignmentDiagnostics(
+    TestContext& tests,
+    ProjectCompilation& compilation,
+    const NullConditionalAssignmentTarget& target)
+{
+    auto fieldSyntax = makeDeepNullConditionalAssignmentSyntax(1U, target);
+    fieldSyntax.names.front().candidateMemberOrdinals.clear();
+    std::string error;
+    auto lowered = lowerNullConditionalFixture(compilation, target, fieldSyntax, false, error);
+    tests.expect(lowered == nullptr && error ==
+        "T10-F05 null-conditional assignment has no unique instance-field binding",
+        "null-conditional field assignment preserves its invalid binding diagnostic");
+    auto arraySyntax = makeDeepNullConditionalAssignmentSyntax(3U, target);
+    arraySyntax.cores.back().kind = nativesharp::frontend::MethodCoreOperationKind::ArrayAllocation;
+    error.clear();
+    lowered = lowerNullConditionalFixture(compilation, target, arraySyntax, false, error);
+    tests.expect(lowered == nullptr && error ==
+        "T10-F05 null-conditional index store has no native-array element binding",
+        "null-conditional array assignment preserves its invalid core diagnostic");
+}
+
+void testDeepNullConditionalAssignmentLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    ProjectCompilation compilation;
+    NullConditionalAssignmentTarget target;
+    std::string error;
+    const bool prepared = prepareNullConditionalAssignmentFixture(root, compilation, target, error);
+    tests.expect(prepared, "the null-conditional assignment fixture builds its volatile field (" + error + ")");
+    if (!prepared) return;
+    auto syntax = makeDeepNullConditionalAssignmentSyntax(nestingDepth, target);
+    auto lowered = lowerNullConditionalFixture(compilation, target, syntax, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level mixed null-conditional store chain lowers without process-stack recursion (" + error + ")");
+    tests.expect(nullConditionalAssignmentChainMatches(lowered.get(), syntax, target),
+        "iterative null-conditional stores preserve field/array shape and every operand edge");
+    destroyHirTreeIteratively(lowered);
+    auto addressSyntax = makeDeepNullConditionalAssignmentSyntax(1U, target);
+    error.clear();
+    lowered = lowerNullConditionalFixture(compilation, target, addressSyntax, true, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "null-conditional assignment preserves historical address-context acceptance");
+    destroyHirTreeIteratively(lowered);
+    testNullConditionalAssignmentDiagnostics(tests, compilation, target);
+}
+
 struct UserIndexerTarget final
 {
     std::size_t getterOrdinal = 0;
@@ -6597,6 +6850,10 @@ int main()
     {
         testDeepExtensionPropertySetterLowering(tests, root);
     }
+    else if (focusValue == "hir-property-core-array-assignment-depth")
+    {
+        testDeepNullConditionalAssignmentLowering(tests, root);
+    }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
         testDeepUserIndexerGetterLowering(tests, root);
@@ -6774,6 +7031,7 @@ int main()
         testDeepPropertyGetterExpressionLowering(tests, root);
         testDeepExtensionPropertyGetterLowering(tests, root);
         testDeepExtensionPropertySetterLowering(tests, root);
+        testDeepNullConditionalAssignmentLowering(tests, root);
         testDeepUserIndexerGetterLowering(tests, root);
         testDeepInterpolationHandlerLowering(tests, root);
         testDeepOverflowPolicyExpressionLowering(tests);
