@@ -142,6 +142,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         Match,
         NullCoalescing,
         NullCoalescingAssignment,
+        DeconstructionAssignment,
         ResultPropagation,
         Destruction,
         StackAllocation,
@@ -184,6 +185,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const MethodMoveBinding* move = nullptr;
         const MethodExpressionTypeBinding* operandType = nullptr;
         const MethodMatchExpressionBinding* matchBinding = nullptr;
+        const MethodDeconstructionBinding* deconstructionBinding = nullptr;
+        std::vector<HirTuplePatternFrame> deconstructionLeaves;
+        std::unique_ptr<ProjectOopHirNode> deconstructionNode;
         bool materializeReceiverTemporary = false;
         bool baseIsFixedArray = false;
         bool baseIsFlexibleArray = false;
@@ -299,6 +303,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             expressionType(syntax->first()) != nullptr)
         {
             return IterativeExpressionKind::NullCoalescingAssignment;
+        }
+        if (!address && syntax->kind() == ast::AstNodeKind::AssignmentExpression &&
+            syntax->tokenKind() == lexer::TokenKind::Equal && syntax->first() != nullptr &&
+            syntax->first()->kind() == ast::AstNodeKind::TupleExpression &&
+            syntax->second() != nullptr && methodBodyModel_ != nullptr)
+        {
+            const MethodDeconstructionBinding* binding =
+                methodBodyModel_->deconstructionBinding(syntax);
+            const bool iterativeReceiver = binding != nullptr &&
+                (!binding->selectedMemberOrdinal.has_value() ||
+                 (syntax->second()->kind() != ast::AstNodeKind::BaseExpression &&
+                  !binding->sourceTypeKey.empty()));
+            if (iterativeReceiver)
+                return IterativeExpressionKind::DeconstructionAssignment;
         }
         if (!address && syntax->kind() == ast::AstNodeKind::ResultPropagationExpression)
         {
@@ -795,6 +813,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     frame.matchNode->booleanValue =
                         frame.matchBinding->switchTagMemberOrdinal.has_value();
                 }
+                else if (*currentKind == IterativeExpressionKind::DeconstructionAssignment)
+                {
+                    frame.deconstructionBinding =
+                        methodBodyModel_->deconstructionBinding(current);
+                    frame.materializeReceiverTemporary =
+                        frame.deconstructionBinding->selectedMemberOrdinal.has_value() &&
+                        isStructValueType(frame.deconstructionBinding->sourceTypeKey) &&
+                        !isNaturallyAddressable(current->second());
+                }
                 frames.push_back(std::move(frame));
                 if (*currentKind == IterativeExpressionKind::PropertyGetter)
                     current = frames.back().callTarget.receiverSyntax;
@@ -819,6 +846,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     current = frames.back().resultPropagation->operandSyntax;
                 else if (*currentKind == IterativeExpressionKind::Match)
                     current = current->first();
+                else if (*currentKind == IterativeExpressionKind::DeconstructionAssignment)
+                    current = current->second();
                 else if (*currentKind == IterativeExpressionKind::MoveProjection &&
                     !frames.back().move->sourceIsArrayElement &&
                     !frames.back().move->sourceIsOwnedField &&
@@ -893,6 +922,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::Match)
                 {
                     currentAddressContext = frames.back().matchBinding->governingReference;
+                }
+                else if (*currentKind == IterativeExpressionKind::DeconstructionAssignment)
+                {
+                    currentAddressContext =
+                        frames.back().deconstructionBinding->selectedMemberOrdinal.has_value() &&
+                        isStructValueType(
+                            frames.back().deconstructionBinding->sourceTypeKey) &&
+                        !frames.back().materializeReceiverTemporary;
                 }
                 else if (*currentKind != IterativeExpressionKind::OverflowPolicy)
                 {
@@ -2003,6 +2040,157 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     lowered = std::move(assignment);
                     frames.pop_back();
                     continue;
+                }
+                if (frame.kind == IterativeExpressionKind::DeconstructionAssignment)
+                {
+                    if (frame.stage == 0U)
+                    {
+                        if (frame.deconstructionBinding->selectedMemberOrdinal.has_value())
+                        {
+                            if (frame.materializeReceiverTemporary)
+                            {
+                                auto temporary = makeNode(
+                                    ProjectOopHirNodeKind::TemporaryAddress,
+                                    frame.syntax->second(),
+                                    frame.deconstructionBinding->sourceTypeKey);
+                                temporary->elementTypeKey =
+                                    frame.deconstructionBinding->sourceTypeKey;
+                                temporary->children.push_back(std::move(lowered));
+                                lowered = std::move(temporary);
+                            }
+                            auto call = makeNode(
+                                ProjectOopHirNodeKind::InstanceCall,
+                                frame.syntax->second(),
+                                frame.deconstructionBinding->tupleTypeKey);
+                            call->memberOrdinal =
+                                *frame.deconstructionBinding->selectedMemberOrdinal;
+                            call->children.push_back(std::move(lowered));
+                            lowered = std::move(call);
+                        }
+                        const auto sourceElements = ProjectTypeConversion::tupleElementTypeKeys(
+                            frame.deconstructionBinding->tupleTypeKey);
+                        if (!sourceElements.has_value() || objectLayoutModel_ == nullptr ||
+                            nameLookup_ == nullptr)
+                        {
+                            error = "T02-F03 deconstruction source has no tuple layout";
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        frame.deconstructionNode = makeNode(
+                            ProjectOopHirNodeKind::TupleDeconstruct,
+                            frame.syntax,
+                            frame.deconstructionBinding->tupleTypeKey);
+                        frame.deconstructionNode->children.push_back(std::move(lowered));
+                        const auto expandTargetTuple = [&] (
+                            const ast::AstNode* targetSyntax,
+                            const std::string& sourceTypeKey,
+                            std::uint64_t byteOffset,
+                            std::vector<HirTuplePatternFrame>& children) -> bool
+                        {
+                            const auto nestedElements =
+                                ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+                            const auto nestedLayout = objectLayoutModel_->tupleLayoutForTypeKey(
+                                *nameLookup_, sourceTypeKey);
+                            if (!nestedElements.has_value() || !nestedLayout.has_value() ||
+                                nestedElements->size() != targetSyntax->children().size() ||
+                                nestedLayout->offsets.size() != nestedElements->size())
+                            {
+                                error = "T02-F03 nested assignment target lost its tuple layout";
+                                return false;
+                            }
+                            children.reserve(nestedElements->size());
+                            for (std::size_t index = 0; index < nestedElements->size(); ++index)
+                                children.push_back(HirTuplePatternFrame{
+                                    targetSyntax->children()[index],
+                                    (*nestedElements)[index],
+                                    byteOffset + nestedLayout->offsets[index]});
+                            return true;
+                        };
+                        const auto collectTargetLeaf = [&] (
+                            const ast::AstNode* targetSyntax,
+                            const std::string& sourceTypeKey,
+                            std::uint64_t byteOffset) -> bool
+                        {
+                            if (targetSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+                                targetSyntax->text() == "_") return true;
+                            frame.deconstructionLeaves.push_back(
+                                HirTuplePatternFrame{targetSyntax, sourceTypeKey, byteOffset});
+                            return true;
+                        };
+                        if (!visitHirTuplePatternLeaves(
+                                frame.syntax->first(),
+                                frame.deconstructionBinding->tupleTypeKey,
+                                0,
+                                expandTargetTuple,
+                                collectTargetLeaf))
+                        {
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        if (frame.deconstructionLeaves.empty())
+                        {
+                            lowered = std::move(frame.deconstructionNode);
+                            frames.pop_back();
+                            continue;
+                        }
+                        frame.stage = 1U;
+                    }
+                    else
+                    {
+                        const HirTuplePatternFrame& leaf =
+                            frame.deconstructionLeaves[frame.armIndex];
+                        const ProjectImplicitConversion conversion = classifyImplicit(
+                            leaf.typeKey, frame.operandType->typeKey, std::nullopt);
+                        if (!conversion.exists())
+                        {
+                            error =
+                                "T02-F03 deconstruction lost its validated element conversion";
+                            if (!lastErrorRange_.isValid())
+                                lastErrorRange_ = frame.syntax->range();
+                            lowered.reset();
+                            frames.clear();
+                            break;
+                        }
+                        auto element = makeNode(
+                            ProjectOopHirNodeKind::TupleDeconstructElement,
+                            leaf.syntax,
+                            frame.operandType->typeKey);
+                        element->elementTypeKey = leaf.typeKey;
+                        element->integerValue = leaf.byteOffset;
+                        element->conversion = conversion;
+                        element->children.push_back(std::move(lowered));
+                        frame.deconstructionNode->children.push_back(std::move(element));
+                        ++frame.armIndex;
+                        if (frame.armIndex == frame.deconstructionLeaves.size())
+                        {
+                            lowered = std::move(frame.deconstructionNode);
+                            frames.pop_back();
+                            continue;
+                        }
+                    }
+                    const ast::AstNode* targetSyntax =
+                        frame.deconstructionLeaves[frame.armIndex].syntax;
+                    frame.operandType = expressionType(targetSyntax);
+                    if (frame.operandType == nullptr)
+                    {
+                        error = "T02-F03 deconstruction target has no semantic type";
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        lowered.reset();
+                        frames.clear();
+                        break;
+                    }
+                    current = targetSyntax;
+                    currentMemberOrdinal = frame.memberOrdinal;
+                    currentAddressContext = true;
+                    descend = true;
+                    break;
                 }
                 if (frame.kind == IterativeExpressionKind::ResultPropagation)
                 {

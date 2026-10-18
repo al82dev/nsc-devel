@@ -292,6 +292,38 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerDeconstructionExpression(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ProjectNameLookup& nameLookup,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ast::AstNode* root,
+        std::vector<MethodDeconstructionBinding> bindings,
+        std::vector<MethodLocalSymbol> locals,
+        const std::vector<MethodNameBinding>& names,
+        const std::vector<std::pair<
+            const ast::AstNode*, const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::string& error)
+    {
+        methodBodyModel.deconstructionBindings_ = std::move(bindings);
+        methodBodyModel.deconstructionBindingBySyntax_.clear();
+        for (std::size_t index = 0;
+            index < methodBodyModel.deconstructionBindings_.size(); ++index)
+        {
+            methodBodyModel.deconstructionBindingBySyntax_[
+                methodBodyModel.deconstructionBindings_[index].syntax] = index;
+        }
+        methodBodyModel.locals_ = std::move(locals);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.nameLookup_ = &nameLookup;
+        model.objectLayoutModel_ = &objectLayoutModel;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        return model.lowerExpression(root, 0U, false, error);
+    }
+
     static void configureMatchCleanupLocal(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -4213,6 +4245,134 @@ void testDeepHirBlockLowering(TestContext& tests)
         "deep block lowering preserves every block and the empty leaf");
 }
 
+struct DeepDeconstructionAssignmentFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> syntax;
+    std::vector<nativesharp::frontend::MethodDeconstructionBinding> bindings;
+    std::vector<nativesharp::frontend::MethodNameBinding> names;
+    std::vector<nativesharp::frontend::MethodLocalSymbol> locals;
+    const nativesharp::ast::AstNode* source = nullptr;
+    const nativesharp::ast::AstNode* target = nullptr;
+    const nativesharp::ast::AstNode* root = nullptr;
+    std::string tupleTypeKey;
+};
+
+DeepDeconstructionAssignmentFixture makeDeepDeconstructionAssignmentFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepDeconstructionAssignmentFixture fixture;
+    const std::array<std::string, 1U> elementTypes{"builtin:int"};
+    fixture.tupleTypeKey = nativesharp::frontend::ProjectTypeConversion::tupleTypeKey(elementTypes);
+    fixture.syntax.reserve(depth + 3U);
+    fixture.bindings.reserve(depth);
+    fixture.names.reserve(2U);
+    fixture.locals.resize(2U);
+    const auto makeNode = [&] (AstKind kind)
+    {
+        fixture.syntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.syntax.back().get();
+    };
+    auto* source = makeNode(AstKind::IdentifierExpression);
+    source->setText("source");
+    auto* target = makeNode(AstKind::IdentifierExpression);
+    target->setText("target");
+    auto* pattern = makeNode(AstKind::TupleExpression);
+    pattern->addChild(target);
+    nativesharp::ast::AstNode* current = source;
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        auto* assignment = makeNode(AstKind::AssignmentExpression);
+        assignment->setTokenKind(nativesharp::lexer::TokenKind::Equal);
+        assignment->setFirst(pattern);
+        assignment->setSecond(current);
+        fixture.bindings.push_back(nativesharp::frontend::MethodDeconstructionBinding{
+            assignment, current, fixture.tupleTypeKey, fixture.tupleTypeKey, std::nullopt});
+        current = assignment;
+    }
+    nativesharp::frontend::MethodNameBinding sourceName;
+    sourceName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    sourceName.syntax = source;
+    sourceName.name = "source";
+    sourceName.typeKey = fixture.tupleTypeKey;
+    sourceName.localOrdinal = 0U;
+    fixture.names.push_back(std::move(sourceName));
+    nativesharp::frontend::MethodNameBinding targetName;
+    targetName.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    targetName.syntax = target;
+    targetName.name = "target";
+    targetName.typeKey = "builtin:int";
+    targetName.localOrdinal = 1U;
+    fixture.names.push_back(std::move(targetName));
+    fixture.locals[0].syntax = source;
+    fixture.locals[0].name = "source";
+    fixture.locals[0].typeKey = fixture.tupleTypeKey;
+    fixture.locals[1].syntax = target;
+    fixture.locals[1].name = "target";
+    fixture.locals[1].typeKey = "builtin:int";
+    fixture.source = source;
+    fixture.target = target;
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepDeconstructionAssignmentMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    std::size_t depth,
+    std::string_view tupleTypeKey)
+{
+    using Kind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        if (node == nullptr || node->kind != Kind::TupleDeconstruct ||
+            node->typeKey != tupleTypeKey || node->children.size() != 2U)
+            return false;
+        const auto* element = node->children[1].get();
+        if (element->kind != Kind::TupleDeconstructElement ||
+            element->typeKey != "builtin:int" || element->elementTypeKey != "builtin:int" ||
+            element->integerValue != 0U || !element->conversion.has_value() ||
+            element->conversion->kind != nativesharp::frontend::ProjectConversionKind::Identity ||
+            element->children.size() != 1U ||
+            element->children.front()->kind != Kind::LocalAddress ||
+            element->children.front()->localOrdinal != 1U)
+            return false;
+        node = node->children.front().get();
+    }
+    return node != nullptr && node->kind == Kind::LocalValue &&
+        node->localOrdinal == 0U && node->typeKey == tupleTypeKey;
+}
+
+void testDeepDeconstructionAssignmentLowering(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768;
+    DeepDeconstructionAssignmentFixture fixture =
+        makeDeepDeconstructionAssignmentFixture(nestingDepth);
+    nativesharp::frontend::MethodExpressionTypeBinding tupleType;
+    tupleType.typeKey = fixture.tupleTypeKey;
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    const std::vector<std::pair<const nativesharp::ast::AstNode*,
+        const nativesharp::frontend::MethodExpressionTypeBinding*>> typedSyntax{
+            {fixture.source, &tupleType}, {fixture.target, &intType}};
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    nativesharp::frontend::ProjectNameLookup nameLookup;
+    nativesharp::frontend::ProjectObjectLayoutModel objectLayoutModel;
+    ProjectOopHirModel model;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDeconstructionExpression(
+            model, methodBodyModel, nameLookup, objectLayoutModel, fixture.root,
+            std::move(fixture.bindings), std::move(fixture.locals), fixture.names,
+            typedSyntax, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level deconstruction-assignment source chain lowers iteratively (" +
+            error + ")");
+    tests.expect(deepDeconstructionAssignmentMatches(
+            lowered.get(), nestingDepth, fixture.tupleTypeKey),
+        "iterative deconstruction preserves source-before-target order, offsets, conversions, and addresses");
+    destroyHirTreeIteratively(lowered);
+}
+
 void testDeepHirDeconstructionWalk(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -5497,6 +5657,10 @@ int main()
     else if (focusValue == "hir-user-binary-operator-depth")
     {
         testDeepUserBinaryOperatorLowering(tests, root);
+    }
+    else if (focusValue == "hir-deconstruction-assignment-depth")
+    {
+        testDeepDeconstructionAssignmentLowering(tests);
     }
     else if (focusValue == "hir-conversion-depth")
     {
