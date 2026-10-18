@@ -687,6 +687,7 @@ target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
+    src/Driver/ArtifactPublisher.cpp
     src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
     src/Driver/CompilationTelemetry.cpp
@@ -5581,6 +5582,18 @@ if(NSC_BUILD_TESTS)
     endif()
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    add_executable(nsc_artifact_publisher_tests
+        tests/unit/ArtifactPublisherTests.cpp)
+    target_include_directories(nsc_artifact_publisher_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Driver)
+    target_link_libraries(nsc_artifact_publisher_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_artifact_publisher_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_artifact_publisher_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_artifact_publisher_tests)
+    add_test(NAME nsc.artifact-publisher
+        COMMAND nsc_artifact_publisher_tests)
 
     add_executable(nsc_public_surface_emitter_tests
         tests/unit/PublicSurfaceEmitterTests.cpp)
