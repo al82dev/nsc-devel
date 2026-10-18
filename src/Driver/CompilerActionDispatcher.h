@@ -54,7 +54,6 @@ private:
     Result dispatchEmission() const;
     ExitCode invalidCommandLine() const;
 
-    const Driver& driver_;
     std::span<const std::string_view> arguments_;
     const CompilerInvocation& invocation_;
     const CompilationJobPolicy& jobPolicy_;

@@ -133,7 +133,7 @@ bool containsAction(
 } // namespace
 
 CompilerActionDispatcher::CompilerActionDispatcher(
-    const Driver& driver,
+    const Driver&,
     std::span<const std::string_view> arguments,
     const CompilerInvocation& invocation,
     const CompilationJobPolicy& jobPolicy,
@@ -141,8 +141,7 @@ CompilerActionDispatcher::CompilerActionDispatcher(
     std::string_view compilerStage,
     std::ostream& output,
     std::ostream& error) noexcept
-    : driver_(driver),
-      arguments_(arguments),
+    : arguments_(arguments),
       invocation_(invocation),
       jobPolicy_(jobPolicy),
       projectLoadOptions_(projectLoadOptions),
