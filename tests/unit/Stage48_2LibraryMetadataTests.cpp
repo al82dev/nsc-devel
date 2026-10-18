@@ -29,7 +29,56 @@ using nativesharp::interop::LibraryMetadataMember;
 using nativesharp::interop::LibraryMetadataParameterPassKind;
 using nativesharp::interop::LibraryMetadataType;
 using nativesharp::interop::LibraryMetadataTypeKind;
-using nativesharp::tests::TestContext;
+
+thread_local bool hasDriverObservation = false;
+thread_local ExitCode lastDriverExitCode = ExitCode::Success;
+thread_local std::string lastDriverOutput;
+thread_local std::string lastDriverError;
+
+void clearDriverObservation()
+{
+    hasDriverObservation = false;
+    lastDriverExitCode = ExitCode::Success;
+    lastDriverOutput.clear();
+    lastDriverError.clear();
+}
+
+std::string observedFailureMessage(std::string_view message)
+{
+    std::ostringstream detail;
+    detail << message << "\n  driver-exit: "
+           << static_cast<int>(lastDriverExitCode)
+           << "\n  driver-stdout:\n"
+           << (lastDriverOutput.empty() ? "<empty>" : lastDriverOutput)
+           << "\n  driver-stderr:\n"
+           << (lastDriverError.empty() ? "<empty>" : lastDriverError);
+    return detail.str();
+}
+
+class TestContext final
+{
+public:
+    void expect(bool condition, std::string_view message)
+    {
+        if (!condition && hasDriverObservation)
+        {
+            const std::string observed = observedFailureMessage(message);
+            clearDriverObservation();
+            tests_.expect(false, observed);
+            return;
+        }
+        clearDriverObservation();
+        tests_.expect(condition, message);
+    }
+
+    int resultKeeping(const std::filesystem::path& evidence)
+    {
+        return tests_.resultKeeping(evidence);
+    }
+
+private:
+    nativesharp::tests::TestContext tests_;
+};
 
 bool environmentFlag(const char* name)
 {
@@ -114,6 +163,10 @@ ExitCode runDriver(
     const ExitCode code = driver.run(args, out, err);
     output = out.str();
     error = err.str();
+    hasDriverObservation = true;
+    lastDriverExitCode = code;
+    lastDriverOutput = output;
+    lastDriverError = error;
     return code;
 }
 
@@ -2361,6 +2414,5 @@ int main()
     testPublicReferenceArraysMatchDllExports(tests, root);
     testDelegateAggregateSignaturesPublishCompleteDllContract(tests, root);
 
-    std::filesystem::remove_all(root, cleanupError);
-    return tests.result();
+    return tests.resultKeeping(root);
 }
