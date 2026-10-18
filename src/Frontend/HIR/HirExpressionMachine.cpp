@@ -5787,6 +5787,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     // The core-operand frame selected value versus address context above.
                 }
+                else if (*currentKind == IterativeExpressionKind::OrdinaryCall)
+                {
+                    // The ordinary-call frame selected receiver addressability versus argument value.
+                }
                 else if (*currentKind == IterativeExpressionKind::AtomicCoreCall)
                 {
                     // Atomic locations and values are already resolved value expressions.

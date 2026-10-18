@@ -1178,18 +1178,23 @@ struct ProjectOopHirModelTestAccess final
 
     static std::unique_ptr<ProjectOopHirNode> lowerOrdinaryCallExpression(
         ProjectOopHirModel& model,
+        const ProjectNameLookup* nameLookup,
         const ProjectMemberModel& memberModel,
         const ast::AstNode* root,
         const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
         const std::vector<MethodCallBinding>& calls,
+        const std::vector<MethodNameBinding>& names,
         const MethodExpressionTypeBinding& type,
         bool addressContext,
         std::string& error)
     {
+        model.nameLookup_ = nameLookup;
         model.memberModel_ = &memberModel;
         for (const auto& node : syntax) model.expressionTypeBySyntax_[node.get()] = &type;
         for (const MethodCallBinding& call : calls)
             model.callBySyntax_[call.syntax] = &call;
+        for (const MethodNameBinding& name : names)
+            model.nameBindingBySyntax_[name.syntax] = &name;
         return model.lowerExpression(root, 0U, addressContext, error);
     }
 
@@ -5864,6 +5869,12 @@ void testDeepOrdinaryCallLowering(TestContext& tests)
     parameter.name = "value";
     parameter.typeKey = std::string(typeKey);
     members[1].parameters.push_back(std::move(parameter));
+    members.push_back({});
+    members[2].kind = nativesharp::frontend::ClassMemberKind::Method;
+    members[2].name = "Length";
+    members[2].declaredTypeKey = "builtin:float";
+    members[2].hasImplicitThis = true;
+    members[2].declaringTypeIsStruct = true;
     nativesharp::frontend::ProjectOopHirModelTestAccess::setOrdinaryCallMembers(
         memberModel, std::move(members));
 
@@ -5908,7 +5919,7 @@ void testDeepOrdinaryCallLowering(TestContext& tests)
     std::string error;
     auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
         lowerOrdinaryCallExpression(
-            model, memberModel, current, syntax, calls, type, false, error);
+            model, nullptr, memberModel, current, syntax, calls, {}, type, false, error);
     tests.expect(lowered != nullptr && error.empty(),
         "a mixed 32768-level ordinary call chain lowers without process-stack recursion (" +
             error + ")");
@@ -5935,6 +5946,82 @@ void testDeepOrdinaryCallLowering(TestContext& tests)
     tests.expect(layoutMatches,
         "iterative ordinary calls preserve instance receivers, static arguments, targets, and order");
     destroyHirTreeIteratively(lowered);
+
+    nativesharp::frontend::ProjectNameLookup structNameLookup;
+    nativesharp::frontend::ProjectInheritanceModel structInheritanceModel;
+    std::vector<std::string> structTypeKeys;
+    const bool configuredStructType =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::configureAggregateTypes(
+            structNameLookup, structInheritanceModel, 1U, structTypeKeys);
+    tests.expect(configuredStructType && structTypeKeys.size() == 1U,
+        "ordinary-call struct receiver fixture builds its semantic type catalog");
+    const std::string catalogStructType = structTypeKeys.empty()
+        ? "type:missing-ordinary-call-struct" : structTypeKeys.front();
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> structSyntax;
+    structSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::IdentifierExpression,
+        nativesharp::SourceRange{}));
+    auto* receiver = structSyntax.back().get();
+    structSyntax.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        nativesharp::ast::AstNodeKind::CallExpression,
+        nativesharp::SourceRange{}));
+    auto* callSyntax = structSyntax.back().get();
+
+    nativesharp::frontend::MethodCallBinding structCall;
+    structCall.syntax = callSyntax;
+    structCall.resolution = nativesharp::frontend::MethodCallResolutionKind::Resolved;
+    structCall.receiverSyntax = receiver;
+    structCall.receiverTypeKey = catalogStructType;
+    structCall.selectedMemberOrdinal = 2U;
+    structCall.resultTypeKey = "builtin:float";
+
+    nativesharp::frontend::MethodNameBinding receiverName;
+    receiverName.kind = nativesharp::frontend::MethodNameBindingKind::Parameter;
+    receiverName.syntax = receiver;
+    receiverName.methodMemberOrdinal = 1U;
+    receiverName.name = "value";
+    receiverName.typeKey = catalogStructType;
+    receiverName.parameterOrdinal = 0U;
+
+    nativesharp::frontend::MethodExpressionTypeBinding structType;
+    structType.typeKey = catalogStructType;
+    ProjectOopHirModel structModel;
+    error.clear();
+    auto structLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerOrdinaryCallExpression(
+            structModel,
+            &structNameLookup,
+            memberModel,
+            callSyntax,
+            structSyntax,
+            {structCall},
+            {receiverName},
+            structType,
+            false,
+            error);
+    const std::string structObserved = structLowered == nullptr
+        ? "null; error=" + error
+        : std::string(nativesharp::frontend::projectOopHirNodeKindName(
+              structLowered->kind)) +
+            "; member=" + (structLowered->memberOrdinal.has_value()
+                ? std::to_string(*structLowered->memberOrdinal) : std::string("none")) +
+            "; children=" + std::to_string(structLowered->children.size()) +
+            (structLowered->children.empty()
+                ? std::string{}
+                : "; receiver=" + std::string(
+                    nativesharp::frontend::projectOopHirNodeKindName(
+                        structLowered->children.front()->kind)) +
+                    "; receiver-type=" + structLowered->children.front()->typeKey);
+    tests.expect(structLowered != nullptr && error.empty() &&
+            structLowered->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::InstanceCall &&
+            structLowered->memberOrdinal == 2U && structLowered->children.size() == 1U &&
+            structLowered->children.front()->kind ==
+                nativesharp::frontend::ProjectOopHirNodeKind::ParameterAddress &&
+            structLowered->children.front()->typeKey == catalogStructType,
+        "ordinary calls preserve the selected address context for a resolved struct parameter "
+        "receiver (" + structObserved + ")");
+    destroyHirTreeIteratively(structLowered);
 }
 
 void testDeepCollectionBuilderLowering(TestContext& tests)
