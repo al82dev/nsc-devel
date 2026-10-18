@@ -287,23 +287,29 @@ std::uint64_t alignFrameOffset(std::uint64_t value, std::uint64_t alignment) noe
     return (value + alignment - 1) / alignment * alignment;
 }
 
-void sumAwaitedFrameSize(
-    const ProjectOopMirNode* node,
+void sumAwaitedFrameSizeNodes(
+    const ProjectOopMirNode* root,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
-    if (node == nullptr) return;
-    if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
     {
-        for (const ProjectOopMirStructLayout& layout : layouts)
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
         {
-            if (layout.typeKey != node->elementTypeKey) continue;
-            frameSize += layout.size;
-            break;
+            for (const ProjectOopMirStructLayout& layout : layouts)
+            {
+                if (layout.typeKey != node->elementTypeKey) continue;
+                frameSize += layout.size;
+                break;
+            }
         }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
     }
-    for (const std::unique_ptr<ProjectOopMirNode>& child : node->children)
-        sumAwaitedFrameSize(child.get(), layouts, frameSize);
 }
 
 void collectPollLiveness(
@@ -572,7 +578,7 @@ bool buildPollFrame(
     std::string& error)
 {
     std::uint64_t frameSize = 0;
-    sumAwaitedFrameSize(function.body.get(), layouts, frameSize);
+    sumAwaitedFrameSizeNodes(function.body.get(), layouts, frameSize);
     std::uint64_t order = 0;
     PositionMap localDefinition;
     PositionMap localLastUse;
@@ -692,6 +698,14 @@ bool ProjectOopMirModel::validateCleanupReferences(
     std::string& error)
 {
     return validateCleanupReferenceNodes(function, root, error);
+}
+
+void ProjectOopMirModel::sumAwaitedFrameSize(
+    const ProjectOopMirNode* root,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    sumAwaitedFrameSizeNodes(root, layouts, frameSize);
 }
 
 ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(

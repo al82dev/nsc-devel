@@ -499,6 +499,15 @@ struct ProjectOopHirModelTestAccess final
         return ProjectOopMirModel::validateCleanupReferences(function, root, error);
     }
 
+    static std::uint64_t sumMirAwaitedFrameSize(
+        const ProjectOopMirNode* root,
+        std::span<const ProjectOopMirStructLayout> layouts)
+    {
+        std::uint64_t frameSize = 0;
+        ProjectOopMirModel::sumAwaitedFrameSize(root, layouts, frameSize);
+        return frameSize;
+    }
+
     static bool importMirLayouts(
         ProjectOopMirModel& model,
         const ProjectNameLookup& nameLookup,
@@ -4265,6 +4274,41 @@ void testDeepMirCleanupReferenceValidation(TestContext& tests)
         "MIR cleanup validation preserves exception-reference priority before child traversal");
     destroyMirTreeIteratively(std::move(exceptionFirst));
 }
+
+void testDeepMirAwaitedFrameSize(TestContext& tests)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto node = std::make_unique<ProjectOopMirNode>();
+        node->kind = depth % 2U == 0U
+            ? ProjectOopMirNodeKind::AwaitFuture
+            : ProjectOopMirNodeKind::Block;
+        if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
+            node->elementTypeKey = "test:awaited";
+        if (root != nullptr) node->children.push_back(std::move(root));
+        root = std::move(node);
+    }
+    auto unmatched = std::make_unique<ProjectOopMirNode>();
+    unmatched->kind = ProjectOopMirNodeKind::AwaitFuture;
+    unmatched->elementTypeKey = "test:missing";
+    root->children.push_back(std::move(unmatched));
+    root->children.emplace_back();
+    std::vector<nativesharp::frontend::ProjectOopMirStructLayout> layouts(3U);
+    layouts[0].typeKey = "test:unrelated";
+    layouts[0].size = 41U;
+    layouts[1].typeKey = "test:awaited";
+    layouts[1].size = 3U;
+    layouts[2].typeKey = "test:awaited";
+    layouts[2].size = 999U;
+    const std::uint64_t frameSize =
+        nativesharp::frontend::ProjectOopHirModelTestAccess::sumMirAwaitedFrameSize(
+            root.get(), layouts);
+    tests.expect(frameSize == nestingDepth / 2U * 3U,
+        "MIR awaited frame sizing preserves first layout match, repeated awaits, and null slots");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4435,6 +4479,10 @@ int main()
     {
         testDeepMirCleanupReferenceValidation(tests);
     }
+    else if (focusValue == "mir-awaited-frame-size-depth")
+    {
+        testDeepMirAwaitedFrameSize(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4472,6 +4520,7 @@ int main()
         testDeepMirBooleanConstantEvaluation(tests);
         testDeepMirCleanupContractCollection(tests);
         testDeepMirCleanupReferenceValidation(tests);
+        testDeepMirAwaitedFrameSize(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

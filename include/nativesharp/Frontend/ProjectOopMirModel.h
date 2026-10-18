@@ -998,6 +998,10 @@ private:
         const ProjectOopMirFunction& function,
         const ProjectOopMirNode* root,
         std::string& error);
+    static void sumAwaitedFrameSize(
+        const ProjectOopMirNode* root,
+        std::span<const ProjectOopMirStructLayout> layouts,
+        std::uint64_t& frameSize);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,
