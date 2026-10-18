@@ -269,6 +269,7 @@ add_executable(
     host/modules/ParserMatchIntervalIndexCounterfactualModule.cpp
     host/modules/ParserAssignmentIterationCounterfactualModule.cpp
     host/modules/ParserConditionalQuestionIndexCounterfactualModule.cpp
+    host/modules/ParserNullCoalescingIterationCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
     host/modules/ParserDeclarationProductTestShim.cpp

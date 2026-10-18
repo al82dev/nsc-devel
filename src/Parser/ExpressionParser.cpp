@@ -857,17 +857,31 @@ ast::AstNode* Parser::parseConditionalExpression()
 
 ast::AstNode* Parser::parseNullCoalescingExpression()
 {
-    ast::AstNode* left = parseRangeExpression();
-    if (!at(TokenKind::QuestionQuestion)) return left;
-    const SourceRange operation = consume().range();
-    ast::AstNode* right = parseNullCoalescingExpression();
-    ast::AstNode* node = arena_.make<ast::AstNode>(
-        ast::AstNodeKind::NullCoalescingExpression,
-        join(left->range(), right != nullptr ? right->range() : operation));
-    node->setTokenKind(TokenKind::QuestionQuestion);
-    node->setFirst(left);
-    node->setSecond(right);
-    return node;
+    ast::AstNode* operand = parseRangeExpression();
+    if (!at(TokenKind::QuestionQuestion)) return operand;
+
+    std::vector<ast::AstNode*> operands;
+    std::vector<SourceRange> operations;
+    do
+    {
+        operands.push_back(operand);
+        operations.push_back(consume().range());
+        operand = parseRangeExpression();
+    } while (at(TokenKind::QuestionQuestion));
+
+    ast::AstNode* right = operand;
+    for (std::size_t index = operations.size(); index != 0; --index)
+    {
+        ast::AstNode* const left = operands[index - 1U];
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::NullCoalescingExpression,
+            join(left->range(), right != nullptr ? right->range() : operations[index - 1U]));
+        node->setTokenKind(TokenKind::QuestionQuestion);
+        node->setFirst(left);
+        node->setSecond(right);
+        right = node;
+    }
+    return right;
 }
 
 // Integer ranges are ordinary expressions as well as index operands. Keeping the
