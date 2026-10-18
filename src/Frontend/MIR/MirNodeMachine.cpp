@@ -585,7 +585,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup04(
 int ProjectOopMirModel::MirNodeMachine::lowerGroup05(
     const ProjectOopHirNode* node,
     ProjectOopMirNode* result,
-    std::string& error)
+    std::string&)
 {
     bool handled = true;
     switch (node->kind)
@@ -754,7 +754,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup06(
 int ProjectOopMirModel::MirNodeMachine::lowerGroup07(
     const ProjectOopHirNode* node,
     ProjectOopMirNode* result,
-    std::string& error)
+    std::string&)
 {
     bool handled = true;
     switch (node->kind)
@@ -841,7 +841,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup07(
 int ProjectOopMirModel::MirNodeMachine::lowerGroup08(
     const ProjectOopHirNode* node,
     ProjectOopMirNode* result,
-    std::string& error)
+    std::string&)
 {
     bool handled = true;
     switch (node->kind)
@@ -928,7 +928,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup08(
 int ProjectOopMirModel::MirNodeMachine::lowerGroup09(
     const ProjectOopHirNode* node,
     ProjectOopMirNode* result,
-    std::string& error)
+    std::string&)
 {
     bool handled = true;
     switch (node->kind)
@@ -1119,7 +1119,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup10(
 int ProjectOopMirModel::MirNodeMachine::lowerGroup11(
     const ProjectOopHirNode* node,
     ProjectOopMirNode* result,
-    std::string& error)
+    std::string&)
 {
     bool handled = true;
     switch (node->kind)
@@ -1567,7 +1567,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
                 return -1;
             }
             const ProjectOopMirStructLayout* layout = nullptr;
-            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
+            for (const ProjectOopMirStructLayout& candidate : model_.structLayouts_)
             {
                 if (candidate.typeKey == node->elementTypeKey)
                 {
@@ -1605,7 +1605,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup17(
         case ProjectOopHirNodeKind::AwaitFuture:
         {
             const ProjectOopMirStructLayout* layout = nullptr;
-            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
+            for (const ProjectOopMirStructLayout& candidate : model_.structLayouts_)
             {
                 if (candidate.typeKey == node->elementTypeKey)
                 {
