@@ -10651,6 +10651,10 @@ private:
             LLVMValueRef lhs = nullptr; // the left operand (binary) / the retained depth (cleanup).
             std::size_t retainedDepth = 0; // the cleanup depth before the wrapped child.
             std::string overflowPolicy = {}; // the saved overflow policy (OverflowPolicy).
+            LLVMValueRef auxiliary = nullptr;
+            LLVMTypeRef resultType = nullptr;
+            LLVMBasicBlockRef nullBlock = nullptr;
+            LLVMBasicBlockRef endBlock = nullptr;
         };
         std::vector<Frame> frames;
         std::vector<LLVMValueRef> values;
@@ -11868,14 +11872,29 @@ private:
                     LLVMValueRef receiver = values.back();
                     values.pop_back();
                     if (receiver == nullptr) { values.push_back(nullptr); continue; }
-                    frames.push_back({current, 2, receiver, 0});
+                    LLVMValueRef address = nullptr;
+                    LLVMValueRef currentValue = nullptr;
+                    LLVMTypeRef resultType = nullptr;
+                    LLVMBasicBlockRef nullBlock = nullptr;
+                    LLVMBasicBlockRef endBlock = nullptr;
+                    if (!prepareNullConditionalFieldStore(
+                            current, receiver, error, address, currentValue, resultType,
+                            nullBlock, endBlock))
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                    frames.push_back({
+                        current, 2, address, 0, {}, currentValue, resultType, nullBlock, endBlock});
                     frames.push_back({current->children[1].get(), 0, nullptr});
                     continue;
                 }
                 LLVMValueRef value = values.back();
                 values.pop_back();
                 if (value == nullptr) { values.push_back(nullptr); continue; }
-                values.push_back(lowerNullConditionalFieldStore(current, error, frame.lhs, value));
+                values.push_back(finishNullConditionalFieldStore(
+                    current, frame.lhs, frame.auxiliary, value, frame.resultType,
+                    frame.nullBlock, frame.endBlock, error));
                 continue;
             }
             if (current->kind == frontend::ProjectOopMirNodeKind::NullConditionalArrayStore)
@@ -19182,88 +19201,106 @@ private:
         return phi;
     }
 
-    LLVMValueRef lowerNullConditionalFieldStore(
+    bool prepareNullConditionalFieldStore(
         const frontend::ProjectOopMirNode* node,
+        LLVMValueRef receiver,
         std::string& error,
-        LLVMValueRef receiverOverride = nullptr,
-        LLVMValueRef valueOverride = nullptr)
+        LLVMValueRef& address,
+        LLVMValueRef& current,
+        LLVMTypeRef& resultType,
+        LLVMBasicBlockRef& nullBlock,
+        LLVMBasicBlockRef& endBlock)
     {
         if (node->children.size() != 2)
-            return failValue(error, "null-conditional field store MIR requires receiver and value");
-        LLVMValueRef receiver = receiverOverride != nullptr
-            ? receiverOverride
-            : lowerExpression(node->children[0].get(), error);
-        if (receiver == nullptr) return nullptr;
+        {
+            error = "null-conditional field store MIR requires receiver and value";
+            return false;
+        }
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
-        LLVMTypeRef resultType = llvmType(node->typeKey, error);
-        if (resultType == nullptr) return nullptr;
+        resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return false;
         LLVMValueRef hasReceiver = LLVMBuildICmp(
             builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
-        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
+        nullBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.store");
-        LLVMBasicBlockRef endBlock = appendBlock("nullcond.store.end");
+        endBlock = appendBlock("nullcond.store.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, valueBlock);
         LLVMValueRef offset = LLVMConstInt(
             LLVMInt64TypeInContext(context_), node->immediate, 0);
         LLVMValueRef indices[] = {offset};
-        LLVMValueRef address = LLVMBuildGEP2(
+        address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
             "nullcond.store.addr");
-        LLVMValueRef current = nullptr;
+        current = nullptr;
         if (node->operation != lexer::TokenKind::Equal)
         {
             current = LLVMBuildLoad2(
                 builder_, resultType, address, "nullcond.compound.load");
             if (node->volatileAccess) LLVMSetVolatile(current, 1);
         }
-        LLVMValueRef value = valueOverride != nullptr
-            ? valueOverride
-            : lowerExpression(node->children[1].get(), error);
-        if (value == nullptr) return nullptr;
+        return true;
+    }
+
+    LLVMValueRef concatenateNullConditionalFieldValue(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef current,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        LLVMValueRef leftLength = nullableStringLength(current, "nullcond.concat.left");
+        LLVMValueRef rightLength = nullableStringLength(value, "nullcond.concat.right");
+        LLVMValueRef total = LLVMBuildAdd(
+            builder_, leftLength, rightLength, "nullcond.concat.length");
+        LLVMValueRef result = allocateNativeString(total, "nullcond.concat", error);
+        if (result == nullptr) return nullptr;
+        LLVMValueRef resultData = byteOffset(result, 8, "nullcond.concat.result.data");
+        LLVMValueRef leftData = byteOffset(current, 8, "nullcond.concat.left.data");
+        if (!emitMemcpyBytes(resultData, leftData, leftLength, "nullcond.concat.copy.left", error))
+            return nullptr;
+        LLVMValueRef rightDestination = dynamicByteOffset(
+            resultData, leftLength, "nullcond.concat.right.dest");
+        LLVMValueRef rightData = byteOffset(value, 8, "nullcond.concat.right.data");
+        if (!emitMemcpyBytes(rightDestination, rightData, rightLength, "nullcond.concat.copy.right", error))
+            return nullptr;
+        if (node->booleanValue &&
+            !emitOwnedPointerDestroy(current, node->typeKey, "nullcond.concat.previous", error))
+            return nullptr;
+        return result;
+    }
+
+    LLVMValueRef computeNullConditionalFieldValue(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef current,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        if (node->operation == lexer::TokenKind::Equal) return value;
+        if (node->typeKey == "builtin:string")
+            return concatenateNullConditionalFieldValue(node, current, value, error);
+        const lexer::TokenKind base = lexer::compoundAssignmentBaseOperator(node->operation);
+        return applyBinaryOperation(base, current, value, node->typeKey, error, false);
+    }
+
+    LLVMValueRef finishNullConditionalFieldStore(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef address,
+        LLVMValueRef current,
+        LLVMValueRef value,
+        LLVMTypeRef resultType,
+        LLVMBasicBlockRef nullBlock,
+        LLVMBasicBlockRef endBlock,
+        std::string& error)
+    {
         if (terminated())
         {
             LLVMPositionBuilderAtEnd(builder_, endBlock);
             return LLVMConstNull(resultType);
         }
-        LLVMValueRef storedValue = value;
-        if (node->operation != lexer::TokenKind::Equal)
-        {
-            // NS304-T10-F06: compound — read-modify-write en la rama no nula. La aritmética se
-            // reutiliza de applyBinaryOperation para no duplicar las reglas de signo/redondeo.
-            if (node->typeKey == "builtin:string")
-            {
-                LLVMValueRef leftLength = nullableStringLength(current, "nullcond.concat.left");
-                LLVMValueRef rightLength = nullableStringLength(value, "nullcond.concat.right");
-                LLVMValueRef total = LLVMBuildAdd(
-                    builder_, leftLength, rightLength, "nullcond.concat.length");
-                LLVMValueRef result = allocateNativeString(total, "nullcond.concat", error);
-                if (result == nullptr) return nullptr;
-                LLVMValueRef resultData = byteOffset(result, 8, "nullcond.concat.result.data");
-                LLVMValueRef leftData = byteOffset(current, 8, "nullcond.concat.left.data");
-                if (!emitMemcpyBytes(resultData, leftData, leftLength, "nullcond.concat.copy.left", error))
-                    return nullptr;
-                LLVMValueRef rightDestination = dynamicByteOffset(
-                    resultData, leftLength, "nullcond.concat.right.dest");
-                LLVMValueRef rightData = byteOffset(value, 8, "nullcond.concat.right.data");
-                if (!emitMemcpyBytes(rightDestination, rightData, rightLength, "nullcond.concat.copy.right", error))
-                    return nullptr;
-                storedValue = result;
-                if (node->booleanValue &&
-                    !emitOwnedPointerDestroy(
-                        current, node->typeKey, "nullcond.concat.previous", error))
-                    return nullptr;
-            }
-            else
-            {
-                const lexer::TokenKind base =
-                    lexer::compoundAssignmentBaseOperator(node->operation);
-                storedValue = applyBinaryOperation(
-                    base, current, value, node->typeKey, error, false);
-                if (storedValue == nullptr) return nullptr;
-            }
-        }
+        // NS304-T10-F06: compute and ownership remain inside the non-null branch.
+        LLVMValueRef storedValue = computeNullConditionalFieldValue(node, current, value, error);
+        if (storedValue == nullptr) return nullptr;
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->volatileAccess) LLVMSetVolatile(store, 1);
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
