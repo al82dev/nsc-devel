@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -530,6 +531,14 @@ struct ProjectOopHirModelTestAccess final
     {
         ProjectOopMirModel::collectMoveNextLiveness(
             root, order, localDefinition, localLastUse, parameterLastUse, yieldOrders);
+    }
+
+    static void collectMirBorrowSources(
+        const ProjectOopMirNode* root,
+        std::unordered_map<std::size_t, std::size_t>& borrowSource,
+        std::unordered_set<std::size_t>& borrowNonLocalSource)
+    {
+        ProjectOopMirModel::collectBorrowSources(root, borrowSource, borrowNonLocalSource);
     }
 
     static bool importMirLayouts(
@@ -4443,6 +4452,67 @@ void testDeepMirMoveNextLiveness(TestContext& tests)
         "MIR moveNext liveness treats only YieldValue as a frame boundary");
     destroyMirTreeIteratively(std::move(root));
 }
+
+std::unique_ptr<ProjectOopMirNode> makeDeepMirBorrowSourceTree()
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    std::unique_ptr<ProjectOopMirNode> root;
+    for (std::size_t depth = nestingDepth; depth-- > 0U;)
+    {
+        auto declaration = std::make_unique<ProjectOopMirNode>();
+        declaration->kind = ProjectOopMirNodeKind::LocalDeclaration;
+        auto initializer = std::make_unique<ProjectOopMirNode>();
+        initializer->kind = ProjectOopMirNodeKind::BorrowValue;
+        switch (depth % 6U)
+        {
+            case 0U:
+                declaration->localOrdinal = 7U;
+                initializer->localOrdinal = depth;
+                break;
+            case 1U:
+                declaration->localOrdinal = 7U;
+                initializer->localOrdinal = 100000U + depth;
+                break;
+            case 2U: declaration->localOrdinal = 8U; break;
+            case 3U:
+                declaration->localOrdinal = 9U;
+                initializer->kind = ProjectOopMirNodeKind::LocalValue;
+                break;
+            case 4U: initializer->localOrdinal = depth; break;
+            default:
+                declaration->localOrdinal = 10U;
+                initializer.reset();
+                break;
+        }
+        declaration->children.push_back(std::move(initializer));
+        if (depth % 6U == 3U)
+        {
+            auto ignoredBorrow = std::make_unique<ProjectOopMirNode>();
+            ignoredBorrow->kind = ProjectOopMirNodeKind::BorrowValue;
+            ignoredBorrow->localOrdinal = 99U;
+            declaration->children.push_back(std::move(ignoredBorrow));
+        }
+        if (root != nullptr) declaration->children.push_back(std::move(root));
+        declaration->children.emplace_back();
+        root = std::move(declaration);
+    }
+    return root;
+}
+
+void testDeepMirBorrowSourceCollection(TestContext& tests)
+{
+    std::unique_ptr<ProjectOopMirNode> root = makeDeepMirBorrowSourceTree();
+    std::unordered_map<std::size_t, std::size_t> borrowSource;
+    std::unordered_set<std::size_t> borrowNonLocalSource;
+    nativesharp::frontend::ProjectOopHirModelTestAccess::collectMirBorrowSources(
+        root.get(), borrowSource, borrowNonLocalSource);
+    tests.expect(borrowSource.size() == 1U && borrowSource.at(7U) == 132767U,
+        "MIR borrow source collection preserves preorder overwrite by local ordinal");
+    tests.expect(borrowNonLocalSource.size() == 1U && borrowNonLocalSource.contains(8U) &&
+            !borrowSource.contains(9U) && !borrowSource.contains(10U),
+        "MIR borrow source collection preserves non-local, first-initializer, and null-slot rules");
+    destroyMirTreeIteratively(std::move(root));
+}
 }
 
 int main()
@@ -4625,6 +4695,10 @@ int main()
     {
         testDeepMirMoveNextLiveness(tests);
     }
+    else if (focusValue == "mir-borrow-source-depth")
+    {
+        testDeepMirBorrowSourceCollection(tests);
+    }
     else
     {
         testEndToEndOopLowering(tests, root);
@@ -4665,6 +4739,7 @@ int main()
         testDeepMirAwaitedFrameSize(tests);
         testDeepMirPollLiveness(tests);
         testDeepMirMoveNextLiveness(tests);
+        testDeepMirBorrowSourceCollection(tests);
     }
 
     std::filesystem::remove_all(root, cleanupError);

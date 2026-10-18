@@ -19,6 +19,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -1017,6 +1018,10 @@ private:
         std::unordered_map<std::size_t, std::uint64_t>& localLastUse,
         std::unordered_map<std::size_t, std::uint64_t>& parameterLastUse,
         std::vector<std::uint64_t>& yieldOrders);
+    static void collectBorrowSources(
+        const ProjectOopMirNode* root,
+        std::unordered_map<std::size_t, std::size_t>& borrowSource,
+        std::unordered_set<std::size_t>& borrowNonLocalSource);
     void configureFunctionLowerer(
         ProjectOopMirModel& lowerer,
         const ProjectNameLookup& nameLookup,
