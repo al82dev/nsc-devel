@@ -309,6 +309,7 @@ add_library(nsc_frontend STATIC
     src/Parser/DeclarationParser.cpp
     src/Parser/MemberParser.cpp
     src/Parser/TypeParser.cpp
+    src/Parser/StatementParser.cpp
     src/Sema/OwnershipKind.cpp
     src/Sema/TypeKind.cpp
     src/Sema/Type.cpp

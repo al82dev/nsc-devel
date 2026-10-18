@@ -895,7 +895,19 @@ private:
     void appendParameterContract(ast::AstNode* parameter, std::string contract);
 
     ast::AstNode* parseBlock();
+    ast::AstNode* parseBlockImpl();
     ast::AstNode* parseStatement();
+    ast::AstNode* parseStatementImpl();
+    ast::AstNode* parseFloatingPointScopeStatement();
+    ast::AstNode* parseUnsafeScopeStatement();
+    std::optional<ast::AstNode*> tryParseScopedStatement();
+    std::optional<ast::AstNode*> tryParseControlStatement();
+    ast::AstNode* parseYieldStatement();
+    ast::AstNode* parseStaticLocalStatement();
+    ast::AstNode* parseJumpStatement();
+    std::optional<ast::AstNode*> tryParseKeywordStatement();
+    std::optional<ast::AstNode*> tryParseDeclarationStatement();
+    ast::AstNode* parseExpressionStatement();
     enum class PatternKind
     {
         Wildcard,
@@ -1012,9 +1024,24 @@ private:
     bool statementAlwaysDiverges(const ast::AstNode* statement) const;
     ast::AstNode* parseStaticAssertStatement();
     ast::AstNode* parseInlineAssemblyStatement();
+    void parseInlineAssemblyHeader(std::string& targetMetadata, std::string& dialectMetadata);
+    void parseInlineAssemblyBody(ast::AstNode* statement, std::string& exactBody);
+    void parseInlineAssemblyOperandClauses(ast::AstNode* statement, std::size_t beginIndex);
     void parseInlineAssemblyOutputClause(ast::AstNode* statement);
     void parseInlineAssemblyInputClause(ast::AstNode* statement);
     void parseInlineAssemblyClobberClause(ast::AstNode* statement);
+    bool validateInlineAssemblyClobberName(
+        ast::AstNode* statement,
+        const lexer::Token& registerToken,
+        const std::string& registerName,
+        bool specialClobber,
+        std::unordered_set<std::string>& seen);
+    void appendInlineAssemblyClobber(
+        ast::AstNode* statement,
+        const lexer::Token& registerToken,
+        const std::string& registerName,
+        bool specialClobber,
+        std::uint64_t ordinal);
     std::string parseInlineAssemblyConstraint(bool output, bool& explicitConstraint);
     void validateInlineAssemblyControlFlow(ast::AstNode* statement);
     void validateInlineAssemblyPlaceholders(ast::AstNode* statement);
@@ -1027,6 +1054,17 @@ private:
         bool isReferenceLocal,
         bool isPinned);
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon, bool isStaticLocal = false);
+    ast::AstNode* finishVariableDeclaration(
+        std::size_t beginIndex,
+        ast::TypeSyntax* type,
+        bool expectSemicolon,
+        bool isStaticLocal,
+        bool isConst,
+        bool isRaii,
+        bool isVolatile,
+        bool isReferenceLocal,
+        bool isPinned,
+        bool isScope);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseEmbeddedStatementBlock();
@@ -1062,6 +1100,37 @@ private:
     ast::AstNode* parseForeachStatement();
     bool parseForeachHeader(ForeachParseState& state);
     ast::AstNode* lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body);
+    ast::TypeSyntax* makeForeachVarMarker(SourceRange range);
+    void configureForeachElementBinding(
+        const ForeachParseState& state,
+        ast::AstNode* declaration);
+    void emitForeachElementBindings(
+        const ForeachParseState& state,
+        SourceRange range,
+        ast::AstNode* destination);
+    ast::AstNode* lowerForeachRange(
+        ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range);
+    void reportInvalidForeachRangeReference(
+        const ForeachParseState& state,
+        const ast::AstNode* collection);
+    void appendForeachRangeAssertion(
+        const ForeachParseState& state,
+        SourceRange range,
+        ast::AstNode* lowered);
+    ast::AstNode* makeForeachArrayCandidate(
+        const ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range);
+    ast::AstNode* makeForeachSpanCandidate(
+        const ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range);
+    ast::AstNode* makeForeachPatternCandidate(
+        const ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range);
     void appendParsedStatement(ast::AstNode*& destination, ast::AstNode* statement);
     ast::AstNode* makeIdentifierExpression(const SourceRange& range, std::string name);
     ast::AstNode* makeIntegerLiteralExpression(const SourceRange& range, std::uint64_t value);
