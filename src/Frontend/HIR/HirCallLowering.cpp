@@ -911,6 +911,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishNamespaceCall(
     return load;
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
+    const ast::AstNode* expression,
+    std::string& error,
+    const MethodDelegateBinding& binding,
+    std::unique_ptr<ProjectOopHirNode> node)
+{
+    for (std::size_t index = 0; index < binding.selectedDefaultArguments.size(); ++index)
+    {
+        const std::string& targetTypeKey =
+            index < binding.selectedDefaultArgumentTypeKeys.size()
+            ? binding.selectedDefaultArgumentTypeKeys[index] : std::string{};
+        auto argument = lowerDefaultArgument(
+            binding.selectedDefaultArguments[index], targetTypeKey, error);
+        if (argument == nullptr) return nullptr;
+        node->argumentTypeKeys.push_back(targetTypeKey);
+        node->children.push_back(std::move(argument));
+    }
+    node->argumentCount =
+        expression->children().size() + binding.selectedDefaultArguments.size();
+    return node;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -1111,46 +1133,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             error = "Stage 42 delegate invocation is not addressable";
             return nullptr;
         }
+        const bool lowersCallee =
+            invoke->directLambdaName.empty() || invoke->directLambdaUsesEnvironment;
+        if (lowersCallee || !expression->children().empty())
+        {
+            error = "Stage 34 delegate invocation escaped iterative lowering";
+            return nullptr;
+        }
         auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, invoke->resultTypeKey);
         node->elementTypeKey = invoke->delegateTypeKey;
         node->stringValue = invoke->directLambdaName;
         node->booleanValue = invoke->directLambdaUsesEnvironment;
-        if (invoke->directLambdaName.empty() || invoke->directLambdaUsesEnvironment)
-        {
-            auto callee = lowerExpression(expression->first(), memberOrdinal, false, error);
-            if (callee == nullptr) return nullptr;
-            node->children.push_back(std::move(callee));
-        }
-        for (std::size_t index = 0; index < expression->children().size(); ++index)
-        {
-            const ast::AstNode* argumentSyntax = expression->children()[index];
-            auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
-            if (argument == nullptr) return nullptr;
-            if (index < invoke->argumentConversions.size())
-            {
-                const ProjectImplicitConversion& conversion = invoke->argumentConversions[index];
-                node->argumentTypeKeys.push_back(conversion.targetTypeKey);
-                if (conversion.kind != ProjectConversionKind::Identity)
-                {
-                    argument = wrapImplicitConversion(std::move(argument), conversion, argumentSyntax);
-                }
-            }
-            node->children.push_back(std::move(argument));
-        }
-        for (std::size_t index = 0; index < invoke->selectedDefaultArguments.size(); ++index)
-        {
-            const std::string& targetTypeKey =
-                index < invoke->selectedDefaultArgumentTypeKeys.size()
-                ? invoke->selectedDefaultArgumentTypeKeys[index] : std::string{};
-            auto argument = lowerDefaultArgument(
-                invoke->selectedDefaultArguments[index], targetTypeKey, error);
-            if (argument == nullptr) return nullptr;
-            node->argumentTypeKeys.push_back(targetTypeKey);
-            node->children.push_back(std::move(argument));
-        }
-        node->argumentCount =
-            expression->children().size() + invoke->selectedDefaultArguments.size();
-        return node;
+        return finishDelegateInvoke(expression, error, *invoke, std::move(node));
     }
 
     const MethodCoreBinding* core = coreBinding(expression);

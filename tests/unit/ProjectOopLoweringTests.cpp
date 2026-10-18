@@ -289,6 +289,22 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerExpression(root, 0U, false, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerDelegateInvokeExpression(
+        ProjectOopHirModel& model,
+        const ast::AstNode* root,
+        const std::vector<std::unique_ptr<ast::AstNode>>& syntax,
+        const std::vector<MethodDelegateBinding>& delegates,
+        const MethodExpressionTypeBinding& expressionType,
+        bool addressContext,
+        std::string& error)
+    {
+        for (const auto& node : syntax)
+            model.expressionTypeBySyntax_[node.get()] = &expressionType;
+        for (const MethodDelegateBinding& binding : delegates)
+            model.delegateBindingBySyntax_[binding.syntax] = &binding;
+        return model.lowerExpression(root, 0U, addressContext, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerAwaitExpression(
         ProjectOopHirModel& model,
         const ProjectNameLookup* nameLookup,
@@ -5346,6 +5362,361 @@ void testDeepDelegateLambdaReceiverLowering(
     testDelegateCreationReceiverContracts(tests, compilation, target);
 }
 
+struct DelegateInvokeTarget final
+{
+    nativesharp::frontend::MethodDelegateBinding binding;
+};
+
+bool prepareDelegateInvokeFixture(
+    const std::filesystem::path& root,
+    ProjectCompilation& compilation,
+    DelegateInvokeTarget& output,
+    std::string& error)
+{
+    const auto directory = root / "DeepDelegateInvoke";
+    writeProject(directory, "DeepDelegateInvoke");
+    writeFile(directory / "Main.ns", R"ns(
+namespace Deep {
+public delegate int Add(int first, int second = 5);
+public class Host {
+    public static int Run(Add add) { return add(1); }
+}
+}
+)ns");
+    if (!compilation.compileProjectOopHir(directory / "DeepDelegateInvoke.nsproj", error) ||
+        compilation.methodBodyModel() == nullptr)
+    {
+        return false;
+    }
+    for (const auto& binding : compilation.methodBodyModel()->delegateBindings())
+    {
+        if (binding.kind == nativesharp::frontend::MethodDelegateOperationKind::Invoke &&
+            binding.directLambdaName.empty() && !binding.resultTypeKey.empty() &&
+            !binding.delegateTypeKey.empty())
+        {
+            output.binding = binding;
+            return true;
+        }
+    }
+    error = "delegate-invoke fixture produced no ordinary invoke binding";
+    return false;
+}
+
+enum class DelegateInvokeFixtureMode : std::uint8_t
+{
+    Ordinary,
+    DirectEnvironment,
+    DirectStatic,
+};
+
+struct DelegateInvokeSyntax final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<nativesharp::frontend::MethodDelegateBinding> bindings;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+nativesharp::ast::AstNode* appendDelegateInvokeSyntax(
+    DelegateInvokeSyntax& fixture,
+    nativesharp::ast::AstNodeKind kind)
+{
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        kind, nativesharp::SourceRange{}));
+    return fixture.nodes.back().get();
+}
+
+void selectDelegateInvokeMode(
+    nativesharp::frontend::MethodDelegateBinding& binding,
+    DelegateInvokeFixtureMode mode)
+{
+    binding.directLambdaName.clear();
+    binding.directLambdaUsesEnvironment = false;
+    if (mode == DelegateInvokeFixtureMode::DirectEnvironment)
+    {
+        binding.directLambdaName = "Deep.Add.lambda$environment";
+        binding.directLambdaUsesEnvironment = true;
+    }
+    else if (mode == DelegateInvokeFixtureMode::DirectStatic)
+    {
+        binding.directLambdaName = "Deep.Add.lambda$static";
+    }
+}
+
+DelegateInvokeSyntax makeSingleDelegateInvokeSyntax(
+    const nativesharp::frontend::MethodDelegateBinding& semanticBinding,
+    DelegateInvokeFixtureMode mode,
+    std::size_t argumentCount)
+{
+    DelegateInvokeSyntax fixture;
+    fixture.nodes.reserve(argumentCount + 2U);
+    fixture.bindings.reserve(1U);
+    auto* callee = appendDelegateInvokeSyntax(
+        fixture,
+        mode == DelegateInvokeFixtureMode::DirectStatic
+            ? nativesharp::ast::AstNodeKind::CallExpression
+            : nativesharp::ast::AstNodeKind::NullLiteralExpression);
+    auto* call = appendDelegateInvokeSyntax(
+        fixture, nativesharp::ast::AstNodeKind::CallExpression);
+    call->setFirst(callee);
+    for (std::size_t index = 0; index < argumentCount; ++index)
+    {
+        auto* argument = appendDelegateInvokeSyntax(
+            fixture, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+        argument->setIntegerValue(index + 1U);
+        call->addChild(argument);
+    }
+    fixture.bindings.push_back(semanticBinding);
+    auto& binding = fixture.bindings.back();
+    binding.kind = nativesharp::frontend::MethodDelegateOperationKind::Invoke;
+    binding.syntax = call;
+    binding.argumentConversions.clear();
+    binding.selectedDefaultArguments.clear();
+    binding.selectedDefaultArgumentTypeKeys.clear();
+    selectDelegateInvokeMode(binding, mode);
+    fixture.root = call;
+    return fixture;
+}
+
+DelegateInvokeSyntax makeDeepDelegateInvokeSyntax(
+    std::size_t depth,
+    const nativesharp::frontend::MethodDelegateBinding& semanticBinding)
+{
+    DelegateInvokeSyntax fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.bindings.reserve(depth);
+    auto* current = appendDelegateInvokeSyntax(
+        fixture, nativesharp::ast::AstNodeKind::NullLiteralExpression);
+    for (std::size_t index = 0; index < depth; ++index)
+    {
+        const auto mode = static_cast<DelegateInvokeFixtureMode>(index % 3U);
+        nativesharp::ast::AstNode* callee = current;
+        if (mode == DelegateInvokeFixtureMode::DirectStatic)
+        {
+            // An unbound call would fail immediately if direct static invocation evaluated it.
+            callee = appendDelegateInvokeSyntax(
+                fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        }
+        auto* call = appendDelegateInvokeSyntax(
+            fixture, nativesharp::ast::AstNodeKind::CallExpression);
+        call->setFirst(callee);
+        if (mode == DelegateInvokeFixtureMode::DirectStatic) call->addChild(current);
+
+        fixture.bindings.push_back(semanticBinding);
+        auto& binding = fixture.bindings.back();
+        binding.kind = nativesharp::frontend::MethodDelegateOperationKind::Invoke;
+        binding.syntax = call;
+        binding.argumentConversions.clear();
+        binding.selectedDefaultArguments.clear();
+        binding.selectedDefaultArgumentTypeKeys.clear();
+        selectDelegateInvokeMode(binding, mode);
+        if (mode == DelegateInvokeFixtureMode::DirectStatic)
+        {
+            nativesharp::frontend::ProjectImplicitConversion identity;
+            identity.kind = nativesharp::frontend::ProjectConversionKind::Identity;
+            identity.sourceTypeKey = semanticBinding.resultTypeKey;
+            identity.targetTypeKey = semanticBinding.resultTypeKey;
+            binding.argumentConversions.push_back(std::move(identity));
+        }
+        current = call;
+    }
+    fixture.root = current;
+    return fixture;
+}
+
+std::unique_ptr<ProjectOopHirNode> lowerDelegateInvokeFixture(
+    DelegateInvokeSyntax& fixture,
+    const nativesharp::frontend::MethodExpressionTypeBinding& expressionType,
+    bool addressContext,
+    std::string& error)
+{
+    ProjectOopHirModel model;
+    return nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerDelegateInvokeExpression(
+            model,
+            fixture.root,
+            fixture.nodes,
+            fixture.bindings,
+            expressionType,
+            addressContext,
+            error);
+}
+
+bool deepDelegateInvokeMatches(
+    const ProjectOopHirNode* node,
+    std::size_t expectedDepth,
+    const DelegateInvokeTarget& target)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::size_t observedDepth = 0U;
+    while (node != nullptr && node->kind == HirKind::DelegateInvoke)
+    {
+        const std::size_t sourceIndex = expectedDepth - observedDepth - 1U;
+        const auto mode = static_cast<DelegateInvokeFixtureMode>(sourceIndex % 3U);
+        const bool ordinary = mode == DelegateInvokeFixtureMode::Ordinary;
+        const bool environment = mode == DelegateInvokeFixtureMode::DirectEnvironment;
+        const bool directStatic = mode == DelegateInvokeFixtureMode::DirectStatic;
+        const std::string expectedName = ordinary
+            ? std::string{}
+            : environment ? "Deep.Add.lambda$environment" : "Deep.Add.lambda$static";
+        if (node->typeKey != target.binding.resultTypeKey ||
+            node->elementTypeKey != target.binding.delegateTypeKey ||
+            node->stringValue != expectedName || node->booleanValue != environment ||
+            node->argumentCount != (directStatic ? 1U : 0U) ||
+            node->children.size() != 1U ||
+            node->argumentTypeKeys.size() != (directStatic ? 1U : 0U) ||
+            (directStatic &&
+                node->argumentTypeKeys.front() != target.binding.resultTypeKey))
+        {
+            return false;
+        }
+        ++observedDepth;
+        node = node->children.front().get();
+    }
+    return observedDepth == expectedDepth && node != nullptr &&
+        node->kind == HirKind::NullConstant;
+}
+
+void testDelegateInvokeContracts(
+    TestContext& tests,
+    const DelegateInvokeTarget& target,
+    const nativesharp::frontend::MethodExpressionTypeBinding& expressionType)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    std::string error;
+    for (const auto mode : {DelegateInvokeFixtureMode::Ordinary,
+             DelegateInvokeFixtureMode::DirectEnvironment,
+             DelegateInvokeFixtureMode::DirectStatic})
+    {
+        auto fixture = makeSingleDelegateInvokeSyntax(target.binding, mode, 0U);
+        auto lowered = lowerDelegateInvokeFixture(fixture, expressionType, false, error);
+        const bool lowersCallee = mode != DelegateInvokeFixtureMode::DirectStatic;
+        tests.expect(lowered != nullptr && error.empty() &&
+                lowered->kind == HirKind::DelegateInvoke && lowered->argumentCount == 0U &&
+                lowered->children.size() == (lowersCallee ? 1U : 0U) &&
+                lowered->stringValue == (mode == DelegateInvokeFixtureMode::Ordinary
+                    ? std::string{}
+                    : mode == DelegateInvokeFixtureMode::DirectEnvironment
+                        ? "Deep.Add.lambda$environment" : "Deep.Add.lambda$static") &&
+                lowered->booleanValue ==
+                    (mode == DelegateInvokeFixtureMode::DirectEnvironment),
+            mode == DelegateInvokeFixtureMode::Ordinary
+                ? "ordinary delegate invoke evaluates its zero-argument callee exactly once"
+                : mode == DelegateInvokeFixtureMode::DirectEnvironment
+                    ? "direct environment lambda invoke retains exactly one callee child"
+                    : "direct static lambda invoke omits its deliberately unbound callee");
+        destroyHirTreeIteratively(lowered);
+        error.clear();
+    }
+
+    auto arguments = makeSingleDelegateInvokeSyntax(
+        target.binding, DelegateInvokeFixtureMode::DirectStatic, 3U);
+    nativesharp::frontend::ProjectImplicitConversion identity;
+    identity.kind = nativesharp::frontend::ProjectConversionKind::Identity;
+    identity.sourceTypeKey = target.binding.resultTypeKey;
+    identity.targetTypeKey = target.binding.resultTypeKey;
+    nativesharp::frontend::ProjectImplicitConversion numeric;
+    numeric.kind = nativesharp::frontend::ProjectConversionKind::Numeric;
+    numeric.sourceTypeKey = "builtin:byte";
+    numeric.targetTypeKey = "builtin:long";
+    arguments.bindings.front().argumentConversions = {identity, numeric};
+    auto argumentNode = lowerDelegateInvokeFixture(arguments, expressionType, false, error);
+    tests.expect(argumentNode != nullptr && error.empty() &&
+            argumentNode->argumentCount == 3U && argumentNode->children.size() == 3U &&
+            argumentNode->children[0]->kind == HirKind::IntegerConstant &&
+            argumentNode->children[1]->kind == HirKind::Conversion &&
+            argumentNode->children[2]->kind == HirKind::IntegerConstant &&
+            argumentNode->argumentTypeKeys ==
+                std::vector<std::string>{target.binding.resultTypeKey, "builtin:long"},
+        "delegate invoke preserves source-order arguments and a short conversion vector");
+    destroyHirTreeIteratively(argumentNode);
+
+    auto defaults = makeSingleDelegateInvokeSyntax(
+        target.binding, DelegateInvokeFixtureMode::Ordinary, 0U);
+    auto* literal = appendDelegateInvokeSyntax(
+        defaults, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    literal->setIntegerValue(7U);
+    auto* unaryLeaf = appendDelegateInvokeSyntax(
+        defaults, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    unaryLeaf->setIntegerValue(8U);
+    auto* unary = appendDelegateInvokeSyntax(
+        defaults, nativesharp::ast::AstNodeKind::UnaryExpression);
+    unary->setTokenKind(nativesharp::lexer::TokenKind::Minus);
+    unary->setFirst(unaryLeaf);
+    auto* string = appendDelegateInvokeSyntax(
+        defaults, nativesharp::ast::AstNodeKind::StringLiteralExpression);
+    string->setText("default");
+    auto* emptyType = appendDelegateInvokeSyntax(
+        defaults, nativesharp::ast::AstNodeKind::IntegerLiteralExpression);
+    emptyType->setIntegerValue(9U);
+    defaults.bindings.front().selectedDefaultArguments =
+        {literal, unary, string, emptyType};
+    defaults.bindings.front().selectedDefaultArgumentTypeKeys =
+        {"builtin:int", "builtin:int", "builtin:string"};
+    error.clear();
+    auto defaultNode = lowerDelegateInvokeFixture(defaults, expressionType, false, error);
+    const auto* stringDefault = defaultNode != nullptr && defaultNode->children.size() == 5U
+        ? defaultNode->children[3].get() : nullptr;
+    tests.expect(defaultNode != nullptr && error.empty() &&
+            defaultNode->argumentCount == 4U && defaultNode->children.size() == 5U &&
+            defaultNode->children[1]->kind == HirKind::IntegerConstant &&
+            defaultNode->children[2]->kind == HirKind::Unary &&
+            stringDefault != nullptr && stringDefault->kind == HirKind::Conversion &&
+            stringDefault->children.size() == 1U &&
+            stringDefault->children.front()->kind == HirKind::StringLiteral &&
+            defaultNode->children[4]->kind == HirKind::IntegerConstant &&
+            defaultNode->argumentTypeKeys.size() == 4U &&
+            defaultNode->argumentTypeKeys.back().empty(),
+        "delegate invoke appends literal, unary, string, and empty-type defaults in order");
+    destroyHirTreeIteratively(defaultNode);
+
+    auto missingDefault = makeSingleDelegateInvokeSyntax(
+        target.binding, DelegateInvokeFixtureMode::Ordinary, 0U);
+    missingDefault.bindings.front().selectedDefaultArguments = {nullptr};
+    missingDefault.bindings.front().selectedDefaultArgumentTypeKeys = {"builtin:int"};
+    error.clear();
+    auto rejectedDefault = lowerDelegateInvokeFixture(
+        missingDefault, expressionType, false, error);
+    tests.expect(rejectedDefault == nullptr &&
+            error == "NSC-LIMIT-020 selected optional parameter has no default expression",
+        "delegate invoke preserves the exact invalid-default diagnostic");
+
+    auto address = makeSingleDelegateInvokeSyntax(
+        target.binding, DelegateInvokeFixtureMode::Ordinary, 1U);
+    error.clear();
+    auto rejectedAddress = lowerDelegateInvokeFixture(address, expressionType, true, error);
+    tests.expect(rejectedAddress == nullptr &&
+            error == "Stage 42 delegate invocation is not addressable",
+        "delegate invoke preserves the exact address-context diagnostic");
+}
+
+void testDeepDelegateLambdaInvokeLowering(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    constexpr std::size_t nestingDepth = 32768U;
+    ProjectCompilation compilation;
+    DelegateInvokeTarget target;
+    std::string error;
+    const bool prepared = prepareDelegateInvokeFixture(root, compilation, target, error);
+    tests.expect(prepared,
+        "the delegate-invoke fixture builds a real ordinary invoke binding (" + error + ")");
+    if (!prepared) return;
+
+    nativesharp::frontend::MethodExpressionTypeBinding expressionType;
+    expressionType.typeKey = target.binding.resultTypeKey;
+    DelegateInvokeSyntax fixture = makeDeepDelegateInvokeSyntax(
+        nestingDepth, target.binding);
+    auto lowered = lowerDelegateInvokeFixture(fixture, expressionType, false, error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "a 32768-level ordinary/environment/static delegate-invoke chain lowers without "
+        "process-stack recursion (" + error + ")");
+    tests.expect(deepDelegateInvokeMatches(lowered.get(), nestingDepth, target),
+        "delegate-invoke frames preserve callee policy, argument counts, order, and metadata");
+    destroyHirTreeIteratively(lowered);
+
+    testDelegateInvokeContracts(tests, target, expressionType);
+}
+
 void testDeepClassFieldExpressionLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768;
@@ -9354,6 +9725,10 @@ int main()
     {
         testDeepDelegateLambdaReceiverLowering(tests, root);
     }
+    else if (focusValue == "hir-delegate-lambda-invoke-depth")
+    {
+        testDeepDelegateLambdaInvokeLowering(tests, root);
+    }
     else if (focusValue == "hir-class-field-depth")
     {
         testDeepClassFieldExpressionLowering(tests);
@@ -9561,6 +9936,7 @@ int main()
         testDeepNamespaceCallLowering(tests, root);
         testDeepEventInvokeLowering(tests, root);
         testDeepDelegateLambdaReceiverLowering(tests, root);
+        testDeepDelegateLambdaInvokeLowering(tests, root);
         testDeepEventSubscriptionLowering(tests, root);
         testDeepPropertyIndexerSetterLowering(tests, root);
         testDeepClassFieldExpressionLowering(tests);

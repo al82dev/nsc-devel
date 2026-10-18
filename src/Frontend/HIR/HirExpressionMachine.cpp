@@ -170,6 +170,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         DelegateCreationReceiver,
         NamespaceCall,
         EventInvoke,
+        DelegateInvoke,
         InterpolationHandler,
         InstanceField,
         NullConditionalField,
@@ -235,6 +236,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         EventInvokeFrameStage stage = EventInvokeFrameStage::Ready;
         std::size_t nextArgument = 0U;
     };
+    enum class DelegateInvokeFrameStage : std::uint8_t
+    {
+        Callee,
+        Arguments,
+        Ready,
+    };
+    struct DelegateInvokeFrameState final
+    {
+        const MethodDelegateBinding* binding = nullptr;
+        std::unique_ptr<ProjectOopHirNode> node;
+        DelegateInvokeFrameStage stage = DelegateInvokeFrameStage::Ready;
+        std::size_t nextArgument = 0U;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -251,6 +265,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<BoundCallFrameState> boundCall;
         std::optional<NamespaceCallFrameState> namespaceCall;
         std::optional<EventInvokeFrameState> eventInvoke;
+        std::optional<DelegateInvokeFrameState> delegateInvoke;
         const MethodDelegateBinding* delegateCreationBinding = nullptr;
         ReceiverFrameState receiverFrame;
         const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
@@ -341,6 +356,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 (iterativeReceiver || !syntax->children().empty()))
             {
                 return IterativeExpressionKind::EventInvoke;
+            }
+        }
+        if (syntax->kind() == ast::AstNodeKind::CallExpression)
+        {
+            const MethodDelegateBinding* delegateInvoke = delegateBinding(syntax);
+            const bool lowersCallee = delegateInvoke != nullptr &&
+                (delegateInvoke->directLambdaName.empty() ||
+                 delegateInvoke->directLambdaUsesEnvironment);
+            if (delegateInvoke != nullptr &&
+                delegateInvoke->kind == MethodDelegateOperationKind::Invoke &&
+                (lowersCallee || !syntax->children().empty()))
+            {
+                return IterativeExpressionKind::DelegateInvoke;
             }
         }
         if (syntax->kind() == ast::AstNodeKind::AwaitExpression)
@@ -1274,6 +1302,85 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 call.stage = EventInvokeFrameStage::Ready;
             return true;
         };
+        const auto initializeDelegateInvokeFrame = [&](IterativeExpressionFrame& frame) -> bool
+        {
+            const MethodDelegateBinding* binding = delegateBinding(frame.syntax);
+            if (frame.addressContext)
+            {
+                error = "Stage 42 delegate invocation is not addressable";
+                return false;
+            }
+            if (binding == nullptr || binding->kind != MethodDelegateOperationKind::Invoke)
+            {
+                error = "Stage 34 delegate invocation lost its semantic binding";
+                return false;
+            }
+            DelegateInvokeFrameState call;
+            call.binding = binding;
+            call.node = makeNode(
+                ProjectOopHirNodeKind::DelegateInvoke,
+                frame.syntax,
+                binding->resultTypeKey);
+            call.node->elementTypeKey = binding->delegateTypeKey;
+            call.node->stringValue = binding->directLambdaName;
+            call.node->booleanValue = binding->directLambdaUsesEnvironment;
+            const bool lowersCallee =
+                binding->directLambdaName.empty() || binding->directLambdaUsesEnvironment;
+            call.stage = lowersCallee
+                ? DelegateInvokeFrameStage::Callee
+                : frame.syntax->children().empty()
+                    ? DelegateInvokeFrameStage::Ready
+                    : DelegateInvokeFrameStage::Arguments;
+            frame.delegateInvoke.emplace(std::move(call));
+            return true;
+        };
+        struct DelegateInvokeChild final
+        {
+            const ast::AstNode* syntax = nullptr;
+        };
+        const auto nextDelegateInvokeChild = [&](const IterativeExpressionFrame& frame)
+            -> std::optional<DelegateInvokeChild>
+        {
+            const DelegateInvokeFrameState& call = *frame.delegateInvoke;
+            if (call.stage == DelegateInvokeFrameStage::Callee)
+                return DelegateInvokeChild{frame.syntax->first()};
+            if (call.stage != DelegateInvokeFrameStage::Arguments ||
+                call.nextArgument >= frame.syntax->children().size())
+            {
+                return std::nullopt;
+            }
+            return DelegateInvokeChild{
+                frame.syntax->children()[call.nextArgument]};
+        };
+        const auto acceptDelegateInvokeChild = [&](IterativeExpressionFrame& frame,
+                                                   std::unique_ptr<ProjectOopHirNode> child)
+        {
+            DelegateInvokeFrameState& call = *frame.delegateInvoke;
+            if (call.stage == DelegateInvokeFrameStage::Callee)
+            {
+                call.node->children.push_back(std::move(child));
+                call.stage = frame.syntax->children().empty()
+                    ? DelegateInvokeFrameStage::Ready
+                    : DelegateInvokeFrameStage::Arguments;
+                return;
+            }
+            const std::size_t index = call.nextArgument++;
+            const ast::AstNode* argumentSyntax = frame.syntax->children()[index];
+            if (index < call.binding->argumentConversions.size())
+            {
+                const ProjectImplicitConversion& conversion =
+                    call.binding->argumentConversions[index];
+                call.node->argumentTypeKeys.push_back(conversion.targetTypeKey);
+                if (conversion.kind != ProjectConversionKind::Identity)
+                {
+                    child = wrapImplicitConversion(
+                        std::move(child), conversion, argumentSyntax);
+                }
+            }
+            call.node->children.push_back(std::move(child));
+            if (call.nextArgument == frame.syntax->children().size())
+                call.stage = DelegateInvokeFrameStage::Ready;
+        };
         const auto prepareSetterReceiver = [&](IterativeExpressionFrame& frame)
             -> std::optional<bool>
         {
@@ -1510,6 +1617,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 else if (*currentKind == IterativeExpressionKind::EventInvoke)
                 {
                     if (!initializeEventInvokeFrame(frame))
+                    {
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                }
+                else if (*currentKind == IterativeExpressionKind::DelegateInvoke)
+                {
+                    if (!initializeDelegateInvokeFrame(frame))
                     {
                         if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
                         rollbackMatchCleanups();
@@ -2002,6 +2118,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     current = child->syntax;
                     currentAddressContext = child->addressContext;
+                }
+                else if (*currentKind == IterativeExpressionKind::DelegateInvoke)
+                {
+                    const std::optional<DelegateInvokeChild> child =
+                        nextDelegateInvokeChild(frames.back());
+                    if (!child.has_value())
+                    {
+                        error = "Stage 34 delegate-invoke frame has no child to lower";
+                        if (!lastErrorRange_.isValid()) lastErrorRange_ = current->range();
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    current = child->syntax;
+                    currentAddressContext = false;
                 }
                 else if (*currentKind == IterativeExpressionKind::DelegateCreationReceiver)
                 {
@@ -2890,6 +3020,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     }
                     eventInvoke.node->argumentCount = frame.syntax->children().size();
                     lowered = std::move(eventInvoke.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::DelegateInvoke)
+                {
+                    acceptDelegateInvokeChild(frame, std::move(lowered));
+                    DelegateInvokeFrameState& delegateInvoke = *frame.delegateInvoke;
+                    const std::optional<DelegateInvokeChild> child =
+                        nextDelegateInvokeChild(frame);
+                    if (child.has_value())
+                    {
+                        current = child->syntax;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        descend = true;
+                        break;
+                    }
+                    lowered = finishDelegateInvoke(
+                        frame.syntax,
+                        error,
+                        *delegateInvoke.binding,
+                        std::move(delegateInvoke.node));
+                    if (lowered == nullptr)
+                    {
+                        if (!lastErrorRange_.isValid())
+                            lastErrorRange_ = frame.syntax->range();
+                        frames.clear();
+                        break;
+                    }
                     frames.pop_back();
                     continue;
                 }

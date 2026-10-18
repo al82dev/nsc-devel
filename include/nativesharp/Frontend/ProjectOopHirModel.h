@@ -985,6 +985,14 @@ private:
         std::unique_ptr<ProjectOopHirNode> node,
         bool hasOwnedTemporary);
 
+    // Appends delegate/lambda defaults after the common expression worklist has lowered the
+    // optional callee and every explicit argument. It never descends into ordinary expressions.
+    std::unique_ptr<ProjectOopHirNode> finishDelegateInvoke(
+        const ast::AstNode* expression,
+        std::string& error,
+        const MethodDelegateBinding& binding,
+        std::unique_ptr<ProjectOopHirNode> node);
+
     bool validateNoHeapDirectCall(
         std::size_t callerMemberOrdinal,
         const MethodCallBinding& binding,
