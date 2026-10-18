@@ -1547,6 +1547,21 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerForStatementForTest(
+        ProjectOopHirModel& model,
+        const ast::AstNode* statement,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -15755,6 +15770,242 @@ void testDeepSwitchStatementLowering(TestContext& tests)
         "switch body failure is first, returns no partial HIR and restores cleanup state");
 }
 
+struct DeepForStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> statements;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepForStatementFixture makeDeepForStatementFixture(
+    std::size_t depth,
+    bool nestInInitializer)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepForStatementFixture fixture;
+    fixture.nodes.reserve(depth * 3U);
+    fixture.statements.reserve(depth);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    nativesharp::ast::AstNode* current = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        auto* statement = append(AstKind::ForStatement);
+        auto* body = append(AstKind::BlockStatement);
+        if (current != nullptr && nestInInitializer)
+        {
+            auto* init = append(AstKind::BlockStatement);
+            init->addChild(current);
+            statement->setFirst(init);
+        }
+        else if (current != nullptr)
+        {
+            body->addChild(current);
+        }
+        statement->addChild(body);
+        fixture.statements.push_back(statement);
+        current = statement;
+    }
+    std::reverse(fixture.statements.begin(), fixture.statements.end());
+    fixture.root = current;
+    return fixture;
+}
+
+bool deepForStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepForStatementFixture& fixture,
+    bool nestedInInitializer)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t index = 0U; index < fixture.statements.size(); ++index)
+    {
+        if (node == nullptr || node->kind != HirKind::For ||
+            node->syntax != fixture.statements[index] ||
+            node->typeKey != "builtin:void" || node->children.size() != 4U ||
+            node->children[1] != nullptr || node->children[2] != nullptr ||
+            node->children[3] == nullptr ||
+            node->children[3]->kind != HirKind::Block)
+        {
+            return false;
+        }
+        if (index + 1U == fixture.statements.size())
+        {
+            return node->children[0] == nullptr &&
+                node->children[3]->children.empty();
+        }
+        if (nestedInInitializer)
+        {
+            if (node->children[0] == nullptr ||
+                node->children[0]->kind != HirKind::Block ||
+                node->children[0]->children.size() != 1U ||
+                !node->children[3]->children.empty())
+            {
+                return false;
+            }
+            node = node->children[0]->children[0].get();
+        }
+        else
+        {
+            if (node->children[0] != nullptr ||
+                node->children[3]->children.size() != 1U)
+            {
+                return false;
+            }
+            node = node->children[3]->children[0].get();
+        }
+    }
+    return false;
+}
+
+void testDeepForStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    auto bodyFixture = makeDeepForStatementFixture(nestingDepth, false);
+    ProjectOopHirModel bodyModel;
+    std::string error;
+    auto bodyLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            bodyModel, bodyFixture.root, {}, {31U}, error);
+    tests.expect(bodyLowered != nullptr && error.empty(),
+        "32768 for-body edges lower on one worklist (" + error + ")");
+    tests.expect(deepForStatementChainMatches(
+            bodyLowered.get(), bodyFixture, false),
+        "iterative for body lowering preserves four ordered slots and source shape");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+            activeCleanupDepth(bodyModel) == 1U,
+        "deep for body lowering preserves enclosing cleanup state");
+    destroyHirTreeIteratively(bodyLowered);
+
+    auto initFixture = makeDeepForStatementFixture(nestingDepth, true);
+    ProjectOopHirModel initModel;
+    error.clear();
+    auto initLowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            initModel, initFixture.root, {}, {}, error);
+    tests.expect(initLowered != nullptr && error.empty(),
+        "32768 for-initializer block edges lower on one worklist (" + error + ")");
+    tests.expect(deepForStatementChainMatches(
+            initLowered.get(), initFixture, true),
+        "iterative for initializer lowering preserves block ownership and slot order");
+    destroyHirTreeIteratively(initLowered);
+
+    nativesharp::frontend::MethodExpressionTypeBinding intType;
+    intType.typeKey = "builtin:int";
+    nativesharp::frontend::MethodExpressionTypeBinding boolType;
+    boolType.typeKey = "builtin:bool";
+    auto initValue = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    initValue->setIntegerValue(1U);
+    auto condition = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BooleanLiteralExpression, nativesharp::SourceRange{});
+    condition->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto increment = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{});
+    increment->setIntegerValue(2U);
+    auto validBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto fullFor = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ForStatement, nativesharp::SourceRange{});
+    fullFor->setFirst(initValue.get());
+    fullFor->setSecond(condition.get());
+    fullFor->setThird(increment.get());
+    fullFor->addChild(validBody.get());
+    ProjectOopHirModel fullModel;
+    error.clear();
+    auto full = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            fullModel, fullFor.get(),
+            {{initValue.get(), &intType}, {condition.get(), &boolType},
+             {increment.get(), &intType}}, {}, error);
+    tests.expect(full != nullptr && error.empty() &&
+            full->children.size() == 4U &&
+            full->children[0]->kind == HirKind::IntegerConstant &&
+            full->children[1]->kind == HirKind::BooleanConstant &&
+            full->children[2]->kind == HirKind::IntegerConstant &&
+            full->children[3]->kind == HirKind::Block,
+        "for preserves initializer-condition-increment-body order");
+    destroyHirTreeIteratively(full);
+
+    auto invalid = std::make_unique<nativesharp::ast::AstNode>(
+        static_cast<AstKind>(0xFFFF), nativesharp::SourceRange{});
+    auto precedenceFor = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ForStatement, nativesharp::SourceRange{});
+    precedenceFor->setFirst(invalid.get());
+    precedenceFor->setSecond(invalid.get());
+    precedenceFor->setThird(invalid.get());
+    ProjectOopHirModel precedenceModel;
+    error.clear();
+    auto precedence = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            precedenceModel, precedenceFor.get(), {}, {37U}, error);
+    tests.expect(precedence == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(precedenceModel) == 1U,
+        "for initializer failure wins and restores cleanup before later slots");
+
+    precedenceFor->setFirst(nullptr);
+    ProjectOopHirModel conditionModel;
+    error.clear();
+    auto conditionFailure = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            conditionModel, precedenceFor.get(), {}, {}, error);
+    tests.expect(conditionFailure == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode",
+        "for condition failure wins over increment and missing body");
+
+    precedenceFor->setSecond(nullptr);
+    ProjectOopHirModel incrementModel;
+    error.clear();
+    auto incrementFailure = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            incrementModel, precedenceFor.get(), {}, {}, error);
+    tests.expect(incrementFailure == nullptr &&
+            error == "unsupported Stage 34 OOP expression kind: UnknownAstNode",
+        "for increment failure wins over missing body");
+
+    precedenceFor->setThird(nullptr);
+    ProjectOopHirModel missingBodyModel;
+    error.clear();
+    auto missingBody = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            missingBodyModel, precedenceFor.get(), {}, {}, error);
+    tests.expect(missingBody == nullptr &&
+            error == "Stage 34 for statement is missing a body",
+        "for reports its exact missing-body diagnostic only after three slots");
+
+    precedenceFor->addChild(nullptr);
+    ProjectOopHirModel nullBodyModel;
+    error.clear();
+    auto nullBody = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(
+            nullBodyModel, precedenceFor.get(), {}, {}, error);
+    tests.expect(nullBody == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body",
+        "for distinguishes a null front body from an absent body vector");
+
+    auto extraBodyFor = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::ForStatement, nativesharp::SourceRange{});
+    extraBodyFor->addChild(validBody.get());
+    extraBodyFor->addChild(invalid.get());
+    ProjectOopHirModel extraModel;
+    error.clear();
+    auto extra = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerForStatementForTest(extraModel, extraBodyFor.get(), {}, {}, error);
+    tests.expect(extra != nullptr && error.empty() &&
+            extra->children.size() == 4U &&
+            extra->children[3]->syntax == validBody.get(),
+        "for consumes only children.front as its body and ignores later children");
+    destroyHirTreeIteratively(extra);
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -19710,6 +19961,10 @@ int main()
     else if (focusValue == "hir-switch-statement-depth")
     {
         testDeepSwitchStatementLowering(tests);
+    }
+    else if (focusValue == "hir-for-statement-depth")
+    {
+        testDeepForStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {
