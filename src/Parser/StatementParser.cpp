@@ -12,7 +12,9 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1629,6 +1631,8 @@ private:
         ast::AstNode* guard = nullptr;
         ast::AstNode* body = nullptr;
     };
+    using MatchIntegerIntervalIndex = std::map<std::int64_t, std::int64_t>;
+
     struct MatchParseState final
     {
         std::size_t beginIndex = 0;
@@ -1640,7 +1644,7 @@ private:
         bool sawCatchAll = false;
         bool hasReferenceBinding = false;
         bool hasMoveBinding = false;
-        std::vector<std::pair<std::int64_t, std::int64_t>> coveredIntegerRanges;
+        MatchIntegerIntervalIndex coveredIntegerRanges;
     };
 
     bool ordinaryIfAtCursor() const noexcept
@@ -2871,35 +2875,81 @@ private:
     {
         std::vector<std::pair<std::int64_t, std::int64_t>> current;
         if (!collectMatchIntegerIntervals(state.pendingArm.pattern, current)) return;
-        if (matchIntervalsOverlap(current, state.coveredIntegerRanges))
+        const bool overlapsWithinArm = normalizeMatchIntegerIntervals(current);
+        const bool overlapsEarlierArm = matchIntervalsOverlap(
+            current, state.coveredIntegerRanges);
+        if (overlapsWithinArm || overlapsEarlierArm)
             parser_.diagnostics_.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 state.pendingArm.range,
                 "integer literal/range pattern overlaps an earlier alternative");
         if (guardAlwaysTrue)
-            state.coveredIntegerRanges.insert(
-                state.coveredIntegerRanges.end(), current.begin(), current.end());
+            for (const auto& interval : current)
+                insertMatchIntegerInterval(state.coveredIntegerRanges, interval);
     }
 
-    // Compares current intervals with prior arms and earlier alternatives in the same arm.
+    // Sorts and coalesces one arm, reporting whether strict half-open overlap existed within it.
+    static bool normalizeMatchIntegerIntervals(
+        std::vector<std::pair<std::int64_t, std::int64_t>>& intervals)
+    {
+        std::ranges::sort(intervals);
+        std::size_t output = 0;
+        bool overlaps = false;
+        for (const auto& interval : intervals)
+        {
+            if (output == 0 || intervals[output - 1].second < interval.first)
+            {
+                intervals[output++] = interval;
+                continue;
+            }
+            overlaps = overlaps || interval.first < intervals[output - 1].second;
+            intervals[output - 1].second =
+                std::max(intervals[output - 1].second, interval.second);
+        }
+        intervals.resize(output);
+        return overlaps;
+    }
+
+    // Queries the disjoint ordered index in logarithmic time for each normalized interval.
     static bool matchIntervalsOverlap(
         const std::vector<std::pair<std::int64_t, std::int64_t>>& current,
-        const std::vector<std::pair<std::int64_t, std::int64_t>>& covered)
+        const MatchIntegerIntervalIndex& covered)
     {
-        for (std::size_t index = 0; index < current.size(); ++index)
+        for (const auto& interval : current)
         {
-            const auto interval = current[index];
-            for (const auto& earlier : covered)
-            {
-                if (interval.first < earlier.second && earlier.first < interval.second) return true;
-            }
-            for (std::size_t earlier = 0; earlier < index; ++earlier)
-                if (interval.first < current[earlier].second &&
-                    current[earlier].first < interval.second)
-                    return true;
+            const auto next = covered.lower_bound(interval.first);
+            if (next != covered.end() && next->first < interval.second) return true;
+            if (next == covered.begin()) continue;
+            const auto previous = std::prev(next);
+            if (interval.first < previous->second) return true;
         }
         return false;
+    }
+
+    // Inserts one interval and coalesces overlap or adjacency without changing half-open queries.
+    static void insertMatchIntegerInterval(
+        MatchIntegerIntervalIndex& covered,
+        std::pair<std::int64_t, std::int64_t> interval)
+    {
+        auto next = covered.lower_bound(interval.first);
+        if (next != covered.begin())
+        {
+            const auto previous = std::prev(next);
+            if (previous->second >= interval.first)
+            {
+                interval.first = previous->first;
+                interval.second = std::max(interval.second, previous->second);
+                covered.erase(previous);
+            }
+        }
+        next = covered.lower_bound(interval.first);
+        while (next != covered.end() && next->first <= interval.second)
+        {
+            interval.second = std::max(interval.second, next->second);
+            next = covered.erase(next);
+        }
+        covered.emplace(interval);
     }
 
     // Attaches a completed body, closes the source range, and consumes the optional comma.
