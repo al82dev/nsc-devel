@@ -61,7 +61,10 @@ private:
         FinishForIncrement,
         FinishForBody,
         ContinueForExpressionList,
-        FinishForExpression
+        FinishForExpression,
+        FinishForeachCollection,
+        FinishForeachProbe,
+        FinishForeachBody
     };
 
     enum class StatementKind : std::uint8_t
@@ -83,7 +86,8 @@ private:
         If,
         While,
         DoWhile,
-        For
+        For,
+        Foreach
     };
 
     struct ResultSlot final
@@ -156,6 +160,14 @@ private:
         std::size_t resultSlot = 0;
         ast::AstNode* first = nullptr;
         ast::AstNode* sequence = nullptr;
+    };
+
+    struct ForeachFrame final
+    {
+        ForeachParseState state;
+        std::size_t resultSlot = 0;
+        std::size_t collectionStart = 0;
+        std::size_t collectionEnd = 0;
     };
 
     struct Work final
@@ -256,6 +268,10 @@ private:
     void startForExpressionList(std::size_t resultSlot, std::size_t beginIndex);
     void continueForExpressionList(const Work& work);
     void finishForExpression(const Work& work);
+    void startForeach(const Work& work);
+    void finishForeachCollection(const Work& work);
+    void finishForeachProbe(const Work& work);
+    void finishForeachBody(const Work& work);
 
     Parser& parser_;
     ParseContinuationCoordinator* previous_ = nullptr;
@@ -268,6 +284,7 @@ private:
     std::deque<DoWhileFrame> doWhileFrames_;
     std::deque<ForFrame> forFrames_;
     std::deque<ForExpressionFrame> forExpressionFrames_;
+    std::deque<ForeachFrame> foreachFrames_;
     std::vector<Work> work_;
 };
 
@@ -363,6 +380,9 @@ void Parser::ParseContinuationCoordinator::execute(Work work)
     case WorkKind::FinishForBody: finishForBody(work); return;
     case WorkKind::ContinueForExpressionList: continueForExpressionList(work); return;
     case WorkKind::FinishForExpression: finishForExpression(work); return;
+    case WorkKind::FinishForeachCollection: finishForeachCollection(work); return;
+    case WorkKind::FinishForeachProbe: finishForeachProbe(work); return;
+    case WorkKind::FinishForeachBody: finishForeachBody(work); return;
     }
 }
 
@@ -527,6 +547,7 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (ordinaryWhileStarts()) return StatementKind::While;
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
+    if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
     if (scopedStatementStarts() || controlStatementStarts()) return StatementKind::Direct;
     if (parser_.atContextualKeyword("yield"))
         return parser_.comprehensionContexts_.empty() ? StatementKind::Yield : StatementKind::Direct;
@@ -571,6 +592,7 @@ void Parser::ParseContinuationCoordinator::startStatement(const Work& work)
     case StatementKind::While: startWhile(work); return;
     case StatementKind::DoWhile: startDoWhile(work); return;
     case StatementKind::For: startFor(work); return;
+    case StatementKind::Foreach: startForeach(work); return;
     }
 }
 
@@ -1532,6 +1554,70 @@ void Parser::ParseContinuationCoordinator::finishForExpression(const Work& work)
     Work next{WorkKind::ContinueForExpressionList, frame.resultSlot};
     next.frameIndex = work.frameIndex;
     work_.push_back(next);
+}
+
+// Opens the foreach clause and schedules its real collection expression.
+void Parser::ParseContinuationCoordinator::startForeach(const Work& work)
+{
+    const std::size_t frameIndex = foreachFrames_.size();
+    foreachFrames_.push_back({{}, work.resultSlot, 0, 0});
+    ForeachFrame& frame = foreachFrames_.back();
+    if (!parser_.parseForeachHeaderPrefix(frame.state))
+    {
+        complete(frame.resultSlot, nullptr);
+        return;
+    }
+    frame.collectionStart = parser_.index_;
+    Work finish{WorkKind::FinishForeachCollection, frame.resultSlot};
+    finish.frameIndex = frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Stores the executable collection, rewinds, and schedules the distinct semantic probe.
+void Parser::ParseContinuationCoordinator::finishForeachCollection(const Work& work)
+{
+    ForeachFrame& frame = foreachFrames_[work.frameIndex];
+    frame.state.collection = childValue(work);
+    frame.collectionEnd = parser_.index_;
+    parser_.index_ = frame.collectionStart;
+    Work finish{WorkKind::FinishForeachProbe, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Expression, childSlot});
+}
+
+// Restores the real cursor boundary and schedules the required block body.
+void Parser::ParseContinuationCoordinator::finishForeachProbe(const Work& work)
+{
+    ForeachFrame& frame = foreachFrames_[work.frameIndex];
+    frame.state.collectionProbe = childValue(work);
+    parser_.index_ = frame.collectionEnd;
+    parser_.expect(TokenKind::RightParen, "')'");
+    if (!parser_.at(TokenKind::LeftBrace))
+    {
+        parser_.expect(TokenKind::LeftBrace, "'{' after foreach clause");
+        complete(frame.resultSlot, parser_.lowerForeachStatement(std::move(frame.state), nullptr));
+        return;
+    }
+    Work finish{WorkKind::FinishForeachBody, frame.resultSlot};
+    finish.frameIndex = work.frameIndex;
+    finish.childSlot = makeResultSlot();
+    const std::size_t childSlot = finish.childSlot;
+    work_.push_back(finish);
+    work_.push_back({WorkKind::Block, childSlot});
+}
+
+// Publishes the canonical lowering after the shared worklist completes the body.
+void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
+{
+    ForeachFrame& frame = foreachFrames_[work.frameIndex];
+    complete(frame.resultSlot, parser_.lowerForeachStatement(
+        std::move(frame.state), childValue(work)));
 }
 
 ast::AstNode* Parser::parseWithContinuation(ContinuationRequestKind kind)

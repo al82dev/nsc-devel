@@ -217,6 +217,7 @@ void registerParserNullCoalescingIterationCounterfactualModule(TestRegistry& reg
 void registerParserConditionalTrampolineCounterfactualModule(TestRegistry& registry);
 void registerParserLambdaBlockContinuationCounterfactualModule(TestRegistry& registry);
 void registerParserStructuredControlContinuationCounterfactualModule(TestRegistry& registry);
+void registerParserForeachCoordinatorCounterfactualModule(TestRegistry& registry);
 void registerSemaConstantConversionModule(TestRegistry& registry);
 void registerSemaEffectsExpressionModule(TestRegistry& registry);
 void registerSemaScopeSymbolModule(TestRegistry& registry);

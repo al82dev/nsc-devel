@@ -1436,6 +1436,10 @@ private:
     ast::AstNode* lowerForStatement(const ForParseState& state, ast::AstNode* body);
     ast::AstNode* parseForeachStatement();
     bool parseForeachHeader(ForeachParseState& state);
+    bool parseForeachHeaderPrefix(ForeachParseState& state);
+    void initializeForeachState(ForeachParseState& state);
+    void parseForeachBindingPrefix(ForeachParseState& state);
+    bool parseForeachElement(ForeachParseState& state);
     ast::AstNode* lowerForeachStatement(ForeachParseState&& state, ast::AstNode* body);
     ast::TypeSyntax* makeForeachVarMarker(SourceRange range);
     void configureForeachElementBinding(

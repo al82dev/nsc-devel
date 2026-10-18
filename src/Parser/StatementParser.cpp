@@ -3638,7 +3638,7 @@ ast::AstNode* Parser::parseForStatement()
 // analysis has the resolved GetEnumerator() return type: reference enumerators become RAII owners
 // exactly as before, while trivial struct enumerators remain values in the current stack frame.
 // The parser cannot make that choice because it deliberately has no type information.
-bool Parser::parseForeachHeader(ForeachParseState& state)
+void Parser::initializeForeachState(ForeachParseState& state)
 {
     state.beginIndex = index_;
     // Reserve the identity before parsing the body so a nested foreach receives a different
@@ -3654,6 +3654,10 @@ bool Parser::parseForeachHeader(ForeachParseState& state)
     state.rangeCursorName = state.temporaryPrefix + "_range_cursor";
     state.elementTemporaryName = state.temporaryPrefix + "_element";
     state.patternTemporaryPrefix = state.temporaryPrefix + "_pattern";
+}
+
+void Parser::parseForeachBindingPrefix(ForeachParseState& state)
+{
     consume(); // foreach
     expect(TokenKind::LeftParen, "'('");
 
@@ -3703,6 +3707,10 @@ bool Parser::parseForeachHeader(ForeachParseState& state)
             current().range(),
             "a foreach reference binding aliases source storage and cannot also be raii");
     }
+}
+
+bool Parser::parseForeachElement(ForeachParseState& state)
+{
     if (at(TokenKind::KwVar))
     {
         const lexer::Token& varToken = consume();
@@ -3730,8 +3738,20 @@ bool Parser::parseForeachHeader(ForeachParseState& state)
     {
         state.elementName = std::string(consume().lexeme());
     }
-
     expect(TokenKind::KwIn, "'in'");
+    return true;
+}
+
+bool Parser::parseForeachHeaderPrefix(ForeachParseState& state)
+{
+    initializeForeachState(state);
+    parseForeachBindingPrefix(state);
+    return parseForeachElement(state);
+}
+
+bool Parser::parseForeachHeader(ForeachParseState& state)
+{
+    if (!parseForeachHeaderPrefix(state)) return false;
     // P0.2 of the closure review: the collection expression is parsed TWICE from the same token
     // range -- once here (`collection`, embedded in the REAL, semantically-analyzed
     // `sourceDecl` below) and once more, immediately after resetting `index_` back to this
