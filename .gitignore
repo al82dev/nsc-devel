@@ -22,3 +22,4 @@
 __pycache__/
 *.py[cod]
 *.log 
+Claude outputs/nsc-all-commits.txt
